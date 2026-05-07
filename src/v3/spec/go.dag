@@ -43,7 +43,7 @@ import v3.std.clean_emission {
 }
 import std.algebra { BooleanAlgebra }
 import std.list { List }
-import std.integer { Int32 }
+import std.integer { Int, Int32 }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
   VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMapEntry, SurfaceMatchArm,
@@ -89,6 +89,19 @@ data go_integer_inhabit_i32_at_program_bound: TargetIntegerTypeInhabitance = {
     width: PositiveWidth(UnitCount { units: 4294967295 })
   })
   type_realization: go_int32
+}
+
+// Native Go `int` — platform-sized bound witness only: unit `PlatformDependentFact`
+// (design-emission-model.md Q1), distinct from fixed-width `StaticBoundFact` rows.
+// `type_realization` must remain `go_int` — the sole Go `TypeRealization` for `target: Int`
+// (emit duplicate-realization fail-closed per `emit.rs`); carrier spelling stays `int64` until
+// substrate introduces a distinct primitive for native `int` vs `int64`.
+data go_integer_inhabit_int_platform_dependent: TargetIntegerTypeInhabitance = {
+  language: go_language
+  kernel_integer: Int
+  algebra: Int
+  bound: PlatformDependentFact
+  type_realization: go_int
 }
 
 data go_bool: TypeRealization = {

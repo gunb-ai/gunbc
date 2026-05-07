@@ -8,10 +8,15 @@
 //! [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
 //!
 //! **Call-site (`ScratchIntExamples`):** counts declared `TargetIntegerTypeInhabitance` rows in `dag`
-//! (**INVARIANTS.md E-6** witness) before applying scratch outcomes. Examples 2 and 8 now
-//! select by full declared integer-row facts; the scratch driver still fixes
-//! [`BindingId`](v3_grounding_lifetime::BindingId)`(0)` only because real program-bound
-//! and algebra-intent extraction is still Slice C scope (#1133 / #1286).
+//! (**INVARIANTS.md E-6** witness) before applying scratch outcomes. Row `bound:` values use
+//! [`TargetIntegerInhabitanceBound`](../../std/emit_model.dag) — including **unit
+//! `PlatformDependentFact`** for platform-sized targets (Q1 / design-emission-model § usize /
+//! Go `int`). [`match_bound`] pairs program [`BoundDeclarationView`] with those facts:
+//! kind-only **positive match** for `(PlatformDependent, PlatformDependentFact)`; **DiffersKind**
+//! when static vs platform-kind disagree (Track A vs Track B gate in S7 Phase 1 inventory).
+//! Examples 2 and 8 still select declared rows only; the scratch driver fixes
+//! [`BindingId`](v3_grounding_lifetime::BindingId)`(0)` because real program-bound extraction from
+//! lifetime facts remains Slice C scope (#1133 / #1286).
 
 use std::collections::BTreeMap;
 
@@ -40,6 +45,8 @@ enum BoundMatch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum BoundDeclarationView {
     StaticBound(Interval<i64>),
+    /// No production construction site yet — program `PlatformDependent` extraction is #1133/#1286.
+    /// `match_bound` + unit tests exercise this variant.
     #[allow(dead_code)]
     PlatformDependent,
 }
@@ -624,5 +631,64 @@ pub fn fold_program_to_target(
             };
             Ok(BTreeMap::from([(binding, inhabitance)]))
         }
+    }
+}
+
+#[cfg(test)]
+mod match_bound_tests {
+    use super::*;
+    use v3_compiler::dag::{Interval, IntervalWidth, PositiveIntervalWidth};
+
+    fn i32_declared_interval() -> Interval<i64> {
+        Interval::BoundedInterval {
+            lower: -2_147_483_648,
+            width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::UnitCount {
+                units: 4_294_967_295,
+            }),
+        }
+    }
+
+    #[test]
+    fn platform_dependent_program_matches_platform_dependent_fact_target() {
+        assert_eq!(
+            match_bound(
+                &BoundDeclarationView::PlatformDependent,
+                &TargetIntegerInhabitanceBoundView::PlatformDependentFact,
+            ),
+            BoundMatch::Matches
+        );
+    }
+
+    #[test]
+    fn platform_dependent_program_does_not_match_static_bound_fact_target() {
+        assert_eq!(
+            match_bound(
+                &BoundDeclarationView::PlatformDependent,
+                &TargetIntegerInhabitanceBoundView::StaticBoundFact(i32_declared_interval()),
+            ),
+            BoundMatch::DiffersKind
+        );
+    }
+
+    #[test]
+    fn platform_dependent_program_does_not_match_bound_unspecified_target() {
+        assert_eq!(
+            match_bound(
+                &BoundDeclarationView::PlatformDependent,
+                &TargetIntegerInhabitanceBoundView::BoundUnspecified,
+            ),
+            BoundMatch::DiffersKind
+        );
+    }
+
+    #[test]
+    fn static_program_does_not_match_platform_dependent_fact_target() {
+        assert_eq!(
+            match_bound(
+                &BoundDeclarationView::StaticBound(i32_declared_interval()),
+                &TargetIntegerInhabitanceBoundView::PlatformDependentFact,
+            ),
+            BoundMatch::DiffersKind
+        );
     }
 }
