@@ -71,11 +71,30 @@ type DispatchInputType = InputString | InputBoolean | InputChoice | InputEnviron
 // The scope discriminator IS GitHub-Actions-specific (not all providers
 // distinguish step-vs-job-vs-workflow secret scopes), which is why the
 // carrier folds into actions.dag rather than std.
+//
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟢 TERMINAL. The three-way step/job/workflow scope split is the GitHub
+// Actions spec's binding-scope partition; the variant set is closed at
+// the provider level, not a scaffold awaiting refinement.
+//
+// Structural-consumer dissolution trigger:
+// `WorkflowSecret` is a Slice 1 carrier introduction; structural attachment
+// to consumer sites (`Step.env`, `Job.env`, `Workflow.env` value-shape
+// migrating from `Map<String, String>` to a sum type that includes
+// `WorkflowSecret`) is the responsibility of Slice 3
+// (`ci_workflow_modeled_as_dag` demo, tracked at #1956), which consumes
+// Slices 1+2. Until that wiring lands, the carrier is intentionally
+// unattached -- promoting the env-shape change in Slice 1 would expand
+// the migration cascade beyond the brief's authorized 2-fixture scope.
 
 type SecretScope = StepScope | JobScope | WorkflowScope
 
-type WorkflowSecret<Name> {
-  name: Name
+// `name` is enforced as `SecretName` (the cross-provider authority in
+// `std.types`), not a free type parameter -- the brief's `WorkflowSecret<Name>`
+// shape collapses to the concrete binding once the cross-provider grep
+// confirmed `SecretName` already exists at std.
+type WorkflowSecret {
+  name: SecretName
   scope: SecretScope
 }
 

@@ -13,6 +13,8 @@
 
 module extdeps.cron
 
+import std.integer { NonNegativeInt, PositiveInt }
+
 // -- Cron entry model -------------------------------------------------
 // Typed cron expression. Each of the 5 standard POSIX fields is a
 // `CronField` rather than an opaque string. The sum type collapses
@@ -29,12 +31,22 @@ module extdeps.cron
 // Field-count is exactly 5 (POSIX.1-2017). Expansion to 6 (seconds) or
 // 7 (year) is a substrate-shape question warranting ratification.
 
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟢 TERMINAL. POSIX.1-2017 crontab(1) defines exactly these 5 grammar
+// shapes per field (wildcard, exact value, comma-list, range, step) --
+// the variant set is bounded by the external spec, not a scaffold for
+// a future model. Field-payload integer types are refined to
+// NonNegativeInt / PositiveInt: cron field values are never negative
+// in POSIX, and step interval is strictly positive (zero-step is
+// undefined). Per-field POSIX bounds (minute 0..59, hour 0..23, etc.)
+// remain unenforced -- bounded refinements are a separate substrate
+// shape question and would compose at this layer.
 type CronField
-  = Wildcard                                  // *
-  | Exact { value: Int }                      // N
-  | Listed { values: List<Int> }              // a,b,c
-  | Ranged { start: Int, end: Int }           // a-b
-  | Step { start: Int, step: Int }            // a/N  (start: 0 renders as "*/N")
+  = Wildcard                                                       // *
+  | Exact { value: NonNegativeInt }                                // N
+  | Listed { values: List<NonNegativeInt> }                        // a,b,c
+  | Ranged { start: NonNegativeInt, end: NonNegativeInt }          // a-b
+  | Step { start: NonNegativeInt, step: PositiveInt }              // a/N  (start: 0 renders as "*/N")
 
 type CronSchedule {
   minute: CronField
