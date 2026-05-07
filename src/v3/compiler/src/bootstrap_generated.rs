@@ -23773,7 +23773,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 3882, 3905),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 4739, 4762),
         });
         declarations.push(Declaration {
             id: DeclarationId(875),
@@ -23792,7 +23792,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 5480, 5529),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 6337, 6386),
         });
         declarations.push(Declaration {
             id: DeclarationId(876),
@@ -23817,7 +23817,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 6664, 6708),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7521, 7565),
         });
         declarations.push(Declaration {
             id: DeclarationId(877),
@@ -23842,7 +23842,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7124, 7228),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7981, 8085),
         });
         declarations.push(Declaration {
             id: DeclarationId(878),
@@ -23871,7 +23871,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 8166, 8328),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 9023, 9185),
         });
         declarations.push(Declaration {
             id: DeclarationId(879),
@@ -62315,7 +62315,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 5502, 5529),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 6359, 6386),
         });
         declarations.push(Declaration {
             id: DeclarationId(1997),
@@ -62329,7 +62329,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 6689, 6694),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7546, 7551),
         });
         declarations.push(Declaration {
             id: DeclarationId(1998),
@@ -62343,7 +62343,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 6699, 6708),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7556, 7565),
         });
         declarations.push(Declaration {
             id: DeclarationId(1999),
@@ -62369,7 +62369,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 8284, 8326),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 9141, 9183),
         });
         declarations.push(Declaration {
             id: DeclarationId(2000),

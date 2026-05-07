@@ -40,19 +40,32 @@
 
 module v3.std.coproduct_projection
 
-// `DeclarationRef` resolves to `dsl/std/serialization.dag:16`'s
-// `DeclarationRef = String` alias — the soft-typed nominal handle
-// the brief + Director's path-(a) ratification reference. This is
-// distinct from the `type DeclarationRef {}` empty record at
-// `src/v3/spec/v3_l1.dag:76` (a separate identity declared for the
-// v3 spec layer); the two-co-existing-`DeclarationRef`-types is a
-// pre-existing P2 single-authority concern surfaced by Mgr review
-// at gunb-ai/gunbc#2164 and tracked separately (likely folds into
-// audit-row #14's module-convergence dissolution trigger). The
-// debt-paydown row at `docs/debt/r3-debt-paydown-ledger-2026-05-02.md`
-// names the `String` alias (this import) for promotion; both
-// `DeclarationRef`s dissolve together when convergence lands.
-import std.serialization { DeclarationRef }
+// `DeclarationRef` resolves to `src/v3/spec/v3_l1.dag:76`'s
+// structural typed declaration-reference shape. Selected over the
+// `dsl/std/serialization.dag:16` `DeclarationRef = String` alias to
+// resolve a tri-way tension at PR-α: (i) Substrate Mgr at #2164 c#…
+// flagged the `v3.spec.v3_l1` empty-record characterization vs. the
+// disposition'd-String-alias framing as a BLOCKING; (ii) codex
+// non-blocking + subsequent BLOCKING (sha 0e185083 / 49523238) noted
+// the v3_l1 carrier "resolves to a typed declaration reference" (not
+// String) AND that `dsl/std/serialization.dag` was missing from
+// `bootstrap_authority.dag` so the alias import would silently mis-
+// resolve at bootstrap-materialization time; (iii) adding
+// serialization.dag to bootstrap-authority push test-thread stack
+// past 2MB ceiling (lane2 symbolic-cost test stack overflow,
+// reproduced locally vs. clean on main). The structural typed v3_l1
+// `DeclarationRef` is already in `V3SpecAuthority` (no authority
+// gap), is the canonical structural identity per its own doc-comment
+// ("substrate carries the typed reference forward, no name-bridge
+// lookup at consumption time"), and avoids both the silent-mis-
+// resolution and stack-budget regressions. The debt-paydown row at
+// `docs/debt/r3-debt-paydown-ledger-2026-05-02.md` is retitled
+// accordingly per codex's non-blocking guidance: this is unrefined-
+// any-declaration handle work — `DeclarationRef` admits any
+// declaration at the type level until refinement-typing-on-
+// `DeclarationRef` lands (the same #1175 substrate gap that retires
+// `MethodRef` / `CallableRef` per `services.dag:86-100`).
+import v3.spec.v3_l1 { DeclarationRef }
 
 // 🟡 SCAFFOLD. String-aliased variant identity handle. Keys
 // `CoproductProjection.variant_projections` and `WireTagValue` payloads.
@@ -147,3 +160,25 @@ type CoproductProjection {
   wire_tag_field:      String
   variant_projections: Map<VariantId, CoproductVariantProjection>
 }
+
+// **Gate 3 multi-consumer demo deferred to first paydown PR — surfaced
+// to Substrate Mgr (#2154) as DSL parser limitation.**
+//
+// Mgr disposed gate 3 (i) trivial in-PR `data anthropic_chat_message_projection:
+// CoproductProjection = { ... }` demo at #2154 c#4400893282. Authoring the
+// demo failed at parse time on the `Map<VariantId, CoproductVariantProjection>`
+// (or `Map<String, CoproductVariantProjection>`) literal — both inline-record
+// values and ident-reference values produced
+// `expected field label, got StringLit("UserMessage")` parse errors at the
+// Map-literal `"key": value` position. Existing precedent for top-level Map
+// literals lives in `src/v2/*` and `dsl/std/*` files only (`single_punct`,
+// `kernel_type_set`, `container_type_arity`, `expr_child_roles`); none of
+// these have Record-typed values, and no `Map<K, Record>` literal exists
+// anywhere in `src/v3/std/`. The parser surface in v3.std appears to lack
+// Record-valued Map literal support — surface to lane as separate
+// substrate-tooling gap. Gate 3 reverts to (ii) defer-to-first-paydown:
+// the first `r3-coproduct-{1,2,3}-*-worker.md` PR consumes
+// `CoproductProjection` against its target coproduct, with the Map literal
+// either authored once parser support lands or via an alternate carrier
+// shape (e.g., `List<CoproductVariantProjection>` keyed by a `variant_id`
+// field) negotiated at consumer-PR review time.
