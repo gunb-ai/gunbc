@@ -117,11 +117,17 @@ type LensEnforcement<Output, Budget> {
 //
 // **Status at this commit**: the carrier shape is landed (this file);
 // the parser check is NOT yet implemented. Until it lands, duplicate
-// `EnforceableLens<C, B>` declarations are convention-only — Slice B
-// (or a follow-up Substrate slice) lands the parser pass and a
-// behavior-driven test that constructs duplicate declarations and
-// asserts the Diagnostic. Design lock authority: design doc §2
-// "PARSER-LEVEL UNIQUENESS INVARIANT" paragraph.
+// `EnforceableLens<C, B>` declarations are convention-only.
+//
+// **Dissolution routing (per `../INVARIANTS.md` P5)**: tracked at
+// gunb-ai/gunbc#2162 — Substrate slice authoring the parse-time pass
+// + the behavior-driven duplicate-declarations Diagnostic test. This
+// is the single retirement path for the tracked debt; closing #2162
+// dissolves the "convention-only" gap and lifts this comment block
+// to the present-tense invariant the design doc names. Scheduling is
+// Substrate Mgr discretion (not on the R3 thesis-close cascade).
+// Design-lock authority for the invariant shape itself remains design
+// doc §2 "PARSER-LEVEL UNIQUENESS INVARIANT" paragraph.
 //
 // Why parser-level, not type-level: full type-level enforcement
 // (preventing user code from EVER declaring a second

@@ -30075,7 +30075,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 6956, 7064),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 7313, 7421),
         });
         declarations.push(Declaration {
             id: DeclarationId(1035),
@@ -30089,7 +30089,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 6956, 7064),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 7313, 7421),
         });
         declarations.push(Declaration {
             id: DeclarationId(1036),
@@ -30103,7 +30103,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 6956, 7064),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 7313, 7421),
         });
         declarations.push(Declaration {
             id: DeclarationId(1037),
@@ -30140,7 +30140,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 8673, 8869),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 9030, 9226),
         });
         declarations.push(Declaration {
             id: DeclarationId(1038),
@@ -30154,7 +30154,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 8673, 8869),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 9030, 9226),
         });
         declarations.push(Declaration {
             id: DeclarationId(1039),
@@ -30168,7 +30168,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 8673, 8869),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 9030, 9226),
         });
         declarations.push(Declaration {
             id: DeclarationId(1040),
@@ -30197,7 +30197,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 9742, 9842),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 10099, 10199),
         });
         declarations.push(Declaration {
             id: DeclarationId(1041),
@@ -30211,7 +30211,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 9742, 9842),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 10099, 10199),
         });
         declarations.push(Declaration {
             id: DeclarationId(1042),
@@ -64858,7 +64858,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 7003, 7015),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 7360, 7372),
         });
         declarations.push(Declaration {
             id: DeclarationId(2143),
@@ -64884,7 +64884,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 7031, 7062),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 7388, 7419),
         });
         declarations.push(Declaration {
             id: DeclarationId(2144),
@@ -64910,7 +64910,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 8736, 8767),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 9093, 9124),
         });
         declarations.push(Declaration {
             id: DeclarationId(2145),
@@ -64930,7 +64930,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/lens_application.dag", 9787, 9799),
+            span: SourceSpan::new("src/v3/std/lens_application.dag", 10144, 10156),
         });
         declarations.push(Declaration {
             id: DeclarationId(2146),
