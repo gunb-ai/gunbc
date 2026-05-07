@@ -91,7 +91,7 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
 import std.algebra { BooleanAlgebra }
-import std.integer { Int, UInt8, Int32, UInt32, Int128 }
+import std.integer { Int, UInt8, Int32, UInt32, Int128, UInt128 }
 import v3.std.lookup { Lookup }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
@@ -160,6 +160,19 @@ data rust_i128: TypeRealization = {
   cost: 1
 }
 
+// R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264;
+// Option (ii) confirmed at gunbc#1761 #issuecomment-4393145631): u128
+// realization for the symmetric `UInt128` kernel integer. Unblocked by
+// Phase A `IntervalInt::ExactInterval` BigInt host repr widening.
+data rust_u128: TypeRealization = {
+  language: rust_language
+  target: UInt128
+  carrier: "u128"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
 // ── TargetIntegerTypeInhabitance rows (design-emission-model Examples 1, 2, 5, 6, 8 family) ──
 // Bounds use `StaticBoundFact(Interval<Int>)` inline so rows lower structurally
 // (DB-10: top-level `data …: BoundDeclaration = …` stays Unparsed). Signed
@@ -210,6 +223,20 @@ data rust_integer_inhabit_i128_bound_unspecified: TargetIntegerTypeInhabitance =
   algebra: Int128
   bound: BoundUnspecified
   type_realization: rust_i128
+}
+
+// R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264;
+// Option (ii) confirmed at gunbc#1761 #issuecomment-4393145631): u128
+// inhabitance row consuming Phase A's BigInt-widened ExactInterval. The
+// `BoundUnspecified` shape mirrors the i128 row above; static interval
+// bound facts on u128 lower through the BigInt-backed
+// `IntervalInt::ExactInterval` once narrowing consumers exercise them.
+data rust_integer_inhabit_u128_bound_unspecified: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: UInt128
+  algebra: UInt128
+  bound: BoundUnspecified
+  type_realization: rust_u128
 }
 
 data rust_bool: TypeRealization = {
