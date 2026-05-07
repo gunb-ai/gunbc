@@ -25,13 +25,18 @@ type CoproductProjection {
 
 `WireTagValue` MUST be a typed leaf (sum type or named record), **not** `String`. If Anthropic + REST both serialize as string at the wire boundary, encode the typed-on-our-side / serialized-at-emit pattern: `WireTagValue` stays typed in substrate; serialization adapter handles `String <-> WireTagValue` at the wire boundary.
 
-### Substrate observations the worker must surface (do not silently work around)
+### Substrate observations — Director pre-ratified dispositions (gunbc#828 #issuecomment-4394416049)
 
-1. **`DeclarationRef = String` alias at `dsl/std/serialization.dag:16`** — Director's ratification framing emphasizes "typed key, not string identity (avoids audit row #14 collision)". The current `DeclarationRef` IS a String alias. If `CoproductProjection.declaration: DeclarationRef` is to be a real typed key, either (a) `DeclarationRef` itself must promote to a structural typed shape (e.g., `(module: ModuleId, name: DeclarationName)` record) — substantial substrate change, surface as scope question; OR (b) accept the alias as a soft-typed nominal handle for this carrier slice and note the future-promotion debt. **STOP-and-PING the Mgr** before proceeding; don't choose silently.
+These were flagged as STOP-and-PING in canvas; Director pre-ratified the dispositions so worker can proceed without re-pinging unless evidence forces escalation.
 
-2. **`FieldRef` does not exist at HEAD** as a standalone type (only `InputFieldRef` mentioned in `services.dag:34`). The brief asks for a typed `FieldRef` carrier. Either reuse `InputFieldRef` if its semantics generalize, or introduce `FieldRef` alongside `CoproductProjection`. Choose pragmatically; don't introduce a parallel-authority second `FieldRef`.
+1. **`DeclarationRef = String` alias at `dsl/std/serialization.dag:16`** — **Disposition: (b) accept alias for this slice + debt note.** Promoting `DeclarationRef` to structural typed shape mid-slice is cascade scope creep per `feedback_construction_over_ratchets`. Document the soft-typed nominal handle in `CoproductProjection` carrier comments; add a debt-paydown row pointing at future structural promotion of `DeclarationRef`. **Re-escalate to Mgr only if** worker surfaces evidence the alias actively breaks something same-slice (e.g., Anthropic #1702 wiring triggers a string-identity bridge per `feedback_opaque_strings_attract_heuristics`).
 
-3. **`InternallyTaggedObject.tag_field: String`** at `dsl/std/serialization.dag:49` already uses a String tag-field. The new typed `FieldRef` shape will create a typed/string asymmetry between the two carriers. Either (a) `CoproductProjection.wire_tag_field` is `FieldRef` and the asymmetry is documented as tracked debt (eventually `InternallyTaggedObject` migrates), or (b) accept `String` for `wire_tag_field` to match. Director's binding constraint #2 is explicit: typed leaf `WireTagValue`; the `wire_tag_field` field shape is less hard-binding. Recommend (a) — typed introduction here, debt note for `InternallyTaggedObject` migration.
+2. **`FieldRef` does not exist at HEAD; only `InputFieldRef` at `services.dag:34`** — **Disposition: grep-decide between two structural patterns.** Worker greps `services.dag` + adjacent surface for `InputFieldRef` consumers BEFORE deciding (per `feedback_emitter_workaround_is_gap_symptom` + `feedback_audit_adjacent_authority_first`):
+   - If `InputFieldRef` carries input-specific structural context → introduce `FieldRef` as the general carrier; treat `InputFieldRef` as specialization (compose, not parallel-author).
+   - If `InputFieldRef` is just narrowly-named for an input use-case → rename to `FieldRef` (per `feedback_naming_is_aliasing` — rename is structural-cheap).
+   - **Do NOT** manufacture a parallel-authority second `FieldRef`.
+
+3. **`InternallyTaggedObject.tag_field: String` asymmetry at `dsl/std/serialization.dag:49`** — **Disposition: typed introduction here + debt note for future migration.** Per `feedback_parallel_representation_debt`, the typed/string asymmetry is recorded as known shape mismatch with named dissolution (eventual `InternallyTaggedObject.tag_field: FieldRef` migration). Do NOT fix in same slice unless evidence shows the asymmetry actively blocks a downstream consumer.
 
 ## Acceptance gates (same-slice, all must pass)
 
