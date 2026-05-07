@@ -325,11 +325,30 @@ fn branch_reports_constant_when_both_arms_constant() {
     // OR change this fixture to share a `(source, file)` key with an existing
     // cached test in this module. #546's caching pattern alone does NOT
     // address this test's cold path.
-    let cost = bind_cost("let r = if 1 > 0 then 10 else 20", "test.v3", "r");
-    assert!(
-        is_constant(&cost),
-        "branch over constant arms should report Constant, got {cost:?}"
-    );
+    //
+    // **Stack-budget bump (PR #2164 / S5 carrier landing):** the cold
+    // bootstrap compile here traverses every substrate carrier declaration
+    // including the new `v3.std.coproduct_projection` carrier; the typed
+    // `DeclarationRef` + `Map<VariantId, CoproductVariantProjection>` shape
+    // pushed the static-initializer + bootstrap-walk past the default
+    // 2MB test-thread stack on Linux debug builds. Wrapped in an 8MB
+    // thread per the `with_full_bootstrap_stack` precedent at
+    // `m2_substrate_inhabitance_test.rs:23-35` (same fix applied to a
+    // sibling substrate-bootstrap-heavy test). The cold-bootstrap cache
+    // dissolution trigger above remains the load-bearing fix — bumping
+    // stack is the cliff-edge workaround until that lands.
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let cost = bind_cost("let r = if 1 > 0 then 10 else 20", "test.v3", "r");
+            assert!(
+                is_constant(&cost),
+                "branch over constant arms should report Constant, got {cost:?}"
+            );
+        })
+        .expect("spawn bootstrap-stack-bumped thread")
+        .join()
+        .expect("bootstrap-stack-bumped thread panicked");
 }
 
 budgeted_test! {
