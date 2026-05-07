@@ -113,27 +113,31 @@ type VariantId = String
 type WireTagValue
   = StringTag { value: String }
 
-// 🟢 TERMINAL at PR-α scope. Single keyed fact (P2 boundary): per-
-// variant projection record. At PR-α the only structural projection
-// fact this carrier carries is the wire-tag value; the per-variant
-// payload-field projection (`FieldProjection` sum with `Empty`/
-// `Populated` constructors and an inner field-shape map at the
-// `Populated` arm) was attempted in earlier revisions of this file
-// but its static-initializer depth, combined with the typed nominal
-// `DeclarationRef` traversal, repeatedly pushed past the 2MB test-
-// thread stack budget on `lane2_stage_2d_symbolic_cost_test::
-// branch_reports_constant_when_both_arms_constant` (CI run
-// 25520358762; reproduced locally vs. clean on `main`). Surfaced as
-// substrate-tooling gap (test-thread stack budget vs. carrier
-// traversal cost). Single-keyed-fact discipline preserved: the
-// per-variant payload-projection lands on this same record (not a
-// parallel sibling map) when the first paydown PR consumer adds it
-// — same record means single-authority by construction. Brief's
-// "field_projection adjacent to wire_tag_value" intent is preserved
-// through that future addition; same-slice landing of the field shape
-// itself is deferred under the substrate-tooling gap.
+// 🟡 SCAFFOLD coproduct. Per-variant payload field projection. `Empty`
+// constructor encodes "variant has no payload fields" (e.g., Anthropic
+// empty-payload variants per brief §"Single-keyed-fact discipline")
+// without representing absence as a missing map entry — keeps
+// illegal-state-by-construction. `Populated` is a placeholder arm whose
+// internal field-shape detail (a typed `Map<String, FieldShape>` or
+// equivalent payload-field projection) is deferred to the first paydown
+// PR consumer per Mgr-disposed sliced-follow-up — `feedback_construction
+// _over_ratchets`. Dissolution trigger: when the first paydown PR
+// consumes `Populated`, the inner shape grows to a typed payload-field
+// projection (`FieldShape` introduced at that point) and a TERMINAL
+// receipt lands.
+type FieldProjection
+  = Empty
+  | Populated
+
+// 🟢 TERMINAL at PR-α scope. Single keyed fact (P2 boundary): a
+// variant's payload projection and its wire-tag value live together.
+// Splitting into parallel `Map<VariantId, FieldProjection>` +
+// `Map<VariantId, WireTagValue>` would admit a variant with a tag but
+// no field projection (or vice versa) as structurally representable
+// — per Director's openai-pro REQUEST_CHANGES correction at PR #2079.
 type CoproductVariantProjection {
-  wire_tag_value: WireTagValue
+  field_projection: FieldProjection
+  wire_tag_value:   WireTagValue
 }
 
 // 🟢 TERMINAL at PR-α scope. Top-level projection carrier keyed by the
