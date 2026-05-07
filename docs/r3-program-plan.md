@@ -678,10 +678,11 @@ Periodic tripwire readings; latest first. Each entry: window, I:D ratio, sample 
 
 | Date | Window | I:D ratio | Sample (PRs) | Methodology | Tripwire fire? | Source |
 |---|---|---|---|---|---|---|
+| 2026-05-07 (intra-cadence) | 2026-04-30 → 2026-05-07 (trailing 7d) | **1.56 : 1** | 466 merged | Title-only heuristic; same window as prior row, advanced ~3.5h | NO | gentle-newt-665 intra-cadence check |
 | 2026-05-07 | 2026-04-30 → 2026-05-07 (trailing 7d) | **1.79 : 1** | 460 merged | Title-only heuristic; conservative upper-bound on I (per-body would shift toward dissolution) | NO | Wave 3 #2097 |
 | 2026-05-02 | (baseline) | **25.33 : 1** | — | Baseline reading | YES (breach context) | #1534 |
 
-Sharp 5-day reversal (25.33:1 → 1.79:1) attributable to receipt-closure cadence: dissolution-side accruing faster than substrate-side introduction. Re-readings to be filed at the 7-day-rolling cadence.
+Sharp 5-day reversal (25.33:1 → 1.79:1) attributable to receipt-closure cadence: dissolution-side accruing faster than substrate-side introduction. Intra-cadence re-check at 1.56:1 confirms continued dissolution-side accrual (D went 47 → 54 while I held at 84). Re-readings to be filed at the 7-day-rolling cadence.
 
 #### §7.6.2 Compliance rule (per-PR debt receipt)
 
