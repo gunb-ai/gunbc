@@ -110,27 +110,31 @@ type UInt128 = Semiring<Word128>
 type Int = AbelianGroup<GroupCompletion<Nat>>
 type UInt = Nat
 
-// Nat-alignment refinement (S9 Slice 2 / Phase-4, partial).
-// NonNegativeInt formerly lived in dsl/std/types.dag refining Int with a
-// non-negative range predicate. Slice 2 Nat-alignment (dispatch
-// gunbc#1739 issuecomment-4389870320) migrates the algebra-side carrier to
-// Nat: non-negativity is structural to Nat by construction (the canonical
-// natural-number carrier), not a refinement over Int. Refining Int for
-// non-negativity projects out Nat's structural property — the same modeling
-// fault Codex's BLOCKING review on PR #1818 caught for UInt as a
-// CommutativeMonoid wrap of Nat. Declared here (not in std.types) because
-// this module imports std.nat directly; locating in std.types would require
-// an std.types to std.nat import edge that triggers a circular-dependency
-// false-positive during transitive load of test fixtures via std.render
-// chains.
+// Nat-alignment refinements (S9 Slice 2 / Slice 2.5 / Phase-4).
 //
-// PositiveInt remains in std.types refining Int for this slice — the
-// resolver does not currently entail predicate ranges over Nat (only over
-// Int and Int-row carriers). Per dispatch STOP-AND-ESCALATE bullet 2
-// (predicate-entailment failure), surfacing as a gap; PositiveInt's
-// Nat-alignment sequences after predicate-entailment substrate supports
-// ranges over Nat.
+// NonNegativeInt formerly lived in dsl/std/types.dag refining Int with a
+// non-negative range predicate. Slice 2 Nat-alignment migrates the
+// algebra-side carrier to Nat: non-negativity is structural to Nat by
+// construction (the canonical natural-number carrier), not a refinement
+// over Int. Refining Int for non-negativity projects out Nat's structural
+// property — the same modeling fault Codex's BLOCKING review on PR #1818
+// caught for UInt as a CommutativeMonoid wrap of Nat. Declared here (not
+// in std.types) because this module imports std.nat directly; locating in
+// std.types would require an std.types to std.nat import edge that
+// triggers a circular-dependency false-positive during transitive load of
+// test fixtures via std.render chains.
+//
+// PositiveInt migrates to Nat-where-gt_zero per S9 Slice 2.5 (Path 3
+// RATIFIED at gunbc#828 issuecomment-4390333451). The gt_zero primitive
+// IS the reason for "Nat without zero" / "Nat above structural bound"
+// (Director Option 2 ratification at gunbc#828 issuecomment-4390199218);
+// the prior range(min: 1) over Int was a misleading label that treated
+// Nat's lower-bound = 0 as a contingent rather than structural fact.
+// gt_zero is enrolled in the lowerer's predicate registry
+// (KNOWN_PREDICATES in src/v3/compiler/src/lower.rs), which
+// retired the prior PB-1 file-path special case.
 type NonNegativeInt = Nat
+type PositiveInt    = Nat where gt_zero
 
 // ─── Diagnostic enumeration order (Modeling problem 4; slice 2) ─────────────
 //
