@@ -41,7 +41,7 @@ use crate::int_literal_ranges::{
     IntegerRangeLookup,
 };
 use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
-use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
+use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
     SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, VariantPayload,
@@ -593,15 +593,648 @@ fn build_refinement_predicate_declaration(
     pred_decl_id
 }
 
-/// P3 / “facts flow forward” for `dsl/std/types.dag` where predicate lowering
-/// is deferred: allocate a **non-Arrow** declaration id used only as
-/// `Declaration::refinement` for those aliases. Refinement discharge in infer
-/// requires a `Arrow` + `UserDefined` `Bind` predicate; this placeholder uses a
-/// `Conj` so it is never mistaken for a lowered `Bool` predicate, except for
-/// identity on the same `DeclarationId` (the alias matches itself at call sites).
-/// The name encodes the heuristic; see `lower_type_alias_refinements_phase`
-/// **Heuristic (PB-1)** / **Dissolution**.
-fn alloc_deferred_types_dag_refinement_placeholder(
+/// Argument-shape contract for a registered predicate. Matched against the
+/// parsed `SurfaceExpr` at the predicate's call position. See [`KNOWN_PREDICATES`]
+/// for the full registry doc + the substrate-fact-introduction receipt.
+// 🟢 TERMINAL — implementation-layer coproduct over the parsed `SurfaceExpr`
+// shapes that registered `where`-predicates may legitimately carry. Each
+// variant is anchored in a parser-fact (`Bare` ↔ `SurfaceExpr::Var`;
+// `SingleStringLiteral` ↔ `SurfaceExpr::Call { args: [Literal::String(_)] }`;
+// `NumericRecord` ↔ `Call { args: [Record { fields: [Int-literal-fields] }] }`)
+// — not a scaffold to dissolve. Variant set grows when a new predicate enters
+// `KNOWN_PREDICATES` with a different parsed-arg shape.
+#[derive(Debug, Clone, Copy)]
+enum PredicateArgShape {
+    /// Bare predicate — no argument list, must parse as `SurfaceExpr::Var`.
+    /// E.g. `non_empty`, `gt_zero`.
+    Bare,
+    /// Single string-literal argument — `SurfaceExpr::Call { args: [Literal::String(_)] }`.
+    /// E.g. `brand("…")`.
+    SingleStringLiteral,
+    /// Record-shape with named numeric-literal fields. At least one of the
+    /// listed fields must be present; all present fields must be integer
+    /// literals. E.g. `range(min: N)` / `range(min: N, max: M)`.
+    NumericRecord {
+        accepted_fields: &'static [&'static str],
+        require_at_least_one: bool,
+    },
+}
+
+struct PredicateSpec {
+    name: &'static str,
+    allowed_carriers: &'static [&'static str],
+    arg_shape: PredicateArgShape,
+}
+
+/// **Predicate registry** (S9 Slice 2.5 — Path 3 RATIFIED at gunbc#828
+/// `issuecomment-4390333451`; Path (a) extension RATIFIED at gunbc#828
+/// `issuecomment-4390760353`). Authoritative set of predicate identifiers
+/// recognized by `where`-sugar refinements. Each entry pairs the predicate
+/// name with its **allowed carrier types** (the set of base-type names a
+/// `where <predicate>(…)` clause may legitimately refine) and its
+/// **`arg_shape`** contract (the parsed `SurfaceExpr` shape the predicate's
+/// call position must match).
+///
+/// **Validation outcomes** (see [`PredicateValidation`] / [`validate_where_clause`]):
+/// - Registered name + allowed carrier + matching arg shape → placeholder
+///   refinement via [`alloc_registered_refinement_placeholder`] (refinement
+///   is *named* at the declaration level — P3 facts-flow-forward — without
+///   requiring a lowered `Bool` predicate body).
+/// - Registered name but disallowed carrier OR malformed arg shape →
+///   [`PredicateValidation::RegisteredButMalformed`]; the call site emits
+///   `Diagnostic::ResolveError` directly via `report_declaration_error`
+///   (fail-closed per Codex/openai-pro REQUEST_CHANGES at PR #1846).
+/// - Unregistered name → fall through to live resolution in
+///   [`build_refinement_predicate_declaration`] (which emits its own
+///   `Diagnostic::ResolveError` if the name does not resolve as a callable).
+///
+/// Replaces the prior PB-1 file-path special case
+/// (`span.file == "dsl/std/types.dag"`) — the asymmetry that motivated this
+/// slice. Per `feedback_no_textual_enforcement_bridges`: gating structural
+/// behavior on a textual file identifier was the anti-pattern; gating on
+/// whether the predicate name is registered AND carrier-compatible AND
+/// arg-shape-matched is the substrate-faithful authority.
+///
+/// **DFS-of-concept-DAG receipt** (proud-lynx-311 pre-flight grep at
+/// `gunbc#1746 issuecomment-4390253616` + brief `docs/briefs/r3-substrate-s9-slice-2-5-predicate-registry-worker.md`
+/// authority audit): no parallel predicate-registry exists under another
+/// name; this constant IS the substrate-fact-introduction.
+const KNOWN_PREDICATES: &[PredicateSpec] = &[
+    // Pre-existing types.dag predicates absorbed via the prior PB-1 shim.
+    // `allowed_carriers` derived from the surface usage at `dsl/std/types.dag`
+    // pre-PR; the registry now enforces structurally what the file-path shim
+    // tolerated by location.
+    //
+    // **Pattern / format / content REMOVED from the registry** per Director
+    // Option A revised RATIFIED at gunbc#828 `issuecomment-4392245968`:
+    // these predicates needed regex-primitive substrate that doesn't exist
+    // (`Q-Regex-Primitive`); rather than ride a placeholder-with-named-trigger
+    // bridge through this slice, they are structurally absent until
+    // `Q-Regex-Primitive` lands. User-code `where pattern(...)` (or
+    // format/content) now falls through to live resolution and surfaces a
+    // `Diagnostic::ResolveError` naming the unblock dependency. The 12
+    // types.dag declarations that previously used these predicates have
+    // dropped their where-clauses with inline-comment receipts pointing at
+    // the Q-Regex restoration path.
+    PredicateSpec {
+        name: "range",
+        allowed_carriers: &["Int", "Nat"],
+        arg_shape: PredicateArgShape::NumericRecord {
+            accepted_fields: &["min", "max"],
+            require_at_least_one: true,
+        },
+    },
+    PredicateSpec {
+        name: "non_empty",
+        allowed_carriers: &["String", "Secret", "List"],
+        arg_shape: PredicateArgShape::Bare,
+    },
+    PredicateSpec {
+        // `brand` is the most-frequently-applied predicate in `types.dag`;
+        // it tags any nominal carrier with a brand identity. Allowed carriers
+        // span every type that carries a brand in the existing surface.
+        name: "brand",
+        allowed_carriers: &[
+            "NonEmptyStr",
+            "String",
+            "FilePath",
+            "Unit",
+            "Int",
+            "Nat",
+            "Secret",
+        ],
+        arg_shape: PredicateArgShape::SingleStringLiteral,
+    },
+    // S9 Slice 2.5 new primitive (Director Option 2 ratification at
+    // gunbc#828 issuecomment-4390199218). `gt_zero` IS the reason for "Nat
+    // without zero" / "Nat above structural bound"; intrinsic to Nat and
+    // generalizes over Int.
+    PredicateSpec {
+        name: "gt_zero",
+        allowed_carriers: &["Nat", "Int"],
+        arg_shape: PredicateArgShape::Bare,
+    },
+];
+
+fn predicate_spec(name: &str) -> Option<&'static PredicateSpec> {
+    KNOWN_PREDICATES.iter().find(|spec| spec.name == name)
+}
+
+/// Walk an alias chain (`Atom::ResolvedByStructure` / `Atom::ResolvedByName` /
+/// `Instantiation`) collecting every *named* declaration encountered.
+/// Returns the names of every level in the chain — both the immediate alias
+/// and any transitive aliases — so a predicate like `brand` over
+/// `NonEmptyStr` matches because `NonEmptyStr` itself is allowed (alias chain
+/// doesn't need to bottom out at `String`).
+fn carrier_chain_names(dag: &Dag, decl_id: DeclarationId) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = decl_id;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        if let Some(name) = decl.name.as_deref() {
+            out.push(name.to_string());
+        }
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            _ => break,
+        }
+    }
+    out
+}
+
+/// Outcome of validating a single registered-predicate clause against
+/// [`KNOWN_PREDICATES`]. Path (a) RATIFIED at gunbc#828
+/// `issuecomment-4390760353`: registered predicates must validate carrier
+/// **and** argument shape; mismatches fail-closed via `Diagnostic::ResolveError`
+/// rather than silently take a placeholder.
+//
+// 🟢 TERMINAL — implementation-layer coproduct over the three outcomes
+// `validate_where_clause` produces: registered+valid (placeholder/synthesis
+// path), registered+malformed (fail-closed diagnostic), unregistered
+// (fall-through to live resolution). Not a scaffold; the three outcomes are
+// the structural surface of registry dispatch.
+enum PredicateValidation {
+    /// Predicate name is registered, carrier is allowed, and argument shape
+    /// matches the spec. Eligible for placeholder allocation.
+    Registered,
+    /// Predicate name is registered but the call is malformed (wrong carrier
+    /// or arg shape). Caller emits `Diagnostic::ResolveError` directly via
+    /// `report_declaration_error` and skips refinement allocation
+    /// (fail-closed; no placeholder, no live-resolution fallback).
+    RegisteredButMalformed { reason: String, span: SourceSpan },
+    /// Predicate name is not in the registry. Falls through to live
+    /// resolution unchanged (existing `build_refinement_predicate_declaration`
+    /// path emits `Diagnostic::ResolveError` if the name does not resolve).
+    NotRegistered,
+}
+
+/// Validate a single predicate-position `SurfaceExpr` against the registry.
+fn validate_predicate_clause(expr: &SurfaceExpr, carrier_chain: &[String]) -> PredicateValidation {
+    let (predicate_name, predicate_span) = match expr {
+        SurfaceExpr::Call { target, span, .. } => (target.as_str(), span.clone()),
+        SurfaceExpr::Var { name, span } => (name.as_str(), span.clone()),
+        _ => return PredicateValidation::NotRegistered,
+    };
+    let Some(spec) = predicate_spec(predicate_name) else {
+        return PredicateValidation::NotRegistered;
+    };
+    let carrier_ok = spec
+        .allowed_carriers
+        .iter()
+        .any(|allowed| carrier_chain.iter().any(|name| name == allowed));
+    if !carrier_ok {
+        return PredicateValidation::RegisteredButMalformed {
+            reason: format!(
+                "predicate `{predicate_name}` requires a carrier in {{{}}}; \
+                 base-type chain has none of those (chain: {})",
+                spec.allowed_carriers.join(", "),
+                if carrier_chain.is_empty() {
+                    "<unnamed>".to_string()
+                } else {
+                    carrier_chain.join(" → ")
+                }
+            ),
+            span: predicate_span,
+        };
+    }
+    if let Some(reason) = arg_shape_mismatch(spec, expr) {
+        return PredicateValidation::RegisteredButMalformed {
+            reason,
+            span: predicate_span,
+        };
+    }
+    PredicateValidation::Registered
+}
+
+/// Check whether the call shape at `expr` matches `spec.arg_shape`. Returns
+/// `Some(reason)` if malformed.
+fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String> {
+    let predicate_name = spec.name;
+    match (&spec.arg_shape, expr) {
+        // Bare predicates accept ONLY the bare-ident `SurfaceExpr::Var` shape.
+        // `gt_zero()` (zero-arg Call) is a different surface — explicit empty
+        // call list — and is rejected per Codex BLOCKING at PR #1846
+        // (S9 Slice 2.5 Path (a) cement: bare-predicate shape contract is
+        // strictly the bare-ident form, not zero-arg-call-compatible).
+        (PredicateArgShape::Bare, SurfaceExpr::Var { .. }) => None,
+        (PredicateArgShape::Bare, _) => Some(format!(
+            "predicate `{predicate_name}` is bare; use the bare-ident form \
+             `{predicate_name}` (no parentheses, no arguments)"
+        )),
+        (PredicateArgShape::SingleStringLiteral, SurfaceExpr::Call { args, .. })
+            if matches!(
+                args.as_slice(),
+                [SurfaceExpr::Literal {
+                    value: SurfaceLiteral::String(_),
+                    ..
+                }]
+            ) =>
+        {
+            None
+        }
+        (PredicateArgShape::SingleStringLiteral, _) => Some(format!(
+            "predicate `{predicate_name}` requires a single string-literal argument"
+        )),
+        (
+            PredicateArgShape::NumericRecord {
+                accepted_fields,
+                require_at_least_one,
+            },
+            SurfaceExpr::Call { args, .. },
+        ) => {
+            // Per `parse_type_alias_where_tail` doc-comment: `range(min: 1, max: 5)`
+            // desugars to a single `Record` argument.
+            let Some(SurfaceExpr::Record { fields, .. }) = args.first() else {
+                return Some(format!(
+                    "predicate `{predicate_name}` requires record-shaped \
+                     arguments (e.g. `{predicate_name}(min: N)`)"
+                ));
+            };
+            if args.len() != 1 {
+                return Some(format!(
+                    "predicate `{predicate_name}` accepts a single record argument; got {}",
+                    args.len()
+                ));
+            }
+            if *require_at_least_one && fields.is_empty() {
+                return Some(format!(
+                    "predicate `{predicate_name}` requires at least one of \
+                     the fields {{{}}}",
+                    accepted_fields.join(", ")
+                ));
+            }
+            let mut seen: Vec<&str> = Vec::with_capacity(fields.len());
+            for field in fields {
+                if !accepted_fields.contains(&field.name.as_str()) {
+                    return Some(format!(
+                        "predicate `{predicate_name}` does not accept field `{}` \
+                         (accepts: {})",
+                        field.name,
+                        accepted_fields.join(", ")
+                    ));
+                }
+                if seen.contains(&field.name.as_str()) {
+                    return Some(format!(
+                        "predicate `{predicate_name}` does not accept duplicate \
+                         field `{}`",
+                        field.name
+                    ));
+                }
+                seen.push(field.name.as_str());
+                if !matches!(
+                    &field.value,
+                    SurfaceExpr::Literal {
+                        value: SurfaceLiteral::Int(_),
+                        ..
+                    }
+                ) {
+                    return Some(format!(
+                        "predicate `{predicate_name}` field `{}` requires an \
+                         integer-literal value",
+                        field.name
+                    ));
+                }
+            }
+            None
+        }
+        (PredicateArgShape::NumericRecord { .. }, _) => Some(format!(
+            "predicate `{predicate_name}` requires record-shaped arguments"
+        )),
+    }
+}
+
+/// Synthesize a `Bool`-returning `SurfaceExpr` body equivalent to the
+/// registered predicate's semantic content, suitable for handing to
+/// [`build_refinement_predicate_declaration`]. Returns `None` if the
+/// predicate's body cannot yet be synthesized from existing substrate
+/// primitives (e.g. `pattern` requires regex-matching primitives that have
+/// not landed; surfacing as STOP-AND-ESCALATE per S9 Slice 2.5 brief).
+///
+/// `bind_name` is the alias being declared (the predicate's subject).
+/// `predicate` is the parsed `where`-clause predicate (e.g. the `gt_zero`
+/// `SurfaceExpr::Var` or the `range(min: 1)` `SurfaceExpr::Call`).
+///
+/// Currently implemented:
+/// - **`gt_zero`**: subject `> 0`. Equivalent for both `Nat` and `Int`
+///   carriers (Nat's structural lower bound is 0; gt_zero is "above
+///   structural bound").
+/// - **`range`**: subject `>= min` / `<= max` / both, depending on which
+///   record fields are present. Numeric primitives in scope; arg-shape
+///   validation already guaranteed Int-literal field values when reaching
+///   this point.
+///
+/// Pending substrate — STOP-AND-ESCALATE candidates per S9 Slice 2.5 brief
+/// (returns `None` — falls through to placeholder for now):
+/// - `non_empty` / `brand`: synthesizing real Bool bodies for these
+///   predicates triggers a *discharge cascade* — `scalar_literal_requires_refinement_discharge`
+///   treats any non-placeholder refinement as needing static discharge,
+///   and the existing infrastructure cannot yet evaluate `subject != ""`
+///   (non_empty) or `true` (brand) against scalar data literals like
+///   `name: "lower_helpers"`. Result: bootstrap regen emits 18+ spurious
+///   "scalar literal does not satisfy `where` refinement" diagnostics for
+///   data declarations whose fields are typed as branded/non-empty
+///   carriers (e.g. `LensRegistryEntry.name: NonEmptyStr`). Surfacing as
+///   STOP per brief — the lowerer-side discharge mechanism is the
+///   substrate-fact-introduction needed before these synthesize.
+/// - `pattern` / `format` / `content`: regex-primitive substrate-fact-introduction
+///   (Q-Regex-Primitive) has not landed.
+fn synthesize_predicate_body(
+    spec: &PredicateSpec,
+    predicate: &SurfaceExpr,
+    bind_name: &str,
+    _carrier_chain: &[String],
+) -> Option<SurfaceExpr> {
+    let span = expr_span(predicate);
+    let subject_var = || SurfaceExpr::Var {
+        name: bind_name.to_string(),
+        span: span.clone(),
+    };
+    let int_literal = |value: i64| SurfaceExpr::Literal {
+        value: SurfaceLiteral::Int(value),
+        span: span.clone(),
+    };
+    match spec.name {
+        "gt_zero" => Some(SurfaceExpr::Operator {
+            op: OperatorKind::Comparison(ComparisonOp::Gt),
+            args: vec![subject_var(), int_literal(0)],
+            span,
+        }),
+        // `brand` body synthesis is structurally available (`subject ==
+        // subject` reflexive Comparison(Eq) — references subject so the
+        // unused-parameter lens doesn't flag it; semantically `true` for
+        // every carrier value), but is held at placeholder for this slice
+        // because the existing `dsl/std/types.dag` declarations
+        //   `Milliseconds = Int where range(min: 0), brand("Milliseconds")`
+        //   `Seconds      = Int where range(min: 0), brand("Seconds")`
+        // would mix synthesizable `brand` with placeholder-only `range`,
+        // tripping the openai-pro REQUEST_CHANGES `Mixed`-fail-closed path
+        // (gunbc PR #1846 `79c4da09` finding). brand body synthesis
+        // re-enables when either (a) per-leaf refinement representation
+        // lands so mixed clauses preserve each fact, or (b) range body
+        // synthesis lands and the And combination is uniformly
+        // synthesizable.
+        // range body synthesis enabled. Note: synthesizing `subject >= min`
+        // / `subject <= max` for the existing `dsl/std/types.dag`
+        // Int-where-range declarations (RetryCount, HttpStatus, Port,
+        // EpochMs, Duration, Milliseconds, Seconds) creates additional
+        // `Value(LiteralBits::Int(N))` nodes in the DAG (one per record
+        // field). Tests that locate a value node by literal-bits alone
+        // (e.g. `int_literal_cardinality_test::let_annotated_uint8_*`)
+        // must filter by `span.file` to disambiguate the user's literal
+        // from the synthesized predicate-body literals.
+        "range" => {
+            // arg-shape validation has already confirmed:
+            //   - exactly 1 SurfaceExpr::Record arg
+            //   - each field name is in {"min", "max"} (no duplicates)
+            //   - each field value is SurfaceLiteral::Int(_)
+            // …so the extraction below is total over the validated shape.
+            let SurfaceExpr::Call { args, .. } = predicate else {
+                return None;
+            };
+            let SurfaceExpr::Record { fields, .. } = args.first()? else {
+                return None;
+            };
+            let mut min_value: Option<i64> = None;
+            let mut max_value: Option<i64> = None;
+            for field in fields {
+                let SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Int(n),
+                    ..
+                } = &field.value
+                else {
+                    return None;
+                };
+                match field.name.as_str() {
+                    "min" => min_value = Some(*n),
+                    "max" => max_value = Some(*n),
+                    _ => return None,
+                }
+            }
+            let mut clauses: Vec<SurfaceExpr> = Vec::with_capacity(2);
+            if let Some(m) = min_value {
+                clauses.push(SurfaceExpr::Operator {
+                    op: OperatorKind::Comparison(ComparisonOp::Ge),
+                    args: vec![subject_var(), int_literal(m)],
+                    span: span.clone(),
+                });
+            }
+            if let Some(m) = max_value {
+                clauses.push(SurfaceExpr::Operator {
+                    op: OperatorKind::Comparison(ComparisonOp::Le),
+                    args: vec![subject_var(), int_literal(m)],
+                    span: span.clone(),
+                });
+            }
+            match clauses.len() {
+                0 => None,
+                1 => clauses.pop(),
+                _ => {
+                    let mut iter = clauses.into_iter();
+                    let mut acc = iter.next()?;
+                    for next in iter {
+                        let combined_span = span.clone();
+                        acc = SurfaceExpr::Operator {
+                            op: OperatorKind::Logical(LogicalOp::And),
+                            args: vec![acc, next],
+                            span: combined_span,
+                        };
+                    }
+                    Some(acc)
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Result of attempting per-leaf body synthesis on a (possibly And-combined)
+/// `where`-sugar clause. The mixed case is the openai-pro REQUEST_CHANGES
+/// finding (gunbc PR #1846): if a clause combines a synthesizable predicate
+/// (e.g. `gt_zero`) with an unsynthesizable one (e.g. `range` pre-Gap-3),
+/// returning a placeholder for the whole clause silently weakens the
+/// enforceable `gt_zero` fact. Returning a mixed-result variant lets the
+/// caller fail-closed instead.
+//
+// 🟢 TERMINAL — implementation-layer coproduct over the three per-clause
+// body-synthesis outcomes (all leaves synthesized / all leaves placeholder /
+// mixed → fail-closed). Not a scaffold; preserves per-leaf facts
+// representation needed to satisfy openai-pro REQUEST_CHANGES at PR #1846.
+enum BodySynthOutcome {
+    /// Every leaf synthesized; combined body lowers via the live predicate
+    /// declaration path.
+    AllSynthesized(SurfaceExpr),
+    /// No leaf synthesized; whole clause routes through the placeholder
+    /// allocator (status quo for unsynthesized registered predicates).
+    AllPlaceholder,
+    /// Mixed: at least one leaf synthesized, at least one didn't. Caller
+    /// emits `Diagnostic::ResolveError` with the listed predicate names so
+    /// the synthesized fact isn't silently weakened by being merged into
+    /// the placeholder. Pairs with the test
+    /// `test_mixed_synthesizable_and_placeholder_predicates_fails_closed`.
+    Mixed {
+        synthesized_names: Vec<String>,
+        unsynthesized_names: Vec<String>,
+    },
+}
+
+/// Walk a (possibly And-combined) `where`-sugar refinement expression and
+/// classify per-leaf synthesizability. Single registered predicate delegates
+/// to [`synthesize_predicate_body`]. `Operator { And, [a, b, …] }` walks each
+/// leaf and aggregates outcomes; if any leaf classifies different from the
+/// rest, returns `Mixed` so the caller fails closed.
+fn registered_predicate_synthesized_body(
+    expr: &SurfaceExpr,
+    bind_name: &str,
+    carrier_chain: &[String],
+) -> BodySynthOutcome {
+    match expr {
+        SurfaceExpr::Operator {
+            op: OperatorKind::Logical(LogicalOp::And),
+            args,
+            span,
+        } => {
+            let mut synthesized: Vec<SurfaceExpr> = Vec::with_capacity(args.len());
+            let mut synthesized_names: Vec<String> = Vec::new();
+            let mut unsynthesized_names: Vec<String> = Vec::new();
+            for arg in args {
+                match registered_predicate_synthesized_body(arg, bind_name, carrier_chain) {
+                    BodySynthOutcome::AllSynthesized(body) => {
+                        synthesized.push(body);
+                        // Collect every leaf name reachable through the arg
+                        // (handles nested `And` subtrees per openai-pro
+                        // REQUEST_CHANGES at PR #1846 `4a42cb1f` —
+                        // `leaf_predicate_name` alone returns None for an
+                        // `Operator(And)` arg and would silently drop the
+                        // nested per-leaf names).
+                        synthesized_names.extend(collect_leaf_predicate_names(arg));
+                    }
+                    BodySynthOutcome::AllPlaceholder => {
+                        unsynthesized_names.extend(collect_leaf_predicate_names(arg));
+                    }
+                    BodySynthOutcome::Mixed {
+                        synthesized_names: s,
+                        unsynthesized_names: u,
+                    } => {
+                        synthesized_names.extend(s);
+                        unsynthesized_names.extend(u);
+                    }
+                }
+            }
+            match (synthesized_names.is_empty(), unsynthesized_names.is_empty()) {
+                (false, true) => BodySynthOutcome::AllSynthesized(SurfaceExpr::Operator {
+                    op: OperatorKind::Logical(LogicalOp::And),
+                    args: synthesized,
+                    span: span.clone(),
+                }),
+                (true, false) => BodySynthOutcome::AllPlaceholder,
+                (true, true) => BodySynthOutcome::AllPlaceholder,
+                (false, false) => BodySynthOutcome::Mixed {
+                    synthesized_names,
+                    unsynthesized_names,
+                },
+            }
+        }
+        SurfaceExpr::Call { target, .. } => match predicate_spec(target) {
+            Some(spec) => match synthesize_predicate_body(spec, expr, bind_name, carrier_chain) {
+                Some(body) => BodySynthOutcome::AllSynthesized(body),
+                None => BodySynthOutcome::AllPlaceholder,
+            },
+            None => BodySynthOutcome::AllPlaceholder,
+        },
+        SurfaceExpr::Var { name, .. } => match predicate_spec(name) {
+            Some(spec) => match synthesize_predicate_body(spec, expr, bind_name, carrier_chain) {
+                Some(body) => BodySynthOutcome::AllSynthesized(body),
+                None => BodySynthOutcome::AllPlaceholder,
+            },
+            None => BodySynthOutcome::AllPlaceholder,
+        },
+        _ => BodySynthOutcome::AllPlaceholder,
+    }
+}
+
+/// Extract the predicate identifier at the head of a `where`-clause leaf.
+/// Returns `None` for non-leaf expressions (e.g. `Operator(And)` itself, or
+/// shapes that aren't predicate calls). Used to attribute names in the
+/// `Mixed` synthesis-outcome diagnostic. For nested `And` subtrees, use
+/// [`collect_leaf_predicate_names`] which recurses through the conjunction
+/// structure.
+fn leaf_predicate_name(expr: &SurfaceExpr) -> Option<String> {
+    match expr {
+        SurfaceExpr::Call { target, .. } => Some(target.clone()),
+        SurfaceExpr::Var { name, .. } => Some(name.clone()),
+        _ => None,
+    }
+}
+
+/// Collect every leaf predicate name reachable from `expr` by recursing
+/// through `Operator { And, … }` conjunctions. Addresses openai-pro
+/// REQUEST_CHANGES at PR #1846 (`4a42cb1f`): nested-`And` subtrees were
+/// returning `None` from [`leaf_predicate_name`] (because the subtree itself
+/// is an `Operator`, not a leaf), causing per-leaf synthesized/placeholder
+/// names to be dropped during outer aggregation. The fix is to walk the
+/// conjunction structure and collect names at every leaf.
+fn collect_leaf_predicate_names(expr: &SurfaceExpr) -> Vec<String> {
+    match expr {
+        SurfaceExpr::Operator {
+            op: OperatorKind::Logical(LogicalOp::And),
+            args,
+            ..
+        } => {
+            let mut out = Vec::new();
+            for arg in args {
+                out.extend(collect_leaf_predicate_names(arg));
+            }
+            out
+        }
+        _ => leaf_predicate_name(expr).into_iter().collect(),
+    }
+}
+
+/// Recursively walk a `where`-sugar refinement expression. Predicates combine
+/// via `Operator { op: Logical(And), … }` (per `parse_type_alias_where_tail`
+/// / `fold_type_alias_where_parts`); the leaves are `SurfaceExpr::Call`
+/// (e.g. `range(min: 1)`, `brand("X")`) or `SurfaceExpr::Var` (bare
+/// predicates like `non_empty`). Per Path (a) RATIFIED at gunbc#828
+/// `issuecomment-4390760353`, returns the worst-case validation across all
+/// leaves: any single malformed registered predicate fails the whole clause
+/// closed; any single non-registered leaf falls through to live resolution.
+fn validate_where_clause(expr: &SurfaceExpr, carrier_chain: &[String]) -> PredicateValidation {
+    if let SurfaceExpr::Operator {
+        op: OperatorKind::Logical(LogicalOp::And),
+        args,
+        ..
+    } = expr
+    {
+        let mut all_registered = true;
+        for arg in args {
+            match validate_where_clause(arg, carrier_chain) {
+                PredicateValidation::Registered => {}
+                PredicateValidation::RegisteredButMalformed { reason, span } => {
+                    return PredicateValidation::RegisteredButMalformed { reason, span };
+                }
+                PredicateValidation::NotRegistered => all_registered = false,
+            }
+        }
+        return if all_registered {
+            PredicateValidation::Registered
+        } else {
+            PredicateValidation::NotRegistered
+        };
+    }
+    validate_predicate_clause(expr, carrier_chain)
+}
+
+/// P3 / “facts flow forward” for registered-predicate refinements: allocate
+/// a **non-Arrow** declaration id used only as `Declaration::refinement` for
+/// these aliases. Refinement discharge in infer requires a `Arrow` +
+/// `UserDefined` `Bind` predicate; this placeholder uses a `Conj` so it is
+/// never mistaken for a lowered `Bool` predicate, except for identity on the
+/// same `DeclarationId` (the alias matches itself at call sites). Successor
+/// to `alloc_deferred_types_dag_refinement_placeholder` (PB-1 file-path
+/// special-case retired in S9 Slice 2.5 Path 3).
+fn alloc_registered_refinement_placeholder(
     dag: &mut Dag,
     alias_name: &str,
     span: SourceSpan,
@@ -609,9 +1242,7 @@ fn alloc_deferred_types_dag_refinement_placeholder(
     let id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id,
-        name: Some(format!(
-            "<std/types.dag: `where` parsed, predicate not lowered: {alias_name}>"
-        )),
+        name: Some(format!("<registered predicate not lowered: {alias_name}>")),
         connective: TypeConnective::Conj { children: vec![] },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -818,21 +1449,41 @@ fn lower_parameter_refinements_phase(
 /// identifier to the refined base type `T`. Authors write the subject as the
 /// alias name; there is no separate hidden parameter symbol.
 ///
-/// **Heuristic (PB-1):** for `span.file == "dsl/std/types.dag"`, we do **not**
-/// call [`build_refinement_predicate_declaration`] (unresolved `pattern` /
-/// `range` / … would emit diagnostics in the std seed and break snapshot
-/// identity), but we **do** set [`Declaration::refinement`] to a
-/// **placeholder** (see [`alloc_deferred_types_dag_refinement_placeholder`]) so
-/// the parsed `where` is not dropped silently: downstream sees a named carrier,
-/// not `None` as if no refinement were authored.
+/// **Predicate registry (S9 Slice 2.5 — Option A revised RATIFIED at
+/// gunbc#828 `issuecomment-4392245968`, post Path 3 / Path (a) cascade).**
+/// Each `where` clause is dispatched per [`validate_where_clause`]:
+/// - **Registered + valid carrier + valid arg shape**: if
+///   [`registered_predicate_synthesized_body`] returns `Some`, the predicate
+///   lowers to a real `Bool` body via
+///   [`build_refinement_predicate_declaration`] (currently `gt_zero`).
+///   Otherwise it gets a `Conj`-shaped placeholder via
+///   [`alloc_registered_refinement_placeholder`] (P3 facts-flow-forward —
+///   alias still carries a named refinement; body synthesis is the named
+///   follow-on rung; currently `range` / `non_empty` / `brand`).
+/// - **Registered but malformed** (carrier-incompatible, arg-shape mismatch,
+///   duplicate field, bare-with-empty-call): fail-closed via
+///   `Diagnostic::ResolveError`, no refinement allocated.
+/// - **Unregistered** (e.g. `pattern`, `format`, `content` — STRUCTURALLY
+///   ABSENT from [`KNOWN_PREDICATES`] until Q-Regex-Primitive lands as a
+///   separate substrate-fact-introduction): falls through to live resolution
+///   in [`build_refinement_predicate_declaration`], which surfaces a
+///   `Diagnostic::ResolveError` since the predicate name does not resolve as
+///   a callable. The 11 `dsl/std/types.dag` declarations that previously
+///   used these predicates have dropped their where-clauses with inline
+///   restoration receipts pointing at the Q-Regex-Primitive landing.
 ///
-/// **Dissolution (delete the file gate / placeholders when one of these is
-/// true):** (1) the bootstrap supplies resolved Bool-level helpers (or
-/// realizations) for `types.dag` refinement calls so predicate lowering is
-/// diagnostic-clean; (2) a `meta_tag` (or other substrate flag) marks
-/// documentation-only refinements, replacing the string-compare; or (3) PB-1
-/// defers to a different authority file list so `types.dag` is not
-/// `compile`d in the snapshot path that must stay diagnostic-empty.
+/// Replaces the prior PB-1 file-path special case
+/// (`span.file == "dsl/std/types.dag"`). Per
+/// `feedback_no_textual_enforcement_bridges`: gating structural behavior on
+/// a textual file identifier was the anti-pattern; the registry IS the
+/// substrate-faithful authority for predicate-name resolution.
+///
+/// **Dissolution (retire the placeholder branch when):** the bootstrap
+/// supplies a body synthesis for each remaining registered predicate
+/// (Gap 1 discharge mechanism for `non_empty` / `brand`; Gap 3
+/// integer-routing fix for `range`); at that point every registered
+/// predicate routes through the live [`build_refinement_predicate_declaration`]
+/// path and the placeholder allocation can be deleted.
 fn lower_type_alias_refinements_phase(
     dag: &mut Dag,
     module: &SurfaceModule,
@@ -883,10 +1534,94 @@ fn lower_type_alias_refinements_phase(
         dag.declaration_mut(decl_id).connective =
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(base_decl_id));
 
-        if span.file == "dsl/std/types.dag" {
-            let ph = alloc_deferred_types_dag_refinement_placeholder(dag, name, span.clone());
-            dag.declaration_mut(decl_id).refinement = Some(ph);
-            continue;
+        // S9 Slice 2.5 (Path (a) RATIFIED at gunbc#828 issuecomment-4390760353)
+        // — replaces prior PB-1 file-path special case
+        // (`span.file == "dsl/std/types.dag"`) with a predicate-name registry
+        // plus carrier + arg-shape contract. See `KNOWN_PREDICATES`,
+        // `carrier_chain_names`, and `validate_where_clause`. A registered
+        // predicate applied to an allowed carrier with valid arg shape gets a
+        // placeholder refinement (P3 facts-flow-forward — alias still carries
+        // a named refinement; predicate-body lowering is the named follow-on
+        // ladder rung). A registered predicate with malformed carrier or
+        // arg-shape produces `Diagnostic::ResolveError` directly — fail-closed
+        // per Codex/openai-pro REQUEST_CHANGES at PR #1846 (`92758dd0` /
+        // `788d6acb` / `e2698434`). An unregistered predicate falls through
+        // to live resolution unchanged.
+        let carrier_chain = carrier_chain_names(dag, base_decl_id);
+        match validate_where_clause(predicate, &carrier_chain) {
+            PredicateValidation::Registered => {
+                // Path (a) Rung 3 (S9 Slice 2.5): for predicates whose body
+                // can be synthesized from existing substrate primitives,
+                // lower a real `Bool`-returning predicate body via
+                // `build_refinement_predicate_declaration` rather than
+                // allocating a `Conj`-shaped placeholder. Currently
+                // synthesizable: `gt_zero`. Pending substrate: the others
+                // (see `synthesize_predicate_body` doc-comment).
+                match registered_predicate_synthesized_body(predicate, name, &carrier_chain) {
+                    BodySynthOutcome::AllSynthesized(synthesized) => {
+                        let pred_decl_id = build_refinement_predicate_declaration(
+                            base_decl_id,
+                            &synthesized,
+                            name,
+                            symbols,
+                            dag,
+                            span.clone(),
+                        );
+                        dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
+                    }
+                    BodySynthOutcome::AllPlaceholder => {
+                        let ph = alloc_registered_refinement_placeholder(dag, name, span.clone());
+                        dag.declaration_mut(decl_id).refinement = Some(ph);
+                    }
+                    BodySynthOutcome::Mixed {
+                        synthesized_names,
+                        unsynthesized_names,
+                    } => {
+                        // openai-pro REQUEST_CHANGES at PR #1846 (`79c4da09`):
+                        // mixed clauses (synthesizable + unsynthesizable
+                        // registered predicates combined via And) cannot route
+                        // to a single placeholder without silently weakening
+                        // the synthesized facts. Fail-closed via
+                        // `Diagnostic::ResolveError` until per-leaf refinement
+                        // representation lands.
+                        report_declaration_error(
+                            dag,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "registered `where` clause mixes \
+                                     body-synthesized predicates ({}) with \
+                                     placeholder-only predicates ({}); the \
+                                     synthesized facts cannot collapse into a \
+                                     single placeholder without losing \
+                                     enforcement. Author the predicates as \
+                                     separate type aliases until per-leaf \
+                                     refinement representation lands.",
+                                    synthesized_names.join(", "),
+                                    unsynthesized_names.join(", ")
+                                ),
+                                span: span.clone(),
+                                fixes: Vec::new(),
+                            },
+                        );
+                    }
+                }
+                continue;
+            }
+            PredicateValidation::RegisteredButMalformed {
+                reason,
+                span: pred_span,
+            } => {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: reason,
+                        span: pred_span,
+                        fixes: Vec::new(),
+                    },
+                );
+                continue;
+            }
+            PredicateValidation::NotRegistered => {}
         }
         let pred_decl_id = build_refinement_predicate_declaration(
             base_decl_id,
@@ -1053,9 +1788,7 @@ fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> b
     dag.declaration(refinement)
         .name
         .as_deref()
-        .is_some_and(|name| {
-            name.starts_with("<std/types.dag: `where` parsed, predicate not lowered: ")
-        })
+        .is_some_and(|name| name.starts_with("<registered predicate not lowered: "))
 }
 
 fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: DeclarationId) -> bool {
