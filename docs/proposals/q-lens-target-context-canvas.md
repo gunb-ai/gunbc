@@ -124,7 +124,7 @@ emission_provenance.dag was speculatively framed as secondary candidate but per 
 
 **N=1 confirmed at HEAD by grep**; N=2 is empirically open pending future lens-completion cycles surfacing target-realization consumption, not pre-claimable.
 
-This means option (i)'s threading cost is mostly mechanical (14 of 15 instances don't substantively use `LanguageSpec`). Option (ii)'s explosion-by-target is bounded too (cost × 3 targets + emission_provenance × 3 targets = 6 per-target instances if (ii) chosen) — but still violates parallel-representation discipline.
+This means option (i)'s threading cost is mostly mechanical (14 of 15 instances don't substantively use `LanguageSpec`). Option (ii)'s explosion-by-target at HEAD is bounded to **N=1**: `cost × 3 targets = 3 per-target instances` (× 4 authoring-multiplier per Option (ii) Con bullet = 12 fns). The `emission_provenance × 3` instances are a **reopen-only future scenario** that materializes only if emission_provenance becomes the second real target-context lens at producer-wiring landing time — currently NOT applicable per the grep-verified N=1 finding above. Option (ii) still violates parallel-representation discipline regardless of N count.
 
 **Mgr lean reaffirmed**: option (i).
 
