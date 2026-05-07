@@ -1,6 +1,6 @@
 # R3 Debt-Paydown Ledger
 
-**Date:** 2026-05-02 (**amended 2026-05-06** — DP1 / Q7 ledger↔ROADMAP reconciliation; **amended 2026-05-07** — DP1 stratum C CollectionOps row refresh)
+**Date:** 2026-05-02 (**amended 2026-05-06** — DP1 / Q7 ledger↔ROADMAP reconciliation; **amended 2026-05-07** — DP1 stratum C CollectionOps row refresh; **amended 2026-05-07** — errors.dag dead generic layer Retired flip)
 **Owner:** R3 Debt-Paydown Manager
 **Authority parent:** [#1518](https://github.com/gunb-ai/gunbc/pull/1518)
 **Scope:** ROADMAP.md tracked-debt rows under `## Tracked debts -- 2026-04 analyses` through the 2026-05-04 Exploratory + Reflective paired-analysis ingestion, plus rows that explicitly route to the R3 standing debt-paydown program. (Original 2026-05-02 baseline extended on 2026-05-04 to absorb the F2/F5/F11/F12/R1 novel-finding routings; eight already-tracked findings from the same ingestion are confirmed against existing catalog rows rather than duplicated.)
@@ -17,11 +17,11 @@ This pass classifies 74 ROADMAP-tracked debt rows (69 baseline + 5 added 2026-05
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 43 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
+| Open implementation / retirement work | 42 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
 | Open / disposition pending | 1 | Open with a parked decision (e.g., await an upstream lane before classifying). |
 | Partially closed | 10 | Has a landed partial receipt but still names remaining work. |
 | Partial (fold) | 0 | _DP1 stratum C (2026-05-07): merged into "Partially closed" — CollectionOps row now carries Phase 1 (fold) + Phase 2 (concat/length/is_empty) + Phase 3 (map) receipts, no longer a single-variant special case._ |
-| Retired / stale receipt row | 21 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Retired / stale receipt row | 22 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
@@ -52,7 +52,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | `pipeline_authority.rs` dual-authoring drift | 2026-04 / 2026-04-30 | Substrate / PB | Open | Generate one surface from the other or mark `fn compile` non-authoritative until structural lowering. |
 | LLM service flattening | 2026-04 | Grounding services | Open | Service operations consume typed carriers and return typed outputs. |
 | GitHub auth model bypass | 2026-04 | Grounding GitHub extdeps | Retired | PR #1700 (`7b415f1eb`) closes ROADMAP:376: `github_token()` now returns full `GitHubAuthToken`; hardcoded GCP Secret Manager policy removed in favor of typed `GitHubAuthSource { credential_source, token_metadata }` using `CredentialSource::EnvVar` + `env_credential`, with declared metadata verification tracked separately. |
-| `errors.dag` dead generic layer | 2026-04 | Grounding / std errors | Open | Wire generic layer or delete it. |
+| `errors.dag` dead generic layer | 2026-04 | Grounding / std errors | Retired | PR #1697 (2026-05-04, snappy-koi-58): exact-name audit retired the 5 generic declarations (`HttpErrorShape` / `AuthError` / `RateLimitError` / `ConflictError` / `ProviderError`) — zero non-doc consumers; live extdeps import provider-specific envelopes only. |
 | Fixed-width types not structurally fixed | 2026-04 | T-Numeric-Construction | Open | Alias / field refinement or cardinality carrier. |
 | Surface int literals host-narrowed too early | 2026-04-24 | T-Numeric-Construction | Open | Concept-layer unbounded magnitude; target narrowing at reconciliation. |
 | Peano witness carriers ratchet | 2026-04 | E-P / numeric refinement | Open | Shared `PositiveInt` / ranged-`Int` authority collapses literal bridges. |
