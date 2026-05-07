@@ -673,6 +673,64 @@ fn ep_depth(t: EpRec) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_classifies_nested_match_self_call_as_strict_sub_value() {
+    // Phase-1 broadening Slice 3: a recursive self-call whose argument is
+    // the payload binding of an INNER match arm whose scrutinee is itself
+    // an outer-match payload binding (not the parameter directly). Slices 1
+    // and 2 reject this because `branch.input != param`; Slice 3's
+    // `scrutinee_traces_to_param` tracer walks the payload-binding chain
+    // until it hits the parameter port (or the depth limit, fail-closed).
+    //
+    // Cumulative classifier coverage after this slice: direct payload,
+    // direct field-projection, AND nested-match descent — all
+    // structurally-sound `StrictSubValue` evidence.
+    let dag = compile_to_dag(
+        "\
+type EpListN = EpNilN | EpConsN(EpListN)
+fn ep_count2(xs: EpListN) -> Int =
+  match xs {
+    EpConsN(t1) => match t1 {
+      EpConsN(t2) => ep_count2(t2),
+      EpNilN => 0
+    },
+    EpNilN => 0
+  }
+",
+        "e_p_nested_match.v3",
+    )
+    .expect("nested-match recursion fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let count = entries
+        .iter()
+        .find(|entry| entry.caller == "ep_count2" && entry.callee == "ep_count2")
+        .expect("expected ep_count2 self-call evidence in per-call side table");
+
+    assert_eq!(count.evidence.len(), 1);
+    match &count.evidence[0] {
+        SubValueRelation::StrictSubValue { field, factor } => {
+            // Structural facts are taken from the INNERMOST variant pattern
+            // (where the recursive arg's payload binding originates). The
+            // outer-match level only contributes scrutinee-trace continuity.
+            assert_eq!(
+                field.field_name, "_0",
+                "innermost positional payload structural accessor is the variant Conj's `_0`"
+            );
+            assert_eq!(field.variant_name, "EpConsN");
+            assert_eq!(field.type_name, "EpListN");
+            assert_eq!(field.element_type, "EpListN");
+            assert_eq!(
+                factor,
+                &ShrinkFactor::UnitShrink,
+                "nested descent is sound at any positive depth — \
+                 every level peels one constructor"
+            );
+        }
+        other => panic!("expected StrictSubValue for ep_count2(t2), got {other:?}"),
+    }
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\

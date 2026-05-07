@@ -8601,9 +8601,24 @@ fn descent_provable(
                 scrutinee.as_ref(),
                 SurfaceExpr::Var { name, .. } if name == first_param
             );
+            // Nested-match descent: an inner `match` whose scrutinee is a
+            // structural binding from an outer arm (e.g. `match xs { Cons(t1)
+            // => match t1 { Cons(t2) => f(t2) } }`) is itself unpacking a
+            // strict sub-value of the recursive type. The inner pattern's
+            // bindings are therefore also strict sub-values, so register them
+            // against the same recursive declaration the outer match did.
+            let scrutinee_is_recursive_binding = matches!(
+                scrutinee.as_ref(),
+                SurfaceExpr::Var { name, .. }
+                    if bindings
+                        .get(name)
+                        .is_some_and(|info| info.whole_payload_recursive)
+            );
+            let scrutinee_unpacks_recursive_type =
+                scrutinee_is_first_param || scrutinee_is_recursive_binding;
             arms.iter().all(|arm| {
                 let mut arm_bindings = bindings.clone();
-                if scrutinee_is_first_param {
+                if scrutinee_unpacks_recursive_type {
                     match &arm.pattern {
                         SurfacePattern::VariantWith { name, binding, .. } => {
                             if let Some(info) =
