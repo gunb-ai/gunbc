@@ -90,7 +90,10 @@ fn emitted_line_is_positive_int_refinement_not_bare_int() {
         .declaration_by_name("EmissionProvenance")
         .expect("EmissionProvenance missing from bootstrap");
     let TypeConnective::Conj { children } = &decl.connective else {
-        panic!("EmissionProvenance is not a Conj record: {:?}", decl.connective);
+        panic!(
+            "EmissionProvenance is not a Conj record: {:?}",
+            decl.connective
+        );
     };
     let emitted_line_field = children
         .iter()
