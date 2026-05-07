@@ -66,14 +66,18 @@ The factoring claim is **probably honest for cost specifically** but **probably 
 
 If multiple lenses surface target-context needs over time, ε's per-lens Rust-side wiring becomes parallel-representation debt → β-extended (Q-Lens-Target-Context option (i)) becomes the right path.
 
-## Director ratification ask
+## Director ratification (RECEIVED 2026-05-07)
 
-1. **Test the factoring**: is `SymbolicCost` × per-primitive-realization-cost an honest factoring per `feedback_abstraction_layering`? Or does it carry hidden parallel-authority?
-2. **Generalization scope**: if ε is ratified for cost, what's the principle for future target-context-needing lenses? (Per-lens Rust-side wiring? Or Q-Lens-Target-Context cascade if N>1?)
-3. **Cost-specific vs cross-cutting decision**: ε is the more-constrained path IF cost is the singular need. If emission_provenance or other lenses surface, β-extended (option (i) from Q-Lens-Target-Context) is the right path. **Director ratifies one of**:
-   - **(ε)** Cost-specific Rust-side composition; preserves `cost.dag` PROXY; future lenses re-evaluate independently.
-   - **(β-extended option (i))** Lens<C> refactor for `LanguageSpec` parameter; .dag-side composes via Lookup<SymbolicCost>; future lenses use the new shape uniformly.
-   - **(both, sequenced)**: ε now for cost; β-extended later if/when N>1 target-context-needing lenses surface.
+Director ratified at gunb-ai/gunbc#2181 #issuecomment-4401584012:
+
+1. **Factoring test**: ratified honest for cost specifically per `feedback_abstraction_layering` (Layer 1 objective concepts pure; Layer 2 LanguageSpec language-agnostic; Layer 3 emit-side composition reads abstract shape × concrete values).
+2. **Generalization scope**: per-lens Rust-side wiring is acceptable bounded to N=1 at HEAD; reopens at N=2 trigger event (sibling Q-Lens-Target-Context canvas DEFERRED until then).
+3. **Path ratified**:
+   - **(ε) RATIFIED** as canonical-not-transitional for cost composition. Cost-specific Rust-side composition; preserves `cost.dag` PROXY; future lenses re-evaluate independently per N=2 trigger.
+   - **(β-extended option (i)) DEFERRED** to N=2 trigger event (sibling canvas).
+   - **(both, sequenced) REJECTED** as bridge-with-named-dissolution anti-pattern per `feedback_same_slice_dissolution_discipline`.
+
+Closed-system disposition: if N=2 condition never fires, β-extended never fires — structurally correct under closed-system design.
 
 ## On ratification — sequencing
 

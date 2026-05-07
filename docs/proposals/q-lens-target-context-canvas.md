@@ -128,12 +128,22 @@ This means option (i)'s threading cost is mostly mechanical (14 of 15 instances 
 
 **Mgr lean reaffirmed**: option (i).
 
-## Director ratification ask
+## Director disposition (DEFERRED 2026-05-07; reopens on N=2 trigger event)
 
-1. **Pick (i) / (ii) / (iii)** (or surface fourth option). Mgr provisional preference: **(i)**.
-2. **Confirm Lens<C> generic refactor scope**: if (i) ratified, refactor lands as separate canvas + worker-brief cycle (per Q-PAFS template) BEFORE T-CostLens follow-on slice. Confirm sequencing.
-3. **`LanguageSpec` parameter shape**: if (i), confirm whether `LanguageSpec` is the right type-level parameter (vs `&LanguageSpec` reference-shape, vs `LanguageSpecId` lookup-key). DSL conventions favor value-shape where feasible; verify at refactor brief time.
-4. **Cross-cutting impact ratification**: confirm `emission_provenance.dag` is the secondary target-context candidate (not exhaustive — invite Director scrutiny on lens-instance survey).
+Director ratified at gunb-ai/gunbc#2181 #issuecomment-4401584012: **β-extended (option (i)) DEFERRED**. Sibling Q-Cost-Composition-Layering ratified ε standalone for cost; β-extended substrate-wide refactor case isn't proven at HEAD with N=1 (only cost.dag has realization-row consumption refs per grep). Canvas reopens when SECOND lens surfaces real target-context need beyond cost.
+
+Closed-system disposition: if N=2 condition never fires, β-extended never fires.
+
+### Re-ratification asks (FROZEN; revisit at N=2 trigger event)
+
+When N=2 trigger fires and canvas reopens, the original ratification asks become live again:
+
+1. Pick (i) / (ii) / (iii) (or surface fourth option). Mgr provisional preference recorded: **(i)**.
+2. Confirm Lens<C> generic refactor scope: if (i) ratified, refactor lands as separate canvas + worker-brief cycle (per Q-PAFS template) BEFORE consumer slices.
+3. `LanguageSpec` parameter shape: type-level parameter vs reference-shape vs lookup-key.
+4. Cross-cutting impact ratification per second-lens evidence (per N=2-triggering lens's grep).
+
+These asks are FROZEN at canvas-author-time framing; re-evaluate against substrate state at re-open time (both options matrix and provisional preference may need refresh against then-current lens registry).
 
 ## On ratification — sequencing
 
