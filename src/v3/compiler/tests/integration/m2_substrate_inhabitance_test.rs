@@ -822,6 +822,119 @@ fn ep_beta(ys: EpListM) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_emits_per_arg_relation_for_multi_arg_self_call() {
+    // Phase-1 broadening Slice 4: multi-arg composition. The per-call
+    // producer's contract is one `SubValueRelation` PER argument port —
+    // the evidence vector matches v2's `ExprCall.descent_evidence:
+    // List<SubValueRelation>?` shape (`src/v2/00_core.dag:199`). Slices
+    // 1-3 only exercised single-arg recursion; this slice cements the
+    // multi-arg contract so future producer broadening preserves
+    // per-arg classification.
+    //
+    // Fixture: a length-with-accumulator self-call. arg 0 (`tail`) is a
+    // match-payload binding — Slice 1 classifies as StrictSubValue.
+    // arg 1 (`acc + 1`) is an arithmetic non-descent of the second
+    // parameter — falls back to SubValueUnknown (sound: the accumulator
+    // grows, so it cannot be a sub-value of itself). arg 2 (`limit`) is
+    // the third parameter passed unchanged — PreservedValue.
+    let dag = compile_to_dag(
+        "\
+type EpListA = EpNilA | EpConsA(EpListA)
+fn ep_count_acc(xs: EpListA, acc: Int, limit: Int) -> Int =
+  match xs {
+    EpConsA(tail) => ep_count_acc(tail, acc + 1, limit),
+    EpNilA => acc
+  }
+",
+        "e_p_multi_arg.v3",
+    )
+    .expect("multi-arg accumulator fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let count_acc = entries
+        .iter()
+        .find(|entry| entry.caller == "ep_count_acc" && entry.callee == "ep_count_acc")
+        .expect("expected ep_count_acc self-call evidence in per-call side table");
+
+    assert_eq!(
+        count_acc.evidence.len(),
+        3,
+        "evidence vector length matches argument count (per-arg classification)"
+    );
+
+    // arg 0: `tail` — match-payload positional binding, classified by Slice 1.
+    match &count_acc.evidence[0] {
+        SubValueRelation::StrictSubValue { field, factor } => {
+            assert_eq!(field.field_name, "_0");
+            assert_eq!(field.variant_name, "EpConsA");
+            assert_eq!(field.type_name, "EpListA");
+            assert_eq!(factor, &ShrinkFactor::UnitShrink);
+        }
+        other => panic!("expected StrictSubValue for arg 0 (tail), got {other:?}"),
+    }
+
+    // arg 1: `acc + 1` — arithmetic non-descent (Add, not Sub/Div), and the
+    // existing arithmetic_descent_relation only matches Sub/Div anyway.
+    // Sound fail-closed default: SubValueUnknown.
+    assert_eq!(
+        count_acc.evidence[1],
+        SubValueRelation::SubValueUnknown,
+        "non-descending accumulator argument must NOT classify as a sub-value"
+    );
+
+    // arg 2: `limit` — third parameter passed unchanged, port equality.
+    assert_eq!(
+        count_acc.evidence[2],
+        SubValueRelation::PreservedValue,
+        "unchanged forwarded parameter classifies as PreservedValue"
+    );
+}
+
+#[test]
+fn e_p_per_call_descent_evidence_emits_per_arg_arithmetic_descent_on_non_first_param() {
+    // Phase-1 broadening Slice 4 (continued): arithmetic descent on a
+    // parameter OTHER than the first. Pins the per-arg classifier's
+    // independence — arg N is classified against `caller.params[N]`,
+    // not always against `params[0]`.
+    let dag = compile_to_dag(
+        "\
+fn ep_two_param_descent(x: Int, n: Int) -> Int =
+  if n == 0 then x else ep_two_param_descent(x, n - 1)
+",
+        "e_p_multi_arg_arith.v3",
+    )
+    .expect("two-param arithmetic-descent fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let two_param = entries
+        .iter()
+        .find(|entry| {
+            entry.caller == "ep_two_param_descent" && entry.callee == "ep_two_param_descent"
+        })
+        .expect("expected ep_two_param_descent self-call evidence");
+
+    assert_eq!(two_param.evidence.len(), 2);
+    // arg 0: `x` unchanged → PreservedValue.
+    assert_eq!(two_param.evidence[0], SubValueRelation::PreservedValue);
+    // arg 1: `n - 1` → ArithmeticDescent classified against param_1, NOT param_0.
+    match &two_param.evidence[1] {
+        SubValueRelation::ArithmeticDescent { param, factor } => {
+            assert_eq!(
+                param, "param_1",
+                "arithmetic descent ordinal label tracks the per-arg parameter index"
+            );
+            assert_eq!(
+                factor,
+                &ShrinkFactor::ConstantShrink {
+                    steps: PositiveDescentAmount::OneStep,
+                }
+            );
+        }
+        other => panic!("expected ArithmeticDescent for arg 1 (n - 1), got {other:?}"),
+    }
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\
