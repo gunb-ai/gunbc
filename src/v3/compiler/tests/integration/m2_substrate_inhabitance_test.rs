@@ -673,6 +673,155 @@ fn ep_depth(t: EpRec) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_classifies_nested_match_self_call_as_strict_sub_value() {
+    // Phase-1 broadening Slice 3: a recursive self-call whose argument is
+    // the payload binding of an INNER match arm whose scrutinee is itself
+    // an outer-match payload binding (not the parameter directly). Slices 1
+    // and 2 reject this because `branch.input != param`; Slice 3's
+    // `scrutinee_traces_to_param` tracer walks the payload-binding chain
+    // until it hits the parameter port (or the depth limit, fail-closed).
+    //
+    // Cumulative classifier coverage after this slice: direct payload,
+    // direct field-projection, AND nested-match descent — all
+    // structurally-sound `StrictSubValue` evidence.
+    let dag = compile_to_dag(
+        "\
+type EpListN = EpNilN | EpConsN(EpListN)
+fn ep_count2(xs: EpListN) -> Int =
+  match xs {
+    EpConsN(t1) => match t1 {
+      EpConsN(t2) => ep_count2(t2),
+      EpNilN => 0
+    },
+    EpNilN => 0
+  }
+",
+        "e_p_nested_match.v3",
+    )
+    .expect("nested-match recursion fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let count = entries
+        .iter()
+        .find(|entry| entry.caller == "ep_count2" && entry.callee == "ep_count2")
+        .expect("expected ep_count2 self-call evidence in per-call side table");
+
+    assert_eq!(count.evidence.len(), 1);
+    match &count.evidence[0] {
+        SubValueRelation::StrictSubValue { field, factor } => {
+            // Structural facts are taken from the INNERMOST variant pattern
+            // (where the recursive arg's payload binding originates). The
+            // outer-match level only contributes scrutinee-trace continuity.
+            assert_eq!(
+                field.field_name, "_0",
+                "innermost positional payload structural accessor is the variant Conj's `_0`"
+            );
+            assert_eq!(field.variant_name, "EpConsN");
+            assert_eq!(field.type_name, "EpListN");
+            assert_eq!(field.element_type, "EpListN");
+            assert_eq!(
+                factor,
+                &ShrinkFactor::UnitShrink,
+                "nested descent is sound at any positive depth — \
+                 every level peels one constructor"
+            );
+        }
+        other => panic!("expected StrictSubValue for ep_count2(t2), got {other:?}"),
+    }
+}
+
+#[test]
+fn e_p_per_call_descent_evidence_classifies_nested_match_field_projection_self_call_as_strict_sub_value(
+) {
+    // Phase-1 broadening Slice 3 — nested-match × record-payload product
+    // case: the recursive arg is the FieldProject of an INNER match arm
+    // whose scrutinee is itself an outer-arm payload binding. Exercises the
+    // tracer-extended Slice 2 classifier (the field-projection helper at
+    // dag.rs:1780, which Slice 3 generalized but the nested-match-payload
+    // test alone doesn't reach).
+    let dag = compile_to_dag(
+        "\
+type EpRecN = EpLeafN | EpNodeN { left: EpRecN }
+fn ep_depth2(t: EpRecN) -> Int =
+  match t {
+    EpNodeN { left: a } => match a {
+      EpNodeN { left: b } => ep_depth2(b),
+      EpLeafN => 0
+    },
+    EpLeafN => 0
+  }
+",
+        "e_p_nested_match_field_projection.v3",
+    )
+    .expect("nested-match record-payload recursion fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let depth = entries
+        .iter()
+        .find(|entry| entry.caller == "ep_depth2" && entry.callee == "ep_depth2")
+        .expect("expected ep_depth2 self-call evidence in per-call side table");
+
+    assert_eq!(depth.evidence.len(), 1);
+    match &depth.evidence[0] {
+        SubValueRelation::StrictSubValue { field, factor } => {
+            // Innermost FieldProject's structural label.
+            assert_eq!(field.field_name, "left");
+            assert_eq!(field.variant_name, "EpNodeN");
+            assert_eq!(field.type_name, "EpRecN");
+            assert_eq!(field.element_type, "EpRecN");
+            assert_eq!(factor, &ShrinkFactor::UnitShrink);
+        }
+        other => panic!("expected StrictSubValue for ep_depth2(b), got {other:?}"),
+    }
+}
+
+#[test]
+fn e_p_per_call_descent_evidence_classifies_nested_match_in_mutual_recursion_scc() {
+    // Phase-1 broadening Slice 3 — same nested-match shape as the
+    // self-recursive case, but inside a mutually-recursive cluster (SCC).
+    // The termination authority for clusters is `ClusterDescentChecker`,
+    // a separate code path from `descent_provable`. Both must apply the
+    // same nested-binding rule or the same termination fact has two
+    // authorities with different acceptance rules (single-authority
+    // INVARIANT violation).
+    //
+    // `ep_alpha`'s inner-match scrutinee `t1` is an outer-arm payload, not
+    // the parameter — only the nested-binding rule lets the cluster
+    // checker accept the inner arm's `ep_beta(t2)` call as descending.
+    let dag = compile_to_dag(
+        "\
+type EpListM = EpNilM | EpConsM(EpListM)
+fn ep_alpha(xs: EpListM) -> Int =
+  match xs {
+    EpConsM(t1) => match t1 {
+      EpConsM(t2) => ep_beta(t2),
+      EpNilM => 0
+    },
+    EpNilM => 0
+  }
+fn ep_beta(ys: EpListM) -> Int =
+  match ys { EpConsM(z) => ep_alpha(z), EpNilM => 0 }
+",
+        "e_p_nested_match_mutual_recursion.v3",
+    )
+    .expect("nested-match mutual-recursion fixture compiles (cluster checker accepts)");
+
+    let entries = per_call_descent_evidence(&dag);
+    let alpha_to_beta = entries
+        .iter()
+        .find(|e| e.caller == "ep_alpha" && e.callee == "ep_beta")
+        .expect("expected ep_alpha → ep_beta cluster edge in per-call side table");
+    // The structural fact this test pins is that the FIXTURE COMPILES —
+    // the cluster checker now accepts the nested-match descent shape
+    // consistently with `descent_provable`. (`ep_alpha` and `ep_beta`
+    // template through different declarations, so the per-call producer's
+    // same-template guard emits a `SubValueUnknown` for the cross-edge
+    // — that's the fail-closed cross-template default; in-SCC descent
+    // proofs are the cluster checker's authority, not this side table's.)
+    assert_eq!(alpha_to_beta.evidence.len(), 1);
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\
