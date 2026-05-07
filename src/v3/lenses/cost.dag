@@ -1,6 +1,10 @@
 // lenses.cost — symbolic-cost lens over the v3 DAG.
 //
-// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PROXY.
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PROXY
+//   (T-CostLens-Composition α-narrow ratified at gunb-ai/gunbc#828
+//   #issuecomment-4400772335 via PR #2171: §1.8 gates #38 + #39 satisfied
+//   by construction at HEAD; #37 + #40 + #70 deferred to follow-on
+//   Behavior→primitive-identity wiring canvas at gunb-ai/gunbc#2175).
 // See docs/v3-lens-capability-register.md.
 //
 // Produces `Lookup<SymbolicCost>` per port using `SymbolicCost`
@@ -261,6 +265,50 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
         lookup_cost(payload.tail, port_id)
   }
 
+// ── T-CostLens-Composition α-narrow disposition (gunb-ai/gunbc#2141) ─
+//
+// **Director-ratified α (narrow)** at gunbc#828 #issuecomment-4400772335
+// (relay: gunbc#2068 #issuecomment-4401002201). β (parallel-API) rejected
+// per `feedback_isomorphism_or_generation_for_mirrors`; γ-extended
+// (`Lens<C>.read` refactor) deferred to its own Q-Lens-Target-Context
+// PROPOSAL canvas — NOT a T-CostLens stowaway.
+//
+// **Same-slice closure (PR #2171 receipts)**:
+//   - **#38 `coercion_cost_equals_complexity_by_construction`** —
+//     SATISFIED-BY-CONSTRUCTION at HEAD. `Semiring<SymbolicCost>`
+//     `sequential` / `iterate` (`src/v3/std/algebra.dag:181-188`) is the
+//     sole composition authority; no parallel "complexity-vs-cost"
+//     reconciliation surface exists.
+//   - **#39 `no_coercion_cost_dimension`** — SATISFIED-BY-CONSTRUCTION
+//     at HEAD. `SymbolicCost` 7-variant (`std/algebra.dag:181`) is the
+//     sole cost dimension; no parallel `CoercionCost` carrier exists per
+//     grep across `src/v3/{std,lenses,spec}/`.
+//
+// **Deferred to follow-on canvas (gunb-ai/gunbc#2175)** —
+// cross-cutting Behavior→primitive-identity wiring substrate:
+//   - **#37** `cost_lens_reads_target_realization`
+//   - **#40** `symbolic_cost_expr_equals_executable` (also Verification
+//     Mgr lane #2075)
+//   - **#70** `cost_lens_demonstration`
+//
+// Structural findings forcing the canvas-tier deferral (surfaced
+// gunbc#2068 #issuecomment-4399898495 + #issuecomment-4400390687):
+//   1. No `data cost_lens: Lens<SymbolicCost>` row at HEAD — see the
+//      "Cost dimension data declaration / forward Lens boundary" section
+//      below ("do not author `data cost_lens`"); the existing scaffolding
+//      is the bespoke `compute_symbolic_costs(d: Dag)` Behavior fold,
+//      NOT a `Lens<SymbolicCost>` instance.
+//   2. `Lens<C>.read: fn(Dag, Behavior) -> Witness<C>` carries no
+//      target-context — Q-Lens-Target-Context PROPOSAL territory.
+//   3. Behavior→primitive-identity is structurally tractable via
+//      `TransformNode.target: TransformTarget` (`Callable(DeclarationId)`,
+//      `std/substrate.dag:418`) for Transform behaviors; other variants
+//      need their own anchors.
+//   4. `.dag`-side iteration over `List<CallableRealization>` /
+//      `List<TypeRealization>` has zero precedent at HEAD; realizations
+//      consumed Rust-side at emit time only. Introducing such iteration
+//      is canvas-tier (#2175).
+//
 // ── Dimension<SymbolicCost> wiring — DEFERRED (class-5 data bodies) ─
 //
 // **Stage 2f dispatch (landed):** `v3_compiler::analyze_symbolic_cost_dimension`
