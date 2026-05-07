@@ -122,12 +122,20 @@ pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
 #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
     // Audit row #2 retirement (bootstrap.rs slice 1 of 2):
-    // `declaration_by_name("Bool")` is the canonical structural resolver
-    // here; the path-string `dsl/std/types.dag` is encapsulated behind
+    // The path-string `dsl/std/types.dag` is encapsulated behind
     // `BootstrapAuthorityKey::for_kernel_bool()` and is no longer named
-    // in this file outside doc-comments.
+    // in this file outside doc-comments. The participation gate is
+    // retained — `declaration_by_name` still rank-biases on `span.file`
+    // (audit row #14, separate owner) so a bare lookup could surface a
+    // non-kernel duplicate; we walk the declarations directly and gate
+    // by the authority's `path()` egress so the witness, not a free
+    // constant, is the structural source. Full dissolution (delete the
+    // gate; rely on a structural kernel-`Bool` `DeclarationId` accessor)
+    // lands when row #14 retires.
     let bool_authority = crate::diagnostics::BootstrapAuthorityKey::for_kernel_bool();
-    let Some(bool_decl) = dag.declaration_by_name("Bool") else {
+    let Some(bool_decl) = dag.declarations().iter().find(|d| {
+        d.name.as_deref() == Some("Bool") && d.span.file == bool_authority.path()
+    }) else {
         let authority_span = SourceSpan::new(bool_authority.path(), 0, 0);
         dag.attach_bootstrap_diagnostic(
             bool_authority,
