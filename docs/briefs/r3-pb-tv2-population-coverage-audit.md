@@ -219,7 +219,9 @@ Per blocking review on PR #1805 (codex sha:`72667918`): the §Delta row for B.2 
 
 **Verdict:** **No material delta.** All audit findings (substrate-presence, missing v3-side coverage, B.2 authority-migration-already-landed reclassification, Pop B v2 dependencies, Cargo edges) reproduce against current `origin/main` HEAD `2c7d82031` ("docs(r3): refresh §3 T-Debt-Paydown row after #1807/#1892/#1903 (#1911)"). Line-anchor drift continues per the load-bearing pattern; symbol/section anchors remain the canonical identity.
 
-**Re-executed methodology** (verbatim from prior §Delta tables):
+**Re-executed methodology** (verbatim from prior §Delta tables).
+
+> **Markdown-table escape note (added 2026-05-07 per codex review on PR #1926).** The `\|` inside table cells below is a markdown table-pipe escape, not a shell-literal pipe. A reader copying a row's command into a shell should replace `\|` with `|` so `grep -E` parses it as alternation: `grep -rnE '\b(derive_bound|master_theorem)\b' src/v3/compiler/tests/`, etc. Both forms (literal `\|` and proper alternation) were re-verified against `origin/main` HEAD `2c7d82031` and return zero matches; the audit's "no material delta" verdict is independently sound under either parse. This convention matches §Population A row cells (lines 25 / 35 / 45 / 55) and the prior §Delta table — load-bearing across the file.
 
 | Check | Audit text | Live state at `2c7d82031` | Drift vs §Delta `530c76ea7` |
 |---|---|---|---|
