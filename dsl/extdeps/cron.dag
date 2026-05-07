@@ -34,10 +34,14 @@ import std.integer { NonNegativeInt, PositiveInt }
 // 7 (year) is a substrate-shape question warranting ratification.
 
 // Coproduct dissolution classification (modeling-discipline.md Practice 4):
-// 🟢 TERMINAL. POSIX.1-2017 crontab(1) defines exactly these 5 grammar
-// shapes per field (wildcard, exact value, comma-list, range, step) --
-// the variant set is bounded by the external spec, not a scaffold for
-// a future model. Field-payload integer types are refined to
+// 🟢 TERMINAL. The variant set covers the wildcard / exact / comma-list /
+// range grammar from POSIX.1-2017 crontab(1) plus the slash-step form
+// (e.g. `*/10`) from the Vixie-cron extension that all mainstream cron
+// implementations (vixie, cronie, busybox, systemd OnCalendar, GitHub
+// Actions schedule triggers) accept and that the existing consumers in
+// this codebase rely on (`review.dag`, `review_codex.dag` use `*/N`).
+// The set is bounded by these merged grammars, not a scaffold for a
+// future model. Field-payload integer types are refined to
 // NonNegativeInt / PositiveInt: cron field values are never negative
 // in POSIX, and step interval is strictly positive (zero-step is
 // undefined). Per-field POSIX bounds (minute 0..59, hour 0..23, etc.)
