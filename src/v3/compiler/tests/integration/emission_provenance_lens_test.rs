@@ -196,7 +196,7 @@ fn optional_source_span_carries_none_and_some_arms_with_locked_payload() {
 // Gap 3 closure (sum-variant `Empty` literal in data body context).
 const LENS_FIXTURE_SOURCE: &str = r#"
 import std.integer { PositiveInt }
-import std.list { List, concat }
+import std.list { List, Empty, concat }
 import std.substrate { Dag, Behavior, LoopBound }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.diagnostics { Diagnostic }
@@ -220,7 +220,7 @@ type EmissionProvenance {
 fn _seed_list_provenance_empty() -> List<EmissionProvenance> = Empty
 
 fn read_provenance(d: Dag, b: Behavior) -> Witness<List<EmissionProvenance>> =
-  Inhabits(Empty)
+  Inhabits(_seed_list_provenance_empty())
 
 fn empty_provenance_list() -> List<EmissionProvenance> = Empty
 
