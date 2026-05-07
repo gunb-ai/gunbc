@@ -2,12 +2,22 @@
 // declarations for the Rust target.
 //
 // PILOT SCOPE (T-Ground-Pilot): {i8, i16, i32, i64, i128, u8, u16, u32, u64,
-// bool, ()} only. No containers, no floats, no coercion paths.
+// u128, bool, ()} only. No containers, no floats, no coercion paths.
 //
-// T-Int128 SLICE B1: signed i128 only. The unsigned u128 row is deferred to
-// Slice B2 because u128::MAX exceeds the host i128 representation used by
-// `IntervalInt::ExactInterval` for range-fact storage; B2 widens the
-// interval representation first, then adds the u128 row.
+// T-Int128 SLICE B1 / B2 (RESOLVED 2026-05-06): both signed `i128` and
+// unsigned `u128` rows are present. The prior B2 deferral of `u128`
+// (because `u128::MAX` exceeded the host `i128` representation used by
+// `IntervalInt::ExactInterval` for range-fact storage) was closed by R3
+// Phase A widening the host repr to arbitrary-precision `BigInt`
+// (commit `e7ba022c6`) under Director Path A RATIFIED at
+// gunbc#1739 #issuecomment-4392731264; the `u128` row landed in Phase B-1
+// (commit `59511503e`).
+//
+// FOLLOW-ON DEFERRAL: `isize` / `usize` rows remain deferred to a separate
+// substrate-fact-introduction follow-on (named cascade — `IntSize` /
+// `UIntSize` kernel integer carriers in `dsl/std/integer.dag`). Director-
+// level scope; not bundled with this brief per Mgr disposition Path 1
+// at gunbc#1761 #issuecomment-4393235461.
 //
 // PURPOSE: Each declaration says "Rust target type T is a target primitive
 // inhabiting algebra A over carrier C." Selection by algebra-homomorphism
@@ -253,6 +263,17 @@ data rust_pilot_primitives: List<RustPrimitive> = [
 
   IntegerPrimitive { target_name: "u64", algebra: SemiringAlgebra, carrier: Word64Carrier,
     range_min_inclusive: "0", range_max_inclusive: "18446744073709551615",
+    is_copy: true, overflow: TwoComplementWrap },
+
+  // R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264;
+  // Option (ii) confirmed at gunbc#1761 #issuecomment-4393145631): u128 row
+  // unblocked by Phase A's `IntervalInt::ExactInterval` BigInt host repr
+  // widening (commit `e7ba022c6`). Range is `[0, 2^128 - 1]`; the prior
+  // `i128` host repr forced this row deferred (Slice B2 marker now
+  // resolved). Symmetric to i128 above; `Word128Carrier` per Rust Reference §3.4.
+  IntegerPrimitive { target_name: "u128", algebra: SemiringAlgebra, carrier: Word128Carrier,
+    range_min_inclusive: "0",
+    range_max_inclusive: "340282366920938463463374607431768211455",
     is_copy: true, overflow: TwoComplementWrap },
 
 

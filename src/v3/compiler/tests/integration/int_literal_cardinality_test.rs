@@ -462,8 +462,10 @@ fn rust_pilot_primitives_integer_witnesses_are_unique() {
     }
     assert_eq!(
         witnesses.len(),
-        9,
-        "pilot carries nine distinct integer primitive witnesses (i8..i64, i128, u8..u64; T-Int128 Slice B1)"
+        10,
+        "pilot carries ten distinct integer primitive witnesses (i8..i64, i128, u8..u64, u128); \
+         u128 row unblocked by R3 Phase A `IntervalInt::ExactInterval` BigInt host repr widening \
+         per gunbc#1739 #issuecomment-4392731264 + Option (ii) at #issuecomment-4393145631"
     );
 }
 
