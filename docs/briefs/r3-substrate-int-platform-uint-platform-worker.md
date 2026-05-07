@@ -1,12 +1,12 @@
 ---
 status: pre-authored per pre-authored-brief-queue discipline; dispatchable post-PR-#1914 close (valiant-ibex-312 freed-pool)
 authority parent: R3 Substrate Manager (#1739)
-ratification: Director Q1 + Q2 + Q3 + Q4 RATIFIED at gunbc#1739 #issuecomment-4393248961 (zesty-bear-812, 2026-05-07). Naming: IntPlatform/UIntPlatform per `feedback_reason_not_label`. Algebra: `Compose<Int, MachineWidth<PointerWidth>>` + `Compose<UInt, MachineWidth<PointerWidth>>` with Platform as substrate token (target-dependent at grounding). Substrate-concept layer (NOT target-only). Worker pin valiant-ibex-312.
+ratification: Director Q1 + Q2 + Q3 + Q4 RATIFIED at gunbc#1739 #issuecomment-4393248961 (zesty-bear-812, 2026-05-07). Naming: IntPlatform/UIntPlatform per `feedback_reason_not_label`. Algebra: `Compose<Int, MachineWidth<PointerWidth>>` + `Compose<UInt, MachineWidth<PointerWidth>>` with `PointerWidth` as inner substrate token (pre-existing `std.types::Platform = Linux | Macos | Windows` OS-identity carrier untouched) (target-dependent at grounding). Substrate-concept layer (NOT target-only). Worker pin valiant-ibex-312.
 roadmap row: §1.8 ledger row TBD slot — gate `int_platform_uint_platform_substrate_landed` (or canonical equivalent at PR-authoring time)
 authority docs:
   - gunbc#1739 #issuecomment-4393248961 (Director Q1+Q2+Q3+Q4 RATIFICATION)
   - gunbc#1761 #issuecomment-4393222862 (valiant-ibex-312 STOP surfacing the substrate gap from Phase B)
-  - gunbc#828 #issuecomment-4385530115 (Q-MachineConstraint sub-decision 3 — Compose<Algebra, MachineWidth<N>> shape; this brief extends N with substrate-token Platform)
+  - gunbc#828 #issuecomment-4385530115 (Q-MachineConstraint sub-decision 3 — Compose<Algebra, MachineWidth<N>> shape; this brief extends N with substrate-token PointerWidth)
   - dsl/std/integer.dag (consumer site for IntPlatform/UIntPlatform declarations)
   - src/v3/std/machine_constraints.dag (existing MachineWidth<bits> carrier; this brief extends to MachineWidth<PointerWidth>)
   - PR #1914 (T-Interval-Representation; closes at partial coverage; this brief is the follow-on enabling isize/usize row population)
@@ -45,11 +45,11 @@ Author `PointerWidth` substrate token in `src/v3/std/machine_constraints.dag` (o
 
 Two structural shapes worker DFS-decides at dispatch:
 
-- **Option α (sum type)**: `type Platform = Pointer | TargetSpecific(String)` or similar enumeration of platform-axis classes
-- **Option β (opaque token)**: `type Platform` (uninhabited or single-witness) — used purely as type-level marker; targets project to specific width at emit time
-- **Option γ (typed parameter)**: `MachineWidth<PointerWidth>` parameterized over a Platform type-parameter that's bound by target spec at grounding
+- **Option α (sum type)**: `type PointerWidth = Pointer | TargetSpecific(String)` or similar enumeration of platform-axis classes
+- **Option β (opaque token)**: `type PointerWidth` (uninhabited or single-witness) — used purely as type-level marker; targets project to specific width at emit time
+- **Option γ (typed parameter)**: `MachineWidth<PointerWidth>` parameterized over a PointerWidth type-parameter that's bound by target spec at grounding
 
-**Mgr recommendation**: γ (typed parameter) if the existing `MachineWidth<N>` shape parameterizes over numeric N — adds Platform as a sibling-shape kind alongside numeric. β if simpler / matches existing token discipline. α only if explicit platform-axis enumeration carries structural meaning.
+**Mgr recommendation**: γ (typed parameter) if the existing `MachineWidth<N>` shape parameterizes over numeric N — adds PointerWidth as a sibling-shape kind alongside numeric. β if simpler / matches existing token discipline. α only if explicit platform-axis enumeration carries structural meaning.
 
 Worker DFS catalogs current `MachineWidth<...>` parameterization shape at HEAD; chooses α/β/γ per existing convention.
 
@@ -144,6 +144,6 @@ Drafted 2026-05-07 by Substrate Mgr (quick-crab-830) per Director Q1+Q2+Q3+Q4 RA
 
 Cross-references:
 - PR #1914 (T-Interval-Representation partial-coverage; this brief is named follow-on)
-- Q-MC sub-decision 3 (`Compose<Algebra, MachineWidth<N>>` shape; this brief extends N with substrate-token Platform)
+- Q-MC sub-decision 3 (`Compose<Algebra, MachineWidth<N>>` shape; this brief extends N with substrate-token PointerWidth)
 - Grounding G2 Phase 2 (consumer; isize/usize coverage unblocks on this brief's PR merge)
 - S3 Phase-2 parser-grammar (potential coordination point if `MachineWidth<PointerWidth>` non-numeric parameterization surfaces parser concerns)
