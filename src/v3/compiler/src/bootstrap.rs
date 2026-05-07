@@ -133,9 +133,11 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
     // gate; rely on a structural kernel-`Bool` `DeclarationId` accessor)
     // lands when row #14 retires.
     let bool_authority = crate::diagnostics::BootstrapAuthorityKey::for_kernel_bool();
-    let Some(bool_decl) = dag.declarations().iter().find(|d| {
-        d.name.as_deref() == Some("Bool") && d.span.file == bool_authority.path()
-    }) else {
+    let Some(bool_decl) = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == bool_authority.path())
+    else {
         let authority_span = SourceSpan::new(bool_authority.path(), 0, 0);
         dag.attach_bootstrap_diagnostic(
             bool_authority,
