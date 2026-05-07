@@ -227,32 +227,43 @@ type Map<key, value> = PartialFunction<key, value>
 //   2. Auto-generation of test inputs (valid from [T], invalid from [T]^c)
 //   3. Documentation of expected shapes
 
-type CommitSha    = String where pattern("^[a-f0-9]\{40\}$")
-type Sha256       = String where pattern("^[a-f0-9]\{64\}$")
+// S9 Slice 2.5 (Director Option A revised RATIFIED at gunbc#828
+// `issuecomment-4392245968`): pattern / format / content predicates are
+// structurally absent from the predicate registry until Q-Regex-Primitive
+// substrate-fact-introduction lands. The where-clauses on the types below
+// dropped from this slice; restore the original predicate when the
+// registry re-includes pattern / format / content. The original
+// where-clause text appears in each type's preceding comment for the
+// restoration receipt.
+//
+// CommitSha: restore `where pattern("^[a-f0-9]{40}$")` post-Q-Regex.
+type CommitSha    = String
+// Sha256: restore `where pattern("^[a-f0-9]{64}$")` post-Q-Regex.
+type Sha256       = String
 type RetryCount   = Int where range(min: 1, max: 5)
 type HttpStatus   = Int where range(min: 100, max: 599)
-type Email        = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
+// Email: restore `where pattern("^[^@]+@[^@]+\\.[^@]+$")` post-Q-Regex.
+type Email        = String
 type Port         = Int where range(min: 1, max: 65535)
-type GistId       = String where format(uuid)
+// GistId: restore `where format(uuid)` post-Q-Regex (format predicate
+// re-enrolled).
+type GistId       = String
 type Secret       nominal_opaque = String
 type SecretValue  = Secret where non_empty
-type Url          = String where pattern("^https?://")
-type SemVer       = String where pattern("^\\d+\\.\\d+\\.\\d+")
+// Url: restore `where pattern("^https?://")` post-Q-Regex.
+type Url          = String
+// SemVer: restore `where pattern("^\\d+\\.\\d+\\.\\d+")` post-Q-Regex.
+type SemVer       = String
 type NonEmptyStr     = String where non_empty
 type LanguageId      = String where non_empty
 type SecretName      = String where non_empty
-// `NonNegativeInt` migrated to `Nat` (canonical-instance alias) per S9 Slice 2
-// Nat-alignment — declaration moved to `dsl/std/integer.dag` (which already
-// imports `std.nat { Nat }`); locating it here would require an
-// `std.types -> std.nat` import edge that triggers a circular-dependency
-// false-positive during transitive load of test fixtures via `std.render`
-// chains. Consumers should `import std.integer { NonNegativeInt }`.
-//
-// `PositiveInt` STAYS on `Int where range(min: 1)` here for this slice;
-// resolver does not currently entail `where range(min: …)` predicates over
-// `Nat`. Surfaced as a gap per dispatch STOP-AND-ESCALATE; migration
-// sequences after predicate-entailment substrate supports `range` over Nat.
-type PositiveInt     = Int where range(min: 1)
+// `NonNegativeInt` and `PositiveInt` migrated to Nat-based shapes per S9
+// Slice 2 / Slice 2.5; declarations now live in `dsl/std/integer.dag`
+// (which already imports `std.nat { Nat }`) — locating them here would
+// require an `std.types -> std.nat` import edge that triggers a
+// circular-dependency false-positive during transitive load of test
+// fixtures via `std.render` chains. Consumers should
+// `import std.integer { NonNegativeInt, PositiveInt }`.
 
 // Path modeling (EX-2):
 // - FilePath remains a compatibility alias for existing modules.
@@ -287,11 +298,19 @@ type SourceSpan {
   end: Int
 }
 
-type Timestamp    = String where pattern("^\\d\{4\}-\\d\{2\}-\\d\{2\}T\\d\{2\}:\\d\{2\}:\\d\{2\}")
+// Timestamp: restore `where pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}")` post-Q-Regex.
+type Timestamp    = String
 type EpochMs       = Int where range(min: 0)
 type Duration      = Int where range(min: 0)
-type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
-type Seconds       = Int where range(min: 0), brand("Seconds")
+// Milliseconds/Seconds: brand half dropped pending per-leaf refinement
+// representation. Restore `, brand("Milliseconds")` /  `, brand("Seconds")`
+// once mixed-clause body-synthesis can preserve each fact (today's Mixed
+// path fail-closes when synthesizable + placeholder leaves combine; brand
+// body synthesis is held at placeholder so Milliseconds/Seconds combined
+// with range-body-synthesized triggers Mixed). Range half kept (now
+// body-synthesized to `subject >= 0`).
+type Milliseconds  = Int where range(min: 0)
+type Seconds       = Int where range(min: 0)
 
 // --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
 // Addresses deficit D15 from domain-modeling-comprehensive.md S9.
@@ -320,8 +339,11 @@ type GitRef       = String where non_empty
 // but a ref is not always a SHA (e.g., "main", "HEAD~1").
 
 // --- GCP / OIDC types (refinements for cloud identifiers) ----------------
-type GcpProjectId = String where non_empty, pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
-type ServiceAccountEmail = String where pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")
+// GcpProjectId: restore `where non_empty, pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")` post-Q-Regex.
+// Pattern half dropped; non_empty half kept as it migrates via the registry.
+type GcpProjectId = String where non_empty
+// ServiceAccountEmail: restore `where pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")` post-Q-Regex.
+type ServiceAccountEmail = String
 
 // Refinement chain example (transitive subtyping):
 //   [Url] < [NonEmptyStr] < [String] < [Json]
@@ -413,13 +435,18 @@ type SymlinkTarget
 //   [FilePath] !<= [TextFilePath]  ->  "cannot prove content is text"
 // The developer must insert an explicit classification step.
 
-type TextFilePath   = FilePath where content(Text)
-type BinaryFilePath = FilePath where content(Binary)
+// TextFilePath: restore `where content(Text)` post-Q-Regex / content-typing
+// substrate. Content-typing carved with regex predicate as parallel
+// substrate-fact-introduction.
+type TextFilePath   = FilePath
+// BinaryFilePath: restore `where content(Binary)` post-content-typing landing.
+type BinaryFilePath = FilePath
 
 // FileEntry / FileClassification: std/filesystem.dag — one record, alias
 // name for probe-shaped API; Encoding from std/encoding.dag.
 
-type MimeType = String where pattern("^[a-z]+/[a-z0-9.+-]+$")
+// MimeType: restore `where pattern("^[a-z]+/[a-z0-9.+-]+$")` post-Q-Regex.
+type MimeType = String
 
 // File type rules -- declarative extension-to-encoding mapping.
 // This is compile-time data the compiler uses for:
