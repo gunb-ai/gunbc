@@ -14,11 +14,19 @@ receipts `docs/audit/r3-evaluator-pr-1275-1500-debt-sweep.md` (#1838) and
 `docs/audit/r3-evaluator-pr-1500-1803-debt-sweep.md` (#1839); lane tracker
 issue #1941; this evaluator-cadence work item issue #1973.
 
-**Methodology:** Candidate PR set obtained via `gh pr list --state merged
---search "merged:>=2026-05-06"` filtered by changed-file paths matching
+**Methodology:** Candidate PR set obtained via
+`gh pr list --repo gunb-ai/gunbc --state merged --limit 500 --search
+"merged:>=2026-05-06" --json number,title,mergedAt,files`, then filtered to
+`number >= 1804` and to changed-file paths matching
 `src/v3/compiler/src/(lib|lens_apply|test_runner).rs`,
 `docs/briefs/r3-evaluator*`, `docs/briefs/r3-pr-e*`, `docs/briefs/x1b-*`, and
-`docs/audit/r3-evaluator-*`. Each row was verified with `gh pr view <N>`.
+`docs/audit/r3-evaluator-*`. The `--limit 500` window covers all PR numbers
+through #2117 with the `merged:>=2026-05-06` floor (default `gh pr list`
+limit is 30; the explicit limit is load-bearing for completeness).
+Date-floor sanity check: `gh pr list --search "merged:<2026-05-06" --json
+number,mergedAt -q '[.[] | select(.number >= 1804 and .number <= 2117)] |
+length'` returned `0`, confirming no in-range PR merged before the floor.
+Each row was verified with `gh pr view <N> --repo gunb-ai/gunbc`.
 This is a lane-scoped audit, not a global debt count, and follows the
 Phase 3 conservative-classification discipline: rows already accepted in
 #1838 / #1839 are not retroactively reclassified here; instead they are
