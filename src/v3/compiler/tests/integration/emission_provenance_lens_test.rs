@@ -181,7 +181,10 @@ fn optional_source_span_carries_none_and_some_arms_with_locked_payload() {
         .find(|v| v.label == "SomeSourceSpan")
         .expect("SomeSourceSpan variant missing");
     let some_payload = dag.declaration(some_variant.ty);
-    let TypeConnective::Conj { children: some_children } = &some_payload.connective else {
+    let TypeConnective::Conj {
+        children: some_children,
+    } = &some_payload.connective
+    else {
         panic!(
             "SomeSourceSpan variant payload should be a record with a single `value: SourceSpan` \
              field; actual payload connective: {:?}",
@@ -217,7 +220,10 @@ fn optional_source_span_carries_none_and_some_arms_with_locked_payload() {
         .find(|v| v.label == "NoSourceSpan")
         .expect("NoSourceSpan variant missing");
     let none_payload = dag.declaration(none_variant.ty);
-    if let TypeConnective::Conj { children: none_children } = &none_payload.connective {
+    if let TypeConnective::Conj {
+        children: none_children,
+    } = &none_payload.connective
+    {
         assert_eq!(
             none_children.len(),
             0,
