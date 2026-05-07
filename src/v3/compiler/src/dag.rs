@@ -1699,7 +1699,7 @@ fn match_payload_descent_relation(
     arg: PortId,
 ) -> Option<SubValueRelation> {
     for branch in dag.nodes().iter().filter_map(Behavior::as_branch) {
-        if branch.input != param {
+        if !scrutinee_traces_to_param(dag, branch.input, param) {
             continue;
         }
         for path in &branch.paths {
@@ -1777,7 +1777,7 @@ fn match_payload_field_projection_descent_relation(
     let projected_input = transform.inputs[0];
 
     for branch in dag.nodes().iter().filter_map(Behavior::as_branch) {
-        if branch.input != param {
+        if !scrutinee_traces_to_param(dag, branch.input, param) {
             continue;
         }
         for path in &branch.paths {
@@ -1810,6 +1810,100 @@ fn match_payload_field_projection_descent_relation(
         }
     }
     None
+}
+
+/// Phase-1 broadening Slice 3: bounded transitive trace from a match
+/// scrutinee back to the caller's parameter port through nested-match
+/// payload-binding chains.
+///
+/// Surface shape this enables (sibling of Slices 1 + 2; the recursive call
+/// is two structural peels away from the parameter):
+///
+/// ```ignore
+/// type EpListN = EpNilN | EpConsN(EpListN)
+/// fn ep_count2(xs: EpListN) -> Int =
+///   match xs {
+///     EpConsN(t1) => match t1 {
+///       EpConsN(t2) => ep_count2(t2),  // arg traces param via nested match
+///       EpNilN => 0
+///     },
+///     EpNilN => 0
+///   }
+/// ```
+///
+/// The inner `Branch.input` is `t1` — a payload binding from the outer
+/// match — not the parameter. Slices 1 / 2's direct
+/// `branch.input == param` check rejects this; the tracer walks one or more
+/// payload-binding levels to confirm structural descent before classifying.
+///
+/// The trace is bounded by a fixed depth (`SCRUTINEE_TRACE_DEPTH_LIMIT`)
+/// for the same reason `callable_target_template_for_provenance` bounds its
+/// instantiation peel: hitting the cap means the producer can no longer
+/// prove the structural relation, so the caller fails closed
+/// (`SubValueUnknown` upstream). `StrictSubValue` is sound at any positive
+/// depth — every level peels one constructor — so the helper does not
+/// distinguish depth in its boolean answer.
+const SCRUTINEE_TRACE_DEPTH_LIMIT: usize = 16;
+
+fn scrutinee_traces_to_param(dag: &Dag, scrutinee: PortId, param: PortId) -> bool {
+    let mut current = scrutinee;
+    for _ in 0..SCRUTINEE_TRACE_DEPTH_LIMIT {
+        if current == param {
+            return true;
+        }
+        // Walk one FieldProject indirection: record-payload variant patterns
+        // (`EpNodeN { left: a }`) bind the user-scope name to the OUTPUT
+        // port of a synthesized FieldProject whose input is the match arm's
+        // payload port (see `lower_field_projection_from_port`). When such
+        // a binding is itself an inner-match scrutinee, the tracer must
+        // peel the projection before climbing payload-binding chains.
+        if let Some(proj_input) = field_project_input_for_port(dag, current) {
+            current = proj_input;
+            continue;
+        }
+        if let Some(parent_input) = enclosing_branch_input_for_payload(dag, current) {
+            current = parent_input;
+            continue;
+        }
+        return false;
+    }
+    false
+}
+
+/// If `port` is the output of a single-input `FieldProject` transform,
+/// return the projected-from input port. Used by [`scrutinee_traces_to_param`]
+/// to walk past variant-record-pattern FieldProject indirections.
+fn field_project_input_for_port(dag: &Dag, port: PortId) -> Option<PortId> {
+    let Behavior::Transform(transform) = dag.resolve_producer_opt(&port)? else {
+        return None;
+    };
+    let TransformTarget::FieldProject { .. } = &transform.target else {
+        return None;
+    };
+    if transform.inputs.len() != 1 {
+        return None;
+    }
+    Some(transform.inputs[0])
+}
+
+/// If `port` is the payload binding port of some `Path`, return the
+/// enclosing `BranchNode.input`. Used by [`scrutinee_traces_to_param`] to
+/// climb one nested-match level. `None` indicates the chain bottoms out
+/// (port isn't a payload binding) — the tracer's fail-closed signal.
+fn enclosing_branch_input_for_payload(dag: &Dag, port: PortId) -> Option<PortId> {
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_branch)
+        .find_map(|b| {
+            b.paths.iter().find_map(|p| {
+                let binding = p.binding.as_ref()?;
+                if binding.payload_port == port {
+                    Some(b.input)
+                } else {
+                    None
+                }
+            })
+        })
 }
 
 /// Authoritative variant-structural facts derived from a resolved variant
