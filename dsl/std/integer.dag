@@ -45,6 +45,7 @@ module std.integer
 import std.algebra { OrderedRing, Semiring, AbelianGroup, GroupCompletion }
 import std.bit { Byte, Word16, Word32, Word64, Word128 }
 import std.nat { Nat }
+import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 
 // Signed integers: ordered rings (add + negate + mul + compare)
 type Int8 = OrderedRing<Byte>
@@ -109,6 +110,37 @@ type UInt128 = Semiring<Word128>
 // STOP-AND-ESCALATE.
 type Int = AbelianGroup<GroupCompletion<Nat>>
 type UInt = Nat
+
+// IntPlatform / UIntPlatform — pointer-width-sized integer substrate concepts.
+//
+// Per Director Q1+Q2+Q3+Q4 RATIFIED at gunbc#1739 #issuecomment-4393248961
+// (2026-05-07) + inner-token rename `Platform` → `PointerWidth` RATIFIED
+// at gunbc#828 #issuecomment-4393616097. Outer carrier names
+// `IntPlatform`/`UIntPlatform` stay verbatim (Q1 RATIFIED). Inner substrate
+// token is `PointerWidth` to avoid collision with pre-existing
+// `Platform = Linux | Macos | Windows` (OS-identity axis) at
+// `dsl/std/types.dag:356`; per `feedback_reason_not_label`, pointer-width
+// is the structural reason and OS-identity vs pointer-width are
+// orthogonal axes (32-bit Linux vs 64-bit Linux are different pointer
+// widths but same OS).
+//
+// Composition per Q-MachineConstraint-Carrier sub-decision 3
+// (gunbc#828 #issuecomment-4385530115) extended with substrate token
+// `PointerWidth` per Q3 ratification (substrate-concept layer, NOT target-
+// only) — `MachineWidth<PointerWidth>` resolves at Grounding-emit time
+// per target spec; substrate stays target-agnostic.
+//
+// Direct-consumer site: `src/v3/spec/rust.dag` `TargetIntegerTypeInhabitance`
+// rows for `isize` (kernel_integer = IntPlatform) and `usize`
+// (kernel_integer = UIntPlatform) with `bound: PlatformDependentFact`.
+// Targets without native pointer-sized integers (Python's arbitrary-
+// precision `int`, etc.) handle ground-time projection via target-
+// conditioned **lowering** — substrate stays clean (Grounding-lane work).
+//
+// Practice 4: N/A — type aliases over existing `Compose<...>` carrier;
+// no new sum types or coproducts introduced here.
+type IntPlatform  = Compose<Int,  MachineWidth<PointerWidth>>
+type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
 // Nat-alignment refinements (S9 Slice 2 / Slice 2.5 / Phase-4).
 //
