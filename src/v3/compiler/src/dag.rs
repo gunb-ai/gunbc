@@ -1739,10 +1739,7 @@ struct VariantStructuralFacts {
     payload_fields: Vec<(String, DeclarationId)>,
 }
 
-fn variant_structural_facts(
-    dag: &Dag,
-    pattern: &BranchPattern,
-) -> Option<VariantStructuralFacts> {
+fn variant_structural_facts(dag: &Dag, pattern: &BranchPattern) -> Option<VariantStructuralFacts> {
     let variant_decl_id = match pattern {
         BranchPattern::ResolvedVariant(id) => *id,
         BranchPattern::UnresolvedVariant { .. } => return None,
