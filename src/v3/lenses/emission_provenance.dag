@@ -1,8 +1,22 @@
-// lenses.emission_provenance — `Lens<List<EmissionProvenance>>` instance.
+// lenses.emission_provenance — structural fns for the
+// `Lens<List<EmissionProvenance>>` analysis.
 //
-// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY DEFERRED.
+// Status: STRUCTURALLY TERMINAL (fns); LENS-INSTANCE FIXTURE-BOUND;
+// BEHAVIORALLY DEFERRED.
 // (Same staging shape as `lenses.cost` STRUCTURALLY TERMINAL /
 // BEHAVIORALLY PROXY and `lenses.dag_shape` producer-only.)
+//
+// **What lives here vs. the test fixture:** this file authors the five
+// structural fns the `Lens<C>` framework requires (`read_provenance`,
+// `concat_provenance`, `branch_provenance`, `iterate_provenance`,
+// `validate_provenance`) plus the `_seed_list_provenance_empty()`
+// lowering seed. The `data emission_provenance_lens:
+// Lens<List<EmissionProvenance>>` **instance** is fixture-bound in
+// `src/v3/compiler/tests/integration/emission_provenance_lens_test.rs::LENS_FIXTURE_SOURCE`
+// rather than a top-level production `data` item, blocked on Class 5
+// Gap 3 (see §"Substrate-gap receipt" below). When Class 5 Gap 3
+// closes, the fixture instance promotes to a top-level `data` item
+// here; the structural fns above don't change.
 //
 // Per Director Q1 (a) RATIFIED at gunbc#1739 #issuecomment-4392562911,
 // emission-provenance is a Lens<C>-shaped per-Behavior analysis whose

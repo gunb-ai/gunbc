@@ -5,7 +5,15 @@
 // Per Director Q1 (a) RATIFIED at gunbc#1739 #issuecomment-4392562911:
 // emission-provenance is analysis (a Lens<C> over physics), not runtime
 // instrumentation. This file authors the typed carrier; the per-Behavior
-// Lens<List<EmissionProvenance>> instance lives at lenses.emission_provenance.
+// Lens<List<EmissionProvenance>> **structural fns** (read / sequential /
+// branch / iterate / validate) live at `lenses.emission_provenance`.
+// The `data emission_provenance_lens: Lens<List<EmissionProvenance>>`
+// instance is currently **fixture-bound** in the integration test (see
+// `src/v3/compiler/tests/integration/emission_provenance_lens_test.rs::LENS_FIXTURE_SOURCE`)
+// rather than a top-level production `data` item, blocked on Class 5
+// Gap 3 (top-level `ValueBody` boundary). Promotion to top-level
+// production state lands when Class 5 Gap 3 closes; see the
+// `lenses.emission_provenance` file header for the dissolution receipt.
 //
 // **Reshape rationale** (codex BLOCKING at PR #1910 sha 2ed1046e Finding
 // #1, applied here): earlier typed-sum form `EmissionOrigin =

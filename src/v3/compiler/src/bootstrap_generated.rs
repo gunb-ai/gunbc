@@ -26219,7 +26219,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 2226, 2252),
+            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 2797, 2823),
         });
         declarations.push(Declaration {
             id: DeclarationId(913),
@@ -26244,7 +26244,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 3110, 3191),
+            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 3681, 3762),
         });
         declarations.push(Declaration {
             id: DeclarationId(914),
@@ -26273,7 +26273,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 4327, 4437),
+            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 4898, 5008),
         });
         declarations.push(Declaration {
             id: DeclarationId(915),
@@ -62752,7 +62752,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 3138, 3150),
+            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 3709, 3721),
         });
         declarations.push(Declaration {
             id: DeclarationId(2031),
@@ -62771,7 +62771,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 3155, 3191),
+            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 3726, 3762),
         });
         declarations.push(Declaration {
             id: DeclarationId(2032),
