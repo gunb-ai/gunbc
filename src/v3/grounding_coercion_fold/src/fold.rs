@@ -48,6 +48,8 @@ enum BoundDeclarationView {
 enum TargetIntegerInhabitanceBoundView {
     BoundUnspecified,
     StaticBoundFact(Interval<i64>),
+    /// Target row mirrors `BoundDeclaration::PlatformDependent` (emit_model `PlatformDependentFact`).
+    PlatformDependentFact,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,6 +117,14 @@ fn match_bound(
             BoundDeclarationView::StaticBound(_),
             TargetIntegerInhabitanceBoundView::BoundUnspecified,
         ) => BoundMatch::DiffersKind,
+        (
+            BoundDeclarationView::StaticBound(_),
+            TargetIntegerInhabitanceBoundView::PlatformDependentFact,
+        ) => BoundMatch::DiffersKind,
+        (
+            BoundDeclarationView::PlatformDependent,
+            TargetIntegerInhabitanceBoundView::PlatformDependentFact,
+        ) => BoundMatch::Matches,
         (BoundDeclarationView::PlatformDependent, _) => BoundMatch::DiffersKind,
     }
 }
@@ -286,6 +296,13 @@ fn parse_target_integer_inhabitance_bound(
             Some(TargetIntegerInhabitanceBoundView::StaticBoundFact(
                 parse_int_interval(dag, interval)?,
             ))
+        }
+        "PlatformDependentFact" => {
+            if payload.is_empty() {
+                Some(TargetIntegerInhabitanceBoundView::PlatformDependentFact)
+            } else {
+                None
+            }
         }
         _ => None,
     }
