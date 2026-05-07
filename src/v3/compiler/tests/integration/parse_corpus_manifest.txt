@@ -4,9 +4,9 @@
 dsl/std/algebra.dag	37	165680	20af3b3ea1ec59df
 dsl/std/bit.dag	9	7787	09279906a3939377
 dsl/std/float.dag	6	3350	3c45f61f17751329
-dsl/std/integer.dag	18	14080	fc92bbda518402e1
+dsl/std/integer.dag	21	17857	269233044bc59746
 dsl/std/logic.dag	5	5614	bb0fc43f94c4374f
-dsl/std/machine_constraints.dag	3	1420	10e0014c21184545
+dsl/std/machine_constraints.dag	4	1682	ac8d7987ef5489c2
 dsl/std/magnitude.dag	2	560	d1579da2ea458db8
 dsl/std/nat.dag	4	1895	9c5eb0ac8d25a015
 dsl/std/rational.dag	4	2379	3c3b86f7e18caf82
@@ -23,7 +23,7 @@ src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
 src/v3/compiler/tokenize.dag	30	64719	286ece4c5bb39038
 src/v3/spec/go.dag	131	1170580	2ddf8468392612ee
 src/v3/spec/python.dag	93	602105	4ec88ac58c60fe63
-src/v3/spec/rust.dag	164	1331288	d55a012f9aad0345
+src/v3/spec/rust.dag	168	1352292	9d96a693417fde93
 src/v3/spec/v3_l1.dag	8	2246	57294d687b4753f4
 src/v3/std/algebra.dag	47	339773	40b62a1381f56e84
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
@@ -31,7 +31,7 @@ src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	12	54190	a430f932e3962ecb
 src/v3/std/approximate_field.dag	11	16864	fb342d17eec1c8ac
 src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
-src/v3/std/bootstrap_authority.dag	4	66427	908aa66838dfb9e6
+src/v3/std/bootstrap_authority.dag	4	67475	1d59dad2bb459e05
 src/v3/std/bridge_ledger.dag	7	31662	ec3b4ea8c0455eb7
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	18	36754	8023f388c3fb0918
@@ -40,6 +40,7 @@ src/v3/std/cross_target_coverage.dag	10	373515	814a9a617f609ad3
 src/v3/std/diagnostics.dag	11	21478	7d2e9e73d74e5adb
 src/v3/std/dimensions.dag	21	39170	c6833b618a39e0af
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
+src/v3/std/emission_provenance.dag	6	4966	ac93c5c74cb4f9f9
 src/v3/std/emit_model.dag	44	83040	71640f0720ab903a
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	16839	22cffc76152e82dd
 src/v3/std/go_method_template_contracts.dag	14	133273	43ccd439b5e388ea
