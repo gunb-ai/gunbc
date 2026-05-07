@@ -109,10 +109,8 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // `tests/integration.rs` binary still includes them via `#[path =
 // "boundary/..."]` so the one-bootstrap compile amortization holds.
 //
-// P0-A (PR #595): bounded `repeat_string_loop` receipt — one integration
-// file `tests/integration/p0_std_render_repeat_string_test.rs` asserts
-// `dsl/std/render.dag` structure; not generated. Dissolution: fold into a
-// broader std-render harness or `.dag`-native structural test when one exists.
+// P0-A / R1C-B: `tests/integration/p0_std_render_repeat_string_test.rs` hosts the
+// v3 `TestRunner` gate suite `p0_repeat_string_correct_gate` (live v2 oracle retired).
 //
 // Stage 3b DB-1 parse/apply ratchet bump — PR #564 adds one
 // hand-authored integration file,
