@@ -22262,6 +22262,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         },
                     ),
                     (
+                        "src/v3/std/coproduct_projection.dag".to_string(),
+                        FieldValue::Variant {
+                            constructor: DeclarationId(1896),
+                            payload: vec![],
+                        },
+                    ),
+                    (
                         "src/v3/std/cross_target_coverage.dag".to_string(),
                         FieldValue::Variant {
                             constructor: DeclarationId(1896),
@@ -22511,7 +22518,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             )),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/bootstrap_authority.dag", 1361, 4464),
+            span: SourceSpan::new("src/v3/std/bootstrap_authority.dag", 1361, 4523),
         });
         declarations.push(Declaration {
             id: DeclarationId(830),
