@@ -151,9 +151,14 @@ Author cementing test that:
    reuses T-CostLens cementing-test source corpus)
 2. Emits target-language output (Rust acceptance target)
 3. Runs `Lens<List<EmissionProvenance>>` over the same source
-4. **Verifies**: every emitted line has a corresponding
-   `EmissionProvenance` entry in the per-Behavior aggregate; flatten
-   to per-line view matches emitted-line numbering
+4. **Verifies (scoped to Behavior-attributable lines only)**: every
+   emitted line that traces to a Behavior in the source `.dag` has a
+   corresponding `EmissionProvenance` entry in the per-Behavior
+   aggregate; flatten to per-Behavior-attributable-line view matches
+   the emitted-line subset. Declarations + program scaffold
+   (prelude / function / main-wrapper sections) are OUT-OF-SCOPE per
+   codex Finding #2 at sha 4229cd09 — separate substrate cascade if
+   needed
 5. **Verifies field population**: every entry's `rule` field-path
    resolves to a real `*SyntaxBinding`/`*OpsBinding` field
    (round-trip: emitter writes field-path → lens recovers same
