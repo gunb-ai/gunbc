@@ -59,6 +59,15 @@ fn emission_provenance_record_has_locked_three_field_shape_with_locked_field_typ
         );
     };
     let labels: Vec<&str> = children.iter().map(|f| f.label.as_str()).collect();
+    // Arity check first — `HashSet` collapses duplicates, so a record with
+    // (e.g.) `rule` declared twice would pass the set comparison below.
+    // Assert exact arity to catch duplicate / extra fields explicitly.
+    assert_eq!(
+        children.len(),
+        3,
+        "EmissionProvenance must declare exactly 3 fields (emitted_line, rule, \
+         source_span); actual labels: {labels:?}"
+    );
     let expected_labels: HashSet<&str> = ["emitted_line", "rule", "source_span"]
         .into_iter()
         .collect();
@@ -145,6 +154,15 @@ fn optional_source_span_carries_none_and_some_arms_with_locked_payload() {
             decl.connective
         );
     };
+    // Arity first — `HashSet` collapses duplicates; assert exact variant
+    // count to catch a duplicate `SomeSourceSpan` declaration etc.
+    assert_eq!(
+        variants.len(),
+        2,
+        "OptionalSourceSpan must declare exactly 2 variants (NoSourceSpan, \
+         SomeSourceSpan); actual variants: {:?}",
+        variants.iter().map(|v| &v.label).collect::<Vec<_>>()
+    );
     let actual_labels: HashSet<&str> = variants.iter().map(|v| v.label.as_str()).collect();
     let expected_labels: HashSet<&str> = ["NoSourceSpan", "SomeSourceSpan"].into_iter().collect();
     assert_eq!(
