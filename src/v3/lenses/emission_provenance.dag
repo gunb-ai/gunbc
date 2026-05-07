@@ -87,13 +87,22 @@ fn iterate_provenance(
 fn validate_provenance(d: Dag, c: List<EmissionProvenance>) -> OptionalDiagnostic =
   NoDiagnostic
 
-// 🟢 TERMINAL at the lens-shape scope. `Lens<List<EmissionProvenance>>`
-// instance per Director-locked 6-field shape at `src/v3/std/lens.dag`.
-data emission_provenance_lens: Lens<List<EmissionProvenance>> = {
-  name: "EmissionProvenance",
-  read: read_provenance,
-  sequential: { op: concat_provenance, identity: Empty },
-  branch: branch_provenance,
-  iterate: iterate_provenance,
-  validate: validate_provenance
-}
+// 🟡 SCAFFOLD — the `data emission_provenance_lens: Lens<List<EmissionProvenance>>`
+// instance declaration is authored as a TEST FIXTURE (see
+// `src/v3/compiler/tests/integration/emission_provenance_lens_test.rs`)
+// rather than as a top-level `data` item here, matching the
+// `named_function_count.dag` / `dag_shape.dag` precedent: lens .dag
+// files in `src/v3/lenses/` declare the structural fns and types; the
+// `data <name>_lens: Lens<C>` instance is bound in a fixture context
+// (compare `e6_g1a_option3_static_lens_test.rs::mini_lens`).
+//
+// **Substrate-gap receipt** — promoting the instance to a top-level
+// `data` declaration here is currently blocked by Class 5 Gap 3
+// (top-level `ValueBody` boundary; sum-variant literals like `Empty`
+// don't lower in `data` body context — see ROADMAP "Class 5 Gap 3"
+// row at `src/v3/compiler/src/dag.rs:259-287`). The same constraint
+// blocks the canonical generic `data list_monoid<element>: Monoid<List<element>>`
+// declaration documented at `src/v3/std/list.dag:61-64`. Dissolution
+// trigger: when Class 5 Gap 3 closes (top-level `List` / sum-variant
+// `ValueBody` carriers land), the instance promotes from
+// fixture-bound to top-level `data` here without lens-shape changes.
