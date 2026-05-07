@@ -266,6 +266,58 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
         lookup_cost(payload.tail, port_id)
   }
 
+// ── T-CostLens-Composition status (gunb-ai/gunbc#2141; γ-ratified) ─
+//
+// PR #2171 Slice A0 lands status-header refresh + deferred-discussion
+// receipts only. Substantive target-realization-cost wiring is HELD
+// pending Director ratification of an option matrix surfaced at gunbc#828
+// #issuecomment-4400401643 (relayed via Substrate Mgr at gunbc#2068
+// #issuecomment-4400686260 + #issuecomment-4400747562). Five-option matrix:
+//
+//   - α-revised  — pure-docs Slice A0 (this commit). Defer #37/#40/#70
+//                 to follow-on slices. Standing-authority eligible.
+//   - α (narrow) — re-scope to gates #38 + #39 only (already structurally
+//                 satisfied: SymbolicCost is the sole cost dimension; coercion
+//                 cost composes via `Semiring::sum`/`product`).
+//   - β (composed-witness, Mgr-original) — `TargetRealizationCost` sibling
+//                 carrier; helper takes `LanguageSpec` parameter. **Blocked
+//                 on Finding 4** (no `.dag`-side fold-over-realization-rows
+//                 precedent at HEAD).
+//   - β-extended — first-precedent ratification: `.dag`-side iteration over
+//                 `List<CallableRealization>` + active-target authority shape
+//                 (preference (i): `LanguageSpec` parameter from caller,
+//                 mirroring Rust-side `active_language` cache discipline).
+//   - ε         — Rust-side wiring in `lens_cost_symbolic_generated.rs` /
+//                 `v3_compiler::dag` helper; preserves `cost.dag` PROXY but
+//                 bypasses `.dag`-as-authority framing.
+//   - γ-extended — `Lens<C>.read` carrier-shape refactor (target-context
+//                 threading) at `std/lens.dag:70-77`; separate Director-tier
+//                 canvas + worker-brief.
+//
+// Structural findings forcing the matrix (per gunbc#2068 #issuecomment-4399898495
+// + #issuecomment-4400390687):
+//
+//   1. No `data cost_lens: Lens<SymbolicCost>` row at HEAD (this file's line
+//      ~357 below explicitly says *do not author*); the existing scaffolding
+//      is the bespoke `compute_symbolic_costs(d: Dag)` Behavior fold, NOT a
+//      `Lens<SymbolicCost>` instance.
+//   2. `Lens<C>.read: fn(Dag, Behavior) -> Witness<C>` carries no
+//      target-context — STOP-and-PING criterion #1 from the brief.
+//   3. Behavior→primitive-identity mapping: structurally tractable via
+//      `TransformNode.target: TransformTarget` (`Callable(DeclarationId)`),
+//      per `std/substrate.dag:418` — NOT a deeper structural gap.
+//   4. `.dag`-side iteration over `List<CallableRealization>` has zero
+//      precedent at HEAD; realizations consumed Rust-side at emit time only
+//      (`emit/{rust,python}_target.rs` HashMap-by-DeclarationId at emitter
+//      init). Authoring a lens-fold-side helper introduces a first-precedent
+//      substrate consumption pattern.
+//
+// PR follows the brief's STOP-and-PING discipline: substantive helper
+// authoring deferred until Director ratifies the option (and, if β-extended,
+// the active-target authority shape). Slice B status-header promotion to
+// BEHAVIORALLY COMPLETE additionally gates on the cementing-test landing
+// (#1951, T-LBP cost-lens cementing test cascade per gate #80).
+//
 // ── Dimension<SymbolicCost> wiring — DEFERRED (class-5 data bodies) ─
 //
 // **Stage 2f dispatch (landed):** `v3_compiler::analyze_symbolic_cost_dimension`
