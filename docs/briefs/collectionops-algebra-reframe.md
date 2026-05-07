@@ -1,6 +1,6 @@
 # CollectionOps / StringOps / MapOps — algebra contract reframe (T-Ground-LanguageSpec)
 
-**Status:** Phase 1 design + proof-of-shape (Rust `CollectionOps.fold` migrated).  
+**Status:** Phase 1 (fold, 2026-05-03) + Phase 2 (concat / length / is_empty, PR #1602) + Phase 3 (map, 2026-05-05, v3 path) landed on `src/v3/std/emit_model.dag` `CollectionOps`. See per-phase receipts below.  
 **Dispatch:** Director throughput sweep / **#828**; ROADMAP **§542** row; ledger **r3-debt-paydown-ledger** (`CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces).  
 **Authority:** `dsl/std/algebra.dag` (`FreeMonoid<T>`, `PartialFunction<K,V>`), `dsl/std/languages.dag` (legacy per-target string ontology), `src/v3/std/emit_model.dag` (`CollectionOps`, `MethodTemplateContract`), `src/v3/std/*_method_template_contracts.dag`.
 
@@ -61,6 +61,8 @@ The **Rust** emitter applies **`template.replace("%Q", "\"")`** when loading **a
 **Next slices:** either keep documenting `%Q` here (and in any new contract rows that use it) as long as the convention stays Rust-local, or **lift** quote-escaping into a first-class substrate fact (e.g. extend `placeholder_convention` or template-segment substrate) if Python/Go need the same escape channel from shared contract literals. Until then, any new `MethodTemplateContract` text consumed by `rust_target` should treat `%Q` like existing `LanguageSpec` templates.
 
 **Phase-2 receipt (concat / length / is_empty contracts, PR #1602):** lifting `%Q` into `placeholder_convention` (or another substrate fact) stays **deferred** — Python/Go `MethodTemplateContract` literals added for those fields do not use `%Q`; only `rust_target`'s `method_contract_single_emit_template_string` applies the Rust-local decode. Revisit when a **shared** cross-target contract literal needs escaped quotes.
+
+**Phase-3 receipt (`map` contract, 2026-05-05, v3 path):** `emit_model.CollectionOps.map: String` migrated to `map_contract: DeclarationRef` with per-target named carriers `rust_language_spec_map_contract` (`src/v3/spec/rust.dag`), `python_language_spec_map_contract` (`src/v3/spec/python.dag`), `go_language_spec_map_contract` (`src/v3/spec/go.dag`). Mirrors Phase 1 (`fold`) shape. Per-target consumer threading lives in `src/v3/compiler/src/emit/collection_ops_method_contract.rs` + `python_target.rs`. **Carrier-list omission**: Python/Go `map_method` is intentionally omitted from `{python,go}_method_template_contracts.dag` lists — those lists feed the legacy `{arg}` / `NamedArg` projection, while `map_contract` uses CollectionOps `{body}` / `{item}` (Python) or a comment-placeholder stub (Go); listing the same carrier in both projects the wrong shape into the legacy adapter. **Go stub dissolution trigger** (P5): `go_language_spec_map_contract` drops the `/* map(...) */` comment-placeholder template once Go emit resolves `map_contract` to real templates (e.g. `v2rt.Map`-family strings) wired from this row in `emit/go_target.rs`; closure check is `rg '/\* map\('` finds zero matches in `src/v3/std/go_method_template_contracts.dag` for that declaration. ROADMAP §562 is the cross-row authority for this phase.
 
 ## References
 
