@@ -15,13 +15,19 @@ Substrate-fact-introduction (P1 procedure): typed REST response projection carri
 **Initial shape** (refine in implementation as ergonomics demand):
 
 ```dag
+type CoproductVariantProjection {
+  field_projection:  FieldProjection   // payload field projection for this variant
+  wire_tag_value:    WireTagValue       // typed wire-tag for this variant
+}
+
 type CoproductProjection {
-  declaration:              DeclarationRef
-  variant_field_projections: Map<VariantId, FieldProjection>
-  wire_tag_field:           {String|FieldRef}  // shape decided by substrate observation #2 STOP-and-PING; see disposition
-  wire_tag_values:          Map<VariantId, WireTagValue>
+  declaration:        DeclarationRef
+  wire_tag_field:     {String|FieldRef}  // shape decided by substrate observation #2 STOP-and-PING; see disposition
+  variant_projections: Map<VariantId, CoproductVariantProjection>
 }
 ```
+
+**Single-keyed-fact discipline (P2 boundary)**: per-variant payload + tag-value are one keyed fact, not two parallel maps. Director's binding constraint #2 originally enumerated them as separate fields ("refine in implementation as ergonomics demand"); the consolidated `CoproductVariantProjection` shape preserves the substantive constraints (typed `WireTagValue` leaf, structural per-variant projection) while making illegal states unrepresentable — a variant cannot have a field projection without a wire-tag value or vice versa. If "variant has no payload fields" is legitimate (e.g., Anthropic's empty-payload variants), encode that explicitly via a `FieldProjection::Empty` constructor or analog inside `CoproductVariantProjection.field_projection` rather than as absence from one map.
 
 `WireTagValue` MUST be a typed leaf (sum type or named record), **not** `String`. If Anthropic + REST both serialize as string at the wire boundary, encode the typed-on-our-side / serialized-at-emit pattern: `WireTagValue` stays typed in substrate; serialization adapter handles `String <-> WireTagValue` at the wire boundary.
 
