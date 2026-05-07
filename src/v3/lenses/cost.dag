@@ -275,10 +275,9 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
 //
 // **Same-slice closure (PR #2171 receipts)**:
 //   - **#38 `coercion_cost_equals_complexity_by_construction`** —
-//     SATISFIED-BY-CONSTRUCTION at HEAD. `SymbolicCost` algebra (type
-//     at `src/v3/std/algebra.dag:181-188`) with `sequential` / `iterate`
-//     composition fns (`src/v3/std/algebra.dag:262-272`) is the sole
-//     composition authority; no parallel "complexity-vs-cost"
+//     SATISFIED-BY-CONSTRUCTION at HEAD. `Semiring<SymbolicCost>`
+//     `sequential` / `iterate` (`src/v3/std/algebra.dag:181-188`) is the
+//     sole composition authority; no parallel "complexity-vs-cost"
 //     reconciliation surface exists.
 //   - **#39 `no_coercion_cost_dimension`** — SATISFIED-BY-CONSTRUCTION
 //     at HEAD. `SymbolicCost` 7-variant (`std/algebra.dag:181`) is the
