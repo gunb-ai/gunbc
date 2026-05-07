@@ -75,10 +75,23 @@ type VariantId = String
 // its String wire form. Single `StringTag` arm at this slice covers
 // the closure-predicate consumers (Anthropic #1702 + the three
 // coproduct paydowns); additional arms (e.g., `IntTag`, `EnumTag`)
-// land additively when a wire surface needs them. Dissolution trigger:
-// none — this stays SCAFFOLD until all ratifications close, at which
-// point it earns a TERMINAL receipt. Brief constraint #2 binding:
-// `WireTagValue` MUST stay a typed leaf, NOT collapse to `String`.
+// land additively when a wire surface needs them. Brief constraint #2
+// binding: `WireTagValue` MUST stay a typed leaf, NOT collapse to
+// `String`.
+//
+// **Dissolution trigger** (P5 tracked-scaffold requirement, INVARIANTS.md):
+// promotes to 🟢 TERMINAL when **(a)** §1.8 gates #29-#30 close (the
+// closure-predicate consumers — Anthropic #1702 re-dispatch + the three
+// already-briefed coproduct paydowns at `r3-coproduct-{1,2,3}-*-worker.md`
+// — all land and consume `WireTagValue` against real wire surfaces), AND
+// **(b)** at least one non-`StringTag` arm has been added in response to
+// an observed wire surface (refuting the single-arm-coproduct anti-pattern
+// per `feedback_construction_over_ratchets`) OR the sum is explicitly
+// closed at single-arm with a Practice-4 receipt naming the substrate
+// observation that all observed REST/LLM wire boundaries are string-
+// shaped. **Re-escalate to Substrate Mgr** if a consumer surfaces a
+// wire-tag shape that `StringTag` cannot express — that is the
+// substrate-fact-introduction event that fires (b)'s alternate path.
 type WireTagValue
   = StringTag { value: String }
 
