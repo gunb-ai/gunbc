@@ -34,13 +34,7 @@ use std::collections::HashSet;
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::dag::{Dag, TypeConnective};
-
-fn emission_provenance_carrier_dag() -> Dag {
-    cached_compile_to_dag(
-        include_str!("../../../std/emission_provenance.dag"),
-        "src/v3/std/emission_provenance.dag",
-    )
-}
+use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
     let decl = dag
@@ -69,7 +63,7 @@ fn emission_provenance_record_has_locked_three_field_shape() {
     // applied: record form, not coproduct; mandatory `rule` enforces
     // structural fail-closed; optional `source_span` is structurally
     // legal absence).
-    let dag = emission_provenance_carrier_dag();
+    let dag = generated_full_bootstrap_dag();
     let labels: HashSet<String> = conj_field_labels(&dag, "EmissionProvenance")
         .into_iter()
         .collect();
@@ -91,7 +85,7 @@ fn optional_source_span_carries_none_and_some_arms() {
     // idiom (compare `OptionalDiagnostic` at `v3.std.dimensions`).
     // NoSourceSpan must be a structurally legal absence (NOT a
     // diagnostic) per Director `feedback_no_textual_enforcement_bridges`.
-    let dag = emission_provenance_carrier_dag();
+    let dag = generated_full_bootstrap_dag();
     let variants: HashSet<String> = disj_variant_labels(&dag, "OptionalSourceSpan")
         .into_iter()
         .collect();
@@ -114,7 +108,7 @@ fn optional_source_span_carries_none_and_some_arms() {
 // item in `src/v3/lenses/emission_provenance.dag` blocks on Class 5
 // Gap 3 closure (sum-variant `Empty` literal in data body context).
 const LENS_FIXTURE_SOURCE: &str = r#"
-import std.list { List }
+import std.list { List, concat }
 import std.substrate { Dag, Behavior, LoopBound }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.diagnostics { Diagnostic }
@@ -145,12 +139,12 @@ fn empty_provenance_list() -> List<EmissionProvenance> = Empty
 fn concat_provenance(
   a: List<EmissionProvenance>,
   b: List<EmissionProvenance>
-) -> List<EmissionProvenance> = a
+) -> List<EmissionProvenance> = concat(a, b)
 
 fn branch_provenance(
   l: List<EmissionProvenance>,
   r: List<EmissionProvenance>
-) -> List<EmissionProvenance> = l
+) -> List<EmissionProvenance> = concat(l, r)
 
 fn iterate_provenance(
   c: List<EmissionProvenance>,
