@@ -558,6 +558,63 @@ fn countdown(n: Int) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_classifies_match_payload_self_call_as_strict_sub_value() {
+    // Phase-1 broadening: a recursive self-call passing a match-arm payload
+    // binding whose scrutinee is the function's parameter directly is the
+    // canonical structural-sub-value descent shape (cons-tail recursion).
+    // This is the call-site class beyond `arithmetic` / `preserved-value` that
+    // the lane needs for `e_p_per_call_descent_evidence_full_coverage`.
+    let dag = compile_to_dag(
+        "\
+type EpList = EpNil | EpCons(EpList)
+fn ep_count(xs: EpList) -> Int =
+  match xs { EpCons(tail) => ep_count(tail), EpNil => 0 }
+",
+        "e_p_match_payload.v3",
+    )
+    .expect("recursive list-count fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let length = entries
+        .iter()
+        .find(|entry| entry.caller == "ep_count" && entry.callee == "ep_count")
+        .expect("expected ep_count self-call evidence in per-call side table");
+
+    assert_eq!(length.evidence.len(), 1);
+    match &length.evidence[0] {
+        SubValueRelation::StrictSubValue { field, factor } => {
+            // The structural field accessor of a positional variant payload
+            // is the lowered Conj field label (`_0`), NOT the user's pattern
+            // binding name (`tail`). The pattern `Cons(tail) => length(tail)`
+            // and `Cons(t) => length(t)` describe the same structural descent,
+            // so substrate provenance must not vary with binding choice.
+            assert_eq!(
+                field.field_name, "_0",
+                "positional-payload structural accessor is the variant Conj's `_0` field"
+            );
+            assert_eq!(
+                field.variant_name, "EpCons",
+                "variant_name comes from the parent Disj's variant label"
+            );
+            assert_eq!(
+                field.type_name, "EpList",
+                "type_name is the parent Disj declaration name"
+            );
+            assert_eq!(
+                field.element_type, "EpList",
+                "element_type is the resolved name of the payload's type"
+            );
+            assert_eq!(
+                factor,
+                &ShrinkFactor::UnitShrink,
+                "match-payload descent is a unit-shrink: one constructor peeled"
+            );
+        }
+        other => panic!("expected StrictSubValue for ep_count(tail), got {other:?}"),
+    }
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\

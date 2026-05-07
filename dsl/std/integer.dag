@@ -61,6 +61,42 @@ type UInt32 = Semiring<Word32>
 type UInt64 = Semiring<Word64>
 type UInt128 = Semiring<Word128>
 
+// S9 Phase-1 step 3 emission entries — parametric `Compose<Algebra, MachineConstraint>`
+// instantiations per Q-MachineConstraint sub-decision 2 RATIFIED at gunbc#828
+// #issuecomment-4385530115 (NOT AlgebraMachineProduct table rows).
+//
+// Authoring posture (additive, not migrating): legacy `Int32..Int128` /
+// `UInt32..UInt128` storage rows above stay on `OrderedRing<Word*>` /
+// `Semiring<Word*>` to preserve P2 facts-flow-forward for downstream Rust-
+// side mirrors (`src/v3/grounding_pilot/src/lib.rs` `dag_type_facts` +
+// `bootstrap_generated.rs` snapshot). These NEW `IntW*` / `UIntW*` aliases
+// land the parametric Compose form alongside; Grounding G2 (#1745) consumer
+// wiring + per-pair lowering rules + emitted-Rust-primitive verification
+// follow in a separate PR per bundled-scope discipline (Director gunbc#1739
+// #issuecomment-4392225548). When G2 + downstream Rust mirrors migrate,
+// legacy fixed-width storage rows can dissolve into these Compose entries.
+//
+// Slot-1 spelling = fully-applied algebraic-concept name (`Int` =
+// `AbelianGroup<GroupCompletion<Nat>>` per #1466 Q6 audit; `UInt` = `Nat`
+// per #1818 / Codex P2 framing) — NOT bare witness shape (Q-MC sub-decision
+// 3 critical correction: witness shape doesn't go in slot-1; the named
+// concept does).
+//
+// Slot-2 spelling = `MachineWidth<Word*N*>` — pre-#2156 (S3 Phase-2 parser-
+// grammar for type-level integer literals), the phantom-bits token slot
+// uses landed `std.bit` Word*N* carriers in lieu of literal `<32>` /
+// `<64>` / `<128>` (structurally analogous to the
+// `MachineWidth<PointerWidth>` precedent on `IntPlatform` / `UIntPlatform`
+// below in this module).
+// Tightens to `MachineWidth<32>` / `MachineWidth<64>` / `MachineWidth<128>`
+// literal-Nat spelling when #2156 lands; named dissolution trigger.
+type IntW32  = Compose<Int,  MachineWidth<Word32>>
+type IntW64  = Compose<Int,  MachineWidth<Word64>>
+type IntW128 = Compose<Int,  MachineWidth<Word128>>
+type UIntW32  = Compose<UInt, MachineWidth<Word32>>
+type UIntW64  = Compose<UInt, MachineWidth<Word64>>
+type UIntW128 = Compose<UInt, MachineWidth<Word128>>
+
 // Default aliases.
 //
 // T-Numeric-Construction Slice 3 alias-pivot.
