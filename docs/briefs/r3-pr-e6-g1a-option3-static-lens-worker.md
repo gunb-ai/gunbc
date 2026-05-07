@@ -166,5 +166,8 @@ format/check command normally required for touched files.
 
 Verification V1 remains cascade-routed separately: if TC1 can use this
 argument-opaque representative, V1 may pair with E3 in narrow form; if TC1
-requires real lens-over-`Dag` folding, V1 waits for Q-Reification and the
-carrier landing.
+requires real lens-over-`Dag` folding (consuming `Dag` via `.dag` body
+authority through Evaluator per Q-Reification Option A ratified 2026-05-07
+[#2096](https://github.com/gunb-ai/gunbc/pull/2096); `Dag` IS the reflected
+program — no separate carrier lands), V1 waits for that consumer-wiring work
+to land, NOT for a carrier-introduction.
