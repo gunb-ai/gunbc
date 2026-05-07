@@ -40,7 +40,19 @@
 
 module v3.std.coproduct_projection
 
-import v3.spec.v3_l1 { DeclarationRef }
+// `DeclarationRef` resolves to `dsl/std/serialization.dag:16`'s
+// `DeclarationRef = String` alias — the soft-typed nominal handle
+// the brief + Director's path-(a) ratification reference. This is
+// distinct from the `type DeclarationRef {}` empty record at
+// `src/v3/spec/v3_l1.dag:76` (a separate identity declared for the
+// v3 spec layer); the two-co-existing-`DeclarationRef`-types is a
+// pre-existing P2 single-authority concern surfaced by Mgr review
+// at gunb-ai/gunbc#2164 and tracked separately (likely folds into
+// audit-row #14's module-convergence dissolution trigger). The
+// debt-paydown row at `docs/debt/r3-debt-paydown-ledger-2026-05-02.md`
+// names the `String` alias (this import) for promotion; both
+// `DeclarationRef`s dissolve together when convergence lands.
+import std.serialization { DeclarationRef }
 
 // 🟡 SCAFFOLD. String-aliased variant identity handle. Keys
 // `CoproductProjection.variant_projections` and `WireTagValue` payloads.
