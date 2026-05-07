@@ -672,6 +672,26 @@ Per `feedback_corrections_must_grep_verify_source`: any correction-of-a-relay mu
 
 Per `INVARIANTS.md §P5` Dispatch-Discipline Mechanisms (c): **introduction:dissolution PR ratio ≥3:1 in any 7-day window** triggers Director review of ad-hoc lane dispatch. R3 Debt-Paydown Mgr surfaces tripwire readings to Director on cadence (per `r3-structure.md` §"Standing program — R3 Debt-Paydown"). Tripwire fire = signal that introduction is outpacing dissolution; not an automatic block, but a Director-review-required event.
 
+#### §7.6.1 Readings log
+
+Periodic tripwire readings; latest first. Each entry: window, I:D ratio, sample size, methodology note.
+
+| Date | Window | I:D ratio | Sample (PRs) | Methodology | Tripwire fire? | Source |
+|---|---|---|---|---|---|---|
+| 2026-05-07 | 2026-04-30 → 2026-05-07 (trailing 7d) | **1.79 : 1** | 460 merged | Title-only heuristic; conservative upper-bound on I (per-body would shift toward dissolution) | NO | Wave 3 #2097 |
+| 2026-05-02 | (baseline) | **25.33 : 1** | — | Baseline reading | YES (breach context) | #1534 |
+
+Sharp 5-day reversal (25.33:1 → 1.79:1) attributable to receipt-closure cadence: dissolution-side accruing faster than substrate-side introduction. Re-readings to be filed at the 7-day-rolling cadence.
+
+#### §7.6.2 Compliance rule (per-PR debt receipt)
+
+Director-ratified at [#828 #issuecomment-4394414485](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4394414485) (2026-05-07): the per-PR debt-receipt rule is **structural**, not textual. A PR body satisfies the rule iff it contains either:
+1. A literal `Debt receipt:` / `debt-receipt` / `paydown receipt` / `P1 receipt` header followed by a non-trivial citation, OR
+2. Closure-gate / dissolution-naming prose that explicitly names a tracked ROADMAP retirement / dissolution / closure-gate, OR
+3. An explicit `No debt introduced; no debt retired` attestation (acceptable for chore/bookkeeping shape).
+
+Vague deferrals (defer-without-tracking-link) are non-compliant regardless of shape. Future cadence audits classify against this structural rule (wave 4 #2100 calibrates wave 2 retro-classification under it).
+
 ### §7.7 Closure-receipt cadence (Debt-Paydown owned mechanism #3)
 
 Per `r3-structure.md` §"Standing program — R3 Debt-Paydown": every tracked-debt row retires with a PR receipt before R3 close. The receipt names: (a) the row being retired, (b) the structural event that retires it, (c) the PR landing the retirement. Vague deferrals rejected (per INVARIANTS §P5 Dispatch-Discipline Mechanisms (b)). Closure-ledger entry per receipt; aggregation feeds `r3_debt_paydown_zero_remaining` predicate.
