@@ -2,11 +2,17 @@
 
 **Sub-issue**: gunbc#1958 (parented under #1939 Substrate Mgr lane).
 **Sibling**: gunbc#1959 closed 2026-05-07 — already retired by PR #1272.
-**Authority anchors**: `docs/briefs/bridge-retirement-audit-sourcespan-family.md` (19-row enumeration); `docs/r3-program-plan.md` **§5 Y4 scope-clarification** (current line 353 anchor — verify section heading at HEAD); `src/v3/std/bridge_ledger.dag` row `bridge_source_span_file_participation_retired` (status=`Proposed`).
+**Authority anchors**: `docs/briefs/bridge-retirement-audit-sourcespan-family.md` (19-row enumeration); `docs/r3-program-plan.md` **§5 Y4 scope-clarification** (current line 353 anchor — verify section heading at HEAD); `src/v3/std/bridge_ledger.dag:125-129` row `bridge_source_span_file_participation_retired` (status=`Open`); `docs/r3-structure.md:115` umbrella-gate framing.
 
-## Cross-Mgr prerequisite (same-slice blocking gate)
+## Ledger-discipline preamble (P2 single-authority)
 
-`bridge_source_span_file_participation_retired` ratchet test (Verification-owned per `r3-v-bridge-ratchet-test-design.md`). If not yet authored at HEAD when worker starts, surface to Verification Mgr (#2075 / lane #1940) for ratchet authoring **AS A SAME-SLICE BLOCKING PREREQUISITE** — Substrate worker's PR does NOT merge until Verification's ratchet is in place. Do NOT proceed under "surface as follow-up" framing; the dissolution trigger (ratchet passing) IS a same-slice acceptance criterion. Sequence: Verification ratchet PR lands first → this Substrate retirement PR consumes it.
+**The umbrella ledger row stays `Open`.** Per `docs/r3-structure.md:115` and Director acceptance #1130 / dispatch #1139 (2026-04-29): partial string-check retirement was **explicitly rejected** because parallel participation rules would remain. The umbrella's green predicate is *"no production code path consults `SourceSpan.file` for participation/inclusion logic"* — all-or-nothing. Production inclusion sites enumerated at `r3-structure.md:115` (in `lens_apply.rs` / `lower.rs` / `emit.rs`) are NOT in this Substrate slice's scope; they retire under their owners.
+
+This PR's outcome = **retire the bootstrap.rs subset of audit-packet rows #2 + #6 only**. Receipt = update the audit-packet enumeration table at `docs/briefs/bridge-retirement-audit-sourcespan-family.md` to mark rows #2 + #6 retired with the PR # citation. **Do NOT mutate `bridge_ledger.dag`** for this PR — the umbrella row stays `Open` until ALL production sites in the audit packet (rows #1, #3-19 minus test-only / out-of-family) are retired across owner-scoped PRs.
+
+## Cross-Mgr coordination (informational; NOT a same-slice blocker)
+
+The umbrella `bridge_source_span_file_participation_retired` ratchet (Verification's `bridge_retirement_ledger_zero` audit per `r3-v-bridge-retirement-ledger-zero-audit.md`) cannot flip green on this PR alone — production sites in `lens_apply.rs` / `lower.rs` / `emit.rs` (per `r3-structure.md:115`) remain post-this-PR. Verification's ledger-zero audit advances when ALL audit-packet rows retire; this PR contributes rows #2 + #6 progress only. No same-slice ratchet-test gate applies to this PR; ping Verification Mgr (#2075 / lane #1940) on merge so they can update the ledger-zero audit progress field, but their action is **post-merge tracking**, not a pre-merge blocker.
 
 ## Scope (Substrate-owned, narrow)
 
@@ -47,7 +53,7 @@ Authority constants: `BOOL_TYPES_FILE` (`dsl/std/types.dag`), `PIPELINE_AUTHORIT
 
 1. `bootstrap.rs` no longer references `BOOL_TYPES_FILE` or `PIPELINE_AUTHORITY_FILE` outside doc-comments.
 2. The two diagnostic paths (kernel Bool not-found, pipeline-authority error) carry typed `DiagnosticAttribution::BootstrapAuthority` with the appropriate `BootstrapAuthorityKey` variant — verified by `kernel_bool_path_a_diagnostic_carries_bootstrap_authority_attribution` (already exists at `:519+`) extended for the pipeline path if not present.
-3. `src/v3/std/bridge_ledger.dag` row `bridge_source_span_file_participation_retired` advances `Proposed` → `Retired` for the Substrate-owned scope; ledger receipt mentions PR # + scope-narrowing (audit rows #2 + #6 only; rows #1, #3-5, #7-19 remain under their owners).
+3. **Ledger discipline (per Ledger-discipline preamble):** `src/v3/std/bridge_ledger.dag` row stays `Open` — do NOT mutate. Audit-packet table at `docs/briefs/bridge-retirement-audit-sourcespan-family.md` updated to mark **rows #2 + #6 only** retired with this PR's # citation (rows #1, #3-5, #7-19 remain under their owners; umbrella row advances to `Retired` only when ALL production sites are retired across owner-scoped PRs).
 4. `dag.rs::bridge_source_span_file_participation_retired` ratchet test passes (authored by Verification per the **Cross-Mgr prerequisite** gate above; confirmed-present at HEAD before this PR merges).
 5. Bootstrap regen: `cargo test -p v3-compiler bootstrap_regen_fresh -- --ignored` clean (path-string deletion must not perturb regen byte-snapshot).
 6. Full suite: `cargo test --workspace --exclude v2-compiler-tests` green; `cargo clippy --all-targets -- -D warnings` clean.
