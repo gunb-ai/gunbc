@@ -8,7 +8,7 @@
 
 `origin/main` HEAD at audit-authoring time: same lineage as the S-1 input packet (PR #1462 merged). S-1 PM-authored worker brief still missing under `docs/briefs/` (only `pb-substrate-pilot-v2-arithmeticop.md`, `r3-pb-tv2-g1-readiness-receipt.md`, `r3-pb-tv2-s1-input-packet.md`, and this audit).
 
-> **Line-anchor freshness pointer (added 2026-05-05).** Per-row `:NNN` line cites in §A.1–§A.4 below are author-time anchors against the audit's original HEAD. For drift offsets vs current `origin/main` HEAD `530c76ea7`, see §Delta (2026-05-05+) at the bottom of this file (substrate decls drifted +1 line; B.2 oracle drifted +~217). Section/symbol anchors are the load-bearing identity per `feedback_section_anchors_over_line_numbers`.
+> **Line-anchor freshness pointer (added 2026-05-05; refreshed 2026-05-06).** Per-row `:NNN` line cites in §A.1–§A.4 below are author-time anchors against the audit's original HEAD. Latest drift offsets vs current `origin/main` HEAD `2c7d82031` are in §Delta (2026-05-06) at the bottom of this file (induction.dag decls drifted -3 to -5 lines, termination.dag decls drifted +103 to +106 lines, B.2 oracle structurally identical, Cargo edges unchanged). Earlier §Delta entries (530c76ea7 / B.2 reclassification) preserved for audit history. Section/symbol anchors are the load-bearing identity per `feedback_section_anchors_over_line_numbers`.
 
 ## Population A — internal `src/v2/tests/src/` named tests (4 spot-checked per dispatch)
 
@@ -214,3 +214,34 @@ Per blocking review on PR #1805 (codex sha:`72667918`): the §Delta row for B.2 
 **Net dispatch order correction:** the original §"Net dispatch order this audit implies" §3.2 sequencing assumed Substrate-Manager-routed authority migration is the prerequisite. With migration already landed, B.2 collapses to a PB-lane-internal mechanical retirement (atomic with Cargo-edge drop), no Substrate-Manager dispatch needed for B.2 disposition.
 
 **§A reclassification single-authority pointer reaffirmed for Pop A** — this B.2 correction does not affect Pop A's gate set (still §"Post-#1715 reclassification" — v3 evaluator runtime constructor/value execution). Authority changes here are B.2 (Pop B) only.
+
+## §Delta (2026-05-06) — re-execution vs `origin/main` HEAD `2c7d82031`
+
+**Verdict:** **No material delta.** All audit findings (substrate-presence, missing v3-side coverage, B.2 authority-migration-already-landed reclassification, Pop B v2 dependencies, Cargo edges) reproduce against current `origin/main` HEAD `2c7d82031` ("docs(r3): refresh §3 T-Debt-Paydown row after #1807/#1892/#1903 (#1911)"). Line-anchor drift continues per the load-bearing pattern; symbol/section anchors remain the canonical identity.
+
+**Re-executed methodology** (verbatim from prior §Delta tables):
+
+| Check | Audit text | Live state at `2c7d82031` | Drift vs §Delta `530c76ea7` |
+|---|---|---|---|
+| `meet_sub_value` / `join_sub_value` decl in `induction.dag` | `:281` / `:329` (audit time) | `:277` / `:325` | -5 lines each (file shrank since 530c76ea7's `:282` / `:330`) |
+| `int_pow_bounded` / `ceil_log` / `ceil_log_iter` | `:767` / `:802` / `:808` | `:765` / `:800` / `:806` | -3 lines each |
+| `master_theorem` / `derive_bound` | `:823` / `:897` | `:821` / `:895` | -3 lines each |
+| `peano_literal_materialization_cap` / `positive_descent_amount_from_positive_int` / `proportional_divisor_from_int_at_least_two` in `termination.dag` | `:140` / `:146` / `:162` | `:243` / `:251` / `:268` | **+103 / +105 / +106 lines** (`termination.dag` grew substantially between 530c76ea7 and 2c7d82031; symbols still live, named declarations unchanged) |
+| `grep -rnE '\b(derive_bound\|master_theorem)\b' src/v3/compiler/tests/` | zero | zero | none |
+| `grep -rnE '\b(int_pow_bounded\|ceil_log)\b' src/v3/compiler/tests/` | zero | zero | none |
+| `grep -rnE '\b(peano_literal_materialization_cap\|positive_descent_amount_from_positive_int\|proportional_divisor_from_int_at_least_two)\b' src/v3/compiler/tests/` | zero | zero | none |
+| `grep -rnE '\b(meet_sub_value\|join_sub_value)\b' src/v3/compiler/tests/` | zero | zero | none |
+| Non-Arrow `Callable` fail-closed in `src/v3/compiler/src/lib.rs` | `:581-585` originally; `~:579-585` at 530c76ea7 | `:674` (primary fail-closed branch) **plus a second site at `:2338`** with identical `reason: "Callable target declaration is not an Arrow type"` text — fail-closed shape unchanged, surface duplicated for additional dispatch path | line shifted within same function; **new second site** at `:2338` (same fail-closed semantics) |
+| `lower_constructor_invocation` produces `TransformTarget::Callable(target)` | `:7103-7119` (audit) / `:7103+` (530c76ea7) | `:7192-7202` | +~89 lines |
+| B.1 v2 imports in `p0_std_render_repeat_string_test.rs` | L9: `use v2_compiler::v2_compiler_compile::…`; L10: `use v2_compiler::v2_interpreter::…`; L11: `use v2_compiler_tests::helpers::…` | identical (L9-L11 unchanged) | none |
+| B.2 v2 oracle line in `m2_substrate_inhabitance_test.rs` | `:1222` oracle / shim block at `:1208-1219` per 530c76ea7 §Delta | `:1208` test fn declaration / `:1209` shim fn / `:1222` `kernel_algebra_profile()` call — **structurally identical to 530c76ea7**; the v3-authority test `v3_kernel_algebra_profile_reads_lowered_dag_map_authority` still resides at `:1239` | none — file did not grow further between `530c76ea7` and `2c7d82031` in this region |
+| Cargo edges (`src/v3/compiler/Cargo.toml`) | `:37-38` | `:37-38` | none |
+| `dag.rs` authority-migration markers (B.2 reclassification) | `pub fn kernel_algebra_profile` authority comment + `Dag::kernel_algebra_profile` typed accessor | comment block at `:1786-1798`, typed accessor at `:3587-3606`, drift-ratchet pointer at `:1796` — all present | line shifts only; semantic content unchanged |
+
+**Pop A net dispatch order:** unchanged. Still gated on S-1 (PM-authored worker brief, still absent under `docs/briefs/`) + v3 evaluator runtime constructor/value execution per §"Post-#1715 reclassification". This is the load-bearing single-authority statement for Pop A; per-row §A.1–§A.4 cells continue to carry substrate-presence context only.
+
+**Pop B net dispatch order:** unchanged from the 2026-05-06 B.2 reclassification correction above. Substrate `kernel_algebra_profile` authority migration still **DONE**; B.2 remaining work is **parity-test retirement + Cargo-edge drop atomic with B.1**, no Substrate-Manager dispatch needed.
+
+**HEAD-delta narrative:** between `530c76ea7` (2026-05-05) and `2c7d82031` (2026-05-06) main absorbed substantial bootstrap/substrate churn (Q-MachineConstraint #1856, T-Numeric-Construction S9 #1840, T-Debt-Paydown row refreshes #1807/#1892/#1903, T-V2 inventory #1848/#1850, etc.). None of that motion changed the audit's findings — every cited surface still resolves, every zero-coverage grep still returns zero, the B.2 authority-migration markers landed in `dag.rs` are still present and load-bearing.
+
+**HEAD commit verified:** `2c7d82031 docs(r3): refresh §3 T-Debt-Paydown row after #1807/#1892/#1903 (#1911)`.
