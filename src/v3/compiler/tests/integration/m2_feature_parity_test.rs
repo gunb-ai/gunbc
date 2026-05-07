@@ -1089,6 +1089,42 @@ fn test_mixed_synthesizable_and_placeholder_predicates_fails_closed() {
     }
 }
 
+/// S9 Slice 2.5 Path (a) cement (openai-pro REQUEST_CHANGES at gunbc PR
+/// #1846 `4a42cb1f`): nested-`And` conjunctions in `where` clauses must
+/// aggregate per-leaf synthesized/placeholder facts correctly.
+///
+/// Pre-fix bug: `leaf_predicate_name(arg)` returned `None` for an
+/// `Operator(And)` arg (it's not a leaf), so a clause like
+/// `gt_zero, gt_zero, brand` parsing as `(gt_zero, gt_zero), brand` would
+/// record only `brand` as a leaf name — outer aggregation would see an
+/// empty `synthesized_names` vector and classify the whole clause as
+/// `AllPlaceholder` instead of `Mixed`. The nested gt_zero-derived facts
+/// would silently collapse into a single placeholder.
+///
+/// Fix: `collect_leaf_predicate_names` recurses through `And` subtrees so
+/// every leaf name reaches the outer aggregator. This test cements the
+/// fail-closed Mixed diagnostic.
+#[test]
+fn test_nested_and_with_placeholder_leaf_fails_closed() {
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_any("type N = Nat where gt_zero, gt_zero, brand(\"X\")", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "nested-And clause with synthesized + placeholder leaves must \
+         surface a Mixed-fail-closed diagnostic"
+    );
+    if let Some(decl) = dag.declaration_by_name("N") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "nested-And mixed clause should NOT collapse into a \
+                 placeholder; got label {label:?}"
+            );
+        }
+    }
+}
+
 /// S9 Slice 2.5 Path (a) cement: `brand("X")` body synthesis is
 /// structurally available (reflexive `subject == subject`) but held at
 /// placeholder for this slice — re-enabling triggers the openai-pro

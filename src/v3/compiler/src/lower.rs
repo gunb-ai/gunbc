@@ -1099,18 +1099,19 @@ fn registered_predicate_synthesized_body(
             let mut synthesized_names: Vec<String> = Vec::new();
             let mut unsynthesized_names: Vec<String> = Vec::new();
             for arg in args {
-                let leaf_name = leaf_predicate_name(arg);
                 match registered_predicate_synthesized_body(arg, bind_name, carrier_chain) {
                     BodySynthOutcome::AllSynthesized(body) => {
                         synthesized.push(body);
-                        if let Some(n) = leaf_name {
-                            synthesized_names.push(n);
-                        }
+                        // Collect every leaf name reachable through the arg
+                        // (handles nested `And` subtrees per openai-pro
+                        // REQUEST_CHANGES at PR #1846 `4a42cb1f` —
+                        // `leaf_predicate_name` alone returns None for an
+                        // `Operator(And)` arg and would silently drop the
+                        // nested per-leaf names).
+                        synthesized_names.extend(collect_leaf_predicate_names(arg));
                     }
                     BodySynthOutcome::AllPlaceholder => {
-                        if let Some(n) = leaf_name {
-                            unsynthesized_names.push(n);
-                        }
+                        unsynthesized_names.extend(collect_leaf_predicate_names(arg));
                     }
                     BodySynthOutcome::Mixed {
                         synthesized_names: s,
@@ -1156,12 +1157,38 @@ fn registered_predicate_synthesized_body(
 /// Extract the predicate identifier at the head of a `where`-clause leaf.
 /// Returns `None` for non-leaf expressions (e.g. `Operator(And)` itself, or
 /// shapes that aren't predicate calls). Used to attribute names in the
-/// `Mixed` synthesis-outcome diagnostic.
+/// `Mixed` synthesis-outcome diagnostic. For nested `And` subtrees, use
+/// [`collect_leaf_predicate_names`] which recurses through the conjunction
+/// structure.
 fn leaf_predicate_name(expr: &SurfaceExpr) -> Option<String> {
     match expr {
         SurfaceExpr::Call { target, .. } => Some(target.clone()),
         SurfaceExpr::Var { name, .. } => Some(name.clone()),
         _ => None,
+    }
+}
+
+/// Collect every leaf predicate name reachable from `expr` by recursing
+/// through `Operator { And, … }` conjunctions. Addresses openai-pro
+/// REQUEST_CHANGES at PR #1846 (`4a42cb1f`): nested-`And` subtrees were
+/// returning `None` from [`leaf_predicate_name`] (because the subtree itself
+/// is an `Operator`, not a leaf), causing per-leaf synthesized/placeholder
+/// names to be dropped during outer aggregation. The fix is to walk the
+/// conjunction structure and collect names at every leaf.
+fn collect_leaf_predicate_names(expr: &SurfaceExpr) -> Vec<String> {
+    match expr {
+        SurfaceExpr::Operator {
+            op: OperatorKind::Logical(LogicalOp::And),
+            args,
+            ..
+        } => {
+            let mut out = Vec::new();
+            for arg in args {
+                out.extend(collect_leaf_predicate_names(arg));
+            }
+            out
+        }
+        _ => leaf_predicate_name(expr).into_iter().collect(),
     }
 }
 
