@@ -28,7 +28,7 @@ coupled substrate gaps that this brief lands as **one bundled slice**.
 
 1. **`IntervalInt::ExactInterval` host-repr gap**: `src/v3/compiler/src/int_literal_ranges.rs` parses all integer ranges as `i128` host representation; `u128::MAX` exceeds `i128` range. `dsl/extdeps/languages/rust/primitives.dag` explicitly defers `u128` because of this. Substrate widening required (BigInt-based or alternative encoding).
 
-2. **Bound-carrier wiring gap on actual row surface**: the live row surface used by `src/v3/spec/rust.dag` is `TargetIntegerTypeInhabitance` (with bound-field type `TargetIntegerInhabitanceBound`) imported from `v3.std.emit_model` — NOT a generic `RustPrimitive` carrier. Per codex BLOCKING (PR #1910) verified at HEAD: live shape is `TargetIntegerInhabitanceBound = BoundUnspecified | StaticBoundFact(IntInterval)`. No PlatformDependent variant exists. `BoundDeclaration` is live in `src/v3/std/substrate.dag` (`StaticBound(Interval<Int>) | PlatformDependent`) but NOT wired into `TargetIntegerInhabitanceBound`. Carrier refactor is **required** (not optional) to unblock isize/usize rows.
+2. **Bound-carrier wiring on actual row surface (CORRECTED — Option (ii) feasible)**: the live row surface used by `src/v3/spec/rust.dag` is `TargetIntegerTypeInhabitance` (with bound-field type `TargetIntegerInhabitanceBound`) imported from `v3.std.emit_model`. **Verified at origin/main HEAD post-valiant-ibex-312 ratification-state-grep at gunbc#1761 #issuecomment-4393074602**: `TargetIntegerInhabitanceBound = BoundUnspecified | StaticBoundFact(IntInterval) | PlatformDependentFact` — **3 variants including PlatformDependentFact** (mirrors `BoundDeclaration::PlatformDependent`; main moved since the earlier codex BLOCKING reading at PR #1910 sha 4229cd09 which was against pre-PlatformDependentFact state). **Option (ii) IS feasible at HEAD** — isize/usize rows populate via existing `PlatformDependentFact` variant directly; no carrier refactor needed. Earlier "carrier refactor required" framing was Mgr-tier ratification-state-grep miss against stale codex sha.
 
 3. **`spec/rust.dag` PlatformDependentFact row population**: `src/v3/spec/rust.dag` has no Rust PlatformDependentFact row entries for isize / usize. Co-located with (2) — same brief / PR per "necessary structural fix" exception.
 
@@ -53,18 +53,23 @@ Update consumers of `ExactInterval` at HEAD (worker greps for usage sites; refac
 
 Refactor target: `v3.std.emit_model` carrier `TargetIntegerInhabitanceBound` (the actual bound-field type used by `TargetIntegerTypeInhabitance` rows in `src/v3/spec/rust.dag` lines 169/180/191/199/207).
 
-Per codex BLOCKING at PR #1910 sha 98507c432 inline finding (verified at HEAD): live shape is `TargetIntegerInhabitanceBound = BoundUnspecified | StaticBoundFact(IntInterval)`. No PlatformDependent variant exists. Earlier Option (ii) (populate via existing variants) is therefore INFEASIBLE — only carrier refactor unblocks isize/usize rows.
+**Live shape at origin/main HEAD** (per valiant-ibex-312 ratification-state-grep at gunbc#1761 #issuecomment-4393074602):
 
-**Required path — wire BoundDeclaration into TargetIntegerInhabitanceBound**:
+```
+type TargetIntegerInhabitanceBound
+  = BoundUnspecified
+  | StaticBoundFact(IntInterval)
+  | PlatformDependentFact
+```
 
-Refactor `TargetIntegerInhabitanceBound` in `src/v3/std/emit_model.dag` to gain PlatformDependent semantics. Two structural shapes worker DFS-decides:
+3 variants including `PlatformDependentFact` (mirrors `BoundDeclaration::PlatformDependent`).
 
-- **(i.a) — embed BoundDeclaration**: replace `TargetIntegerInhabitanceBound` body with `BoundDeclaration` (or `BoundDeclaration` newtype wrapper). Single source of truth for bound facts; existing variants `BoundUnspecified` / `StaticBoundFact(IntInterval)` map to `BoundDeclaration` variants (BoundUnspecified ≈ Phase 1 placeholder; StaticBoundFact ≈ StaticBound). Migration: 5 existing rows + new isize/usize/u128 rows populate via `BoundDeclaration` variants.
-- **(i.b) — extend variant set**: keep TargetIntegerInhabitanceBound name but add PlatformDependent variant (3 variants: BoundUnspecified | StaticBoundFact(IntInterval) | PlatformDependent). Less integration with substrate.dag's BoundDeclaration carrier; worker confirms whether (i.a) is structurally preferred (single-authority) at dispatch.
+**Path — Option (ii) populate via existing variants** (no carrier refactor needed):
+- isize / usize rows populate `bound: PlatformDependentFact` directly
+- u128 row populates `bound: StaticBoundFact(IntInterval)` consuming Deliverable 1's BigInt-widened ExactInterval
+- Existing 5 rows untouched (no migration; carrier already serves the use case)
 
-**Mgr recommendation: (i.a) embed BoundDeclaration** — single-authority discipline + consumes existing substrate (P2 boundary discipline). Worker confirms via DFS at dispatch.
-
-Existing 5 rows (rust_integer_inhabit_u32 / i32 / int64 / i128 / i32_at_program_bound) migrate to the chosen shape; bootstrap snapshot + parse corpus manifest verification on existing-row semantic equivalence is non-negotiable.
+**Single-authority concern (note, not blocker)**: `TargetIntegerInhabitanceBound::PlatformDependentFact` and `BoundDeclaration::PlatformDependent` are parallel-named variants on different carriers. The doc-comment at emit_model.dag explicitly mirrors `BoundDeclaration::PlatformDependent`; explicit cross-carrier mirror is the existing convention. If future Substrate Mgr work wants to consolidate to single BoundDeclaration authority (per P2 boundary discipline), that's a separate substrate-fact-introduction — not required for this slice. Worker proceeds with Option (ii) verbatim.
 
 Both options consume Deliverable 1's widened `Interval<Int>` representation for the u128 row.
 
