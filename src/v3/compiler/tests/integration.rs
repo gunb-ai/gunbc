@@ -57,6 +57,8 @@ mod cross_target_coverage_carrier_test;
 mod e6_g1a_option3_static_lens_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
 mod e_i_lane_induction_preflight_test;
+#[path = "integration/emission_provenance_lens_test.rs"]
+mod emission_provenance_lens_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
 mod extdeps_rust_primitives_loader_test;
 #[path = "integration/four_fixture_regression_test.rs"]
