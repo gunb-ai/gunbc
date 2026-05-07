@@ -91,7 +91,7 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
 import std.algebra { BooleanAlgebra }
-import std.integer { Int, UInt8, Int32, UInt32, Int128, UInt128 }
+import std.integer { Int, UInt8, Int32, UInt32, Int128, UInt128, IntPlatform, UIntPlatform }
 import v3.std.lookup { Lookup }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
@@ -173,6 +173,30 @@ data rust_u128: TypeRealization = {
   cost: 1
 }
 
+// R3 IntPlatform / UIntPlatform follow-on (Director Q1+Q2+Q3+Q4 RATIFIED at
+// gunbc#1739 #issuecomment-4393248961; inner-token rename `Platform` →
+// `PointerWidth` at gunbc#828 #issuecomment-4393616097). Pointer-width-
+// sized integer realizations: Rust `isize` / `usize` ground to the
+// `IntPlatform` / `UIntPlatform` substrate concepts via
+// `Compose<Int|UInt, MachineWidth<PointerWidth>>`.
+data rust_isize: TypeRealization = {
+  language: rust_language
+  target: IntPlatform
+  carrier: "isize"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data rust_usize: TypeRealization = {
+  language: rust_language
+  target: UIntPlatform
+  carrier: "usize"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
 // ── TargetIntegerTypeInhabitance rows (design-emission-model Examples 1, 2, 5, 6, 8 family) ──
 // Bounds use `StaticBoundFact(Interval<Int>)` inline so rows lower structurally
 // (DB-10: top-level `data …: BoundDeclaration = …` stays Unparsed). Signed
@@ -237,6 +261,27 @@ data rust_integer_inhabit_u128_bound_unspecified: TargetIntegerTypeInhabitance =
   algebra: UInt128
   bound: BoundUnspecified
   type_realization: rust_u128
+}
+
+// R3 IntPlatform / UIntPlatform follow-on rows. `bound: PlatformDependentFact`
+// per Q3 ratification — pointer width is target-resolved at Grounding emit
+// time, NOT a static interval at substrate-load time. `feedback_target_agnostic_ir`:
+// substrate stays target-agnostic; per-target width (Rust 32-bit vs 64-bit
+// pointer) lands at Grounding lowering.
+data rust_integer_inhabit_isize_platform: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: IntPlatform
+  algebra: IntPlatform
+  bound: PlatformDependentFact
+  type_realization: rust_isize
+}
+
+data rust_integer_inhabit_usize_platform: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: UIntPlatform
+  algebra: UIntPlatform
+  bound: PlatformDependentFact
+  type_realization: rust_usize
 }
 
 data rust_bool: TypeRealization = {
