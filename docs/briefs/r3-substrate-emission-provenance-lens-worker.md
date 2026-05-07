@@ -151,9 +151,14 @@ Author cementing test that:
    reuses T-CostLens cementing-test source corpus)
 2. Emits target-language output (Rust acceptance target)
 3. Runs `Lens<List<EmissionProvenance>>` over the same source
-4. **Verifies**: every emitted line has a corresponding
-   `EmissionProvenance` entry in the per-Behavior aggregate; flatten
-   to per-line view matches emitted-line numbering
+4. **Verifies (scoped to Behavior-attributable lines only)**: every
+   emitted line that traces to a Behavior in the source `.dag` has a
+   corresponding `EmissionProvenance` entry in the per-Behavior
+   aggregate; flatten to per-Behavior-attributable-line view matches
+   the emitted-line subset. Declarations + program scaffold
+   (prelude / function / main-wrapper sections) are OUT-OF-SCOPE per
+   codex Finding #2 at sha 4229cd09 — separate substrate cascade if
+   needed
 5. **Verifies field population**: every entry's `rule` field-path
    resolves to a real `*SyntaxBinding`/`*OpsBinding` field
    (round-trip: emitter writes field-path → lens recovers same
@@ -189,11 +194,15 @@ Phase ordering (PR-internal):
 - `Lens<List<EmissionProvenance>>` instance landed per 6-field
   Director-locked shape; T-CostLens-Composition precedent verified for
   shape parity
-- Cementing test landed: per-Behavior fold output flattens to per-line
-  view matching emitted-line numbering; ≥1 entry with span-Some + ≥1
-  entry with span-None; field-path round-trip verified (every
-  `rule` field-path resolves to a real `*SyntaxBinding`/`*OpsBinding`
-  field at HEAD)
+- Cementing test landed (scope = **Behavior-attributable lines only**;
+  declarations + program scaffold OUT-OF-SCOPE per codex Finding #2
+  at sha 4229cd09 — separate substrate cascade if needed): per-Behavior
+  fold output flattens to per-Behavior-attributable-line view; ≥1
+  Behavior-attributable entry with span-Some + ≥1 Behavior-attributable
+  entry with span-None; field-path round-trip verified (every `rule`
+  field-path resolves to a real `*SyntaxBinding`/`*OpsBinding` field at
+  HEAD; STOP if field-path threading requires substrate cascade per
+  codex Finding #1)
 - §1.8 row `emission_provenance_lens_landed` advances DECLARED →
   PRODUCER_LANDED (Grounding-consumer for visualization wiring is a
   separate downstream brief if needed; not bundled per Director
@@ -208,6 +217,8 @@ Phase ordering (PR-internal):
 ## STOP-AND-ESCALATE
 
 - **`*SyntaxBinding` / `*OpsBinding` field set materially differs from Reading C catalog at HEAD** (e.g., heavy refactor renamed the structs): STOP — substrate-state-divergence; surface to Substrate Mgr; brief absorbs corrected field-path enumeration before authoring
+- **Field-path identity not threadable through emission runtime** (per codex BLOCKING at PR #1910 sha 4229cd09 Finding #1, post-merge): the `render_named_template(...)` call site receives a template *value* extracted from the binding struct field — the field-path that names the rule may not be carried alongside the value at emission time. If lens `read` cannot recover field-path from runtime emission state without structural threading (typed template-with-rule-path or DeclarationRef carrier wrapping the template), STOP and surface — that's a substrate-fact-introduction cascade (separate brief; thread rule-path through binding carrier before lens consumes). Worker DFS at dispatch confirms whether field-path threading is structurally possible OR requires substrate cascade
+- **Non-Behavior emission coverage gap** (per codex BLOCKING at PR #1910 sha 4229cd09 Finding #2): `Lens<C>.read: fn(Dag, Behavior) -> Witness<List<EmissionProvenance>>` is per-Behavior; emitted output also includes declarations + program scaffold (e.g., `pub mod`, file headers, `#[derive(...)]` on declared types). Brief Acceptance scope is **Behavior-attributable lines only** — declarations and program scaffold are out-of-scope for this slice. If cementing test surfaces emitted lines unattributable to any Behavior (i.e., the per-Behavior fold doesn't see them), STOP and surface — declared-provenance / scaffold-provenance is separate substrate-fact-introduction (different lens or per-Declaration extension). Acceptance bullet narrowed below to "≥1 Behavior-attributable span-Some + ≥1 Behavior-attributable span-None" rather than full-emission coverage
 - **`iterate` identity assumption breaks** (body emitted multiple times
   per LoopBound, NOT once): STOP — surface to Substrate Mgr; lens
   iterate field shape may need rework
