@@ -391,9 +391,11 @@ pub mod evaluator {
     }
 
     /// PR-E E5: bounded eager loop execution. `LoopBound::Cardinality`
-    /// evaluates by count; `LoopBound::Descent` first consumes the substrate
-    /// `descent_execution_proof` carrier, then executes the descent body after
-    /// the termination obligation is discharged.
+    /// evaluates by count. `LoopBound::Descent` is wired through the
+    /// `descent_execution_proof` proof hook, but the live default hook remains
+    /// fail-closed with `EvidenceIncomplete` until the substrate producer
+    /// emits per-path strict evidence. Tests inject that proof hook to exercise
+    /// the consumer success and residual paths.
     pub fn eval_loop(
         dag: &Dag,
         loop_node: crate::dag::LoopNode,
