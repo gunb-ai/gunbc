@@ -28,14 +28,14 @@ prepare its replacement path," not "fire the first W1 implementation."
 | Fixture shape | `src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag` declares `fn rust_emit_output(...) -> Lookup<Int>`, `fn dag_eval_output(...) -> Lookup<Int>`, three `ProgramOutputBind` inputs, and three `DifferentialEquals` rows. Comments state the fixture stubs are not executed; the runner implements both sides. | The fixture is evidence for the current Rust / Int slice. Do not rewrite the stubs or treat them as semantic producer bodies. |
 | Program observation carrier | `src/v3/std/runtime.dag` declares `ProgramObservation<Carrier> { observed: Carrier }` and comments that PR-B.2 W1/W3 should land the first declared consumer/producer path. | The carrier is producer-neutral. It still lacks producer lineage, target language, channel, exit-status, and parse policy. |
 | Rust observation path | `w1_rust_emit_output_int` emits Rust, compiles with `rustc`, executes the binary, and parses one Int token via the W1 stdout carve-out. `emit/rust_target.rs` exposes the shared program-mode bind selector used by W1. | This is an Int-only stdout parse carve-out. It must dissolve into PB-Runtime generated target-language tests plus typed observation-channel authority. |
-| DAG evaluation path | `w1_dag_eval_output_int` evaluates the producer node for the named top-level output bind through `evaluate_body` with `EvalStrategy::ApplicativeOrder { input_order: LeftFirst }`, then accepts only `Value::LiteralValue(Int)`. | This is a no-memo eager evaluator use of the current body evaluator spine. It does not claim full memo, strategy, witness, or value-domain completeness. |
+| DAG evaluation path | `w1_dag_eval_output_int` evaluates the producer node for the named top-level output bind through `evaluate_body` with `EvalStrategy::ApplicativeOrder { input_order: InputEvaluationOrder::LeftFirst }`, then accepts only `Value::LiteralValue(Int)`. | This is a no-memo eager evaluator use of the current body evaluator spine. It does not claim full memo, strategy, witness, or value-domain completeness. |
 | Verification consumers | `src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs` expects three W1 L4 claims to pass and a mixed `rust_emit_output` / `v3_program_cost` pairing to stay deferred. | L4 may consume this narrow surface. L5 / W3 still needs typed structural observation and target capability authority. |
 
 ## Producer Identity Contract Options
 
 Later runner-code work must choose one of these contracts explicitly.
 
-### Option A - transitional DeclarationRef-name contract
+### Producer Option A - transitional DeclarationRef-name contract
 
 Accept only the exact DeclarationRef spellings `rust_emit_output` and
 `dag_eval_output` at the `DifferentialEquals` subject/oracle sites.
@@ -59,7 +59,7 @@ Rejection criteria:
 - adding a fixture-local producer enum or a new `TestPredicate` variant to
   avoid the existing `DifferentialEquals` envelope.
 
-### Option B - substrate producer role / marker contract
+### Producer Option B - substrate producer role / marker contract
 
 Add or consume a P1-owned producer-role surface so the runner selects
 `rust_emit_output` and `dag_eval_output` by typed declaration role rather than
@@ -84,7 +84,7 @@ Rejection criteria:
 
 Later runner-code work must also choose one observation-channel contract.
 
-### Option A - typed observation-channel carrier
+### Observation Option A - typed observation-channel carrier
 
 Consume a P1-owned carrier that describes observation channel and expected
 value kind before normalization into `ProgramObservation<Value>`.
@@ -100,7 +100,7 @@ Acceptance criteria:
 4. Nonzero exit status, channel absence, parse failure, and value-kind mismatch
    remain typed runner failures.
 
-### Option B - scoped Int-only stdout parse carve-out
+### Observation Option B - scoped Int-only stdout parse carve-out
 
 Keep the #1499 carve-out for the existing Rust / Int slice only: capture
 emitted Rust stdout, require exactly one trimmed integer token, and compare it
@@ -151,11 +151,12 @@ and fixture shape.
 
 A later runner-code slice may fire only if all criteria below are true:
 
-1. Producer identity is explicit: either Option A's exact transitional names are
-   still the authorized scope, or Option B's substrate producer role has landed.
-2. Observation channel is explicit: either Option B's Int-only stdout carve-out
-   remains scoped to Rust / Int W1, or Option A's typed observation carrier has
-   landed.
+1. Producer identity is explicit: either Producer Option A's exact transitional
+   names are still the authorized scope, or Producer Option B's substrate
+   producer role has landed.
+2. Observation channel is explicit: either Observation Option B's Int-only
+   stdout carve-out remains scoped to Rust / Int W1, or Observation Option A's
+   typed observation carrier has landed.
 3. `dag_eval_output` uses the real eager evaluator entry named above and
    documents no-memo `ApplicativeOrder` / `LeftFirst` at the call site.
 4. `rust_emit_output` uses the same program-mode output-bind selector as Rust
