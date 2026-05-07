@@ -19,7 +19,7 @@
 | **#86** | `program_generator_carrier_landed` | `ProgramGenerator` / quantified claim substrate |
 | **#87** | `lens_cementing_test_discipline_complete` | Every **in-R3** `.dag` lens with behavioral-complete intent has cementing module vs frozen v2 oracle |
 
-Gate IDs reference [`docs/r3-program-plan.md`](../r3-program-plan.md) §"Gate ledger" rows 84–87 (DECLARED 2026-05-06 against this lane).
+Gate IDs reference [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.8 "Canonical R3 Closure-Authority Ledger" rows 84–87 (DECLARED 2026-05-06 against this lane).
 
 **Demonstration sibling (plan §1.8, gate row #74):** `tests_as_data_demonstration` — at least one Rust test ports to `.dag` `TestClaim` and executes (early signal; **not** a substitute for gate row closure).
 
