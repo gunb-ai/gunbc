@@ -2,7 +2,7 @@
 
 **Sub-issue**: TBD (PM creates under #1939 post-this-brief landing; Evaluator's #1971 `Depends on:` retargets to that issue).
 **Authority**: Director ratification of **option γ** at gunbc#828 #issuecomment-4395060514 (2026-05-07); supersedes the canvas at `docs/briefs/r3-substrate-descent-execution-proof-canvas.md` (canvas may be deleted after this brief lands).
-**Closure predicate**: Evaluator E2 descent termination contract consumer (#1971); §10.3 row 966 row-text refresh to cite γ-disposition (2-variant residual, not 4-variant prose).
+**Closure predicate**: Evaluator E2 descent termination contract consumer (#1971); §10.3 Q-EVAL-Descent-Termination-Contract row text refresh to cite γ-disposition (2-variant residual, not 4-variant prose).
 
 ## Scope
 
@@ -50,9 +50,9 @@ Per Director: "this is canvas-shape verification, not a re-ratification ask. If 
 
 1. **`DescentResidual` carrier landed** in `src/v3/std/termination.dag` (or chosen location post-grep) per ratified γ shape (modulo STOP-resolution on `EvidenceIncomplete` payload).
 2. **`DescentExecutionProof` carrier landed** with witness payload shape (per-path evidence map or richer structure surfaced via STOP-and-PING).
-3. **`descent_execution_proof()` substrate function landed** with the typed signature from §10.3 row 966 (verbatim per Director confirm).
+3. **`descent_execution_proof()` substrate function landed** with the typed signature from §10.3 Q-EVAL-Descent-Termination-Contract row (verbatim per Director confirm).
 4. **Evaluator E2 (#1971) consumes the carrier** in same-slice — proves multi-consumer composability is unnecessary for this carrier (Evaluator IS the consumer per closure predicate; carrier-with-single-consumer-as-interface anti-pattern doesn't apply because the carrier is consumer-cementing for executor termination contract). PR description names the Evaluator consumer call site.
-5. **§10.3 row 966 row-text update**: ROADMAP cites γ-disposition (2-variant residual) replacing the prose `Missing | Unknown | Incomplete | NonStrict` 4-variant naming. Per Director: "ROADMAP §10.3 row 966 row text should update on Gate A landing to cite this ratification."
+5. **§10.3 Q-EVAL-Descent-Termination-Contract row text update**: ROADMAP cites γ-disposition (2-variant residual) replacing the prose `Missing | Unknown | Incomplete | NonStrict` 4-variant naming. Per Director: "ROADMAP §10.3 Q-EVAL-Descent-Termination-Contract row text should update on Gate A landing to cite this ratification."
 6. Bootstrap regen: `cargo test -p v3-compiler bootstrap_regen_fresh -- --ignored` clean.
 7. Full suite: `cargo test --workspace --exclude v2-compiler-tests` green; `cargo clippy --all-targets -- -D warnings` clean.
 
@@ -60,7 +60,7 @@ Per Director: "this is canvas-shape verification, not a re-ratification ask. If 
 
 - **STOP** if `EvidenceIncomplete` decomposes into payload-variants per the Director-asked verification above — surface to Mgr (warm-wolf-698 / inbox #2068) before adding a payload; canvas update needed.
 - **STOP** if `DescentExecutionProof` witness shape requires substantial new substrate (e.g., a fresh per-path-witness type with non-trivial bootstrap-regen impact) — surface scope-creep.
-- **STOP** if §10.3 row 966's verbatim signature requires refinement at implementation time (`&Dag` may need module witness; `ClusterId` / `PortId` are existing Substrate types — verify via grep at brief-execution time; surface if drift).
+- **STOP** if §10.3 Q-EVAL-Descent-Termination-Contract row's verbatim signature requires refinement at implementation time (`&Dag` may need module witness; `ClusterId` / `PortId` are existing Substrate types — verify via grep at brief-execution time; surface if drift).
 - **PING** Evaluator Mgr (#2065 / `crisp-bat-13`) at PR-open time so they can retarget #1971 `Depends on:` to the carrier work-item AND begin consumer wiring against the same PR.
 
 ## Cross-Mgr coordination
@@ -70,7 +70,7 @@ Per Director: "this is canvas-shape verification, not a re-ratification ask. If 
 
 ## Worker pin (Mgr disposition)
 
-**quick-koi-190** — pre-authorized per §10.3 row 966 ("quick-koi-190 implementation already authorized through quick-crab"); also conceptually adjacent to T-E-P P1 work (DescentEvidence producer broadening) which quick-koi-190 has been on. Final pin at dispatch.
+**quick-koi-190** — pre-authorized per §10.3 Q-EVAL-Descent-Termination-Contract row ("quick-koi-190 implementation already authorized through quick-crab"); also conceptually adjacent to T-E-P P1 work (DescentEvidence producer broadening) which quick-koi-190 has been on. Final pin at dispatch.
 
 ## Auto-spawn caveat
 
