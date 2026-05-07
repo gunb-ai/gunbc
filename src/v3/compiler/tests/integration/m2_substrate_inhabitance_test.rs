@@ -558,6 +558,50 @@ fn countdown(n: Int) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_classifies_match_payload_self_call_as_strict_sub_value() {
+    // Phase-1 broadening: a recursive self-call passing a match-arm payload
+    // binding whose scrutinee is the function's parameter directly is the
+    // canonical structural-sub-value descent shape (cons-tail recursion).
+    // This is the call-site class beyond `arithmetic` / `preserved-value` that
+    // the lane needs for `e_p_per_call_descent_evidence_full_coverage`.
+    let dag = compile_to_dag(
+        "\
+type List = Nil | Cons(List)
+fn length(xs: List) -> Int =
+  match xs { Cons(tail) => length(tail), Nil => 0 }
+",
+        "e_p_match_payload.v3",
+    )
+    .expect("recursive list-length fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let length = entries
+        .iter()
+        .find(|entry| entry.caller == "length" && entry.callee == "length")
+        .unwrap_or_else(|| panic!("expected length self-call evidence, got {entries:?}"));
+
+    assert_eq!(length.evidence.len(), 1);
+    match &length.evidence[0] {
+        SubValueRelation::StrictSubValue { field, factor } => {
+            assert_eq!(
+                field.field_name, "tail",
+                "match-payload binding name is the structural sub-value field"
+            );
+            assert_eq!(
+                field.variant_name, "Cons",
+                "variant tag rides the BranchPattern through the producer"
+            );
+            assert_eq!(
+                factor,
+                &ShrinkFactor::UnitShrink,
+                "match-payload descent is a unit-shrink: one constructor peeled"
+            );
+        }
+        other => panic!("expected StrictSubValue for length(tail), got {other:?}"),
+    }
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\

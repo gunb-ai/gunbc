@@ -1649,7 +1649,80 @@ fn classify_call_argument(
         return relation;
     }
 
+    if let Some(relation) = match_payload_descent_relation(dag, param, arg) {
+        return relation;
+    }
+
     SubValueRelation::SubValueUnknown
+}
+
+/// Phase-1 broadening: classify recursive-call arguments that name a match-arm
+/// payload binding whose scrutinee is the caller's parameter directly. The
+/// surface shape this catches is:
+///
+/// ```ignore
+/// type List = Nil | Cons(List)
+/// fn length(xs: List) -> Int = match xs { Cons(tail) => length(tail), Nil => 0 }
+/// ```
+///
+/// The `tail` argument port equals the `Path.binding.payload_port` of a path
+/// whose enclosing `BranchNode.input` is the parameter port. Field-projection
+/// patterns (`Cons { tail }`) and transitive scrutinee tracing (scrutinee
+/// reached through identity-ish nodes) are deferred to later slices — same
+/// fail-closed discipline as the existing arithmetic slice (left-operand only,
+/// integer literal only) keeps producer broadening incrementally provable.
+///
+/// 🟡 SCAFFOLD on `InductiveField`: `BranchPattern::UnresolvedVariant` is the
+/// pre-resolution shape that current lowering emits for `match` arms (see
+/// `lower.rs` lowered match-arm path), so this slice fills `type_name` /
+/// `variant_name` from the textual variant tag and leaves `element_type`
+/// empty. Dissolution trigger: variant resolution wires `ResolvedVariant`
+/// declarations onto the `Path.pattern` and the field record carries a
+/// reflected `Declaration` reference.
+fn match_payload_descent_relation(
+    dag: &Dag,
+    param: PortId,
+    arg: PortId,
+) -> Option<SubValueRelation> {
+    for branch in dag.nodes().iter().filter_map(Behavior::as_branch) {
+        if branch.input != param {
+            continue;
+        }
+        for path in &branch.paths {
+            let Some(binding) = &path.binding else {
+                continue;
+            };
+            if binding.payload_port != arg {
+                continue;
+            }
+            let (type_name, variant_name) = variant_labels_for_pattern(dag, &path.pattern);
+            return Some(SubValueRelation::StrictSubValue {
+                field: InductiveField {
+                    type_name,
+                    variant_name,
+                    field_name: binding.binding_name.clone(),
+                    shape: RecursionShape::DirectRecursion,
+                    element_type: String::new(),
+                },
+                factor: ShrinkFactor::UnitShrink,
+            });
+        }
+    }
+    None
+}
+
+fn variant_labels_for_pattern(dag: &Dag, pattern: &BranchPattern) -> (String, String) {
+    match pattern {
+        BranchPattern::UnresolvedVariant { name, .. } => (name.clone(), name.clone()),
+        BranchPattern::ResolvedVariant(decl) => {
+            let label = dag
+                .declaration(*decl)
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("decl#{}", decl.raw()));
+            (label.clone(), label)
+        }
+    }
 }
 
 fn arithmetic_descent_relation(
