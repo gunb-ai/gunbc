@@ -6,7 +6,7 @@
 
 **Sibling canvas**: `q-cost-composition-layering-canvas.md` (ε path; abstraction-layering test for cost-specific Rust-side wiring).
 
-**Status**: **canvas — Director-tier ratification needed on substrate shape before any T-CostLens follow-on slice or other lens-with-target-context work**.
+**Status**: **canvas — DRAFT/DEFERRED 2026-05-07; reopens on N=2 trigger event**. Director ratified ε path for cost (sibling canvas Q-Cost-Composition-Layering ratified 2026-05-07); β-extended substrate-wide refactor case isn't proven at HEAD with N=1 (only cost). Canvas reopens when SECOND lens surfaces real target-context need beyond cost (emission_provenance per cross-cutting analysis is most likely candidate). Until then, no proposal-maturation authoring; Q-Lens-Target-Context stays in canvas-authoring queue. Closed-system disposition: if N=2 condition never fires, β-extended never fires.
 
 ## Substrate-state at HEAD (grep-verified)
 
