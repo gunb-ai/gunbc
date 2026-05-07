@@ -1,11 +1,10 @@
 // lenses.cost — symbolic-cost lens over the v3 DAG.
 //
 // Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PROXY
-//   (T-CostLens-Composition behavioral-completion in flight per gunb-ai/gunbc#2141;
-//   γ-ratified at gunbc#828 #issuecomment-4395691775; Slice A1 additive helper for
-//   target-realization-cost reading is the bridging form between α/β/γ-extended
-//   matrix surfaced at gunbc#2068 #issuecomment-4400401643 — Director ratification
-//   open).
+//   (T-CostLens-Composition α-narrow ratified at gunb-ai/gunbc#828
+//   #issuecomment-4400772335 via PR #2171: §1.8 gates #38 + #39 satisfied
+//   by construction at HEAD; #37 + #40 + #70 deferred to follow-on
+//   Behavior→primitive-identity wiring canvas at gunb-ai/gunbc#2175).
 // See docs/v3-lens-capability-register.md.
 //
 // Produces `Lookup<SymbolicCost>` per port using `SymbolicCost`
@@ -266,57 +265,48 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
         lookup_cost(payload.tail, port_id)
   }
 
-// ── T-CostLens-Composition status (gunb-ai/gunbc#2141; γ-ratified) ─
+// ── T-CostLens-Composition α-narrow disposition (gunb-ai/gunbc#2141) ─
 //
-// PR #2171 Slice A0 lands status-header refresh + deferred-discussion
-// receipts only. Substantive target-realization-cost wiring is HELD
-// pending Director ratification of an option matrix surfaced at gunbc#828
-// #issuecomment-4400401643 (relayed via Substrate Mgr at gunbc#2068
-// #issuecomment-4400686260 + #issuecomment-4400747562). Five-option matrix:
+// **Director-ratified α (narrow)** at gunbc#828 #issuecomment-4400772335
+// (relay: gunbc#2068 #issuecomment-4401002201). β (parallel-API) rejected
+// per `feedback_isomorphism_or_generation_for_mirrors`; γ-extended
+// (`Lens<C>.read` refactor) deferred to its own Q-Lens-Target-Context
+// PROPOSAL canvas — NOT a T-CostLens stowaway.
 //
-//   - α-revised  — pure-docs Slice A0 (this commit). Defer #37/#40/#70
-//                 to follow-on slices. Standing-authority eligible.
-//   - α (narrow) — re-scope to gates #38 + #39 only (already structurally
-//                 satisfied: SymbolicCost is the sole cost dimension; coercion
-//                 cost composes via `Semiring::sum`/`product`).
-//   - β (composed-witness, Mgr-original) — `TargetRealizationCost` sibling
-//                 carrier; helper takes `LanguageSpec` parameter. **Blocked
-//                 on Finding 4** (no `.dag`-side fold-over-realization-rows
-//                 precedent at HEAD).
-//   - β-extended — first-precedent ratification: `.dag`-side iteration over
-//                 `List<CallableRealization>` + active-target authority shape
-//                 (preference (i): `LanguageSpec` parameter from caller,
-//                 mirroring Rust-side `active_language` cache discipline).
-//   - ε         — Rust-side wiring in `lens_cost_symbolic_generated.rs` /
-//                 `v3_compiler::dag` helper; preserves `cost.dag` PROXY but
-//                 bypasses `.dag`-as-authority framing.
-//   - γ-extended — `Lens<C>.read` carrier-shape refactor (target-context
-//                 threading) at `std/lens.dag:70-77`; separate Director-tier
-//                 canvas + worker-brief.
+// **Same-slice closure (PR #2171 receipts)**:
+//   - **#38 `coercion_cost_equals_complexity_by_construction`** —
+//     SATISFIED-BY-CONSTRUCTION at HEAD. `Semiring<SymbolicCost>`
+//     `sequential` / `iterate` (`src/v3/std/algebra.dag:181-188`) is the
+//     sole composition authority; no parallel "complexity-vs-cost"
+//     reconciliation surface exists.
+//   - **#39 `no_coercion_cost_dimension`** — SATISFIED-BY-CONSTRUCTION
+//     at HEAD. `SymbolicCost` 7-variant (`std/algebra.dag:181`) is the
+//     sole cost dimension; no parallel `CoercionCost` carrier exists per
+//     grep across `src/v3/{std,lenses,spec}/`.
 //
-// Structural findings forcing the matrix (per gunbc#2068 #issuecomment-4399898495
-// + #issuecomment-4400390687):
+// **Deferred to follow-on canvas (gunb-ai/gunbc#2175)** —
+// cross-cutting Behavior→primitive-identity wiring substrate:
+//   - **#37** `cost_lens_reads_target_realization`
+//   - **#40** `symbolic_cost_expr_equals_executable` (also Verification
+//     Mgr lane #2075)
+//   - **#70** `cost_lens_demonstration`
 //
-//   1. No `data cost_lens: Lens<SymbolicCost>` row at HEAD (this file's line
-//      ~357 below explicitly says *do not author*); the existing scaffolding
-//      is the bespoke `compute_symbolic_costs(d: Dag)` Behavior fold, NOT a
-//      `Lens<SymbolicCost>` instance.
+// Structural findings forcing the canvas-tier deferral (surfaced
+// gunbc#2068 #issuecomment-4399898495 + #issuecomment-4400390687):
+//   1. No `data cost_lens: Lens<SymbolicCost>` row at HEAD — see this
+//      file's line ~357 below ("do not author"); the existing scaffolding
+//      is the bespoke `compute_symbolic_costs(d: Dag)` Behavior fold,
+//      NOT a `Lens<SymbolicCost>` instance.
 //   2. `Lens<C>.read: fn(Dag, Behavior) -> Witness<C>` carries no
-//      target-context — STOP-and-PING criterion #1 from the brief.
-//   3. Behavior→primitive-identity mapping: structurally tractable via
-//      `TransformNode.target: TransformTarget` (`Callable(DeclarationId)`),
-//      per `std/substrate.dag:418` — NOT a deeper structural gap.
-//   4. `.dag`-side iteration over `List<CallableRealization>` has zero
-//      precedent at HEAD; realizations consumed Rust-side at emit time only
-//      (`emit/{rust,python}_target.rs` HashMap-by-DeclarationId at emitter
-//      init). Authoring a lens-fold-side helper introduces a first-precedent
-//      substrate consumption pattern.
-//
-// PR follows the brief's STOP-and-PING discipline: substantive helper
-// authoring deferred until Director ratifies the option (and, if β-extended,
-// the active-target authority shape). Slice B status-header promotion to
-// BEHAVIORALLY COMPLETE additionally gates on the cementing-test landing
-// (#1951, T-LBP cost-lens cementing test cascade per gate #80).
+//      target-context — Q-Lens-Target-Context PROPOSAL territory.
+//   3. Behavior→primitive-identity is structurally tractable via
+//      `TransformNode.target: TransformTarget` (`Callable(DeclarationId)`,
+//      `std/substrate.dag:418`) for Transform behaviors; other variants
+//      need their own anchors.
+//   4. `.dag`-side iteration over `List<CallableRealization>` /
+//      `List<TypeRealization>` has zero precedent at HEAD; realizations
+//      consumed Rust-side at emit time only. Introducing such iteration
+//      is canvas-tier (#2175).
 //
 // ── Dimension<SymbolicCost> wiring — DEFERRED (class-5 data bodies) ─
 //
