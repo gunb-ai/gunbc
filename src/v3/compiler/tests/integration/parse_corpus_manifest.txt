@@ -31,7 +31,7 @@ src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	12	54190	a430f932e3962ecb
 src/v3/std/approximate_field.dag	11	16864	fb342d17eec1c8ac
 src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
-src/v3/std/bootstrap_authority.dag	4	67475	1d59dad2bb459e05
+src/v3/std/bootstrap_authority.dag	4	68520	23e61a465a62e56d
 src/v3/std/bridge_ledger.dag	7	31662	ec3b4ea8c0455eb7
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	18	36754	8023f388c3fb0918
@@ -47,7 +47,7 @@ src/v3/std/go_method_template_contracts.dag	14	133273	43ccd439b5e388ea
 src/v3/std/induction.dag	56	88794	e405e1549cf2fe08
 src/v3/std/integer_diagnostic_order.dag	6	8124	5d7b31594a5b3d5c
 src/v3/std/lens.dag	6	9852	28d5539a5b28716e
-src/v3/std/lens_application.dag	10	15952	88bcc303250de22a
+src/v3/std/lens_application.dag	10	15952	56366e5431f97506
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	f97d4e536b675b1b
 src/v3/std/methods.dag	3	1388	b61693641c32d74b
