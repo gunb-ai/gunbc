@@ -1653,6 +1653,10 @@ fn classify_call_argument(
         return relation;
     }
 
+    if let Some(relation) = match_payload_field_projection_descent_relation(dag, param, arg) {
+        return relation;
+    }
+
     SubValueRelation::SubValueUnknown
 }
 
@@ -1719,6 +1723,85 @@ fn match_payload_descent_relation(
                     type_name: facts.type_name,
                     variant_name: facts.variant_name,
                     field_name: field_name.clone(),
+                    shape: RecursionShape::DirectRecursion,
+                    element_type,
+                },
+                factor: ShrinkFactor::UnitShrink,
+            });
+        }
+    }
+    None
+}
+
+/// Phase-1 broadening Slice 2: classify recursive-call arguments produced by
+/// a single `FieldProject` transform whose input is the payload port of a
+/// match arm whose scrutinee is the parameter directly. This is the
+/// record-payload sibling of [`match_payload_descent_relation`]'s
+/// positional-payload case.
+///
+/// Surface shape:
+///
+/// ```ignore
+/// type EpRec = EpLeaf | EpNode { left: EpRec }
+/// fn ep_depth(t: EpRec) -> Int =
+///   match t { EpNode { left: l } => ep_depth(l), EpLeaf => 0 }
+/// ```
+///
+/// `lower.rs` lowers `EpNode { left: l }` by allocating a payload binding
+/// and synthesizing a `FieldProject { field_label: "left", .. }` transform
+/// whose input is the payload port (see `lower_field_projection_from_port`).
+/// The recursive call's argument is therefore the projection's output port,
+/// not the payload port itself — Slice 1's direct-equality check misses it.
+///
+/// Same fail-closed discipline + structural-fact derivation as Slice 1.
+/// `field_name` here is the `FieldProject.field_label` — already structural,
+/// established by the lowering, NOT a user-pattern-binding name. The label
+/// must also appear in the variant's `Conj` children (validation; if not, the
+/// projection isn't on this variant's payload). Cross-slice invariants
+/// preserved: no new `CallPattern` variant, no `TransformNode` widening,
+/// fail-closed discipline.
+fn match_payload_field_projection_descent_relation(
+    dag: &Dag,
+    param: PortId,
+    arg: PortId,
+) -> Option<SubValueRelation> {
+    let Behavior::Transform(transform) = dag.resolve_producer_opt(&arg)? else {
+        return None;
+    };
+    let TransformTarget::FieldProject { field_label, .. } = &transform.target else {
+        return None;
+    };
+    if transform.inputs.len() != 1 {
+        return None;
+    }
+    let projected_input = transform.inputs[0];
+
+    for branch in dag.nodes().iter().filter_map(Behavior::as_branch) {
+        if branch.input != param {
+            continue;
+        }
+        for path in &branch.paths {
+            let Some(binding) = &path.binding else {
+                continue;
+            };
+            if binding.payload_port != projected_input {
+                continue;
+            }
+            let facts = variant_structural_facts(dag, &path.pattern)?;
+            // Validate the projection's structural label appears in the
+            // resolved variant's Conj field set; otherwise this isn't a
+            // descent on the variant payload.
+            let payload_ty = facts
+                .payload_fields
+                .iter()
+                .find(|(label, _)| label == field_label)
+                .map(|(_, ty)| *ty)?;
+            let element_type = named_type_name(dag, payload_ty)?;
+            return Some(SubValueRelation::StrictSubValue {
+                field: InductiveField {
+                    type_name: facts.type_name,
+                    variant_name: facts.variant_name,
+                    field_name: field_label.clone(),
                     shape: RecursionShape::DirectRecursion,
                     element_type,
                 },
