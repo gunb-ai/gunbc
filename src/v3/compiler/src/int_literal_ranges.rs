@@ -6,8 +6,10 @@
 //! the fold). This module implements only the **static** side needed for literal narrowing:
 //! substrate range facts [`range_min_inclusive` / `range_max_inclusive`](../../../../dsl/extdeps/languages/rust/primitives.dag)
 //! on [`rust_pilot_primitives`](crate::dag::Dag::rust_pilot_primitives) supply
-//! `StaticBound(Interval<Int>)` as [`IntervalInt::ExactInterval`] (decimal endpoints + host `i128`
-//! comparison). [`IntervalInt::Unbounded`] exists so Q1’s interval algebra is representable when a
+//! `StaticBound(Interval<Int>)` as [`IntervalInt::ExactInterval`] (decimal endpoints + host
+//! `BigInt` comparison; widened from `i128` per R3 Phase A so `u128::MAX` and any future wider
+//! primitive is representable structurally). [`IntervalInt::Unbounded`] exists so Q1’s interval
+//! algebra is representable when a
 //! target declares an unbounded value domain (pilot `IntegerPrimitive` rows are all exact today).
 //! [`PlatformDependent`] is out of scope for i64-bounded literal narrowing (deferred targets).
 //!
@@ -34,6 +36,8 @@
 
 use std::collections::HashSet;
 
+use num_bigint::BigInt;
+
 use crate::dag::{
     AtomPayload, Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortId, TypeConnective,
     ValueBody,
@@ -43,6 +47,13 @@ use crate::types::TypeShape;
 
 /// Q1 `Interval<Int>` instance carried from String-decimal range facts (not `LiteralBits::Int`
 /// widening — producer brief).
+///
+/// **Host repr:** `min` / `max` are arbitrary-precision `BigInt` so `u128::MAX` (and any future
+/// wider-than-i128 primitive) is representable structurally without per-width host-repr variant
+/// explosion. Per Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264 (R3 Substrate
+/// Rust-primitive-full-coverage bundled brief). The previous narrow `i128` host-repr deferred the
+/// `u128` row in `dsl/extdeps/languages/rust/primitives.dag` because `u128::MAX` exceeds `i128`
+/// range; that gap is closed by the `BigInt` host repr here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum IntervalInt {
     /// Closed interval — substrate `range_*_inclusive` facts for a fixed-width target primitive.
@@ -50,8 +61,8 @@ pub(crate) enum IntervalInt {
         target_name: String,
         min_decimal: String,
         max_decimal: String,
-        min: i128,
-        max: i128,
+        min: BigInt,
+        max: BigInt,
     },
     /// Value-domain unbounded integer (e.g. arbitrary-precision target). Universal-accept for any
     /// i64-representable literal magnitude.
@@ -85,7 +96,7 @@ impl IntervalInt {
     /// range facts may exceed `i64` (e.g. `u64::MAX`); literals above `i64::MAX` are rejected at
     /// tokenization until the deferred Int128 carrier lane lands.
     pub(crate) fn contains_i64(&self, value: i64) -> bool {
-        let value = i128::from(value);
+        let value = BigInt::from(value);
         match self {
             IntervalInt::Unbounded => true,
             IntervalInt::ExactInterval { min, max, .. } => *min <= value && value <= *max,
@@ -177,8 +188,8 @@ fn nat_decimal_literal_interval() -> IntervalInt {
         target_name: "Nat".to_string(),
         min_decimal: "0".to_string(),
         max_decimal: i64::MAX.to_string(),
-        min: 0,
-        max: i128::from(i64::MAX),
+        min: BigInt::from(0),
+        max: BigInt::from(i64::MAX),
     }
 }
 
@@ -497,17 +508,20 @@ fn malformed_integer_range_fact(message: String, span: SourceSpan) -> Diagnostic
 
 /// Bootstrap-only gate: walk **every** `IntegerPrimitive` row in
 /// `rust_pilot_primitives` and fail closed if any row is structurally
-/// ill-formed, range strings do not parse to `i128`, `min > max`, or
-/// `(algebra, carrier)` witness pairs collide.
+/// ill-formed, range strings do not parse as decimal `BigInt`, `min > max`,
+/// or `(algebra, carrier)` witness pairs collide.
 ///
 /// Call this once when constructing the extdeps-including bootstrapped `Dag`
 /// so drift or corruption in the pilot list surfaces at `Dag::new()`,
 /// not only when a particular std type is queried.
 pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
-    // T-Int128 Slice B1: pilot extended to 9 IntegerPrimitive rows (i8..i64,
-    // i128, u8..u64). u128 lands in Slice B2 once `IntervalInt::ExactInterval`
-    // widens past host i128.
-    const EXPECTED_INTEGER_ROWS: usize = 9;
+    // R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264;
+    // Option (ii) at #issuecomment-4393145631; Phase B-1 at commit `59511503e`):
+    // pilot carries 10 IntegerPrimitive rows (i8..i64, i128, u8..u64, u128).
+    // u128 was unblocked by Phase A `IntervalInt::ExactInterval` BigInt host
+    // repr widening (commit `e7ba022c6`); the prior `T-Int128 Slice B1` /
+    // "Slice B2" deferral marker is resolved.
+    const EXPECTED_INTEGER_ROWS: usize = 10;
     const INTEGER_PRIMITIVE_FIELD_COUNT: usize = 7;
 
     enum PilotListSnapshot {
@@ -710,12 +724,12 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
             continue;
         }
 
-        let (min_n, max_n) = match (min_s.parse::<i128>(), max_s.parse::<i128>()) {
+        let (min_n, max_n) = match (min_s.parse::<BigInt>(), max_s.parse::<BigInt>()) {
             (Ok(mn), Ok(mx)) => (mn, mx),
             _ => {
                 dag.attach_diagnostic(malformed_integer_range_fact(
                     format!(
-                        "rust_pilot_primitives IntegerPrimitive range [{min_s}, {max_s}] must parse to i128"
+                        "rust_pilot_primitives IntegerPrimitive range [{min_s}, {max_s}] must parse as a decimal integer"
                     ),
                     default_span.clone(),
                 ));
