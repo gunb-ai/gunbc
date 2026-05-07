@@ -54,7 +54,7 @@ Authority constants: `BOOL_TYPES_FILE` (`dsl/std/types.dag`), `PIPELINE_AUTHORIT
 1. `bootstrap.rs` no longer references `BOOL_TYPES_FILE` or `PIPELINE_AUTHORITY_FILE` outside doc-comments.
 2. The two diagnostic paths (kernel Bool not-found, pipeline-authority error) carry typed `DiagnosticAttribution::BootstrapAuthority` with the appropriate `BootstrapAuthorityKey` variant — verified by `kernel_bool_path_a_diagnostic_carries_bootstrap_authority_attribution` (already exists at `:519+`) extended for the pipeline path if not present.
 3. **Ledger discipline (per Ledger-discipline preamble):** `src/v3/std/bridge_ledger.dag` row stays `Open` — do NOT mutate. Audit-packet table at `docs/briefs/bridge-retirement-audit-sourcespan-family.md` updated to mark **rows #2 + #6 only** retired with this PR's # citation (rows #1, #3-5, #7-19 remain under their owners; umbrella row advances to `Retired` only when ALL production sites are retired across owner-scoped PRs).
-4. `dag.rs::bridge_source_span_file_participation_retired` ratchet test passes (authored by Verification per the **Cross-Mgr prerequisite** gate above; confirmed-present at HEAD before this PR merges).
+4. **No umbrella-ratchet pre-merge gate** (per Cross-Mgr coordination section): the umbrella `bridge_source_span_file_participation_retired` ratchet predicate cannot flip green on this slice alone — production sites in `lens_apply.rs` / `lower.rs` / `emit.rs` remain post-this-PR. Worker does NOT wait for Verification ratchet authoring. Acceptance for this slice is the audit-packet receipt update in #3 above; Verification's ledger-zero audit progress field updates **post-merge**.
 5. Bootstrap regen: `cargo test -p v3-compiler bootstrap_regen_fresh -- --ignored` clean (path-string deletion must not perturb regen byte-snapshot).
 6. Full suite: `cargo test --workspace --exclude v2-compiler-tests` green; `cargo clippy --all-targets -- -D warnings` clean.
 
@@ -67,7 +67,7 @@ Authority constants: `BOOL_TYPES_FILE` (`dsl/std/types.dag`), `PIPELINE_AUTHORIT
 ## Cross-Mgr handoff
 
 - **PB Mgr**: audit row #6's sibling (`bridge_include_str_side_channels_retired` for `pipeline_authority.rs` compile-body drift) is PB-owned; this Substrate slice does NOT touch the include_str path, only the diagnostic-span path. No cross-PR coordination needed unless audit row interpretation drifts at execution time.
-- **Verification Mgr**: ratchet authoring + ledger-zero audit advancement.
+- **Verification Mgr**: post-merge ledger-zero audit progress update (per `r3-v-bridge-retirement-ledger-zero-audit.md`); no same-slice ratchet authoring required for this slice.
 
 ## Worker disposition
 
