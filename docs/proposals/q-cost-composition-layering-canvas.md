@@ -88,9 +88,7 @@ Closed-system disposition: if N=2 condition never fires, β-extended never fires
 4. **Cementing receipts**: gates #37 + #40 + #70 advance via Rust-side composition demonstrating end-to-end cost reading. #70 demonstration fixture lands per ε framing.
 5. **Future lenses with target-context need**: re-ratify per-lens (re-open canvas if N>1).
 
-**If β-extended (option (i)) ratified instead**: see Q-Lens-Target-Context canvas for sequencing (Lens<C> refactor → 15-instance threading → T-CostLens follow-on slice consumes new shape).
-
-**If both sequenced**: ε now for cost as transitional; β-extended later as canonical when need-count surfaces.
+**(Historical alternatives — REJECTED at ratification):** β-extended (option (i)) ratified-instead path and "both, sequenced" path both rejected per Director ratification (see Director ratification section above). Sequencing under those alternatives recorded only in the canvas-historical record at this point; not live.
 
 ## Framework discipline anchors
 
