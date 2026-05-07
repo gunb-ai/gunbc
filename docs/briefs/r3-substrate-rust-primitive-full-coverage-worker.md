@@ -34,7 +34,7 @@ coupled substrate gaps that this brief lands as **one bundled slice**.
 
 ### Why bundled
 
-All three gaps address the same axis: "support wider/platform-dependent integer primitives." (2) consumes (1)'s widened interval representation; (3) consumes (2)'s structural BoundDeclaration field. Splitting across separate PRs would create cross-PR dependency chains and partial-substrate intermediate states. Bundled-scope discipline allows same-PR per "necessary structural fix" exception.
+All three gaps address the same axis: "support wider/platform-dependent integer primitives." (1) provides BigInt-widened ExactInterval which (3) u128 row consumes via `StaticBoundFact(IntInterval)`. (2) is no-op at HEAD per Option (ii) (existing `PlatformDependentFact` variant on `TargetIntegerInhabitanceBound` already serves the platform-dependent semantics). Splitting across separate PRs would create cross-PR dependency chains and partial-substrate intermediate states. Bundled-scope discipline allows same-PR per "necessary structural fix" exception.
 
 ## Scope
 
@@ -90,7 +90,8 @@ Add `u128` row to `dsl/extdeps/languages/rust/primitives.dag` consuming Delivera
 ### Deliverable 5 — Practice 4 checkpoint
 
 Per `docs/modeling-discipline.md#4-coproduct-dissolution`:
-- `BoundDeclaration` is existing 🟢 GREEN substrate (no new variants added; Deliverable 2/3 just consume existing variants on RustPrimitive rows)
+- `TargetIntegerInhabitanceBound` is existing 🟢 GREEN substrate (3 variants including PlatformDependentFact; no new variants added; Deliverable 2 is no-op; Deliverable 3 just populates rows using existing variants)
+- `BoundDeclaration` (substrate.dag) is parallel existing 🟢 GREEN substrate (mirror-by-convention with `TargetIntegerInhabitanceBound::PlatformDependentFact`; future single-authority consolidation is separate substrate-fact-introduction)
 - `ExactInterval` widening (α BigInt or β typed-variants) — α is type-substitution (no Practice 4 implication); β adds variants and needs 🟢/🟡/🔴 classification + checkpoint comment
 - Worker authors checkpoint comment if β chosen; α path doesn't require new checkpoint
 
@@ -104,9 +105,9 @@ Phase ordering (PR-internal):
 1. DFS-catalog `ExactInterval` consumers + `RustPrimitive` row shape + `rust.dag` row population convention at HEAD
 2. Choose α vs β for ExactInterval widening; author Practice 4 checkpoint if β
 3. Author Deliverable 1 (ExactInterval widening) + verify existing 9 rows hold via bootstrap snapshot
-4. Author Deliverable 2 (RustPrimitive bound field refactor) + migrate existing 9 rows; bootstrap snapshot + manifest verification
-5. Author Deliverable 3 (rust.dag PlatformDependent rows for isize/usize)
-6. Author Deliverable 4 (u128 row) + ratchet update 9 → 12 rows
+4. Author Deliverable 2 (no-op at HEAD — `TargetIntegerInhabitanceBound` already has `PlatformDependentFact` variant per origin/main verification at gunbc#1761 #issuecomment-4393074602; existing 5 rows untouched)
+5. Author Deliverable 3 (`spec/rust.dag` `TargetIntegerTypeInhabitance` rows for isize/usize via existing `PlatformDependentFact` variant)
+6. Author Deliverable 4 (u128 row via `StaticBoundFact(IntInterval)` consuming Phase 3's BigInt-widened ExactInterval) + ratchet update 9 → 12 rows in `dsl/extdeps/languages/rust/primitives.dag` IntegerPrimitive surface (worker DFS confirms whether primitives.dag IntegerPrimitive needs parallel additions or feeds into TargetIntegerTypeInhabitance row population)
 7. §1.8 ledger row receipt (Deliverable 6)
 8. Bootstrap snapshot regen + parse corpus manifest refresh
 9. Cross-program handoff receipt to Grounding Mgr (#1745) for G2 Phase 2 full-coverage dispatch
@@ -114,9 +115,10 @@ Phase ordering (PR-internal):
 ## Acceptance
 
 - `IntervalInt::ExactInterval` widened (α BigInt-based recommended; β typed-variants if α structurally infeasible) with existing 9 i8-i64+u8-u64 rows holding semantic equivalence
-- `RustPrimitive` rows carry structural `BoundDeclaration` field; existing 9 rows migrated from static-string to `StaticBound(Interval<Int>)` form
-- `dsl/extdeps/languages/rust/primitives.dag` has 12 rows (added u128, isize, usize); ratchet at `int_literal_ranges.rs` updated
-- `src/v3/spec/rust.dag` has PlatformDependent rows for isize / usize
+- `TargetIntegerInhabitanceBound` carrier untouched (3-variant shape including PlatformDependentFact already serves; Option (ii) per Mgr ratification at gunbc#1761 #issuecomment-4393159178)
+- `src/v3/spec/rust.dag` gains `TargetIntegerTypeInhabitance` rows for isize / usize via `bound: PlatformDependentFact`
+- u128 row added via `bound: StaticBoundFact(IntInterval)` consuming Phase A BigInt-widened ExactInterval
+- `dsl/extdeps/languages/rust/primitives.dag` updates per worker DFS at HEAD — if IntegerPrimitive surface needs parallel u128/isize/usize additions, ratchet updates 9 → 12 rows; if IntegerPrimitive feeds into TargetIntegerTypeInhabitance row population, no parallel addition needed
 - Practice 4 checkpoint comment if β chosen for ExactInterval; α path no checkpoint required
 - §1.8 row `rust_primitive_full_coverage` advances DECLARED → CONSUMER_LANDED upon merge (cluster: Mgr-discretion T-Numeric-Construction-adjacent OR new T-Interval-Representation)
 - Cross-program handoff receipt to Grounding Mgr (#1745) in PR body — G2 Phase 2 full-coverage dispatch unblocked
@@ -131,8 +133,8 @@ Phase ordering (PR-internal):
 ## STOP-AND-ESCALATE
 
 - **α BigInt dependency adds workspace surface beyond minor**: surface to Substrate Mgr; β typed-variants may be the right shape if dependency cost is high
-- **`BoundDeclaration` variant set insufficient** (e.g., isize/usize needs a third variant beyond `StaticBound`/`PlatformDependent`): STOP — substrate-fact-introduction cascade; surface to Substrate Mgr with proposed third variant + named consumer demand + DFS-of-concept-DAG receipt
-- **Bootstrap snapshot drift** during ExactInterval widening or RustPrimitive bound field refactor: root-cause; do NOT bridge with placeholder; semantic equivalence on existing 9 rows is non-negotiable
+- **`TargetIntegerInhabitanceBound` variant set insufficient at HEAD** (worker DFS surfaces 4th class beyond BoundUnspecified/StaticBoundFact/PlatformDependentFact): STOP — substrate-fact-introduction cascade; surface to Substrate Mgr
+- **Bootstrap snapshot drift** during ExactInterval widening or row population: root-cause; do NOT bridge with placeholder; semantic equivalence on existing 9 rows + 5 TargetIntegerTypeInhabitance rows is non-negotiable
 - **u128 / isize / usize add surfaces additional substrate gaps** (e.g., parser doesn't recognize `u128` literal suffix in `.dag` source): STOP — surface scope expansion; bundled-scope check (necessary-structural-fix vs parallel-infrastructure)
 - **Bundled-scope drift on consumer side**: do NOT bundle Grounding G2 Phase 2 lowering rules / emit verification into this PR. Per Director bundled-scope ratification — parallel infrastructure DISALLOWED. Grounding G2 Phase 2 PR is downstream consumer
 
@@ -147,7 +149,7 @@ Phase ordering (PR-internal):
 2. **Existing brief?** No prior brief on this axis at HEAD. T-E-P-Producer-Broadening (`r3-t-e-p-producer-broadening-worker.md`) and S7 PR-F (`r3-substrate-s7-pr-f-bounddeclaration-consumer-worker.md`) are adjacent precedents — neither covers this scope
 3. **Design-doc match?** Director Path A RATIFIED scope at gunbc#1739 #issuecomment-4392731264 names all three gaps + bundling decision verbatim
 4. **Citations live?** Worker re-verifies at dispatch; substrate-state-grep confirms Path A finding shape unchanged
-5. **Carrier dissolves the bridge?** Yes — widened `ExactInterval` + structural `BoundDeclaration` field + populated isize/usize rows together dissolve the "u128 / isize / usize cannot be represented faithfully in current substrate" bridge. Ad-hoc string encoding (the bridge anti-pattern Director rejected) avoided structurally
+5. **Carrier dissolves the bridge?** Yes — widened `ExactInterval` (Phase A) + populated isize/usize rows via existing `PlatformDependentFact` variant + u128 row via `StaticBoundFact(IntInterval)` together dissolve the "u128 / isize / usize cannot be represented faithfully in current substrate" bridge. Ad-hoc string encoding (the bridge anti-pattern Director rejected) avoided structurally; carrier shape unchanged (Option (ii))
 
 ## Provenance
 
