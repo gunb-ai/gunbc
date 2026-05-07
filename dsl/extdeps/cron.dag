@@ -44,7 +44,7 @@ import std.integer { NonNegativeInt, PositiveInt }
 type CronField
   = Wildcard                                                       // *
   | Exact { value: NonNegativeInt }                                // N
-  | Listed { values: List<NonNegativeInt> }                        // a,b,c
+  | Listed { values: List<NonNegativeInt> }                        // a,b,c (empty-list representable; renders as ""; non-empty refinement deferred with per-field bounds)
   | Ranged { start: NonNegativeInt, end: NonNegativeInt }          // a-b
   | Step { start: NonNegativeInt, step: PositiveInt }              // a/N  (start: 0 renders as "*/N")
 
