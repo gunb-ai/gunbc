@@ -685,7 +685,7 @@ Sharp 5-day reversal (25.33:1 → 1.79:1) attributable to receipt-closure cadenc
 
 #### §7.6.2 Compliance rule (per-PR debt receipt)
 
-Director-ratified at #828 (2026-05-07): the per-PR debt-receipt rule is **structural**, not textual. A PR body satisfies the rule iff it contains either:
+Director-ratified at [#828 #issuecomment-4394414485](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4394414485) (2026-05-07): the per-PR debt-receipt rule is **structural**, not textual. A PR body satisfies the rule iff it contains either:
 1. A literal `Debt receipt:` / `debt-receipt` / `paydown receipt` / `P1 receipt` header followed by a non-trivial citation, OR
 2. Closure-gate / dissolution-naming prose that explicitly names a tracked ROADMAP retirement / dissolution / closure-gate, OR
 3. An explicit `No debt introduced; no debt retired` attestation (acceptable for chore/bookkeeping shape).
