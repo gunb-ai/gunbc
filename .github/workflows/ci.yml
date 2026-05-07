@@ -236,6 +236,16 @@ jobs:
         run: cargo test -p v3-compiler --test integration --no-run
 
       - name: v3 tests (Stage 2d integration module, 360s cold-compile-safe budget)
+        env:
+          # Bootstrap snapshot fn `bootstrapped_fixture_dag_declarations` in
+          # `bootstrap_generated.rs` is ~66K lines of stack-allocated `Declaration{...}`
+          # struct literals. With the default 8MB main-thread stack, debug-mode
+          # initialization runs the snapshot building right against the limit
+          # and overflows whenever the snapshot grows (PR #2161 hit this after
+          # adding 12 IntW*/UIntW* declarations). 16MB clears the cliff with
+          # headroom; long-term remedy is splitting the snapshot fn — tracked
+          # separately from this CI tune.
+          RUST_MIN_STACK: 16777216
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler --test integration lane2_stage_2d_symbolic_cost_test::
@@ -261,6 +271,9 @@ jobs:
           # ratchet); workflow-level `CARGO_TERM_COLOR=always` would otherwise
           # inject ANSI into cargo's stream.
           CARGO_TERM_COLOR: never
+          # See lane2d step above — bootstrap snapshot fn is at the 8MB stack
+          # cliff; bump to 16MB so future bootstrap growth doesn't gate merges.
+          RUST_MIN_STACK: 16777216
         run: |
           start=$(date +%s)
           RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
