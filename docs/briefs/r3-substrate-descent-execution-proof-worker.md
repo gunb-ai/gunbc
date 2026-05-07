@@ -13,10 +13,18 @@ Substrate-fact-introduction (P1 procedure): consumer-side typed substrate functi
 **Location**: `src/v3/std/termination.dag` (extend the existing file — `DescentEvidence` already lives there; sibling typing keeps the lattice + residual co-located). Verify-via-grep at HEAD that no near-neighbor file has prior claim.
 
 ```dag
+// Non-Strict subset of DescentEvidence — P2 API-level enforcement: a residual
+// can never wrap Strict (Strict means termination IS provable; not a residual).
+type NonStrictEvidence
+  = NonIncreasing
+  | DescentUnknown
+
 type DescentResidual
-  = EvidenceUnknown(DescentEvidence)   // wraps DescentUnknown for absent-evidence; wraps NonIncreasing for not-strict
-  | EvidenceIncomplete                  // proof-construction state: per-path coverage incomplete
+  = EvidenceUnknown(NonStrictEvidence)  // wraps DescentUnknown for absent-evidence; wraps NonIncreasing for not-strict
+  | EvidenceIncomplete                   // proof-construction state: per-path coverage incomplete
 ```
+
+**Illegal-states-unrepresentable rationale**: the canvas's `EvidenceUnknown(DescentEvidence)` shape would admit `EvidenceUnknown(Strict)` — illegal by construction (Strict means termination is provable, which is not a residual). Per P2 (API-level enforcement over convention), the residual carrier MUST narrow the payload via a typed subset rather than rely on a runtime-only check. `NonStrictEvidence` is the minimum-irreducible 2-variant subset of `DescentEvidence` that's actually a residual. Worker MUST land `NonStrictEvidence` in the same file as `DescentResidual` (`src/v3/std/termination.dag`); compose with existing 3-variant `DescentEvidence` via inhabitation, not by re-defining variants.
 
 **Single substrate function**:
 
