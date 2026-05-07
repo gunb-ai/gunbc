@@ -15,9 +15,13 @@ module extdeps.cron
 
 // -- Cron entry model -------------------------------------------------
 // Typed cron expression. Each of the 5 standard POSIX fields is a
-// `CronField` rather than an opaque string -- illegal expressions
-// are unrepresentable at fixture-load (single authority: one parse
-// path through the type system, no runtime parse fork).
+// `CronField` rather than an opaque string. The sum type collapses
+// the *string-vs-typed* parse fork into a single authority: there is
+// one path from fixture to wire-format, not two (DSL parse + runtime
+// re-parse). Per-field bound validity (minute in 0..59, hour in 0..23,
+// etc.) is NOT enforced at the type level here -- bare `Int` payloads
+// admit out-of-range values; bounded refinements would be a separate
+// substrate-shape question warranting ratification.
 //
 // Wire format is recovered via `render_cron_field` / `render_cron_schedule`
 // for transports that take a string-shaped schedule (e.g., crontab(1)).
