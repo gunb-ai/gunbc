@@ -45,6 +45,12 @@ hex = "0.4"
 glob = "0.3"
 ureq = "2"
 stacker = "0.1"
+# R3 Substrate Rust-primitive-full-coverage (Director Path A RATIFIED at
+# gunbc#1739 #issuecomment-4392731264): `IntervalInt::ExactInterval`
+# widens from `i128` to `BigInt` to admit `u128::MAX` (and any future
+# wider primitive) without per-width host-repr variant explosion.
+# Single, stable, widely-vendored crate; minor workspace-surface add.
+num-bigint = { version = "0.4", default-features = false }
 
 # Strip debug info from both profiles — this repo produces dev tools,
 # not debuggable production binaries. Cuts artifact size ~60% and
