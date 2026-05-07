@@ -20,10 +20,12 @@ import std.integer { NonNegativeInt, PositiveInt }
 // `CronField` rather than an opaque string. The sum type collapses
 // the *string-vs-typed* parse fork into a single authority: there is
 // one path from fixture to wire-format, not two (DSL parse + runtime
-// re-parse). Per-field bound validity (minute in 0..59, hour in 0..23,
-// etc.) is NOT enforced at the type level here -- bare `Int` payloads
-// admit out-of-range values; bounded refinements would be a separate
-// substrate-shape question warranting ratification.
+// re-parse). Field payloads are refined to `NonNegativeInt` /
+// `PositiveInt` (no negative cron values; non-zero step interval),
+// but per-field upper bounds (minute 0..59, hour 0..23, day_of_month
+// 1..31, etc.) and `Listed` non-empty refinement remain unenforced --
+// bounded refinements at that level are a separate substrate-shape
+// question warranting ratification.
 //
 // Wire format is recovered via `render_cron_field` / `render_cron_schedule`
 // for transports that take a string-shaped schedule (e.g., crontab(1)).
