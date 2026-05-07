@@ -293,8 +293,9 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
 //
 // Structural findings forcing the canvas-tier deferral (surfaced
 // gunbc#2068 #issuecomment-4399898495 + #issuecomment-4400390687):
-//   1. No `data cost_lens: Lens<SymbolicCost>` row at HEAD — see this
-//      file's line ~357 below ("do not author"); the existing scaffolding
+//   1. No `data cost_lens: Lens<SymbolicCost>` row at HEAD — see the
+//      "Cost dimension data declaration / forward Lens boundary" section
+//      below ("do not author `data cost_lens`"); the existing scaffolding
 //      is the bespoke `compute_symbolic_costs(d: Dag)` Behavior fold,
 //      NOT a `Lens<SymbolicCost>` instance.
 //   2. `Lens<C>.read: fn(Dag, Behavior) -> Witness<C>` carries no
