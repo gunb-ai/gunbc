@@ -55,6 +55,7 @@ data bootstrap_authority: BootstrapAuthoritySet = {
     "src/v3/std/clean_emission.dag": V3StdAuthority,
     "src/v3/std/computation.dag": V3StdAuthority,
     "src/v3/std/computation_model.dag": V3StdAuthority,
+    "src/v3/std/coproduct_projection.dag": V3StdAuthority,
     "src/v3/std/cross_target_coverage.dag": V3StdAuthority,
     "src/v3/std/diagnostics.dag": V3StdAuthority,
     "src/v3/std/dimensions.dag": V3StdAuthority,
