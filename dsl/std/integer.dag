@@ -85,8 +85,9 @@ type UInt128 = Semiring<Word128>
 // Slot-2 spelling = `MachineWidth<Word*N*>` — pre-#2156 (S3 Phase-2 parser-
 // grammar for type-level integer literals), the phantom-bits token slot
 // uses landed `std.bit` Word*N* carriers in lieu of literal `<32>` /
-// `<64>` / `<128>` (structurally analogous to IntPlatform's
-// `MachineWidth<PointerWidth>` precedent at `dsl/std/integer.dag:142-143`).
+// `<64>` / `<128>` (structurally analogous to the
+// `MachineWidth<PointerWidth>` precedent on `IntPlatform` / `UIntPlatform`
+// below in this module).
 // Tightens to `MachineWidth<32>` / `MachineWidth<64>` / `MachineWidth<128>`
 // literal-Nat spelling when #2156 lands; named dissolution trigger.
 type IntW32  = Compose<Int,  MachineWidth<Word32>>
