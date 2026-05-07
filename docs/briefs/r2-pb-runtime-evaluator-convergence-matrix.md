@@ -14,7 +14,7 @@ This audit does NOT introduce authority. Every row cites an existing locked auth
 
 ## Purpose
 
-Items 4+5 of `design-pb-runtime-interpreter.md` are landed; #1231 (`feat(v3): rename v3_l1 Value marker to ValueBehavior`) **MERGED 2026-04-30T00:11:56Z** — the flat-namespace blocker on PR-A.1 (the runtime `Value` carrier landing) is therefore cleared. **Refresh 2026-05-06 against `origin/main` HEAD `62bec567114e`:** PR-A.1/PR-A.2 carrier declarations are now live in `src/v3/std/runtime.dag`, and #1849 landed a Seed (1)-(2) typed-deferred Row-4 harness receipt. Row 4 is still not green: the real `pb_runtime_evaluate` / `r2_evaluator_evaluate` declarations are not landed outside the #1849 fixture-local producers. Both managers (PB + Evaluator) need a single shared map of: which surfaces must converge, which authority owns each surface, which test-claim shape exercises convergence at landing time, and which gates currently block authoring.
+Items 4+5 of `design-pb-runtime-interpreter.md` are landed; #1231 (`feat(v3): rename v3_l1 Value marker to ValueBehavior`) **MERGED 2026-04-30T00:11:56Z** — the flat-namespace blocker on PR-A.1 (the runtime `Value` carrier landing) is therefore cleared. **Refresh 2026-05-06 against `origin/main` HEAD `62bec567114e`:** PR-A.1/PR-A.2 carrier declarations are now live in `src/v3/std/runtime.dag`, and #1849 landed a Seed (1)-(2) typed-deferred Row-4 harness receipt. **HEAD refresh 2026-05-07T00:04Z against `origin/main` HEAD `2c7d82031`:** the cited carrier / predicate line anchors below still match current `main`; Row 4 is still not green because the real `pb_runtime_evaluate` / `r2_evaluator_evaluate` declarations are not landed outside the #1849 fixture-local producers. Both managers (PB + Evaluator) need a single shared map of: which surfaces must converge, which authority owns each surface, which test-claim shape exercises convergence at landing time, and which gates currently block authoring.
 
 This matrix is that map. It is read at dispatch authoring time so PB-Runtime workers (when Item 4 lands implementation) and later Evaluator workers cite consistent rows rather than re-deriving the convergence shape.
 
@@ -32,7 +32,7 @@ This matrix is that map. It is read at dispatch authoring time so PB-Runtime wor
 
 ## Prerequisite state for #1231 / PR-A.1 (and equivalent evaluator implementation)
 
-State on `origin/main` HEAD at audit time (initial verification 2026-04-29; refreshed 2026-04-30T00:30Z post-#1231 merge; **refreshed again 2026-05-06T20:50Z against `origin/main` HEAD `62bec567114e`**):
+State on `origin/main` HEAD at audit time (initial verification 2026-04-29; refreshed 2026-04-30T00:30Z post-#1231 merge; refreshed again 2026-05-06T20:50Z against `origin/main` HEAD `62bec567114e`; **HEAD refresh 2026-05-07T00:04Z against `origin/main` HEAD `2c7d82031`**):
 
 | Prerequisite | Authority | Status (as of audit) |
 |---|---|---|
@@ -94,3 +94,7 @@ Per dispatch directive: STOP if existing docs already fully cover this matrix or
 - Substrate authorities: `src/v3/std/verification.dag:181-185` (`DifferentialEquals`); `src/v3/std/verification.dag:281-285` (`ReleaseDeferredClaim` — R1 release-acceptance fixture-only, not generic staging); `src/v3/std/verification.dag:295-299` (`SubstrateResearchDeferredClaim` — TC1 fixture-only, not generic staging); `dsl/std/types.dag:213` (`Map<K, V>`); `src/v3/std/runtime.dag:44-49` (`Value`); `src/v3/std/runtime.dag:76-78` (`EvalFrame`); `src/v3/std/runtime.dag:88-90` (`EvalStateStack`); `src/v3/std/substrate.dag` (`Behavior`, `TypeConnective`, `LoopBound`, `LiteralBits`).
 - Substrate-fact-introduction procedure (escalation path): [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).
 - Live #1231 status: `feat(v3): rename v3_l1 Value marker to ValueBehavior (PB-Runtime flat namespace)` — **MERGED 2026-04-30T00:11:56Z** (audit refresh 2026-04-30T00:30Z).
+
+## Delta — #1920 HEAD Refresh (2026-05-07)
+
+Verified against `origin/main` HEAD `2c7d82031` after #1900/#1908/#1909/#1911. The Row 1 / Row 2 / Row 4 prerequisite pins still match current source anchors: `runtime.dag:44-49` (`Value`), `:76-78` (`EvalFrame`), `:88-90` (`EvalStateStack`), `verification.dag:181-185` (`DifferentialEquals`), `:281-285` / `:295-299` (fixture-specific deferred predicates), `types.dag:213` (`Map<K, V>`), `substrate.dag:31` (`LiteralBits`), and `substrate.dag:398-400` (`LoopBound`). No row semantics changed: #1849 remains only a Seed (1)-(2) typed-deferred receipt, Seed (3) remains unauthored, and `pb_runtime_equivalent_to_evaluator_on_corpus` remains not authored on main.

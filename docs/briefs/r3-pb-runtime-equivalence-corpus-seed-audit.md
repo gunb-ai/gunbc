@@ -2,13 +2,15 @@
 
 **Status:** AUDIT artifact (docs-only). Authored 2026-04-30 by PB Manager continuation per dispatch on inbox #1149 — bounded post-#1235 planning slice that pre-stages the `pb_runtime_equivalent_to_evaluator_on_corpus` corpus *shape* without authoring the TestClaim, the `DifferentialEquals` declaration, any `DeclarationRef`s, or any implementation.
 
-**Delta — #1849 merge receipt (2026-05-06):** PR [#1849](https://github.com/gunb-ai/gunbc/pull/1849) landed the author-now / fire-later Seed (1)-(2) receipt on `main` as squash merge `a001e90e`; this doc is refreshed against `origin/main` HEAD `62bec567114e`. The receipt added only fixture/test-scoped harness material:
+**Delta — #1849 merge receipt (2026-05-06):** PR [#1849](https://github.com/gunb-ai/gunbc/pull/1849) landed the author-now / fire-later Seed (1)-(2) receipt on `main` as squash merge `a001e90e`; this doc was refreshed against `origin/main` HEAD `62bec567114e`, and re-checked 2026-05-07T00:04Z against `origin/main` HEAD `2c7d82031`. The receipt added only fixture/test-scoped harness material:
 - `src/v3/compiler/tests/fixtures/r3_pb_eval_corpus/seed_int_arithmetic.v3`
 - `src/v3/compiler/tests/fixtures/r3_pb_eval_corpus/seed_list_fold.v3`
 - `src/v3/compiler/tests/fixtures/r3_pb_runtime_evaluator_corpus_seeds.dag`
 - `src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs`
 
 The `.dag` fixture declares fixture-local `pb_runtime_evaluate` / `r2_evaluator_evaluate` producers that return `miss_int_lookup()`, and the Rust harness asserts the current `ClaimResult::NotYetImplemented(_)` receipt for those producers while byte-syncing `TestClaim.source` to the two `.v3` authority files. This is not Row 4 green, not the locked `pb_runtime_equivalent_to_evaluator_on_corpus` TestClaim, and not Seed (3) `Lens<C>` authoring.
+
+**Delta — #1920 HEAD refresh (2026-05-07):** Verified against `origin/main` HEAD `2c7d82031` after #1900/#1908/#1909/#1911. The seed-table anchors still match current source: `LiteralBits` at `src/v3/std/substrate.dag:31`, `Value` at `src/v3/std/runtime.dag:44-49`, `fold` / `map` at `src/v3/std/list.dag:96` / `:132`, `LoopBound` at `src/v3/std/substrate.dag:398-400`, `ReleaseDeferredClaim` / `SubstrateResearchDeferredClaim` at `src/v3/std/verification.dag:281-285` / `:295-299`, and canonical lens examples at `src/v3/lenses/named_function_count.dag:24` / `src/v3/lenses/complexity.dag:60`. No scope expansion: Seed (3), final Row-4 `TestClaim` authoring, and real runtime producers remain future dispatch territory.
 
 **Parent authorities:**
 - [`docs/briefs/r2-pb-runtime-evaluator-convergence-matrix.md`](r2-pb-runtime-evaluator-convergence-matrix.md) — merged via #1235; Row 4 names the locked TestClaim `pb_runtime_equivalent_to_evaluator_on_corpus` and the three forward `DeclarationRef`s (`pb_runtime_evaluate`, `r2_evaluator_evaluate`, `corpus`).
