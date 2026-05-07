@@ -39,15 +39,40 @@ fn assert_int_value_port_resolves_to_uint8(
     literal: i64,
     context: &str,
 ) {
+    assert_int_value_port_resolves_to_uint8_in_file(dag, literal, context, None)
+}
+
+fn assert_int_value_port_resolves_to_uint8_in_file(
+    dag: &v3_compiler::dag::Dag,
+    literal: i64,
+    context: &str,
+    span_file: Option<&str>,
+) {
+    // S9 Slice 2.5: registry-driven `range` body synthesis creates additional
+    // `Value(LiteralBits::Int(_))` nodes in the DAG for each types.dag
+    // declaration's record fields (e.g. `RetryCount = Int where range(min:
+    // 1, max: 5)` produces Int(1) and Int(5) nodes). When the user-literal
+    // and a synthesized literal share the same bit-pattern, find the one in
+    // the user's source file via `span.file`. Falls back to first match if
+    // no file filter is provided (preserves prior behavior for tests where
+    // the literal is unambiguous).
     let value = dag
         .nodes()
         .iter()
         .find_map(|node| match node {
-            Behavior::Value(v) if v.data == LiteralBits::Int(literal) => Some(v),
+            Behavior::Value(v)
+                if v.data == LiteralBits::Int(literal)
+                    && span_file.is_none_or(|f| v.span.file == f) =>
+            {
+                Some(v)
+            }
             _ => None,
         })
         .unwrap_or_else(|| {
-            panic!("{context}: int literal {literal} value node not found in DAG");
+            panic!(
+                "{context}: int literal {literal} value node not found in DAG \
+                 (filter span.file={span_file:?})"
+            );
         });
     let ty = match dag.port(value.output).state() {
         PortState::Resolved(ty) => ty,
@@ -149,7 +174,15 @@ fn let_annotated_uint8_in_range_literal_narrows_against_preseed() {
     let dag = compile_to_dag("let x: UInt8 = 5", "let_u8_in_range.v3")
         .expect("in-range annotated u8 `let` must not spuriously report Int vs narrow mismatch");
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
-    assert_int_value_port_resolves_to_uint8(&dag, 5, "let u8 in-range");
+    // Filter to the user-source span — registry-driven `range` body
+    // synthesis adds Int(5) literal nodes from `dsl/std/types.dag`
+    // declarations like `RetryCount = Int where range(min: 1, max: 5)`.
+    assert_int_value_port_resolves_to_uint8_in_file(
+        &dag,
+        5,
+        "let u8 in-range",
+        Some("let_u8_in_range.v3"),
+    );
 }
 
 #[test]
@@ -194,11 +227,18 @@ fn emit_rust_uint8_let_mentions_rust_u8() {
 #[test]
 fn let_annotated_uint8_literal_resolves_to_narrow_type() {
     let dag = compile_to_dag("let x: UInt8 = 5\n", "let_u8_narrow.v3").expect("compiles");
+    // S9 Slice 2.5: synthesized `range(max: 5)` predicate bodies in
+    // `dsl/std/types.dag` (e.g. `RetryCount`) also create `Int(5)` literal
+    // nodes; filter by the user-source file to find the right one.
     let value = dag
         .nodes()
         .iter()
         .find_map(|node| match node {
-            v3_compiler::dag::Behavior::Value(v) if v.data == LiteralBits::Int(5) => Some(v),
+            v3_compiler::dag::Behavior::Value(v)
+                if v.data == LiteralBits::Int(5) && v.span.file == "let_u8_narrow.v3" =>
+            {
+                Some(v)
+            }
             _ => None,
         })
         .expect("literal");
@@ -422,8 +462,10 @@ fn rust_pilot_primitives_integer_witnesses_are_unique() {
     }
     assert_eq!(
         witnesses.len(),
-        9,
-        "pilot carries nine distinct integer primitive witnesses (i8..i64, i128, u8..u64; T-Int128 Slice B1)"
+        10,
+        "pilot carries ten distinct integer primitive witnesses (i8..i64, i128, u8..u64, u128); \
+         u128 row unblocked by R3 Phase A `IntervalInt::ExactInterval` BigInt host repr widening \
+         per gunbc#1739 #issuecomment-4392731264 + Option (ii) at #issuecomment-4393145631"
     );
 }
 
