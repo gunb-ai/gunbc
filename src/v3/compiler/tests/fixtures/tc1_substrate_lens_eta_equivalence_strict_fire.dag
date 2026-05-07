@@ -19,11 +19,11 @@
 // Runner status today: `BinaryDimensionReportEquals` shape-only — `eval_binary_dimension_report_
 // equals_shape` (in `src/v3/compiler/src/test_runner.rs`) returns `NotYetImplemented` with the
 // "structural shape is valid for ... runner evaluation waits for generic DimensionReport<C>
-// production/evaluation substrate" reason. §1.8 gate #11 transitions DECLARED → CONSUMER_LANDED
-// when this fixture + its integration test land green; PASSING transition is gated on Evaluator
-// E3.c (gunbc#1970) wiring lens-fold-over-`Dag` substrate-fact projection authority. Verification
-// authors the .dag-side body Evaluator consumes (cross-Mgr split per #1970 body); E3.c's landing
-// flips this fixture from NotYetImplemented to Pass without further fixture edits.
+// production/evaluation substrate" reason. Per Director (C-modified) ratification at gunbc#828
+// 2026-05-07: §1.8 gate #11 status STAYS DECLARED on this scaffold landing — the
+// NotYetImplemented sentinel is fail-closed-by-construction (an actual implementation that runs
+// WILL fail the assertion when Evaluator E3.c lands, forcing fixture upgrade). Status flips
+// DECLARED → CONSUMER_LANDED → PASSING in one move on E3.c (gunbc#1970) merge.
 //
 // Hard bars (E6-G1.a Option 3 caveat #1853): no `lens_apply` / `eval_substrate_reify` /
 // `reflect_behavior` imports. Carrier shape is the ratified Q-Reification Option A `Dag`-as-

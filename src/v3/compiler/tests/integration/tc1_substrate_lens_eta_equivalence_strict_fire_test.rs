@@ -8,10 +8,12 @@
 //! lens consumer envelope; Evaluator wires lens-fold-over-`Dag` substrate-fact projection.
 //!
 //! Today's runner returns `NotYetImplemented` with the canonical "structural shape is valid"
-//! reason (`eval_binary_dimension_report_equals_shape` in `src/v3/compiler/src/test_runner.rs`);
-//! §1.8 gate #11 transitions DECLARED → CONSUMER_LANDED on this test landing green. PASSING
-//! transition is gated on Evaluator E3.c without further fixture edits — the same shape-valid
-//! NotYetImplemented assertion flips to a Pass assertion via runner upgrade.
+//! reason (`eval_binary_dimension_report_equals_shape` in `src/v3/compiler/src/test_runner.rs`).
+//! Per Director (C-modified) ratification at gunbc#828 2026-05-07: §1.8 gate #11 status STAYS
+//! DECLARED on this scaffold landing; the NotYetImplemented sentinel is fail-closed-by-
+//! construction (any actual implementation that runs WILL fail this assertion when E3.c lands,
+//! forcing fixture upgrade). Status flips DECLARED → CONSUMER_LANDED → PASSING in one move on
+//! Evaluator E3.c (gunbc#1970) merge + assertion upgrade.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
