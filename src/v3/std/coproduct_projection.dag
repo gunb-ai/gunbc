@@ -1,0 +1,128 @@
+// v3.std.coproduct_projection — Variant-aware projection metadata
+// carrier for coproduct response bodies.
+//
+// Substrate-fact-introduction (P1 procedure) per
+// `docs/briefs/r3-substrate-s5-coproduct-projection-carrier-worker.md`,
+// Director γ-ratification at gunb-ai/gunbc#828 c#4394369848. Closure
+// predicate: §1.8 gates #29-#30 (T-Anthropic-Wire). Unblocks Anthropic
+// Messages #1702 re-dispatch + the three already-briefed coproduct
+// paydowns (`r3-coproduct-{1,2,3}-*-worker.md`).
+//
+// **Layering**: compiler-internal projection substrate, NOT user-facing
+// language vocabulary. Contrast `dsl/std/serialization.dag::CoproductWireContract`
+// which lives in `dsl/std/` because users declare wire contracts.
+// `CoproductProjection` is consumed by the projection-resolver during
+// REST-response coproduct dispatch — the `from`-path resolver reads
+// this carrier instead of a `response_variant_tag: String` shim.
+//
+// **Single-keyed-fact discipline (P2 boundary)**: per-variant payload +
+// tag-value live as one keyed fact (`CoproductVariantProjection`), not
+// two parallel maps. A variant cannot have a field projection without a
+// wire-tag value or vice versa — illegal-state-by-construction.
+//
+// **Path-(a) shape decision** (Director ratified #4400354502 over (b)
+// `FieldRef` introduction): `wire_tag_field: String`, with structural
+// identity carried by the `Map<VariantId, CoproductVariantProjection>`
+// key invariant + per-variant typed `WireTagValue`. Aligns with the
+// `services.dag:28-36` precedent that explicitly rejects parallel
+// field-handle wrappers ("`InputFieldRef` … would duplicate without
+// strengthening the structural invariant"). Fail-closed boundary
+// check at fixture load validates `wire_tag_field` names a real field
+// on the coproduct's variant payloads.
+//
+// **DeclarationRef alias debt** (Director-pre-ratified observation #1
+// disposition (b)): `DeclarationRef = String` alias accepted for this
+// slice; debt-paydown row landed in
+// `docs/debt/r3-debt-paydown-ledger-2026-05-02.md` naming the carrier
+// + 2-clause OR-trigger (audit-row #14 closure OR string-identity
+// bridge surfaces on a `DeclarationRef`-typed consumer). Promotes to
+// structural typed shape on trigger fire.
+
+module v3.std.coproduct_projection
+
+import v3.spec.v3_l1 { DeclarationRef }
+
+// 🟡 SCAFFOLD. String-aliased variant identity handle. Keys
+// `CoproductProjection.variant_projections` and `WireTagValue` payloads.
+// Today's substrate grammar can't express a refined
+// `DeclarationRef<VariantDeclaration>`; keying by string mirrors the
+// `DeclarationRef = String` alias precedent at
+// `dsl/std/serialization.dag:16` and the same disposition (b) per
+// Director #4394416049. **Dissolution trigger** (paired with the
+// `DeclarationRef` debt row): promotes to a structural typed handle
+// (e.g., `(coproduct: DeclarationRef, name: String)`) when EITHER
+// (a) audit-row #14 closes module-convergence OR (b) a `VariantId`-
+// typed consumer surfaces a string-identity bridge per
+// `feedback_opaque_strings_attract_heuristics`.
+type VariantId = String
+
+// 🟡 SCAFFOLD coproduct (single-arm record at PR-α scope). Typed leaf
+// for per-variant wire-tag values. Anthropic + REST both string-
+// serialize tags at the wire boundary; the typed-on-our-side /
+// serialized-at-emit pattern keeps the substrate value distinct from
+// its String wire form. Single `StringTag` arm at this slice covers
+// the closure-predicate consumers (Anthropic #1702 + the three
+// coproduct paydowns); additional arms (e.g., `IntTag`, `EnumTag`)
+// land additively when a wire surface needs them. Dissolution trigger:
+// none — this stays SCAFFOLD until all ratifications close, at which
+// point it earns a TERMINAL receipt. Brief constraint #2 binding:
+// `WireTagValue` MUST stay a typed leaf, NOT collapse to `String`.
+type WireTagValue
+  = StringTag { value: String }
+
+// 🟢 TERMINAL at PR-α scope. Per-field metadata slot inside a variant's
+// payload projection. Empty in PR-α because the projection-resolver
+// keys variant dispatch by tag-value alone today; reserved as a record
+// so PR-β can grow `ty: …` / `wire_name: …` without changing
+// `FieldProjection.Fields.fields`'s map shape. Mirrors the
+// `services.dag::InputField {}` precedent at `:64`: canonical name held
+// by the enclosing `Map<String, FieldShape>` key, no `name: String`
+// duplication.
+type FieldShape {}
+
+// 🟡 SCAFFOLD coproduct. Per-variant payload field projection. `Empty`
+// constructor encodes "variant has no payload fields" (e.g., Anthropic
+// empty-payload variants per brief §"Single-keyed-fact discipline")
+// without representing absence as a missing map entry — keeps
+// illegal-state-by-construction. `Fields` carries the populated case
+// keyed by field name (uniqueness by `Map` key invariant; same
+// boundary discipline as `Operation.inputs` at `services.dag:28-36`).
+// Dissolution trigger: when the projection-resolver consumes typed
+// field shapes (rather than name-only dispatch), `FieldShape {}` grows
+// concrete fields and a TERMINAL receipt lands.
+type FieldProjection
+  = Empty
+  | Fields { fields: Map<String, FieldShape> }
+
+// 🟢 TERMINAL at PR-α scope. Single keyed fact (P2 boundary): a
+// variant's payload projection and its wire-tag value live together.
+// Splitting into parallel `Map<VariantId, FieldProjection>` +
+// `Map<VariantId, WireTagValue>` would admit a variant with a tag but
+// no field projection (or vice versa) as structurally representable
+// — per Director's openai-pro REQUEST_CHANGES correction at PR #2079.
+type CoproductVariantProjection {
+  field_projection: FieldProjection
+  wire_tag_value:   WireTagValue
+}
+
+// 🟢 TERMINAL at PR-α scope. Top-level projection carrier keyed by the
+// coproduct declaration. `wire_tag_field: String` per path-(a) ratified
+// shape (Director #4400354502): structural identity via the
+// `variant_projections` map key invariant + per-variant typed
+// `WireTagValue`; fail-closed fixture-load check validates that
+// `wire_tag_field` names a real field on the coproduct's variant
+// payloads (analogous to `services.dag` PR-β `ParamToken.name → Map<
+// String, InputField>` key validation).
+//
+// `declaration: DeclarationRef` carries the `DeclarationRef = String`
+// alias soft-typed handle per Director observation #1 disposition (b);
+// debt-paydown row tracks promotion to structural typed shape.
+//
+// Asymmetry with `InternallyTaggedObject.tag_field: String` at
+// `dsl/std/serialization.dag:49` collapses under path (a) — both
+// String, no debt row needed (brief §3 conditional debt does not fire).
+type CoproductProjection {
+  declaration:         DeclarationRef
+  wire_tag_field:      String
+  variant_projections: Map<VariantId, CoproductVariantProjection>
+}
