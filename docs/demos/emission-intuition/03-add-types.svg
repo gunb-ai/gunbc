@@ -109,7 +109,7 @@
   <text x="832" y="388" class="code">  body:   Str</text>
   <text x="832" y="406" class="code">}</text>
   <text x="832" y="440" class="code">type User { id: Int }</text>
-  <text x="832" y="458" class="code">type Bytes = Vec&lt;u8&gt;</text>
+  <text x="832" y="458" class="code">type Bytes  // built-in</text>
 
   <text x="20" y="1068" class="sub">Three stacked layers on the right. Library code on the left only mentions the top one. Everything underneath still gets emitted.</text>
 </svg>
