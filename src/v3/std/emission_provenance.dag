@@ -29,6 +29,7 @@
 
 module v3.std.emission_provenance
 
+import std.integer { PositiveInt }
 import v3.std.substrate { SourceSpan }
 
 // 🟢 TERMINAL. Field-path identifier for the emission rule that produced
@@ -42,20 +43,30 @@ type EmissionRule = String
 
 // Optional carrier for SourceSpan absence.
 //
+// **Practice 4 classification: 🟢 PRIMITIVE** — closed 2-variant typed
+// sum, structurally distinguished (presence vs absence), irreducible
+// variants. Direct analog of `OptionalDiagnostic` at `v3.std.dimensions`
+// and the canonical "absence-or-presence" idiom. No dissolution trigger
+// — the two variants are exhaustive and the shape is terminal.
+//
 // v3 std has no generic `Option<T>`; the typed-sum pattern is the
-// idiom (compare `OptionalDiagnostic` at `v3.std.dimensions`).
-// `NoSourceSpan` arm is structurally legal — purely structural emissions
-// (headers, fixed scaffolding, derive-attribute lines) have no `.dag`
-// source declaration to attribute to and MUST surface as `NoSourceSpan`
-// rather than fabricating a span. Per `feedback_no_textual_enforcement_bridges`:
-// fail-closed at the substrate boundary, not via runtime sentinel.
+// idiom. `NoSourceSpan` arm is structurally legal — purely structural
+// emissions (headers, fixed scaffolding, derive-attribute lines) have
+// no `.dag` source declaration to attribute to and MUST surface as
+// `NoSourceSpan` rather than fabricating a span. Per
+// `feedback_no_textual_enforcement_bridges`: fail-closed at the
+// substrate boundary, not via runtime sentinel.
 type OptionalSourceSpan
   = NoSourceSpan
   | SomeSourceSpan { value: SourceSpan }
 
 // 🟢 TERMINAL. The "what produced this emitted line?" carrier.
 //
-// - `emitted_line`: line number in emitted target output (1-indexed)
+// - `emitted_line: PositiveInt`: 1-indexed line number in emitted target
+//   output. Refined to `PositiveInt` (`dsl/std/integer.dag:137`,
+//   `Nat where gt_zero`) rather than bare `Int` because line coordinates
+//   are positive by construction; type-system enforces the 1-indexed
+//   contract instead of leaving it as a comment-only invariant.
 // - `rule`: MANDATORY field-path of the rule that produced this line.
 //   Type system enforces presence: every emitted line is attributable
 //   to some rule (even trivial mirror-rules); `rule` absence is
@@ -69,7 +80,7 @@ type OptionalSourceSpan
 // rule AND span (e.g., a derive line on a sum type), so record (product)
 // is the faithful shape, not sum (coproduct).
 type EmissionProvenance {
-  emitted_line: Int
+  emitted_line: PositiveInt
   rule: EmissionRule
   source_span: OptionalSourceSpan
 }

@@ -33,7 +33,7 @@
 use std::collections::HashSet;
 
 use crate::common::cached_compile_to_dag;
-use v3_compiler::dag::{Dag, TypeConnective};
+use v3_compiler::dag::{ArrowBody, Dag, TypeConnective};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -80,6 +80,34 @@ fn emission_provenance_record_has_locked_three_field_shape() {
 }
 
 #[test]
+fn emitted_line_is_positive_int_refinement_not_bare_int() {
+    // Codex BLOCKING finding (sha 6c7c3d85): line numbers are positive
+    // by construction (1-indexed). The carrier MUST type `emitted_line`
+    // as `PositiveInt` (`dsl/std/integer.dag:137`) so the type system
+    // enforces the invariant rather than leaving it as a comment.
+    let dag = generated_full_bootstrap_dag();
+    let decl = dag
+        .declaration_by_name("EmissionProvenance")
+        .expect("EmissionProvenance missing from bootstrap");
+    let TypeConnective::Conj { children } = &decl.connective else {
+        panic!("EmissionProvenance is not a Conj record: {:?}", decl.connective);
+    };
+    let emitted_line_field = children
+        .iter()
+        .find(|f| f.label == "emitted_line")
+        .expect("`emitted_line` field missing from EmissionProvenance");
+    let positive_int = dag
+        .declaration_by_name("PositiveInt")
+        .expect("PositiveInt missing from bootstrap");
+    assert_eq!(
+        emitted_line_field.ty, positive_int.id,
+        "EmissionProvenance.emitted_line must be `PositiveInt`, not bare `Int` \
+         (1-indexed line coordinates are positive by construction; type system \
+         enforces the invariant per codex BLOCKING finding on PR #1928 sha 6c7c3d85)"
+    );
+}
+
+#[test]
 fn optional_source_span_carries_none_and_some_arms() {
     // v3 std has no generic Option<T>; the typed-sum pattern is the
     // idiom (compare `OptionalDiagnostic` at `v3.std.dimensions`).
@@ -108,6 +136,7 @@ fn optional_source_span_carries_none_and_some_arms() {
 // item in `src/v3/lenses/emission_provenance.dag` blocks on Class 5
 // Gap 3 closure (sum-variant `Empty` literal in data body context).
 const LENS_FIXTURE_SOURCE: &str = r#"
+import std.integer { PositiveInt }
 import std.list { List, concat }
 import std.substrate { Dag, Behavior, LoopBound }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
@@ -122,7 +151,7 @@ type OptionalSourceSpan
   | SomeSourceSpan { value: SourceSpan }
 
 type EmissionProvenance {
-  emitted_line: Int
+  emitted_line: PositiveInt
   rule: EmissionRule
   source_span: OptionalSourceSpan
 }

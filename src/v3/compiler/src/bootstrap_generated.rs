@@ -26212,7 +26212,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 2191, 2217),
+            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 2226, 2252),
         });
         declarations.push(Declaration {
             id: DeclarationId(913),
@@ -26237,7 +26237,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 2767, 2848),
+            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 3110, 3191),
         });
         declarations.push(Declaration {
             id: DeclarationId(914),
@@ -26246,7 +26246,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 children: vec![
                     Field {
                         label: "emitted_line".to_string(),
-                        ty: DeclarationId(86),
+                        ty: DeclarationId(89),
                     },
                     Field {
                         label: "rule".to_string(),
@@ -26266,7 +26266,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 3705, 3807),
+            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 4327, 4437),
         });
         declarations.push(Declaration {
             id: DeclarationId(915),
@@ -62641,7 +62641,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 2795, 2807),
+            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 3138, 3150),
         });
         declarations.push(Declaration {
             id: DeclarationId(2029),
@@ -62660,7 +62660,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 2812, 2848),
+            span: SourceSpan::new("src/v3/std/emission_provenance.dag", 3155, 3191),
         });
         declarations.push(Declaration {
             id: DeclarationId(2030),
