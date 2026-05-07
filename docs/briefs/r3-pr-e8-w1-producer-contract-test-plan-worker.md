@@ -181,8 +181,10 @@ slice requires any of these:
 - broadening W1 beyond Rust / Int / one named output bind before typed
   observation authority lands;
 - treating #1857 as runner, E8, Q-Reification, or lens-over-`Dag` authority;
-- using `lens_apply.rs`, reflected-program folding, or `ReflectedProgram<T>` to
-  justify W1;
+- using `lens_apply.rs`, reflected-program folding, or fold-over-`Dag` (per
+  Q-Reification Option A ratified 2026-05-07 [#2096](https://github.com/gunb-ai/gunbc/pull/2096),
+  `Dag` IS the reflected program; no separate `ReflectedProgram<T>` carrier exists)
+  to justify W1;
 - executing fixture `rust_emit_output` / `dag_eval_output` stub bodies as
   producer semantics;
 - comparing emitted source, raw stdout bytes, diagnostics, or exit code as

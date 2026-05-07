@@ -13,7 +13,10 @@ whose non-function fields are projected through the evaluator, and whose
 carrier.
 
 This is not a reflected-program fold. Lens-over-`Dag` folding is deferred to
-Q-Reification / `ReflectedProgram<T>` typed declaration-reference carrier work.
+follow-on consumer-wiring work (`Dag` IS the reflected program per Q-Reification
+Option A ratified 2026-05-07 [#2096](https://github.com/gunb-ai/gunbc/pull/2096);
+the deferred work is **wiring lens-fold consumers through `.dag` body authority
+via the Evaluator**, NOT a separate `ReflectedProgram<T>` carrier).
 
 ## Context
 
@@ -143,8 +146,11 @@ The implementation PR must demonstrate:
 7. The test proves no `lens_apply`, `eval_substrate_reify`, or reflection
    helper is imported or called.
 8. PR body explicitly says: this is a lens consumer-wiring mechanism
-   demonstration; lens-over-`Dag` folding is deferred to
-   `ReflectedProgram<T>` / typed declaration-reference carrier work.
+   demonstration; lens-over-`Dag` folding is deferred to follow-on
+   consumer-wiring (`Dag` IS the reflected program per Q-Reification Option A
+   ratified 2026-05-07 [#2096](https://github.com/gunb-ai/gunbc/pull/2096); the
+   deferred work is wiring fold consumers through `.dag` body authority via the
+   Evaluator, NOT a separate `ReflectedProgram<T>` carrier).
 
 Validation should be the narrowest relevant test target plus any repository
 format/check command normally required for touched files.
