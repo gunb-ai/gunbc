@@ -66,7 +66,7 @@ The factoring claim is **probably honest for cost specifically** but **probably 
 
 If multiple lenses surface target-context needs over time, ε's per-lens Rust-side wiring becomes parallel-representation debt → β-extended (Q-Lens-Target-Context option (i)) becomes the right path.
 
-## Directorratification ask
+## Director ratification ask
 
 1. **Test the factoring**: is `SymbolicCost` × per-primitive-realization-cost an honest factoring per `feedback_abstraction_layering`? Or does it carry hidden parallel-authority?
 2. **Generalization scope**: if ε is ratified for cost, what's the principle for future target-context-needing lenses? (Per-lens Rust-side wiring? Or Q-Lens-Target-Context cascade if N>1?)
