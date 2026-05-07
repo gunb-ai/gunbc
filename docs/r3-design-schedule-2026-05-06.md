@@ -238,9 +238,9 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 **Scope**: per Verification canvas V6 + `feedback_isomorphism_or_generation_for_mirrors` — Rust↔.dag mirror conformance gate. Verification test-only pressure; Substrate Mgr authority on mirror.
 
 **Dispatch trigger**: pending Director scope-decision (in-R3 vs post-R3 carry).
-**Closure predicate**: NEW gate `value_body_isomorphism_gate_active` if added; design first.
+**Closure predicate**: `value_body_substrate_mirror_isomorphism_executable` **PASSING** on `main` — same working gate label as [`docs/briefs/r3-v-valuebody-substrate-mirror-isomorphism-v1-worker.md`](briefs/r3-v-valuebody-substrate-mirror-isomorphism-v1-worker.md) and [`docs/briefs/r3-verification-manager.md`](briefs/r3-verification-manager.md) §Sub-briefs (**INVARIANTS** §P2: §1.8 gate **#** only after Q-row ratification + Director enumeration).
 
-**Verification Mgr PRE-AUTH worker brief:** [`docs/briefs/r3-v-valuebody-substrate-mirror-isomorphism-v1-worker.md`](briefs/r3-v-valuebody-substrate-mirror-isomorphism-v1-worker.md) — working consumer name `value_body_substrate_mirror_isomorphism_executable` (§1.8 enumeration **after** Q-row ratification; **INVARIANTS** §P2).
+**Verification Mgr PRE-AUTH worker brief:** [`docs/briefs/r3-v-valuebody-substrate-mirror-isomorphism-v1-worker.md`](briefs/r3-v-valuebody-substrate-mirror-isomorphism-v1-worker.md) — dispatch artifact for the closure predicate above (STOP+PING + dependencies in-brief).
 
 ---
 
