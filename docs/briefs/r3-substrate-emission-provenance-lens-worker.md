@@ -1,5 +1,5 @@
 ---
-status: queued (worker brief; revised by Substrate Mgr per Director Q1 (a) RATIFICATION at gunbc#1739 #issuecomment-4392562911 (2026-05-06); supersedes earlier PM-authored PROPOSAL — PR #1902 merged then revised here. Dispatch fires post-T-Rule-Enumeration landing on main.)
+status: dispatchable per Director Reading C RATIFICATION at gunbc#1739 #issuecomment-4392797954 (2026-05-07). T-Rule-Enumeration retired (substrate gap closed structurally via existing field-path enumeration on `*SyntaxBinding`/`*OpsBinding` structs). Worker pin: smart-ram-167 (Mgr discretion per Director ratification; smart-ram has fresh context from substrate-state-grep that surfaced Reading C; valiant-ibex-312 already dispatched on Rust-primitive-full-coverage / T-Interval-Representation).
 authority parent: R3 Substrate Manager (#1739)
 ratification: Q1 (a) per-Behavior Lens<C>-compatible RATIFIED at gunbc#1739 #issuecomment-4392562911 (zesty-bear-812, 2026-05-06). Q1 (b) per-line instrumentation REJECTED. Q1 (d) parallel substrates REJECTED. Q3: gate `emission_provenance_lens_landed` under T-CostLens-Composition cluster.
 roadmap row: §1.8 ledger row TBD slot — gate `emission_provenance_lens_landed` under T-CostLens-Composition cluster per Director Q3 ratification
@@ -11,7 +11,7 @@ authority docs:
   - PR #1879 (emission-intuition slide — visualization consumer)
 gates:
   - `emission_provenance_lens_landed` (proposed §1.8 row; slot pending T-CostLens-Composition cluster)
-worker pin: TBD (queued post-T-Rule-Enumeration landing; smart-ram-167 likely on T-Rule-Enumeration so valiant-ibex-312 likely takes this — Mgr discretion at dispatch)
+worker pin: smart-ram-167 (Mgr discretion per Director Reading C ratification; fresh context on field-path enumeration from substrate-state-grep)
 ---
 
 # R3 Substrate — `Lens<List<EmissionProvenance>>` worker brief (per (a) per-Behavior framing)
@@ -39,28 +39,26 @@ This brief revises the earlier PM-authored proposal (PR #1902 merged
 at 54419badf, but the brief shape needed Substrate Mgr canvas + Director
 re-ratification per the codex BLOCKING category-mismatch finding).
 
-## Precondition gate
+## No precondition gate (Reading C ratification)
 
-**T-Rule-Enumeration MUST land first** per Director Q1 reasoning:
+Earlier draft gated dispatch on T-Rule-Enumeration landing. Per
+Director Reading C RATIFICATION at gunbc#1739 #issuecomment-4392797954:
+T-Rule-Enumeration is RETIRED — substrate gap was a phantom; rule
+enumeration is structurally already provided by the `*SyntaxBinding`
+/ `*OpsBinding` field-path set in `src/v3/compiler/src/emit/rust_target.rs`
+(~37 distinct field paths catalogued by smart-ram-167's substrate-state-grep
+at gunbc#1759 #issuecomment-4392696623).
 
-> Without T-Rule-Enumeration: emission is opaque to the static lens;
-> (a) reads as "per-Behavior list of unknown provenance." That's not
-> honest.
->
-> With T-Rule-Enumeration: emission becomes a `.dag` algebra over
-> Behavior + LangSpec rule data; static lens can fold it; (a) returns
-> honest per-line provenance.
+`EmissionRule` carrier IS the field-path string itself (e.g.,
+`"indexes.syntax.statements.let_binding"`). No new substrate
+authoring needed; `EmissionRule = String` of field-path per Director
+Q3 ratification:
 
-Brief dispatches when:
-1. T-Rule-Enumeration substrate-fact-introduction lands on main (gate
-   `langspec_emission_rules_enumerable_data` advances DECLARED →
-   CONSUMER_LANDED) — see `docs/briefs/r3-substrate-t-rule-enumeration-worker.md`
-2. Worker re-greps `src/v3/` to confirm rule-name carrier exists +
-   emission code dispatches via named-rule lookup
+> `feedback_reason_not_label`: field-path IS the stable reason;
+> nominal alias is the volatile label. Substrate carries the structural
+> truth; aliases are derived display surface.
 
-If precondition is missing at dispatch, STOP and surface — this brief
-consumes T-Rule-Enumeration substrate; not a substrate-producer on
-the rule-enumeration axis.
+Brief dispatches immediately.
 
 ## Scope
 
@@ -83,9 +81,13 @@ type EmissionProvenance {
 
 **Reshape rationale** (per codex BLOCKING at PR #1910 sha 2ed1046e Finding #1): earlier typed-sum form `EmissionOrigin = SubstrateDeclMirror(SourceSpan) | FoldRuleAutoEmit(EmissionRule)` conflated two orthogonal axes. A single emitted line genuinely can have BOTH attributions — e.g., `#[derive(Debug)]` emitted on a Foo enum has rule=`derive_for_disj` AND source-span attribution to the Foo declaration in the `.dag` source. The two facts are not mutually exclusive; modeling them as sum variants forced false either-or framing. Record (product) form with mandatory rule + optional span is faithful to actual emission semantics and structurally fail-closed (rule presence enforced by type system; never both-absent).
 
-`EmissionRule` is the carrier landed by T-Rule-Enumeration (α sum type
-or β named-string lookup, whichever shape T-Rule-Enumeration ratified).
-Worker imports the rule-name carrier verbatim; brief does NOT re-author it.
+`EmissionRule = String` (field-path; Director Q3 ratification at
+gunbc#1739 #issuecomment-4392797954). Worker references the existing
+`*SyntaxBinding` / `*OpsBinding` field-path set as the de-facto
+enumeration; no new rule-name carrier authored. Field-path-string
+preserves structural navigability (per `feedback_reason_not_label`);
+nominal aliases live at display layer if desired (visualization-side
+projection, not substrate-side).
 
 **Practice 4 classification**: N/A — `EmissionProvenance` is a record
 (product), not a sum (coproduct). Practice 4 coproduct-dissolution
@@ -113,9 +115,10 @@ Author lens instance per Director-locked 6-field shape:
 - `read: fn(Dag, Behavior) -> Witness<List<EmissionProvenance>>` —
   per-Behavior fold computing the provenance list. For each emitted
   line attributable to this Behavior, populate:
-  - `rule: EmissionRule` — the rule that produced this line (always
-    present; trivial-mirror rules count). Looked up from emission
-    code's named-rule dispatch (T-Rule-Enumeration carrier)
+  - `rule: EmissionRule` (= field-path String) — the field-path of the
+    rule that produced this line (always present; trivial-mirror rules
+    count). Captured from the `render_named_template(...)` call site's
+    field-path argument at emission time.
   - `source_span: Option<SourceSpan>` — populated when the rule's
     input traces to a `.dag` source declaration; absent for purely
     structural emissions (e.g., headers, fixed scaffolding rules
@@ -131,9 +134,10 @@ Author lens instance per Director-locked 6-field shape:
   breaks
 - `validate: fn(Dag, List<EmissionProvenance>) -> OptionalDiagnostic` —
   record form makes "rule absent" structurally impossible (type system
-  enforces). Aggregate validation: surface diagnostic if `rule` refers
-  to a name not in `EmissionRule` enumeration (mechanically caught by
-  type system if α; runtime check if β with named dissolution trigger);
+  enforces). Aggregate validation: surface diagnostic if `rule`
+  field-path doesn't correspond to a real field on
+  `*SyntaxBinding`/`*OpsBinding` structs (worker DFS-catalogs the
+  field set at dispatch; round-trip verifies the field-path resolves);
   optional-`source_span` absence is structurally legal, NOT a diagnostic
 
 Per `feedback_compositional_not_templating`: per-Behavior fold composes
@@ -150,13 +154,13 @@ Author cementing test that:
 4. **Verifies**: every emitted line has a corresponding
    `EmissionProvenance` entry in the per-Behavior aggregate; flatten
    to per-line view matches emitted-line numbering
-5. **Verifies field population**: every entry's `rule` resolves to a
-   real `EmissionRule` carrier value; ≥1 entry has `source_span: Some(...)`
-   (substrate-decl-traceable); ≥1 entry has `source_span: None`
-   (structural-only emission); span-Some entries' SourceSpan resolves
-   to a real `.dag` Behavior/Declaration in the input source
-6. **Fail-closed paths**: missing rule-name carrier (precondition broke
-   post-merge) → test errors out
+5. **Verifies field population**: every entry's `rule` field-path
+   resolves to a real `*SyntaxBinding`/`*OpsBinding` field
+   (round-trip: emitter writes field-path → lens recovers same
+   field-path → no information loss); ≥1 entry has `source_span:
+   Some(...)` (substrate-decl-traceable); ≥1 entry has `source_span:
+   None` (structural-only emission); span-Some entries' SourceSpan
+   resolves to a real `.dag` Behavior/Declaration in the input source
 
 ### Deliverable 4 — §1.8 ledger receipt
 
@@ -168,8 +172,7 @@ Grounding-side visualization-consumer wiring in this PR).
 ## Slice — single PR
 
 Phase ordering (PR-internal):
-1. Verify precondition: T-Rule-Enumeration on main; rule-name carrier
-   exists; emission code dispatches via named-rule lookup
+1. DFS-catalog `*SyntaxBinding`/`*OpsBinding` field set in `src/v3/compiler/src/emit/rust_target.rs` (Reading C confirmed ~37 field paths; worker re-greps at HEAD for actual count)
 2. Author `EmissionProvenance` record carrier (Deliverable 1)
 3. Author `Lens<List<EmissionProvenance>>` instance (Deliverable 2)
 4. Author cementing test (Deliverable 3)
@@ -187,8 +190,10 @@ Phase ordering (PR-internal):
   Director-locked shape; T-CostLens-Composition precedent verified for
   shape parity
 - Cementing test landed: per-Behavior fold output flattens to per-line
-  view matching emitted-line numbering; ≥1 of each origin class fires;
-  rule-name references resolve via T-Rule-Enumeration carrier
+  view matching emitted-line numbering; ≥1 entry with span-Some + ≥1
+  entry with span-None; field-path round-trip verified (every
+  `rule` field-path resolves to a real `*SyntaxBinding`/`*OpsBinding`
+  field at HEAD)
 - §1.8 row `emission_provenance_lens_landed` advances DECLARED →
   PRODUCER_LANDED (Grounding-consumer for visualization wiring is a
   separate downstream brief if needed; not bundled per Director
@@ -202,8 +207,7 @@ Phase ordering (PR-internal):
 
 ## STOP-AND-ESCALATE
 
-- **T-Rule-Enumeration not landed at dispatch**: STOP — reopen on
-  rule-name carrier landing on main
+- **`*SyntaxBinding` / `*OpsBinding` field set materially differs from Reading C catalog at HEAD** (e.g., heavy refactor renamed the structs): STOP — substrate-state-divergence; surface to Substrate Mgr; brief absorbs corrected field-path enumeration before authoring
 - **`iterate` identity assumption breaks** (body emitted multiple times
   per LoopBound, NOT once): STOP — surface to Substrate Mgr; lens
   iterate field shape may need rework
