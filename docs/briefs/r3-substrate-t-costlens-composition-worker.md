@@ -1,6 +1,6 @@
 # Worker brief — Substrate T-CostLens-Composition (γ ratified)
 
-**Sub-issue**: gunbc#1957 (parented under #1939 Substrate Mgr lane).
+**Sub-issue**: gunbc#2141 (parented under #1939 Substrate Mgr lane; supersedes #1957 per surgical-recreate at gunbc#828 #issuecomment-4397693699).
 **Authority**: Director ratification of **option γ** at gunbc#828 #issuecomment-4395691775 (2026-05-07); supersedes the canvas at `docs/briefs/r3-substrate-t-costlens-composition-canvas.md` (canvas may be deleted after this brief lands per single-authority discipline).
 **Closure predicate**: §1.8 gates #37 `cost_lens_reads_target_realization`, #38 `coercion_cost_equals_complexity_by_construction`, #39 `no_coercion_cost_dimension`, #40 `symbolic_cost_expr_equals_executable`, plus #70 `cost_lens_demonstration`.
 

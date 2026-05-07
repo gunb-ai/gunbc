@@ -95,7 +95,9 @@ The Phase 4 compile should combine:
   #1275-#1500 slice;
 - #1839 / `docs/audit/r3-evaluator-pr-1500-1803-debt-sweep.md` for the
   #1500-#1803 slice;
-- this packet's post-#1803 queue definition.
+- this packet's post-#1803 queue definition;
+- `docs/audit/r3-evaluator-pr-1804-onward-debt-sweep.md` (this packet's
+  Phase 4 receipt; end cursor #2117) for the post-#1803 slice.
 
 Do not infer global debt counts from this packet. Its job is to preserve the
 next evaluator audit boundary and STOP criteria so the broader
