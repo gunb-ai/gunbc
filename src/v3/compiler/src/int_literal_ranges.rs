@@ -508,16 +508,19 @@ fn malformed_integer_range_fact(message: String, span: SourceSpan) -> Diagnostic
 
 /// Bootstrap-only gate: walk **every** `IntegerPrimitive` row in
 /// `rust_pilot_primitives` and fail closed if any row is structurally
-/// ill-formed, range strings do not parse to `i128`, `min > max`, or
-/// `(algebra, carrier)` witness pairs collide.
+/// ill-formed, range strings do not parse as decimal `BigInt`, `min > max`,
+/// or `(algebra, carrier)` witness pairs collide.
 ///
 /// Call this once when constructing the extdeps-including bootstrapped `Dag`
 /// so drift or corruption in the pilot list surfaces at `Dag::new()`,
 /// not only when a particular std type is queried.
 pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
-    // T-Int128 Slice B1: pilot extended to 9 IntegerPrimitive rows (i8..i64,
-    // i128, u8..u64). u128 lands in Slice B2 once `IntervalInt::ExactInterval`
-    // widens past host i128.
+    // R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264;
+    // Option (ii) at #issuecomment-4393145631; Phase B-1 at commit `59511503e`):
+    // pilot carries 10 IntegerPrimitive rows (i8..i64, i128, u8..u64, u128).
+    // u128 was unblocked by Phase A `IntervalInt::ExactInterval` BigInt host
+    // repr widening (commit `e7ba022c6`); the prior `T-Int128 Slice B1` /
+    // "Slice B2" deferral marker is resolved.
     const EXPECTED_INTEGER_ROWS: usize = 10;
     const INTEGER_PRIMITIVE_FIELD_COUNT: usize = 7;
 
