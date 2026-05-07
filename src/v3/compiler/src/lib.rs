@@ -430,6 +430,9 @@ pub mod evaluator {
                     }
                 })?;
                 discharge_descent_obligation(dag, loop_node.id, *cluster, *measure, proof)?;
+                // Current E2 consumer scope discharges the termination
+                // obligation and executes one descent step. Body-to-convergence
+                // semantics belong to the follow-on descent producer/runtime.
                 1
             }
         };
