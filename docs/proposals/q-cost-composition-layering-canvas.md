@@ -6,7 +6,7 @@
 
 **Sibling canvas**: `q-lens-target-context-canvas.md` (β-extended path; substrate-shape question on whether `.dag`-side lenses receive target-context).
 
-**Status**: **canvas — Director-RATIFIED 2026-05-07 (ε standalone for cost; canonical-not-transitional)**; PROPOSAL maturation pending. Ratification at gunb-ai/gunbc#2181 #issuecomment-... — ε ratified as canonical-for-cost; β-extended DEFERRED to N=2 trigger event (when second lens surfaces target-context need); "both sequenced" REJECTED as bridge-with-named-dissolution anti-pattern.
+**Status**: **canvas — Director-RATIFIED 2026-05-07 (ε standalone for cost; canonical-not-transitional)**; PROPOSAL maturation pending. Ratification at gunb-ai/gunbc#2181 #issuecomment-4401584012 — ε ratified as canonical-for-cost; β-extended DEFERRED to N=2 trigger event (when second lens surfaces target-context need); "both sequenced" REJECTED as bridge-with-named-dissolution anti-pattern.
 
 ## The factoring claim
 

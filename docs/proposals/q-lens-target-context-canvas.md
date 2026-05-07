@@ -25,7 +25,7 @@ type Lens<C> {
 
 **`read` signature carries no target-context**. Per-primitive realization-cost reading (T-CostLens-Composition gate #37) requires the lens to know WHICH target it's emitting for to pick the right realization row. Realizations are consumed Rust-side at emit time only (`emit/{rust,python}_target.rs` builds `HashMap<DeclarationId, …Binding>` from data-row scan); zero `.dag`-side fold-over-`List<CallableRealization>` / `List<TypeRealization>` / `List<MethodTemplateContract>` precedent at HEAD.
 
-**Lens instances at HEAD** (`src/v3/lenses/`): complexity, cost, dag_shape, effect_enumeration, emission_provenance, idempotency, named_function_count, parallelism, provenance, structural_resolution, unused_parameters, variant_payload, lens_composition_associative_witness, infer_helpers, lower_helpers — 15+ lens instances using the generic Lens<C> carrier.
+**Lens instances at HEAD** (`src/v3/lenses/`, exact registry per `ls`): `complexity.dag`, `cost.dag`, `dag_shape.dag`, `effect_enumeration.dag`, `emission_provenance.dag`, `idempotency.dag`, `infer_helpers.dag`, `lens_composition_associative_witness.dag`, `lower_helpers.dag`, `named_function_count.dag`, `parallelism.dag`, `provenance.dag`, `structural_resolution.dag`, `unused_parameters.dag`, `variant_payload.dag` — **exactly 15 .dag files** using the generic `Lens<C>` carrier (some are helper modules — `infer_helpers` / `lower_helpers` — that author shared structural fns rather than top-level lens instances).
 
 ## Question (binary)
 
@@ -100,7 +100,7 @@ Grep + analysis of `src/v3/lenses/` instances:
 - **complexity.dag**: structural-fold over algebra; no target-context need (complexity IS target-agnostic)
 - **dag_shape.dag**: structural; no target need
 - **effect_enumeration.dag**: structural-effect axis; no target need
-- **emission_provenance.dag**: emission-side reading — POSSIBLY target-context need
+- **emission_provenance.dag**: STATUS at HEAD = `STRUCTURALLY TERMINAL; LENS-INSTANCE FIXTURE-BOUND; BEHAVIORALLY DEFERRED`. `read` body is a fail-closed `Empty` stub until producer wiring lands (per file's status header). Producer-side instrumentation hooks at `emit/rust_target.rs::render_named_template` would record target-keyed `*SyntaxBinding` / `*OpsBinding` provenance entries that the lens framework's `Empty`/`Concat` framework then consumes. **Whether this constitutes target-context need is currently UNGROUNDED** — emission_provenance at HEAD doesn't read target-realization data inside the lens fold; the producer-side records target-specific entries which the lens consumes via existing framework. Re-evaluate at producer-wiring landing time. NOT a confirmed N=2 candidate; flagged speculative pending behavioral-completion grep.
 - **idempotency.dag**: structural; no target need
 - **named_function_count.dag**: structural; no target need
 - **parallelism.dag**: R4-carved; structural at HEAD
@@ -110,7 +110,7 @@ Grep + analysis of `src/v3/lenses/` instances:
 - **variant_payload.dag**: structural; no target need
 - **lens_composition_associative_witness.dag**: meta-lens; no target need
 
-**Net finding**: cost.dag is the load-bearing target-context-needing lens; emission_provenance.dag is a secondary candidate (emission-side framing; target-keyed emission may need lookup). Other lenses are target-agnostic.
+**Net finding**: cost.dag is the load-bearing target-context-needing lens at HEAD. emission_provenance.dag was previously framed as a secondary candidate but per emission_provenance.dag status header (`STRUCTURALLY TERMINAL; LENS-INSTANCE FIXTURE-BOUND; BEHAVIORALLY DEFERRED`; `read` body fail-closed `Empty` stub), the lens does NOT currently read target-context inside the fold — producer-side instrumentation records target-specific entries which the lens framework consumes via standard `Empty`/`Concat`. Whether emission_provenance constitutes a real N=2 trigger candidate is **ungrounded at HEAD** and re-evaluates when producer wiring lands. Other 13 lenses are target-agnostic per file headers / structural framing. **N=1 confirmed at HEAD**; N=2 is empirically open pending lens-completion cycles, not pre-claimable.
 
 This means option (i)'s threading cost is mostly mechanical (14 of 15 instances don't substantively use `LanguageSpec`). Option (ii)'s explosion-by-target is bounded too (cost × 3 targets + emission_provenance × 3 targets = 6 per-target instances if (ii) chosen) — but still violates parallel-representation discipline.
 
