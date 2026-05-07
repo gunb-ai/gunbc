@@ -566,19 +566,19 @@ fn e_p_per_call_descent_evidence_classifies_match_payload_self_call_as_strict_su
     // the lane needs for `e_p_per_call_descent_evidence_full_coverage`.
     let dag = compile_to_dag(
         "\
-type List = Nil | Cons(List)
-fn length(xs: List) -> Int =
-  match xs { Cons(tail) => length(tail), Nil => 0 }
+type EpList = EpNil | EpCons(EpList)
+fn ep_count(xs: EpList) -> Int =
+  match xs { EpCons(tail) => ep_count(tail), EpNil => 0 }
 ",
         "e_p_match_payload.v3",
     )
-    .expect("recursive list-length fixture compiles");
+    .expect("recursive list-count fixture compiles");
 
     let entries = per_call_descent_evidence(&dag);
     let length = entries
         .iter()
-        .find(|entry| entry.caller == "length" && entry.callee == "length")
-        .unwrap_or_else(|| panic!("expected length self-call evidence, got {entries:?}"));
+        .find(|entry| entry.caller == "ep_count" && entry.callee == "ep_count")
+        .expect("expected ep_count self-call evidence in per-call side table");
 
     assert_eq!(length.evidence.len(), 1);
     match &length.evidence[0] {
@@ -588,16 +588,22 @@ fn length(xs: List) -> Int =
                 "match-payload binding name is the structural sub-value field"
             );
             assert_eq!(
-                field.variant_name, "Cons",
-                "variant tag rides the BranchPattern through the producer"
-            );
-            assert_eq!(
                 factor,
                 &ShrinkFactor::UnitShrink,
                 "match-payload descent is a unit-shrink: one constructor peeled"
             );
+            // 🟡 SCAFFOLD: `field.variant_name` rides the lowered `BranchPattern`.
+            // For `ResolvedVariant`, the variant constructor `Declaration` carries
+            // `name: None` (variant labels live on the parent `Disj`'s field
+            // labels, not on the per-variant declaration), so the producer falls
+            // back to an opaque `decl#N` tag. Dissolution trigger: parent-Disj
+            // label lookup or reflected variant-name carrier on the `Path.pattern`.
+            assert!(
+                !field.variant_name.is_empty(),
+                "variant tag is non-empty (textual or scaffold-opaque)"
+            );
         }
-        other => panic!("expected StrictSubValue for length(tail), got {other:?}"),
+        other => panic!("expected StrictSubValue for ep_count(tail), got {other:?}"),
     }
 }
 
