@@ -23,9 +23,13 @@ issue #1941; this evaluator-cadence work item issue #1973.
 `docs/audit/r3-evaluator-*`. The `--limit 500` window covers all PR numbers
 through #2117 with the `merged:>=2026-05-06` floor (default `gh pr list`
 limit is 30; the explicit limit is load-bearing for completeness).
-Date-floor sanity check: `gh pr list --search "merged:<2026-05-06" --json
-number,mergedAt -q '[.[] | select(.number >= 1804 and .number <= 2117)] |
-length'` returned `0`, confirming no in-range PR merged before the floor.
+Date-floor sanity check: `gh pr list --repo gunb-ai/gunbc --state merged
+--limit 1000 --search "merged:<2026-05-06" --json number,mergedAt -q '[.[]
+| select(.number >= 1804 and .number <= 2117)] | length'` returned `0`,
+confirming no PR with `1804 <= number <= 2117` merged before the floor.
+The explicit `--limit 1000` is itself load-bearing here for the same
+reason as the primary candidate-set query: without it, `gh` would default
+to 30 rows and the check could vacuously return `0`.
 Each row was verified with `gh pr view <N> --repo gunb-ai/gunbc`.
 This is a lane-scoped audit, not a global debt count, and follows the
 Phase 3 conservative-classification discipline: rows already accepted in
