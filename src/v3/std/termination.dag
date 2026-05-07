@@ -5,6 +5,9 @@
 
 module std.termination
 
+import v3.std.substrate { Dag, ClusterId, PortId }
+import std.error_primitives { Result, Ok, Err }
+
 // At each recursive call edge, a ranking dimension either strictly decreases,
 // does not increase, or is unknown. The lattice ordering is:
 // DescentUnknown < NonIncreasing < Strict.
@@ -200,4 +203,88 @@ type ProofEdge {
   caller: String
   callee: String
   evidence: List<DescentEvidence>
+}
+
+// 🟢 TERMINAL at descent-residual scope.
+//
+// Strict-only 1-variant subset of `DescentEvidence` — the `Ok` channel of
+// `descent_execution_proof` carries exclusively `Strict` per-path entries; P2
+// API-level enforcement makes `Ok(... NonIncreasing ...)` and `Ok(...
+// DescentUnknown ...)` unrepresentable by construction. Pairs with
+// `NonStrictEvidence` to partition `DescentEvidence` across the Result split:
+// Strict ⊕ NonStrictEvidence = DescentEvidence.
+type StrictEvidence
+  = Strict
+
+// 🟢 TERMINAL at descent-residual scope.
+//
+// `NonStrictEvidence` is the 2-variant typed subset of `DescentEvidence` that
+// carries actual residual signal. `Strict` is **not** a residual (Strict means
+// termination IS provable), so it is not a member of this subset. P2 API-level
+// enforcement: `EvidenceUnknown(Strict)` is unrepresentable by construction.
+type NonStrictEvidence
+  = NonIncreasing
+  | DescentUnknown
+
+// 🟢 TERMINAL at descent-residual scope.
+//
+// Result residual returned by `descent_execution_proof` when proof construction
+// cannot certify strict descent for every path. Director-ratified γ shape
+// (gunbc#828 #issuecomment-4395060514, 2026-05-07): 2-variant residual replacing
+// the prose 4-variant `Missing | Unknown | Incomplete | NonStrict` decomposition.
+//
+// - `EvidenceUnknown(NonStrictEvidence)` collapses absent-evidence and
+//   not-strict into a single typed channel; the `NonStrictEvidence` payload
+//   witnesses *which* sub-Strict evidence the executor saw (per join semantics:
+//   any non-Strict per-path entry surfaces here).
+// - `EvidenceIncomplete` is the proof-construction state for per-path coverage
+//   that did not complete. Currently unit-variant per Director γ; STOP-and-PING
+//   the Substrate Mgr if substrate evidence forces a payload-variant
+//   decomposition (e.g. `TimeoutReason | DepthBoundExceeded |
+//   EvaluatorErrorDuringProofConstruction`) — canvas-shape verification, not
+//   re-ratification (per Director).
+type DescentResidual
+  = EvidenceUnknown(NonStrictEvidence)
+  | EvidenceIncomplete
+
+// 🟡 SCAFFOLD at proof-witness scope.
+//
+// Termination-contract proof token consumed by Evaluator E2 (#1971) for
+// `LoopBound::Descent` execution. Per-path evidence map keyed by branch
+// identifier; each entry is typed as `StrictEvidence` (1-variant subset) so
+// non-Strict per-path entries are unrepresentable in the Ok channel by
+// construction (P2 API-level enforcement, not runtime check). Non-Strict
+// per-path evidence surfaces as `EvidenceUnknown(NonIncreasing)` /
+// `EvidenceUnknown(DescentUnknown)` residual via the executor's join semantics.
+//
+// `cluster` and `port` are echoed to keep the token self-describing for
+// downstream lens consumers; `String` keys are the bootstrap bridge until
+// branch identifiers gain a structural carrier (mirrors the `param: String`
+// scaffold pattern elsewhere in this file).
+type DescentExecutionProof {
+  cluster: ClusterId
+  port: PortId
+  per_path: Map<String, StrictEvidence>
+}
+
+// 🟡 SCAFFOLD at substrate-fact scope.
+//
+// Substrate-side typed termination-contract carrier (Q-EVAL-Descent-Termination-
+// Contract; γ-ratified at gunbc#828 #issuecomment-4395060514 2026-05-07).
+// Evaluator E2 (#1971) consumes proof token only — multi-consumer composability
+// is intentionally out of scope (carrier IS the consumer-cementing executor
+// termination contract).
+//
+// Body is fail-closed: returns `Err { value: EvidenceIncomplete }` until a
+// downstream producer wires per-path Strict-evidence aggregation. The fail-
+// closed default matches the §10.3 row's "fail-closed residuals" disposition;
+// concrete per-path evidence wiring is the Evaluator-side same-slice consumer's
+// concern.
+//
+// Bootstrap signature drift: brief signature uses `&Dag` (Rust-style reference);
+// v3 std .dag carrier uses bare `Dag` per local convention (see `port` /
+// `resolve_producer` in `v3.std.substrate`). Surface as STOP-and-PING if a
+// module witness becomes necessary at consumer-wiring time.
+fn descent_execution_proof(dag: Dag, cluster: ClusterId, port: PortId) -> Result<DescentExecutionProof, DescentResidual> {
+  Err { value: EvidenceIncomplete }
 }
