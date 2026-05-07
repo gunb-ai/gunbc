@@ -140,6 +140,16 @@ These rows should not consume implementation-worker capacity unless the ledger t
 
 Recent merged PR titles from 2026-05-01 through 2026-05-02 show many docs/audit/readiness/spec PRs and fewer explicit retirement PRs. A title-only lower-bound scan finds several dissolution-shaped merges (`delete`, `retire`, `cleanup`, `dissolution`, `receipt`) but many more scaffold- or readiness-shaped introductions. Per `INVARIANTS.md` P5(c), this should be treated as a **calibration warning**, not an automatic Director-review trigger, because feature PRs may contain real deletions without retirement words in the title.
 
+**Cadence pass (quiet-otter-416 / cycle #1862, 2026-05-06):** first-parent commits on `main`, subject-line heuristic only (same calibration caveat).
+
+| Window | Total first-parent commits | Dissolution-shaped subset¹ | Introduction-shaped subset² | Tripwire read |
+|---|---:|---:|---:|---|
+| 2026-04-30..2026-05-06 | 443 | 194 | 227 | **below 3:1** intro-vs-dissolution heuristic (~1.17:1); **advisory only** — no Director-review trigger from title scan alone |
+
+¹ Case-insensitive `--grep` match on `retire|delete|dissolv|cleanup|receipt|remove |prune|retired` (substring noise possible).
+
+² Case-insensitive `--grep` match on `feat(|feat:|add |introduce|scaffold|new lane|new substrate` (misses deletions inside `feat` PRs; complements calibration note above).
+
 Next cadence pass should record:
 
 | Window | Introduction candidates | Dissolution candidates | Required calibration |
