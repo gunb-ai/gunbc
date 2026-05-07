@@ -1851,12 +1851,39 @@ fn scrutinee_traces_to_param(dag: &Dag, scrutinee: PortId, param: PortId) -> boo
         if current == param {
             return true;
         }
-        let Some(parent_input) = enclosing_branch_input_for_payload(dag, current) else {
-            return false;
-        };
-        current = parent_input;
+        // Walk one FieldProject indirection: record-payload variant patterns
+        // (`EpNodeN { left: a }`) bind the user-scope name to the OUTPUT
+        // port of a synthesized FieldProject whose input is the match arm's
+        // payload port (see `lower_field_projection_from_port`). When such
+        // a binding is itself an inner-match scrutinee, the tracer must
+        // peel the projection before climbing payload-binding chains.
+        if let Some(proj_input) = field_project_input_for_port(dag, current) {
+            current = proj_input;
+            continue;
+        }
+        if let Some(parent_input) = enclosing_branch_input_for_payload(dag, current) {
+            current = parent_input;
+            continue;
+        }
+        return false;
     }
     false
+}
+
+/// If `port` is the output of a single-input `FieldProject` transform,
+/// return the projected-from input port. Used by [`scrutinee_traces_to_param`]
+/// to walk past variant-record-pattern FieldProject indirections.
+fn field_project_input_for_port(dag: &Dag, port: PortId) -> Option<PortId> {
+    let Behavior::Transform(transform) = dag.resolve_producer_opt(&port)? else {
+        return None;
+    };
+    let TransformTarget::FieldProject { .. } = &transform.target else {
+        return None;
+    };
+    if transform.inputs.len() != 1 {
+        return None;
+    }
+    Some(transform.inputs[0])
 }
 
 /// If `port` is the payload binding port of some `Path`, return the

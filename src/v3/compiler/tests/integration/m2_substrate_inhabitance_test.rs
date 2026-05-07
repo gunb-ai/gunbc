@@ -731,6 +731,51 @@ fn ep_count2(xs: EpListN) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_classifies_nested_match_field_projection_self_call_as_strict_sub_value(
+) {
+    // Phase-1 broadening Slice 3 — nested-match × record-payload product
+    // case: the recursive arg is the FieldProject of an INNER match arm
+    // whose scrutinee is itself an outer-arm payload binding. Exercises the
+    // tracer-extended Slice 2 classifier (the field-projection helper at
+    // dag.rs:1780, which Slice 3 generalized but the nested-match-payload
+    // test alone doesn't reach).
+    let dag = compile_to_dag(
+        "\
+type EpRecN = EpLeafN | EpNodeN { left: EpRecN }
+fn ep_depth2(t: EpRecN) -> Int =
+  match t {
+    EpNodeN { left: a } => match a {
+      EpNodeN { left: b } => ep_depth2(b),
+      EpLeafN => 0
+    },
+    EpLeafN => 0
+  }
+",
+        "e_p_nested_match_field_projection.v3",
+    )
+    .expect("nested-match record-payload recursion fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let depth = entries
+        .iter()
+        .find(|entry| entry.caller == "ep_depth2" && entry.callee == "ep_depth2")
+        .expect("expected ep_depth2 self-call evidence in per-call side table");
+
+    assert_eq!(depth.evidence.len(), 1);
+    match &depth.evidence[0] {
+        SubValueRelation::StrictSubValue { field, factor } => {
+            // Innermost FieldProject's structural label.
+            assert_eq!(field.field_name, "left");
+            assert_eq!(field.variant_name, "EpNodeN");
+            assert_eq!(field.type_name, "EpRecN");
+            assert_eq!(field.element_type, "EpRecN");
+            assert_eq!(factor, &ShrinkFactor::UnitShrink);
+        }
+        other => panic!("expected StrictSubValue for ep_depth2(b), got {other:?}"),
+    }
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\
