@@ -33,6 +33,15 @@ import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.lens { Lens }
 import v3.std.emission_provenance { EmissionProvenance }
 
+// Lowering seed for `List<EmissionProvenance>.Empty`. The `Empty` sum
+// variant is generic in `element`; the lowerer needs an explicit
+// `List<τ>` return-type witness to instantiate the variant for the
+// concrete `τ = EmissionProvenance` shape that `read_provenance` /
+// `concat_provenance` / branch_provenance / iterate_provenance depend
+// on. Same pattern as the `_e6_seed_list_*_empty` fns at
+// `src/v3/compiler/tests/integration/e6_g1a_option3_static_lens_test.rs:45-48`.
+fn _seed_list_provenance_empty() -> List<EmissionProvenance> = Empty
+
 // Per-Behavior provenance read.
 //
 // 🟡 STUB. Returns `Inhabits(Empty)` — every Behavior contributes an
@@ -45,7 +54,7 @@ import v3.std.emission_provenance { EmissionProvenance }
 // fabricated entry. When producer wiring lands, this body lifts to a
 // real per-Behavior fold without changing the lens declaration shape.
 fn read_provenance(d: Dag, b: Behavior) -> Witness<List<EmissionProvenance>> =
-  Inhabits(Empty)
+  Inhabits(_seed_list_provenance_empty())
 
 // Sequential composition: list concatenation (the canonical free-monoid
 // op for `List<T>`). `BindNode` cost-basis aggregates left-to-right.

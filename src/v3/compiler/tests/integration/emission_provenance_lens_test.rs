@@ -108,6 +108,23 @@ fn emission_provenance_record_has_locked_three_field_shape_with_locked_field_typ
 // `emitted_line: PositiveInt`).
 
 #[test]
+fn production_lens_module_compiles_cleanly() {
+    // Per openai-pro NON-BLOCKING TESTING finding (sha 4553d4e8): the
+    // fixture-bound `#[ignore]`d test below mirrors the production lens
+    // file but doesn't actively guard it — `src/v3/lenses/emission_provenance.dag`
+    // could drift syntactically or type-wise without any active test
+    // failing. This smoke compiles the production .dag file directly
+    // (it lives outside the bootstrap, like other `src/v3/lenses/*.dag`
+    // entries — compare `lens_apply.rs:1020` for `named_function_count.dag`),
+    // so syntactic / type drift fails this test instead of slipping
+    // through.
+    let _dag = cached_compile_to_dag(
+        include_str!("../../../lenses/emission_provenance.dag"),
+        "src/v3/lenses/emission_provenance.dag",
+    );
+}
+
+#[test]
 fn optional_source_span_carries_none_and_some_arms_with_locked_payload() {
     // v3 std has no generic Option<T>; the typed-sum pattern is the
     // idiom (compare `OptionalDiagnostic` at `v3.std.dimensions`).
