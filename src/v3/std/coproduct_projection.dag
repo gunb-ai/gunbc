@@ -30,13 +30,16 @@
 // check at fixture load validates `wire_tag_field` names a real field
 // on the coproduct's variant payloads.
 //
-// **DeclarationRef alias debt** (Director-pre-ratified observation #1
-// disposition (b)): `DeclarationRef = String` alias accepted for this
-// slice; debt-paydown row landed in
-// `docs/debt/r3-debt-paydown-ledger-2026-05-02.md` naming the carrier
-// + 2-clause OR-trigger (audit-row #14 closure OR string-identity
-// bridge surfaces on a `DeclarationRef`-typed consumer). Promotes to
-// structural typed shape on trigger fire.
+// **DeclarationRef debt — unrefined-any-declaration handle** (codex
+// BLOCKING-driven retitle from Director observation #1's original
+// String-alias disposition; full rationale in the import-site comment
+// below). The carrier imports the structural typed `DeclarationRef`
+// from `v3.spec.v3_l1`; the type still admits any declaration at the
+// boundary (refinement-typing has not landed). Debt-paydown row at
+// `docs/debt/r3-debt-paydown-ledger-2026-05-02.md` shares the #1175
+// refinement-typing-on-`DeclarationRef` dissolution trigger with
+// `MethodRef` / `CallableRef`. Sibling `VariantId` Map-key handle
+// dissolves under the same #1175 surface.
 
 module v3.std.coproduct_projection
 
@@ -68,17 +71,19 @@ module v3.std.coproduct_projection
 import v3.spec.v3_l1 { DeclarationRef }
 
 // 🟡 SCAFFOLD. String-aliased variant identity handle. Keys
-// `CoproductProjection.variant_projections` and `WireTagValue` payloads.
-// Today's substrate grammar can't express a refined
-// `DeclarationRef<VariantDeclaration>`; keying by string mirrors the
-// `DeclarationRef = String` alias precedent at
-// `dsl/std/serialization.dag:16` and the same disposition (b) per
-// Director #4394416049. **Dissolution trigger** (paired with the
-// `DeclarationRef` debt row): promotes to a structural typed handle
-// (e.g., `(coproduct: DeclarationRef, name: String)`) when EITHER
-// (a) audit-row #14 closes module-convergence OR (b) a `VariantId`-
-// typed consumer surfaces a string-identity bridge per
-// `feedback_opaque_strings_attract_heuristics`.
+// `CoproductProjection.variant_projections` and ranges over the wire-
+// tag-value map. Today's substrate grammar can't express a refined
+// `DeclarationRef<VariantDeclaration>`; keying by string is the
+// minimum shape until refinement-typing lands.
+// **Dissolution trigger** (single authority — shared with the
+// `DeclarationRef` row at `docs/debt/r3-debt-paydown-ledger-2026-05-02.md:107`):
+// the same #1175 substrate-level refinement-typing-on-`DeclarationRef`
+// landing that retires `MethodRef` (`src/v3/std/methods.dag:31`) +
+// `CallableRef` (`src/v3/std/services.dag:86-100`) promotes `VariantId`
+// to a structural typed handle (e.g., `(coproduct: DeclarationRef,
+// variant: VariantDeclaration)`) at the same time. No separate
+// audit-row / string-bridge OR-trigger applies here; the carrier-level
+// dissolution is single-keyed on #1175.
 type VariantId = String
 
 // 🟡 SCAFFOLD coproduct (single-arm record at PR-α scope). Typed leaf
@@ -148,13 +153,19 @@ type CoproductVariantProjection {
 // payloads (analogous to `services.dag` PR-β `ParamToken.name → Map<
 // String, InputField>` key validation).
 //
-// `declaration: DeclarationRef` carries the `DeclarationRef = String`
-// alias soft-typed handle per Director observation #1 disposition (b);
-// debt-paydown row tracks promotion to structural typed shape.
+// `declaration: DeclarationRef` is the structural typed declaration-
+// reference from `v3.spec.v3_l1` (selection rationale at the
+// import-site comment above). The handle is unrefined at the type
+// level today; debt-paydown row at
+// `docs/debt/r3-debt-paydown-ledger-2026-05-02.md:107` tracks
+// promotion under the shared #1175 refinement-typing-on-
+// `DeclarationRef` dissolution trigger (paired with `MethodRef` /
+// `CallableRef` per `src/v3/std/methods.dag:31` +
+// `src/v3/std/services.dag:86-100`).
 //
 // Asymmetry with `InternallyTaggedObject.tag_field: String` at
 // `dsl/std/serialization.dag:49` collapses under path (a) — both
-// String, no debt row needed (brief §3 conditional debt does not fire).
+// `String`, no debt row needed (brief §3 conditional debt does not fire).
 type CoproductProjection {
   declaration:         DeclarationRef
   wire_tag_field:      String

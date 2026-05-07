@@ -23773,7 +23773,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 4739, 4762),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 5139, 5162),
         });
         declarations.push(Declaration {
             id: DeclarationId(875),
@@ -23792,7 +23792,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 6337, 6386),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 6737, 6786),
         });
         declarations.push(Declaration {
             id: DeclarationId(876),
@@ -23817,7 +23817,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7521, 7565),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7921, 7965),
         });
         declarations.push(Declaration {
             id: DeclarationId(877),
@@ -23842,7 +23842,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7981, 8085),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 8381, 8485),
         });
         declarations.push(Declaration {
             id: DeclarationId(878),
@@ -23871,7 +23871,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 9023, 9185),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 9730, 9892),
         });
         declarations.push(Declaration {
             id: DeclarationId(879),
@@ -59734,7 +59734,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 6359, 6386),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 6759, 6786),
         });
         declarations.push(Declaration {
             id: DeclarationId(1982),
@@ -59748,7 +59748,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7546, 7551),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7946, 7951),
         });
         declarations.push(Declaration {
             id: DeclarationId(1983),
@@ -59762,7 +59762,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7556, 7565),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 7956, 7965),
         });
         declarations.push(Declaration {
             id: DeclarationId(1984),
@@ -59788,7 +59788,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 9141, 9183),
+            span: SourceSpan::new("src/v3/std/coproduct_projection.dag", 9848, 9890),
         });
         declarations.push(Declaration {
             id: DeclarationId(1985),

@@ -36,7 +36,7 @@ src/v3/std/bridge_ledger.dag	7	31662	ec3b4ea8c0455eb7
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	18	36754	8023f388c3fb0918
 src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
-src/v3/std/coproduct_projection.dag	7	7380	f6afae54c7ac9da7
+src/v3/std/coproduct_projection.dag	7	7380	acdcd22d7be8177b
 src/v3/std/cross_target_coverage.dag	10	373515	814a9a617f609ad3
 src/v3/std/diagnostics.dag	11	21478	7d2e9e73d74e5adb
 src/v3/std/dimensions.dag	21	39170	c6833b618a39e0af
