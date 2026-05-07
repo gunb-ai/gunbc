@@ -18,7 +18,13 @@ import extdeps.shell
 // -- Configuration as data --------------------------------------------
 
 data default_model: String = "claude-sonnet-4-6-20250929"
-data cron_schedule: String = "*/10 * * * *"
+data cron_schedule: CronSchedule = CronSchedule {
+  minute: Step { start: 0, step: 10 },
+  hour: Wildcard,
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
 data review_messages: List<AnthropicChatMessage> = [
   UserMessage {
     content: [UserTextBlock { text: "Review the PR described in the system prompt." }]
@@ -160,7 +166,7 @@ func review_cycle(
   // Upsert cron -- idempotent, converges on every run
   cron.Tab.Upsert(
     tag: "review-agent",
-    schedule: cron_schedule,
+    schedule: render_cron_schedule(cron_schedule),
     command: "/Users/briansrls/gunbc/target/review-codegen/review-agent review-cycle",
     log_path: "/Users/briansrls/.local/share/gunbc-review/logs/cron.log"
   )

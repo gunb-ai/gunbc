@@ -1,5 +1,6 @@
 use crate::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
 
+#[cfg(test)]
 pub(crate) const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
 
 const PIPELINE_STAGE_BINDING_TYPE: &str = "PipelineStageBinding";
