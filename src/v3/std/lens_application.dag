@@ -107,13 +107,21 @@ type LensEnforcement<Output, Budget> {
 // application site cannot pair non-canonical lens / enforcement
 // combinations.
 //
-// PARSER-LEVEL UNIQUENESS INVARIANT (per design doc §2): the parser
-// enforces "at most ONE EnforceableLens<C, B> declaration per
-// (Lens<C>, Budget B) pair in the program". User code declaring a
-// second `EnforceableLens` for the same (lens, Budget) tuple fails
-// parse-time with a Diagnostic naming both authoring sites — same
-// shape as v3's other single-authority parser invariants (one
-// declaration per name; one `BoundedLattice` instance per type).
+// PARSER-LEVEL UNIQUENESS INVARIANT — TRACKED, NOT YET ENFORCED.
+// Per design doc §2, the parser is intended to enforce "at most ONE
+// `EnforceableLens<C, B>` declaration per (`Lens<C>`, Budget `B`)
+// pair in the program" — same shape as v3's other single-authority
+// parser invariants (one declaration per name; one `BoundedLattice`
+// instance per type). The check fires at parse time with a Diagnostic
+// naming both authoring sites.
+//
+// **Status at this commit**: the carrier shape is landed (this file);
+// the parser check is NOT yet implemented. Until it lands, duplicate
+// `EnforceableLens<C, B>` declarations are convention-only — Slice B
+// (or a follow-up Substrate slice) lands the parser pass and a
+// behavior-driven test that constructs duplicate declarations and
+// asserts the Diagnostic. Design lock authority: design doc §2
+// "PARSER-LEVEL UNIQUENESS INVARIANT" paragraph.
 //
 // Why parser-level, not type-level: full type-level enforcement
 // (preventing user code from EVER declaring a second
