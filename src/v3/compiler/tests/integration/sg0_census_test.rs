@@ -349,6 +349,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // receipts per #1857). SG-0 ratchet: new hand-authored integration test.
     "src/v3/compiler/tests/integration/e6_g1a_option3_static_lens_test.rs",
     "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
+    // T-Substrate-Lens-Primitive Lens<EmissionProvenance> structural cementing
+    // test (PR #1928). Per Director Q1(a) RATIFIED at gunbc#1739
+    // #issuecomment-4392562911. Hand-authored entry added per SG-0 census
+    // discipline; integration-test home (matches `mini_lens` /
+    // `e6_g1a_option3_static_lens_test` precedent for fixture-bound lens
+    // instances).
+    "src/v3/compiler/tests/integration/emission_provenance_lens_test.rs",
     // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
     // Path 2): hand-Rust integration test pinning
     // `Dag::rust_pilot_primitives()` type-structure walk + the
