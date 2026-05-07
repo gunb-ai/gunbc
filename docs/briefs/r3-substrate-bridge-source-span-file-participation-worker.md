@@ -45,8 +45,10 @@ Authority constants: `BOOL_TYPES_FILE` (`dsl/std/types.dag`), `PIPELINE_AUTHORIT
 - Diagnostic span: synthesize from `BootstrapAuthorityKey` rather than `SourceSpan::new(BOOL_TYPES_FILE, 0, 0)` — the `BootstrapAuthorityKey::new(...)` wrapper already exists at `:125`, and `DiagnosticAttribution::BootstrapAuthority` (per `:519` doc-comment) is the steady-state attribution surface (PB row 82).
 - **Prerequisite**: `dsl/std/types.dag` ↔ `src/v3/std/types.dag` duplicate-module convergence per ROADMAP T-P0 must NOT regress; if both hold a `Bool`, `declaration_by_name` rank still applies (audit row #14 — root blocker, **out-of-scope here**).
 
-**Row #6 (pipeline authority)** — replace `PIPELINE_AUTHORITY_FILE` guards:
-- `report_pipeline_authority_error` (`:283-292`) — drop the path-string from both `BootstrapAuthorityKey` and `SourceSpan::new`. Replace with a **`BootstrapAuthority::Pipeline` typed key** (extend the enum if needed); diagnostic span sourced from the offending stage binding's actual `SourceSpan`, not a manufactured `(file, 0, 0)`.
+**Row #6 (pipeline authority)** — replace `PIPELINE_AUTHORITY_FILE` guards by deriving the typed key from the existing single-authority map:
+- `src/v3/std/bootstrap_authority.dag:90` already has `"src/v3/compiler/pipeline.dag": CompilerAuthority` — `pipeline.dag` is already classified under the existing `BootstrapAuthority::CompilerAuthority` variant. **DO NOT introduce a new `BootstrapAuthority::Pipeline` variant** — that would duplicate substrate authority (the `bootstrap_authority` map at `:30` is the single authority per the file's :14-17 comment: *"the path itself is the BootstrapAuthoritySet map key; variants carry no duplicate path payload"*).
+- `report_pipeline_authority_error` (`:283-292`) — drop the path-string from both `BootstrapAuthorityKey` and `SourceSpan::new`. Derive the typed key from the existing `bootstrap_authority`-map witness — i.e., `BootstrapAuthorityKey` is constructed from the `(path, BootstrapAuthority::CompilerAuthority)` row already in the data, not by extending the enum. Diagnostic span sourced from the offending stage binding's actual `SourceSpan`, not a manufactured `(file, 0, 0)`.
+- If the worker finds that `BootstrapAuthorityKey::new()` constructor signature doesn't currently accept a typed-classifier argument, the right shape is to thread the `BootstrapAuthority` variant through the existing constructor (refining the constructor surface), NOT to add a new top-level enum variant.
 - Coordinate with PB-owned `bridge_include_str_side_channels_retired` (audit row #6 sibling) — `pipeline_authority.rs::ordered_pipeline_stages` already reads `PipelineStageBinding` structurally; the bridge is ONLY in the diagnostic-span manufacturing path.
 
 ## Acceptance
@@ -61,7 +63,7 @@ Authority constants: `BOOL_TYPES_FILE` (`dsl/std/types.dag`), `PIPELINE_AUTHORIT
 ## STOP / PING criteria
 
 - **STOP** if removing `d.span.file == BOOL_TYPES_FILE` (anchor #1) causes `declaration_by_name("Bool")` to resolve to a different declaration (rank-table ambiguity from duplicate `Bool` in `src/v3/std/types.dag` vs `dsl/std/types.dag`). This is audit row #14 root-blocker territory — surface to Mgr; do NOT delete the rank table to "fix it".
-- **STOP** if `BootstrapAuthority` enum doesn't have a `Pipeline` variant and adding one cascades into emit/diagnostic surfaces beyond bootstrap.rs. Surface scope-creep to Mgr.
+- **STOP** if deriving the typed key for the pipeline diagnostic from the existing `bootstrap_authority` map (per Row #6 disposition above — `CompilerAuthority` row at `bootstrap_authority.dag:90`) cascades into emit/diagnostic surfaces beyond bootstrap.rs (e.g., `BootstrapAuthorityKey::new()` constructor refinement leaks into other call sites). Surface scope-creep to Mgr. **Do NOT** introduce a new `BootstrapAuthority::Pipeline` variant under any STOP-resolution path — that's duplicate substrate authority.
 - **PING** Verification Mgr (#1940 / `witty-swift-269` if active) when this lands so they can advance the ledger-zero audit (`docs/briefs/r3-v-bridge-retirement-ledger-zero-audit.md` row 1).
 
 ## Cross-Mgr handoff
