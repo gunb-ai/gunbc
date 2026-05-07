@@ -54,7 +54,7 @@ fn render_cron_field(f: CronField) -> String {
   match f {
     Wildcard => "*"
     Exact { value } => "{value}"
-    Listed { values } => fold(values, "", (acc, v) => if acc == "" { "{v}" } else { "{acc},{v}" })
+    Listed { values } => values |> map(v => "{v}") |> join(separator: ",")
     Ranged { start, end } => "{start}-{end}"
     Step { start, step } => if start == 0 { "*/{step}" } else { "{start}/{step}" }
   }
