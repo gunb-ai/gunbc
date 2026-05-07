@@ -1,0 +1,99 @@
+// lenses.emission_provenance — `Lens<List<EmissionProvenance>>` instance.
+//
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY DEFERRED.
+// (Same staging shape as `lenses.cost` STRUCTURALLY TERMINAL /
+// BEHAVIORALLY PROXY and `lenses.dag_shape` producer-only.)
+//
+// Per Director Q1 (a) RATIFIED at gunbc#1739 #issuecomment-4392562911,
+// emission-provenance is a Lens<C>-shaped per-Behavior analysis whose
+// per-Behavior `List<EmissionProvenance>` flattens to a per-line view at
+// the visualization layer. Per-line instrumentation (Q1 b) and parallel
+// substrates (Q1 d) were rejected; (a) per-Behavior is the substrate.
+//
+// **Behavioral attribution wiring is deferred.** Producing real
+// `EmissionProvenance` entries from a `Behavior` requires the emitter
+// to record which `*SyntaxBinding` / `*OpsBinding` field-path fired
+// for each emitted line — instrumentation hooks in
+// `src/v3/compiler/src/emit/rust_target.rs`'s `render_named_template`
+// call sites. That code-side work is a separate downstream slice
+// (precedent: `lenses.cost` BEHAVIORALLY PROXY). This file authors
+// the structural lens shape so the carrier + lens declaration are
+// landed and consumable; the `read` body is a fail-closed `Empty`
+// stub until producer wiring lands.
+//
+// **Bundled-scope discipline** per Director ratification at
+// gunbc#1739 #issuecomment-4392225548: Grounding-side visualization
+// consumer wiring is NOT bundled here.
+
+module lenses.emission_provenance
+
+import std.list { List, Empty, concat }
+import std.algebra { Monoid }
+import std.substrate { Dag, Behavior, LoopBound }
+import v3.std.dimensions { Witness, OptionalDiagnostic }
+import v3.std.lens { Lens }
+import v3.std.emission_provenance { EmissionProvenance }
+
+// Per-Behavior provenance read.
+//
+// 🟡 STUB. Returns `Inhabits(Empty)` — every Behavior contributes an
+// empty provenance list. Producer wiring (instrumenting
+// `render_named_template` call sites in `rust_target.rs` to record
+// rule-fired-at-line per Behavior) is a separate downstream slice.
+//
+// `Inhabits(Empty)` is fail-closed at the structural-shape level: an
+// honest "no provenance attribution authored yet" rather than a
+// fabricated entry. When producer wiring lands, this body lifts to a
+// real per-Behavior fold without changing the lens declaration shape.
+fn read_provenance(d: Dag, b: Behavior) -> Witness<List<EmissionProvenance>> =
+  Inhabits(Empty)
+
+// Sequential composition: list concatenation (the canonical free-monoid
+// op for `List<T>`). `BindNode` cost-basis aggregates left-to-right.
+fn concat_provenance(
+  a: List<EmissionProvenance>,
+  b: List<EmissionProvenance>
+) -> List<EmissionProvenance> =
+  concat(a, b)
+
+// Branch composition: concat over both arms. Per the Lens<C> framework
+// note on `branch` — static-emission analysis captures both branches;
+// runtime exclusivity is orthogonal to static-emission tracking. Both
+// branches' emitted lines belong to the program's emission surface.
+fn branch_provenance(
+  left: List<EmissionProvenance>,
+  right: List<EmissionProvenance>
+) -> List<EmissionProvenance> =
+  concat(left, right)
+
+// Iteration composition: identity. Loop bodies are emitted once
+// (the LoopBound is data, not source); iterating the body's
+// emission lines doesn't multiply emitted-line count. Worker confirmed
+// by reading `render_loop` at `rust_target.rs:4782` — the body is
+// emitted once per `LoopNode`, not per iteration.
+fn iterate_provenance(
+  c: List<EmissionProvenance>,
+  bound: LoopBound
+) -> List<EmissionProvenance> =
+  c
+
+// Aggregate validation. Record form makes "rule absent" structurally
+// impossible; `OptionalSourceSpan::NoSourceSpan` is structurally legal
+// and NOT a diagnostic. Worker greps producer-side at PR-author time:
+// no rule field-path that doesn't resolve to a real `*SyntaxBinding` /
+// `*OpsBinding` field at HEAD should be authored. (When real producer
+// wiring lands, this validate body lifts to round-trip the field-path
+// against the structural addressing surface.)
+fn validate_provenance(d: Dag, c: List<EmissionProvenance>) -> OptionalDiagnostic =
+  NoDiagnostic
+
+// 🟢 TERMINAL at the lens-shape scope. `Lens<List<EmissionProvenance>>`
+// instance per Director-locked 6-field shape at `src/v3/std/lens.dag`.
+data emission_provenance_lens: Lens<List<EmissionProvenance>> = {
+  name: "EmissionProvenance",
+  read: read_provenance,
+  sequential: { op: concat_provenance, identity: Empty },
+  branch: branch_provenance,
+  iterate: iterate_provenance,
+  validate: validate_provenance
+}
