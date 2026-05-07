@@ -95,29 +95,25 @@ type VariantId = String
 type WireTagValue
   = StringTag { value: String }
 
-// 🟢 TERMINAL at PR-α scope. Per-field metadata slot inside a variant's
-// payload projection. Empty in PR-α because the projection-resolver
-// keys variant dispatch by tag-value alone today; reserved as a record
-// so PR-β can grow `ty: …` / `wire_name: …` without changing
-// `FieldProjection.Fields.fields`'s map shape. Mirrors the
-// `services.dag::InputField {}` precedent at `:64`: canonical name held
-// by the enclosing `Map<String, FieldShape>` key, no `name: String`
-// duplication.
-type FieldShape {}
-
 // 🟡 SCAFFOLD coproduct. Per-variant payload field projection. `Empty`
 // constructor encodes "variant has no payload fields" (e.g., Anthropic
 // empty-payload variants per brief §"Single-keyed-fact discipline")
 // without representing absence as a missing map entry — keeps
-// illegal-state-by-construction. `Fields` carries the populated case
-// keyed by field name (uniqueness by `Map` key invariant; same
-// boundary discipline as `Operation.inputs` at `services.dag:28-36`).
-// Dissolution trigger: when the projection-resolver consumes typed
-// field shapes (rather than name-only dispatch), `FieldShape {}` grows
-// concrete fields and a TERMINAL receipt lands.
+// illegal-state-by-construction. `Populated` is a placeholder arm whose
+// internal field-shape detail (formerly `Fields { fields: Map<String,
+// FieldShape> }`) is deferred to the first paydown PR consumer per the
+// Mgr-disposed (i) trivial-demo slicing; bootstrap-stack-budget pressure
+// from the populated map's static-initializer depth made same-PR landing
+// of the typed-field-shape map non-viable on the 2MB test thread default
+// (CI run 25520358762 / sha 0e185083 reproduced locally with carrier
+// vs. clean on main without). Dissolution trigger: when the first
+// paydown PR consumes `Populated`, its internal shape grows to a typed
+// `Map<String, FieldShape>`-or-equivalent payload-field projection
+// (`FieldShape` reintroduced at that point) — the consumer is the
+// natural shape-refiner per `feedback_construction_over_ratchets`.
 type FieldProjection
   = Empty
-  | Fields { fields: Map<String, FieldShape> }
+  | Populated
 
 // 🟢 TERMINAL at PR-α scope. Single keyed fact (P2 boundary): a
 // variant's payload projection and its wire-tag value live together.
