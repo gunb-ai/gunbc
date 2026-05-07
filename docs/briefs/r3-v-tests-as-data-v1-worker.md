@@ -14,12 +14,14 @@
 
 | Gate ID | Canonical name | Role |
 | --- | --- | --- |
-| — | `every_rust_test_ports_to_dag_or_generated` | Facet-3 close: hand-authored Rust test partition → **0** per design §1.1 |
-| — | `forall_exists_quantifier_substrate_landed` | Mathematical `ForAll` / `Exists` over program families (**not** `ForAllTargets` emission shim) |
-| — | `program_generator_carrier_landed` | `ProgramGenerator` / quantified claim substrate |
-| — | `lens_cementing_test_discipline_complete` | Every **in-R3** `.dag` lens with behavioral-complete intent has cementing module vs frozen v2 oracle |
+| **#84** | `every_rust_test_ports_to_dag_or_generated` | Facet-3 close: hand-authored Rust test partition → **0** per design §1.1 |
+| **#85** | `forall_exists_quantifier_substrate_landed` | Mathematical `ForAll` / `Exists` over program families (**not** `ForAllTargets` emission shim) |
+| **#86** | `program_generator_carrier_landed` | `ProgramGenerator` / quantified claim substrate |
+| **#87** | `lens_cementing_test_discipline_complete` | Every **in-R3** `.dag` lens with behavioral-complete intent has cementing module vs frozen v2 oracle |
 
-**Demonstration sibling (plan §1.8):** `tests_as_data_demonstration` — at least one Rust test ports to `.dag` `TestClaim` and executes (early signal; **not** a substitute for gate row closure).
+Gate IDs reference [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.8 "Canonical R3 Closure-Authority Ledger" rows 84–87 (DECLARED 2026-05-06 against this lane).
+
+**Demonstration sibling (plan §1.8, gate row #74):** `tests_as_data_demonstration` — at least one Rust test ports to `.dag` `TestClaim` and executes (early signal; **not** a substitute for gate row closure).
 
 ## Worker pin
 
