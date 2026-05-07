@@ -36,8 +36,7 @@
 module lenses.cost
 
 import std.list { List, empty, fold, cons }
-import std.substrate { Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, DeclarationId, node }
-import v3.std.emit_model { CallableRealization }
+import std.substrate { Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, node }
 import std.algebra {
   MethodContract,
   CostShape,
