@@ -233,10 +233,10 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 | 34 | `bridge_include_str_side_channels_retired` | state-check | T-Bridge-Retirement | DECLARED | substrate query surface |
 | 35 | `bridge_exact_string_patching_residual_retired` | state-check | T-Bridge-Retirement | DECLARED | umbrella for exact-string scaffolds |
 | 36 | `bridge_retirement_ledger_zero` | ledger-count | T-Bridge-Retirement | DECLARED | unified ledger reports 0 |
-| 37 | `cost_lens_reads_target_realization` | structural-fold | T-CostLens-Composition | DECLARED — deferred to #2175 canvas per α-narrow | requires Behavior→primitive-identity wiring |
-| 38 | `coercion_cost_equals_complexity_by_construction` | structural-fold | T-CostLens-Composition | **SATISFIED-BY-CONSTRUCTION** (α-narrow PR #2171; `Semiring<SymbolicCost>` `sequential`/`iterate` at `src/v3/std/algebra.dag:181-188` is sole composition authority — no parallel "complexity-vs-cost" reconciliation surface exists) | thesis unification holds structurally |
-| 39 | `no_coercion_cost_dimension` | substrate-shape | T-CostLens-Composition | **SATISFIED-BY-CONSTRUCTION** (α-narrow PR #2171; `SymbolicCost` 7-variant at `src/v3/std/algebra.dag:181` is the sole cost dimension; no parallel `CoercionCost` carrier exists at HEAD per grep) | no separate cost dimension |
-| 40 | `symbolic_cost_expr_equals_executable` | SymbolicCost-typed | T-CostLens-Composition | DECLARED — deferred to #2175 canvas + Verification Mgr (#2075) lane per α-narrow | runtime prereq: cost lens/report producer |
+| 37 | `cost_lens_reads_target_realization` | structural-fold | T-CostLens-Composition | DECLARED | structural fold over algebra+realization |
+| 38 | `coercion_cost_equals_complexity_by_construction` | structural-fold | T-CostLens-Composition | DECLARED | thesis unification holds structurally |
+| 39 | `no_coercion_cost_dimension` | substrate-shape | T-CostLens-Composition | DECLARED | no separate cost dimension |
+| 40 | `symbolic_cost_expr_equals_executable` | SymbolicCost-typed | T-CostLens-Composition | DECLARED (NEW 2026-05-06) | runtime prereq: cost lens/report producer |
 | 41 | `v2_oracle_no_remaining_test_consumers` | state-check | T-V2-Retirement | DECLARED | no .rs test consumes src/v2/ |
 | 42 | `v2_directory_deleted` | state-check | T-V2-Retirement | DECLARED | src/v2/ removed from workspace |
 | 43 | `auto_parallelism_independent_binds_emit_parallel` | demonstration | T-Free-Consequences-Demonstration | DECLARED | bind-independent → parallel emit |
@@ -266,7 +266,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 | 67 | `numeric_construction_demonstration` | demonstration | T-Numeric-Construction | DECLARED (NEW 2026-05-06) | `Int<32>` + `Real<64>` round-trip |
 | 68 | `anthropic_wire_demonstration` | demonstration | T-Anthropic-Wire | DECLARED (NEW 2026-05-06) | deterministic mock; live-API NOT closure gate |
 | 69 | `bridge_retirement_demonstration` | demonstration | T-Bridge-Retirement | DECLARED (NEW 2026-05-06) | typed-identity-surface in production code |
-| 70 | `cost_lens_demonstration` | demonstration | T-CostLens-Composition | DECLARED — deferred to #2175 canvas per α-narrow | ≥2 algebra-instances + ≥1 recursive call |
+| 70 | `cost_lens_demonstration` | demonstration | T-CostLens-Composition | DECLARED (NEW 2026-05-06) | ≥2 algebra-instances + ≥1 recursive call |
 | 71 | `v3_self_host_demonstration` | demonstration | T-V2-Retirement | DECLARED (NEW 2026-05-06) | bootstrap PB-Runtime trampoline runs end-to-end |
 | 72 | `e_p_producer_demonstration` | demonstration | T-E-P-Producer-Broadening | DECLARED (NEW 2026-05-06) | call-site produces full descent evidence |
 | 73 | `lens_behavioral_parity_demonstration` | demonstration | T-Lens-Behavioral-Parity | DECLARED (NEW 2026-05-06) | **R3:** complexity+cost vs frozen v2-oracle snapshot; parallelism/effect_enum **R4-carved** (see `r3-structure.md` §"Acceptance") |
@@ -396,7 +396,7 @@ Each retires per its natural-owner program prerequisites. Verification Mgr's `br
 | T-Omni-Shape-B | RED | (post-R2-Evaluator + Shape A targets) | dependencies | (TBD) |
 | T-Anthropic-Wire | YELLOW | 3 coproduct worker briefs dispatched on PR #1782 wait-window + 2 OPEN closure tags at HEAD (`dsl/extdeps/llm/anthropic.dag` `:189` + `:68`) | three coproduct slices land + variant-aware projection carrier authored | post-#1782 merge + 3 follow-up paydown PRs |
 | T-Bridge-Retirement | YELLOW | per-bridge dispatches | 5 sub-bridges retire | post-T-FixedPoint |
-| T-CostLens-Composition | YELLOW | α-narrow ratified at gunb-ai/gunbc#828 #issuecomment-4400772335 — gates **#38** + **#39** structurally satisfied at HEAD by construction (`SymbolicCost` sole cost dimension; `Semiring<SymbolicCost>` sole composition authority); receipts landed via PR #2171. Gates **#37** + **#40** + **#70** deferred to follow-on Behavior→primitive-identity wiring canvas at gunb-ai/gunbc#2175 (cross-cutting with T-LBP cementing tests #1950 / #1951; Q-Lens-Target-Context PROPOSAL deferred to its own canvas cycle per Director ratification — NOT a T-CostLens stowaway). | R2-Evaluator + R2-T-Substrate-Lens-Primitive + #2175 canvas ratification (for #37/#40/#70) | partial close per α; full close post-#2175 |
+| T-CostLens-Composition | YELLOW | (TBD from Substrate canvas) | R2-Evaluator + R2-T-Substrate-Lens-Primitive | (TBD) |
 | T-V2-Retirement | RED | `r3-tv2-*` briefs | T-FixedPoint + T-LensProducer | longest-path |
 | T-Free-Consequences-Demonstration | YELLOW | `r3-v-free-consequences-worker` | R2-Evaluator + T-CostLens-Composition | post-deps |
 | T-E-P-Producer-Broadening | YELLOW | (TBD from Substrate canvas) | (foundational; in flight) | weeks |
