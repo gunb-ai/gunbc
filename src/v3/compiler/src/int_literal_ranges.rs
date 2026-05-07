@@ -6,8 +6,10 @@
 //! the fold). This module implements only the **static** side needed for literal narrowing:
 //! substrate range facts [`range_min_inclusive` / `range_max_inclusive`](../../../../dsl/extdeps/languages/rust/primitives.dag)
 //! on [`rust_pilot_primitives`](crate::dag::Dag::rust_pilot_primitives) supply
-//! `StaticBound(Interval<Int>)` as [`IntervalInt::ExactInterval`] (decimal endpoints + host `i128`
-//! comparison). [`IntervalInt::Unbounded`] exists so Q1’s interval algebra is representable when a
+//! `StaticBound(Interval<Int>)` as [`IntervalInt::ExactInterval`] (decimal endpoints + host
+//! `BigInt` comparison; widened from `i128` per R3 Phase A so `u128::MAX` and any future wider
+//! primitive is representable structurally). [`IntervalInt::Unbounded`] exists so Q1’s interval
+//! algebra is representable when a
 //! target declares an unbounded value domain (pilot `IntegerPrimitive` rows are all exact today).
 //! [`PlatformDependent`] is out of scope for i64-bounded literal narrowing (deferred targets).
 //!
