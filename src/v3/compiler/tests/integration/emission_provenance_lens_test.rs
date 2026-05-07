@@ -180,28 +180,56 @@ fn optional_source_span_carries_none_and_some_arms_with_locked_payload() {
         .iter()
         .find(|v| v.label == "SomeSourceSpan")
         .expect("SomeSourceSpan variant missing");
-    let payload_decl = dag.declaration(some_variant.ty);
-    if let TypeConnective::Conj { children } = &payload_decl.connective {
-        let value_field = children
-            .iter()
-            .find(|f| f.label == "value")
-            .expect("SomeSourceSpan payload missing `value` field");
-        let source_span = dag
-            .declaration_by_name("SourceSpan")
-            .expect("SourceSpan missing from bootstrap");
-        assert_eq!(
-            value_field.ty, source_span.id,
-            "SomeSourceSpan.value must resolve to `SourceSpan`, not a structural look-alike"
-        );
-    } else {
-        // If the payload isn't a Conj-with-`value`, the variant shape
-        // has drifted; fail loudly.
+    let some_payload = dag.declaration(some_variant.ty);
+    let TypeConnective::Conj { children: some_children } = &some_payload.connective else {
         panic!(
-            "SomeSourceSpan variant payload should be a record with a `value: SourceSpan` field; \
-             actual payload connective: {:?}",
-            payload_decl.connective
+            "SomeSourceSpan variant payload should be a record with a single `value: SourceSpan` \
+             field; actual payload connective: {:?}",
+            some_payload.connective
+        );
+    };
+    // Assert exact arity — `find()` would let `SomeSourceSpan { value, extra }`
+    // pass even though the locked shape names a single payload field.
+    assert_eq!(
+        some_children.len(),
+        1,
+        "SomeSourceSpan must declare exactly 1 payload field (`value: SourceSpan`); \
+         actual fields: {:?}",
+        some_children.iter().map(|f| &f.label).collect::<Vec<_>>()
+    );
+    let value_field = some_children
+        .iter()
+        .find(|f| f.label == "value")
+        .expect("SomeSourceSpan payload missing `value` field");
+    let source_span = dag
+        .declaration_by_name("SourceSpan")
+        .expect("SourceSpan missing from bootstrap");
+    assert_eq!(
+        value_field.ty, source_span.id,
+        "SomeSourceSpan.value must resolve to `SourceSpan`, not a structural look-alike"
+    );
+
+    // NoSourceSpan must be a unit variant (no payload fields). A drift
+    // to e.g. `NoSourceSpan { value: SourceSpan }` would silently make
+    // it indistinguishable from `SomeSourceSpan` — assert empty payload.
+    let none_variant = variants
+        .iter()
+        .find(|v| v.label == "NoSourceSpan")
+        .expect("NoSourceSpan variant missing");
+    let none_payload = dag.declaration(none_variant.ty);
+    if let TypeConnective::Conj { children: none_children } = &none_payload.connective {
+        assert_eq!(
+            none_children.len(),
+            0,
+            "NoSourceSpan must be a unit variant (no payload fields) — \
+             a payload-bearing NoSourceSpan would collapse the absence/presence \
+             distinction with SomeSourceSpan; actual fields: {:?}",
+            none_children.iter().map(|f| &f.label).collect::<Vec<_>>()
         );
     }
+    // Other connective kinds (e.g., the unit/Top connective the lowerer
+    // synthesizes for unit variants) are also acceptable; the only
+    // fail-condition is a payload-bearing NoSourceSpan.
 }
 
 // Fixture-bound lens instance per the `mini_lens` precedent at
