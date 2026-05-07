@@ -171,15 +171,19 @@ data emission_provenance_lens: Lens<List<EmissionProvenance>> = {
 "#;
 
 #[test]
-#[ignore = "blocked on Class 5 Gap 3 (top-level ValueBody boundary): \
-            `data emission_provenance_lens: Lens<List<EmissionProvenance>>` \
-            opaque-body lowering rejects the nested-fn-reference identity \
-            `empty_provenance_list` in monoid `identity` field; same constraint \
-            blocks the canonical generic `data list_monoid<element>: \
-            Monoid<List<element>>` documented at `src/v3/std/list.dag:61-64`. \
-            Dissolution trigger: when Class 5 Gap 3 closes (top-level \
-            List/sum-variant `ValueBody` carriers land), un-ignore and verify \
-            this test passes without lens-shape changes."]
+#[ignore = "blocked on Class 5 Gap 3 (top-level ValueBody boundary at \
+            src/v3/compiler/src/dag.rs:259-287): `data emission_provenance_lens: \
+            Lens<List<EmissionProvenance>>` rejects on two facets of the same \
+            gap — bare sum-variant identity (`identity: Empty`) doesn't lower \
+            in data body context, AND nested-fn identity (`identity: \
+            empty_provenance_list`) hits the opaque-body rejection for \
+            fn-typed fields in data bodies. Same constraint blocks the \
+            canonical `data list_monoid<element>: Monoid<List<element>>` at \
+            `src/v3/std/list.dag:61-64`. Dissolution trigger: when both facets \
+            close (top-level List/sum-variant ValueBody carriers AND fn-typed \
+            data-body fields validate structurally), un-ignore and verify this \
+            test passes without lens-shape changes. See lens .dag file header \
+            for the unified two-facet receipt."]
 fn emission_provenance_lens_binds_against_locked_carrier() {
     // Structural cement: the `Lens<List<EmissionProvenance>>` instance
     // compiles against the Director-locked 6-field `Lens<C>` carrier at
