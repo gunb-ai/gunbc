@@ -255,6 +255,17 @@ data rust_pilot_primitives: List<RustPrimitive> = [
     range_min_inclusive: "0", range_max_inclusive: "18446744073709551615",
     is_copy: true, overflow: TwoComplementWrap },
 
+  // R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264;
+  // Option (ii) confirmed at gunbc#1761 #issuecomment-4393145631): u128 row
+  // unblocked by Phase A's `IntervalInt::ExactInterval` BigInt host repr
+  // widening (commit `e7ba022c6`). Range is `[0, 2^128 - 1]`; the prior
+  // `i128` host repr forced this row deferred (Slice B2 marker now
+  // resolved). Symmetric to i128 above; `Word128Carrier` per Rust Reference §3.4.
+  IntegerPrimitive { target_name: "u128", algebra: SemiringAlgebra, carrier: Word128Carrier,
+    range_min_inclusive: "0",
+    range_max_inclusive: "340282366920938463463374607431768211455",
+    is_copy: true, overflow: TwoComplementWrap },
+
 
   // -- Bool : BooleanAlgebra over Bit -----------------------------------
   // Rust Reference §3.5. The canonical two-element Boolean algebra; carrier

@@ -518,7 +518,7 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
     // T-Int128 Slice B1: pilot extended to 9 IntegerPrimitive rows (i8..i64,
     // i128, u8..u64). u128 lands in Slice B2 once `IntervalInt::ExactInterval`
     // widens past host i128.
-    const EXPECTED_INTEGER_ROWS: usize = 9;
+    const EXPECTED_INTEGER_ROWS: usize = 10;
     const INTEGER_PRIMITIVE_FIELD_COUNT: usize = 7;
 
     enum PilotListSnapshot {
