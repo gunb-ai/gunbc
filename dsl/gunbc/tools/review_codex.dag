@@ -28,7 +28,13 @@ import std.credentials { CredentialSource, EnvVar }
 
 data default_model: String = "gpt-5.4"
 data default_reasoning_effort: String = "xhigh"
-data cron_schedule: String = "*/20 * * * *"
+data cron_schedule: CronSchedule = CronSchedule {
+  minute: Step { start: 0, step: 20 },
+  hour: Wildcard,
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
 data cron_tag: String = "review-agent"
 data owner: String = "gunb-ai"
 data repo: String = "gunbc"
@@ -218,7 +224,7 @@ func review_cycle(
   // Upsert cron — idempotent, converges on every run
   cron.Tab.Upsert(
     tag: cron_tag,
-    schedule: cron_schedule,
+    schedule: render_cron_schedule(cron_schedule),
     command: "dag run --source-root dsl --function gunbc.tools.review_codex.review_cycle",
     log_path: "/Users/briansrls/.local/share/gunbc-review/logs/cron.log"
   )

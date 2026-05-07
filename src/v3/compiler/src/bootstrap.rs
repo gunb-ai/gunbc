@@ -76,7 +76,7 @@
 
 use crate::dag::{ArrowBody, Dag, Declaration, TemplateArgument, TypeConnective};
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::pipeline_authority::{ordered_pipeline_stages, PIPELINE_AUTHORITY_FILE};
+use crate::pipeline_authority::ordered_pipeline_stages;
 
 // Used by `materialize_pipeline_realizations` (regen + unit tests below). When
 // `bootstrap-regen-fresh` is off, that path is cfg-dead in non-test lib builds.
@@ -121,21 +121,31 @@ pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
 /// `dsl/std/types.dag` and delete `patch_kernel_bool_boolean_algebra_inhabits`).
 #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
-    const BOOL_TYPES_FILE: &str = "dsl/std/types.dag";
-    let bool_authority = crate::diagnostics::BootstrapAuthorityKey::new(BOOL_TYPES_FILE);
+    // Audit row #2 retirement (bootstrap.rs slice 1 of 2):
+    // The path-string `dsl/std/types.dag` is encapsulated behind
+    // `BootstrapAuthorityKey::for_kernel_bool()` and is no longer named
+    // in this file outside doc-comments. The participation gate is
+    // retained — `declaration_by_name` still rank-biases on `span.file`
+    // (audit row #14, separate owner) so a bare lookup could surface a
+    // non-kernel duplicate; we walk the declarations directly and gate
+    // by the authority's `path()` egress so the witness, not a free
+    // constant, is the structural source. Full dissolution (delete the
+    // gate; rely on a structural kernel-`Bool` `DeclarationId` accessor)
+    // lands when row #14 retires.
+    let bool_authority = crate::diagnostics::BootstrapAuthorityKey::for_kernel_bool();
     let Some(bool_decl) = dag
         .declarations()
         .iter()
-        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == BOOL_TYPES_FILE)
+        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == bool_authority.path())
     else {
+        let authority_span = SourceSpan::new(bool_authority.path(), 0, 0);
         dag.attach_bootstrap_diagnostic(
             bool_authority,
             Diagnostic::ResolveError {
-                name: format!(
-                    "bootstrap: Lane 1e-2b Path A — kernel `Bool` not found in `{BOOL_TYPES_FILE}`; \
+                name: "bootstrap: Lane 1e-2b Path A — kernel `Bool` not found in bootstrap Dag; \
                      cannot set `Declaration.inhabits` for `BooleanAlgebra<Bool>`"
-                ),
-                span: SourceSpan::new(BOOL_TYPES_FILE, 0, 0),
+                    .to_string(),
+                span: authority_span,
                 fixes: Vec::new(),
             },
         );
@@ -220,7 +230,7 @@ pub(crate) fn materialize_pipeline_realizations(dag: &mut Dag) {
     let stages = match ordered_pipeline_stages(dag) {
         Ok(stages) => stages,
         Err(error) => {
-            report_pipeline_authority_error(dag, error);
+            report_pipeline_authority_error(dag, error, pipeline_authority_span());
             return;
         }
     };
@@ -231,6 +241,7 @@ pub(crate) fn materialize_pipeline_realizations(dag: &mut Dag) {
         report_pipeline_authority_error(
             dag,
             format!("missing pipeline realization meta `{PIPELINE_REALIZATION_META}`"),
+            pipeline_authority_span(),
         );
         return;
     };
@@ -242,12 +253,14 @@ pub(crate) fn materialize_pipeline_realizations(dag: &mut Dag) {
                 format!(
                     "pipeline realization meta `{PIPELINE_REALIZATION_META}` must lower to a record"
                 ),
+                dag.declaration(meta_decl_id).span.clone(),
             );
             return;
         }
     };
 
     for stage in &stages {
+        let realization_span = dag.declaration(stage.realization).span.clone();
         let realization = dag.declaration_mut(stage.realization);
         if realization.meta_tag != Some(meta_decl_id) {
             report_pipeline_authority_error(
@@ -256,6 +269,7 @@ pub(crate) fn materialize_pipeline_realizations(dag: &mut Dag) {
                     "pipeline realization `{}` is not tagged with `{PIPELINE_REALIZATION_META}`",
                     stage.realization_name
                 ),
+                realization_span,
             );
             continue;
         }
@@ -263,6 +277,7 @@ pub(crate) fn materialize_pipeline_realizations(dag: &mut Dag) {
     }
 
     for stage in stages {
+        let stage_span = dag.declaration(stage.stage).span.clone();
         let stage_decl = dag.declaration_mut(stage.stage);
         match &mut stage_decl.connective {
             TypeConnective::Arrow { body, .. } => {
@@ -274,18 +289,33 @@ pub(crate) fn materialize_pipeline_realizations(dag: &mut Dag) {
                     "pipeline stage `{}` must lower to an arrow",
                     stage.stage_name
                 ),
+                stage_span,
             ),
         }
     }
 }
 
+/// Synthesize a span for pipeline-authority errors that occur before any
+/// stage binding is in hand (binding-type missing, meta-type missing,
+/// etc.). The path string is routed through the
+/// [`BootstrapAuthorityKey`] egress accessor (display-only), not pulled
+/// from the `PIPELINE_AUTHORITY_FILE` constant — this keeps the witness
+/// the structural source for bootstrap-attribution; the `(file, 0, 0)`
+/// shape remains diagnostic display, not a participation key (audit
+/// row #6 retirement; bootstrap.rs slice 1 of 2).
 #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
-fn report_pipeline_authority_error(dag: &mut Dag, name: String) {
+fn pipeline_authority_span() -> SourceSpan {
+    let key = crate::diagnostics::BootstrapAuthorityKey::for_pipeline_authority();
+    SourceSpan::new(key.path(), 0, 0)
+}
+
+#[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
+fn report_pipeline_authority_error(dag: &mut Dag, name: String, span: SourceSpan) {
     dag.attach_bootstrap_diagnostic(
-        crate::diagnostics::BootstrapAuthorityKey::new(PIPELINE_AUTHORITY_FILE),
+        crate::diagnostics::BootstrapAuthorityKey::for_pipeline_authority(),
         Diagnostic::ResolveError {
             name,
-            span: SourceSpan::new(PIPELINE_AUTHORITY_FILE, 0, 0),
+            span,
             fixes: Vec::new(),
         },
     );
@@ -450,6 +480,8 @@ mod tests {
 
     #[test]
     fn malformed_pipeline_stage_attaches_diagnostic() {
+        use crate::diagnostics::BootstrapAuthorityKey;
+
         let mut dag = Dag::new();
         assert!(dag.diagnostics().is_empty(), "bootstrap should start clean");
 
@@ -463,14 +495,32 @@ mod tests {
 
         materialize_pipeline_realizations(&mut dag);
 
-        assert!(
-            dag.diagnostics().iter().any(|(_, diag)| matches!(
-                diag,
-                Diagnostic::ResolveError { name, span, .. }
-                    if name.contains("pipeline stage `parse`")
-                        && span.file == PIPELINE_AUTHORITY_FILE
-            )),
-            "malformed pipeline authority should fail closed with a diagnostic"
+        // Consumer-side dispatch on attribution witness, not on
+        // `span.file == PIPELINE_AUTHORITY_FILE` (audit row #6
+        // retirement; bootstrap.rs slice 1 of 2).
+        let expected_key = BootstrapAuthorityKey::for_pipeline_authority();
+        let mut matched = 0usize;
+        for (_, diag, attribution) in dag.diagnostics().iter_attributed() {
+            let Diagnostic::ResolveError { name, .. } = diag else {
+                continue;
+            };
+            if !name.contains("pipeline stage `parse`") {
+                continue;
+            }
+            assert!(
+                attribution.is_bootstrap(),
+                "malformed-stage diagnostic must carry BootstrapAuthority attribution, got {attribution:?}"
+            );
+            assert_eq!(
+                attribution.as_bootstrap_authority(),
+                Some(&expected_key),
+                "attribution witness must match pipeline-authority key"
+            );
+            matched += 1;
+        }
+        assert_eq!(
+            matched, 1,
+            "expected exactly one bootstrap-attributed pipeline-stage diagnostic, got {matched}"
         );
     }
 
@@ -536,7 +586,7 @@ mod tests {
 
         super::patch_kernel_bool_boolean_algebra_inhabits(&mut dag);
 
-        let expected_key = BootstrapAuthorityKey::new("dsl/std/types.dag");
+        let expected_key = BootstrapAuthorityKey::for_kernel_bool();
         let mut bootstrap_attributed = 0usize;
         for (port, diag, attribution) in dag.diagnostics().iter_attributed() {
             // Sanity-check: the message we expect from this scenario.

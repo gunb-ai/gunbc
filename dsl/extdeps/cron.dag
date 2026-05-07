@@ -13,20 +13,76 @@
 
 module extdeps.cron
 
+import std.integer { NonNegativeInt, PositiveInt }
+
 // -- Cron entry model -------------------------------------------------
+// Typed cron expression. Each of the 5 standard POSIX fields is a
+// `CronField` rather than an opaque string. The sum type collapses
+// the *string-vs-typed* parse fork into a single authority: there is
+// one path from fixture to wire-format, not two (DSL parse + runtime
+// re-parse). Per-field bound validity (minute in 0..59, hour in 0..23,
+// etc.) is NOT enforced at the type level here -- bare `Int` payloads
+// admit out-of-range values; bounded refinements would be a separate
+// substrate-shape question warranting ratification.
+//
+// Wire format is recovered via `render_cron_field` / `render_cron_schedule`
+// for transports that take a string-shaped schedule (e.g., crontab(1)).
+//
+// Field-count is exactly 5 (POSIX.1-2017). Expansion to 6 (seconds) or
+// 7 (year) is a substrate-shape question warranting ratification.
+
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟢 TERMINAL. POSIX.1-2017 crontab(1) defines exactly these 5 grammar
+// shapes per field (wildcard, exact value, comma-list, range, step) --
+// the variant set is bounded by the external spec, not a scaffold for
+// a future model. Field-payload integer types are refined to
+// NonNegativeInt / PositiveInt: cron field values are never negative
+// in POSIX, and step interval is strictly positive (zero-step is
+// undefined). Per-field POSIX bounds (minute 0..59, hour 0..23, etc.)
+// remain unenforced -- bounded refinements are a separate substrate
+// shape question and would compose at this layer.
+type CronField
+  = Wildcard                                                       // *
+  | Exact { value: NonNegativeInt }                                // N
+  | Listed { values: List<NonNegativeInt> }                        // a,b,c (empty-list representable; renders as ""; non-empty refinement deferred with per-field bounds)
+  | Ranged { start: NonNegativeInt, end: NonNegativeInt }          // a-b
+  | Step { start: NonNegativeInt, step: PositiveInt }              // a/N  (start: 0 renders as "*/N")
 
 type CronSchedule {
-  minute: String
-  hour: String
-  day_of_month: String
-  month: String
-  day_of_week: String
+  minute: CronField
+  hour: CronField
+  day_of_month: CronField
+  month: CronField
+  day_of_week: CronField
 }
 
 type CronEntry {
   tag: String
   schedule: CronSchedule
   command: String
+}
+
+// Wire-format render. Consumers calling `cron.Tab.Upsert` pass
+// `render_cron_schedule(typed_schedule)` to satisfy the String-shaped
+// transport input.
+
+fn render_cron_field(f: CronField) -> String {
+  match f {
+    Wildcard => "*"
+    Exact { value } => "{value}"
+    Listed { values } => values |> map(v => "{v}") |> join(separator: ",")
+    Ranged { start, end } => "{start}-{end}"
+    Step { start, step } => if start == 0 { "*/{step}" } else { "{start}/{step}" }
+  }
+}
+
+fn render_cron_schedule(s: CronSchedule) -> String {
+  let mn = render_cron_field(s.minute)
+  let hr = render_cron_field(s.hour)
+  let dm = render_cron_field(s.day_of_month)
+  let mo = render_cron_field(s.month)
+  let dw = render_cron_field(s.day_of_week)
+  "{mn} {hr} {dm} {mo} {dw}"
 }
 
 // -- Service: shell transport -----------------------------------------
