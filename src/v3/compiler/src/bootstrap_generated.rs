@@ -22339,6 +22339,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                         },
                     ),
                     (
+                        "src/v3/std/lens_application.dag".to_string(),
+                        FieldValue::Variant {
+                            constructor: DeclarationId(1905),
+                            payload: vec![],
+                        },
+                    ),
+                    (
                         "src/v3/std/list.dag".to_string(),
                         FieldValue::Variant {
                             constructor: DeclarationId(1905),
@@ -22504,7 +22511,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             )),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/bootstrap_authority.dag", 1361, 4409),
+            span: SourceSpan::new("src/v3/std/bootstrap_authority.dag", 1361, 4464),
         });
         declarations.push(Declaration {
             id: DeclarationId(830),
