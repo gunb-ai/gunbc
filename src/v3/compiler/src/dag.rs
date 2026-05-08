@@ -1446,10 +1446,28 @@ pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> 
     let entry = per_call_descent_evidence(dag)
         .into_iter()
         .find(|entry| entry.call == call_site)?;
-    let [relation] = entry.evidence.as_slice() else {
+    call_pattern_from_relations(&entry.evidence)
+}
+
+fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPattern> {
+    if let Some(pattern) = relations
+        .iter()
+        .filter(|relation| !matches!(relation, SubValueRelation::PreservedValue))
+        .find_map(sub_value_relation_to_call_pattern)
+    {
+        return Some(pattern);
+    }
+
+    if relations
+        .iter()
+        .any(|relation| matches!(relation, SubValueRelation::SubValueUnknown))
+    {
         return None;
-    };
-    sub_value_relation_to_call_pattern(relation)
+    }
+
+    relations
+        .iter()
+        .find_map(sub_value_relation_to_call_pattern)
 }
 
 pub fn sub_value_relation_to_call_pattern(relation: &SubValueRelation) -> Option<CallPattern> {
@@ -4824,6 +4842,18 @@ fn duplicate_target_clean_emission_binding(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn call_pattern_from_relations_fails_closed_for_mixed_unknown_and_preserved_evidence() {
+        assert_eq!(
+            call_pattern_from_relations(&[
+                SubValueRelation::PreservedValue,
+                SubValueRelation::SubValueUnknown
+            ]),
+            None,
+            "mixed unknown + preserved evidence must not fabricate SameArgumentCall"
+        );
+    }
 
     #[test]
     fn workflow_root_zero_bind_returns_no_root() {

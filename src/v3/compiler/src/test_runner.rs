@@ -1845,6 +1845,97 @@ pub struct TestRunner<'a> {
     dag: &'a Dag,
 }
 
+/// Resolved `PerfBaselineMeasurement` carrier read from a `.dag data`
+/// declaration body. Consumed by [`TestRunner::eval_perf_within_baseline`]
+/// to apply the Director-locked Tier-3 budget thresholds (`r3-structure.md`
+/// §225). Carrier shape mirrors `src/v3/std/substrate.dag` `PerfBaselineMeasurement`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PerfMeasurement {
+    median_ns: i64,
+    p99_ns: i64,
+}
+
+/// Which budget axis overflowed when computing thresholds; produced by
+/// [`compute_perf_budget_bounds`]. Single-authority for the §225 ratio
+/// arithmetic — both the runtime evaluator and unit tests call through
+/// this function so the `× 2` / `× 5` constants live in one place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PerfBudgetOverflow {
+    Median,
+    P99,
+}
+
+/// Apply the Director-locked §225 ratio thresholds to a baseline:
+/// `median_bound = baseline.median_ns × 2`, `p99_bound = baseline.p99_ns × 5`.
+/// Saturate-on-overflow → `Err(PerfBudgetOverflow::*)` so the runtime can
+/// fail-closed without silently wrapping. Single-authority for the budget
+/// arithmetic per `INVARIANTS.md` P2.
+fn compute_perf_budget_bounds(baseline: PerfMeasurement) -> Result<(i64, i64), PerfBudgetOverflow> {
+    let median_bound = baseline
+        .median_ns
+        .checked_mul(2)
+        .ok_or(PerfBudgetOverflow::Median)?;
+    let p99_bound = baseline
+        .p99_ns
+        .checked_mul(5)
+        .ok_or(PerfBudgetOverflow::P99)?;
+    Ok((median_bound, p99_bound))
+}
+
+/// Typed resolver failures for [`TestRunner::perf_baseline_measurement`].
+/// Per `CODING.md` typed-error discipline: raw `String` is reserved for the
+/// `ClaimResult::Fail` boundary at [`PerfMeasurementResolveError::into_claim_fail`];
+/// inner helpers carry structural variants.
+///
+/// **🟢 TERMINAL coproduct** (per `docs/modeling-discipline.md` Practice 4
+/// classification checkpoint). The four variants enumerate the exhaustive
+/// failure shapes when reading a `PerfBaselineMeasurement` data declaration:
+/// either the declaration is absent (`MissingDeclaration` — substrate-integrity
+/// violation), present but not a structural record (`WrongConnective` —
+/// `Unparsed`, `Scalar`, `List`, or `None`), structural with a missing required
+/// field (`MissingField`), or structural with the field present but not an Int
+/// literal (`WrongFieldKind`). These cover every way the structural resolver
+/// can fail-closed against the substrate-declared shape; no further variants
+/// are reachable. No dissolution trigger — the carrier persists with the
+/// runtime invariant impl.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PerfMeasurementResolveError {
+    /// `DeclarationId` did not resolve via [`Dag::declaration_opt`] —
+    /// substrate-integrity violation.
+    MissingDeclaration,
+    /// Declaration's `value_body` is not `ValueBody::Structural` (e.g.
+    /// `Unparsed`, `Scalar`, `List`, or `None`); a `PerfBaselineMeasurement`
+    /// data declaration must be a record literal.
+    WrongConnective,
+    /// Required field absent from the structural record body.
+    MissingField { field: &'static str },
+    /// Required field present but not `FieldValue::Literal(LiteralBits::Int(_))`.
+    WrongFieldKind { field: &'static str },
+}
+
+impl PerfMeasurementResolveError {
+    /// Convert the typed error into `ClaimResult::Fail` reason text with the
+    /// role label preserved for triage.
+    fn into_claim_fail(self, role: &str) -> String {
+        match self {
+            Self::MissingDeclaration => format!(
+                "PerfWithinBaseline `{role}`: declaration id did not resolve in DAG \
+                 (substrate-integrity violation)"
+            ),
+            Self::WrongConnective => format!(
+                "PerfWithinBaseline `{role}`: declaration is not a structural record \
+                 (expected `PerfBaselineMeasurement {{ median_ns, p99_ns }}`)"
+            ),
+            Self::MissingField { field } => {
+                format!("PerfWithinBaseline `{role}`: record is missing required field `{field}`")
+            }
+            Self::WrongFieldKind { field } => {
+                format!("PerfWithinBaseline `{role}`: field `{field}` is not an Int literal")
+            }
+        }
+    }
+}
+
 enum ProgramInputRole {
     ProgramInput,
     ProgramOutputBind { output_bind_name: String },
@@ -1939,6 +2030,7 @@ impl<'a> TestRunner<'a> {
                             self.eval_declaration_has_refinement(claim, &payload)
                         }
                         "CostBounded" => self.eval_cost_bounded(claim, &payload),
+                        "PerfWithinBaseline" => self.eval_perf_within_baseline(claim, &payload),
                         "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                         "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
                         "BinaryDimensionReportEquals" => {
@@ -2998,6 +3090,135 @@ impl<'a> TestRunner<'a> {
         } else {
             ClaimResult::Fail(format!("cost {actual} did not satisfy bound {bound}"))
         }
+    }
+
+    /// Evaluate `TestPredicate::PerfWithinBaseline { subject, comparator, baseline_ref }`.
+    ///
+    /// Resolves both `DeclarationRef`s to `PerfBaselineMeasurement` records
+    /// (`{ median_ns: Int, p99_ns: Int }`) and applies the Director-locked
+    /// Tier-3 budget thresholds (`docs/r3-structure.md` §225): subject median
+    /// must satisfy `comparator` against `baseline.median_ns × 2`; subject p99
+    /// against `baseline.p99_ns × 5`. Both axes must satisfy → `Pass`. Overflow
+    /// in the multiplication is fail-closed.
+    fn eval_perf_within_baseline(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [subject_fv, comparator, baseline_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "PerfWithinBaseline payload should be exactly three fields \
+                 (subject: DeclarationRef, comparator: ComparisonOp, baseline_ref: DeclarationRef); \
+                 got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let subject_id = match self.resolve_declaration_ref_id(subject_fv, "subject") {
+            Ok(id) => id,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let baseline_id = match self.resolve_declaration_ref_id(baseline_fv, "baseline_ref") {
+            Ok(id) => id,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        // Enforce the Director-locked "within baseline" semantics (`r3-structure.md`
+        // §225): budget is `median ≤ 2× baseline` AND `p99 ≤ 5× baseline`. The
+        // substrate-declared shape carries `comparator: ComparisonOp` for explicit
+        // intent in `.dag` claims, but only `Le` matches the locked semantics —
+        // `Gt`/`Ge`/`Ne`/`Eq`/`Lt` would invert or skew the gate. Reject
+        // fail-closed at the runtime boundary so a malformed claim cannot pass.
+        let comparator_label = match self.variant_value(comparator) {
+            Some((label, payload)) if payload.is_empty() => label,
+            _ => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline `comparator`: expected unit ComparisonOp variant; \
+                     got non-variant or non-empty payload"
+                        .to_string(),
+                );
+            }
+        };
+        if !is_comparator_le(&comparator_label) {
+            return ClaimResult::Fail(format!(
+                "PerfWithinBaseline `comparator`: only `Le` matches the Director-locked \
+                 §225 budget semantics (median ≤ 2× baseline, p99 ≤ 5× baseline); \
+                 `{comparator_label}` would invert or skew the gate"
+            ));
+        }
+        let subject = match self.perf_baseline_measurement(subject_id, "subject") {
+            Ok(measurement) => measurement,
+            Err(err) => return ClaimResult::Fail(err.into_claim_fail("subject")),
+        };
+        let baseline = match self.perf_baseline_measurement(baseline_id, "baseline_ref") {
+            Ok(measurement) => measurement,
+            Err(err) => return ClaimResult::Fail(err.into_claim_fail("baseline_ref")),
+        };
+        let (median_bound, p99_bound) = match compute_perf_budget_bounds(baseline) {
+            Ok(bounds) => bounds,
+            Err(PerfBudgetOverflow::Median) => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline: median baseline threshold (baseline_ref median_ns × 2) \
+                     overflowed Int — fail-closed; recapture with smaller baseline or widen Int."
+                        .to_string(),
+                );
+            }
+            Err(PerfBudgetOverflow::P99) => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline: p99 baseline threshold (baseline_ref p99_ns × 5) \
+                     overflowed Int — fail-closed; recapture with smaller baseline or widen Int."
+                        .to_string(),
+                );
+            }
+        };
+        let median_ok = self.compare_cost(comparator, subject.median_ns, median_bound);
+        let p99_ok = self.compare_cost(comparator, subject.p99_ns, p99_bound);
+        if median_ok && p99_ok {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "PerfWithinBaseline: subject median_ns={} vs threshold {} (median_ok={}) \
+                 and subject p99_ns={} vs threshold {} (p99_ok={}) did not satisfy comparator",
+                subject.median_ns, median_bound, median_ok, subject.p99_ns, p99_bound, p99_ok
+            ))
+        }
+    }
+
+    /// Structurally resolve a `PerfBaselineMeasurement` data declaration to
+    /// `{ median_ns, p99_ns }`. Returns a typed `PerfMeasurementResolveError`
+    /// per `CODING.md` typed-error discipline; the outer
+    /// [`Self::eval_perf_within_baseline`] boundary converts to
+    /// `ClaimResult::Fail(...)` with the role label preserved.
+    fn perf_baseline_measurement(
+        &self,
+        decl_id: DeclarationId,
+        _role: &str,
+    ) -> Result<PerfMeasurement, PerfMeasurementResolveError> {
+        let decl = match self.dag.declaration_opt(&decl_id) {
+            Some(decl) => decl,
+            None => return Err(PerfMeasurementResolveError::MissingDeclaration),
+        };
+        let fields = match decl.value_body.as_ref() {
+            Some(ValueBody::Structural { fields }) => fields,
+            _ => return Err(PerfMeasurementResolveError::WrongConnective),
+        };
+        let median_ns = match field(fields, "median_ns") {
+            Some(FieldValue::Literal(LiteralBits::Int(v))) => *v,
+            Some(_) => {
+                return Err(PerfMeasurementResolveError::WrongFieldKind { field: "median_ns" });
+            }
+            None => {
+                return Err(PerfMeasurementResolveError::MissingField { field: "median_ns" });
+            }
+        };
+        let p99_ns = match field(fields, "p99_ns") {
+            Some(FieldValue::Literal(LiteralBits::Int(v))) => *v,
+            Some(_) => {
+                return Err(PerfMeasurementResolveError::WrongFieldKind { field: "p99_ns" });
+            }
+            None => {
+                return Err(PerfMeasurementResolveError::MissingField { field: "p99_ns" });
+            }
+        };
+        Ok(PerfMeasurement { median_ns, p99_ns })
     }
 
     fn eval_census_bound_check_shape(
@@ -5040,4 +5261,204 @@ mod helper_path_validation_tests {
             "file with no execute permission for the calling uid must be rejected (P2(c))"
         );
     }
+}
+
+#[cfg(test)]
+mod perf_within_baseline_tests {
+    //! Unit tests for the `PerfWithinBaseline` evaluator path per the
+    //! T-Tier3-Dissolution consumer-slice worker brief
+    //! (`docs/briefs/r3-pb-t-tier3-consumer-slice-worker.md` §1).
+    //!
+    //! Two coverage axes:
+    //!
+    //! 1. **Resolver fail-closed**: `PerfMeasurementResolveError` table-form
+    //!    over the four typed variants × two role labels. Each variant must
+    //!    produce a `ClaimResult::Fail` reason text that preserves the role
+    //!    label for triage (per `CODING.md` typed-error discipline +
+    //!    `INVARIANTS.md` P3 fail-closed).
+    //!
+    //! 2. **Budget evaluation logic**: the four cases enumerated in the
+    //!    brief acceptance — pass-when-under-budget, fail-on-median-over,
+    //!    fail-on-p99-over, fail-on-overflow. Tested via a small free
+    //!    function rather than through full DAG construction; the helper
+    //!    encodes the §225 ratio thresholds and the saturating-overflow
+    //!    fail-closed semantics.
+
+    use super::compute_perf_budget_bounds;
+    use super::is_comparator_le;
+    use super::PerfBudgetOverflow;
+    use super::PerfMeasurement;
+    use super::PerfMeasurementResolveError;
+
+    /// Apply the `Le` budget against the §225-locked thresholds. Tests
+    /// call through `compute_perf_budget_bounds` (the same single-authority
+    /// free function the runtime uses) so there is no second copy of the
+    /// `× 2` / `× 5` constants — drift between test harness and runtime
+    /// is structurally impossible.
+    fn budget_pass_le(
+        subject: PerfMeasurement,
+        baseline: PerfMeasurement,
+    ) -> Result<bool, PerfBudgetOverflow> {
+        let (median_bound, p99_bound) = compute_perf_budget_bounds(baseline)?;
+        Ok(subject.median_ns <= median_bound && subject.p99_ns <= p99_bound)
+    }
+
+    /// Differential test: every typed `PerfMeasurementResolveError` variant
+    /// must produce a structurally-distinct `ClaimResult::Fail` for two
+    /// different role labels, demonstrating that the role parameter flows
+    /// through `into_claim_fail` without pinning the exact format string.
+    /// This avoids the `TESTING.md` anti-pattern of asserting on
+    /// human-readable error message text while still exercising the
+    /// role-preservation contract from the brief acceptance.
+    #[test]
+    fn resolver_fail_closed_role_label_flows_through_for_every_variant() {
+        let variants: &[PerfMeasurementResolveError] = &[
+            PerfMeasurementResolveError::MissingDeclaration,
+            PerfMeasurementResolveError::WrongConnective,
+            PerfMeasurementResolveError::MissingField { field: "median_ns" },
+            PerfMeasurementResolveError::MissingField { field: "p99_ns" },
+            PerfMeasurementResolveError::WrongFieldKind { field: "median_ns" },
+            PerfMeasurementResolveError::WrongFieldKind { field: "p99_ns" },
+        ];
+        for variant in variants {
+            let alpha = variant.clone().into_claim_fail("alpha_role");
+            let beta = variant.clone().into_claim_fail("beta_role");
+            assert_ne!(
+                alpha, beta,
+                "role label must produce different output for variant {:?}; \
+                 got identical strings (role param ignored?)",
+                variant,
+            );
+            // Also verify the role string itself is reachable in the output —
+            // not by pinning the format but by checking the role name is a
+            // distinguishing substring (a role drop would make alpha == beta
+            // above, but a role used non-identifyingly could still differ).
+            assert!(
+                alpha.contains("alpha_role") && beta.contains("beta_role"),
+                "role substrings must appear in their respective outputs for {:?}",
+                variant,
+            );
+        }
+    }
+
+    #[test]
+    fn budget_pass_when_subject_under_thresholds() {
+        // baseline median 100, p99 200; bounds = (200, 1000); subject (150, 800) — both under.
+        let baseline = PerfMeasurement {
+            median_ns: 100,
+            p99_ns: 200,
+        };
+        let subject = PerfMeasurement {
+            median_ns: 150,
+            p99_ns: 800,
+        };
+        assert_eq!(budget_pass_le(subject, baseline), Ok(true));
+    }
+
+    #[test]
+    fn budget_fails_when_subject_median_exceeds_bound() {
+        // baseline median 100 → bound 200; subject median 201 fails despite fine p99.
+        let baseline = PerfMeasurement {
+            median_ns: 100,
+            p99_ns: 200,
+        };
+        let subject = PerfMeasurement {
+            median_ns: 201,
+            p99_ns: 800,
+        };
+        assert_eq!(budget_pass_le(subject, baseline), Ok(false));
+    }
+
+    #[test]
+    fn budget_fails_when_subject_p99_exceeds_bound() {
+        // baseline p99 200 → bound 1000; subject p99 1001 fails despite fine median.
+        let baseline = PerfMeasurement {
+            median_ns: 100,
+            p99_ns: 200,
+        };
+        let subject = PerfMeasurement {
+            median_ns: 150,
+            p99_ns: 1001,
+        };
+        assert_eq!(budget_pass_le(subject, baseline), Ok(false));
+    }
+
+    #[test]
+    fn budget_fail_closed_on_threshold_overflow() {
+        // baseline median = i64::MAX → ×2 overflows; helper must surface the
+        // overflow rather than silently wrap. The runtime impl converts this
+        // to ClaimResult::Fail with an explicit reason.
+        let baseline = PerfMeasurement {
+            median_ns: i64::MAX,
+            p99_ns: 1,
+        };
+        let subject = PerfMeasurement {
+            median_ns: 0,
+            p99_ns: 0,
+        };
+        assert_eq!(
+            budget_pass_le(subject, baseline),
+            Err(PerfBudgetOverflow::Median)
+        );
+
+        let baseline_p99_overflow = PerfMeasurement {
+            median_ns: 1,
+            p99_ns: i64::MAX,
+        };
+        assert_eq!(
+            budget_pass_le(subject, baseline_p99_overflow),
+            Err(PerfBudgetOverflow::P99)
+        );
+    }
+
+    /// The Director-locked §225 budget semantics are `median ≤ 2× baseline`
+    /// AND `p99 ≤ 5× baseline`. The substrate `ComparisonOp` variant
+    /// carries `comparator` for explicit intent, but only `Le` matches the
+    /// locked semantics. This test reads `ComparisonOp`'s variant set
+    /// from the bootstrap DAG (substrate-source-of-truth, not a hardcoded
+    /// list) and asserts the runtime guard classifies every variant: `Le`
+    /// alone passes, every other variant fails-closed.
+    #[test]
+    fn runtime_classifies_every_comparison_op_variant_le_only() {
+        use crate::dag::TypeConnective;
+        let dag = crate::generated_full_bootstrap_dag();
+        let comparison_op = dag
+            .declaration_by_name("ComparisonOp")
+            .expect("ComparisonOp must exist in bootstrap DAG (src/v3/std/substrate.dag)");
+        let TypeConnective::Disj { variants } = &comparison_op.connective else {
+            panic!("ComparisonOp must be a coproduct (Disj)");
+        };
+        let mut variant_labels: Vec<&str> = variants.iter().map(|v| v.label.as_str()).collect();
+        variant_labels.sort();
+        assert!(
+            variant_labels.contains(&"Le"),
+            "substrate ComparisonOp must include `Le` for §225 semantics; got {variant_labels:?}"
+        );
+        // Drift gate: every substrate-declared variant must be explicitly
+        // classified by the runtime guard. The guard's classification is a
+        // single rule — `label == \"Le\"` — so the assertion below mirrors it.
+        // If substrate adds a variant (e.g., `Approx`), `is_comparator_le`
+        // continues to return `false` for it (correctly fail-closed under the
+        // current locked semantics) and this test continues to pass without
+        // edits — the new variant is structurally rejected by the same guard,
+        // matching the §225 lock.
+        for label in &variant_labels {
+            let accepted = is_comparator_le(label);
+            assert_eq!(
+                accepted,
+                *label == "Le",
+                "ComparisonOp variant `{label}`: runtime guard classification disagrees with §225 \
+                 lock (only `Le` may be accepted)",
+            );
+        }
+    }
+}
+
+/// Single-rule classifier for the §225 comparator-Le guard. The runtime
+/// path in [`TestRunner::eval_perf_within_baseline`] calls this helper
+/// (`comparator_label != "Le"` → fail-closed). Lifted as a free function
+/// so unit tests can drive the same classifier against the substrate-
+/// declared `ComparisonOp` variant set without DAG fixtures.
+fn is_comparator_le(comparator_label: &str) -> bool {
+    comparator_label == "Le"
 }
