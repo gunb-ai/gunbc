@@ -702,6 +702,15 @@ fn perf_within_baseline_predicate_carries_subject_comparator_baseline_ref() {
     };
     let labels: Vec<_> = children.iter().map(|field| field.label.as_str()).collect();
     assert_eq!(labels, vec!["subject", "comparator", "baseline_ref"]);
+    let comparator_field = children
+        .iter()
+        .find(|field| field.label == "comparator")
+        .expect("comparator field missing");
+    let comparator_ty = dag.declaration(comparator_field.ty);
+    assert_eq!(
+        comparator_ty.name.as_deref(),
+        Some("PerfBudgetComparisonOp")
+    );
 }
 
 #[test]
@@ -711,7 +720,7 @@ fn perf_within_baseline_passes_when_subject_is_inside_tier3_thresholds() {
 module test.perf_within_baseline_pass
 
 import v3.std.substrate { PerfBaselineMeasurement }
-import std.verification { PerfWithinBaseline, TestClaim, TestSuite }
+import std.verification { AtMostBudget, PerfWithinBaseline, TestClaim, TestSuite }
 
 data trivial_baseline: PerfBaselineMeasurement = {
   median_ns: 100
@@ -727,7 +736,7 @@ data claim: TestClaim = {
   name: "perf within baseline",
   source: "let _: Int = 0",
   file_name: "perf_within_baseline_pass.v3",
-  predicate: PerfWithinBaseline(trivial_measurement, Le, trivial_baseline),
+  predicate: PerfWithinBaseline(trivial_measurement, AtMostBudget, trivial_baseline),
   requires: []
 }
 
@@ -751,7 +760,7 @@ fn perf_within_baseline_fails_when_p99_exceeds_threshold() {
 module test.perf_within_baseline_fail
 
 import v3.std.substrate { PerfBaselineMeasurement }
-import std.verification { PerfWithinBaseline, TestClaim, TestSuite }
+import std.verification { AtMostBudget, PerfWithinBaseline, TestClaim, TestSuite }
 
 data trivial_baseline: PerfBaselineMeasurement = {
   median_ns: 100
@@ -767,7 +776,7 @@ data claim: TestClaim = {
   name: "perf p99 regression",
   source: "let _: Int = 0",
   file_name: "perf_within_baseline_fail.v3",
-  predicate: PerfWithinBaseline(regressed_measurement, Le, trivial_baseline),
+  predicate: PerfWithinBaseline(regressed_measurement, AtMostBudget, trivial_baseline),
   requires: []
 }
 

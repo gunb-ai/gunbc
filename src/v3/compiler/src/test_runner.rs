@@ -2553,8 +2553,12 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        let median_ok = self.compare_cost(comparator, subject.median_ns, median_bound);
-        let p99_ok = self.compare_cost(comparator, subject_p99, p99_bound);
+        if let Err(reason) = self.validate_perf_budget_comparator(comparator) {
+            return ClaimResult::Fail(reason);
+        }
+
+        let median_ok = subject.median_ns <= median_bound;
+        let p99_ok = subject_p99 <= p99_bound;
         if median_ok && p99_ok {
             ClaimResult::Pass
         } else {
@@ -2613,6 +2617,25 @@ impl<'a> TestRunner<'a> {
              `PerfBaselineMeasurement`; `{}` does not",
             decl_display_name(decl_id, decl)
         ))
+    }
+
+    fn validate_perf_budget_comparator(&self, comparator: &FieldValue) -> Result<(), String> {
+        let Some((label, payload)) = self.variant_value(comparator) else {
+            return Err(
+                "PerfWithinBaseline comparator must be PerfBudgetComparisonOp::AtMostBudget"
+                    .to_string(),
+            );
+        };
+        if !payload.is_empty() {
+            return Err("PerfWithinBaseline comparator must not carry payload".to_string());
+        }
+        if label == "AtMostBudget" {
+            Ok(())
+        } else {
+            Err(format!(
+                "PerfWithinBaseline comparator must be AtMostBudget, got `{label}`"
+            ))
+        }
     }
 
     fn eval_binary_dimension_report_equals_shape(
