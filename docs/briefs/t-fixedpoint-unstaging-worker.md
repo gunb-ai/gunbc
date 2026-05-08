@@ -1,137 +1,73 @@
-# T-FixedPoint unstaging worker brief — pre-staged for SG-0 zero arrival
+# T-FixedPoint unstaging worker — CLOSED AS REDUNDANT (routing doc)
 
-> **Posture**: PRE-STAGED. Do NOT dispatch until **`sg0_non_test_zero` GREEN** under
-> T-LensProducer-Retirement (#2086) — "SG-0 non-test = 0 + ≤1 first-time-bootstrap
-> trampoline" per [`docs/r3-structure.md`](../r3-structure.md) line 428 (Director-locked
-> 2026-04-28). This brief is mechanical-dispatch-ready at that point; PB Mgr issues
-> the green-light comment on parent inbox #2074.
->
-> Authored 2026-05-08 by bright-raven-819 (T-FixedPoint lane tracker, PB lane) at
-> PB Mgr (warm-dove-618 / inbox #2074) request: pre-author so dispatch is mechanical
-> when SG-0 zero arrives.
+> **Status**: CLOSED AS REDUNDANT 2026-05-08. This file is a **routing doc**, not
+> an authority. Single-authority for T-FixedPoint per INVARIANTS.md P2 lives at
+> [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) (PB Manager,
+> authored 2026-04-29; P0/P1/P2/P3 dispatch-gated brief).
 
-## Authority
+## What happened
 
-- Closure gate: `pb_self_compile_fixed_point` — R3 horizon stronger interpretation
-  ([`docs/r3-structure.md`](../r3-structure.md) lines 89-90, 200;
-  [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.8 row 16).
-- Design authority: [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md)
-  (DB-8 — emit → rustc → run → byte-diff).
-- SG-0 choreography authority: [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md)
-  §"First-time bootstrap" + DB-8 line 154.
-- Sequencing: [`docs/r3-program-plan.md`](../r3-program-plan.md) §2.2 step 2 (PB Mgr
-  poke-hole F1 corrected — T-LP-Retirement → T-FixedPoint, not reverse).
+This file was originally authored 2026-05-08 by bright-raven-819 at PB Mgr
+direction (parent inbox #2074 / dashboard inbox #2136 #issuecomment-4403050144) as
+a "pre-staged self-compile validation pipeline brief, mechanical-dispatch-ready
+for SG-0 zero arrival." The 5-question pre-author audit (per
+[`brief-authoring-checklist.md`](brief-authoring-checklist.md)) Q2 ran a `docs/briefs/`
+grep for `fixed.point|self.host|self.comp`, which did NOT match the canonical brief's
+filename token form `t-fixedpoint` (hyphen instead of dot/space) — so the canonical
+authority was missed and a parallel brief landed. INVARIANTS P2 violation surfaced
+by API review at PR #2206 inline comment 2026-05-08T03:42:39Z.
 
-## Pre-author audit (per `brief-authoring-checklist.md`)
+## Authority routing
 
-1. **Substrate exists?** YES. [`src/v3/compiler/src/bin/self_host_fixed_point.rs`](../../src/v3/compiler/src/bin/self_host_fixed_point.rs)
-   already implements the full pipeline (lines 58-210): pipeline-snapshot pre-check,
-   `compiler.dag` parse-probe, emit → rustc → run → byte-diff, `receipt.json` emission.
-   Currently "staged": `compile_to_dag(compiler_dag_text)` errors on the cycle
-   meta-model, so the bit-identical-diff path stays inert. **This brief is unstaging,
-   not producer-landing.**
+All T-FixedPoint scope — Slice, Acceptance, STOP-AND-ESCALATE, dispatch
+preconditions, two-horizon framing, P0 readiness, P1 Evaluator, P2 SG-0,
+P3 worker, TC3 handoff, relationship to DB-8 — is owned by
+[`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md).
 
-2. **Existing brief?** No prior brief covers fixed-point unstaging (grep
-   `docs/briefs/` for `fixed.point|self.host|self.comp` returns empty 2026-05-08).
+Sibling readiness pins live at:
+- [`r3-pb-t-fixedpoint-p1-p2-readiness-2026-05-02.md`](r3-pb-t-fixedpoint-p1-p2-readiness-2026-05-02.md)
+- [`r3-pb-t-fixedpoint-p3plus-readiness-2026-05-02.md`](r3-pb-t-fixedpoint-p3plus-readiness-2026-05-02.md)
 
-3. **Design-doc §recommendation match?** YES — `design-fixed-point-ratchet.md`
-   line 271 explicitly stages on "v3 parses + emits a CLI-shaped crate." That stage
-   trigger is exactly what this brief converts into a worker dispatch.
+These are the canonical surfaces. Do not consume this file as authority.
 
-4. **File:line citations live?** Verified at HEAD 2026-05-08:
-   - `self_host_fixed_point.rs:77` `compile_to_dag(&compiler_dag_text, ...)` — the staging gate
-   - `self_host_fixed_point.rs:141-148` byte-equality diff — the R3 horizon assertion
-   - `r3-structure.md:428` Director-locked SG-0 closure semantics
-   - `design-fixed-point-ratchet.md:271` staging checklist row
+## Pending PB Mgr decision (not authority — proposal)
 
-5. **Two-horizon clarification respected?** YES. R1 horizon (`verification.dag` +
-   `test_runner` evaluation) is already CONSUMER_LANDED per
-   [`r3-program-plan.md`](../r3-program-plan.md) §1.8 row 16; this brief targets ONLY
-   the R3 stronger interpretation. Worker MUST NOT modify R1-horizon Pass surface.
+The original draft of this file proposed a tactical S1-S5 unstaging slice
+(SG-0 precondition check → `compiler.dag` parse-probe → two-cycle byte-diff →
+§1.8 row 16 promotion → CI `continue-on-error` lift). That slice content is
+parked at git history of this file (commit 5e94bc6fd on session/bright-raven-819)
+and will NOT live as an authority anywhere unless PB Mgr decides one of:
 
-## Slice (mechanical, on dispatch)
+- **Option A** — fold the S1-S5 dispatch-mechanics into
+  `r3-pb-t-fixedpoint-worker.md` §"P3 — T-FixedPoint worker (future dispatch)" as
+  an addendum or expanded acceptance section.
+- **Option B** — keep the dispatch-mechanics out of canvas; PB Mgr re-derives
+  them at gate-clear from the canonical brief's existing acceptance criteria
+  (the canonical brief already names §"Acceptance gate", §"Relationship to DB-8",
+  §"Dispatch preconditions" — these may be sufficient without a separate
+  S1-S5 enumeration).
+- **Option C** — discard. Substrate already exists; no enumeration needed.
 
-### S1 — Verify SG-0 dispatch precondition
+bright-raven-819 awaits PB Mgr decision on inbox #2136. No additional authoring
+proceeds without that decision.
 
-- Confirm `sg0_non_test_zero` GREEN: run the SG-0 census test
-  (`cargo test -p v3-compiler --test integration -- sg0_census_test`) and verify
-  `EXPECTED_HAND_AUTHORED_NON_TEST` resolves to ≤1 entry, where the single
-  remaining entry (if any) is the trampoline path explicitly allocated under
-  `design-pure-bootstrap-zero.md` §"First-time bootstrap."
-- If census > 0 (and not the allocated trampoline): **STOP-AND-ESCALATE** to PB Mgr
-  on inbox #2074 — premise violated, dispatch was premature.
+## Why not just delete this file
 
-### S2 — Verify `compiler.dag` v3-parses
+INVARIANTS P2 + transparency: the closed-as-redundant routing doc preserves a
+durable receipt of the missed-grep failure mode (filename-token form
+sensitivity) and points future readers at the canonical authority. Deletion
+loses the receipt; conversion to a routing doc keeps it.
 
-- Run `cargo run -p v3-compiler --release --bin self_host_fixed_point` and read
-  `target/self_host/receipt.json`.
-- Required key state: `K_COMPILER_DAG_V3_PARSE == "ok"`. If still parse-error:
-  **STOP-AND-ESCALATE** — Lane 3 Stage 3c (v3 grammar coverage of cycle
-  meta-model) has not landed; this is a separate gate, not a fix-in-this-brief
-  scope item.
+## Pre-author audit failure-mode receipt (for `feedback_grep_verify_*` discipline)
 
-### S3 — Verify two-cycle bit-identical diff engages
+Failure: `brief-authoring-checklist.md` Q2 grep used `fixed.point|self.host|self.comp`
+as the disjunction. This matches "fixed-point", "fixed_point", "fixed.point",
+"self-host", "self_host", "self-comp", but NOT "fixedpoint" (single token).
+The canonical brief filename `r3-pb-t-fixedpoint-worker.md` uses the `fixedpoint`
+form, so the grep returned empty.
 
-- After S2 passes, the binary writes `target/self_host/stage1.rs`, invokes `rustc`,
-  runs the resulting stage1 binary against `dsl/gunbc/compiler.dag`. The stage1
-  binary MUST itself emit a `stage2.rs`. Confirm presence of `stage2.rs` and read
-  receipt key `fixed_point_diff`.
-- Required: `fixed_point_diff == "ok"` (`self_host_fixed_point.rs:142`).
-- If `mismatch`: surface byte-level diff (first divergence offset + ±64 bytes
-  context) to PB Mgr; this is a non-determinism finding, NOT something to paper
-  over. Per `design-fixed-point-ratchet.md:201` byte equality is the strictest
-  contract by design.
-- If `skipped_stage2_not_written`: stage1 binary did not produce stage2 — typically
-  means the emitted CLI does not yet emit on a positional path argument. Gate is
-  cross-coupled with T-LensProducer-Retirement bin-shim emit pattern; surface to
-  PB Mgr for choreography.
-
-### S4 — Promote R3 closure-gate state in canonical ledger
-
-- Edit [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.8 row 16
-  `pb_self_compile_fixed_point` Status column from
-  `CONSUMER_LANDED (R1 horizon; R3 stronger interpretation)` to
-  `GREEN (R3 horizon — bit-identical fixed-point + SG-0 zero choreography per
-  Director decisions)` with PR commit ref + `target/self_host/receipt.json` SHA.
-- Do NOT touch the R1 row narrative (per two-horizon clarification — R1 close is
-  not waiting on R3 and the predicate name is the same).
-
-### S5 — CI ratchet
-
-- Add `self_host_fixed_point` to the **release-mode** CI job (per
-  `design-fixed-point-ratchet.md:97`) without `continue-on-error`. Until S3 GREEN,
-  the slice was tolerated under workflow policy; on R3 closure that policy lifts.
-- Verify via test that CI step has no `continue-on-error: true` on the
-  `self_host_fixed_point` step (mechanical grep gate is sufficient — no need to
-  author a `.dag` claim for CI YAML).
-
-## Acceptance
-
-- `target/self_host/receipt.json` shows `K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE: "ok"`,
-  `K_COMPILER_DAG_V3_PARSE: "ok"`, `fixed_point_diff: "ok"`, `K_STATUS: "completed"`.
-- Binary exits 0; CI job is no-`continue-on-error` and green.
-- §1.8 row 16 carries R3-horizon GREEN with receipt anchor.
-- SG-0 census: `EXPECTED_HAND_AUTHORED_NON_TEST` ≤ 1 (trampoline allowance only).
-
-## STOP-AND-ESCALATE
-
-Surface to PB Mgr (parent #2074) when ANY of:
-
-- S1 census check shows non-trampoline entries (premature dispatch).
-- S2 `compiler.dag` parse fails (Lane 3 Stage 3c not landed).
-- S3 byte-diff `mismatch` (non-determinism — Director decision likely needed on
-  whether tooling change vs. emit-path fix is correct response).
-- S3 `skipped_stage2_not_written` (lens-producer / bin-shim choreography gap).
-- Any unexpected interaction with R1-horizon Pass surface
-  (`verification.dag` + `test_runner` evaluation).
-
-## Out of scope
-
-- Authoring/editing `dsl/gunbc/compiler.dag` content (Lane 3 territory).
-- Lifting any v3 grammar gap (Lane 3 Stage 3c territory).
-- SG-0 census reductions (T-LensProducer-Retirement #2086 territory).
-- R1-horizon Pass surface modifications (R1 closure already landed; do not
-  silently rename or re-bind that predicate).
-- `≤1 trampoline` allocation decisions — those are Director-territory per
-  `design-pure-bootstrap-zero.md` §"First-time bootstrap"; worker accepts
-  whichever allocation is in force at dispatch time.
+Lesson: when running `Q2`-style "does an existing brief cover this" discipline,
+collapse separators in the search regex — e.g.
+`fixed[-_. ]?point|fixedpoint|self[-_. ]?host|selfhost|self[-_. ]?compile|selfcompile`.
+Or `ls docs/briefs/ | grep -iE 'fixed|self'` first, as a low-precision wide
+sweep, before narrowing.
