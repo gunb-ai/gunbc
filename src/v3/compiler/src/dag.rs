@@ -383,57 +383,14 @@ pub struct NominalOpacity {
     pub permitted_accessors: Vec<DeclarationId>,
 }
 
-/// Value-body shape for `data foo: T = { body }` declarations. Two
-/// variants at M1(3) PR-B-unwind:
-///
-/// - **`Unparsed(SourceSpan)`** — the parser could not lower the
-///   body to a supported top-level value shape. The body's source
-///   span is preserved so sibling parser/substrate extensions (map
-///   literals and any remaining opaque forms) can reach in later. User-range declarations
-///   carrying `Unparsed` are rejected by
-///   `reject_user_unparsed_scaffolds`; bootstrap-range declarations
-///   tolerate it so std/*.dag files whose data bodies still use
-///   unsupported shapes continue to load.
-///
-/// - **`Structural { fields }`** — the body parsed as a record
-///   literal and lowering ran inhabitance checking against the
-///   declared type. Each field is a `(String, FieldValue)` pair
-///   where `FieldValue` is either a scalar literal or a typed
-///   declaration reference (the unwind shape — PR-B's initial
-///   payload was `Vec<(String, LiteralBits)>` and it forced
-///   downstream consumers like `emit_rust.rs` to dispatch on
-///   string keys, regenerating the name-bridge pattern that
-///   M1(2.7) had eliminated at the inference layer).
-///
-/// **Dissolution ledger** — mixed-lifecycle coproduct. `Unparsed`
-/// is the bounded scaffold (named dissolution trigger: M2+ parser
-/// extensions close class-5 gap #3); `Structural` is the
-/// structurally-grounded form. When the M2+ parser catches up to
-/// nested records / list literals / map literals, those non-record
-/// shapes currently landing in `Unparsed` move to structural variants
-/// (`ValueBody::List` and `ValueBody::Map` now cover top-level list
-/// and string-keyed map bodies), and `Unparsed` is removed via a
-/// reverse substrate-extension PR.
-///
-/// 4-pattern check on `Structural`:
-/// - Pattern 1 (fact placement): fails. The inline `(label,
-///   FieldValue)` list is a data-item-specific record-construction
-///   fact with no natural home on the other substrate edges.
-/// - Pattern 2 (variant-is-data): fails. `Structural`'s payload is
-///   structurally distinct from `Unparsed`'s source span.
-/// - Pattern 3 (algebraic form): fails. The two variants represent
-///   two parser-boundary states (structurally lowered vs
-///   scaffolded), not two points in a single algebra.
-/// - Pattern 4 (dimensional): fails. No shared coordinate space.
-///
-/// Verdict: `Structural` is terminal-at-current-scope for top-level
-/// record bodies, with the `FieldValue` enum carrying nested structural
-/// distinctions internally. Top-level list/map bodies use dedicated
-/// variants below because they are not records and must not be encoded
-/// as anonymous fields. Bounded by the Scaffold Boundaries invariant in
-/// `INVARIANTS.md`.
-// ValueBody is generated from `std/substrate.dag`; map payloads are wrapped
-// in `FieldMap` on the Rust side to preserve duplicate-key rejection.
+// Value-body shape for `data foo: T = ...` declarations.
+//
+// Dissolution ledger: `Unparsed` is the bounded scaffold (named dissolution
+// trigger: M2+ parser extensions close class-5 gap #3); structural variants
+// carry lowered record/scalar/list/map data bodies. Keep the enum itself in the
+// generated include below so `src/v3/std/substrate.dag` remains the carrier
+// authority. Map payloads are wrapped in `FieldMap` on the Rust side to
+// preserve duplicate-key rejection.
 include!("dag_value_body_generated.rs");
 
 /// Ordered string-keyed structural map entries with duplicate keys rejected at
