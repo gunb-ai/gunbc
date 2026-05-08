@@ -2011,11 +2011,6 @@ pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
 ///
 /// Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`).
 /// Runtime v3 reads the lowered [`ValueBody::Map`] from the bootstrapped DAG.
-/// `v2_compiler::std_algebra::kernel_algebra_profile` remains only as a
-/// transition ratchet until PB retires the v2 parity test.
-///
-/// **P2 drift ratchet:** `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`
-/// compares this v3 substrate accessor entry-for-entry to the stage0 table.
 pub fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
     BOOTSTRAPPED_DAG.kernel_algebra_profile(type_name)
 }
