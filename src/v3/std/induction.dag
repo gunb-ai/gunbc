@@ -86,6 +86,9 @@ import std.computation {
   CollectionSize, ArithmeticParam, Forever,
   tree_size_bound, positive_descent_count
 }
+import std.algebra {
+  SymbolicCost, ConstantCost, UnknownCost, sequential, iterate
+}
 
 
 
@@ -628,6 +631,49 @@ fn cost_bound_is_sum_bound(b: CostBound) -> Bool {
     ErrorBound => false
   }
 }
+
+// Projection from induction proof bounds to the symbolic cost algebra consumed
+// by cost/complexity lenses. CostBound is the proof authority; SymbolicCost is
+// the composition/display authority. String-named CostBound atoms cannot yet
+// mint a structural SizeVariable because the induction carrier does not carry a
+// PortId; those atoms fail closed to UnknownCost until structural param refs
+// replace the current string bridge.
+fn cost_bound_to_symbolic(bound: CostBound) -> SymbolicCost =
+  match bound {
+    ConstantBound => ConstantCost(0)
+    AtomicBound { cost: c } => atomic_cost_to_symbolic(c)
+    ProductBound { factors: fs } => product_atoms_to_symbolic(fs)
+    SumOfProductsBound { terms: ts } => sum_products_to_symbolic(ts)
+    SumBound { terms: ts } => sum_bounds_to_symbolic(ts)
+    ForeverBound => UnknownCost("forever bound")
+    ErrorBound => UnknownCost("invalid cost bound")
+  }
+
+fn atomic_cost_to_symbolic(cost: AtomicCost) -> SymbolicCost =
+  match cost {
+    PolyCost { param: p, exponent: _ } =>
+      UnknownCost("CostBound named polynomial atom lacks structural SizeVariable port")
+    LogCost { param: p } =>
+      UnknownCost("CostBound named log atom lacks structural SizeVariable port")
+  }
+
+fn product_atoms_to_symbolic(factors: List<AtomicCost>) -> SymbolicCost =
+  fold(factors, ConstantCost(1), |running, atom|
+    iterate(running, atomic_cost_to_symbolic(atom))
+  )
+
+fn product_term_to_symbolic(factors: List<AtomicCost>) -> SymbolicCost =
+  product_atoms_to_symbolic(factors)
+
+fn sum_products_to_symbolic(terms: List<List<AtomicCost>>) -> SymbolicCost =
+  fold(terms, ConstantCost(0), |running, term|
+    sequential(running, product_term_to_symbolic(term))
+  )
+
+fn sum_bounds_to_symbolic(terms: List<CostBound>) -> SymbolicCost =
+  fold(terms, ConstantCost(0), |running, term|
+    sequential(running, cost_bound_to_symbolic(term))
+  )
 
 fn cost_constant() -> CostBound { ConstantBound }
 fn cost_linear(param: String) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: poly_exp_degree_one() } } }

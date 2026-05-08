@@ -73,9 +73,10 @@
 
 module v3.std.algebra
 
-import std.algebra { Semiring }
+import std.algebra { Semiring, BoundedLattice }
 import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId, DeclarationId }
+import std.termination { PositiveDescentAmount, OneStep }
 import v3.std.lookup { Lookup }
 
 // 🟡 SCAFFOLD coproduct. These are v2 per-method output-size effect facts
@@ -139,14 +140,16 @@ type MethodContract {
 // describe the SAME size; two folds over different ports do NOT,
 // even if both lists have the same declared type.
 //
-// No `name: String` field: MVP rendering pins on port equality
-// alone, and the user-facing label the DB-7 design doc sketches
-// needs an InternTable lookup the lens doesn't yet run. When a
-// render consumer pins the missing piece, `SizeVariable` grows a
-// `name` field alongside the Rust mirror in `src/v3/compiler/src/dag.rs`.
+// `display_name` is presentation only. Identity stays on `source_port`
+// so two size variables that name the same runtime value compare equal
+// even if one lacks an authored display label.
 type SizeVariable {
   source_port: PortId
+  display_name: String?
 }
+
+fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool =
+  a.source_port == b.source_port
 
 // 🟢 TERMINAL. Polynomial degrees `>= 2` as a structural carrier, not a
 // pseudo-refinement over `Int`. `LinearCost` remains the sole degree-1 surface,
@@ -393,7 +396,133 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
   }
 
 fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
-  a.source_port == b.source_port
+  size_variable_eq(a: a, b: b)
+
+// Terminal asymptotic-class carrier for complexity display and budget
+// enforcement. Ordering is by asymptotic dominance:
+// ClassConstant <= ClassLog <= ClassLinear <= ClassLinearithmic <=
+// ClassQuadratic <= ClassPolynomial(k>=3) <= ClassExponential <= ClassUnknown.
+type AsymptoticClass inhabits BoundedLattice<AsymptoticClass>
+  = ClassConstant
+  | ClassLog
+  | ClassLinear
+  | ClassLinearithmic
+  | ClassQuadratic
+  | ClassPolynomial { degree: PositiveDescentAmount }
+  | ClassExponential
+  | ClassUnknown
+
+fn asymptotic_rank(c: AsymptoticClass) -> Int =
+  match c {
+    ClassConstant => 0
+    ClassLog => 1
+    ClassLinear => 2
+    ClassLinearithmic => 3
+    ClassQuadratic => 4
+    ClassPolynomial(payload) => 5 + positive_descent_amount_rank(payload.degree)
+    ClassExponential => 9223372036854775806
+    ClassUnknown => 9223372036854775807
+  }
+
+fn positive_descent_amount_rank(amount: PositiveDescentAmount) -> Int =
+  match amount {
+    OneStep => 1
+    AdditionalStep(payload) => 1 + positive_descent_amount_rank(payload.previous)
+  }
+
+fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
+  asymptotic_rank(a) >= asymptotic_rank(b)
+
+fn meet_asymptotic_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass =
+  if asymptotic_dominates(a: a, b: b) then b else a
+
+fn join_asymptotic_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass =
+  if asymptotic_dominates(a: a, b: b) then a else b
+
+fn classify(cost: SymbolicCost) -> AsymptoticClass =
+  match normalize(cost) {
+    ConstantCost(_) => ClassConstant
+    LinearCost(_) => ClassLinear
+    LogCost(_) => ClassLog
+    PolynomialCost(payload) => classify_polynomial_degree(payload.degree)
+    ProductCost(terms) => classify_product(nsl_to_list(terms))
+    SumCost(terms) => classify_sum(nsl_to_list(terms))
+    UnknownCost(_) => ClassUnknown
+  }
+
+fn classify_polynomial_degree(degree: DegreeAtLeastTwo) -> AsymptoticClass =
+  match degree {
+    DegreeTwo => ClassQuadratic
+    DegreeSuccessor(payload) =>
+      ClassPolynomial { degree: degree_to_positive_descent(payload.previous) }
+  }
+
+fn degree_to_positive_descent(degree: DegreeAtLeastTwo) -> PositiveDescentAmount =
+  match degree {
+    DegreeTwo => OneStep
+    DegreeSuccessor(payload) =>
+      AdditionalStep { previous: degree_to_positive_descent(payload.previous) }
+  }
+
+fn classify_sum(terms: List<SymbolicCost>) -> AsymptoticClass =
+  fold(terms, ClassConstant, |running, term|
+    join_asymptotic_class(a: running, b: classify(term))
+  )
+
+fn classify_product(terms: List<SymbolicCost>) -> AsymptoticClass =
+  fold(terms, ClassConstant, |running, term|
+    product_class(a: running, b: classify(term))
+  )
+
+fn product_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass =
+  match a {
+    ClassUnknown => ClassUnknown
+    ClassExponential => ClassExponential
+    ClassConstant => b
+    ClassLog =>
+      match b {
+        ClassConstant => ClassLog
+        ClassLog => ClassPolynomial { degree: OneStep }
+        ClassLinear => ClassLinearithmic
+        ClassLinearithmic => ClassPolynomial { degree: OneStep }
+        ClassQuadratic => ClassPolynomial { degree: OneStep }
+        ClassPolynomial(_) => b
+        ClassExponential => ClassExponential
+        ClassUnknown => ClassUnknown
+      }
+    ClassLinear =>
+      match b {
+        ClassConstant => ClassLinear
+        ClassLog => ClassLinearithmic
+        ClassLinear => ClassQuadratic
+        ClassLinearithmic => ClassPolynomial { degree: OneStep }
+        ClassQuadratic => ClassPolynomial { degree: OneStep }
+        ClassPolynomial(_) => b
+        ClassExponential => ClassExponential
+        ClassUnknown => ClassUnknown
+      }
+    ClassLinearithmic =>
+      match b {
+        ClassConstant => ClassLinearithmic
+        ClassExponential => ClassExponential
+        ClassUnknown => ClassUnknown
+        _ => ClassPolynomial { degree: OneStep }
+      }
+    ClassQuadratic =>
+      match b {
+        ClassConstant => ClassQuadratic
+        ClassExponential => ClassExponential
+        ClassUnknown => ClassUnknown
+        _ => ClassPolynomial { degree: OneStep }
+      }
+    ClassPolynomial(_) =>
+      match b {
+        ClassConstant => a
+        ClassExponential => ClassExponential
+        ClassUnknown => ClassUnknown
+        _ => a
+      }
+  }
 
 // ── Normalization ───────────────────────────────────────────────
 //
