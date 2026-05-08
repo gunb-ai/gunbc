@@ -81,6 +81,8 @@ mod lane2_stage_2d_symbolic_cost_test;
 mod lane2_stage_2e_parallelism_test;
 #[path = "integration/lane3_stage_3b_db1_test.rs"]
 mod lane3_stage_3b_db1_test;
+#[path = "integration/lens_cost_target_realization_test.rs"]
+mod lens_cost_target_realization_test;
 #[path = "integration/lens_register_correspondence_test.rs"]
 mod lens_register_correspondence_test;
 #[path = "integration/lens_substrate_carrier_test.rs"]
