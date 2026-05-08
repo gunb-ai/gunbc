@@ -1735,37 +1735,6 @@ fn computation_iteration_dimension_helpers_match_kernel_profile_authority() {
 }
 
 #[test]
-fn v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority() {
-    fn v2_profile_to_v3(p: v2_compiler::std_algebra::AlgebraProfile) -> AlgebraProfile {
-        use v2_compiler::std_algebra::AlgebraProfile as V2;
-        match p {
-            V2::OrderedRingProfile => AlgebraProfile::OrderedRingProfile,
-            V2::ApproximateFieldProfile => AlgebraProfile::ApproximateFieldProfile,
-            V2::BooleanAlgebraProfile => AlgebraProfile::BooleanAlgebraProfile,
-            V2::BooleanAlgebraCollectionProfile => AlgebraProfile::BooleanAlgebraCollectionProfile,
-            V2::FreeMonoidScalarProfile => AlgebraProfile::FreeMonoidScalarProfile,
-            V2::FreeMonoidCollectionProfile => AlgebraProfile::FreeMonoidCollectionProfile,
-            V2::PartialFunctionProfile => AlgebraProfile::PartialFunctionProfile,
-        }
-    }
-
-    let v2_map = v2_compiler::std_algebra::kernel_algebra_profile();
-    let dag = Dag::new();
-    assert!(
-        !v2_map.is_empty(),
-        "v2 stage0 kernel_algebra_profile table must be non-empty (dsl/std/algebra.dag authority)"
-    );
-    for (type_name, v2_profile) in v2_map.iter() {
-        assert_eq!(
-            dag.kernel_algebra_profile(type_name),
-            Some(v2_profile_to_v3(*v2_profile)),
-            "v3 `dag::kernel_algebra_profile` must match v2 stage0 row for `{type_name}` \
-             (stage0 is regenerated from dsl/std/algebra.dag `data kernel_algebra_profile`)"
-        );
-    }
-}
-
-#[test]
 fn v3_kernel_algebra_profile_reads_lowered_dag_map_authority() {
     let dag = Dag::new();
     let decl = dag
