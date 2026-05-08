@@ -188,19 +188,13 @@ fn recursive_transform_summary(
   pattern: CallPattern,
   inputs: List<PortId>
 ) -> Lookup<ComplexitySummary> =
-  match first_port(inputs) {
-    None => miss_complexity_summary_lookup()
-    Some(arg_port) =>
+  match inputs {
+    Empty => miss_complexity_summary_lookup()
+    Cons(payload) =>
       combine_iterate(
-        summary_from_iter_bound(pattern_to_iter_bound(pattern, arg_port)),
-        lookup_summary(acc, arg_port)
+        summary_from_iter_bound(pattern_to_iter_bound(pattern, payload.head)),
+        lookup_summary(acc, payload.head)
       )
-  }
-
-fn first_port(ports: List<PortId>) -> PortId? =
-  match ports {
-    Empty => none
-    Cons(payload) => Some { value: payload.head }
   }
 
 fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> SymbolicCost =
@@ -224,7 +218,7 @@ fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> SymbolicCost
   }
 
 fn size_variable_for(port_id: PortId) -> SizeVariable =
-  { source_port: port_id, display_name: None }
+  { source_port: port_id, display_name: "" }
 
 fn summary_from_iter_bound(bound: SymbolicCost) -> Lookup<ComplexitySummary> =
   match bound {
