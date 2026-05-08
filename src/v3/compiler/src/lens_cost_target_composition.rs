@@ -173,22 +173,6 @@ impl RealizationCostTable {
     pub fn behavior_cost(&self, behavior: DeclarationId) -> Option<i64> {
         self.behaviors.get(&behavior).copied()
     }
-
-    pub fn type_count(&self) -> usize {
-        self.types.len()
-    }
-
-    pub fn callable_count(&self) -> usize {
-        self.callables.len()
-    }
-
-    pub fn operator_count(&self) -> usize {
-        self.operators.len()
-    }
-
-    pub fn behavior_count(&self) -> usize {
-        self.behaviors.len()
-    }
 }
 
 fn require_field_decl_ref(
@@ -247,18 +231,11 @@ mod tests {
         let table = RealizationCostTable::build_for_language(&dag, rust_id)
             .expect("build_for_language(rust) succeeds against bootstrap dag");
 
-        // Smoke: at least one TypeRealization landed in the type table
-        // (bootstrap rust.dag has rust_int / rust_uint8 / rust_i32 / etc.,
-        // all with `cost: 1`).
-        assert!(
-            table.type_count() > 0,
-            "RealizationCostTable types map is empty for Rust; expected at least one \
-             TypeRealization row from bootstrap rust.dag"
-        );
-
         // At-least-one known-key cost lookup: the `Int` primitive has a
         // `rust_int: TypeRealization { cost: 1, ... }` row in
-        // src/v3/spec/rust.dag (line ~118).
+        // src/v3/spec/rust.dag (line ~118). A successful Some(1) lookup
+        // implicitly asserts the table is non-empty + the bootstrap row
+        // landed correctly.
         let int_decl = dag
             .declaration_by_name("Int")
             .expect("bootstrap dag has Int declaration");
