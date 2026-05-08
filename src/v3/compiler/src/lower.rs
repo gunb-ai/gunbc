@@ -8747,22 +8747,41 @@ fn is_strictly_smaller(
     let SurfaceExpr::Operator { op, args, .. } = expr else {
         return false;
     };
-    // Structural check — no string match. Subtract is one of the four
-    // arithmetic variants.
-    if !matches!(op, OperatorKind::Arithmetic(ArithmeticOp::Sub)) || args.len() != 2 {
+    // Structural check — no string match. Subtract and Divide are two
+    // of the four arithmetic variants. Both have a `param OP k` shape
+    // (left-operand) that, with a positive integer literal `k`, produces
+    // a strictly smaller value at every positive `param`. Add and Mul
+    // (with positive literals) grow rather than shrink and are
+    // categorically rejected by this gate.
+    if args.len() != 2 {
         return false;
     }
+    let arith_op = match op {
+        OperatorKind::Arithmetic(op @ (ArithmeticOp::Sub | ArithmeticOp::Div)) => op,
+        _ => return false,
+    };
     let lhs_is_param = matches!(
         &args[0],
         SurfaceExpr::Var { name, .. } if name == first_param
     );
-    let rhs_is_positive = matches!(
-        &args[1],
-        SurfaceExpr::Literal {
-            value: SurfaceLiteral::Int(v), ..
-        } if *v > 0
-    );
-    lhs_is_param && rhs_is_positive
+    let SurfaceExpr::Literal {
+        value: SurfaceLiteral::Int(v),
+        ..
+    } = &args[1]
+    else {
+        return false;
+    };
+    // For Sub: any positive integer literal shrinks the parameter
+    // (`n - 1`, `n - 2`, ...). For Div: the divisor must be > 1 —
+    // dividing by 1 is identity, dividing by 0 is undefined, and
+    // dividing by a literal ≤ 0 doesn't yield the strictly-smaller
+    // halving/quartering shape this gate is meant to recognize.
+    let rhs_satisfies_descent = match arith_op {
+        ArithmeticOp::Sub => *v > 0,
+        ArithmeticOp::Div => *v > 1,
+        ArithmeticOp::Add | ArithmeticOp::Mul => unreachable!("rejected by op-kind match above"),
+    };
+    lhs_is_param && rhs_satisfies_descent
 }
 
 fn is_structurally_smaller(

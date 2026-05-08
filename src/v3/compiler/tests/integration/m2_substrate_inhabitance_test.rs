@@ -944,6 +944,53 @@ fn ep_two_descent(n: Int, m: Int) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_classifies_proportional_arithmetic_descent() {
+    // Phase-1 broadening Slice 5: proportional arithmetic descent (the
+    // halving / quartering shape, e.g. binary search). The per-call
+    // producer's `arithmetic_descent_relation` already classifies
+    // `param / k` as `ArithmeticDescent { factor: ProportionalShrink }`
+    // (`dag.rs::arithmetic_descent_relation`), but v3's existing
+    // termination prover only accepted Sub, so `f(n / 2)` recursion was
+    // rejected at compile time before the producer could ever run —
+    // symmetric to the Slice 3 producer/prover-coordination shape.
+    //
+    // This slice extends `is_strictly_smaller` (and the cluster checker
+    // by structural reuse of the same predicate) to also accept
+    // `param / k` with positive integer literal k > 1, unblocking the
+    // producer's already-existing Div classification at the surface.
+    let dag = compile_to_dag(
+        "\
+fn ep_halve(n: Int) -> Int =
+  if n == 0 then 0 else ep_halve(n / 2)
+",
+        "e_p_proportional_descent.v3",
+    )
+    .expect("binary-halving fixture compiles (Div termination accepted)");
+
+    let entries = per_call_descent_evidence(&dag);
+    let halve = entries
+        .iter()
+        .find(|entry| entry.caller == "ep_halve" && entry.callee == "ep_halve")
+        .expect("expected ep_halve self-call evidence");
+
+    assert_eq!(halve.evidence.len(), 1);
+    match &halve.evidence[0] {
+        SubValueRelation::ArithmeticDescent { param, factor } => {
+            assert_eq!(param, "param_0");
+            match factor {
+                ShrinkFactor::ProportionalShrink { divisor } => {
+                    // Producer's existing classification of /2 — see
+                    // `proportional_divisor_from_i64` in dag.rs.
+                    let _ = divisor; // pin variant; exact divisor enum is internal scaffold
+                }
+                other => panic!("expected ProportionalShrink for n / 2, got {other:?}"),
+            }
+        }
+        other => panic!("expected ArithmeticDescent for n / 2, got {other:?}"),
+    }
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\
