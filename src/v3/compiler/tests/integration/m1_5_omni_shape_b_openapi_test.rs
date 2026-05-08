@@ -25,6 +25,15 @@ type NotAServiceOperation {
   endpoint: String
 }
 
+type MimicEndpointBinding {
+  method: HttpMethod
+  path:   PathTemplate
+}
+
+type MimicServiceOperation {
+  endpoint: MimicEndpointBinding
+}
+
 data omni_service_operations: List<DemoOperation> = [
   {
     endpoint: {
@@ -87,6 +96,15 @@ data omni_service_operations: List<DemoOperation> = [
 
 data non_service_endpoint_rows: List<NotAServiceOperation> = [
   { endpoint: "not a route" }
+]
+
+data same_shape_non_service_rows: List<MimicServiceOperation> = [
+  {
+    endpoint: {
+      method: GET,
+      path: { tokens: [LiteralToken { text: "same-shape-but-not-service" }] }
+    }
+  }
 ]
 "#;
 
@@ -256,5 +274,21 @@ fn openapi_projection_ignores_non_service_endpoint_fields() {
         expected_routes(),
         "Only declarations whose list element type carries the canonical \
          services.dag RestEndpointBinding field should become OpenAPI routes."
+    );
+}
+
+#[test]
+fn openapi_projection_ignores_same_shape_non_service_endpoint_binding() {
+    let dag = compile_omni_service_fixture();
+
+    let routes = extract_rest_routes(&dag).expect("canonical route projection extracts");
+
+    assert_eq!(routes, expected_routes());
+    assert!(
+        !routes
+            .iter()
+            .any(|route| route.path == "/same-shape-but-not-service"),
+        "A user-authored endpoint record with the same method/path shape must not become \
+         an OpenAPI route unless its field type is the canonical RestEndpointBinding."
     );
 }

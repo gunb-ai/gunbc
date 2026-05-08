@@ -31,12 +31,13 @@ struct RestRouteSchema {
 }
 
 pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpenApiError> {
+    let rest_endpoint_binding = canonical_rest_endpoint_binding(dag);
     let mut routes = BTreeSet::new();
     for decl in dag.declarations() {
         let Some(ValueBody::List(rows)) = &decl.value_body else {
             continue;
         };
-        let Some(schema) = rest_route_schema(dag, decl)? else {
+        let Some(schema) = rest_route_schema(dag, decl, rest_endpoint_binding)? else {
             continue;
         };
         for row in rows {
@@ -86,6 +87,7 @@ pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpen
 fn rest_route_schema(
     dag: &Dag,
     decl: &Declaration,
+    rest_endpoint_binding: Option<DeclarationId>,
 ) -> Result<Option<RestRouteSchema>, ProjectOpenApiError> {
     let Some(element) = list_element_type(dag, decl) else {
         return Ok(None);
@@ -96,6 +98,9 @@ fn rest_route_schema(
     let Some(endpoint_field) = children.iter().find(|field| field.label == "endpoint") else {
         return Ok(None);
     };
+    if Some(endpoint_field.ty) != rest_endpoint_binding {
+        return Ok(None);
+    }
     let TypeConnective::Conj { children } = &dag.declaration(endpoint_field.ty).connective else {
         return Ok(None);
     };
@@ -151,6 +156,19 @@ fn rest_route_schema(
         http_method: method_ty,
         url_path_token: url_path_token_ty,
     }))
+}
+
+fn canonical_rest_endpoint_binding(dag: &Dag) -> Option<DeclarationId> {
+    let mut matches = dag.declarations().iter().filter(|decl| {
+        decl.name.as_deref() == Some("RestEndpointBinding")
+            && decl.span.file == "src/v3/std/services.dag"
+    });
+    let id = matches.next()?.id;
+    if matches.next().is_some() {
+        None
+    } else {
+        Some(id)
+    }
 }
 
 fn list_element_type(dag: &Dag, decl: &Declaration) -> Option<DeclarationId> {
