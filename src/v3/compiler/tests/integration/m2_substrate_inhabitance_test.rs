@@ -4,13 +4,13 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
-    optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64, promote_to_strict,
-    size_bound_param, sub_value_relation_to_call_pattern, tree_size_bound,
-    type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
-    CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
-    IterationDimension, IterationPrimitive, LiteralBits, LoweringTarget, PositiveDescentAmount,
-    PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
-    TypeConnective, ValueBody,
+    optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
+    positive_amount_from_i64, promote_to_strict, size_bound_param,
+    sub_value_relation_to_call_pattern, tree_size_bound, type_iteration_dimension, AlgebraProfile,
+    ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue,
+    Interval, IntervalWidth, IterationDimension, IterationPrimitive, LiteralBits, LoweringTarget,
+    PositiveDescentAmount, PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound,
+    SubValueRelation, TypeConnective, ValueBody,
 };
 use v3_compiler::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
 use v3_compiler::parse_surface;
@@ -888,6 +888,45 @@ fn ep_count_acc(xs: EpListA, acc: Int, limit: Int) -> Int =
         SubValueRelation::PreservedValue,
         "unchanged forwarded parameter classifies as PreservedValue"
     );
+}
+
+#[test]
+fn e_p_per_call_pattern_projects_multi_arg_self_call_from_per_arg_evidence() {
+    with_full_bootstrap_stack(|| {
+        // Gate 2 continuation: `per_call_pattern_at` is the lens-facing lookup,
+        // so it must consume the per-argument evidence vector that Gate 1 emits.
+        // A single-element-only projection would make multi-arg recursive calls
+        // invisible to cost/complexity consumers even though the side table has
+        // already classified their descent argument.
+        let dag = compile_to_dag(
+            "\
+type EpListP = EpNilP | EpConsP(EpListP)
+fn ep_count_acc_pattern(xs: EpListP, acc: Int, limit: Int) -> Int =
+  match xs {
+    EpConsP(tail) => ep_count_acc_pattern(tail, acc + 1, limit),
+    EpNilP => acc
+  }
+",
+            "e_p_multi_arg_pattern_lookup.v3",
+        )
+        .expect("multi-arg accumulator pattern fixture compiles");
+
+        let entry = per_call_descent_evidence(&dag)
+            .into_iter()
+            .find(|entry| {
+                entry.caller == "ep_count_acc_pattern" && entry.callee == "ep_count_acc_pattern"
+            })
+            .expect("expected ep_count_acc_pattern self-call evidence in per-call side table");
+
+        assert_eq!(
+            per_call_pattern_at(&dag, entry.call),
+            Some(CallPattern::ChildAccessorCall {
+                accessor: String::from("_0")
+            }),
+            "CallPattern lookup must project the provable descent relation from \
+         a multi-arg evidence vector instead of rejecting the call site"
+        );
+    });
 }
 
 #[test]
