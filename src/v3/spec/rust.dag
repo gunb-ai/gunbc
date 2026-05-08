@@ -76,7 +76,8 @@ import v3.std.rust_method_template_contracts {
 }
 import v3.std.substrate {
   SubstrateAccessorRealization, SubstrateAccessorBinding,
-  port, node, resolve_producer, lane2_workflow_at, declaration_by_id
+  port, node, resolve_producer, lane2_workflow_at, declaration_by_id,
+  declaration_by_name
 }
 import v3.std.clean_emission {
   CleanEmissionContract,
@@ -1688,5 +1689,20 @@ data rust_declaration_by_id_accessor: SubstrateAccessorRealization = {
 data declaration_by_id_binding_rust: SubstrateAccessorBinding = {
   accessor: declaration_by_id
   realization: rust_declaration_by_id_accessor
+  language: rust_language
+}
+
+// `declaration_by_name(d: Dag, name: String) -> Declaration?` —
+// name-keyed parity with `declaration_by_id`. Host realization is
+// `Dag::declaration_by_name(&str) -> Option<&Declaration>`; `&{p1}`
+// borrows the `String` arg as `&str`, `.cloned()` lifts the borrowed
+// `Declaration` into owned form mirroring `declaration_by_id`'s shape.
+data rust_declaration_by_name_accessor: SubstrateAccessorRealization = {
+  carrier: "({p0}).declaration_by_name(&{p1}).cloned()"
+}
+
+data declaration_by_name_binding_rust: SubstrateAccessorBinding = {
+  accessor: declaration_by_name
+  realization: rust_declaration_by_name_accessor
   language: rust_language
 }
