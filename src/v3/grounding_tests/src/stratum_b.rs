@@ -186,7 +186,7 @@ mod tests {
     use v3_compiler::generated_full_bootstrap_dag;
     use v3_grounding_coercion_fold::{
         fold_program_to_target, IntegerBoundProjection, IntegerTargetIntent,
-        LanguageSpecProjection, TargetInhabitance, TargetLanguage,
+        LanguageSpecProjection, TargetInhabitance,
     };
     use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 
@@ -238,7 +238,7 @@ mod tests {
         let projection = LanguageSpecProjection::DeclaredIntegerIntents(BTreeMap::from([(
             BindingId(11),
             IntegerTargetIntent {
-                target_language: TargetLanguage::Rust,
+                target_language: dag.rust_language_spec().expect("Rust LanguageSpec"),
                 kernel_integer: declaration_id_by_name(&dag, "UInt32"),
                 algebra: declaration_id_by_name(&dag, "UInt32"),
                 bound: IntegerBoundProjection::Static(Interval::BoundedInterval {

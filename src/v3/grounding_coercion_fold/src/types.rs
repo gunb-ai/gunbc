@@ -29,14 +29,6 @@ pub enum LanguageSpecProjection {
     ScratchIntExamples(IntScratchExample),
 }
 
-/// Language selected from the declared `LanguageSpec` roots.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TargetLanguage {
-    Rust,
-    Python,
-    Go,
-}
-
 /// Program-side integer bound projected into the fold.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IntegerBoundProjection {
@@ -47,7 +39,7 @@ pub enum IntegerBoundProjection {
 /// Per-binding integer intent consumed against `TargetIntegerTypeInhabitance` rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntegerTargetIntent {
-    pub target_language: TargetLanguage,
+    pub target_language: DeclarationId,
     pub kernel_integer: DeclarationId,
     pub algebra: DeclarationId,
     pub bound: IntegerBoundProjection,

@@ -47,7 +47,7 @@ pub use diagnostic::EmissionDiagnostic;
 pub use fold::{fold_program_to_target, MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS};
 pub use types::{
     IntScratchExample, IntegerBoundProjection, IntegerTargetIntent, LanguageSpecProjection,
-    TargetInhabitance, TargetLanguage,
+    TargetInhabitance,
 };
 
 #[cfg(test)]
@@ -155,7 +155,7 @@ mod tests {
             let spec = LanguageSpecProjection::DeclaredIntegerIntents(BTreeMap::from([(
                 v3_grounding_lifetime::BindingId(7),
                 IntegerTargetIntent {
-                    target_language: TargetLanguage::Rust,
+                    target_language: dag.rust_language_spec().expect("Rust LanguageSpec"),
                     kernel_integer: declaration_id_by_name(&dag, "UInt32"),
                     algebra: declaration_id_by_name(&dag, "UInt32"),
                     bound: IntegerBoundProjection::Static(Interval::BoundedInterval {

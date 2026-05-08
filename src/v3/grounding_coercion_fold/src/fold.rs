@@ -29,7 +29,7 @@ use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 use crate::diagnostic::EmissionDiagnostic;
 use crate::types::{
     IntScratchExample, IntegerBoundProjection, IntegerTargetIntent, LanguageSpecProjection,
-    TargetInhabitance, TargetLanguage,
+    TargetInhabitance,
 };
 
 /// Same-PR consumer for `TargetIntegerTypeInhabitance` spec rows (`emit_model.dag`, **E-6**).
@@ -342,14 +342,6 @@ fn target_language_id(dag: &Dag, target: ScratchTargetLanguage) -> Option<Declar
     }
 }
 
-fn declared_target_language_id(dag: &Dag, target: TargetLanguage) -> Option<DeclarationId> {
-    match target {
-        TargetLanguage::Rust => dag.rust_language_spec(),
-        TargetLanguage::Python => dag.python_language_spec(),
-        TargetLanguage::Go => dag.go_language_spec(),
-    }
-}
-
 fn select_example_8_declared_inhabitance(
     dag: &Dag,
     target: ScratchTargetLanguage,
@@ -592,15 +584,8 @@ pub(crate) fn select_program_integer_intent_for_testing(
 }
 
 fn program_integer_intent_from_projection(
-    dag: &Dag,
     projection: &IntegerTargetIntent,
 ) -> Result<ProgramIntegerIntent, EmissionDiagnostic> {
-    let target_language =
-        declared_target_language_id(dag, projection.target_language).ok_or_else(|| {
-            EmissionDiagnostic::UnderRefined {
-                unspecified_axis: "target_language".to_string(),
-            }
-        })?;
     let bound = match &projection.bound {
         IntegerBoundProjection::Static(interval) => {
             BoundDeclarationView::StaticBound(interval.clone())
@@ -608,7 +593,7 @@ fn program_integer_intent_from_projection(
         IntegerBoundProjection::PlatformDependent => BoundDeclarationView::PlatformDependent,
     };
     Ok(ProgramIntegerIntent {
-        target_language,
+        target_language: projection.target_language,
         kernel_integer: projection.kernel_integer,
         algebra: projection.algebra,
         bound,
@@ -629,7 +614,7 @@ fn fold_declared_integer_intents(
 
     let mut out = BTreeMap::new();
     for (&binding, projection) in intents {
-        let intent = program_integer_intent_from_projection(dag, projection)?;
+        let intent = program_integer_intent_from_projection(projection)?;
         out.insert(binding, select_declared_inhabitance(dag, &intent)?);
     }
     Ok(out)
