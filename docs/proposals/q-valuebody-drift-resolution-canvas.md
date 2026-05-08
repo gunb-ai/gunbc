@@ -36,9 +36,9 @@ Add `ValueBodyScalar(LiteralBits)` + `ValueBodyList(List<FieldValue>)` to substr
 Substrate is canonical; Rust enum codegens from substrate definition via existing precedent.
 
 **Substrate-grep at HEAD finds existing codegen tooling**:
-- `src/v3/compiler/src/regen_bootstrap_emit.rs`: `render_bootstrap_generated_rs` + `render_bootstrap_std_generated_rs` exposed at `lib.rs:3277` — substrate→Rust emit pipeline at HEAD
-- Generated files at HEAD: `bootstrap_generated.rs`, `dag_lookup_generated.rs`, `dag_scalar_generated.rs`, `diagnostics_generated.rs`, `parse_surface_generated.rs` — multiple precedents
-- `regen_bootstrap` binary: `cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap` runs the substrate→Rust regen pipeline (used in PR #2194 1a.0 regen receipt)
+- **`scripts/regen_runtime_mirrors.py`** (CORRECTED 2026-05-08 post-codex BLOCKING at PR #2222 c#4404360699): substrate→Rust **runtime-mirror** generator; reads `src/v3/std/substrate.dag` (script line 16); emits `src/v3/compiler/src/dag_scalar_generated.rs` + similar runtime mirrors (script line 984+). **This is the correct authority path for ValueBody enum codegen** — the `ValueBody` Rust enum is a runtime mirror of substrate `ValueBody`, not a bootstrap snapshot.
+- `regen_bootstrap_emit.rs` + `bin/regen_bootstrap` is a **separate codegen system** that generates `bootstrap_generated.rs` (bootstrap parser/lower compile snapshot; used in PR #2194 1a.0 regen). Not the right path for runtime-mirror codegen.
+- Generated files at HEAD (mixed across both systems): `bootstrap_generated.rs` (bootstrap-emit), `dag_lookup_generated.rs` + `dag_scalar_generated.rs` + `diagnostics_generated.rs` + `parse_surface_generated.rs` (runtime-mirrors per `regen_runtime_mirrors.py`).
 
 **Codegen precedent IS established at HEAD**. Extending the existing pipeline to cover the Rust-only `Scalar` + `List` variants (substrate adds them, codegen emits Rust enum from substrate) is **pattern-3 (strict-mirror codegen extension)**, NOT pattern-5 (genuinely novel substrate-fact-introduction). Per canvas-finding-taxonomy at `feedback_canvas_finding_taxonomy.md`: pattern-3 ratifies at slice-tier directly, no canvas-tier P1 procedure required.
 
@@ -49,7 +49,7 @@ Substrate is canonical; Rust enum codegens from substrate definition via existin
 
 **Path (b) codegen-generation RECOMMENDED**:
 
-1. **Codegen precedent at HEAD verified** (5 `_generated.rs` files; `regen_bootstrap_emit` pipeline; binary in flight via PR #2194). Pattern-3 strict-mirror codegen extension; no canvas-tier P1 procedure needed.
+1. **Codegen precedent at HEAD verified** (5 `_generated.rs` files; `scripts/regen_runtime_mirrors.py` substrate→Rust runtime-mirror pipeline). Pattern-3 strict-mirror codegen extension; no canvas-tier P1 procedure needed.
 2. **Single-authority discipline preserved** per `feedback_parallel_representation_debt`; substrate is canonical for the algebraic surface; Rust-side dissolves to codegen-derived consumer.
 3. **Future-drift-impossible by construction**: future variant additions land substrate-side once; Rust regen propagates automatically. Dissolves the discipline-failure class that surfaced this canvas.
 4. **Map dup-key semantic-gap** is a separate sub-question: either (i) substrate-level invariant on `List<FieldEntry>` Map (constructor-level uniqueness — would require new substrate primitive), or (ii) Rust-side post-codegen wrapping in FieldMap (preserves existing Rust invariant; substrate-side remains agnostic). Mgr lean (ii) — preserves Rust-side invariant; substrate-side stays minimal.
@@ -61,7 +61,7 @@ Substrate is canonical; Rust enum codegens from substrate definition via existin
 
 ## Two-axis verification (per `feedback_canvas_two_axis_verification`)
 
-**Axis 1 — substrate-precedent**: codegen tooling at HEAD verified at `regen_bootstrap_emit.rs` + 5 `_generated.rs` files. (b) extends established precedent.
+**Axis 1 — substrate-precedent**: codegen tooling at HEAD verified at `scripts/regen_runtime_mirrors.py` (substrate→Rust runtime-mirror generator) + 5 `_generated.rs` files. (b) extends established precedent. (Originally cited `regen_bootstrap_emit.rs` — corrected 2026-05-08 per codex BLOCKING; bootstrap-emit and runtime-mirror are separate codegen systems.)
 
 **Axis 2 — consumer-side requirement**: V1 worker brief at `docs/briefs/r3-v-valuebody-substrate-mirror-isomorphism-v1-worker.md` names "mirror parity vs codegen-generation" as the explicit D1 choice. Consumer-side framing matches the path-pair this canvas presents. PR #2218 inventory confirms the drift fact + path-pair structurally.
 
@@ -71,9 +71,9 @@ Both axes grep-verified before authoring.
 
 If (b) ratifies, downstream carrier slice:
 
-1. Extend `src/v3/compiler/src/regen_bootstrap_emit.rs` (or analog) to emit Rust `ValueBody` enum from substrate `ValueBody` type — pattern-3 codegen extension
+1. Extend `scripts/regen_runtime_mirrors.py` to emit Rust `ValueBody` enum from substrate `ValueBody` type — pattern-3 codegen extension on the runtime-mirror generator
 2. Add `ValueBodyScalar(LiteralBits)` + `ValueBodyList(List<FieldValue>)` constructors to `src/v3/std/substrate.dag` (substrate-canonical authoring)
-3. Run `regen_bootstrap` to propagate; commit regenerated files
+3. Run `scripts/regen_runtime_mirrors.py` to propagate; commit regenerated files
 4. Remove hand-authored Rust `ValueBody` enum from `src/v3/compiler/src/dag.rs:436-504`
 5. (Per D1-followup ratification) handle Map dup-key gap: either substrate-invariant or Rust-post-codegen-wrapping
 6. zesty-moth-793 V1 worker (#2142) sequences Slice 2 (mirror-parity verification cementing test) post-carrier-slice land
