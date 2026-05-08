@@ -1,10 +1,18 @@
 // lenses.cost — symbolic-cost lens over the v3 DAG.
 //
-// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PROXY
-//   (T-CostLens-Composition α-narrow ratified at gunb-ai/gunbc#828
-//   #issuecomment-4400772335 via PR #2171: §1.8 gates #38 + #39 satisfied
-//   by construction at HEAD; #37 + #40 + #70 deferred to follow-on
-//   Behavior→primitive-identity wiring canvas at gunb-ai/gunbc#2175).
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE FOR ABSTRACT-SHAPE
+//   (T-CostLens-Composition α-narrow #38 + #39 satisfied by construction at
+//   HEAD per PR #2171. **ε ratified canonical-not-transitional** at
+//   gunb-ai/gunbc#2181 #issuecomment-4401584012 (canvas
+//   `docs/proposals/q-cost-composition-layering-canvas.md`): cost factors
+//   as (target-agnostic abstract `SymbolicCost` shape — this file's lens
+//   output) × (target-specific concrete cost — Rust-side composition
+//   consumer). Concrete-cost wiring lives Rust-side per ε; this file's
+//   PROXY framing is now scoped to the abstract-shape boundary, not a
+//   PROXY of the lens-name's full intent. T-CostLens follow-on slice
+//   (#2141 ε scope per gunbc#2068 #issuecomment-4402339074) closes #37 +
+//   #40 + #70 via Rust-side composition fn + test_runner consumer + demo
+//   fixture; this file's substrate role does NOT change.
 // See docs/v3-lens-capability-register.md.
 //
 // Produces `Lookup<SymbolicCost>` per port using `SymbolicCost`
