@@ -148,8 +148,9 @@ type SizeVariable {
   display_name: String?
 }
 
-fn unnamed_size_variable(source_port: PortId) -> SizeVariable =
-  { source_port: source_port, display_name: None }
+fn unnamed_size_variable(source_port: PortId) -> SizeVariable {
+  host unnamed_size_variable
+}
 
 fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool =
   a.source_port == b.source_port

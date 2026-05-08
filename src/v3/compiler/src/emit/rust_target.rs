@@ -2888,10 +2888,22 @@ fn program_mode_top_level_value_binds<'a>(
     dag: &'a Dag,
     indexes: &RealizationIndexes,
 ) -> Vec<&'a crate::dag::BindNode> {
+    let callable_body_binds: std::collections::HashSet<_> = dag
+        .declarations()
+        .iter()
+        .filter_map(|decl| match &decl.connective {
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(bind_id),
+                ..
+            } => Some(bind_id.node_id()),
+            _ => None,
+        })
+        .collect();
     dag.nodes()
         .iter()
         .filter_map(Behavior::as_bind)
         .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
+        .filter(|bind| !callable_body_binds.contains(&bind.id))
         .filter(|b| b.params.is_empty())
         .collect()
 }
@@ -4182,12 +4194,13 @@ impl<'a> Ctx<'a> {
         Ok(scrutinee_disj == bool_disj)
     }
 
-    /// v3.std.lookup / v3.std.algebra: `miss_*_lookup` / `hit_*_lookup`
-    /// are thin monomorphized `Lookup<T>` constructors (one pair per
-    /// element type — `Int`, `SymbolicCost`, …). Emit as `Lookup::Miss`
-    /// / `Lookup::Hit(...)` so generated lens code does not call
-    /// out-of-scope shims. Runs before [`Self::render_realized_callable`]
-    /// so a registered callable strategy does not pre-empt enum lowering.
+    /// v3.std.lookup / v3.std.algebra constructor shims that are authored in
+    /// `.dag` but currently cannot be emitted through ordinary expression
+    /// syntax. `miss_*_lookup` / `hit_*_lookup` lower to `Lookup::Miss` /
+    /// `Lookup::Hit(...)`; `unnamed_size_variable` lowers the optional
+    /// display label that `.dag` cannot yet construct inside record literals.
+    /// Runs before [`Self::render_realized_callable`] so a registered callable
+    /// strategy does not pre-empt enum lowering.
     fn lookup_monomorphized_constructor_emit(
         &self,
         t: &TransformNode,
@@ -4229,6 +4242,22 @@ impl<'a> Ctx<'a> {
                 format!("Lookup::Hit({arg})")
             };
             return Ok(Some(out));
+        }
+        if name == "unnamed_size_variable" {
+            if t.inputs.len() != 1 {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "{name}(source_port) expected one argument, got {}",
+                    t.inputs.len()
+                )));
+            }
+            let arg = self.elide_explicit_borrow(&self.render_input_use(
+                InputConsumer::Transform(t),
+                InputSlot::Positional(0),
+                locals,
+            )?);
+            return Ok(Some(format!(
+                "SizeVariable {{ source_port: {arg}, display_name: None }}"
+            )));
         }
         Ok(None)
     }
