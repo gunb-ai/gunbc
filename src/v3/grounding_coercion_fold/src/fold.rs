@@ -36,7 +36,7 @@ use crate::types::{
 ///
 /// Counts declarations meta-tagged with the template. Coercion-Fold requires this count
 /// before scratch examples run so deleting or failing to lower inhabitance `data` breaks CI.
-const MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS: usize = 8;
+pub const MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BoundMatch {
@@ -609,8 +609,8 @@ fn program_integer_intent_from_projection(
     };
     Ok(ProgramIntegerIntent {
         target_language,
-        kernel_integer: declaration_id_by_name(dag, &projection.kernel_integer, "kernel_integer")?,
-        algebra: declaration_id_by_name(dag, &projection.algebra, "algebra")?,
+        kernel_integer: projection.kernel_integer,
+        algebra: projection.algebra,
         bound,
         type_realization: None,
     })

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use v3_compiler::dag::Interval;
+use v3_compiler::dag::{DeclarationId, Interval};
 use v3_grounding_lifetime::BindingId;
 
 /// How the fold obtains LanguageSpec / target-primitive substrate facts.
@@ -10,7 +10,7 @@ use v3_grounding_lifetime::BindingId;
 /// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — `Undeclared` remains the
 /// fail-closed production default; `DeclaredIntegerIntents` is the executable LanguageSpec
 /// projection path for integer inhabitance rows; `ScratchIntExamples` is retained as a
-/// compatibility checkpoint until callers migrate.
+/// compatibility checkpoint until callers migrate (#1133 / #1286).
 ///
 /// **`Undeclared`** — production entry stays fail-closed until a real projection lands
 /// (substrate / #1286 / manager #1133).
@@ -48,8 +48,8 @@ pub enum IntegerBoundProjection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntegerTargetIntent {
     pub target_language: TargetLanguage,
-    pub kernel_integer: String,
-    pub algebra: String,
+    pub kernel_integer: DeclarationId,
+    pub algebra: DeclarationId,
     pub bound: IntegerBoundProjection,
 }
 

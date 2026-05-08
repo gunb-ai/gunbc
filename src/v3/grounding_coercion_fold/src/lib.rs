@@ -44,7 +44,7 @@ mod fold;
 mod types;
 
 pub use diagnostic::EmissionDiagnostic;
-pub use fold::fold_program_to_target;
+pub use fold::{fold_program_to_target, MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS};
 pub use types::{
     IntScratchExample, IntegerBoundProjection, IntegerTargetIntent, LanguageSpecProjection,
     TargetInhabitance, TargetLanguage,
@@ -86,6 +86,12 @@ mod tests {
                 Some(&expected)
             );
         });
+    }
+
+    fn declaration_id_by_name(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
+        dag.declaration_by_name(name)
+            .unwrap_or_else(|| panic!("missing declaration `{name}`"))
+            .id
     }
 
     #[test]
@@ -150,8 +156,8 @@ mod tests {
                 v3_grounding_lifetime::BindingId(7),
                 IntegerTargetIntent {
                     target_language: TargetLanguage::Rust,
-                    kernel_integer: "UInt32".to_string(),
-                    algebra: "UInt32".to_string(),
+                    kernel_integer: declaration_id_by_name(&dag, "UInt32"),
+                    algebra: declaration_id_by_name(&dag, "UInt32"),
                     bound: IntegerBoundProjection::Static(Interval::BoundedInterval {
                         lower: 0,
                         width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::UnitCount {
