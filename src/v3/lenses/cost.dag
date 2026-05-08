@@ -8,10 +8,12 @@
 //   as (target-agnostic abstract `SymbolicCost` shape — this file's lens
 //   output) × (target-specific concrete cost — Rust-side composition
 //   consumer). Concrete-cost wiring lives Rust-side per ε; this file's
-//   substrate role does NOT change. T-CostLens follow-on slice (#2141 ε
-//   scope per gunbc#2068 #issuecomment-4402339074) closes #37 + #40 + #70
-//   via Rust-side composition fn + test_runner consumer + demo fixture.
-//   Status stays PROXY per single-authority discipline with
+//   substrate role does NOT change. T-CostLens follow-on multi-slice plan
+//   (#2141 ε scope per gunbc#2068 #issuecomment-4402339074) sequences
+//   gates #37 + #40 + #70 across separate PRs: Slice 1a Rust-side
+//   `RealizationCostTable` infra (PR #2194) → Slice 1b parameterized
+//   cost-fold consumer → Slice 2 test_runner #40 wiring → Slice 3 demo
+//   fixture #70. Status stays PROXY per single-authority discipline with
 //   `docs/v3-lens-capability-register.md` cost.dag row (INVARIANTS P2);
 //   register-row promotion happens when canvas-tier consumer landings
 //   warrant it.
