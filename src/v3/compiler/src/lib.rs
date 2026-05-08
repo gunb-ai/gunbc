@@ -3557,6 +3557,8 @@ pub mod lens_cost {
 /// type emission. The hand-maintained Rust mirror adjacent to
 /// `Behavior` / `LoopBound` follows the same substrate-ownership
 /// pattern the other bootstrap-resident types use.
+pub mod lens_cost_target_composition;
+
 pub mod lens_cost_symbolic {
     #[allow(
         dead_code,
