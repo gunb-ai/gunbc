@@ -164,7 +164,7 @@ type AnthropicMessages200ContentBlock
   | MessagesRedactedThinkingBlock { data: String }
   | MessagesToolUseBlock { id: String, name: String, input: Json, caller: Json? }
   | MessagesServerToolUseBlock { id: String, name: AnthropicServerToolName, input: Json, caller: Json? }
-  | MessagesWebSearchToolResultBlock { tool_use_id: String, content: Json }
+  | MessagesWebSearchToolResultBlock { tool_use_id: String, content: Json, caller: Json? }
 
 // 🟡 SCAFFOLD provider-domain enum for Anthropic `server_tool_use.name`
 // values mirrored from Anthropic's generated OpenAPI SDK schema. Scaffold
@@ -205,7 +205,7 @@ type AnthropicMessages200Body {
 }
 
 data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
-  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content|json_pending:web_search_tool_result_payload|trigger:container-management response surface plus web search result/error payload coproduct",
+  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.caller|json_pending:web_search_tool_result_payload|trigger:container-management response surface plus web search result/error payload coproduct plus typed caller carrier for web search tool result",
   "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesToolUseBlock|residue:client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema|trigger:tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema",
   "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesServerToolUseBlock|residue:server_tool_input_and_optional_caller_payloads_unmodeled|trigger:fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName",
   "closure:anthropic_messages_200_residual|AnthropicServerToolName|external_spec_watch:server_tool_use_name_set|trigger:Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set",
