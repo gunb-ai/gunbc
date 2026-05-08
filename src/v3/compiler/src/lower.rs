@@ -30,7 +30,7 @@ use crate::dag::{
     Declaration, DeclarationId, Field, FieldMap, IntraClusterCall, LiteralBits, LoopBound,
     LoopNode, MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path,
     PayloadBinding, PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective, ValueNode,
+    TypeConnective, ValueNode, MAX_PEANO_MATERIALIZATION,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -8756,13 +8756,21 @@ fn is_strictly_smaller(
         &args[0],
         SurfaceExpr::Var { name, .. } if name == first_param
     );
-    let rhs_is_positive = matches!(
+    // RHS must be a positive integer literal AND within the descent-evidence
+    // carrier's `positive_amount_from_i64` materialization range
+    // (`dag.rs:1031-1032`, `1..=MAX_PEANO_MATERIALIZATION`). Without the
+    // upper cap, the termination prover would accept `f(n - 257)` while
+    // the per-call descent producer fails to materialize a
+    // `PositiveDescentAmount` and falls back to `SubValueUnknown` —
+    // parallel-authority split-brain (the same single-authority discipline
+    // Slice 3's ClusterDescentChecker fix established).
+    let rhs_in_descent_range = matches!(
         &args[1],
         SurfaceExpr::Literal {
             value: SurfaceLiteral::Int(v), ..
-        } if *v > 0
+        } if (1..=MAX_PEANO_MATERIALIZATION).contains(v)
     );
-    lhs_is_param && rhs_is_positive
+    lhs_is_param && rhs_in_descent_range
 }
 
 fn is_structurally_smaller(
