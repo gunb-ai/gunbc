@@ -1,83 +1,106 @@
-// lenses.complexity — structural depth lens for the v3 DAG.
+// lenses.complexity — behavioral complexity summary lens for the v3 DAG.
 //
-// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PROXY.
-// See docs/v3-lens-capability-register.md.
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE.
+// See docs/design-complexity-lens-behavioral-completeness.md and
+// docs/v3-lens-capability-register.md.
 //
-// Forward fold over `d.nodes` builds a per-port integer depth
+// Forward fold over `d.nodes` builds a per-port `ComplexitySummary`
 // map. The substrate invariant that producers precede consumers in
-// `d.nodes` makes this a pure catamorphism — no fuel, no mutual
-// recursion, no manual termination measure. Structural termination:
-// `fold` drives the walk on the finite list `d.nodes`.
+// `d.nodes` makes this a pure catamorphism; the old structural-depth
+// proxy is dissolved into the richer carrier below:
+//   - symbolic work and span costs (`SymbolicCost`)
+//   - asymptotic classification (`AsymptoticClass`)
+//   - per-coordinate certainty (`work_certainty`, `span_certainty`)
 //
-// **This lens does not subsume v2's complexity analysis.** v2's
-// `src/v2/complexity.dag` produces `ComplexitySummary { work, span,
-// output_size, certainty }` with symbolic `CostExpr` / `SizeExpr`
-// and asymptotic classification. This lens produces a single integer
-// per port — the structural depth of the producing behavior in the
-// DAG. The reduction in LOC versus v2 is achieved by computing a
-// weaker function of the program, not by dissolving v2's algebra.
-// Genuine equivalence blocks on consuming the staged `DescentEvidence`,
-// `CallPattern`, and `SubValueRelation` carriers at live call sites.
-// E-M closed `MethodSemantics` by structural subsumption: v3 method-like
-// dispatch facts live in `TransformTarget` plus typed declaration/effect
-// metadata, not in an expression-side carrier. See the register for the
-// full delta.
+// Work/span dimensions are the two `AnalysisDimension<SymbolicCost>`
+// instances named by the design. Class-5 record-valued `data` bodies
+// still gate executable declarations for `work_dimension` and
+// `span_dimension`, so this file keeps the executable authority in
+// the lens fold and names the dissolution trigger in the receipt
+// comments instead of inventing a parallel dimension registry.
 //
-// **Equivalent to the prior Rust lens** at
-// `src/v3/compiler/src/lens_cost.rs` on commit 1247f4b1d, which
-// walked `produced_by` recursively. That oracle encoded the same
-// structural-depth algebra; this forward-fold is the substrate-native
-// rewriting that exchanges recursive graph descent for sequential
-// map build.
-//
-// **Fail-closed on malformed references.** `Lookup<Int>` keeps
-// `Miss` distinct from `Hit(0)` so a port referenced by
-// a consumer but absent from the cost map cannot masquerade as a
-// legitimate zero-cost leaf. The accumulator is pre-seeded with an
-// entry (cost 0) for every `bind.params` port — parameters are the
-// only legitimate absent-from-d.nodes zero-cost leaves. Any remaining
-// `Miss` at lookup time means the DAG references a port whose
-// producer is not in `d.nodes`, which is malformed and surfaces at
-// the Rust boundary (`CostLens::cost_of` panics).
-//
-// Shared carrier: `v3.std.lookup.Lookup` (see docs/thesis/compiler-std-consolidation.md).
+// Shared carrier: `v3.std.lookup.Lookup`.
 
 module lenses.complexity
 
 import std.list { List, empty, fold, cons, concat }
-import std.substrate { Dag, DagPort, Behavior, BranchPath, NodeId, PortId }
-import std.types { Int }
-import v3.std.lookup { Lookup, hit_int_lookup, miss_int_lookup }
+import std.substrate { Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, node }
+import std.algebra {
+  SymbolicCost,
+  AsymptoticClass,
+  unnamed_size_variable,
+  classify_symbolic_cost,
+  dominates,
+  sequential,
+  iterate,
+  max_path,
+  ConstantCost,
+  LinearCost,
+  PolynomialCost,
+  ProductCost,
+  SumCost,
+  LogCost,
+  UnknownCost
+}
+import std.computation {
+  CallPattern,
+  ArithmeticSubtractCall,
+  ArithmeticDivideCall,
+  ChildAccessorCall,
+  CollectionShrinkCall,
+  FoldBodyCall,
+  ParserAdvanceCall,
+  WorklistDrainCall,
+  SameArgumentCall,
+  per_call_pattern_at
+}
+import v3.std.lookup { Lookup }
 
-type CostEntry {
-  port: PortId
-  cost: Lookup<Int>
+// Certainty: how tight is the bound?
+// Proven means the bound is exact for that coordinate; Conservative means it
+// is a sound upper bound that may be loose. There is intentionally no
+// BoundedLattice<Certainty>; certainty composes with cost dominance at the
+// ComplexitySummary level.
+type Certainty = Proven | Conservative
+
+type ComplexitySummary {
+  work: SymbolicCost
+  span: SymbolicCost
+  asymptotic_class: AsymptoticClass
+  work_certainty: Certainty
+  span_certainty: Certainty
 }
 
-// P2 / facts-flow: `emit_rust_module` → `src/v3/compiler/src/lens_cost_generated.rs`
-// (regen_lens; committed with lens edits). `v3_compiler::lens_cost::CostLookup` in
-// `lib.rs` is a **type alias** for `Lookup<i64>`, not a parallel enum.
-fn cost_of(d: Dag, port_id: PortId) -> Lookup<Int> =
-  lookup_cost(compute_costs(d), port_id)
+type ComplexityEntry {
+  port: PortId
+  summary: Lookup<ComplexitySummary>
+}
 
-fn compute_costs(d: Dag) -> List<CostEntry> =
+type DominanceOutcome
+  = BothSurvive
+  | OuterDominates
+  | BodyDominates
+
+fn miss_complexity_summary_lookup() -> Lookup<ComplexitySummary> =
+  Miss
+
+fn hit_complexity_summary_lookup(summary: ComplexitySummary) -> Lookup<ComplexitySummary> =
+  Hit(summary)
+
+fn complexity_of(d: Dag, port_id: PortId) -> Lookup<ComplexitySummary> =
+  lookup_summary(compute_summaries(d), port_id)
+
+fn compute_summaries(d: Dag) -> List<ComplexityEntry> =
   fold(d.nodes, seed_bind_params(d.nodes), |acc, behavior|
-    cons(entry_for(acc, behavior), acc)
+    cons(entry_for(d, acc, behavior), acc)
   )
 
-// Pre-seed the accumulator with `Hit(0)` for every
-// `bind.params` port. Parameters have `produced_by = None` and are not
-// Behaviors in `d.nodes`, so without this seed their lookups would
-// return `Miss` and a malformed reference would be
-// indistinguishable from a legitimate parameter.
-fn seed_bind_params(nodes: List<Behavior>) -> List<CostEntry> =
-  match nodes {
-    Empty => empty()
-    Cons(payload) =>
-      concat(params_of(payload.head), seed_bind_params(payload.tail))
-  }
+fn seed_bind_params(nodes: List<Behavior>) -> List<ComplexityEntry> =
+  fold(nodes, empty(), |acc, behavior|
+    concat(params_of(behavior), acc)
+  )
 
-fn params_of(behavior: Behavior) -> List<CostEntry> =
+fn params_of(behavior: Behavior) -> List<ComplexityEntry> =
   match behavior {
     Value(v) => empty()
     Transform(t) => empty()
@@ -86,108 +109,285 @@ fn params_of(behavior: Behavior) -> List<CostEntry> =
     Bind(bind) => param_entries(bind.params)
   }
 
-fn param_entries(params: List<PortId>) -> List<CostEntry> =
+fn param_entries(params: List<PortId>) -> List<ComplexityEntry> =
   match params {
     Empty => empty()
     Cons(payload) =>
       cons(
-        { port: payload.head, cost: hit_int_lookup(0) },
+        { port: payload.head, summary: hit_complexity_summary_lookup(zero_summary()) },
         param_entries(payload.tail)
       )
   }
 
-fn entry_for(acc: List<CostEntry>, behavior: Behavior) -> CostEntry =
+fn zero_summary() -> ComplexitySummary =
+  summary_from_costs(ConstantCost(0), ConstantCost(0), Proven, Proven)
+
+fn unit_summary() -> ComplexitySummary =
+  summary_from_costs(ConstantCost(1), ConstantCost(1), Proven, Proven)
+
+fn conservative_unknown_summary(reason: String) -> ComplexitySummary =
+  summary_from_costs(UnknownCost(reason), UnknownCost(reason), Conservative, Conservative)
+
+fn summary_from_costs(
+  work: SymbolicCost,
+  span: SymbolicCost,
+  work_certainty: Certainty,
+  span_certainty: Certainty
+) -> ComplexitySummary =
+  {
+    work: work
+    span: span
+    asymptotic_class: classify_symbolic_cost(work)
+    work_certainty: work_certainty
+    span_certainty: span_certainty
+  }
+
+fn entry_for(
+  d: Dag,
+  acc: List<ComplexityEntry>,
+  behavior: Behavior
+) -> ComplexityEntry =
   match behavior {
-    Value(v) => { port: v.result_port, cost: hit_int_lookup(0) }
+    Value(v) =>
+      { port: v.result_port, summary: hit_complexity_summary_lookup(zero_summary()) }
     Transform(t) =>
-      {
-        port: t.result_port
-        cost: add_one(sum_costs(acc, t.inputs))
-      }
+      { port: t.result_port, summary: transform_summary(d, acc, t.id, t.inputs) }
     Branch(b) =>
-      {
-        port: b.result_port
-        cost:
-          add_one(
-            add_cost(
-              lookup_cost(acc, b.input),
-              max_path_cost(acc, b.paths)
-            )
-          )
-      }
+      { port: b.result_port, summary: branch_summary(acc, b.input, b.paths) }
     Loop(l) =>
-      {
-        port: l.result_port
-        cost:
-          add_one(
-            add_cost(
-              lookup_cost(acc, l.source),
-              lookup_cost(acc, l.init)
-            )
-          )
-      }
+      { port: l.result_port, summary: loop_summary(d, acc, l) }
     Bind(bind) =>
-      {
-        port: bind.result_port
-        cost: lookup_cost(acc, bind.result_port)
-      }
+      { port: bind.result_port, summary: lookup_summary(acc, bind.result_port) }
   }
 
-fn sum_costs(acc: List<CostEntry>, ports: List<PortId>) -> Lookup<Int> =
-  fold(ports, hit_int_lookup(0), |sum, port_id|
-    add_cost(sum, lookup_cost(acc, port_id))
+fn transform_summary(
+  d: Dag,
+  acc: List<ComplexityEntry>,
+  call_site: NodeId,
+  inputs: List<PortId>
+) -> Lookup<ComplexitySummary> =
+  match per_call_pattern_at(d, call_site) {
+    None => compose_many_inputs(acc, inputs)
+    Some(pattern) =>
+      recursive_transform_summary(acc, pattern, inputs)
+  }
+
+fn compose_many_inputs(
+  acc: List<ComplexityEntry>,
+  ports: List<PortId>
+) -> Lookup<ComplexitySummary> =
+  fold(ports, hit_complexity_summary_lookup(unit_summary()), |running, port_id|
+    combine_sequential(running, lookup_summary(acc, port_id))
   )
 
-fn max_path_cost(acc: List<CostEntry>, paths: List<BranchPath>) -> Lookup<Int> =
-  fold(paths, hit_int_lookup(0), |best, path|
-    max_cost(best, lookup_cost(acc, path.result_port))
-  )
-
-fn lookup_cost(acc: List<CostEntry>, port_id: PortId) -> Lookup<Int> =
-  match acc {
-    Empty => miss_int_lookup()
+fn recursive_transform_summary(
+  acc: List<ComplexityEntry>,
+  pattern: CallPattern,
+  inputs: List<PortId>
+) -> Lookup<ComplexitySummary> =
+  match inputs {
+    Empty => miss_complexity_summary_lookup()
     Cons(payload) =>
-      if payload.head.port == port_id then
-        payload.head.cost
-      else
-        lookup_cost(payload.tail, port_id)
+      combine_iterate(
+        summary_from_iter_bound(pattern_to_iter_bound(pattern, payload.head)),
+        compose_many_inputs(acc, inputs)
+      )
   }
 
-// Fail-closed arithmetic: a missing operand makes the whole sum
-// missing. Silent zero-fallback would let a malformed DAG masquerade
-// as a valid computation with cost 0.
-fn add_one(c: Lookup<Int>) -> Lookup<Int> =
-  match c {
-    Miss => miss_int_lookup()
-    Hit(n) => hit_int_lookup(1 + n)
+fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> SymbolicCost =
+  match pattern {
+    ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
+      LogCost(unnamed_size_variable(arg_port))
+    ChildAccessorCall { accessor: accessor } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    CollectionShrinkCall { amount: amount, collection: collection } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    FoldBodyCall { outer_collection: outer_collection } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    ParserAdvanceCall { witness: witness } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    WorklistDrainCall { element: element } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    SameArgumentCall =>
+      UnknownCost("same-argument recursive call has no descent")
   }
 
-fn add_cost(a: Lookup<Int>, b: Lookup<Int>) -> Lookup<Int> =
+fn summary_from_iter_bound(bound: SymbolicCost) -> Lookup<ComplexitySummary> =
+  match bound {
+    UnknownCost(reason) =>
+      hit_complexity_summary_lookup(conservative_unknown_summary(reason))
+    ConstantCost(_) =>
+      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
+    LinearCost(_) =>
+      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
+    PolynomialCost(_) =>
+      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
+    ProductCost(_) =>
+      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
+    SumCost(_) =>
+      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
+    LogCost(_) =>
+      hit_complexity_summary_lookup(summary_from_costs(bound, bound, Proven, Proven))
+  }
+
+fn loop_summary(
+  d: Dag,
+  acc: List<ComplexityEntry>,
+  l: LoopNode
+) -> Lookup<ComplexitySummary> =
+  combine_sequential(
+    combine_sequential(lookup_summary(acc, l.source), lookup_summary(acc, l.init)),
+    combine_iterate(
+      hit_complexity_summary_lookup(summary_from_costs(
+        LinearCost(unnamed_size_variable(l.source)),
+        LinearCost(unnamed_size_variable(l.source)),
+        Proven,
+        Proven
+      )),
+      body_summary(d, acc, l.body)
+    )
+  )
+
+fn body_summary(
+  d: Dag,
+  acc: List<ComplexityEntry>,
+  body_id: NodeId
+) -> Lookup<ComplexitySummary> =
+  match node(d, body_id) {
+    None => miss_complexity_summary_lookup()
+    Some(body_behavior) => lookup_summary(acc, behavior_result_port(body_behavior))
+  }
+
+fn behavior_result_port(b: Behavior) -> PortId =
+  match b {
+    Value(v) => v.result_port
+    Transform(t) => t.result_port
+    Branch(br) => br.result_port
+    Loop(lp) => lp.result_port
+    Bind(bind) => bind.result_port
+  }
+
+fn branch_summary(
+  acc: List<ComplexityEntry>,
+  input: PortId,
+  paths: List<BranchPath>
+) -> Lookup<ComplexitySummary> =
+  combine_sequential(
+    lookup_summary(acc, input),
+    max_path_summaries(acc, paths)
+  )
+
+fn max_path_summaries(
+  acc: List<ComplexityEntry>,
+  paths: List<BranchPath>
+) -> Lookup<ComplexitySummary> =
+  fold(paths, hit_complexity_summary_lookup(zero_summary()), |running, path|
+    combine_branch(running, lookup_summary(acc, path.result_port))
+  )
+
+fn lookup_summary(acc: List<ComplexityEntry>, port_id: PortId) -> Lookup<ComplexitySummary> =
+  fold(acc, miss_complexity_summary_lookup(), |running, entry|
+    match running {
+      Hit(_) => running
+      Miss =>
+        if entry.port == port_id then
+          entry.summary
+        else
+          miss_complexity_summary_lookup()
+    }
+  )
+
+fn combine_sequential(
+  a: Lookup<ComplexitySummary>,
+  b: Lookup<ComplexitySummary>
+) -> Lookup<ComplexitySummary> =
   match a {
-    Miss => miss_int_lookup()
-    Hit(x) =>
+    Miss => miss_complexity_summary_lookup()
+    Hit(ax) =>
       match b {
-        Miss => miss_int_lookup()
-        Hit(y) => hit_int_lookup(x + y)
+        Miss => miss_complexity_summary_lookup()
+        Hit(bx) => hit_complexity_summary_lookup(compose_summary_sequential(ax, bx))
       }
   }
 
-fn max_cost(a: Lookup<Int>, b: Lookup<Int>) -> Lookup<Int> =
-  match a {
-    Miss => miss_int_lookup()
-    Hit(x) =>
-      match b {
-        Miss => miss_int_lookup()
-        Hit(y) => hit_int_lookup(if x > y then x else y)
+fn combine_iterate(
+  outer: Lookup<ComplexitySummary>,
+  body: Lookup<ComplexitySummary>
+) -> Lookup<ComplexitySummary> =
+  match outer {
+    Miss => miss_complexity_summary_lookup()
+    Hit(outer_summary) =>
+      match body {
+        Miss => miss_complexity_summary_lookup()
+        Hit(body_summary_value) =>
+          hit_complexity_summary_lookup(compose_summary_iterate(outer_summary, body_summary_value))
       }
   }
 
-// `Lens<Int>` migration — **documentation / STOP receipt only** (inbox #1130 / #1139).
-// No `data complexity_lens` and no production `fn` helpers that emit to
-// `lens_cost_generated.rs`: L-8 forbids `pub fn … -> i64` (and siblings) on the
-// migrated lens Rust surface — that pattern reads as collapsing the typed
-// `Lookup<Int>` / `CostLookup` story to bare primitives. A real instance still
-// needs Prereq-2 (`Witness<Int>`, `OptionalDiagnostic`), class-5 structural `data`,
-// and `fold_lens<C>` for honest iterate. Prereq-1 fn-ref lowering for monoid /
-// branch fields is ratcheted in `m2_feature_parity_test` (#1256), not duplicated
-// here as emitted Rust.
+fn combine_branch(
+  a: Lookup<ComplexitySummary>,
+  b: Lookup<ComplexitySummary>
+) -> Lookup<ComplexitySummary> =
+  match a {
+    Miss => miss_complexity_summary_lookup()
+    Hit(ax) =>
+      match b {
+        Miss => miss_complexity_summary_lookup()
+        Hit(bx) => hit_complexity_summary_lookup(compose_summary_branch_pair(ax, bx))
+      }
+  }
+
+fn compose_summary_sequential(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary =
+  summary_from_costs(
+    sequential(a.work, b.work),
+    sequential(a.span, b.span),
+    certainty_of_surviving_per_dim(a.work, b.work, a.work_certainty, b.work_certainty),
+    certainty_of_surviving_per_dim(a.span, b.span, a.span_certainty, b.span_certainty)
+  )
+
+fn compose_summary_iterate(outer: ComplexitySummary, body: ComplexitySummary) -> ComplexitySummary =
+  summary_from_costs(
+    iterate(outer.work, body.work),
+    iterate(outer.work, body.span),
+    certainty_of_surviving_per_dim(outer.work, body.work, outer.work_certainty, body.work_certainty),
+    certainty_of_surviving_per_dim(outer.work, body.span, outer.work_certainty, body.span_certainty)
+  )
+
+fn compose_summary_branch_pair(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary =
+  summary_from_costs(
+    max_path(cons(a.work, cons(b.work, empty()))),
+    max_path(cons(a.span, cons(b.span, empty()))),
+    certainty_of_surviving_per_dim(a.work, b.work, a.work_certainty, b.work_certainty),
+    certainty_of_surviving_per_dim(a.span, b.span, a.span_certainty, b.span_certainty)
+  )
+
+fn certainty_of_surviving_per_dim(
+  outer_dim: SymbolicCost,
+  body_dim: SymbolicCost,
+  outer_cert: Certainty,
+  body_cert: Certainty
+) -> Certainty =
+  match dominance_outcome(outer_dim, body_dim) {
+    BothSurvive => meet_pair(outer_cert, body_cert)
+    OuterDominates => outer_cert
+    BodyDominates => body_cert
+  }
+
+fn dominance_outcome(outer_dim: SymbolicCost, body_dim: SymbolicCost) -> DominanceOutcome =
+  if dominates(outer_dim, body_dim) then
+    if dominates(body_dim, outer_dim) then BothSurvive else OuterDominates
+  else
+    if dominates(body_dim, outer_dim) then BodyDominates else BothSurvive
+
+fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
+  match a {
+    Proven => b
+    Conservative => Conservative
+  }
+
+// CostBound projection authority lives in `std.induction::cost_bound_to_symbolic`.
+// This lens consumes the live CallPattern query directly because structural
+// SizeVariable construction needs PortIds, while CostBound atoms still carry
+// string parameter names.
