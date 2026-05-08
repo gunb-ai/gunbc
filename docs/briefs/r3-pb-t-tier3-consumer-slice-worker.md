@@ -84,8 +84,8 @@ data tier3_mirror_dissolution_perf_within_budget: TestClaim = TestClaim {
 ### 4. Cementing receipt: end-to-end T-Tier3 R-4 gate clearing
 
 **Shape:**
-- After mirror-dissolution PRs land (the 4 per-mirror retirement workers in PB canvas, separate dispatch chain): re-run Phase-2 capture. Gate clears if all 4 mirror Phase-2 measurements satisfy `≤ baseline × {2, 5}`.
-- Receipt artifact: `docs/audit/c1-tier3-perf-budget-receipt.md` — captures Phase-1 baseline rows, Phase-2 measurement rows, gate-clearing status per mirror.
+- After mirror-dissolution PRs land (the 4 per-mirror retirement workers in PB canvas, separate dispatch chain): re-run Phase-2 capture. Gate clears if all 4 mirror Phase-2 measurements satisfy `≤ baseline × {2, 5}`. Per PB Mgr disposition at PR #2254 review, this measurement run is a separate trigger post-#2204-consumer slice merge (deliverables 1-3 author against mock-shape; deliverable 4 measurement waits for per-mirror retirement chain).
+- Receipt artifact: `docs/audit/c1-tier3-perf-budget-receipt.md` — captures Phase-1 baseline rows, Phase-2 measurement rows, gate-clearing status per mirror. Carries explicit "execute when per-mirror dispatch completes" note tying the measurement run to retirement-chain landing.
 - §1.8 ledger row update: `tier3_mirror_dissolution_perf_within_budget` flips DECLARED → PASSING with PR-link evidence.
 
 **Acceptance:** receipt doc lands, ledger updated, T-Tier3 R-4 gate flips green in `r3-program-plan.md` §3 lane status table for T-Tier3-Dissolution.
@@ -96,7 +96,7 @@ data tier3_mirror_dissolution_perf_within_budget: TestClaim = TestClaim {
    - `grep -n "type PerfBaselineMeasurement" src/v3/std/substrate.dag` — must match
    - `grep -n "PerfWithinBaseline" src/v3/std/verification.dag` — must match
 2. **PB Mgr ACK on this brief** (#2074).
-3. **The 4 per-mirror retirement worker briefs in PB canvas have at least their target shape settled** — Phase-2 measurement code needs to invoke the dissolved-mirror path through the std body, which depends on per-mirror retirement landing OR mock-shape stability. Discuss with PB Mgr whether Phase-2 brief authoring runs in parallel with retirement workers or post-retirement.
+3. **Phase-2 brief authoring runs in parallel with per-mirror retirement workers' mock-shape stability** (PB Mgr disposition at PR #2254 review): deliverables 1-3 author against the mock-shape per-mirror Evaluator path without waiting for per-mirror retirement landing. Deliverable 4 measurement run executes when the retirement chain completes (separate trigger, post-#2204-consumer slice merge — receipt artifact in §4 carries an explicit "execute when per-mirror dispatch completes" note).
 
 ## STOP conditions
 
@@ -117,7 +117,7 @@ data tier3_mirror_dissolution_perf_within_budget: TestClaim = TestClaim {
 
 - **Substrate Mgr (#2068)** — confirm carrier + variant final shape at #2252 merge. No consumer-slice change without coordination.
 - **Verification Mgr (#2075)** — Pattern-A executable-gate ratchet authoring at consumer-slice PR-open per standing discipline.
-- **PB Mgr (#2074)** — owns canonical-bench-host §5.1 designation merge per ratified R-3 (PR #2215 status check before dispatch) + capture-procedure §4 N=5 addendum merge per ratified R-7.
+- **PB Mgr (#2074)** — owns canonical-bench-host §5.1 designation + capture-procedure §4 N=5 addendum (both landed via PR #2215 merged 2026-05-08T05:21:02Z; verify at brief-dispatch time via `grep -n 'R-3 satisfied 2026-05-08' docs/audit/c1-r3-canonical-bench-host-decision-matrix.md` returning the §5.1 RATIFIED line).
 
 ## Sibling-lane awareness
 
