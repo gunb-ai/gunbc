@@ -51,20 +51,43 @@ Per Director-locked 2026-04-28 (`r3-structure.md:461`), there are TWO paths for 
 **Pro**: matches Director-locked 2026-04-28 recommended path; respects R3 horizon; structural close = R3 deliverable per `r3-structure.md:461` ("R3 deliverable is structural close; perf is downstream").
 **Con**: cross-Mgr signal: PB needs to absorb #2138 worker dispatch deferral; may surface R3-close-shape question if T-Tier3 lane has implicit perf-gate expectations from other consumers.
 
-## Mgr lean
+## Trigger-condition state at HEAD (CORRECTED 2026-05-08 per Director c#4403297623)
 
-**P2 RECOMMENDED** per Director-locked 2026-04-28 explicit recommendation at `r3-structure.md:461`. Reasoning:
+Director-locked recommendation at `r3-structure.md:461` reads: *"explicitly post-R3 unless someone authors the perf-budget claim with concrete numbers and tooling."* My initial supersession-canvas Mgr-lean reasoning #1 ("path-trigger condition for P1 is not met") was **structurally wrong** per Director's grep at c#4403297623. Existing tooling at HEAD substantially meets the trigger:
 
-1. **Director-locked recommendation explicit**: "explicitly post-R3 unless someone authors the perf-budget claim with concrete numbers and tooling". No one has authored concrete numbers/tooling; the path-trigger condition for P1 is not met.
-2. **R3 horizon constraint**: 5-orthogonal-dependency picture for T-LBP cementing close already busy; adding multi-slice perf-budget substrate authoring risks R3 slip.
-3. **Structural close discipline**: T-Tier3 lane row at `r3-structure.md:196` says "consumer count / mirror-symbol count reaches zero" — that's the structural close criterion; perf is auxiliary.
-4. **Cross-Mgr signal clean**: PB Mgr's #2138 dispatch absorbs the deferral cleanly under Q4-style cross-Mgr ownership routing.
+| Artifact | Path | Status |
+|---|---|---|
+| Perf-budget worker brief | `docs/briefs/r3-pb-tier3-perf-budget-worker.md` | landed |
+| Readiness matrix | `docs/audit/c1-tier3-perf-budget-readiness-matrix.md` | landed |
+| Bench harness | `src/v3/compiler/benches/tier3_mirror_perf.rs` | merged |
+| Baseline capture procedure | `docs/audit/c1-tier3-baseline-capture-procedure.md` | landed |
+| Canonical bench host decision matrix | `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md` | landed |
 
-## Director ratification ask
+Plus concrete thresholds explicit (≤2× median, ≤5× p99); multi-run capture discipline authored (N=3 minimum, N=5 preferred); option matrix for canonical bench host. **Trigger-condition is effectively met.** P1 (in-R3 substrate authoring) is bridging existing tooling to substrate — NOT multi-slice greenfield as I originally framed. Smaller scope than canvas-finding-pattern 5 ("genuinely-novel substrate-fact-introduction") implies; closer to compositional-extension over existing tooling-substrate boundary.
 
-**Path call**: ratify **P1** (author full perf-budget substrate in-R3) OR **P2** (explicitly post-R3 per Director-locked recommendation)?
+## Mgr lean (REVISED — path-call deferred to PB Mgr cross-Mgr coordination)
 
-**Mgr lean: P2** per reasoning above.
+Per Director disposition at c#4403297623, **path-call is NOT Substrate-Mgr-leanable as a free-standing call** — it depends on PB Mgr's load-bearing R-3 (canonical CI bench host) + R-7 (`tier3_baseline.json` baseline-capture path) decisions. PB Mgr's audit response at #828 c#4403059897 surfaced both as pending.
+
+**Cross-Mgr coordination required**:
+- If PB Mgr resolves R-3 + R-7 cleanly + chooses to author the in-R3 substrate-variant integration → **P1 is the natural path**
+- If PB Mgr defers R-3/R-7 OR chooses a path that doesn't require the substrate-variant in R3 → **P2 is the natural path**
+
+**Cross-Mgr surface (this canvas's actionable next step)**: ping PB Mgr (#2074) asking for R-3/R-7 disposition + their lean on whether P1 in-R3 substrate-variant authoring fits in PB lane scope OR P2 defer is the right call. Path-call ratification follows PB Mgr's surface.
+
+**Substrate Mgr provisional lean (post-PB-cross-Mgr-coord)**:
+- If PB Mgr leans P1: Substrate Mgr concurs (existing tooling + bridging to substrate is bounded scope; tooling-substrate-bridge does NOT trigger pattern-5 P1 procedure since carrier-shape composes existing tooling at HEAD).
+- If PB Mgr leans P2: Substrate Mgr concurs (R3 horizon + structural-close priority are clean reasons; no longer rests on disproven trigger-condition framing).
+
+## Director ratification ask (REVISED)
+
+**Path call deferred to PB Mgr cross-Mgr coordination outcome**:
+
+1. Substrate Mgr surfaces to PB Mgr (#2074) with corrected trigger-condition framing + R-3/R-7 disposition ask + P1/P2 lean ask.
+2. PB Mgr responds with R-3/R-7 disposition + their P1/P2 lean.
+3. Director ratifies path-call based on cross-Mgr alignment between Substrate + PB Mgr leans.
+
+**Substrate Mgr commits to surface to PB this turn** with the corrected framing.
 
 If P2 ratifies:
 - Close #2204 as superseded-by-deferral
