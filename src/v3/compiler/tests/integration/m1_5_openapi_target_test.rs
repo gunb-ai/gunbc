@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::emit::openapi_target::{emit_openapi_yaml, extract_rest_routes, RestRoute};
+use v3_compiler::emit::{emit_openapi_yaml, extract_rest_routes, RestRoute};
 
 static COMPILE_COUNT: AtomicUsize = AtomicUsize::new(0);
 

@@ -16,7 +16,7 @@
 //! cross-target code should read them.
 
 pub(crate) mod collection_ops_method_contract;
-pub mod openapi_target;
+pub(crate) mod openapi_target;
 pub(crate) mod python_target;
 pub(crate) mod rust_target;
 
