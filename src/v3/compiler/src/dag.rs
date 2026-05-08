@@ -1446,10 +1446,19 @@ pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> 
     let entry = per_call_descent_evidence(dag)
         .into_iter()
         .find(|entry| entry.call == call_site)?;
-    let [relation] = entry.evidence.as_slice() else {
-        return None;
-    };
-    sub_value_relation_to_call_pattern(relation)
+    call_pattern_from_relations(&entry.evidence)
+}
+
+fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPattern> {
+    relations
+        .iter()
+        .filter(|relation| !matches!(relation, SubValueRelation::PreservedValue))
+        .find_map(sub_value_relation_to_call_pattern)
+        .or_else(|| {
+            relations
+                .iter()
+                .find_map(sub_value_relation_to_call_pattern)
+        })
 }
 
 pub fn sub_value_relation_to_call_pattern(relation: &SubValueRelation) -> Option<CallPattern> {
