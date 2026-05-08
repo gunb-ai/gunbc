@@ -4,13 +4,13 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
-    optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64, promote_to_strict,
-    size_bound_param, sub_value_relation_to_call_pattern, tree_size_bound,
-    type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
-    CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
-    IterationDimension, IterationPrimitive, LiteralBits, LoweringTarget, PositiveDescentAmount,
-    PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
-    TypeConnective, ValueBody,
+    optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
+    positive_amount_from_i64, promote_to_strict, size_bound_param,
+    sub_value_relation_to_call_pattern, tree_size_bound, type_iteration_dimension, AlgebraProfile,
+    ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue,
+    Interval, IntervalWidth, IterationDimension, IterationPrimitive, LiteralBits, LoweringTarget,
+    PositiveDescentAmount, PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound,
+    SubValueRelation, TypeConnective, ValueBody,
 };
 use v3_compiler::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
 use v3_compiler::parse_surface;
@@ -891,6 +891,45 @@ fn ep_count_acc(xs: EpListA, acc: Int, limit: Int) -> Int =
 }
 
 #[test]
+fn e_p_per_call_pattern_projects_multi_arg_self_call_from_per_arg_evidence() {
+    with_full_bootstrap_stack(|| {
+        // Gate 2 continuation: `per_call_pattern_at` is the lens-facing lookup,
+        // so it must consume the per-argument evidence vector that Gate 1 emits.
+        // A single-element-only projection would make multi-arg recursive calls
+        // invisible to cost/complexity consumers even though the side table has
+        // already classified their descent argument.
+        let dag = compile_to_dag(
+            "\
+type EpListP = EpNilP | EpConsP(EpListP)
+fn ep_count_acc_pattern(xs: EpListP, acc: Int, limit: Int) -> Int =
+  match xs {
+    EpConsP(tail) => ep_count_acc_pattern(tail, acc + 1, limit),
+    EpNilP => acc
+  }
+",
+            "e_p_multi_arg_pattern_lookup.v3",
+        )
+        .expect("multi-arg accumulator pattern fixture compiles");
+
+        let entry = per_call_descent_evidence(&dag)
+            .into_iter()
+            .find(|entry| {
+                entry.caller == "ep_count_acc_pattern" && entry.callee == "ep_count_acc_pattern"
+            })
+            .expect("expected ep_count_acc_pattern self-call evidence in per-call side table");
+
+        assert_eq!(
+            per_call_pattern_at(&dag, entry.call),
+            Some(CallPattern::ChildAccessorCall {
+                accessor: String::from("_0")
+            }),
+            "CallPattern lookup must project the provable descent relation from \
+         a multi-arg evidence vector instead of rejecting the call site"
+        );
+    });
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_emits_distinct_per_arg_param_labels_for_arithmetic_descent() {
     // Phase-1 broadening Slice 4 (continued): when arithmetic descent
     // applies to multiple arguments at the same call site, each evidence
@@ -1693,37 +1732,6 @@ fn computation_iteration_dimension_helpers_match_kernel_profile_authority() {
     assert_eq!(type_iteration_dimension("Float"), Some(ArithmeticRepeat));
     assert_eq!(type_iteration_dimension("Bool"), None);
     assert_eq!(type_iteration_dimension("UserType"), None);
-}
-
-#[test]
-fn v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority() {
-    fn v2_profile_to_v3(p: v2_compiler::std_algebra::AlgebraProfile) -> AlgebraProfile {
-        use v2_compiler::std_algebra::AlgebraProfile as V2;
-        match p {
-            V2::OrderedRingProfile => AlgebraProfile::OrderedRingProfile,
-            V2::ApproximateFieldProfile => AlgebraProfile::ApproximateFieldProfile,
-            V2::BooleanAlgebraProfile => AlgebraProfile::BooleanAlgebraProfile,
-            V2::BooleanAlgebraCollectionProfile => AlgebraProfile::BooleanAlgebraCollectionProfile,
-            V2::FreeMonoidScalarProfile => AlgebraProfile::FreeMonoidScalarProfile,
-            V2::FreeMonoidCollectionProfile => AlgebraProfile::FreeMonoidCollectionProfile,
-            V2::PartialFunctionProfile => AlgebraProfile::PartialFunctionProfile,
-        }
-    }
-
-    let v2_map = v2_compiler::std_algebra::kernel_algebra_profile();
-    let dag = Dag::new();
-    assert!(
-        !v2_map.is_empty(),
-        "v2 stage0 kernel_algebra_profile table must be non-empty (dsl/std/algebra.dag authority)"
-    );
-    for (type_name, v2_profile) in v2_map.iter() {
-        assert_eq!(
-            dag.kernel_algebra_profile(type_name),
-            Some(v2_profile_to_v3(*v2_profile)),
-            "v3 `dag::kernel_algebra_profile` must match v2 stage0 row for `{type_name}` \
-             (stage0 is regenerated from dsl/std/algebra.dag `data kernel_algebra_profile`)"
-        );
-    }
 }
 
 #[test]

@@ -1032,8 +1032,6 @@ dependencies = [
  "criterion",
  "libc",
  "num-bigint",
- "v2-compiler",
- "v2-compiler-tests",
 ]
 
 [[package]]

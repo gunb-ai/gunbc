@@ -1446,10 +1446,28 @@ pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> 
     let entry = per_call_descent_evidence(dag)
         .into_iter()
         .find(|entry| entry.call == call_site)?;
-    let [relation] = entry.evidence.as_slice() else {
+    call_pattern_from_relations(&entry.evidence)
+}
+
+fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPattern> {
+    if let Some(pattern) = relations
+        .iter()
+        .filter(|relation| !matches!(relation, SubValueRelation::PreservedValue))
+        .find_map(sub_value_relation_to_call_pattern)
+    {
+        return Some(pattern);
+    }
+
+    if relations
+        .iter()
+        .any(|relation| matches!(relation, SubValueRelation::SubValueUnknown))
+    {
         return None;
-    };
-    sub_value_relation_to_call_pattern(relation)
+    }
+
+    relations
+        .iter()
+        .find_map(sub_value_relation_to_call_pattern)
 }
 
 pub fn sub_value_relation_to_call_pattern(relation: &SubValueRelation) -> Option<CallPattern> {
@@ -2103,11 +2121,6 @@ pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
 ///
 /// Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`).
 /// Runtime v3 reads the lowered [`ValueBody::Map`] from the bootstrapped DAG.
-/// `v2_compiler::std_algebra::kernel_algebra_profile` remains only as a
-/// transition ratchet until PB retires the v2 parity test.
-///
-/// **P2 drift ratchet:** `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`
-/// compares this v3 substrate accessor entry-for-entry to the stage0 table.
 pub fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
     BOOTSTRAPPED_DAG.kernel_algebra_profile(type_name)
 }
@@ -4829,6 +4842,18 @@ fn duplicate_target_clean_emission_binding(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn call_pattern_from_relations_fails_closed_for_mixed_unknown_and_preserved_evidence() {
+        assert_eq!(
+            call_pattern_from_relations(&[
+                SubValueRelation::PreservedValue,
+                SubValueRelation::SubValueUnknown
+            ]),
+            None,
+            "mixed unknown + preserved evidence must not fabricate SameArgumentCall"
+        );
+    }
 
     #[test]
     fn workflow_root_zero_bind_returns_no_root() {
