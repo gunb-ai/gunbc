@@ -95,13 +95,8 @@ fn build_roundtrip_harness(module_source: &str) -> PathBuf {
              v3_compiler::dag::Behavior::Bind(bind) if bind.name == bind_name => Some(bind.clone()), \
              _ => None \
            }}).expect(\"bind\"); \
-<<<<<<< HEAD
-           match v3_compiler::lens_cost::cost_of(&dag, &bind.value) {{ \
-             v3_compiler::dag::Lookup::Hit(cost) => println!(\"{{}}\", cost), \
-=======
            match emitted::complexity_of(&dag, &bind.value) {{ \
              v3_compiler::dag::Lookup::Hit(summary) => println!(\"{{}}\", if matches!(summary.work, v3_compiler::dag::SymbolicCost::ConstantCost {{ _0: 0 }}) {{ 0 }} else {{ 1 }}), \
->>>>>>> origin/main
              v3_compiler::dag::Lookup::Miss => panic!(\"complexity lens returned Miss for bind `{{}}` — malformed DAG\", bind.name), \
            }} \
          }}"
