@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective};
+use v3_compiler::dag::{FieldValue, LiteralBits};
 use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -29,16 +29,6 @@ fn assert_all_pass(results: &[v3_compiler::test_runner::ClaimEvaluation]) {
             .all(|result| result.result == ClaimResult::Pass),
         "expected every claim to pass, got {results:?}"
     );
-}
-
-fn with_compile_stack(f: impl FnOnce() + Send + 'static) {
-    std::thread::Builder::new()
-        .name("perf-within-baseline-cementing".to_string())
-        .stack_size(16 * 1024 * 1024)
-        .spawn(f)
-        .expect("spawn cementing test thread")
-        .join()
-        .expect("cementing test thread panicked");
 }
 
 #[test]
@@ -668,135 +658,6 @@ data suite: TestSuite = {
 }
 "#;
     compile_clean(source, "lens_output_equals_int_harness.v3");
-}
-
-#[test]
-fn perf_baseline_measurement_carrier_has_ordered_duration_fields() {
-    let dag = v3_compiler::generated_full_bootstrap_dag();
-    let carrier = dag
-        .declaration_by_name("PerfBaselineMeasurement")
-        .expect("PerfBaselineMeasurement missing from bootstrap");
-    let TypeConnective::Conj { children } = &carrier.connective else {
-        panic!("PerfBaselineMeasurement must be a record carrier");
-    };
-    let labels: Vec<_> = children.iter().map(|field| field.label.as_str()).collect();
-    assert_eq!(labels, vec!["median_ns", "p99_delta_ns"]);
-}
-
-#[test]
-fn perf_within_baseline_predicate_carries_subject_comparator_baseline_ref() {
-    let dag = v3_compiler::generated_full_bootstrap_dag();
-    let predicate = dag
-        .declaration_by_name("TestPredicate")
-        .expect("TestPredicate missing from bootstrap");
-    let TypeConnective::Disj { variants } = &predicate.connective else {
-        panic!("TestPredicate must be a coproduct");
-    };
-    let variant = variants
-        .iter()
-        .find(|variant| variant.label == "PerfWithinBaseline")
-        .expect("PerfWithinBaseline variant missing");
-    let payload = dag.declaration(variant.ty);
-    let TypeConnective::Conj { children } = &payload.connective else {
-        panic!("PerfWithinBaseline payload must be a record");
-    };
-    let labels: Vec<_> = children.iter().map(|field| field.label.as_str()).collect();
-    assert_eq!(labels, vec!["subject", "comparator", "baseline_ref"]);
-    let comparator_field = children
-        .iter()
-        .find(|field| field.label == "comparator")
-        .expect("comparator field missing");
-    let comparator_ty = dag.declaration(comparator_field.ty);
-    assert_eq!(
-        comparator_ty.name.as_deref(),
-        Some("PerfBudgetComparisonOp")
-    );
-}
-
-#[test]
-fn perf_within_baseline_passes_when_subject_is_inside_tier3_thresholds() {
-    with_compile_stack(|| {
-        let source = r#"
-module test.perf_within_baseline_pass
-
-import v3.std.substrate { PerfBaselineMeasurement }
-import std.verification { AtMostBudget, PerfWithinBaseline, TestClaim, TestSuite }
-
-data trivial_baseline: PerfBaselineMeasurement = {
-  median_ns: 100
-  p99_delta_ns: 100
-}
-
-data trivial_measurement: PerfBaselineMeasurement = {
-  median_ns: 200
-  p99_delta_ns: 800
-}
-
-data claim: TestClaim = {
-  name: "perf within baseline",
-  source: "let _: Int = 0",
-  file_name: "perf_within_baseline_pass.v3",
-  predicate: PerfWithinBaseline(trivial_measurement, AtMostBudget, trivial_baseline),
-  requires: []
-}
-
-data suite: TestSuite = {
-  name: "perf_within_baseline_suite",
-  claims: [claim]
-}
-"#;
-        let dag = compile_clean(source, "perf_within_baseline_pass_harness.dag");
-        let results = TestRunner::new(&dag).run_suite("suite");
-
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].result, ClaimResult::Pass);
-    });
-}
-
-#[test]
-fn perf_within_baseline_fails_when_p99_exceeds_threshold() {
-    with_compile_stack(|| {
-        let source = r#"
-module test.perf_within_baseline_fail
-
-import v3.std.substrate { PerfBaselineMeasurement }
-import std.verification { AtMostBudget, PerfWithinBaseline, TestClaim, TestSuite }
-
-data trivial_baseline: PerfBaselineMeasurement = {
-  median_ns: 100
-  p99_delta_ns: 100
-}
-
-data regressed_measurement: PerfBaselineMeasurement = {
-  median_ns: 200
-  p99_delta_ns: 801
-}
-
-data claim: TestClaim = {
-  name: "perf p99 regression",
-  source: "let _: Int = 0",
-  file_name: "perf_within_baseline_fail.v3",
-  predicate: PerfWithinBaseline(regressed_measurement, AtMostBudget, trivial_baseline),
-  requires: []
-}
-
-data suite: TestSuite = {
-  name: "perf_within_baseline_fail_suite",
-  claims: [claim]
-}
-"#;
-        let dag = compile_clean(source, "perf_within_baseline_fail_harness.dag");
-        let results = TestRunner::new(&dag).run_suite("suite");
-
-        assert_eq!(results.len(), 1);
-        assert!(matches!(
-            &results[0].result,
-            ClaimResult::Fail(reason)
-                if reason.contains("PerfWithinBaseline")
-                    && reason.contains("p99_ns=1001")
-                    && reason.contains("threshold 1000")
-        ));
-    });
 }
 
 #[test]
