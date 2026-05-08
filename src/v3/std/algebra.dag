@@ -504,16 +504,9 @@ fn meet_asymptotic_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticCl
 fn join_asymptotic_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass =
   if asymptotic_dominates(a, b) then a else b
 
-fn classify_symbolic_cost(cost: SymbolicCost) -> AsymptoticClass =
-  match cost {
-    ConstantCost(_) => ClassConstant
-    LinearCost(_) => ClassLinear
-    LogCost(_) => ClassLog
-    PolynomialCost(_) => ClassQuadratic
-    ProductCost(_) => ClassUnknown
-    SumCost(_) => ClassUnknown
-    UnknownCost(_) => ClassUnknown
-  }
+fn classify_symbolic_cost(cost: SymbolicCost) -> AsymptoticClass {
+  host classify_symbolic_cost
+}
 
 // ── Normalization ───────────────────────────────────────────────
 //
