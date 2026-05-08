@@ -117,6 +117,8 @@ mod m2_emit_multi_field_struct_variant_test;
 mod m2_feature_parity_test;
 #[path = "integration/m2_field_access_binding_test.rs"]
 mod m2_field_access_binding_test;
+#[path = "integration/lens_cost_target_realization_test.rs"]
+mod lens_cost_target_realization_test;
 #[path = "integration/m2_lens_cost_migration_test.rs"]
 mod m2_lens_cost_migration_test;
 #[path = "integration/m2_lens_idempotency_emit_test.rs"]

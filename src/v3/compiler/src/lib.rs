@@ -3557,6 +3557,27 @@ pub mod lens_cost {
 /// type emission. The hand-maintained Rust mirror adjacent to
 /// `Behavior` / `LoopBound` follows the same substrate-ownership
 /// pattern the other bootstrap-resident types use.
+pub mod lens_cost_target_realization {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+
+        include!("lens_cost_target_realization_generated.rs");
+    }
+
+    pub use generated::{
+        behavior_realization_meta, callable_realization_meta, operator_realization_meta,
+        type_realization_meta,
+    };
+}
+
 pub mod lens_cost_symbolic {
     #[allow(
         dead_code,
