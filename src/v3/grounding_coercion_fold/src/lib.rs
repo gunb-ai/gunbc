@@ -12,7 +12,9 @@
 //! - [`LanguageSpecProjection::DeclaredIntegerIntents`](types::LanguageSpecProjection::DeclaredIntegerIntents)
 //!   selects declared [`TargetIntegerTypeInhabitance`](../../std/emit_model.dag) rows per binding
 //!   and returns [`SelectedTargetInhabitance`](types::SelectedTargetInhabitance) (the row’s
-//!   `type_realization` reference). Before selection, the fold counts meta-tagged inhabitance rows
+//!   `type_realization` reference) only after validating that reference is substrate
+//!   `data …: TypeRealization` (**`dag.type_realization_meta()`** match — fail-closed otherwise).
+//!   Before selection, the fold counts meta-tagged inhabitance rows
 //!   in the bootstrap `dag` (**INVARIANTS.md E-6**).
 //!
 //! Declared **spec rows** can name `PlatformDependentFact` (e.g. Go native `int` in

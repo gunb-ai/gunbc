@@ -9,7 +9,10 @@
 //! stays [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
 //!
 //! **`DeclaredIntegerIntents`:** before selection, the fold counts meta-tagged
-//! `TargetIntegerTypeInhabitance` declarations (**INVARIANTS.md E-6**). Row `bound:` values use
+//! `TargetIntegerTypeInhabitance` declarations (**INVARIANTS.md E-6**). After a unique structural
+//! match, **`type_realization`** must reference substrate `data …: TypeRealization`
+//! (**`dag.type_realization_meta()`**) or the fold surfaces `UnderRefined` on
+//! **`target_integer_type_realization`**. Row `bound:` values use
 //! [`TargetIntegerInhabitanceBound`](../../std/emit_model.dag) — including **unit
 //! `PlatformDependentFact`** for platform-sized targets. [`match_bound`] pairs program
 //! [`BoundDeclarationView`] with those facts: kind-only **positive match** for
@@ -299,6 +302,33 @@ fn parse_target_integer_inhabitance_bound(
     }
 }
 
+/// Fail-closed check: **`type_realization`** from an inhabitance row must reference substrate
+/// `data …: TypeRealization` (**`meta_tag == type_realization_meta()`**).
+fn validate_type_realization_reference(
+    dag: &Dag,
+    realization: DeclarationId,
+) -> Result<(), EmissionDiagnostic> {
+    let Some(type_real_meta) = dag.type_realization_meta() else {
+        return Err(EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "TypeRealization_meta".to_string(),
+        });
+    };
+
+    let Some(decl) = dag.declaration_opt(&realization) else {
+        return Err(EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_integer_type_realization".to_string(),
+        });
+    };
+
+    if decl.meta_tag != Some(type_real_meta) {
+        return Err(EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_integer_type_realization".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
 fn parse_target_integer_type_inhabitance_row(
     dag: &Dag,
     decl: &Declaration,
@@ -355,6 +385,8 @@ fn select_declared_inhabitance(
             });
         }
     };
+
+    validate_type_realization_reference(dag, selected.type_realization)?;
 
     Ok(SelectedTargetInhabitance {
         type_realization: selected.type_realization,
@@ -479,5 +511,68 @@ mod match_bound_tests {
             ),
             BoundMatch::DiffersKind
         );
+    }
+}
+
+#[cfg(test)]
+mod type_realization_gate_tests {
+    use super::*;
+    use crate::diagnostic::EmissionDiagnostic;
+    use v3_compiler::dag::Dag;
+
+    fn with_bootstrap_stack<F, R>(f: F) -> R
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(f)
+            .expect("spawn bootstrap stack test thread")
+            .join()
+            .expect("bootstrap stack test thread panicked")
+    }
+
+    fn declaration_id_by_name(dag: &Dag, name: &str) -> DeclarationId {
+        dag.declaration_by_name(name)
+            .unwrap_or_else(|| panic!("missing declaration `{name}`"))
+            .id
+    }
+
+    #[test]
+    fn rust_u32_realization_decl_passes_type_realization_meta_gate() {
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let id = declaration_id_by_name(&dag, "rust_u32");
+            assert!(validate_type_realization_reference(&dag, id).is_ok());
+        });
+    }
+
+    #[test]
+    fn kernel_declaration_rejected_without_type_realization_meta() {
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let id = declaration_id_by_name(&dag, "UInt32");
+            assert_eq!(
+                validate_type_realization_reference(&dag, id),
+                Err(EmissionDiagnostic::UnderRefined {
+                    unspecified_axis: "target_integer_type_realization".to_string(),
+                })
+            );
+        });
+    }
+
+    #[test]
+    fn unknown_declaration_id_fails_type_realization_gate() {
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let bogus: DeclarationId = unsafe { std::mem::transmute(u32::MAX) };
+            assert_eq!(
+                validate_type_realization_reference(&dag, bogus),
+                Err(EmissionDiagnostic::UnderRefined {
+                    unspecified_axis: "target_integer_type_realization".to_string(),
+                })
+            );
+        });
     }
 }
