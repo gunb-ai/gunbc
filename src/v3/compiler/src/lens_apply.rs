@@ -317,51 +317,6 @@ pub fn reflect_program_dag_nodes_in_file(
     Ok(FieldValue::Record(vec![("nodes".to_string(), nodes)]))
 }
 
-/// PR-E (Evaluator): apply a lens declaration over
-/// [`reflect_program_dag_nodes_in_file`] output (substrate-shaped `FieldValue` program spine).
-///
-/// **Slice 1 (current):** reflects `program` nodes in `source_file` using **`lens_program` as the
-/// declaration-ID authority** (same `Dag` passed to [`apply_lens_declaration`]), so reflected
-/// `List` / `Behavior` constructor ids always match the interpreter — then delegates to
-/// [`apply_lens_declaration`] with the reflected carrier as the **first** lens argument, followed
-/// by any caller-supplied `inputs` (left-to-right). The lens arrow must therefore declare
-/// `1 + inputs.len()` parameters, with the first formal receiving the reflected `Record { nodes:
-/// … }` carrier (same shape as manual `reflect` → `apply` tests when both use `lens_program`).
-///
-/// Deeper `Lens<C>` / `DimensionReport` aggregation, PB-Runtime lens-instance bodies over
-/// richer carriers, and runtime `Value` / environment semantics remain out of scope — see
-/// [`docs/briefs/r2-pr-e-lens-application-over-reflected-program-dag.md`](../../../../docs/briefs/r2-pr-e-lens-application-over-reflected-program-dag.md)
-/// and [`docs/design-pb-runtime-interpreter.md`](../../../../docs/design-pb-runtime-interpreter.md)
-/// §2–§3 (Worker A). Those paths continue to surface through [`LensApplyError`] from
-/// [`apply_lens_declaration`] (or reflection) without fabricating `DimensionReport` witnesses.
-pub fn fold_lens_over_reflected_program(
-    program: &Dag,
-    source_file: &str,
-    lens_program: &Dag,
-    lens_decl: DeclarationId,
-    inputs: &[FieldValue],
-) -> Result<FieldValue, LensApplyError> {
-    let reflected = reflect_program_dag_nodes_in_file(program, source_file, lens_program)?;
-    let decl = lens_program.declaration(lens_decl);
-    let TypeConnective::Arrow {
-        inputs: param_tys, ..
-    } = &decl.connective
-    else {
-        return Err(LensApplyError::NotAnArrow);
-    };
-    let supplied = 1usize.saturating_add(inputs.len());
-    if param_tys.len() != supplied {
-        return Err(LensApplyError::ArityMismatch {
-            expected: param_tys.len(),
-            got: supplied,
-        });
-    }
-    let mut lens_inputs: Vec<FieldValue> = Vec::with_capacity(supplied);
-    lens_inputs.push(reflected);
-    lens_inputs.extend_from_slice(inputs);
-    apply_lens_declaration(lens_program, lens_decl, &lens_inputs)
-}
-
 /// Empty `std.list` spine (`Empty` variant) in the substrate shape expected by `fold`.
 pub fn empty_substrate_list_value(dag: &Dag) -> Result<FieldValue, LensApplyError> {
     let (empty_id, _) = v3_list_empty_cons_ids(dag)?;
@@ -402,8 +357,10 @@ pub enum LensApplyError {
     MissingType(&'static str),
     MissingValueBody,
     /// PR-E: reserved for fold-driver paths that are not yet delegated to
-    /// [`apply_lens_declaration`] (e.g. `DimensionReport` / lens-instance carriers). Not
-    /// returned by [`fold_lens_over_reflected_program`] in the current reflect+apply slice.
+    /// [`apply_lens_declaration`] (e.g. `DimensionReport` / lens-instance carriers).
+    /// Per Q-Reification Option-A (Dag IS the reflected program), the historical
+    /// `fold_lens_over_reflected_program` reflect-then-apply driver has been retired;
+    /// callers go through [`apply_lens_declaration`] directly.
     UnimplementedLensFold,
     /// Substrate → [`FieldValue`] reflection failed (missing sum/variant wiring in id_space).
     SubstrateReflect(&'static str),
@@ -1029,66 +986,6 @@ mod tests {
             .expect("reflect");
         let out = apply_lens_declaration(&lens_dag, lens_id, &[input]).expect("apply");
         assert_eq!(out, FieldValue::Literal(LiteralBits::Int(1)));
-    }
-
-    #[test]
-    fn fold_lens_over_reflected_program_rejects_non_arrow_lens() {
-        let prog = compile_to_dag("let x: Int = 1", "fold_lens_prog.v3").expect("prog compiles");
-        let bogus = prog.declarations()[0].id;
-        let err = fold_lens_over_reflected_program(&prog, "fold_lens_prog.v3", &prog, bogus, &[])
-            .expect_err("non-arrow lens decl");
-        assert!(matches!(err, LensApplyError::NotAnArrow), "{err:?}");
-    }
-
-    #[test]
-    fn fold_lens_over_reflected_program_matches_reflect_then_apply() {
-        let src = include_str!("../../lenses/named_function_count.dag");
-        let lens_dag =
-            compile_to_dag(src, "src/v3/lenses/named_function_count.dag").expect("lens compiles");
-        let prog = compile_to_dag("let x: Int = 1", "fold_lens_equiv.v3").expect("prog compiles");
-        let lens_id = lens_dag
-            .declaration_by_name("named_function_count")
-            .expect("named_function_count")
-            .id;
-        let reflected = reflect_program_dag_nodes_in_file(&prog, "fold_lens_equiv.v3", &lens_dag)
-            .expect("reflect");
-        let manual = apply_lens_declaration(&lens_dag, lens_id, std::slice::from_ref(&reflected))
-            .expect("apply");
-        let folded =
-            fold_lens_over_reflected_program(&prog, "fold_lens_equiv.v3", &lens_dag, lens_id, &[])
-                .expect("fold");
-        assert_eq!(folded, manual);
-        assert_eq!(folded, FieldValue::Literal(LiteralBits::Int(1)));
-    }
-
-    #[test]
-    fn fold_lens_over_reflected_program_arity_includes_reflected_carrier() {
-        let src = include_str!("../../lenses/named_function_count.dag");
-        let lens_dag =
-            compile_to_dag(src, "src/v3/lenses/named_function_count.dag").expect("lens compiles");
-        let prog = compile_to_dag("let x: Int = 1", "fold_lens_arity.v3").expect("prog compiles");
-        let lens_id = lens_dag
-            .declaration_by_name("named_function_count")
-            .expect("named_function_count")
-            .id;
-        let err = fold_lens_over_reflected_program(
-            &prog,
-            "fold_lens_arity.v3",
-            &lens_dag,
-            lens_id,
-            &[FieldValue::Literal(LiteralBits::Int(0))],
-        )
-        .expect_err("extra arg");
-        assert!(
-            matches!(
-                err,
-                LensApplyError::ArityMismatch {
-                    expected: 1,
-                    got: 2
-                }
-            ),
-            "{err:?}"
-        );
     }
 
     #[test]
