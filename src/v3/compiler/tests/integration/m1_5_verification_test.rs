@@ -198,6 +198,14 @@ fn bootstrap_loads_verification_authority_types() {
                 vec![String::from("expected")],
             ),
             (
+                String::from("PerfWithinBaseline"),
+                vec![
+                    String::from("subject"),
+                    String::from("comparator"),
+                    String::from("baseline_ref"),
+                ],
+            ),
+            (
                 String::from("BinaryDimensionReportEquals"),
                 vec![
                     String::from("left_report_ref"),
