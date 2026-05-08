@@ -17,3 +17,11 @@ pub fn behavior_realization_meta(p0: &Dag) -> Option<Declaration> {
     (p0).declaration_by_name(&&(String::from("BehaviorRealization")))
         .cloned()
 }
+pub fn type_instantiation_realization_meta(p0: &Dag) -> Option<Declaration> {
+    (p0).declaration_by_name(&&(String::from("TypeInstantiationRealization")))
+        .cloned()
+}
+pub fn pattern_realization_meta(p0: &Dag) -> Option<Declaration> {
+    (p0).declaration_by_name(&&(String::from("PatternRealization")))
+        .cloned()
+}

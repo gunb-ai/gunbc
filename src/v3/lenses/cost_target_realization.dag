@@ -50,3 +50,11 @@ fn operator_realization_meta(d: Dag) -> Declaration? =
 // Same shape for `BehaviorRealization`.
 fn behavior_realization_meta(d: Dag) -> Declaration? =
   declaration_by_name(d, "BehaviorRealization")
+
+// Same shape for `TypeInstantiationRealization`.
+fn type_instantiation_realization_meta(d: Dag) -> Declaration? =
+  declaration_by_name(d, "TypeInstantiationRealization")
+
+// Same shape for `PatternRealization`.
+fn pattern_realization_meta(d: Dag) -> Declaration? =
+  declaration_by_name(d, "PatternRealization")

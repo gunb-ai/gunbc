@@ -3574,7 +3574,7 @@ pub mod lens_cost_target_realization {
 
     pub use generated::{
         behavior_realization_meta, callable_realization_meta, operator_realization_meta,
-        type_realization_meta,
+        pattern_realization_meta, type_instantiation_realization_meta, type_realization_meta,
     };
 }
 

@@ -12,7 +12,7 @@
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::lens_cost_target_realization::{
     behavior_realization_meta, callable_realization_meta, operator_realization_meta,
-    type_realization_meta,
+    pattern_realization_meta, type_instantiation_realization_meta, type_realization_meta,
 };
 
 #[test]
@@ -62,4 +62,29 @@ fn behavior_realization_meta_resolves_against_bootstrap() {
         "behavior_realization_meta should resolve `BehaviorRealization` in bootstrap"
     );
     assert_eq!(meta.unwrap().name.as_deref(), Some("BehaviorRealization"));
+}
+
+#[test]
+fn type_instantiation_realization_meta_resolves_against_bootstrap() {
+    let dag = generated_full_bootstrap_dag();
+    let meta = type_instantiation_realization_meta(&dag);
+    assert!(
+        meta.is_some(),
+        "type_instantiation_realization_meta should resolve `TypeInstantiationRealization` in bootstrap"
+    );
+    assert_eq!(
+        meta.unwrap().name.as_deref(),
+        Some("TypeInstantiationRealization")
+    );
+}
+
+#[test]
+fn pattern_realization_meta_resolves_against_bootstrap() {
+    let dag = generated_full_bootstrap_dag();
+    let meta = pattern_realization_meta(&dag);
+    assert!(
+        meta.is_some(),
+        "pattern_realization_meta should resolve `PatternRealization` in bootstrap"
+    );
+    assert_eq!(meta.unwrap().name.as_deref(), Some("PatternRealization"));
 }
