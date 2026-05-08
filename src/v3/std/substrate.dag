@@ -175,8 +175,31 @@ type FieldValue
       payload: List<FieldValue>
     }
 
-// 🟡 SCAFFOLD paired with `FieldValue`. `Unparsed` and structural body
-// carriers are bootstrap-time receipts for data-body lowering.
+// 🟡 SCAFFOLD paired with `FieldValue`. `ValueBody` is the bootstrap
+// data-body carrier until all source data bodies lower through ordinary
+// declaration-shaped value DAGs. Named dissolution trigger: M2+ parser
+// extensions plus value-sub-DAG lowering close the class-5 data-body gap,
+// allowing `Unparsed` and the top-level structural body carriers below to
+// dissolve into regular declarations/behaviors.
+//
+// Coproduct receipt:
+// - `ValueBodyUnparsed(SourceSpan)` — 🟡 scaffold for source bodies not yet
+//   structurally lowered; trigger is parser/lowering coverage for the
+//   remaining opaque data-body forms.
+// - `ValueBodyStructural { fields }` — 🟡 scaffold for top-level record
+//   bodies; kept distinct from list/map/scalar so records are not encoded as
+//   anonymous positional or keyed containers.
+// - `ValueBodyScalar(LiteralBits)` — 🟡 scaffold for scalar-valued data
+//   declarations (`data answer: Int = 42`); `LiteralBits` is intentionally
+//   narrower than `FieldValue` so top-level records/references/variants do
+//   not become overlapping scalar states.
+// - `ValueBodyList(List<FieldValue>)` — 🟡 scaffold for top-level list data
+//   bodies; preserves authored order and reuses `FieldValue` for nested
+//   structural elements until value-sub-DAG lowering owns lists directly.
+// - `ValueBodyMap(List<FieldEntry>)` — 🟡 scaffold for top-level
+//   string-keyed map data bodies. Rust wraps this payload in `FieldMap`
+//   post-codegen to preserve duplicate-key rejection while substrate remains
+//   the minimal carrier authority.
 type ValueBody
   = ValueBodyUnparsed(SourceSpan)
   | ValueBodyStructural { fields: List<FieldEntry> }

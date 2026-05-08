@@ -1906,6 +1906,8 @@ fn substrate_coproducts_match_runtime_carriers() {
                 String::from("ValueBodyStructural"),
                 vec![String::from("fields")]
             ),
+            (String::from("ValueBodyScalar"), vec![String::from("_0")]),
+            (String::from("ValueBodyList"), vec![String::from("_0")]),
             (String::from("ValueBodyMap"), vec![String::from("_0")]),
         ]
     );
@@ -2342,9 +2344,11 @@ fn substrate_value_body_sum_matches_parsed_constructors() {
         vec![
             "ValueBodyUnparsed".to_string(),
             "ValueBodyStructural".to_string(),
+            "ValueBodyScalar".to_string(),
+            "ValueBodyList".to_string(),
             "ValueBodyMap".to_string(),
         ],
-        "`{SUBSTRATE_VALUEBODY_SOURCE}` `type ValueBody` must expose exactly these three constructors until substrate regen adds Scalar/List; update this ratchet when the sum changes"
+        "`{SUBSTRATE_VALUEBODY_SOURCE}` `type ValueBody` must expose the canonical five-constructor carrier; update this ratchet when the sum changes"
     );
 }
 
@@ -2369,15 +2373,12 @@ fn value_body_substrate_rust_mirror_audit_documents_known_gap() {
         .map(|b| rust_value_body_variant_tag(b))
         .collect();
 
-    assert_eq!(substrate_constructors.len(), 3);
+    assert_eq!(substrate_constructors.len(), 5);
     assert_eq!(rust_tags.len(), 5);
-
-    // Missing generation surface (Disposition #1 debt paid target / Evaluator retirement):
-    // extend `substrate.dag` + bootstrap/regen when `ValueBodyScalar` / `ValueBodyList` (and
-    // refined map carrier) are generated from the Rust mirror — see `dag.rs` ValueBody docs.
     assert!(
-        rust_tags.contains("Scalar") && rust_tags.contains("List"),
-        "Rust carries Scalar/List top-level bodies; substrate sum must eventually reflect them"
+        substrate_constructors.contains(&"ValueBodyScalar".to_string())
+            && substrate_constructors.contains(&"ValueBodyList".to_string()),
+        "substrate carries Scalar/List top-level bodies; Rust mirror must stay generated from it"
     );
 }
 
