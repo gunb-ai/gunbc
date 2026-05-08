@@ -57,7 +57,7 @@ pub mod evaluator {
     use std::collections::HashMap;
 
     use crate::dag::{
-        ArithmeticOp, ArrowBody, Behavior, BranchNode, BranchPattern, ComparisonOp, Dag,
+        ArithmeticOp, ArrowBody, Behavior, BranchNode, BranchPattern, ClusterId, ComparisonOp, Dag,
         DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode,
         TransformTarget, TypeConnective,
     };
@@ -85,6 +85,46 @@ pub mod evaluator {
     pub struct NamedField {
         pub label: String,
         pub value: Value,
+    }
+
+    /// Rust evaluator consumer mirror of `std.termination::StrictEvidence`.
+    ///
+    /// The `.dag` carrier is the authority; this mirror exists only because
+    /// the eager Rust evaluator cannot yet call generated std block bodies.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum StrictEvidence {
+        Strict,
+    }
+
+    /// Rust evaluator consumer mirror of `std.termination::NonStrictEvidence`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum NonStrictEvidence {
+        NonIncreasing,
+        DescentUnknown,
+    }
+
+    /// Rust evaluator consumer mirror of `std.termination::DescentResidual`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum DescentResidual {
+        EvidenceUnknown(NonStrictEvidence),
+        EvidenceIncomplete,
+    }
+
+    /// Rust evaluator consumer mirror of
+    /// `std.termination::DescentExecutionProof`.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct DescentExecutionProof {
+        pub cluster: ClusterId,
+        pub port: PortId,
+        pub per_path: HashMap<String, StrictEvidence>,
+    }
+
+    fn descent_execution_proof(
+        _dag: &Dag,
+        _cluster: ClusterId,
+        _port: PortId,
+    ) -> Result<DescentExecutionProof, DescentResidual> {
+        Err(DescentResidual::EvidenceIncomplete)
     }
 
     /// Rust mirror of the PR-A.3 eager-baseline strategy carrier.
@@ -350,27 +390,52 @@ pub mod evaluator {
         eval_port(dag, path.output, state, strategy)
     }
 
-    /// PR-E E5: bounded eager loop execution for
-    /// `LoopBound::Cardinality`. `LoopBound::Descent` remains a named
-    /// residual until a descent-execution slice consumes termination
-    /// evidence.
+    /// PR-E E5: bounded eager loop execution. `LoopBound::Cardinality`
+    /// evaluates by count. `LoopBound::Descent` is wired through the
+    /// `descent_execution_proof` proof hook, but the live default hook remains
+    /// fail-closed with `EvidenceIncomplete` until the substrate producer
+    /// emits per-path strict evidence. Tests inject that proof hook to exercise
+    /// the consumer success and residual paths.
     pub fn eval_loop(
         dag: &Dag,
         loop_node: crate::dag::LoopNode,
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
+        eval_loop_with_descent_execution_proof(
+            dag,
+            loop_node,
+            state,
+            strategy,
+            descent_execution_proof,
+        )
+    }
+
+    fn eval_loop_with_descent_execution_proof(
+        dag: &Dag,
+        loop_node: crate::dag::LoopNode,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+        proof_fn: impl Fn(&Dag, ClusterId, PortId) -> Result<DescentExecutionProof, DescentResidual>,
+    ) -> Result<Value, EvalError> {
         let mut acc = eval_port(dag, loop_node.init, state, strategy)?;
-        let count = match loop_node.bound {
+        let count = match &loop_node.bound {
             LoopBound::Cardinality { count } => {
-                decode_loop_cardinality_count(dag, loop_node.id, count, state, strategy)?
+                decode_loop_cardinality_count(dag, loop_node.id, *count, state, strategy)?
             }
             LoopBound::Descent { cluster, measure } => {
-                return Err(EvalError::LoopBoundDescentResidual {
-                    node: loop_node.id,
-                    cluster,
-                    measure,
-                });
+                let proof = proof_fn(dag, *cluster, *measure).map_err(|_| {
+                    EvalError::LoopBoundDescentResidual {
+                        node: loop_node.id,
+                        cluster: *cluster,
+                        measure: *measure,
+                    }
+                })?;
+                discharge_descent_obligation(dag, loop_node.id, *cluster, *measure, proof)?;
+                // Current E2 consumer scope discharges the termination
+                // obligation and executes one descent step. Body-to-convergence
+                // semantics belong to the follow-on descent producer/runtime.
+                1
             }
         };
         for _ in 0..count {
@@ -384,6 +449,35 @@ pub mod evaluator {
             }
         }
         Ok(acc)
+    }
+
+    fn discharge_descent_obligation(
+        dag: &Dag,
+        node: NodeId,
+        cluster: ClusterId,
+        measure: PortId,
+        proof: DescentExecutionProof,
+    ) -> Result<(), EvalError> {
+        if proof.cluster == cluster
+            && proof.port == measure
+            && dag.cluster(cluster).intra_cluster_calls.iter().all(|call| {
+                proof
+                    .per_path
+                    .contains_key(&descent_proof_path_key(call.transform))
+            })
+        {
+            Ok(())
+        } else {
+            Err(EvalError::LoopBoundDescentResidual {
+                node,
+                cluster,
+                measure,
+            })
+        }
+    }
+
+    fn descent_proof_path_key(transform: crate::dag::TransformRef) -> String {
+        transform.node_id().raw().to_string()
     }
 
     fn eval_loop_iteration_body(
@@ -821,10 +915,14 @@ pub mod evaluator {
 
     #[cfg(test)]
     mod tests {
+        use std::collections::HashMap;
+
         use super::NamedField;
         use super::{
-            eval_node, eval_port, eval_value, evaluate_body, EvalError, EvalFrame, EvalFrameError,
-            EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
+            descent_proof_path_key, eval_loop_with_descent_execution_proof, eval_node, eval_port,
+            eval_value, evaluate_body, DescentExecutionProof, DescentResidual, EvalError,
+            EvalFrame, EvalFrameError, EvalStateStack, EvalStrategy, InputEvaluationOrder,
+            NonStrictEvidence, StrictEvidence, Value,
         };
         use crate::compile_to_dag;
         use crate::dag::{
@@ -848,6 +946,47 @@ pub mod evaluator {
 
         fn node_for_port(dag: &Dag, port: PortId) -> NodeId {
             dag.resolve_producer_opt(&port).expect("producer").id()
+        }
+
+        fn descent_loop_fixture(body_value: i64) -> (Dag, crate::dag::LoopNode) {
+            let mut dag = Dag::new();
+            let source = dag.alloc_port(None);
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let body_output = dag.push_value(LiteralBits::Int(body_value), span());
+            let body = node_for_port(&dag, body_output);
+            let bind = dag.push_bind("descent_member", init, vec![source, init], span());
+            let param0 = dag.param_of(bind, 0).expect("param 0");
+            let param1 = dag.param_of(bind, 1).expect("param 1");
+            let transform_output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
+                vec![source, init],
+                span(),
+            );
+            let transform = dag
+                .as_transform_ref(node_for_port(&dag, transform_output))
+                .expect("transform ref");
+            let cluster = dag.push_cluster(Cluster {
+                members: NonSingletonList::from_vec(vec![
+                    MemberDescent { param: param0 },
+                    MemberDescent { param: param1 },
+                ])
+                .expect("non-singleton"),
+                intra_cluster_calls: NonEmptyList::from_vec(vec![IntraClusterCall { transform }])
+                    .expect("non-empty"),
+            });
+            let output = dag.push_loop(
+                source,
+                init,
+                body,
+                LoopBound::Descent {
+                    cluster,
+                    measure: source,
+                },
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let loop_node = dag.node(entry).as_loop().expect("loop node").clone();
+            (dag, loop_node)
         }
 
         fn empty_state() -> EvalStateStack<Value> {
@@ -2114,54 +2253,174 @@ pub mod evaluator {
         }
 
         #[test]
-        fn eval_loop_descent_bound_fails_closed() {
-            let mut dag = Dag::new();
-            let source = dag.alloc_port(None);
-            let init = dag.push_value(LiteralBits::Int(0), span());
-            let body_output = dag.push_value(LiteralBits::Int(1), span());
-            let body = node_for_port(&dag, body_output);
-            let bind = dag.push_bind("descent_member", init, vec![source, init], span());
-            let param0 = dag.param_of(bind, 0).expect("param 0");
-            let param1 = dag.param_of(bind, 1).expect("param 1");
-            let transform_output = dag.push_transform(
-                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
-                vec![source, init],
-                span(),
-            );
-            let transform = dag
-                .as_transform_ref(node_for_port(&dag, transform_output))
-                .expect("transform ref");
-            let cluster = dag.push_cluster(Cluster {
-                members: NonSingletonList::from_vec(vec![
-                    MemberDescent { param: param0 },
-                    MemberDescent { param: param1 },
-                ])
-                .expect("non-singleton"),
-                intra_cluster_calls: NonEmptyList::from_vec(vec![IntraClusterCall { transform }])
-                    .expect("non-empty"),
-            });
-            let output = dag.push_loop(
-                source,
-                init,
-                body,
-                LoopBound::Descent {
-                    cluster,
-                    measure: source,
-                },
-                span(),
-            );
-            let entry = node_for_port(&dag, output);
+        fn eval_loop_descent_bound_with_strict_per_path_proof_succeeds() {
+            let (dag, loop_node) = descent_loop_fixture(7);
             let mut state = empty_state();
+            let strategy = eager_strategy();
+            let LoopBound::Descent { cluster, measure } = loop_node.bound else {
+                panic!("descent bound");
+            };
 
-            let err = eval_node(&dag, entry, &mut state, &eager_strategy())
-                .expect_err("descent residual");
+            let value = eval_loop_with_descent_execution_proof(
+                &dag,
+                loop_node,
+                &mut state,
+                &strategy,
+                |_, proof_cluster, proof_measure| {
+                    assert_eq!(proof_cluster, cluster);
+                    assert_eq!(proof_measure, measure);
+                    Ok(DescentExecutionProof {
+                        cluster: proof_cluster,
+                        port: proof_measure,
+                        per_path: HashMap::from([(
+                            descent_proof_path_key(
+                                dag.cluster(cluster).intra_cluster_calls.first.transform,
+                            ),
+                            StrictEvidence::Strict,
+                        )]),
+                    })
+                },
+            )
+            .expect("strict descent proof discharges loop bound");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+            assert_eq!(
+                state.lookup(measure),
+                Err(EvalFrameError::UnboundPort { port: measure }),
+                "descent iteration binding must not leak"
+            );
+        }
+
+        #[test]
+        fn eval_loop_descent_bound_incomplete_per_path_coverage_fails_closed() {
+            let (dag, loop_node) = descent_loop_fixture(1);
+            let mut state = empty_state();
+            let strategy = eager_strategy();
+            let node = loop_node.id;
+            let LoopBound::Descent { cluster, measure } = loop_node.bound else {
+                panic!("descent bound");
+            };
+
+            let err = eval_loop_with_descent_execution_proof(
+                &dag,
+                loop_node,
+                &mut state,
+                &strategy,
+                |_, proof_cluster, proof_measure| {
+                    Ok(DescentExecutionProof {
+                        cluster: proof_cluster,
+                        port: proof_measure,
+                        per_path: HashMap::new(),
+                    })
+                },
+            )
+            .expect_err("missing intra-cluster call coverage fails closed");
 
             assert_eq!(
                 err,
                 EvalError::LoopBoundDescentResidual {
-                    node: entry,
+                    node,
                     cluster,
-                    measure: source,
+                    measure,
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_loop_descent_bound_evidence_incomplete_fails_closed() {
+            let (dag, loop_node) = descent_loop_fixture(1);
+            let mut state = empty_state();
+            let strategy = eager_strategy();
+            let node = loop_node.id;
+            let LoopBound::Descent { cluster, measure } = loop_node.bound else {
+                panic!("descent bound");
+            };
+
+            let err = eval_loop_with_descent_execution_proof(
+                &dag,
+                loop_node,
+                &mut state,
+                &strategy,
+                |_, _, _| Err(DescentResidual::EvidenceIncomplete),
+            )
+            .expect_err("incomplete descent proof fails closed");
+
+            assert_eq!(
+                err,
+                EvalError::LoopBoundDescentResidual {
+                    node,
+                    cluster,
+                    measure,
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_loop_descent_bound_evidence_unknown_non_increasing_fails_closed() {
+            let (dag, loop_node) = descent_loop_fixture(1);
+            let mut state = empty_state();
+            let strategy = eager_strategy();
+            let node = loop_node.id;
+            let LoopBound::Descent { cluster, measure } = loop_node.bound else {
+                panic!("descent bound");
+            };
+
+            let err = eval_loop_with_descent_execution_proof(
+                &dag,
+                loop_node,
+                &mut state,
+                &strategy,
+                |_, _, _| {
+                    Err(DescentResidual::EvidenceUnknown(
+                        NonStrictEvidence::NonIncreasing,
+                    ))
+                },
+            )
+            .expect_err("non-increasing descent proof fails closed");
+
+            assert_eq!(
+                err,
+                EvalError::LoopBoundDescentResidual {
+                    node,
+                    cluster,
+                    measure,
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_loop_descent_bound_evidence_unknown_descent_unknown_fails_closed() {
+            let (dag, loop_node) = descent_loop_fixture(1);
+            let mut state = empty_state();
+            let strategy = eager_strategy();
+            let node = loop_node.id;
+            let LoopBound::Descent { cluster, measure } = loop_node.bound else {
+                panic!("descent bound");
+            };
+
+            let err = eval_loop_with_descent_execution_proof(
+                &dag,
+                loop_node,
+                &mut state,
+                &strategy,
+                |_, _, _| {
+                    Err(DescentResidual::EvidenceUnknown(
+                        NonStrictEvidence::DescentUnknown,
+                    ))
+                },
+            )
+            .expect_err("unknown descent proof fails closed");
+
+            assert_eq!(
+                err,
+                EvalError::LoopBoundDescentResidual {
+                    node,
+                    cluster,
+                    measure,
                 }
             );
             assert_eq!(state.frames_outer_to_inner().len(), 1);
