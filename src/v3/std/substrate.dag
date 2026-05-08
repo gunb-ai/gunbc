@@ -51,7 +51,8 @@ type LiteralBits
 // 4-pattern check:
 // - Pattern 1 (fact placement): fails. Each variant has distinct downstream
 //   consumers (literal constant folding, identifier resolution via
-//   declaration_by_name, SubstStack lookup).
+//   declaration_by_name, SubstStack lookup) — `declaration_by_name` now
+//   landed as `host` accessor below; `SubstStack lookup` still pending.
 // - Pattern 2 (variant-is-data): fails. Different payload types per variant.
 // - Pattern 3 (algebraic form): fails. Each variant is a terminal fact from a
 //   distinct user-input boundary.
@@ -540,6 +541,21 @@ fn resolve_producer(d: Dag, port_id: PortId) -> Behavior? {
 // miss).
 fn declaration_by_id(d: Dag, id: DeclarationId) -> Declaration? {
   host declaration_by_id
+}
+
+// Declaration-by-name accessor — strict mirror of `declaration_by_id`,
+// keyed by name instead of id. Director-ratified path (α) at gunbc#2068
+// #issuecomment-4402899692 (T-CostLens follow-on Slice 1a.0): consumers
+// that need a substrate meta-type's `DeclarationId` (e.g., `TypeRealization`,
+// `CallableRealization`) can acquire it via name-lookup at compile time.
+// `Declaration?` mirrors the permissive reflected-substrate shape per
+// `declaration_by_id`; C-8 fail-closed at the caller (a name that doesn't
+// resolve to a known declaration is a substrate-integrity question, not a
+// silent miss). Pre-anticipated as part of the intended substrate primitive
+// set (see comment authority at the top of this file referencing
+// `declaration_by_name, SubstStack lookup`).
+fn declaration_by_name(d: Dag, name: String) -> Declaration? {
+  host declaration_by_name
 }
 
 // Lane 2 Stage 2b — reads the optional workflow fact installed on `Value` /
