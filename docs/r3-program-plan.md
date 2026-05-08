@@ -95,7 +95,7 @@ R3 closes when **all non-carved §1.8 gates** pass + zero tracked-debt rows surv
 - **Lane `.dag` TestClaim gates (96 enumerated; 93 load-bearing for R3 thesis close)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
 - **`r3_debt_paydown_zero_remaining`**: standing-program ledger predicate — no tracked ROADMAP debt rows survive R3 close (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" + §1.5 tracked-debt inclusion list).
 
-Both must hold for R3 close. "**92** R3-load-bearing gates green" (equivalently: all non-carved §1.8 rows) alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
+Both must hold for R3 close. "**93** R3-load-bearing gates green" (equivalently: all non-carved §1.8 rows) alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
 
 **Tracked-debt inclusion list for `r3_debt_paydown_zero_remaining`** (per Director poke-hole 2026-05-06 finding 3.1; closes definition gap):
 
