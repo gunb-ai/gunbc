@@ -33,9 +33,18 @@ Per [`docs/design-emission-model.md`](../design-emission-model.md) ~944:
 
 **Green for this site** when **all** hold:
 
-1. **No `include_str!`** in `src/v3/compiler/src/pipeline_authority.rs` (or successor module path) **whose purpose is** importing **`pipeline.dag`** / compile-stage source text **for authority** that **`PipelineStageBinding`** already intends to represent.
+1. **No `include_str!`** of **`pipeline.dag`** at any callsite at the **compile-pipeline authority boundary** (NOT file-tree-locality `src/` only). Scope-locked 2026-05-08 (PB Mgr `warm-dove-618` + Verification Mgr `wise-bear-525` concur, citing Director Option 1 multi-site umbrella ratchet precedent at #828 c#4401659641 and `feedback_substrate_principle_audit` "substrate facts close all-or-nothing"). At lock time the in-scope active set is `src/v3/compiler/src/pipeline_authority.rs` (already zero active, doc-comment only) **and** `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs:12` (active `include_str!("../../pipeline.dag")` — rewrite to consume the structural witness is **part of this dispatch**, not a separate worker).
 2. **Stage-order / compile-body facts** required by pipeline authority consumers are obtainable from **structured Dag data** (existing `PipelineStageBinding` discipline **and/or** a **derived lowered compile-body witness** once authored — substrate/evaluator coordination).
-3. **Tests / ratchets** fail CI if a new `include_str!` side-channel reappears at this authority boundary (narrow ratchet; companion to ledger discipline).
+3. **Ratchet test**: a CI assertion that
+    ```
+    grep -rE 'include_str!\([^)]*pipeline\.dag' src/v3/compiler/
+    ```
+    returns **zero matches** at HEAD post-retirement (file-path-suffix predicate, ungameable-by-relocation under `src/v3/compiler/`). Catches the production callsite, the test callsite surfaced 2026-05-08, and any future relocation that re-introduces the pattern. Locked pre-merge per Director Option 1 precedent.
+
+**Out-of-scope** (do not double-count under §1/§3):
+- `src/v3/compiler/build.rs` `collect_dag_entries(..., &["pipeline.dag"])` — build-time filename enumeration, not source-text-as-string consumption.
+- `pipeline_compile_body_remains_unparsed_blocking_structural_retirement` test — tracked under `bridge_source_span_file_participation_retired` (bridge #1) per `docs/briefs/r3-v-bridge-row-1-sourcespan-deeper-detail-receipt.md:82`.
+- `bootstrap.rs` `PIPELINE_AUTHORITY_FILE` slice — already retired in PR #2150 per `docs/briefs/bridge-retirement-audit-sourcespan-family.md:85`.
 
 Full **ledger-zero** remains Verification Manager audit until **all five** named bridges in the distribution map are green — this brief is **only** bridge #4’s PB closure slice for the **`pipeline_authority`** lineage.
 
