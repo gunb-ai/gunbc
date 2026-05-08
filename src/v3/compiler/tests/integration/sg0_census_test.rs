@@ -325,10 +325,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // until then, this hand-Rust ratchet IS the slice's structural gate.
     "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
     "src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs",
-    // T-Lens-Behavioral-Parity complexity lens completion (#2271): frozen
-    // v2-oracle cementing for the widened `ComplexitySummary` surface.
-    // Dissolves when the lens-registry/TestClaim path can express the two
-    // behavioral fixtures without host-side Rust.
+    // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
+    // COMPLETE promotion against frozen v2-oracle values. Dissolves when `.dag`
+    // TestClaims can execute the same complexity summary assertions directly.
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",

@@ -44,11 +44,16 @@ mod fold;
 mod types;
 
 pub use diagnostic::EmissionDiagnostic;
-pub use fold::fold_program_to_target;
-pub use types::{IntScratchExample, LanguageSpecProjection, TargetInhabitance};
+pub use fold::{fold_program_to_target, MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS};
+pub use types::{
+    IntScratchExample, IntegerBoundProjection, IntegerTargetIntent, LanguageSpecProjection,
+    TargetInhabitance,
+};
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use v3_compiler::dag::{Dag, Interval, IntervalWidth, PositiveIntervalWidth};
     use v3_grounding_lifetime::LifetimeAnalysisReport;
 
@@ -81,6 +86,12 @@ mod tests {
                 Some(&expected)
             );
         });
+    }
+
+    fn declaration_id_by_name(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
+        dag.declaration_by_name(name)
+            .unwrap_or_else(|| panic!("missing declaration `{name}`"))
+            .id
     }
 
     #[test]
@@ -134,6 +145,34 @@ mod tests {
             IntScratchExample::DesignDocExample2BoundedU32,
             TargetInhabitance::RustU32,
         );
+    }
+
+    #[test]
+    fn declared_language_spec_integer_projection_emits_per_binding_inhabitance() {
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let lifetime: LifetimeAnalysisReport = Default::default();
+            let spec = LanguageSpecProjection::DeclaredIntegerIntents(BTreeMap::from([(
+                v3_grounding_lifetime::BindingId(7),
+                IntegerTargetIntent {
+                    target_language: dag.rust_language_spec().expect("Rust LanguageSpec"),
+                    kernel_integer: declaration_id_by_name(&dag, "UInt32"),
+                    algebra: declaration_id_by_name(&dag, "UInt32"),
+                    bound: IntegerBoundProjection::Static(Interval::BoundedInterval {
+                        lower: 0,
+                        width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::UnitCount {
+                            units: 4_294_967_295,
+                        }),
+                    }),
+                },
+            )]));
+            let got = fold_program_to_target(&dag, &lifetime, &spec).expect("ok");
+            assert_eq!(got.len(), 1);
+            assert_eq!(
+                got.get(&v3_grounding_lifetime::BindingId(7)),
+                Some(&TargetInhabitance::RustU32)
+            );
+        });
     }
 
     #[test]
