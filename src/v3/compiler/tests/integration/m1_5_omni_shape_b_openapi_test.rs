@@ -196,7 +196,7 @@ fn openapi_yaml_routes(yaml: &str) -> BTreeSet<RestRoute> {
             routes
                 .get_mut(route)
                 .expect("route exists before parameter")
-                .insert(parameter.to_string());
+                .insert(yaml_scalar_value(parameter));
         }
     }
     routes
@@ -207,6 +207,27 @@ fn openapi_yaml_routes(yaml: &str) -> BTreeSet<RestRoute> {
             path_parameters: parameters.into_iter().collect(),
         })
         .collect()
+}
+
+fn yaml_scalar_value(value: &str) -> String {
+    if let Some(single_quoted) = value
+        .strip_prefix('\'')
+        .and_then(|inner| inner.strip_suffix('\''))
+    {
+        return single_quoted.replace("''", "'");
+    }
+    if let Some(double_quoted) = value
+        .strip_prefix('"')
+        .and_then(|inner| inner.strip_suffix('"'))
+    {
+        return double_quoted
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\t", "\t")
+            .replace("\\\"", "\"")
+            .replace("\\\\", "\\");
+    }
+    value.to_string()
 }
 
 fn compile_omni_service_fixture_counted(count: &mut usize) -> v3_compiler::Dag {
@@ -244,8 +265,8 @@ fn shape_b_openapi_projection_produces_3_1_yaml_for_rest_operations() {
     assert!(yaml.contains("      operationId: get_a_x2D_b\n"));
     assert!(yaml.contains("      operationId: get_a_x5F_b\n"));
     assert_eq!(yaml.matches("  '/users':\n").count(), 1);
-    assert!(yaml.contains("      parameters:\n        - name: id\n          in: path\n          required: true\n          schema:\n            type: string\n"));
-    assert!(yaml.contains("        - name: org\n          in: path\n          required: true\n          schema:\n            type: string\n        - name: repo\n          in: path\n          required: true\n          schema:\n            type: string\n"));
+    assert!(yaml.contains("      parameters:\n        - name: \"id\"\n          in: path\n          required: true\n          schema:\n            type: string\n"));
+    assert!(yaml.contains("        - name: \"org\"\n          in: path\n          required: true\n          schema:\n            type: string\n        - name: \"repo\"\n          in: path\n          required: true\n          schema:\n            type: string\n"));
     assert_eq!(openapi_yaml_routes(&yaml), expected_routes());
 }
 

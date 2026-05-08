@@ -222,7 +222,7 @@ pub fn project_openapi_yaml(dag: &Dag) -> Result<String, ProjectOpenApiError> {
 
 fn append_path_parameter_yaml(out: &mut String, parameter: &str) {
     out.push_str("        - name: ");
-    out.push_str(parameter);
+    out.push_str(&yaml_double_quoted(parameter));
     out.push_str(
         "\n          in: path\n          required: true\n          schema:\n            type: string\n",
     );
@@ -407,6 +407,25 @@ fn yaml_quoted(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+fn yaml_double_quoted(value: &str) -> String {
+    let mut quoted = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => quoted.push_str("\\\\"),
+            '"' => quoted.push_str("\\\""),
+            '\n' => quoted.push_str("\\n"),
+            '\r' => quoted.push_str("\\r"),
+            '\t' => quoted.push_str("\\t"),
+            other if other.is_control() => {
+                write!(&mut quoted, "\\u{:04X}", other as u32).expect("write to String");
+            }
+            other => quoted.push(other),
+        }
+    }
+    quoted.push('"');
+    quoted
+}
+
 fn yaml_plain_operation_id(method: &str, path: &str) -> String {
     let mut suffix = String::new();
     for ch in path.trim_matches('/').chars() {
@@ -507,6 +526,18 @@ data service_operations: List<DemoOperation> = [
                 declaration: "service_operations".to_string(),
                 detail: "service operation row missing `endpoint` field".to_string(),
             })
+        );
+    }
+
+    #[test]
+    fn path_parameter_names_are_quoted_for_yaml_structure() {
+        let mut yaml = String::new();
+
+        append_path_parameter_yaml(&mut yaml, "id:\nrequired: false");
+
+        assert_eq!(
+            yaml,
+            "        - name: \"id:\\nrequired: false\"\n          in: path\n          required: true\n          schema:\n            type: string\n"
         );
     }
 }
