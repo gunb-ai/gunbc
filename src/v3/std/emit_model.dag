@@ -27,21 +27,20 @@ type TypeRealization {
 // Per-target integer inhabitance facts for structural emission selection; see
 // `docs/audit/scratch-int-examples-dissolution-spec.md` Slice B. Declared as
 // `data` in `src/v3/spec/{rust,python,go}.dag`. Rows are walkable substrate
-// today; Grounding still uses `ScratchIntExamples` until Slice C lands a
-// LanguageSpec projection reader — dissolution trigger: replace scratch driver
-// with a pure read of these declarations + `BoundDeclaration` program facts.
+// today; Grounding selects rows via `LanguageSpecProjection::DeclaredIntegerIntents`
+// plus program-side `IntegerTargetIntent` facts (executable projection).
 //
 // **INVARIANTS.md E-6** (`docs/invariants/e-6-no-target-spec-field-without-a-same-pr-consumer.md`):
 // Full `emit_rust` / generated-emitter payload reads are still Slice C (#1133 / #1286).
 // **Bounded exception + dissolution ratchet:** rows land under an explicit scaffold marker here;
-// Slice C replaces `ScratchIntExamples` with a declared LanguageSpec projection reader.
+// Declared projection consumes these rows structurally (no scratch example driver).
 //
 // **Same-PR consumer (checkpoint, not speculative metadata):** `v3-grounding-coercion-fold`
-// `fold_program_to_target` (`LanguageSpecProjection::ScratchIntExamples`) counts meta-tagged
-// `TargetIntegerTypeInhabitance` declarations in the `dag` **before** scratch outcomes — missing
+// `fold_program_to_target` counts meta-tagged `TargetIntegerTypeInhabitance` declarations in
+// the `dag` before selection — missing
 // rows ⇒ `EmissionDiagnostic::UnderRefined { unspecified_axis: "declared_TargetIntegerTypeInhabitance_rows" }`.
 //
-// **Failing proofs:** `v3_grounding_coercion_fold::tests::scratch_int_examples_require_emit_model_inhabitance_rows`
+// **Failing proofs:** `v3_grounding_coercion_fold::tests::declared_projection_requires_emit_model_inhabitance_rows`
 // (empty `dag` trips the row gate); `m2_substrate_inhabitance_test::target_integer_type_inhabitance_rows_are_structural_slice_b_receipt`
 // (bootstrap rows lower structurally).
 type TargetIntegerTypeInhabitance {

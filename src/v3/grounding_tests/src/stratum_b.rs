@@ -4,8 +4,8 @@
 //! routing certification. `docs/audit/grounding-tests-stratum-b-scaffold-readiness.md`
 //! concludes that full Stratum B assertions are gated on declared Coercion-Fold
 //! projection facts. Integer inhabitance rows now have an executable declared
-//! projection path; remaining gates stay typed and visible without reading
-//! `ScratchIntExamples` as if it were production.
+//! projection path; remaining gates stay typed and visible without hardcoded
+//! example drivers.
 
 use v3_compiler::dag::{Dag, TypeConnective};
 use v3_grounding_coercion_fold::MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS;
@@ -186,11 +186,25 @@ mod tests {
     use v3_compiler::generated_full_bootstrap_dag;
     use v3_grounding_coercion_fold::{
         fold_program_to_target, IntegerBoundProjection, IntegerTargetIntent,
-        LanguageSpecProjection, TargetInhabitance,
+        LanguageSpecProjection, SelectedTargetInhabitance,
     };
     use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 
     use super::*;
+
+    /// `generated_full_bootstrap_dag` construction can overflow the default test thread stack.
+    fn with_bootstrap_stack<F, R>(f: F) -> R
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(f)
+            .expect("spawn bootstrap stack test thread")
+            .join()
+            .expect("bootstrap stack test thread panicked")
+    }
 
     fn declaration_id_by_name(
         dag: &v3_compiler::dag::Dag,
@@ -203,73 +217,86 @@ mod tests {
 
     #[test]
     fn bound_declaration_carrier_is_ready_in_full_bootstrap() {
-        let dag = generated_full_bootstrap_dag();
-        let readiness = stratum_b_readiness(&dag);
-        assert_eq!(
-            readiness
-                .iter()
-                .find(|entry| {
-                    entry.prerequisite == StratumBPrerequisite::BoundDeclarationCarrier
-                })
-                .map(|entry| &entry.state),
-            Some(&StratumBPrerequisiteState::Ready)
-        );
+        with_bootstrap_stack(|| {
+            let dag = generated_full_bootstrap_dag();
+            let readiness = stratum_b_readiness(&dag);
+            assert_eq!(
+                readiness
+                    .iter()
+                    .find(|entry| {
+                        entry.prerequisite == StratumBPrerequisite::BoundDeclarationCarrier
+                    })
+                    .map(|entry| &entry.state),
+                Some(&StratumBPrerequisiteState::Ready)
+            );
+        });
     }
 
     #[test]
     fn integer_inhabitance_rows_are_ready_in_full_bootstrap() {
-        let dag = generated_full_bootstrap_dag();
-        let readiness = stratum_b_readiness(&dag);
-        assert_eq!(
-            readiness
-                .iter()
-                .find(|entry| {
-                    entry.prerequisite == StratumBPrerequisite::IntegerInhabitanceRows
-                })
-                .map(|entry| &entry.state),
-            Some(&StratumBPrerequisiteState::Ready)
-        );
+        with_bootstrap_stack(|| {
+            let dag = generated_full_bootstrap_dag();
+            let readiness = stratum_b_readiness(&dag);
+            assert_eq!(
+                readiness
+                    .iter()
+                    .find(|entry| {
+                        entry.prerequisite == StratumBPrerequisite::IntegerInhabitanceRows
+                    })
+                    .map(|entry| &entry.state),
+                Some(&StratumBPrerequisiteState::Ready)
+            );
+        });
     }
 
     #[test]
     fn declared_integer_projection_selects_bootstrap_inhabitance_row() {
-        let dag = generated_full_bootstrap_dag();
-        let lifetime: LifetimeAnalysisReport = Default::default();
-        let projection = LanguageSpecProjection::DeclaredIntegerIntents(BTreeMap::from([(
-            BindingId(11),
-            IntegerTargetIntent {
-                target_language: dag.rust_language_spec().expect("Rust LanguageSpec"),
-                kernel_integer: declaration_id_by_name(&dag, "UInt32"),
-                algebra: declaration_id_by_name(&dag, "UInt32"),
-                bound: IntegerBoundProjection::Static(Interval::BoundedInterval {
-                    lower: 0,
-                    width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::UnitCount {
-                        units: 4_294_967_295,
+        with_bootstrap_stack(|| {
+            let dag = generated_full_bootstrap_dag();
+            let lifetime: LifetimeAnalysisReport = Default::default();
+            let projection = LanguageSpecProjection::DeclaredIntegerIntents(BTreeMap::from([(
+                BindingId(11),
+                IntegerTargetIntent {
+                    target_language: dag.rust_language_spec().expect("Rust LanguageSpec"),
+                    kernel_integer: declaration_id_by_name(&dag, "UInt32"),
+                    algebra: declaration_id_by_name(&dag, "UInt32"),
+                    bound: IntegerBoundProjection::Static(Interval::BoundedInterval {
+                        lower: 0,
+                        width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::UnitCount {
+                            units: 4_294_967_295,
+                        }),
                     }),
-                }),
-            },
-        )]));
+                },
+            )]));
 
-        let got = fold_program_to_target(&dag, &lifetime, &projection).expect("projection");
-        assert_eq!(got.get(&BindingId(11)), Some(&TargetInhabitance::RustU32));
+            let got = fold_program_to_target(&dag, &lifetime, &projection).expect("projection");
+            assert_eq!(
+                got.get(&BindingId(11)),
+                Some(&SelectedTargetInhabitance {
+                    type_realization: declaration_id_by_name(&dag, "rust_u32"),
+                })
+            );
+        });
     }
 
     #[test]
     fn current_readiness_reports_remaining_external_gates_without_scratch_examples() {
-        let dag = generated_full_bootstrap_dag();
-        let missing = stratum_b_missing_prerequisites(&dag);
-        assert_eq!(
-            missing.len(),
-            5,
-            "BoundDeclaration and integer inhabitance rows should be ready today"
-        );
-        assert!(missing.iter().all(|diagnostic| matches!(
-            diagnostic,
-            GroundingTestsDiagnostic::StratumBPrerequisiteMissing { .. }
-        )));
-        assert!(missing
-            .iter()
-            .any(|diagnostic| diagnostic.to_string().contains("program-bound lowering")));
+        with_bootstrap_stack(|| {
+            let dag = generated_full_bootstrap_dag();
+            let missing = stratum_b_missing_prerequisites(&dag);
+            assert_eq!(
+                missing.len(),
+                5,
+                "BoundDeclaration and integer inhabitance rows should be ready today"
+            );
+            assert!(missing.iter().all(|diagnostic| matches!(
+                diagnostic,
+                GroundingTestsDiagnostic::StratumBPrerequisiteMissing { .. }
+            )));
+            assert!(missing
+                .iter()
+                .any(|diagnostic| diagnostic.to_string().contains("program-bound lowering")));
+        });
     }
 
     #[test]
