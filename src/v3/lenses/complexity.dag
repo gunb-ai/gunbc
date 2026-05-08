@@ -27,8 +27,8 @@ import std.list { List, empty, fold, cons, concat }
 import std.substrate { Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, node }
 import std.algebra {
   SymbolicCost,
-  SizeVariable,
   AsymptoticClass,
+  unnamed_size_variable,
   classify,
   dominates,
   sequential,
@@ -193,32 +193,29 @@ fn recursive_transform_summary(
     Cons(payload) =>
       combine_iterate(
         summary_from_iter_bound(pattern_to_iter_bound(pattern, payload.head)),
-        lookup_summary(acc, payload.head)
+        compose_many_inputs(acc, inputs)
       )
   }
 
 fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> SymbolicCost =
   match pattern {
     ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
-      LinearCost(size_variable_for(arg_port))
+      LinearCost(unnamed_size_variable(arg_port))
     ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
-      LogCost(size_variable_for(arg_port))
+      LogCost(unnamed_size_variable(arg_port))
     ChildAccessorCall { accessor: accessor } =>
-      LinearCost(size_variable_for(arg_port))
+      LinearCost(unnamed_size_variable(arg_port))
     CollectionShrinkCall { amount: amount, collection: collection } =>
-      LinearCost(size_variable_for(arg_port))
+      LinearCost(unnamed_size_variable(arg_port))
     FoldBodyCall { outer_collection: outer_collection } =>
-      LinearCost(size_variable_for(arg_port))
+      LinearCost(unnamed_size_variable(arg_port))
     ParserAdvanceCall { witness: witness } =>
-      LinearCost(size_variable_for(arg_port))
+      LinearCost(unnamed_size_variable(arg_port))
     WorklistDrainCall { element: element } =>
-      LinearCost(size_variable_for(arg_port))
+      LinearCost(unnamed_size_variable(arg_port))
     SameArgumentCall =>
       UnknownCost("same-argument recursive call has no descent")
   }
-
-fn size_variable_for(port_id: PortId) -> SizeVariable =
-  { source_port: port_id, display_name: "" }
 
 fn summary_from_iter_bound(bound: SymbolicCost) -> Lookup<ComplexitySummary> =
   match bound {
@@ -243,14 +240,17 @@ fn loop_summary(
   acc: List<ComplexityEntry>,
   l: LoopNode
 ) -> Lookup<ComplexitySummary> =
-  combine_iterate(
-    hit_complexity_summary_lookup(summary_from_costs(
-      LinearCost(size_variable_for(l.source)),
-      LinearCost(size_variable_for(l.source)),
-      Proven,
-      Proven
-    )),
-    body_summary(d, acc, l.body)
+  combine_sequential(
+    combine_sequential(lookup_summary(acc, l.source), lookup_summary(acc, l.init)),
+    combine_iterate(
+      hit_complexity_summary_lookup(summary_from_costs(
+        LinearCost(unnamed_size_variable(l.source)),
+        LinearCost(unnamed_size_variable(l.source)),
+        Proven,
+        Proven
+      )),
+      body_summary(d, acc, l.body)
+    )
   )
 
 fn body_summary(
