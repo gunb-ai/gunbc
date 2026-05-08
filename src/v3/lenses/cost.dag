@@ -52,7 +52,7 @@ import std.algebra {
   MethodContract,
   CostShape,
   SymbolicCost,
-  SizeVariable,
+  unnamed_size_variable,
   sequential,
   iterate,
   max_path,
@@ -185,7 +185,7 @@ fn behavior_result_port(b: Behavior) -> PortId =
   }
 
 fn linear_at(port_id: PortId) -> Lookup<SymbolicCost> =
-  hit_symbolic_cost_lookup(LinearCost({ source_port: port_id }))
+  hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(port_id)))
 
 fn combine_iterate(
   bound: Lookup<SymbolicCost>,
