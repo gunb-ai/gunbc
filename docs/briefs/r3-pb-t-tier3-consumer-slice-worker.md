@@ -77,28 +77,54 @@ Per `TESTING.md` unit-vs-integration discipline, this is a narrow crate-internal
 
 **Files:** new `src/v3/std/tier3_perf_budget.dag` (or extension to existing T-Tier3 module).
 
-**Shape** (per `r3-structure.md` §225 + Director c#4403480005 acceptance gate 6):
+**Shape** (per `r3-structure.md` §225 + Director c#4403480005 acceptance gate 6 + `docs/audit/c1-tier3-baseline-capture-procedure.md` §3 per-bench conjunction discipline):
+
+The capture-procedure §3 mandates **per-bench conjunction**, NOT per-mirror aggregation: each contributing bench keeps its own `median_ns` / `p99_ns` row, and the gate checks each bench independently. The computation mirror specifically has **two bench rows** (`tier3_computation_positive_descent_count` + `tier3_computation_lower_same_argument_call`); collapsing them to a single budget authority would let a small-budget bench regress arbitrarily within the larger bench's headroom — fail-closed-violation.
+
+Per §3 the budgeted bench-name set at HEAD is exactly 5: `tier3_termination_merge_evidence`, `tier3_computation_positive_descent_count`, `tier3_computation_lower_same_argument_call`, `tier3_induction_type_iteration_dimension_miss`, `tier3_effects_lane2_linear_read_chain`. The `.dag` data + claim shape mirrors that exactly:
 
 ```dag
-data tier3_termination_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
-data tier3_computation_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
-data tier3_induction_baseline:   PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
-data tier3_effect_carrier_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
+// Phase-1 baselines — one PerfBaselineMeasurement per budgeted bench (5 total)
+data tier3_bench_termination_merge_evidence_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
+data tier3_bench_computation_positive_descent_count_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
+data tier3_bench_computation_lower_same_argument_call_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
+data tier3_bench_induction_type_iteration_dimension_miss_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
+data tier3_bench_effects_lane2_linear_read_chain_baseline: PerfBaselineMeasurement = { median_ns: <captured>, p99_ns: <captured> }
 
-data tier3_termination_phase2_measurement: PerfBaselineMeasurement = { median_ns: <Phase-2-captured>, p99_ns: <Phase-2-captured> }
-// ... three more
+// Phase-2 measurements — one row per budgeted bench (5 total)
+data tier3_bench_termination_merge_evidence_phase2: PerfBaselineMeasurement = { median_ns: <Phase-2-captured>, p99_ns: <Phase-2-captured> }
+// ... four more, one per budgeted bench
 
-data tier3_mirror_dissolution_perf_within_budget: TestClaim = TestClaim {
+// Per-mirror claims — conjunction over the mirror's contributing benches.
+// Termination / induction / effect-carrier each cover ONE bench → trivial 1-element conj.
+// Computation covers TWO benches → 2-element conj enforcing per-bench fail-closed.
+data tier3_termination_mirror_perf_within_budget: TestClaim = TestClaim {
   predicate: PerfWithinBaseline {
-    subject: DeclarationRef("tier3_termination_phase2_measurement"),
+    subject: DeclarationRef("tier3_bench_termination_merge_evidence_phase2"),
     comparator: Le,
-    baseline_ref: DeclarationRef("tier3_termination_baseline"),
+    baseline_ref: DeclarationRef("tier3_bench_termination_merge_evidence_baseline"),
   },
-  // ... composed with the other three predicates per existing TestClaim composition pattern
+}
+data tier3_computation_mirror_perf_within_budget: TestClaim = TestClaim {
+  predicate: Conj {  // both per-bench checks must pass
+    PerfWithinBaseline { subject: ..._positive_descent_count_phase2, comparator: Le, baseline_ref: ..._positive_descent_count_baseline },
+    PerfWithinBaseline { subject: ..._lower_same_argument_call_phase2, comparator: Le, baseline_ref: ..._lower_same_argument_call_baseline },
+  },
+}
+// ... induction + effect_carrier each 1-element conj over their single bench
+
+// Suite-level: conjunction of the 4 per-mirror claims
+data tier3_mirror_dissolution_perf_within_budget: TestClaim = Conj {
+  tier3_termination_mirror_perf_within_budget,
+  tier3_computation_mirror_perf_within_budget,
+  tier3_induction_mirror_perf_within_budget,
+  tier3_effect_carrier_mirror_perf_within_budget,
 }
 ```
 
-**Composition note:** per §225 ("≤2× median, ≤5× p99 thresholds"), the runtime invariant impl in §1 applies the ratio. The .dag claim declares `comparator: Le`; runtime applies the budget multiplier. Composition of the 4 per-mirror claims into one suite-level claim matches existing TestClaim composition patterns.
+**Composition note:** per §225 ("≤2× median, ≤5× p99 thresholds"), the runtime invariant impl in §1 applies the ratio at predicate-evaluation time. The `.dag` predicate declares `comparator: Le`; runtime applies the budget multiplier per axis. Suite gate is `Conj` of 4 per-mirror claims; per-mirror claims are `Conj` of 1-or-2 per-bench `PerfWithinBaseline` predicates per the §3 budgeted bench-name set. **No group-level numeric aggregation** at any layer (per capture-procedure §3 fail-closed semantics).
+
+**§3 bench-set drift gate**: a CI assertion verifies the set of `tier3_bench_*_baseline` declaration names equals exactly the §3 budgeted bench-name set; any drift (missing or extra bench) fails CI. Receipts exist in capture-procedure §3 for intentional allowlist exclusions; default is exact-equality.
 
 **Acceptance:** `cargo test -p v3-compiler tier3_mirror_dissolution_perf_within_budget` passes against captured baselines + Phase-2 measurements. Claim is registered in §1.8 ledger as **CONSUMER_LANDED**.
 
