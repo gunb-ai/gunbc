@@ -1939,6 +1939,7 @@ impl<'a> TestRunner<'a> {
                             self.eval_declaration_has_refinement(claim, &payload)
                         }
                         "CostBounded" => self.eval_cost_bounded(claim, &payload),
+                        "PerfWithinBaseline" => self.eval_perf_within_baseline(claim, &payload),
                         "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                         "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
                         "BinaryDimensionReportEquals" => {
@@ -2998,6 +2999,122 @@ impl<'a> TestRunner<'a> {
         } else {
             ClaimResult::Fail(format!("cost {actual} did not satisfy bound {bound}"))
         }
+    }
+
+    /// Evaluate `TestPredicate::PerfWithinBaseline { subject, comparator, baseline_ref }`.
+    ///
+    /// Resolves both `DeclarationRef`s to `PerfBaselineMeasurement` records
+    /// (`{ median_ns: Int, p99_ns: Int }`) and applies the Director-locked
+    /// Tier-3 budget thresholds (`docs/r3-structure.md` §225): subject median
+    /// must satisfy `comparator` against `baseline.median_ns × 2`; subject p99
+    /// against `baseline.p99_ns × 5`. Both axes must satisfy → `Pass`. Overflow
+    /// in the multiplication is fail-closed.
+    fn eval_perf_within_baseline(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [subject_fv, comparator, baseline_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "PerfWithinBaseline payload should be exactly three fields \
+                 (subject: DeclarationRef, comparator: ComparisonOp, baseline_ref: DeclarationRef); \
+                 got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let subject_id = match self.resolve_declaration_ref_id(subject_fv, "subject") {
+            Ok(id) => id,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let baseline_id = match self.resolve_declaration_ref_id(baseline_fv, "baseline_ref") {
+            Ok(id) => id,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let subject = match self.perf_baseline_measurement(subject_id, "subject") {
+            Ok(measurement) => measurement,
+            Err(err) => return ClaimResult::Fail(err.into_claim_fail("subject")),
+        };
+        let baseline = match self.perf_baseline_measurement(baseline_id, "baseline_ref") {
+            Ok(measurement) => measurement,
+            Err(err) => return ClaimResult::Fail(err.into_claim_fail("baseline_ref")),
+        };
+        let median_bound = match baseline.median_ns.checked_mul(2) {
+            Some(v) => v,
+            None => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline: median baseline threshold (baseline_ref median_ns × 2) \
+                     overflowed Int — fail-closed; recapture with smaller baseline or widen Int."
+                        .to_string(),
+                );
+            }
+        };
+        let p99_bound = match baseline.p99_ns.checked_mul(5) {
+            Some(v) => v,
+            None => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline: p99 baseline threshold (baseline_ref p99_ns × 5) \
+                     overflowed Int — fail-closed; recapture with smaller baseline or widen Int."
+                        .to_string(),
+                );
+            }
+        };
+        let median_ok = self.compare_cost(comparator, subject.median_ns, median_bound);
+        let p99_ok = self.compare_cost(comparator, subject.p99_ns, p99_bound);
+        if median_ok && p99_ok {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "PerfWithinBaseline: subject median_ns={} vs threshold {} (median_ok={}) \
+                 and subject p99_ns={} vs threshold {} (p99_ok={}) did not satisfy comparator",
+                subject.median_ns, median_bound, median_ok, subject.p99_ns, p99_bound, p99_ok
+            ))
+        }
+    }
+
+    /// Structurally resolve a `PerfBaselineMeasurement` data declaration to
+    /// `{ median_ns, p99_ns }`. Returns a typed `PerfMeasurementResolveError`
+    /// per `CODING.md` typed-error discipline; the outer
+    /// [`Self::eval_perf_within_baseline`] boundary converts to
+    /// `ClaimResult::Fail(...)` with the role label preserved.
+    fn perf_baseline_measurement(
+        &self,
+        decl_id: DeclarationId,
+        _role: &str,
+    ) -> Result<PerfMeasurement, PerfMeasurementResolveError> {
+        let decl = match self.dag.declaration_opt(&decl_id) {
+            Some(decl) => decl,
+            None => return Err(PerfMeasurementResolveError::MissingDeclaration),
+        };
+        let fields = match decl.value_body.as_ref() {
+            Some(ValueBody::Structural { fields }) => fields,
+            _ => return Err(PerfMeasurementResolveError::WrongConnective),
+        };
+        let median_ns = match field(fields, "median_ns") {
+            Some(FieldValue::Literal(LiteralBits::Int(v))) => *v,
+            Some(_) => {
+                return Err(PerfMeasurementResolveError::WrongFieldKind {
+                    field: "median_ns",
+                });
+            }
+            None => {
+                return Err(PerfMeasurementResolveError::MissingField {
+                    field: "median_ns",
+                });
+            }
+        };
+        let p99_ns = match field(fields, "p99_ns") {
+            Some(FieldValue::Literal(LiteralBits::Int(v))) => *v,
+            Some(_) => {
+                return Err(PerfMeasurementResolveError::WrongFieldKind { field: "p99_ns" });
+            }
+            None => {
+                return Err(PerfMeasurementResolveError::MissingField { field: "p99_ns" });
+            }
+        };
+        Ok(PerfMeasurement {
+            median_ns,
+            p99_ns,
+        })
     }
 
     fn eval_census_bound_check_shape(
