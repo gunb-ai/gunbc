@@ -13,7 +13,7 @@ module v3.std.runtime
 
 import std.list { List }
 import std.types { Map }
-import v3.std.substrate { LiteralBits, LoopBound }
+import v3.std.substrate { Dag, LiteralBits, LitInt, LoopBound }
 import v3.std.substrate_minimal { NodeId, PortId, DeclarationId }
 
 type NamedField {
