@@ -76,7 +76,7 @@ module v3.std.algebra
 import std.algebra { Semiring, BoundedLattice }
 import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId, DeclarationId }
-import std.termination { PositiveDescentAmount, OneStep }
+import std.termination { PositiveDescentAmount }
 import v3.std.lookup { Lookup }
 
 // 🟡 SCAFFOLD coproduct. These are v2 per-method output-size effect facts
@@ -412,26 +412,56 @@ type AsymptoticClass inhabits BoundedLattice<AsymptoticClass>
   | ClassExponential
   | ClassUnknown
 
-fn asymptotic_rank(c: AsymptoticClass) -> Int =
-  match c {
-    ClassConstant => 0
-    ClassLog => 1
-    ClassLinear => 2
-    ClassLinearithmic => 3
-    ClassQuadratic => 4
-    ClassPolynomial(payload) => 5 + positive_descent_amount_rank(payload.degree)
-    ClassExponential => 9223372036854775806
-    ClassUnknown => 9223372036854775807
-  }
-
-fn positive_descent_amount_rank(amount: PositiveDescentAmount) -> Int =
-  match amount {
-    OneStep => 1
-    AdditionalStep(payload) => 1 + positive_descent_amount_rank(payload.previous)
-  }
-
 fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
-  asymptotic_rank(a) >= asymptotic_rank(b)
+  match a {
+    ClassUnknown => True
+    ClassExponential =>
+      match b {
+        ClassUnknown => False
+        _ => True
+      }
+    ClassPolynomial(_) =>
+      match b {
+        ClassUnknown => False
+        ClassExponential => False
+        _ => True
+      }
+    ClassQuadratic =>
+      match b {
+        ClassConstant => True
+        ClassLog => True
+        ClassLinear => True
+        ClassLinearithmic => True
+        ClassQuadratic => True
+        _ => False
+      }
+    ClassLinearithmic =>
+      match b {
+        ClassConstant => True
+        ClassLog => True
+        ClassLinear => True
+        ClassLinearithmic => True
+        _ => False
+      }
+    ClassLinear =>
+      match b {
+        ClassConstant => True
+        ClassLog => True
+        ClassLinear => True
+        _ => False
+      }
+    ClassLog =>
+      match b {
+        ClassConstant => True
+        ClassLog => True
+        _ => False
+      }
+    ClassConstant =>
+      match b {
+        ClassConstant => True
+        _ => False
+      }
+  }
 
 fn meet_asymptotic_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass =
   if asymptotic_dominates(a: a, b: b) then b else a
@@ -440,88 +470,14 @@ fn join_asymptotic_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticCl
   if asymptotic_dominates(a: a, b: b) then a else b
 
 fn classify(cost: SymbolicCost) -> AsymptoticClass =
-  match normalize(cost) {
+  match cost {
     ConstantCost(_) => ClassConstant
     LinearCost(_) => ClassLinear
     LogCost(_) => ClassLog
-    PolynomialCost(payload) => classify_polynomial_degree(payload.degree)
-    ProductCost(terms) => classify_product(nsl_to_list(terms))
-    SumCost(terms) => classify_sum(nsl_to_list(terms))
+    PolynomialCost(_) => ClassQuadratic
+    ProductCost(_) => ClassUnknown
+    SumCost(_) => ClassUnknown
     UnknownCost(_) => ClassUnknown
-  }
-
-fn classify_polynomial_degree(degree: DegreeAtLeastTwo) -> AsymptoticClass =
-  match degree {
-    DegreeTwo => ClassQuadratic
-    DegreeSuccessor(payload) =>
-      ClassPolynomial { degree: degree_to_positive_descent(payload.previous) }
-  }
-
-fn degree_to_positive_descent(degree: DegreeAtLeastTwo) -> PositiveDescentAmount =
-  match degree {
-    DegreeTwo => OneStep
-    DegreeSuccessor(payload) =>
-      AdditionalStep { previous: degree_to_positive_descent(payload.previous) }
-  }
-
-fn classify_sum(terms: List<SymbolicCost>) -> AsymptoticClass =
-  fold(terms, ClassConstant, |running, term|
-    join_asymptotic_class(a: running, b: classify(term))
-  )
-
-fn classify_product(terms: List<SymbolicCost>) -> AsymptoticClass =
-  fold(terms, ClassConstant, |running, term|
-    product_class(a: running, b: classify(term))
-  )
-
-fn product_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass =
-  match a {
-    ClassUnknown => ClassUnknown
-    ClassExponential => ClassExponential
-    ClassConstant => b
-    ClassLog =>
-      match b {
-        ClassConstant => ClassLog
-        ClassLog => ClassPolynomial { degree: OneStep }
-        ClassLinear => ClassLinearithmic
-        ClassLinearithmic => ClassPolynomial { degree: OneStep }
-        ClassQuadratic => ClassPolynomial { degree: OneStep }
-        ClassPolynomial(_) => b
-        ClassExponential => ClassExponential
-        ClassUnknown => ClassUnknown
-      }
-    ClassLinear =>
-      match b {
-        ClassConstant => ClassLinear
-        ClassLog => ClassLinearithmic
-        ClassLinear => ClassQuadratic
-        ClassLinearithmic => ClassPolynomial { degree: OneStep }
-        ClassQuadratic => ClassPolynomial { degree: OneStep }
-        ClassPolynomial(_) => b
-        ClassExponential => ClassExponential
-        ClassUnknown => ClassUnknown
-      }
-    ClassLinearithmic =>
-      match b {
-        ClassConstant => ClassLinearithmic
-        ClassExponential => ClassExponential
-        ClassUnknown => ClassUnknown
-        _ => ClassPolynomial { degree: OneStep }
-      }
-    ClassQuadratic =>
-      match b {
-        ClassConstant => ClassQuadratic
-        ClassExponential => ClassExponential
-        ClassUnknown => ClassUnknown
-        _ => ClassPolynomial { degree: OneStep }
-      }
-    ClassPolynomial(_) =>
-      match b {
-        ClassConstant => a
-        ClassExponential => ClassExponential
-        ClassUnknown => ClassUnknown
-        _ => a
-      }
   }
 
 // ── Normalization ───────────────────────────────────────────────
