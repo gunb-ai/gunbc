@@ -13,4 +13,5 @@ license.workspace = true
 v3-compiler = { path = "../compiler" }
 
 [dev-dependencies]
+v3-grounding-coercion-fold = { path = "../grounding_coercion_fold" }
 v3-grounding-lifetime = { path = "../grounding_lifetime" }

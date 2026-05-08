@@ -1075,6 +1075,7 @@ name = "v3-grounding-tests"
 version = "0.1.0"
 dependencies = [
  "v3-compiler",
+ "v3-grounding-coercion-fold",
  "v3-grounding-lifetime",
 ]
 

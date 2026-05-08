@@ -1,10 +1,16 @@
 //! LanguageSpec projection + target inhabitance carriers for the structural fold.
 
+use std::collections::BTreeMap;
+
+use v3_compiler::dag::Interval;
+use v3_grounding_lifetime::BindingId;
+
 /// How the fold obtains LanguageSpec / target-primitive substrate facts.
 ///
-/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — `Undeclared` awaits a declared
-/// LanguageSpec projection; `ScratchIntExamples` is an interim checkpoint. Named dissolution:
-/// #1133 / #1286 (declared projection replaces this carrier).
+/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — `Undeclared` remains the
+/// fail-closed production default; `DeclaredIntegerIntents` is the executable LanguageSpec
+/// projection path for integer inhabitance rows; `ScratchIntExamples` is retained as a
+/// compatibility checkpoint until callers migrate.
 ///
 /// **`Undeclared`** — production entry stays fail-closed until a real projection lands
 /// (substrate / #1286 / manager #1133).
@@ -15,11 +21,36 @@
 /// same-PR witness). Examples 2 and 8 consume declared integer-row payloads, but the
 /// enum remains a scratch driver until real program-bound and algebra-intent extraction
 /// can replace it with a declared projection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum LanguageSpecProjection {
     #[default]
     Undeclared,
+    DeclaredIntegerIntents(BTreeMap<BindingId, IntegerTargetIntent>),
     ScratchIntExamples(IntScratchExample),
+}
+
+/// Language selected from the declared `LanguageSpec` roots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TargetLanguage {
+    Rust,
+    Python,
+    Go,
+}
+
+/// Program-side integer bound projected into the fold.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IntegerBoundProjection {
+    Static(Interval<i64>),
+    PlatformDependent,
+}
+
+/// Per-binding integer intent consumed against `TargetIntegerTypeInhabitance` rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntegerTargetIntent {
+    pub target_language: TargetLanguage,
+    pub kernel_integer: String,
+    pub algebra: String,
+    pub bound: IntegerBoundProjection,
 }
 
 /// Scratch selector aligned to design-emission-model §Worked examples (Int only).
