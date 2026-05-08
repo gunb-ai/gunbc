@@ -55,10 +55,7 @@ impl RealizationCostTable {
     /// Build a cost table for the given language spec by scanning the dag's
     /// `data` declarations for realization rows whose `language` field
     /// resolves to `language_id`.
-    pub fn build_for_language(
-        dag: &Dag,
-        language_id: DeclarationId,
-    ) -> Result<Self, BuildError> {
+    pub fn build_for_language(dag: &Dag, language_id: DeclarationId) -> Result<Self, BuildError> {
         let type_meta = dag
             .type_realization_meta()
             .ok_or(BuildError::MissingRealizationMeta("TypeRealization"))?;
@@ -75,7 +72,9 @@ impl RealizationCostTable {
         let mut table = Self::default();
 
         for decl in dag.declarations() {
-            let Some(meta_tag) = decl.meta_tag else { continue };
+            let Some(meta_tag) = decl.meta_tag else {
+                continue;
+            };
             let category = if meta_tag == type_meta {
                 Category::Type
             } else if meta_tag == callable_meta {

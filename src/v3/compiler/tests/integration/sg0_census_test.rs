@@ -260,6 +260,11 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
     "src/v3/compiler/src/lens_apply.rs",
+    // T-CostLens-Composition Slice 1a (#2141 ε scope per gunbc#2181 ratification):
+    // RealizationCostTable per-language builder; first Rust-side consumer of
+    // `cost: Int` field on TypeRealization/CallableRealization/OperatorRealization/
+    // BehaviorRealization rows. Mirrors emit/rust_target.rs:705+ HashMap-build pattern.
+    "src/v3/compiler/src/lens_cost_target_composition.rs",
     // T-PB-A: `lens_depth.rs` retired — unused observational lens (no in-tree consumer).
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lib.rs",
