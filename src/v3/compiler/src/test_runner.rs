@@ -1886,6 +1886,18 @@ fn compute_perf_budget_bounds(baseline: PerfMeasurement) -> Result<(i64, i64), P
 /// Per `CODING.md` typed-error discipline: raw `String` is reserved for the
 /// `ClaimResult::Fail` boundary at [`PerfMeasurementResolveError::into_claim_fail`];
 /// inner helpers carry structural variants.
+///
+/// **🟢 TERMINAL coproduct** (per `docs/modeling-discipline.md` Practice 4
+/// classification checkpoint). The four variants enumerate the exhaustive
+/// failure shapes when reading a `PerfBaselineMeasurement` data declaration:
+/// either the declaration is absent (`MissingDeclaration` — substrate-integrity
+/// violation), present but not a structural record (`WrongConnective` —
+/// `Unparsed`, `Scalar`, `List`, or `None`), structural with a missing required
+/// field (`MissingField`), or structural with the field present but not an Int
+/// literal (`WrongFieldKind`). These cover every way the structural resolver
+/// can fail-closed against the substrate-declared shape; no further variants
+/// are reachable. No dissolution trigger — the carrier persists with the
+/// runtime invariant impl.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PerfMeasurementResolveError {
     /// `DeclarationId` did not resolve via [`Dag::declaration_opt`] —
