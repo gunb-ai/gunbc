@@ -1,0 +1,183 @@
+# Canvas — Q-Lens-Target-Context (β-extended substrate-shape question)
+
+**Authority**: Director ratification of α-revised T-CostLens supersession at gunbc#828 #issuecomment-4400920572 — β-extended path (introduce first-precedent .dag-side fold-over-realization-rows + name active-target authority shape) elevated from slice-tier to canvas-tier.
+
+**Cross-cutting parent**: PR #2171 α-revised pure-docs (cost.dag deferred-discussion + 5-option matrix + 4 findings) merged 2026-05-07 — captures substrate-state-honest framing pending this canvas's ratification.
+
+**Sibling canvas**: `q-cost-composition-layering-canvas.md` (ε path; abstraction-layering test for cost-specific Rust-side wiring).
+
+**Status**: **canvas — DRAFT/DEFERRED 2026-05-07; reopens on N=2 trigger event**. Director ratified ε path for cost (sibling canvas Q-Cost-Composition-Layering ratified 2026-05-07); β-extended substrate-wide refactor case isn't proven at HEAD with N=1 (only cost). Canvas reopens when SECOND lens surfaces real target-context need beyond cost (emission_provenance per cross-cutting analysis is most likely candidate). Until then, no proposal-maturation authoring; Q-Lens-Target-Context stays in canvas-authoring queue. Closed-system disposition: if N=2 condition never fires, β-extended never fires.
+
+## Substrate-state at HEAD (grep-verified)
+
+`src/v3/std/lens.dag:70-77` defines the generic Lens<C> carrier:
+
+```dag
+type Lens<C> {
+  name: String
+  read: fn(Dag, Behavior) -> Witness<C>
+  sequential: Monoid<C>
+  branch: fn(C, C) -> C
+  iterate: fn(C, LoopBound) -> C
+  validate: fn(Dag, C) -> OptionalDiagnostic
+}
+```
+
+**`read` signature carries no target-context**. Per-primitive realization-cost reading (T-CostLens-Composition gate #37) requires the lens to know WHICH target it's emitting for to pick the right realization row. Realizations are consumed Rust-side at emit time only (`emit/{rust,python}_target.rs` builds `HashMap<DeclarationId, …Binding>` from data-row scan); zero `.dag`-side fold-over-`List<CallableRealization>` / `List<TypeRealization>` / `List<MethodTemplateContract>` precedent at HEAD.
+
+**Lens instances at HEAD** (`src/v3/lenses/`, exact registry per `ls`): `complexity.dag`, `cost.dag`, `dag_shape.dag`, `effect_enumeration.dag`, `emission_provenance.dag`, `idempotency.dag`, `infer_helpers.dag`, `lens_composition_associative_witness.dag`, `lower_helpers.dag`, `named_function_count.dag`, `parallelism.dag`, `provenance.dag`, `structural_resolution.dag`, `unused_parameters.dag`, `variant_payload.dag` — **exactly 15 .dag files** using the generic `Lens<C>` carrier (some are helper modules — `infer_helpers` / `lower_helpers` — that author shared structural fns rather than top-level lens instances).
+
+## Question (binary)
+
+**Should .dag-side lenses receive target-context for target-keyed reading?**
+
+This is a substrate-fact-introduction (P1 procedure): introducing first-precedent `.dag`-side fold-over-realization-rows substrate-consumption pattern. Yes-or-no decision; affects every future lens with target-context needs (not just cost).
+
+## Options matrix
+
+### Option (i) — `LanguageSpec` parameter to lens fold
+
+Refactor `Lens<C>::read` from `fn(Dag, Behavior) -> Witness<C>` to `fn(Dag, Behavior, LanguageSpec) -> Witness<C>`. All 15+ existing lens instances thread `LanguageSpec` parameter; consumers pass active-target at lens-application time.
+
+**Pro**:
+- Most additive at lens-instance level (instances that don't use target-context can ignore the parameter)
+- Matches Rust-side `active_language` cache discipline (per fierce-ram-21's grep at gunbc#2153 c#4399898495)
+- Single substrate-shape change; cascade is bounded (15 lens instances + their consumers)
+- Future lenses that need target-context can use it without further substrate refactoring
+
+**Con**:
+- **Threading cost across 15 existing lens instances** (quantified): ~15 lens instances × signature change (`fn(Dag, Behavior) -> Witness<C>` → `fn(Dag, Behavior, LanguageSpec) -> Witness<C>`) + 14 ignore-parameter patterns (`_lang_spec` per lens that doesn't substantively use target-context) + 1 cost-using consumer + cementing-test revalidation per ratchet-test discipline. Real but bounded cost; mechanical migration.
+- Forces target-context awareness on lens-fold-pass authority even when only one lens (cost) needs it
+- Lens<C> generic refactor requires its own canvas + worker brief (per `feedback_pre_authored_brief_queue`)
+
+### Option (ii) — Per-target lens instances
+
+Author per-target lens instances: `cost_lens_rust`, `cost_lens_python`, `cost_lens_go` (and analogous for any other target-context-needing lens). Lens-fold-pass dispatches on target at consumer level; each lens instance is target-specific.
+
+**Pro**:
+- No `Lens<C>` carrier-shape refactor needed
+- Existing 14 non-cost lenses untouched
+- Each lens instance is target-specific by construction
+
+**Con**:
+- **Explosion-by-target with authoring multiplier**: N targets × M target-context-needing lenses = N×M lens instances. Each instance replicates the entire `Lens<C>` shape's authoring surface: per-target instance × 4 (carrier + monoid `sequential` + `branch` + `iterate`) authoring overhead. Concretely: 3 targets × 1 cost-needing lens currently = 3 instances × 4 = **12 authored fns**; grows to 36 if 3 lenses need target-context. Per `feedback_parallel_representation_debt`, N×M×4 multiplier is exactly the parallel-authority accumulation P2 prevents.
+- Lens-fold-pass authority must dispatch on target — substrate-side dispatch logic
+- Per-lens-per-target authoring duplicates lens shape; parallel-representation debt
+- Violates `feedback_parallel_representation_debt` (canonical-authority-consumption rule — Lens<C> exists; per-target instances multiply rather than consume)
+
+**Status**: structurally weakest option; named for completeness.
+
+### Option (iii) — Global accessor (REJECTED)
+
+New substrate accessor `current_language_spec(): LanguageSpec` callable from inside lens fold body.
+
+**Pro**: minimal surface change; one new accessor.
+
+**Con**:
+- **Global-state anti-pattern** per `feedback_state_space_vs_behavioral_invariants` (lens output should be a function of explicit inputs, not implicit global state)
+- Hidden dispatch state at fold-time; breaks lens compositionality
+- No structural visibility into "which target" at lens-output read time
+
+**Rejected** per anti-pattern framing; named only as the third option of the matrix per template completeness.
+
+## Mgr-tier provisional preference
+
+**Option (i)** — `LanguageSpec` parameter to lens fold. Most structurally correct: bounded substrate-shape change; matches Rust-side discipline; preserves Lens<C> generic; future-proofs additional target-context-needing lenses.
+
+The threading cost across 15 existing lens instances is real but manageable per `feedback_construction_over_ratchets` (model first; threading is mechanical). Each non-target-context-using instance can simply ignore the parameter (`fn(_dag, _behavior, _lang_spec) -> Witness<C>`).
+
+If Director ratifies (i), the cascade:
+1. Lens<C> carrier-shape refactor PR (separate Q-PAFS-template canvas + worker brief — substrate-fact-introduction territory)
+2. 15 existing lens instances thread `LanguageSpec` parameter (mechanical migration; `_lang_spec` for non-using instances)
+3. T-CostLens follow-on slice authors `target_realization_cost_for_callable` helper consuming `LanguageSpec` per-primitive lookup
+4. Cementing receipts + capability-register row + §10.3 row updates per α-narrow-eventually shape (post-canvas-ratification)
+
+## Cross-cutting question
+
+**Which other lenses beyond cost plausibly need target-context?**
+
+Grep + analysis of `src/v3/lenses/` instances:
+- **complexity.dag**: structural-fold over algebra; no target-context need (complexity IS target-agnostic)
+- **dag_shape.dag**: structural; no target need
+- **effect_enumeration.dag**: structural-effect axis; no target need
+- **emission_provenance.dag**: STATUS at HEAD = `STRUCTURALLY TERMINAL; LENS-INSTANCE FIXTURE-BOUND; BEHAVIORALLY DEFERRED`. `read` body is a fail-closed `Empty` stub until producer wiring lands (per file's status header). Producer-side instrumentation hooks at `emit/rust_target.rs::render_named_template` would record target-keyed `*SyntaxBinding` / `*OpsBinding` provenance entries that the lens framework's `Empty`/`Concat` framework then consumes. **Whether this constitutes target-context need is currently UNGROUNDED** — emission_provenance at HEAD doesn't read target-realization data inside the lens fold; the producer-side records target-specific entries which the lens consumes via existing framework. Re-evaluate at producer-wiring landing time. NOT a confirmed N=2 candidate; flagged speculative pending behavioral-completion grep.
+- **idempotency.dag**: structural; no target need
+- **named_function_count.dag**: structural; no target need
+- **parallelism.dag**: R4-carved; structural at HEAD
+- **provenance.dag**: structural; no target need
+- **structural_resolution.dag**: structural; no target need
+- **unused_parameters.dag**: structural; no target need
+- **variant_payload.dag**: structural; no target need
+- **lens_composition_associative_witness.dag**: meta-lens; no target need
+
+**Net finding** (empirically grep-verified per PM canvas-review at gunbc#2181 c#4401624921):
+
+```
+$ grep -lc 'TypeRealization|CallableRealization|MethodTemplateContract|target_realization|realization_cost|LanguageSpec' src/v3/lenses/*.dag
+src/v3/lenses/cost.dag:3
+[14 other lenses]:0
+```
+
+**Only `cost.dag` has realization-row consumption refs at HEAD (3 hits)**. All 14 other lenses (including `emission_provenance.dag`) have ZERO refs to target-realization vocabulary. N=1 empirically grounded.
+
+emission_provenance.dag was speculatively framed as secondary candidate but per its file status header (`STRUCTURALLY TERMINAL; LENS-INSTANCE FIXTURE-BOUND; BEHAVIORALLY DEFERRED`; `read` body fail-closed `Empty` stub), the lens does NOT currently read target-context inside the fold — producer-side instrumentation records target-specific entries which the lens framework consumes via standard `Empty`/`Concat`. The grep result confirms: emission_provenance is NOT a target-realization-row consumer at HEAD. Re-evaluates when producer wiring lands.
+
+**N=1 confirmed at HEAD by grep**; N=2 is empirically open pending future lens-completion cycles surfacing target-realization consumption, not pre-claimable.
+
+This means option (i)'s threading cost is mostly mechanical (14 of 15 instances don't substantively use `LanguageSpec`). Option (ii)'s explosion-by-target at HEAD is bounded to **N=1**: `cost × 3 targets = 3 per-target instances` (× 4 authoring-multiplier per Option (ii) Con bullet = 12 fns). The `emission_provenance × 3` instances are a **reopen-only future scenario** that materializes only if emission_provenance becomes the second real target-context lens at producer-wiring landing time — currently NOT applicable per the grep-verified N=1 finding above. Option (ii) still violates parallel-representation discipline regardless of N count.
+
+**Mgr lean reaffirmed**: option (i).
+
+## Director disposition (DEFERRED 2026-05-07; reopens on N=2 trigger event)
+
+Director ratified at gunb-ai/gunbc#2181 #issuecomment-4401584012: **β-extended (option (i)) DEFERRED**. Sibling Q-Cost-Composition-Layering ratified ε standalone for cost; β-extended substrate-wide refactor case isn't proven at HEAD with N=1 (only cost.dag has realization-row consumption refs per grep). Canvas reopens when SECOND lens surfaces real target-context need beyond cost.
+
+Closed-system disposition: if N=2 condition never fires, β-extended never fires.
+
+### Re-ratification asks (FROZEN; revisit at N=2 trigger event)
+
+When N=2 trigger fires and canvas reopens, the original ratification asks become live again:
+
+1. Pick (i) / (ii) / (iii) (or surface fourth option). Mgr provisional preference recorded: **(i)**.
+2. Confirm Lens<C> generic refactor scope: if (i) ratified, refactor lands as separate canvas + worker-brief cycle (per Q-PAFS template) BEFORE consumer slices.
+3. `LanguageSpec` parameter shape: type-level parameter vs reference-shape vs lookup-key.
+4. Cross-cutting impact ratification per second-lens evidence (per N=2-triggering lens's grep).
+
+These asks are FROZEN at canvas-author-time framing; re-evaluate against substrate state at re-open time (both options matrix and provisional preference may need refresh against then-current lens registry).
+
+## On ratification — sequencing
+
+Post-ratification cascade:
+1. **Q-Lens-Target-Context PROPOSAL doc** lands per Q-PAFS template (this canvas matures into proposal)
+2. **Lens<C> refactor canvas + worker brief** authored next (separate cycle if (i) ratified)
+3. **Lens<C> refactor PR** — Mgr-tier or worker dispatch; threading 15 lens instances
+4. **T-CostLens follow-on slice** authors `target_realization_cost_for_callable` helper consuming new `LanguageSpec` parameter; cementing receipts + capability-register + §10.3 row updates per α-narrow-eventually shape
+5. **Verification ratchet authoring** sequences against gate transitions (#37/#40/#70 advancement)
+
+## Sibling canvas (ε path)
+
+`q-cost-composition-layering-canvas.md` — addresses whether cost composition factoring (target-agnostic-shape × target-specific-values) is structurally honest, allowing Rust-side wiring without `.dag`-side first-precedent. If ε is ratified instead of (i), the substrate-shape decision IS that target-context belongs emit-side; `.dag`-side carrier holds abstract cost shape; concrete values flow through Rust-side composition.
+
+The deeper cross-cutting question — does target-context belong .dag-side (β-extended, this canvas) or emit-side (ε, sibling canvas) — is the load-bearing axis. Director's ratification should consider both canvases as a pair.
+
+## Framework discipline anchors
+
+Citing per Director correction at gunbc#828 c#4400774036 + c#4400921658:
+
+- **`feedback_same_slice_dissolution_discipline`**: bridge-with-named-dissolution anti-pattern. β-extended (this canvas's path) was rejected at slice-tier because the named dissolution ("when γ-extended Lens<C> refactor lands, fold helper into Lens<C>::read") was future-scope-not-same-slice. This canvas authors the substrate move at canvas-tier so that follow-on slice's same-slice acceptance is structurally grounded.
+- **`feedback_parallel_representation_debt`**: canonical-authority-consumption rule. Option (ii) per-target instances violates this (Lens<C> exists; per-target instances multiply rather than consume). Option (i) honors by refactoring the canonical authority itself.
+- **`feedback_abstraction_layering`** (sibling canvas anchor): see Q-Cost-Composition-Layering for cost-specific abstraction-layering test.
+
+## Worker pin (post-ratification)
+
+Lens<C> refactor (if (i) ratified): substrate-fact-introduction precedent owners — valiant-ibex-312 OR smart-ram-167. Worker dispatched per substantial substrate change.
+
+T-CostLens follow-on slice: fierce-ram-21 (continuity from α-revised).
+
+## Cross-Mgr coordination
+
+- **Verification Mgr (#2075 / wise-bear-525)**: ratchet authoring on §1.6 NYI → executable transitions (cost-lens BEHAVIORALLY COMPLETE gate #80, T-CostLens gates #37/#40/#70) sequences post-canvas-ratification.
+- **Evaluator Mgr (#2065 / crisp-bat-13)**: lens consumers downstream — Pattern A predicates (TC1/TC2/TC3) consume lens output; target-context propagation impacts their predicate structure.
+- **Grounding Mgr (#1944)**: target-realization data is Grounding lane authority; lens fold consuming target-keyed lookups means cross-Mgr data-flow dependency.
+
+— Authored by warm-wolf-698 (Substrate Mgr) 2026-05-07 per Director α-revised supersession at gunbc#828 #issuecomment-4400920572 + canvas authoring queue per gunbc#2068 #issuecomment-4401221750.
