@@ -120,3 +120,67 @@ type EvalMemoKey {
   state_key: EvalStateKey
   strategy: EvalStrategy
 }
+
+// 🟡 SCAFFOLD at PB-Runtime Item-4 structural-landing scope. The canonical
+// PB-Runtime entry-point signature locked by
+// `docs/design-pb-runtime-interpreter.md` §3.2 lines 80-103. Per PB Manager
+// disposition for tracker #2227 (#2074 c#4410581189 + c#4410646513), sub-gates
+// 1+2 (`lens_apply_dot_rs_retired`, `lens_testgen_dot_rs_retired`) close on
+// the **signature** landing structurally; the per-`Behavior` evaluation rules
+// are authority of the design doc (referenced verbatim below) and are NOT
+// authored as DSL fn body in this slice. The body is a stub literal
+// placeholder so the signature lowers cleanly.
+//
+// Co-located with the `Value` / `EvalFrame` / `EvalStateStack` carriers above
+// per refined-(I) disposition (#2074 c#4410646513): single-authority for the
+// `v3.std.runtime` module. The original Q1 path `dsl/std/runtime/runtime.dag`
+// was advisory and unreachable by the bootstrap loader at HEAD
+// (`src/v3/compiler/build.rs:389` collects `src/v3/std/*.dag` non-recursively;
+// `dsl_std_dir` is `rerun-if-changed` only). PB Mgr is updating Q1 wording
+// post-merge.
+//
+// Per-`Behavior` evaluation rules (design-doc §3.2 lines 96-103, verbatim
+// reference, NOT DSL-authored in this slice):
+//
+//   - `Behavior::Value(v)` → emit `LiteralValue(v.payload)`.
+//   - `Behavior::Transform(t)` → recursive evaluate `t.inputs`; apply
+//     `t.target` to result. Per `t.target` variant:
+//       - `Callable(decl_id)` → resolve `decl_id`'s declared Arrow type;
+//         on `ArrowBody::UserDefined(body_node_id)`, bind `t.inputs` to the
+//         function's declared parameters in a fresh evaluation frame
+//         (§3.3); evaluate `body_node_id` in that frame; the frame pops
+//         when the call returns. Other `ArrowBody` variants are
+//         non-evaluable (`ExternalRealization` dispatches to host;
+//         `Pending` / `NoBody` / `Unparsed` are evaluation-time errors).
+//       - `FieldProject { field_label, field_child }` → project
+//         `field_label` from the (single-input) record value.
+//       - `Operator(op_kind)` → apply the primitive operator to inputs.
+//   - `Behavior::Branch(b)` → evaluate `b.input`; pattern-match against
+//     `b.paths`; recursive evaluate the selected `path.body` with
+//     `path.binding` bound in a fresh frame.
+//   - `Behavior::Loop(l)` → fold over `l.bound` (cardinality bounded
+//     iteration or descent-bounded recursion per the `LoopBound`
+//     coproduct); evaluate `l.body` per iteration with accumulator bound
+//     to `l.init`'s value initially, threaded through subsequent
+//     iterations.
+//   - `Behavior::Bind(b)` → register `b.name` as resolvable; the value
+//     reachable through `b.result_port` becomes the bound value. Does NOT
+//     execute a body — the body that uses the bound name lives at
+//     downstream Transform/Bind nodes.
+//
+// Scope discipline (per #2227 + #2074 c#4410581189):
+//   - The fixture-local `pb_runtime_evaluate` at
+//     `src/v3/compiler/tests/fixtures/r3_pb_runtime_evaluator_corpus_seeds.dag`
+//     and the load-bearing Row-4 ratchet at
+//     `src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs:77`
+//     STAY untouched: real-producer wiring is a separate downstream
+//     coordination slice post-R2-Evaluator Rust `evaluate` per design-doc
+//     §5.3 (Evaluator Mgr lane authority).
+//
+// Dissolution trigger: the stub body dissolves when the downstream
+// coordination slice replaces it with the per-`Behavior` fold body
+// authored against R2-Evaluator's PR-A through PR-E landings. At that
+// point the Row-4 ratchet retires per design-doc §5.1 sub-gate 3
+// (`regen_lens_dot_rs_retired`, gated on Items 4+5).
+fn evaluate(program: Dag, entry: NodeId, args: List<Value>) -> Value =
+  LiteralValue(LitInt(0))
