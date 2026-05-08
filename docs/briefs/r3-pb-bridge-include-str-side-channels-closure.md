@@ -37,7 +37,7 @@ Per [`docs/design-emission-model.md`](../design-emission-model.md) ~944:
 2. **Stage-order / compile-body facts** required by pipeline authority consumers are obtainable from **structured Dag data** (existing `PipelineStageBinding` discipline **and/or** a **derived lowered compile-body witness** once authored — substrate/evaluator coordination).
 3. **Ratchet test**: a CI assertion that
     ```
-    grep -rE 'include_str!\([^)]*pipeline\.dag' src/v3/compiler/
+    grep -rE 'include_str!\s*\([^)]*pipeline\.dag' src/v3/compiler/
     ```
     returns **zero matches** at HEAD post-retirement (file-path-suffix predicate, ungameable-by-relocation under `src/v3/compiler/`). Catches the production callsite, the test callsite surfaced 2026-05-08, and any future relocation that re-introduces the pattern. Locked pre-merge per Director Option 1 precedent.
 
