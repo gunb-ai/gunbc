@@ -1,6 +1,10 @@
-# Canvas — Q-PerfWithinBaseline (TestPredicate variant substrate-shape question)
+# Canvas — Q-PerfWithinBaseline (TestPredicate variant substrate-shape question) — **SUPERSEDED**
 
-**Authority**: Director Q6 RATIFIED canvas-tier required at gunb-ai/gunbc#828 #issuecomment-4403163639 — substrate-fact-introduction with three substantive unresolved axes; canvas-tier P1 procedure applies per `feedback_substrate_principle_audit`.
+**SUPERSEDED-BY** [`q-perf-within-baseline-canvas-revised.md`](q-perf-within-baseline-canvas-revised.md) per Director disposition at gunb-ai/gunbc#828 #issuecomment-4403265220 (2026-05-08). This canvas was authored against substrate-precedent (`LensOutputEquals` symbolic-cost pattern) but missed consumer-side requirement at `docs/r3-structure.md:225` + `:461` (T-Tier3 perf gate is wall-clock measured median/p99, not symbolic cost). Q1(b)+Q2(i)+Q3(β) ratification at #828 c#4403208482 is **invalid as authored**; revised canvas supersedes with correct two-path framing (P1 in-R3 perf-budget substrate vs P2 explicitly post-R3 per Director-locked 2026-04-28 recommendation). Retained as historical record per durable-decision-record discipline.
+
+---
+
+**Authority** (original): Director Q6 RATIFIED canvas-tier required at gunb-ai/gunbc#828 #issuecomment-4403163639 — substrate-fact-introduction with three substantive unresolved axes; canvas-tier P1 procedure applies per `feedback_substrate_principle_audit`.
 
 **Status**: **canvas — DRAFT 2026-05-08**; PROPOSAL maturation pending Director ratification of options.
 
