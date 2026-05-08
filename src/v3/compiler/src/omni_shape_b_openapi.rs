@@ -23,15 +23,21 @@ pub enum ProjectOpenApiError {
     MalformedOperation { declaration: String, detail: String },
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RestRouteSchema {
+    http_method: DeclarationId,
+    url_path_token: DeclarationId,
+}
+
 pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpenApiError> {
     let mut routes = BTreeSet::new();
     for decl in dag.declarations() {
         let Some(ValueBody::List(rows)) = &decl.value_body else {
             continue;
         };
-        if !list_element_has_rest_endpoint_binding(dag, decl) {
+        let Some(schema) = rest_route_schema(dag, decl)? else {
             continue;
-        }
+        };
         for row in rows {
             let Some(fields) = record_fields(row) else {
                 continue;
@@ -46,6 +52,7 @@ pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpen
             )?;
             let method = parse_http_method(
                 dag,
+                schema,
                 decl.name.as_deref().unwrap_or("<anonymous>"),
                 record_field(endpoint_fields, "method").ok_or_else(|| {
                     malformed(decl.name.as_deref(), "endpoint missing `method` field")
@@ -53,6 +60,7 @@ pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpen
             )?;
             let path = parse_path_template(
                 dag,
+                schema,
                 decl.name.as_deref().unwrap_or("<anonymous>"),
                 record_field(endpoint_fields, "path").ok_or_else(|| {
                     malformed(decl.name.as_deref(), "endpoint missing `path` field")
@@ -68,18 +76,74 @@ pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpen
     Ok(routes)
 }
 
-fn list_element_has_rest_endpoint_binding(dag: &Dag, decl: &Declaration) -> bool {
+fn rest_route_schema(
+    dag: &Dag,
+    decl: &Declaration,
+) -> Result<Option<RestRouteSchema>, ProjectOpenApiError> {
     let Some(element) = list_element_type(dag, decl) else {
-        return false;
+        return Ok(None);
     };
     let TypeConnective::Conj { children } = &dag.declaration(element).connective else {
-        return false;
+        return Ok(None);
     };
     let Some(endpoint_field) = children.iter().find(|field| field.label == "endpoint") else {
-        return false;
+        return Ok(None);
     };
-    dag.declaration(endpoint_field.ty).name.as_deref() == Some("RestEndpointBinding")
-        && dag.declaration(endpoint_field.ty).span.file == "src/v3/std/services.dag"
+    let TypeConnective::Conj { children } = &dag.declaration(endpoint_field.ty).connective else {
+        return Ok(None);
+    };
+    let Some(method_ty) = field_type(children, "method") else {
+        return Err(malformed(
+            decl.name.as_deref(),
+            "RestEndpointBinding missing `method` field",
+        ));
+    };
+    let Some(path_ty) = field_type(children, "path") else {
+        return Err(malformed(
+            decl.name.as_deref(),
+            "RestEndpointBinding missing `path` field",
+        ));
+    };
+
+    let TypeConnective::Conj { children } = &dag.declaration(path_ty).connective else {
+        return Err(malformed(
+            decl.name.as_deref(),
+            "endpoint.path type must be a PathTemplate record",
+        ));
+    };
+    let Some(tokens_ty) = field_type(children, "tokens") else {
+        return Err(malformed(
+            decl.name.as_deref(),
+            "PathTemplate missing `tokens` field",
+        ));
+    };
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &dag.declaration(tokens_ty).connective
+    else {
+        return Err(malformed(
+            decl.name.as_deref(),
+            "PathTemplate.tokens must be a List",
+        ));
+    };
+    if Some(*template) != dag.list_template() {
+        return Err(malformed(
+            decl.name.as_deref(),
+            "PathTemplate.tokens must use the canonical List template",
+        ));
+    }
+    let Some(url_path_token_ty) = arguments.first().map(|arg| arg.value) else {
+        return Err(malformed(
+            decl.name.as_deref(),
+            "PathTemplate.tokens missing element type",
+        ));
+    };
+
+    Ok(Some(RestRouteSchema {
+        http_method: method_ty,
+        url_path_token: url_path_token_ty,
+    }))
 }
 
 fn list_element_type(dag: &Dag, decl: &Declaration) -> Option<DeclarationId> {
@@ -87,9 +151,7 @@ fn list_element_type(dag: &Dag, decl: &Declaration) -> Option<DeclarationId> {
         TypeConnective::Instantiation {
             template,
             arguments,
-        } if dag.declaration(*template).name.as_deref() == Some("List") => {
-            arguments.first().map(|arg| arg.value)
-        }
+        } if Some(*template) == dag.list_template() => arguments.first().map(|arg| arg.value),
         _ => None,
     }
 }
@@ -170,8 +232,16 @@ fn record_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> Option<&
     fields.iter().find(|(l, _)| l == label).map(|(_, v)| v)
 }
 
+fn field_type(fields: &[crate::dag::Field], label: &str) -> Option<DeclarationId> {
+    fields
+        .iter()
+        .find(|field| field.label == label)
+        .map(|field| field.ty)
+}
+
 fn parse_http_method(
     dag: &Dag,
+    schema: RestRouteSchema,
     declaration: &str,
     value: &FieldValue,
 ) -> Result<String, ProjectOpenApiError> {
@@ -191,7 +261,7 @@ fn parse_http_method(
             detail: "HttpMethod variants must not carry payload".to_string(),
         });
     }
-    variant_label_in_parent(dag, "HttpMethod", *constructor).ok_or_else(|| {
+    variant_label_in_parent(dag, schema.http_method, *constructor).ok_or_else(|| {
         ProjectOpenApiError::MalformedOperation {
             declaration: declaration.to_string(),
             detail: "HttpMethod constructor is not a variant of HttpMethod".to_string(),
@@ -207,6 +277,7 @@ struct ParsedPathTemplate {
 
 fn parse_path_template(
     dag: &Dag,
+    schema: RestRouteSchema,
     declaration: &str,
     value: &FieldValue,
 ) -> Result<ParsedPathTemplate, ProjectOpenApiError> {
@@ -236,7 +307,7 @@ fn parse_path_template(
             });
         };
         let label =
-            variant_label_in_parent(dag, "UrlPathToken", *constructor).ok_or_else(|| {
+            variant_label_in_parent(dag, schema.url_path_token, *constructor).ok_or_else(|| {
                 ProjectOpenApiError::MalformedOperation {
                     declaration: declaration.to_string(),
                     detail: "token constructor is not a variant of UrlPathToken".to_string(),
@@ -275,11 +346,10 @@ fn parse_path_template(
 
 fn variant_label_in_parent(
     dag: &Dag,
-    parent_name: &str,
+    parent: DeclarationId,
     constructor: DeclarationId,
 ) -> Option<String> {
-    let parent = dag.declaration_by_name(parent_name)?;
-    let TypeConnective::Disj { variants } = &parent.connective else {
+    let TypeConnective::Disj { variants } = &dag.declaration(parent).connective else {
         return None;
     };
     variants
