@@ -153,9 +153,30 @@ pub enum SymbolicCost {
     UnknownCost { _0: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct SizeVariable {
     pub source_port: PortId,
+    pub display_name: Option<String>,
+}
+
+impl PartialEq for SizeVariable {
+    fn eq(&self, other: &Self) -> bool {
+        self.source_port == other.source_port
+    }
+}
+
+impl Eq for SizeVariable {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AsymptoticClass {
+    ClassConstant,
+    ClassLog,
+    ClassLinear,
+    ClassLinearithmic,
+    ClassQuadratic,
+    ClassPolynomial { degree: PositiveDescentAmount },
+    ClassExponential,
+    ClassUnknown,
 }
 
 pub fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
@@ -311,7 +332,13 @@ fn any_dominates(terms: &BoxedSymbolicCostList, b: &SymbolicCost) -> bool {
         .any(|child| dominates(child.as_ref(), b))
 }
 
-pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
+pub fn dominates<A, B>(a: A, b: B) -> bool
+where
+    A: std::borrow::Borrow<SymbolicCost>,
+    B: std::borrow::Borrow<SymbolicCost>,
+{
+    let a = a.borrow();
+    let b = b.borrow();
     match a {
         SymbolicCost::UnknownCost { .. } => true,
         SymbolicCost::ConstantCost { .. } => matches!(b, SymbolicCost::ConstantCost { .. }),
@@ -341,6 +368,21 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
             any_dominates(terms, b)
         }
+    }
+}
+
+pub fn classify_symbolic_cost<C>(cost: C) -> AsymptoticClass
+where
+    C: std::borrow::Borrow<SymbolicCost>,
+{
+    match cost.borrow() {
+        SymbolicCost::ConstantCost { .. } => AsymptoticClass::ClassConstant,
+        SymbolicCost::LinearCost { .. } => AsymptoticClass::ClassLinear,
+        SymbolicCost::LogCost { .. } => AsymptoticClass::ClassLog,
+        SymbolicCost::PolynomialCost { .. } => AsymptoticClass::ClassQuadratic,
+        SymbolicCost::ProductCost { .. }
+        | SymbolicCost::SumCost { .. }
+        | SymbolicCost::UnknownCost { .. } => AsymptoticClass::ClassUnknown,
     }
 }
 """
