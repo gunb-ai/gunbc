@@ -27,13 +27,16 @@ use v3_compiler::dag::{
 use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 
 use crate::diagnostic::EmissionDiagnostic;
-use crate::types::{IntScratchExample, LanguageSpecProjection, TargetInhabitance};
+use crate::types::{
+    IntScratchExample, IntegerBoundProjection, IntegerTargetIntent, LanguageSpecProjection,
+    TargetInhabitance,
+};
 
 /// Same-PR consumer for `TargetIntegerTypeInhabitance` spec rows (`emit_model.dag`, **E-6**).
 ///
 /// Counts declarations meta-tagged with the template. Coercion-Fold requires this count
 /// before scratch examples run so deleting or failing to lower inhabitance `data` breaks CI.
-const MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS: usize = 8;
+pub const MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BoundMatch {
@@ -79,7 +82,7 @@ struct ProgramIntegerIntent {
     kernel_integer: DeclarationId,
     algebra: DeclarationId,
     bound: BoundDeclarationView,
-    type_realization: DeclarationId,
+    type_realization: Option<DeclarationId>,
 }
 
 fn declared_target_integer_type_inhabitance_row_count(dag: &Dag) -> usize {
@@ -366,7 +369,11 @@ fn select_declared_inhabitance(
         .filter(|row| row.language == intent.target_language)
         .filter(|row| row.kernel_integer == intent.kernel_integer)
         .filter(|row| row.algebra == intent.algebra)
-        .filter(|row| row.type_realization == intent.type_realization)
+        .filter(|row| {
+            intent.type_realization.map_or(true, |type_realization| {
+                row.type_realization == type_realization
+            })
+        })
         .filter(|row| match_bound(&intent.bound, &row.bound) == BoundMatch::Matches)
         .collect();
     let exact_matches: Vec<&TargetIntegerTypeInhabitanceRow> = matches
@@ -436,11 +443,11 @@ fn example_8_program_intent(
         kernel_integer: declaration_id_by_name(dag, kernel_integer_name, "kernel_integer")?,
         algebra: declaration_id_by_name(dag, algebra_name, "algebra")?,
         bound,
-        type_realization: declaration_id_by_name(
+        type_realization: Some(declaration_id_by_name(
             dag,
             type_realization_name,
             "target_integer_type_realization",
-        )?,
+        )?),
     })
 }
 
@@ -472,11 +479,11 @@ fn fold_design_doc_example_2_semiring_u32(
         kernel_integer: declaration_id_by_name(dag, "UInt32", "kernel_integer")?,
         algebra: declaration_id_by_name(dag, "UInt32", "algebra")?,
         bound: design_doc_example_2_program_bound(),
-        type_realization: declaration_id_by_name(
+        type_realization: Some(declaration_id_by_name(
             dag,
             "rust_u32",
             "target_integer_type_realization",
-        )?,
+        )?),
     };
     select_declared_inhabitance(dag, &intent)
 }
@@ -567,13 +574,50 @@ pub(crate) fn select_program_integer_intent_for_testing(
         kernel_integer: declaration_id_by_name(dag, kernel_integer_name, "kernel_integer")?,
         algebra: declaration_id_by_name(dag, algebra_name, "algebra")?,
         bound: BoundDeclarationView::StaticBound(program_bound),
-        type_realization: declaration_id_by_name(
+        type_realization: Some(declaration_id_by_name(
             dag,
             type_realization_name,
             "target_integer_type_realization",
-        )?,
+        )?),
     };
     select_declared_inhabitance(dag, &intent)
+}
+
+fn program_integer_intent_from_projection(
+    projection: &IntegerTargetIntent,
+) -> Result<ProgramIntegerIntent, EmissionDiagnostic> {
+    let bound = match &projection.bound {
+        IntegerBoundProjection::Static(interval) => {
+            BoundDeclarationView::StaticBound(interval.clone())
+        }
+        IntegerBoundProjection::PlatformDependent => BoundDeclarationView::PlatformDependent,
+    };
+    Ok(ProgramIntegerIntent {
+        target_language: projection.target_language,
+        kernel_integer: projection.kernel_integer,
+        algebra: projection.algebra,
+        bound,
+        type_realization: None,
+    })
+}
+
+fn fold_declared_integer_intents(
+    dag: &Dag,
+    intents: &BTreeMap<BindingId, IntegerTargetIntent>,
+) -> Result<BTreeMap<BindingId, TargetInhabitance>, EmissionDiagnostic> {
+    let declared_rows = declared_target_integer_type_inhabitance_row_count(dag);
+    if declared_rows < MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS {
+        return Err(EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "declared_TargetIntegerTypeInhabitance_rows".to_string(),
+        });
+    }
+
+    let mut out = BTreeMap::new();
+    for (&binding, projection) in intents {
+        let intent = program_integer_intent_from_projection(projection)?;
+        out.insert(binding, select_declared_inhabitance(dag, &intent)?);
+    }
+    Ok(out)
 }
 
 /// Structural fold: program + lifetime analysis + LanguageSpec projection →
@@ -597,6 +641,10 @@ pub fn fold_program_to_target(
         LanguageSpecProjection::Undeclared => {
             let _ = lifetime_facts;
             Err(EmissionDiagnostic::FoldNotImplemented)
+        }
+        LanguageSpecProjection::DeclaredIntegerIntents(intents) => {
+            let _ = lifetime_facts;
+            fold_declared_integer_intents(dag, intents)
         }
         LanguageSpecProjection::ScratchIntExamples(example) => {
             let declared_rows = declared_target_integer_type_inhabitance_row_count(dag);
