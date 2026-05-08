@@ -396,7 +396,7 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
   }
 
 fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
-  size_variable_eq(a: a, b: b)
+  size_variable_eq(a, b)
 
 // Terminal asymptotic-class carrier for complexity display and budget
 // enforcement. Ordering is by asymptotic dominance:
@@ -418,13 +418,24 @@ fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
     ClassExponential =>
       match b {
         ClassUnknown => False
-        _ => True
+        ClassExponential => True
+        ClassPolynomial(_) => True
+        ClassQuadratic => True
+        ClassLinearithmic => True
+        ClassLinear => True
+        ClassLog => True
+        ClassConstant => True
       }
     ClassPolynomial(_) =>
       match b {
         ClassUnknown => False
         ClassExponential => False
-        _ => True
+        ClassPolynomial(_) => True
+        ClassQuadratic => True
+        ClassLinearithmic => True
+        ClassLinear => True
+        ClassLog => True
+        ClassConstant => True
       }
     ClassQuadratic =>
       match b {
@@ -433,7 +444,9 @@ fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
         ClassLinear => True
         ClassLinearithmic => True
         ClassQuadratic => True
-        _ => False
+        ClassPolynomial(_) => False
+        ClassExponential => False
+        ClassUnknown => False
       }
     ClassLinearithmic =>
       match b {
@@ -441,33 +454,51 @@ fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
         ClassLog => True
         ClassLinear => True
         ClassLinearithmic => True
-        _ => False
+        ClassQuadratic => False
+        ClassPolynomial(_) => False
+        ClassExponential => False
+        ClassUnknown => False
       }
     ClassLinear =>
       match b {
         ClassConstant => True
         ClassLog => True
         ClassLinear => True
-        _ => False
+        ClassLinearithmic => False
+        ClassQuadratic => False
+        ClassPolynomial(_) => False
+        ClassExponential => False
+        ClassUnknown => False
       }
     ClassLog =>
       match b {
         ClassConstant => True
         ClassLog => True
-        _ => False
+        ClassLinear => False
+        ClassLinearithmic => False
+        ClassQuadratic => False
+        ClassPolynomial(_) => False
+        ClassExponential => False
+        ClassUnknown => False
       }
     ClassConstant =>
       match b {
         ClassConstant => True
-        _ => False
+        ClassLog => False
+        ClassLinear => False
+        ClassLinearithmic => False
+        ClassQuadratic => False
+        ClassPolynomial(_) => False
+        ClassExponential => False
+        ClassUnknown => False
       }
   }
 
 fn meet_asymptotic_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass =
-  if asymptotic_dominates(a: a, b: b) then b else a
+  if asymptotic_dominates(a, b) then b else a
 
 fn join_asymptotic_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass =
-  if asymptotic_dominates(a: a, b: b) then a else b
+  if asymptotic_dominates(a, b) then a else b
 
 fn classify(cost: SymbolicCost) -> AsymptoticClass =
   match cost {

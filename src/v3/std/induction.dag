@@ -644,7 +644,7 @@ fn cost_bound_to_symbolic(bound: CostBound) -> SymbolicCost =
     AtomicBound { cost: c } => atomic_cost_to_symbolic(c)
     ProductBound { factors: fs } => product_atoms_to_symbolic(fs)
     SumOfProductsBound { terms: ts } => sum_products_to_symbolic(ts)
-    SumBound { terms: ts } => sum_bounds_to_symbolic(ts)
+    SumBound { terms: ts } => UnknownCost("CostBound SumBound awaits non-recursive projection lowering")
     ForeverBound => UnknownCost("forever bound")
     ErrorBound => UnknownCost("invalid cost bound")
   }
@@ -668,11 +668,6 @@ fn product_term_to_symbolic(factors: List<AtomicCost>) -> SymbolicCost =
 fn sum_products_to_symbolic(terms: List<List<AtomicCost>>) -> SymbolicCost =
   fold(terms, ConstantCost(0), |running, term|
     sequential(running, product_term_to_symbolic(term))
-  )
-
-fn sum_bounds_to_symbolic(terms: List<CostBound>) -> SymbolicCost =
-  fold(terms, ConstantCost(0), |running, term|
-    sequential(running, cost_bound_to_symbolic(term))
   )
 
 fn cost_constant() -> CostBound { ConstantBound }
