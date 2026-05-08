@@ -3,9 +3,16 @@
 // PROBE SCOPE (T-Ground-Pilot worker brief):
 //   Validate that algebra-homomorphism inhabitance search reproduces
 //   today's name-keyed table-lookup routing for the Rust target on a
-//   bounded primitive set: {i8, i16, i32, i64, i128, u8, u16, u32, u64, bool, ()}.
-//   (T-Int128 Slice B1 added i128; u128 deferred to B2 pending interval
-//   representation widening — see int_literal_ranges.rs.)
+//   bounded primitive set: {i8, i16, i32, i64, i128, u8, u16, u32, u64, u128,
+//   bool, ()}.
+//   (T-Int128 Slice B1 added i128. R3 Phase B-1 (commit `59511503e`) closed the
+//   prior `u128` deferral by widening `IntervalInt::ExactInterval` to a BigInt
+//   host repr — `u128::MAX` now fits — and the substrate `u128` row landed in
+//   `dsl/extdeps/languages/rust/primitives.dag`. Mirror updated here for
+//   parity. `isize` / `usize` rows remain held — pending Director disposition
+//   on consumer-side platform-width carrier shape (`TargetCarrier` /
+//   `IntegerAlgebra` are closed enums with no platform-width variant; see
+//   gunb-ai/gunbc#2224 STOP-AND-PING #issuecomment-4409297233).)
 //
 // FRAMING QUESTION:
 //   Does inhabitance-search routing — consuming structural target-primitive
@@ -262,6 +269,19 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
+    // R3 Phase B-1 (commit `59511503e`): unsigned 128-bit. Symmetric to i128
+    // above; unblocked by Phase A's BigInt host repr widening for
+    // `IntervalInt::ExactInterval` so `u128::MAX` (2^128 - 1) fits as a
+    // declared-fact range bound.
+    RustPrimitive::IntegerPrimitive {
+        target_name: "u128",
+        algebra: IntegerAlgebra::Semiring,
+        carrier: TargetCarrier::Word128,
+        range_min_inclusive: "0",
+        range_max_inclusive: "340282366920938463463374607431768211455",
+        is_copy: true,
+        overflow: IntegerOverflow::TwoComplementWrap,
+    },
     // Bool — BooleanAlgebra over Bit.
     RustPrimitive::NonIntegerPrimitive {
         target_name: "bool",
@@ -281,8 +301,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
 // =============================================================================
 // Structural .dag-side facts.
 //
-// Mirrors dsl/std/integer.dag (Int8..Int64 + Int128, UInt8..UInt64) and the
-// std-side declarations of Bool and Unit. Each .dag-side type unfolds
+// Mirrors dsl/std/integer.dag (Int8..Int64 + Int128, UInt8..UInt64 + UInt128)
+// and the std-side declarations of Bool and Unit. Each .dag-side type unfolds
 // to a RoutingKey; production resolution will read the real type-alias
 // chain via the v3 substrate's resolve_item_types.
 // =============================================================================
@@ -298,6 +318,7 @@ pub enum DagType {
     UInt16,
     UInt32,
     UInt64,
+    UInt128,
     Bool,
     Unit,
 }
@@ -312,13 +333,14 @@ pub const DAG_PILOT_TYPES: &[DagType] = &[
     DagType::UInt16,
     DagType::UInt32,
     DagType::UInt64,
+    DagType::UInt128,
     DagType::Bool,
     DagType::Unit,
 ];
 
 /// Unfold a pilot .dag-side type to its routing-key facts.
 ///
-/// Authority: dsl/std/integer.dag (Int8..Int64 + Int128, UInt8..UInt64), plus the
+/// Authority: dsl/std/integer.dag (Int8..Int64 + Int128, UInt8..UInt64 + UInt128), plus the
 /// canonical std modeling of Bool as BooleanAlgebra<Bit> and Unit as the
 /// terminal object.
 pub fn dag_type_facts(t: DagType) -> RoutingKey {
@@ -358,6 +380,10 @@ pub fn dag_type_facts(t: DagType) -> RoutingKey {
         DagType::UInt64 => RoutingKey::Integer {
             algebra: IntegerAlgebra::Semiring,
             carrier: TargetCarrier::Word64,
+        },
+        DagType::UInt128 => RoutingKey::Integer {
+            algebra: IntegerAlgebra::Semiring,
+            carrier: TargetCarrier::Word128,
         },
         DagType::Bool => RoutingKey::NonInteger {
             algebra: NonIntegerAlgebra::BooleanAlgebra,
@@ -513,6 +539,7 @@ mod tests {
             (DagType::UInt16, "u16"),
             (DagType::UInt32, "u32"),
             (DagType::UInt64, "u64"),
+            (DagType::UInt128, "u128"),
         ] {
             let p = ground(dag).unwrap_or_else(|e| panic!("{dag:?} must ground: {e:?}"));
             assert_eq!(target_name(p), expected, "routing for {dag:?}");
@@ -550,6 +577,7 @@ mod tests {
             (DagType::UInt16, "u16"),
             (DagType::UInt32, "u32"),
             (DagType::UInt64, "u64"),
+            (DagType::UInt128, "u128"),
             (DagType::Bool, "bool"),
             (DagType::Unit, "()"),
         ];
