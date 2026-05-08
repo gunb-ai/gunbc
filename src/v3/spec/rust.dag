@@ -79,6 +79,7 @@ import v3.std.substrate {
   port, node, resolve_producer, lane2_workflow_at, declaration_by_id,
   declaration_by_name
 }
+import std.computation { per_call_pattern_at }
 import v3.std.clean_emission {
   CleanEmissionContract,
   TargetCleanEmissionBinding,
@@ -1704,5 +1705,18 @@ data rust_declaration_by_name_accessor: SubstrateAccessorRealization = {
 data declaration_by_name_binding_rust: SubstrateAccessorBinding = {
   accessor: declaration_by_name
   realization: rust_declaration_by_name_accessor
+  language: rust_language
+}
+
+// Per-call descent evidence query consumed by cost/complexity lenses.
+// `dag::per_call_pattern_at(&Dag, NodeId) -> Option<CallPattern>` takes
+// the call-site id by value, matching emitted transform input rendering.
+data rust_per_call_pattern_at_accessor: SubstrateAccessorRealization = {
+  carrier: "per_call_pattern_at({p0}, *{p1})"
+}
+
+data per_call_pattern_at_binding_rust: SubstrateAccessorBinding = {
+  accessor: per_call_pattern_at
+  realization: rust_per_call_pattern_at_accessor
   language: rust_language
 }
