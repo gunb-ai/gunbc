@@ -126,8 +126,16 @@ impl RealizationCostTable {
             let target = require_field_decl_ref(fields, "target", decl.id)?;
             let cost = require_field_int(fields, "cost", decl.id)?;
 
+            // Mirror the coarse-grained field-presence acceptance criteria
+            // from `emit/rust_target.rs:779+` so this consumer accepts only
+            // rows the existing realization authority also accepts (single
+            // row-validity contract — INVARIANTS P2; gpt-5-5-pro REQUEST_CHANGES
+            // on PR #2194 sha 9ed08bc3 BLOCKING).
             match category {
                 Category::Type => {
+                    require_field_string(fields, "carrier", decl.id)?;
+                    require_field_bool(fields, "is_copy", decl.id)?;
+                    require_field_present(fields, "fields", decl.id)?;
                     if table.types.insert(target, cost).is_some() {
                         return Err(BuildError::DuplicateRealization {
                             declaration: decl.id,
@@ -136,6 +144,8 @@ impl RealizationCostTable {
                     }
                 }
                 Category::Callable => {
+                    require_field_present(fields, "strategy", decl.id)?;
+                    require_field_present(fields, "parameters", decl.id)?;
                     if table.callables.insert(target, cost).is_some() {
                         return Err(BuildError::DuplicateRealization {
                             declaration: decl.id,
@@ -145,6 +155,7 @@ impl RealizationCostTable {
                 }
                 Category::Operator => {
                     let op = require_field_decl_ref(fields, "op", decl.id)?;
+                    require_field_string(fields, "carrier", decl.id)?;
                     if table.operators.insert((target, op), cost).is_some() {
                         return Err(BuildError::DuplicateRealization {
                             declaration: decl.id,
@@ -154,6 +165,7 @@ impl RealizationCostTable {
                     }
                 }
                 Category::Behavior => {
+                    require_field_string(fields, "carrier", decl.id)?;
                     if table.behaviors.insert(target, cost).is_some() {
                         return Err(BuildError::DuplicateRealization {
                             declaration: decl.id,
@@ -233,6 +245,63 @@ fn require_field_int(
             declaration,
             detail: "realization data item is missing a required Int field (`cost`)",
         })
+}
+
+fn require_field_string(
+    fields: &[(String, FieldValue)],
+    label: &str,
+    declaration: DeclarationId,
+) -> Result<(), BuildError> {
+    fields
+        .iter()
+        .find(|(l, _)| l == label)
+        .and_then(|(_, v)| match v {
+            FieldValue::Literal(LiteralBits::String(_)) => Some(()),
+            _ => None,
+        })
+        .ok_or(BuildError::MalformedRealization {
+            declaration,
+            detail: "realization data item is missing a required String field",
+        })
+}
+
+fn require_field_bool(
+    fields: &[(String, FieldValue)],
+    label: &str,
+    declaration: DeclarationId,
+) -> Result<(), BuildError> {
+    fields
+        .iter()
+        .find(|(l, _)| l == label)
+        .and_then(|(_, v)| match v {
+            FieldValue::Literal(LiteralBits::Bool(_)) => Some(()),
+            _ => None,
+        })
+        .ok_or(BuildError::MalformedRealization {
+            declaration,
+            detail: "realization data item is missing a required Bool field",
+        })
+}
+
+/// Coarse-grained presence check for fields whose internal shape is
+/// validated by the bootstrap-inhabitance check (e.g., `fields:
+/// List<FieldBinding>`, `strategy: CallableStrategy`, `parameters:
+/// List<CallableParameter>`). This consumer only needs to confirm the
+/// field is authored on the row; full shape validation lives at the
+/// substrate-inhabitance boundary.
+fn require_field_present(
+    fields: &[(String, FieldValue)],
+    label: &str,
+    declaration: DeclarationId,
+) -> Result<(), BuildError> {
+    if fields.iter().any(|(l, _)| l == label) {
+        Ok(())
+    } else {
+        Err(BuildError::MalformedRealization {
+            declaration,
+            detail: "realization data item is missing a required field",
+        })
+    }
 }
 
 #[cfg(test)]
