@@ -5455,7 +5455,7 @@ mod perf_within_baseline_tests {
 }
 
 /// Single-rule classifier for the §225 comparator-Le guard. The runtime
-/// path in [`TestRunner::eval_perf_within_baseline`] inlines the same rule
+/// path in [`TestRunner::eval_perf_within_baseline`] calls this helper
 /// (`comparator_label != "Le"` → fail-closed). Lifted as a free function
 /// so unit tests can drive the same classifier against the substrate-
 /// declared `ComparisonOp` variant set without DAG fixtures.
