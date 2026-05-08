@@ -3581,6 +3581,34 @@ pub mod lens_cost_symbolic {
     pub type SymbolicCostLookup = crate::dag::Lookup<crate::dag::SymbolicCost>;
 }
 
+/// `cost_target_realization.dag` `.dag`-tier consumer of the
+/// `declaration_by_name` substrate accessor (T-CostLens-Composition
+/// Slice 1a.1; gunb-ai/gunbc#2141 ε scope per gunbc#2181 ratification).
+/// Six per-category meta-type `Declaration?` resolvers covering all
+/// `*Realization` carriers declared in `src/v3/std/emit_model.dag`
+/// (TypeRealization / CallableRealization / OperatorRealization /
+/// BehaviorRealization / TypeInstantiationRealization / PatternRealization).
+pub mod lens_cost_target_realization {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+
+        include!("lens_cost_target_realization_generated.rs");
+    }
+
+    pub use generated::{
+        behavior_realization_meta, callable_realization_meta, operator_realization_meta,
+        pattern_realization_meta, type_instantiation_realization_meta, type_realization_meta,
+    };
+}
+
 /// Provenance lens. The authority lives in
 /// `src/v3/lenses/provenance.dag`; the Rust projection is auto-emitted
 /// into `src/v3/compiler/src/lens_provenance_generated.rs` and wrapped
