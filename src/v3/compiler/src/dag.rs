@@ -432,76 +432,9 @@ pub struct NominalOpacity {
 /// variants below because they are not records and must not be encoded
 /// as anonymous fields. Bounded by the Scaffold Boundaries invariant in
 /// `INVARIANTS.md`.
-#[derive(Debug, Clone)]
-pub enum ValueBody {
-    /// The body exists in source at the given span but is not yet
-    /// lowered to a value sub-DAG. Records, lists, and string-keyed
-    /// maps lower structurally.
-    Unparsed(SourceSpan),
-    /// The body parsed as a record literal and was inhabitance-
-    /// checked against the declared type. Each field holds a
-    /// recursively structural `FieldValue`; the label matches a
-    /// field on the type's Conj children.
-    Structural { fields: Vec<(String, FieldValue)> },
-    /// Scalar-valued data declaration: `data answer: Int = 42`.
-    /// Carries `LiteralBits` directly (Int / Bool / String) —
-    /// NOT a full `FieldValue`. This is deliberate:
-    ///
-    /// - `FieldValue::Record { .. }` at the top level is already
-    ///   representable as `ValueBody::Structural { fields }`;
-    ///   allowing `ValueBody::Scalar(FieldValue::Record(..))` would
-    ///   make illegal/overlapping states representable (two distinct
-    ///   encodings of the same top-level record body). Rejected.
-    /// - `FieldValue::Reference` and `Variant` as top-level data
-    ///   bodies are out of scope for DB-10's acceptance. Top-level
-    ///   lists use `ValueBody::List` above; do not widen `Scalar`
-    ///   to swallow non-scalar shapes.
-    ///
-    /// DB-10 (Lane 3 Stage 3a.2) — `compiler.dag` needs compile-time
-    /// scalar constants; previously the parser rejected non-
-    /// `{`-shaped RHS, so scalar `data` declarations could not exist.
-    Scalar(LiteralBits),
-    /// Top-level structural list value: `data xs: List<T> = [...]`.
-    ///
-    /// 4-pattern check for `List`:
-    /// - Pattern 1 (fact placement): fails. The ordered element sequence
-    ///   is the data declaration's value fact, not a property of the
-    ///   declaration's type edge or meta tag.
-    /// - Pattern 2 (variant-is-data): fails. `Vec<FieldValue>` is a
-    ///   distinct structural payload from source spans, record fields, and
-    ///   scalar bits.
-    /// - Pattern 3 (algebraic form): fails. List bodies are not points in
-    ///   the same algebra as records/scalars; they carry ordered
-    ///   homogeneous element facts needed by Engine/tokenizer consumers.
-    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
-    ///   `Structural` record labels or `Scalar` primitive constants.
-    ///
-    /// Verdict: terminal at the current top-level data-body layer. Elements
-    /// deliberately reuse `FieldValue`, matching nested structural list
-    /// values and preserving sum-constructor identity for list-of-sum data.
-    List(Vec<FieldValue>),
-    /// Top-level structural string-keyed map value:
-    /// `data table: Map<String, T> = { "k": v }`.
-    ///
-    /// 4-pattern check for `Map`:
-    /// - Pattern 1 (fact placement): fails. The key/value table is the
-    ///   data declaration's value fact, not a type-edge or meta-tag fact.
-    /// - Pattern 2 (variant-is-data): fails. `FieldMap` carries
-    ///   duplicate-free keyed entries, distinct from ordered lists, records,
-    ///   scalar bits, and source spans.
-    /// - Pattern 3 (algebraic form): fails. Map bodies are not points in
-    ///   the same algebra as records/scalars/lists; they carry string-keyed
-    ///   lookup facts needed by map-shaped bootstrap data.
-    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
-    ///   record labels or ordered list positions.
-    ///
-    /// Verdict: terminal at the current top-level data-body layer. Values
-    /// deliberately reuse `FieldValue`, matching nested structural map
-    /// values. `FieldMap` keeps insertion order for deterministic regen
-    /// while making duplicate keys unrepresentable. Non-string-key maps are
-    /// a separate future carrier.
-    Map(FieldMap),
-}
+// ValueBody is generated from `std/substrate.dag`; map payloads are wrapped
+// in `FieldMap` on the Rust side to preserve duplicate-key rejection.
+include!("dag_value_body_generated.rs");
 
 /// Ordered string-keyed structural map entries with duplicate keys rejected at
 /// construction. The ordered storage is deliberate: `.dag` data maps preserve

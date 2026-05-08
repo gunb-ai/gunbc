@@ -180,6 +180,8 @@ type FieldValue
 type ValueBody
   = ValueBodyUnparsed(SourceSpan)
   | ValueBodyStructural { fields: List<FieldEntry> }
+  | ValueBodyScalar(LiteralBits)
+  | ValueBodyList(List<FieldValue>)
   | ValueBodyMap(List<FieldEntry>)
 
 // Type substrate.

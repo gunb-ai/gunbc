@@ -913,6 +913,45 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
     return "\n\n".join(parts)
 
 
+def render_value_body_sum(variants: list[VariantDef]) -> str:
+    variant_name_overrides = {
+        "ValueBodyUnparsed": "Unparsed",
+        "ValueBodyStructural": "Structural",
+        "ValueBodyScalar": "Scalar",
+        "ValueBodyList": "List",
+        "ValueBodyMap": "Map",
+    }
+    tuple_payload_overrides = {
+        "ValueBodyMap": "FieldMap",
+    }
+    record_field_overrides = {
+        ("ValueBodyStructural", "fields"): "Vec<(String, FieldValue)>",
+    }
+
+    lines = ["#[derive(Debug, Clone)]", "pub enum ValueBody {"]
+    for variant in variants:
+        variant_name = variant_name_overrides.get(variant.name, variant.name)
+        if variant.kind == "unit":
+            lines.append(f"    {variant_name},")
+        elif variant.kind == "tuple":
+            payload_ty = tuple_payload_overrides.get(variant.name, rust_type(variant.payload))
+            lines.append(f"    {variant_name}({payload_ty}),")
+        elif variant.kind == "record":
+            lines.append(f"    {variant_name} {{")
+            for label, ty in variant.fields or []:
+                field_ty = record_field_overrides.get((variant.name, label), rust_type(ty))
+                lines.append(f"        {label}: {field_ty},")
+            lines.append("    },")
+        else:
+            raise ValueError(f"unsupported variant kind {variant.kind}")
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def render_dag_value_body_module(sums: dict[str, list[VariantDef]]) -> str:
+    return render_value_body_sum(sums["ValueBody"])
+
+
 def render_dag_branch_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
         render_sum(
@@ -984,6 +1023,10 @@ def expected_outputs() -> dict[Path, str]:
         SRC_DIR / "dag_scalar_generated.rs": format_with_header(
             "src/v3/std/substrate.dag",
             render_dag_scalar_module(substrate_records, substrate_sums),
+        ),
+        SRC_DIR / "dag_value_body_generated.rs": format_with_header(
+            "src/v3/std/substrate.dag",
+            render_dag_value_body_module(substrate_sums),
         ),
         SRC_DIR / "dag_branch_generated.rs": format_with_header(
             "src/v3/std/substrate.dag",
