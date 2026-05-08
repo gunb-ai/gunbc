@@ -236,9 +236,10 @@ data rust_pilot_primitives: List<RustPrimitive> = [
     range_min_inclusive: "-9223372036854775808", range_max_inclusive: "9223372036854775807",
     is_copy: true, overflow: TwoComplementWrap },
 
-  // T-Int128 Slice B1: signed 128-bit. Range fits host i128 by definition;
-  // the symmetric u128 row is deferred to Slice B2 (interval-representation
-  // widening required first).
+  // T-Int128 Slice B1: signed 128-bit. Range fits host i128 by definition.
+  // (Historical: the symmetric `u128` row was deferred to Slice B2 pending
+  // interval-representation widening; that deferral was closed by R3 Phase A
+  // BigInt host repr — see the resolved `u128` row below at line 274.)
   IntegerPrimitive { target_name: "i128", algebra: OrderedRingAlgebra, carrier: Word128Carrier,
     range_min_inclusive: "-170141183460469231731687303715884105728",
     range_max_inclusive: "170141183460469231731687303715884105727",
