@@ -956,6 +956,10 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
 
 
 def render_value_body_sum(variants: list[VariantDef]) -> str:
+    # This duplicates the substrate variant list intentionally. `ValueBody` is
+    # not a generic sum mirror: Map needs Rust-side invariant wrapping, and any
+    # new constructor must force an explicit renderer review instead of silently
+    # inheriting the generic `render_sum` path.
     expected = [
         ("ValueBodyUnparsed", "tuple", "SourceSpan", ()),
         ("ValueBodyStructural", "record", None, (("fields", "List<FieldEntry>"),)),
@@ -983,6 +987,9 @@ def render_value_body_sum(variants: list[VariantDef]) -> str:
     tuple_payload_overrides = {
         "ValueBodyMap": "FieldMap",
     }
+    # Structural record bodies keep their existing Vec carrier because record
+    # duplicate-field rejection is enforced during lowering; Map uses FieldMap
+    # here because string-keyed map uniqueness is a Rust-side carrier invariant.
     record_field_overrides = {
         ("ValueBodyStructural", "fields"): "Vec<(String, FieldValue)>",
     }
