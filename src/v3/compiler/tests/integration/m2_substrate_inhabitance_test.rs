@@ -944,6 +944,73 @@ fn ep_two_descent(n: Int, m: Int) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_indirect_call_fail_closed_invariance() {
+    // Phase-1 broadening Slice 6 — cementing-only. Pin the fail-closed
+    // invariance for indirect-call dispatch (`w.f(x)` over a parameter
+    // whose declared type is `Wrapper { f: fn(Int) -> Int }`).
+    //
+    // Substrate state at HEAD: `TransformDispatch::Indirect` /
+    // `ArrowPortRef` are forward-looking comment-only references in
+    // `prereq_x_call_on_field_access_ratchet_test.rs` — the substrate
+    // types do not exist yet. Indirect calls lower to a typed
+    // `Diagnostic::ResolveError` naming the X1.b prerequisite, never
+    // reaching a callable Transform node. The per-call descent producer
+    // therefore correctly emits NO evidence for them — fail-closed by
+    // structural absence rather than a classifier extension.
+    //
+    // This test is a tripwire: when `TransformDispatch::Indirect` /
+    // `ArrowPortRef` substrate eventually lands and indirect calls
+    // start lowering to a real Transform, the X1.b ResolveError will
+    // stop firing and `per_call_descent_evidence` will start producing
+    // entries for these call sites. This test will then fail, surfacing
+    // the producer-extension obligation atomically with the substrate
+    // landing — same discipline pattern Slice 4's per-arg cementing
+    // established.
+    let src = r#"
+type Wrapper { f: fn(Int) -> Int }
+
+fn invoke(w: Wrapper, x: Int) -> Int = w.f(x)
+"#;
+    let dag = match compile_to_dag(src, "e_p_indirect_call_cementing.v3") {
+        Ok(_) => panic!(
+            "indirect-call lowering must remain blocked at HEAD until \
+             the TransformDispatch::Indirect substrate lands; this test \
+             is the tripwire surfacing that landing"
+        ),
+        Err(CompileError::Semantic(dag)) => dag,
+        Err(err) => panic!("expected Semantic compile failure, got {err:?}"),
+    };
+
+    // (a) The X1.b ResolveError must fire for the indirect call site.
+    let saw_x1b_diagnostic = dag.diagnostics().iter().any(|(_, d)| match d {
+        Diagnostic::ResolveError { name, .. } => {
+            name.contains("Prereq-X1.b") || name.contains("parameter")
+        }
+        _ => false,
+    });
+    assert!(
+        saw_x1b_diagnostic,
+        "expected X1.b ResolveError naming the indirect parameter call site"
+    );
+
+    // (b) The per-call descent producer must emit NO evidence entry
+    // attributed to `invoke`'s body — there is no callable Transform
+    // for the indirect call to populate the side table from. Any future
+    // entry implies a substrate landing the producer must then classify.
+    let entries = per_call_descent_evidence(&dag);
+    let invoke_entries: Vec<_> = entries
+        .iter()
+        .filter(|entry| entry.caller == "invoke")
+        .collect();
+    assert!(
+        invoke_entries.is_empty(),
+        "indirect calls must not appear in the per-call side table at HEAD; \
+         got entries — substrate has likely landed and the producer \
+         needs an Indirect classifier slice"
+    );
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\
