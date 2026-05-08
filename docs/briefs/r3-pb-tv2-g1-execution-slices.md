@@ -1,23 +1,24 @@
 # R3 PB — T-V2-Retirement G-1 execution slices
 
-**Status:** EXECUTION BRIEF for issue #1975. Authored after the PM S-1 worker brief landed, using the later Population A/B audit deltas as the current substrate-grep receipt.
+**Status:** EXECUTION BRIEF for issue #1975. Authored after the PM S-1 worker brief landed on `origin/main` as [`r3-tv2-retirement-s1-worker-brief.md`](r3-tv2-retirement-s1-worker-brief.md), using the later Population A/B audit deltas as the current substrate-grep receipt.
 
 **Scope:** Population B G-1 only: matrix §3.1, §3.2, and §3.3. This brief does not authorize `src/v2/` deletion, workspace-member removal, Pop A property-test migration, or `verification.dag` convergence.
 
 ## Current gates
 
-S-1 is met by [`r3-tv2-retirement-s1-worker-brief.md`](r3-tv2-retirement-s1-worker-brief.md), so the original S-1 STOP no longer blocks planning. The remaining gates are per-slice:
+S-1 is met by [`r3-tv2-retirement-s1-worker-brief.md`](r3-tv2-retirement-s1-worker-brief.md), which is present in `docs/briefs/` on the PR base and this branch. The original S-1 STOP no longer blocks planning. The remaining gates are per-slice:
 
 | Slice | Current gate | Execution posture |
 |---|---|---|
 | §3.1 `p0_std_render_repeat_string_test.rs` | Needs either evaluator-hosted replacement or a structural-guarantee receipt for deletion. | HELD until one branch is proven. |
-| §3.2 `m2_substrate_inhabitance_test.rs::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority` | Substrate authority migration is already landed; the v2 mirror test is now redundant, but Cargo deps cannot drop until §3.1 is green. | READY as an isolated parity-test retirement, or bundle with §3.3 when §3.1 lands. |
+| §3.2 `m2_substrate_inhabitance_test.rs::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority` | Substrate authority migration is already landed: `Dag::kernel_algebra_profile` reads the lowered `ValueBody::Map`, with an override test proving it does not use a hard-coded Rust fallback. The v2 mirror test is now redundant, but Cargo deps cannot drop until §3.1 is green. | READY as an isolated parity-test retirement, or bundle with §3.3 when §3.1 lands. |
 | §3.3 `src/v3/compiler/Cargo.toml` v2 path deps | Both §3.1 and §3.2 consumers must be gone first. | ATOMIC with the second consumer-removal PR. |
 
 Load-bearing substrate-grep receipt: [`r3-pb-tv2-population-coverage-audit.md`](r3-pb-tv2-population-coverage-audit.md) §"B.2 reclassification" and the 2026-05-06 delta. It verifies:
 
 - `Dag::kernel_algebra_profile` reads lowered `data kernel_algebra_profile` from `dsl/std/algebra.dag`.
 - `v3_kernel_algebra_profile_reads_lowered_dag_map_authority` already ratchets the v3-side authority read.
+- `v3_kernel_algebra_profile_accessor_prefers_local_map_data_over_rust_fallback` proves a local lowered map overrides the historical Rust table values.
 - The surviving v2 oracle line and `v2_profile_to_v3` shim are drift-ratchet residue, not semantic authority.
 - The `v2-compiler` / `v2-compiler-tests` Cargo edges are still present solely because §3.1 and §3.2 consumers still compile.
 
