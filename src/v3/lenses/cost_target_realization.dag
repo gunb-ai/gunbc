@@ -3,6 +3,12 @@
 // (PR #2194 merged at commit 633f83854; T-CostLens-Composition follow-on
 // per gunb-ai/gunbc#2141 ε ratification at gunbc#2181 #issuecomment-4401584012).
 //
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A
+//   (v3-native; ε path consumer-evidence-only — not a v2 mirror. The
+//   six per-category meta-type resolvers are pure single-call delegations
+//   to `declaration_by_name`, fail-closed at the substrate-Option boundary.
+//   See `docs/v3-lens-capability-register.md` cost_target_realization.dag row.)
+//
 // **Slice 1a.1 (minimum-viable consumer-proof)**: provides `.dag`-tier
 // fns that acquire the substrate meta-type `DeclarationId`s needed for
 // per-target realization-cost extraction. Mechanically demonstrates the
