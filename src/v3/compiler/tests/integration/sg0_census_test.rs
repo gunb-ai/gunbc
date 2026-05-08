@@ -325,6 +325,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // until then, this hand-Rust ratchet IS the slice's structural gate.
     "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
     "src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs",
+    // T-LBP complexity-lens behavioral-completion cementing dispatch (PR #2271):
+    // frozen-oracle cementing per `complexity_lens_behavioral_completion`
+    // promoted in `docs/v3-lens-capability-register.md`. SG-0 census entry
+    // tracks the new cementing module per existing per-cementing-test
+    // EXPECTED_HAND_AUTHORED_TEST discipline.
+    "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
