@@ -108,7 +108,7 @@ pub fn summary_from_costs(
     ComplexitySummary {
         work: (p0).clone(),
         span: (p1).clone(),
-        asymptotic_class: classify(&p0),
+        asymptotic_class: classify_symbolic_cost(&p0),
         work_certainty: (p2).clone(),
         span_certainty: (p3).clone(),
     }

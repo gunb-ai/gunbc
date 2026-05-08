@@ -29,7 +29,7 @@ import std.algebra {
   SymbolicCost,
   AsymptoticClass,
   unnamed_size_variable,
-  classify,
+  classify_symbolic_cost,
   dominates,
   sequential,
   iterate,
@@ -137,7 +137,7 @@ fn summary_from_costs(
   {
     work: work
     span: span
-    asymptotic_class: classify(work)
+    asymptotic_class: classify_symbolic_cost(work)
     work_certainty: work_certainty
     span_certainty: span_certainty
   }

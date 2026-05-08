@@ -286,7 +286,7 @@ where
     }
 }
 
-pub fn classify<C>(cost: C) -> AsymptoticClass
+pub fn classify_symbolic_cost<C>(cost: C) -> AsymptoticClass
 where
     C: std::borrow::Borrow<SymbolicCost>,
 {
