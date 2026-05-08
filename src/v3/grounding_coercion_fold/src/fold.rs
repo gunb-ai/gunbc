@@ -566,7 +566,7 @@ mod type_realization_gate_tests {
     fn unknown_declaration_id_fails_type_realization_gate() {
         with_bootstrap_stack(|| {
             let dag = Dag::new();
-            let bogus: DeclarationId = unsafe { std::mem::transmute(u32::MAX) };
+            let bogus = DeclarationId::declaration_id_raw_for_testing(u32::MAX);
             assert_eq!(
                 validate_type_realization_reference(&dag, bogus),
                 Err(EmissionDiagnostic::UnderRefined {

@@ -92,8 +92,8 @@ mod tests {
 
     #[test]
     fn declared_projection_requires_emit_model_inhabitance_rows() {
-        // `DeclarationId` has no public constructor; row-count fails before intent fields are read.
-        let dummy_decl: v3_compiler::dag::DeclarationId = unsafe { std::mem::transmute(0u32) };
+        // Opaque ids: row-count gate returns before dereferencing projections (witness-only ctor).
+        let dummy_decl = v3_compiler::dag::DeclarationId::declaration_id_raw_for_testing(0);
         let dag = v3_compiler::dag::Dag::new_empty_for_testing();
         let lifetime: LifetimeAnalysisReport = Default::default();
         let spec = LanguageSpecProjection::DeclaredIntegerIntents(BTreeMap::from([(
