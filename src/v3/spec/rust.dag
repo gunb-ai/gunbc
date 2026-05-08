@@ -1698,7 +1698,7 @@ data declaration_by_id_binding_rust: SubstrateAccessorBinding = {
 // borrows the `String` arg as `&str`, `.cloned()` lifts the borrowed
 // `Declaration` into owned form mirroring `declaration_by_id`'s shape.
 data rust_declaration_by_name_accessor: SubstrateAccessorRealization = {
-  carrier: "({p0}).declaration_by_name(&{p1}).cloned()"
+  carrier: "({p0}).declaration_by_name({p1}).cloned()"
 }
 
 data declaration_by_name_binding_rust: SubstrateAccessorBinding = {
