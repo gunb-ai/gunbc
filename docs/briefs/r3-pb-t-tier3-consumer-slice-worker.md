@@ -32,7 +32,7 @@ Wire the substrate-tier `PerfWithinBaseline` TestPredicate (landed via #2204 / P
   - Resolve both `DeclarationRef`s to `PerfBaselineMeasurement` data declarations (use existing `resolve_declaration_ref_id` helper).
   - Apply ratified ratio budget: `median_bound = baseline.median_ns × 2`; `p99_bound = baseline.p99_ns × 5` (saturate-on-overflow → Fail with explicit reason; do NOT silently wrap).
   - Apply `comparator` to both axes; both must satisfy → `Pass`. Otherwise `Fail` with both subject/threshold values surfaced for triage.
-- Helper `fn perf_baseline_measurement(&self, decl_id: DeclarationId, role: &str) -> Result<PerfMeasurement, String>`: structural resolve of `{ median_ns, p99_ns }` from declaration's data record fields.
+- Helper `fn perf_baseline_measurement(&self, decl_id: DeclarationId, role: &str) -> Result<PerfMeasurement, PerfMeasurementResolveError>`: structural resolve of `{ median_ns, p99_ns }` from declaration's data record fields. Define a small typed `PerfMeasurementResolveError` carrier (variants for `MissingDeclaration`, `WrongConnective`, `MissingField { field }`, `WrongFieldKind { field }`) co-located with the helper. The outer `eval_perf_within_baseline` boundary converts the typed error into `ClaimResult::Fail(format!(...))` with the role label preserved. Per `CODING.md` typed-error discipline; raw `String` is reserved for the `ClaimResult` boundary, not the inner helper.
 
 **Note on jolly-dove-416 prior art:** child session's stripped-from-#2252 `eval_perf_within_baseline` impl is structurally a fit; reuse-with-attribution is acceptable (option-B carve places this code here, not there). Worker should cross-check the stripped form against this brief's spec — not re-invent wholesale.
 
@@ -48,9 +48,19 @@ Wire the substrate-tier `PerfWithinBaseline` TestPredicate (landed via #2204 / P
 - Add a small CLI under `src/v3/compiler/src/bin/` (or analogous) — `tier3_baseline_capture` — that runs `cargo bench tier3_mirror_phase1 -- --measurement-time` per ratified R-7 procedure (N=5, median-of-medians, max-p99-across-runs), serializes to `tier3_baseline.json` schema (per `docs/audit/c1-tier3-baseline-capture-procedure.md`), and prints the JSON.
 - Phase-2 measurement path emits same JSON schema; both consumed by §3 below.
 
-**Capture invocation** (per ratified R-7, runs only on `ubicloud-standard-2` per ratified R-3): `cargo bench --bench tier3_mirror_perf -- --N=5 --output tier3_baseline.json`. Capture-once-and-commit; recapture only on Director-approved trigger conditions.
+**Single-authority discipline** (per INVARIANTS.md boundary discipline; addresses parallel-representation drift class):
+- **Authority for gate inputs is the `.dag data` declarations in §3** — the runtime evaluator consumes those facts; that's where the gate-input value lives in source.
+- `tier3_baseline.json` is a **capture-time intermediate artifact**, not a parallel committed authority. The CLI emits JSON; the JSON is consumed once by a checked-in regen step that overwrites the §3 `.dag data` literal values. Drift-detection: a CI test re-parses `tier3_baseline.json` (if committed alongside as audit evidence) and asserts equality with §3 `.dag data` values; mismatch fails CI.
+- Receipt rows in §4 cite §3 `.dag data` values by `data` name + commit SHA — receipt is an **audit projection**, not a parallel value source. CI test: receipt-cited values match §3 `.dag` values verbatim (string compare on rendered numbers).
 
-**Acceptance:** `tier3_baseline.json` lands at `src/v3/compiler/benches/tier3_baseline.json` (or `docs/audit/`) with all 4 mirror groups populated.
+**Capture invocation** (per ratified R-7, runs only on `ubicloud-standard-2` per ratified R-3): `cargo bench --bench tier3_mirror_perf -- --N=5 --output tier3_baseline.json`. Capture-once-and-commit (the JSON intermediate); regen step writes `.dag data`; both committed in the same PR. Recapture only on Director-approved trigger conditions per `docs/audit/c1-tier3-baseline-capture-procedure.md` §5.1.
+
+**Acceptance:** (a) `tier3_baseline.json` capture-time intermediate lands (location TBD by `c1-tier3-baseline-capture-procedure.md` §3 — `src/v3/compiler/benches/tier3_baseline.json` is the proposed default); (b) §3 `.dag data` values land coherent with JSON; (c) CI drift-detection test asserts JSON ↔ `.dag data` equality.
+
+**Hand-Rust scaffold accounting** (per P5 dissolution-trigger discipline; INVARIANTS.md TRACKED-vs-UNTRACKED-debt):
+- New hand-Rust files under this slice: `src/v3/compiler/src/bin/tier3_baseline_capture.rs` (CLI), Phase-2 bench additions in `src/v3/compiler/benches/tier3_mirror_perf.rs`, helper module for `PerfMeasurement` + `PerfMeasurementResolveError` adjacent to `test_runner.rs`.
+- **SG-0 census receipt**: capture before/after `EXPECTED_HAND_AUTHORED_NON_TEST` count in the slice PR description; the count is **expected to ratchet UP** by the line count of the new hand-Rust files (this slice is consumer-side scaffolding, not stage0 hand-Rust dissolution; ratchet is acknowledged-and-tracked, not silenced).
+- **Dissolution trigger / roadmap row**: the Phase-1 hand-Rust mirror benches (`bench_termination_mirror` etc. in `tier3_mirror_perf.rs`) and the `tier3_baseline_capture` CLI are **temporary scaffolding** that retires when (a) per-mirror retirement workers land — Phase-1 bench targets cease to exist as the hand-Rust mirrors dissolve — and (b) Phase-2 measurements pass on `main` — capture-once-and-commit means the CLI is run once and need not exist long-term. Brief adds a corresponding row to `ROADMAP.md` (or wherever T-Tier3 scaffolding-retirement is tracked) explicitly naming the trigger: "delete `bin/tier3_baseline_capture.rs` + Phase-1 bench groups when per-mirror retirement chain closes." If `ROADMAP.md` doesn't have a natural slot, the slice PR description must name the deletion path + trigger inline; the worker confirms the receipt at PR-open time.
 
 ### 3. `tier3_mirror_dissolution_perf_within_budget` claim authoring
 
@@ -85,7 +95,7 @@ data tier3_mirror_dissolution_perf_within_budget: TestClaim = TestClaim {
 
 **Shape:**
 - After mirror-dissolution PRs land (the 4 per-mirror retirement workers in PB canvas, separate dispatch chain): re-run Phase-2 capture. Gate clears if all 4 mirror Phase-2 measurements satisfy `≤ baseline × {2, 5}`. Per PB Mgr disposition at PR #2254 review, this measurement run is a separate trigger post-#2204-consumer slice merge (deliverables 1-3 author against mock-shape; deliverable 4 measurement waits for per-mirror retirement chain).
-- Receipt artifact: `docs/audit/c1-tier3-perf-budget-receipt.md` — captures Phase-1 baseline rows, Phase-2 measurement rows, gate-clearing status per mirror. Carries explicit "execute when per-mirror dispatch completes" note tying the measurement run to retirement-chain landing.
+- Receipt artifact: `docs/audit/c1-tier3-perf-budget-receipt.md` — **audit projection only**: cites §3 `.dag data` declaration names + commit SHA for each baseline + Phase-2 measurement; copies the rendered values verbatim and asserts them via a CI string-equality check vs the source-of-truth `.dag` values (per single-authority discipline above). Carries explicit "execute when per-mirror dispatch completes" note tying the measurement run to retirement-chain landing.
 - §1.8 ledger row update: `tier3_mirror_dissolution_perf_within_budget` flips DECLARED → PASSING with PR-link evidence.
 
 **Acceptance:** receipt doc lands, ledger updated, T-Tier3 R-4 gate flips green in `r3-program-plan.md` §3 lane status table for T-Tier3-Dissolution.
