@@ -65,19 +65,7 @@ fn compiler_tokenize_dag_imports_moved_types_from_std() {
 #[test]
 fn tokenize_generated_module_matches_checked_in_snapshot() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let out_path = manifest_dir.join("src").join("tokenize_generated.rs");
-    let fresh =
-        std::process::Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()))
-            .current_dir(&manifest_dir)
-            .args(["run", "-q", "-p", "v3-compiler", "--bin", "regen_tokenize"])
-            .output()
-            .expect("spawn regen_tokenize");
-    assert!(
-        fresh.status.success(),
-        "regen_tokenize failed: {}",
-        String::from_utf8_lossy(&fresh.stderr)
-    );
-    let regen = std::fs::read_to_string(&out_path).expect("read regenerated tokenize_generated.rs");
+    let regen = v3_compiler::regen_tokenize::tokenize_generated_rust_formatted(&manifest_dir);
     assert_eq!(
         CHECKED_IN_GENERATED.trim(),
         regen.trim(),
