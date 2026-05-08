@@ -42,7 +42,32 @@ data omni_service_operations: List<DemoOperation> = [
     endpoint: {
       method: GET,
       path: {
-        tokens: [LiteralToken { text: "users" }, ParamToken { name: "id" }]
+        tokens: [LiteralToken { text: "users/" }, ParamToken { name: "id" }]
+      }
+    }
+  },
+  {
+    endpoint: {
+      method: GET,
+      path: {
+        tokens: [
+          LiteralToken { text: "orgs/" },
+          ParamToken { name: "org" },
+          LiteralToken { text: "/repos/" },
+          ParamToken { name: "repo" }
+        ]
+      }
+    }
+  },
+  {
+    endpoint: {
+      method: POST,
+      path: {
+        tokens: [
+          LiteralToken { text: "secrets/" },
+          ParamToken { name: "secret_name" },
+          LiteralToken { text: ":addVersion" }
+        ]
       }
     }
   }
@@ -80,6 +105,16 @@ fn expected_routes() -> BTreeSet<RestRoute> {
             method: "GET".to_string(),
             path: "/users/{id}".to_string(),
             path_parameters: vec!["id".to_string()],
+        },
+        RestRoute {
+            method: "GET".to_string(),
+            path: "/orgs/{org}/repos/{repo}".to_string(),
+            path_parameters: vec!["org".to_string(), "repo".to_string()],
+        },
+        RestRoute {
+            method: "POST".to_string(),
+            path: "/secrets/{secret_name}:addVersion".to_string(),
+            path_parameters: vec!["secret_name".to_string()],
         },
         RestRoute {
             method: "POST".to_string(),
@@ -164,8 +199,11 @@ fn shape_b_openapi_projection_produces_3_1_yaml_for_rest_operations() {
     assert!(yaml.contains("    get:\n"));
     assert!(yaml.contains("    post:\n"));
     assert!(yaml.contains("  '/users/{id}':\n"));
+    assert!(yaml.contains("  '/orgs/{org}/repos/{repo}':\n"));
+    assert!(yaml.contains("  '/secrets/{secret_name}:addVersion':\n"));
     assert_eq!(yaml.matches("  '/users':\n").count(), 1);
     assert!(yaml.contains("      parameters:\n        - name: id\n          in: path\n          required: true\n          schema:\n            type: string\n"));
+    assert!(yaml.contains("        - name: org\n          in: path\n          required: true\n          schema:\n            type: string\n        - name: repo\n          in: path\n          required: true\n          schema:\n            type: string\n"));
     assert_eq!(openapi_yaml_routes(&yaml), expected_routes());
 }
 

@@ -124,17 +124,21 @@ pub fn project_openapi_yaml(dag: &Dag) -> Result<String, ProjectOpenApiError> {
             if !route.path_parameters.is_empty() {
                 out.push_str("\n      parameters:\n");
                 for parameter in &route.path_parameters {
-                    out.push_str("        - name: ");
-                    out.push_str(parameter);
-                    out.push_str(
-                        "\n          in: path\n          required: true\n          schema:\n            type: string",
-                    );
+                    append_path_parameter_yaml(&mut out, parameter);
                 }
             }
             out.push_str("\n      responses:\n        '200':\n          description: OK\n");
         }
     }
     Ok(out)
+}
+
+fn append_path_parameter_yaml(out: &mut String, parameter: &str) {
+    out.push_str("        - name: ");
+    out.push_str(parameter);
+    out.push_str(
+        "\n          in: path\n          required: true\n          schema:\n            type: string\n",
+    );
 }
 
 fn malformed(declaration: Option<&str>, detail: impl Into<String>) -> ProjectOpenApiError {
@@ -218,7 +222,7 @@ fn parse_path_template(
             detail: "PathTemplate.tokens must be a list".to_string(),
         });
     };
-    let mut segments = Vec::with_capacity(tokens.len());
+    let mut pieces = Vec::with_capacity(tokens.len());
     let mut parameters = Vec::new();
     for token in tokens {
         let FieldValue::Variant {
@@ -245,9 +249,9 @@ fn parse_path_template(
             }
         })?;
         match label.as_str() {
-            "LiteralToken" => segments.push(text),
+            "LiteralToken" => pieces.push(text),
             "ParamToken" => {
-                segments.push(format!("{{{text}}}"));
+                pieces.push(format!("{{{text}}}"));
                 parameters.push(text);
             }
             other => {
@@ -258,8 +262,13 @@ fn parse_path_template(
             }
         }
     }
+    let path = pieces.concat();
     Ok(ParsedPathTemplate {
-        path: format!("/{}", segments.join("/")),
+        path: if path.starts_with('/') {
+            path
+        } else {
+            format!("/{path}")
+        },
         parameters,
     })
 }
