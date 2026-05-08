@@ -671,7 +671,7 @@ data suite: TestSuite = {
 }
 
 #[test]
-fn perf_baseline_measurement_carrier_has_median_and_p99_fields() {
+fn perf_baseline_measurement_carrier_has_ordered_duration_fields() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
     let carrier = dag
         .declaration_by_name("PerfBaselineMeasurement")
@@ -680,7 +680,7 @@ fn perf_baseline_measurement_carrier_has_median_and_p99_fields() {
         panic!("PerfBaselineMeasurement must be a record carrier");
     };
     let labels: Vec<_> = children.iter().map(|field| field.label.as_str()).collect();
-    assert_eq!(labels, vec!["median_ns", "p99_ns"]);
+    assert_eq!(labels, vec!["median_ns", "p99_delta_ns"]);
 }
 
 #[test]
@@ -715,12 +715,12 @@ import std.verification { PerfWithinBaseline, TestClaim, TestSuite }
 
 data trivial_baseline: PerfBaselineMeasurement = {
   median_ns: 100
-  p99_ns: 200
+  p99_delta_ns: 100
 }
 
 data trivial_measurement: PerfBaselineMeasurement = {
   median_ns: 200
-  p99_ns: 1000
+  p99_delta_ns: 800
 }
 
 data claim: TestClaim = {
@@ -755,12 +755,12 @@ import std.verification { PerfWithinBaseline, TestClaim, TestSuite }
 
 data trivial_baseline: PerfBaselineMeasurement = {
   median_ns: 100
-  p99_ns: 200
+  p99_delta_ns: 100
 }
 
 data regressed_measurement: PerfBaselineMeasurement = {
   median_ns: 200
-  p99_ns: 1001
+  p99_delta_ns: 801
 }
 
 data claim: TestClaim = {

@@ -1852,7 +1852,7 @@ enum ProgramInputRole {
 
 struct PerfMeasurement {
     median_ns: i64,
-    p99_ns: i64,
+    p99_delta_ns: i64,
 }
 
 impl ProgramInputRole {
@@ -2528,7 +2528,23 @@ impl<'a> TestRunner<'a> {
                 );
             }
         };
-        let p99_bound = match baseline.p99_ns.checked_mul(5) {
+        let subject_p99 = match subject.median_ns.checked_add(subject.p99_delta_ns) {
+            Some(v) => v,
+            None => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline: subject p99 calculation overflowed Int".to_string(),
+                );
+            }
+        };
+        let baseline_p99 = match baseline.median_ns.checked_add(baseline.p99_delta_ns) {
+            Some(v) => v,
+            None => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline: baseline p99 calculation overflowed Int".to_string(),
+                );
+            }
+        };
+        let p99_bound = match baseline_p99.checked_mul(5) {
             Some(v) => v,
             None => {
                 return ClaimResult::Fail(
@@ -2538,13 +2554,13 @@ impl<'a> TestRunner<'a> {
         };
 
         let median_ok = self.compare_cost(comparator, subject.median_ns, median_bound);
-        let p99_ok = self.compare_cost(comparator, subject.p99_ns, p99_bound);
+        let p99_ok = self.compare_cost(comparator, subject_p99, p99_bound);
         if median_ok && p99_ok {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
                 "PerfWithinBaseline: subject median_ns={} vs threshold {} and p99_ns={} vs threshold {} did not satisfy comparator",
-                subject.median_ns, median_bound, subject.p99_ns, p99_bound
+                subject.median_ns, median_bound, subject_p99, p99_bound
             ))
         }
     }
@@ -2564,8 +2580,8 @@ impl<'a> TestRunner<'a> {
             ));
         };
         Ok(PerfMeasurement {
-            median_ns: int_structural_field(fields, "median_ns")?,
-            p99_ns: int_structural_field(fields, "p99_ns")?,
+            median_ns: nat_structural_field(fields, "median_ns")?,
+            p99_delta_ns: nat_structural_field(fields, "p99_delta_ns")?,
         })
     }
 
@@ -3994,11 +4010,14 @@ fn string_field(fields: &[(String, FieldValue)], label: &str) -> Result<String, 
     }
 }
 
-fn int_structural_field(fields: &[(String, FieldValue)], label: &str) -> Result<i64, String> {
+fn nat_structural_field(fields: &[(String, FieldValue)], label: &str) -> Result<i64, String> {
     match field(fields, label) {
-        Some(FieldValue::Literal(LiteralBits::Int(value))) => Ok(*value),
+        Some(FieldValue::Literal(LiteralBits::Int(value))) if *value >= 0 => Ok(*value),
+        Some(FieldValue::Literal(LiteralBits::Int(value))) => Err(format!(
+            "PerfBaselineMeasurement `{label}` must be a nonnegative Nat literal, got {value}"
+        )),
         Some(other) => Err(format!(
-            "PerfBaselineMeasurement `{label}` is not an Int: {other:?}"
+            "PerfBaselineMeasurement `{label}` is not a Nat literal: {other:?}"
         )),
         None => Err(format!("PerfBaselineMeasurement is missing `{label}`")),
     }
