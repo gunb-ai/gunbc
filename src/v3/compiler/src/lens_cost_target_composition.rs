@@ -22,7 +22,7 @@ use std::collections::HashMap;
 /// Built once per (Dag, language_spec_id) pair via
 /// [`RealizationCostTable::build_for_language`]. Categories mirror
 /// `src/v3/std/emit_model.dag` realization meta-types.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RealizationCostTable {
     types: HashMap<DeclarationId, i64>,
     callables: HashMap<DeclarationId, i64>,
@@ -52,6 +52,21 @@ enum Category {
 }
 
 impl RealizationCostTable {
+    /// Private internal initializer. Public construction goes through
+    /// [`RealizationCostTable::build_for_language`] so the substrate-derived
+    /// table cannot be fabricated empty/ungrounded by a downstream consumer
+    /// (fail-closed at the substrate-consumer boundary per
+    /// `INVARIANTS.md` LAYER MODEL — gpt-5-5-pro review on PR #2194 sha
+    /// 6548ccf4 BLOCKING finding).
+    fn empty() -> Self {
+        Self {
+            types: HashMap::new(),
+            callables: HashMap::new(),
+            operators: HashMap::new(),
+            behaviors: HashMap::new(),
+        }
+    }
+
     /// Build a cost table for the given language spec by scanning the dag's
     /// `data` declarations for realization rows whose `language` field
     /// resolves to `language_id`.
@@ -69,7 +84,7 @@ impl RealizationCostTable {
             .behavior_realization_meta()
             .ok_or(BuildError::MissingRealizationMeta("BehaviorRealization"))?;
 
-        let mut table = Self::default();
+        let mut table = Self::empty();
 
         for decl in dag.declarations() {
             let Some(meta_tag) = decl.meta_tag else {
