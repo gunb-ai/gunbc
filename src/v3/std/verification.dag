@@ -217,6 +217,16 @@ type TestPredicate
   | SymbolicCostExprEquals {
       expected: DeclarationRef
     }
+  // **🟢 TERMINAL at T-Tier3 P1 substrate scope.** Compare a measured
+  // `PerfBaselineMeasurement` declaration against a declared baseline
+  // measurement. The runner applies the ratified Tier-3 ratio budget:
+  // median uses baseline * 2 and p99 uses baseline * 5; `comparator`
+  // is applied to both axes.
+  | PerfWithinBaseline {
+      subject: DeclarationRef
+      comparator: ComparisonOp
+      baseline_ref: DeclarationRef
+    }
   // **🟡 Scaffold — BinaryDimensionReportEquals.** Compare two declarations
   // that produce `DimensionReport<C>` values by structural equality. This is
   // intentionally one binary predicate for TC1 eta-equivalence, TC2 strategy

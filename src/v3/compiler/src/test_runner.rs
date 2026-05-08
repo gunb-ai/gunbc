@@ -1850,6 +1850,11 @@ enum ProgramInputRole {
     ProgramOutputBind { output_bind_name: String },
 }
 
+struct PerfMeasurement {
+    median_ns: i64,
+    p99_ns: i64,
+}
+
 impl ProgramInputRole {
     fn output_bind_name(&self) -> Option<&str> {
         match self {
@@ -1947,6 +1952,7 @@ impl<'a> TestRunner<'a> {
                         "SymbolicCostExprEquals" => {
                             self.eval_symbolic_cost_expr_equals_shape(claim, &payload)
                         }
+                        "PerfWithinBaseline" => self.eval_perf_within_baseline(claim, &payload),
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
@@ -2480,6 +2486,115 @@ impl<'a> TestRunner<'a> {
         Err(format!(
             "SymbolicCostExprEquals `{field_label}` must reference a declaration of type \
              `SymbolicCost`; `{}` does not (declared type does not normalize to `SymbolicCost`).",
+            decl_display_name(decl_id, decl)
+        ))
+    }
+
+    fn eval_perf_within_baseline(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [subject_fv, comparator, baseline_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "PerfWithinBaseline payload should be exactly three fields \
+                 (subject: DeclarationRef, comparator: ComparisonOp, baseline_ref: DeclarationRef); \
+                 got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let subject_id = match self.resolve_declaration_ref_id(subject_fv, "subject") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let baseline_id = match self.resolve_declaration_ref_id(baseline_fv, "baseline_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let subject = match self.perf_baseline_measurement(subject_id, "subject") {
+            Ok(measurement) => measurement,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let baseline = match self.perf_baseline_measurement(baseline_id, "baseline_ref") {
+            Ok(measurement) => measurement,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+
+        let median_bound = match baseline.median_ns.checked_mul(2) {
+            Some(v) => v,
+            None => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline: median baseline threshold overflowed Int".to_string(),
+                );
+            }
+        };
+        let p99_bound = match baseline.p99_ns.checked_mul(5) {
+            Some(v) => v,
+            None => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline: p99 baseline threshold overflowed Int".to_string(),
+                );
+            }
+        };
+
+        let median_ok = self.compare_cost(comparator, subject.median_ns, median_bound);
+        let p99_ok = self.compare_cost(comparator, subject.p99_ns, p99_bound);
+        if median_ok && p99_ok {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "PerfWithinBaseline: subject median_ns={} vs threshold {} and p99_ns={} vs threshold {} did not satisfy comparator",
+                subject.median_ns, median_bound, subject.p99_ns, p99_bound
+            ))
+        }
+    }
+
+    fn perf_baseline_measurement(
+        &self,
+        decl_id: DeclarationId,
+        field_label: &str,
+    ) -> Result<PerfMeasurement, String> {
+        self.validate_perf_baseline_measurement_ref(decl_id, field_label)?;
+        let decl = self.dag.declaration(decl_id);
+        let Some(ValueBody::Structural { fields }) = decl.value_body.as_ref() else {
+            return Err(format!(
+                "PerfWithinBaseline `{field_label}` must reference a `data …: PerfBaselineMeasurement` \
+                 declaration with a structural value body; `{}` does not",
+                decl_display_name(decl_id, decl)
+            ));
+        };
+        Ok(PerfMeasurement {
+            median_ns: int_structural_field(fields, "median_ns")?,
+            p99_ns: int_structural_field(fields, "p99_ns")?,
+        })
+    }
+
+    fn validate_perf_baseline_measurement_ref(
+        &self,
+        decl_id: DeclarationId,
+        field_label: &str,
+    ) -> Result<(), String> {
+        let measurement_id = self
+            .dag
+            .declaration_by_name("PerfBaselineMeasurement")
+            .map(|decl| decl.id)
+            .ok_or_else(|| {
+                format!(
+                    "PerfWithinBaseline `{field_label}`: \
+                     `PerfBaselineMeasurement` type not found in bootstrap"
+                )
+            })?;
+        let decl = self.dag.declaration(decl_id);
+        let candidate = match &decl.connective {
+            TypeConnective::Arrow { output, .. } => *output,
+            _ => decl_id,
+        };
+        if self.normalize_transparent_type(candidate) == measurement_id {
+            return Ok(());
+        }
+        Err(format!(
+            "PerfWithinBaseline `{field_label}` must reference a declaration of type \
+             `PerfBaselineMeasurement`; `{}` does not",
             decl_display_name(decl_id, decl)
         ))
     }
@@ -3876,6 +3991,16 @@ fn string_field(fields: &[(String, FieldValue)], label: &str) -> Result<String, 
         Some(FieldValue::Literal(LiteralBits::String(value))) => Ok(value.clone()),
         Some(other) => Err(format!("TestClaim `{label}` is not a string: {other:?}")),
         None => Err(format!("TestClaim is missing `{label}`")),
+    }
+}
+
+fn int_structural_field(fields: &[(String, FieldValue)], label: &str) -> Result<i64, String> {
+    match field(fields, label) {
+        Some(FieldValue::Literal(LiteralBits::Int(value))) => Ok(*value),
+        Some(other) => Err(format!(
+            "PerfBaselineMeasurement `{label}` is not an Int: {other:?}"
+        )),
+        None => Err(format!("PerfBaselineMeasurement is missing `{label}`")),
     }
 }
 
