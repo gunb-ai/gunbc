@@ -91,6 +91,12 @@ type PortStateExpectation
   = Resolved
   | Unresolved
 
+// Closed comparator for measured Tier-3 perf-budget checks. Do not reuse
+// general `ComparisonOp`: `Gt` / `Ge` would invert the budget and let a
+// regression satisfy `PerfWithinBaseline`.
+type PerfBudgetComparisonOp
+  = AtMostBudget
+
 // **🟡 Scaffold — TestPredicate.** The remaining bootstrap carrier is
 // the outer "what property are we asserting?" coproduct. The
 // diagnostic, port-state, and cost-ordering sub-axes now flow through
@@ -216,6 +222,16 @@ type TestPredicate
   // predicate envelope.
   | SymbolicCostExprEquals {
       expected: DeclarationRef
+    }
+  // **🟢 TERMINAL at T-Tier3 P1 substrate scope.** Compare a measured
+  // `PerfBaselineMeasurement` declaration against a declared baseline
+  // measurement. The runner applies the ratified Tier-3 ratio budget:
+  // median uses baseline * 2 and p99 uses baseline * 5. `comparator`
+  // is a closed budget comparator, not general `ComparisonOp`.
+  | PerfWithinBaseline {
+      subject: DeclarationRef
+      comparator: PerfBudgetComparisonOp
+      baseline_ref: DeclarationRef
     }
   // **🟡 Scaffold — BinaryDimensionReportEquals.** Compare two declarations
   // that produce `DimensionReport<C>` values by structural equality. This is
