@@ -39,6 +39,10 @@ pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpen
             continue;
         };
         for row in rows {
+            // `rest_route_schema` already proved this list's element type carries
+            // the endpoint binding. Non-record rows are impossible for well-typed
+            // lowered data; skip them defensively while malformed endpoint records
+            // below fail closed with a typed projection error.
             let Some(fields) = record_fields(row) else {
                 continue;
             };
