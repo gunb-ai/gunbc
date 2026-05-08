@@ -6,6 +6,7 @@
 
 module std.computation
 
+import v3.std.substrate { Dag, NodeId }
 import std.termination {
   DescentEvidence, DescentUnknown, Strict, NonIncreasing,
   PositiveDescentAmount, OneStep, AdditionalStep,
@@ -59,6 +60,13 @@ type CallPattern
   | WorklistDrainCall { element: String }
   | FoldBodyCall { outer_collection: String }
   | SameArgumentCall
+
+// E-P typed query over the per-call descent-evidence side table. The Rust
+// authority is `v3_compiler::dag::per_call_pattern_at`; lenses consume this
+// accessor rather than walking producer storage directly.
+fn per_call_pattern_at(d: Dag, call_site: NodeId) -> CallPattern? {
+  host per_call_pattern_at
+}
 
 // 🟢 TERMINAL coproduct — shrink-rate witnesses aligned with `std.termination`. Dissolution: none
 // (structural `PositiveDescentAmount` / `ProportionalDivisor` already proof-grade).

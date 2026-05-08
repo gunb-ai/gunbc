@@ -51,6 +51,8 @@ mod bridge_lower_helpers_patch_zero_residual_test;
 mod canonical_lens_bridge_ratchet_test;
 #[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
 mod cementing_lens_registry_dispatch_test;
+#[path = "integration/cementing/complexity_lens_behavioral_completion.rs"]
+mod complexity_lens_behavioral_completion;
 #[path = "integration/cross_target_coverage_carrier_test.rs"]
 mod cross_target_coverage_carrier_test;
 #[path = "integration/e6_g1a_option3_static_lens_test.rs"]
