@@ -70,6 +70,18 @@ data omni_service_operations: List<DemoOperation> = [
         ]
       }
     }
+  },
+  {
+    endpoint: {
+      method: GET,
+      path: { tokens: [LiteralToken { text: "a-b" }] }
+    }
+  },
+  {
+    endpoint: {
+      method: GET,
+      path: { tokens: [LiteralToken { text: "a_b" }] }
+    }
   }
 ]
 
@@ -115,6 +127,16 @@ fn expected_routes() -> BTreeSet<RestRoute> {
             method: "POST".to_string(),
             path: "/secrets/{secret_name}:addVersion".to_string(),
             path_parameters: vec!["secret_name".to_string()],
+        },
+        RestRoute {
+            method: "GET".to_string(),
+            path: "/a-b".to_string(),
+            path_parameters: vec![],
+        },
+        RestRoute {
+            method: "GET".to_string(),
+            path: "/a_b".to_string(),
+            path_parameters: vec![],
         },
         RestRoute {
             method: "POST".to_string(),
@@ -201,6 +223,8 @@ fn shape_b_openapi_projection_produces_3_1_yaml_for_rest_operations() {
     assert!(yaml.contains("  '/users/{id}':\n"));
     assert!(yaml.contains("  '/orgs/{org}/repos/{repo}':\n"));
     assert!(yaml.contains("  '/secrets/{secret_name}:addVersion':\n"));
+    assert!(yaml.contains("      operationId: get_a_x2D_b\n"));
+    assert!(yaml.contains("      operationId: get_a_x5F_b\n"));
     assert_eq!(yaml.matches("  '/users':\n").count(), 1);
     assert!(yaml.contains("      parameters:\n        - name: id\n          in: path\n          required: true\n          schema:\n            type: string\n"));
     assert!(yaml.contains("        - name: org\n          in: path\n          required: true\n          schema:\n            type: string\n        - name: repo\n          in: path\n          required: true\n          schema:\n            type: string\n"));

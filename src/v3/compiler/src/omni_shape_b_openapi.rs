@@ -7,6 +7,7 @@
 //! program can own the artifact projection.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 
 use crate::dag::{Declaration, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 use crate::Dag;
@@ -39,16 +40,18 @@ pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpen
             continue;
         };
         for row in rows {
-            // `rest_route_schema` already proved this list's element type carries
-            // the endpoint binding. Non-record rows are impossible for well-typed
-            // lowered data; skip them defensively while malformed endpoint records
-            // below fail closed with a typed projection error.
-            let Some(fields) = record_fields(row) else {
-                continue;
-            };
-            let Some(endpoint) = record_field(fields, "endpoint") else {
-                continue;
-            };
+            let fields = record_fields(row).ok_or_else(|| {
+                malformed(
+                    decl.name.as_deref(),
+                    "service operation rows must be records",
+                )
+            })?;
+            let endpoint = record_field(fields, "endpoint").ok_or_else(|| {
+                malformed(
+                    decl.name.as_deref(),
+                    "service operation row missing `endpoint` field",
+                )
+            })?;
             let endpoint_fields = require_record(
                 decl.name.as_deref().unwrap_or("<anonymous>"),
                 "endpoint",
@@ -387,10 +390,105 @@ fn yaml_quoted(value: &str) -> String {
 }
 
 fn yaml_plain_operation_id(method: &str, path: &str) -> String {
-    let suffix = path
-        .trim_matches('/')
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
-        .collect::<String>();
+    let mut suffix = String::new();
+    for ch in path.trim_matches('/').chars() {
+        if ch.is_ascii_alphanumeric() {
+            suffix.push(ch);
+        } else {
+            write!(&mut suffix, "_x{:X}_", ch as u32).expect("write to String");
+        }
+    }
     format!("{}_{}", method.to_ascii_lowercase(), suffix)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compile_to_dag;
+
+    const SERVICE_FIXTURE: &str = r#"
+module t.openapi_malformed_projection
+
+import std.types { GET }
+import std.effects { LiteralToken }
+import v3.std.services { RestEndpointBinding }
+
+type DemoOperation {
+  endpoint: RestEndpointBinding
+}
+
+data service_operations: List<DemoOperation> = [
+  {
+    endpoint: {
+      method: GET,
+      path: { tokens: [LiteralToken { text: "users" }] }
+    }
+  }
+]
+"#;
+
+    fn compiled_service_fixture() -> Dag {
+        std::thread::Builder::new()
+            .name("openapi_malformed_projection_compile".to_string())
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                compile_to_dag(SERVICE_FIXTURE, "openapi_malformed_projection_fixture.dag")
+                    .expect("service fixture compiles")
+            })
+            .expect("spawn larger-stack compile thread")
+            .join()
+            .expect("larger-stack compile thread completes")
+    }
+
+    fn service_operations_id(dag: &Dag) -> DeclarationId {
+        dag.declarations()
+            .iter()
+            .find(|decl| decl.name.as_deref() == Some("service_operations"))
+            .expect("service_operations declaration exists")
+            .id
+    }
+
+    fn replace_first_service_row(dag: &mut Dag, replacement: FieldValue) {
+        let service_operations = service_operations_id(dag);
+        let ValueBody::List(rows) = dag
+            .declaration_mut(service_operations)
+            .value_body
+            .as_mut()
+            .expect("service_operations has value body")
+        else {
+            panic!("service_operations is a list");
+        };
+        rows[0] = replacement;
+    }
+
+    #[test]
+    fn extract_rest_routes_rejects_non_record_service_rows() {
+        let mut dag = compiled_service_fixture();
+        replace_first_service_row(
+            &mut dag,
+            FieldValue::Literal(LiteralBits::String("not a record".to_string())),
+        );
+
+        assert_eq!(
+            extract_rest_routes(&dag),
+            Err(ProjectOpenApiError::MalformedOperation {
+                declaration: "service_operations".to_string(),
+                detail: "service operation rows must be records".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn extract_rest_routes_rejects_service_rows_missing_endpoint() {
+        let mut dag = compiled_service_fixture();
+        replace_first_service_row(&mut dag, FieldValue::Record(vec![]));
+
+        assert_eq!(
+            extract_rest_routes(&dag),
+            Err(ProjectOpenApiError::MalformedOperation {
+                declaration: "service_operations".to_string(),
+                detail: "service operation row missing `endpoint` field".to_string(),
+            })
+        );
+    }
 }
