@@ -616,60 +616,62 @@ fn ep_count(xs: EpList) -> Int =
 
 #[test]
 fn e_p_per_call_descent_evidence_classifies_match_field_projection_self_call_as_strict_sub_value() {
-    // Phase-1 broadening Slice 2 — record-payload sibling of Slice 1.
-    // For `match t { EpNode { left: l } => ep_depth(l) }`, `lower.rs`
-    // synthesizes a FieldProject transform between the payload port and the
-    // user-scope name `l`, so the recursive arg is one indirection beyond the
-    // payload port that Slice 1's direct-equality check catches.
-    //
-    // Same structural-fact discipline as Slice 1: field_name is the
-    // FieldProject.field_label (the lowered Conj field label, NOT the user's
-    // `l` binding name), and type_name/variant_name come from the parent-Disj
-    // lookup of the resolved variant declaration.
-    let dag = compile_to_dag(
-        "\
+    with_full_bootstrap_stack(|| {
+        // Phase-1 broadening Slice 2 — record-payload sibling of Slice 1.
+        // For `match t { EpNode { left: l } => ep_depth(l) }`, `lower.rs`
+        // synthesizes a FieldProject transform between the payload port and the
+        // user-scope name `l`, so the recursive arg is one indirection beyond the
+        // payload port that Slice 1's direct-equality check catches.
+        //
+        // Same structural-fact discipline as Slice 1: field_name is the
+        // FieldProject.field_label (the lowered Conj field label, NOT the user's
+        // `l` binding name), and type_name/variant_name come from the parent-Disj
+        // lookup of the resolved variant declaration.
+        let dag = compile_to_dag(
+            "\
 type EpRec = EpLeaf | EpNode { left: EpRec }
 fn ep_depth(t: EpRec) -> Int =
   match t { EpNode { left: l } => ep_depth(l), EpLeaf => 0 }
 ",
-        "e_p_match_field_projection.v3",
-    )
-    .expect("recursive record-payload fixture compiles");
+            "e_p_match_field_projection.v3",
+        )
+        .expect("recursive record-payload fixture compiles");
 
-    let entries = per_call_descent_evidence(&dag);
-    let depth = entries
-        .iter()
-        .find(|entry| entry.caller == "ep_depth" && entry.callee == "ep_depth")
-        .expect("expected ep_depth self-call evidence in per-call side table");
+        let entries = per_call_descent_evidence(&dag);
+        let depth = entries
+            .iter()
+            .find(|entry| entry.caller == "ep_depth" && entry.callee == "ep_depth")
+            .expect("expected ep_depth self-call evidence in per-call side table");
 
-    assert_eq!(depth.evidence.len(), 1);
-    match &depth.evidence[0] {
-        SubValueRelation::StrictSubValue { field, factor } => {
-            assert_eq!(
-                field.field_name, "left",
-                "FieldProject.field_label is the variant Conj's structural field name"
-            );
-            assert_eq!(
-                field.variant_name, "EpNode",
-                "variant_name comes from the parent Disj's variant label"
-            );
-            assert_eq!(
-                field.type_name, "EpRec",
-                "type_name is the parent Disj declaration name"
-            );
-            assert_eq!(
-                field.element_type, "EpRec",
-                "element_type is the resolved name of the projected field's type"
-            );
-            assert_eq!(
-                factor,
-                &ShrinkFactor::UnitShrink,
-                "record-payload field-projection descent is a unit-shrink: \
+        assert_eq!(depth.evidence.len(), 1);
+        match &depth.evidence[0] {
+            SubValueRelation::StrictSubValue { field, factor } => {
+                assert_eq!(
+                    field.field_name, "left",
+                    "FieldProject.field_label is the variant Conj's structural field name"
+                );
+                assert_eq!(
+                    field.variant_name, "EpNode",
+                    "variant_name comes from the parent Disj's variant label"
+                );
+                assert_eq!(
+                    field.type_name, "EpRec",
+                    "type_name is the parent Disj declaration name"
+                );
+                assert_eq!(
+                    field.element_type, "EpRec",
+                    "element_type is the resolved name of the projected field's type"
+                );
+                assert_eq!(
+                    factor,
+                    &ShrinkFactor::UnitShrink,
+                    "record-payload field-projection descent is a unit-shrink: \
                  one constructor + one field peeled"
-            );
+                );
+            }
+            other => panic!("expected StrictSubValue for ep_depth(l), got {other:?}"),
         }
-        other => panic!("expected StrictSubValue for ep_depth(l), got {other:?}"),
-    }
+    });
 }
 
 #[test]
