@@ -76,10 +76,42 @@ class QuantileEdgeCaseTests(unittest.TestCase):
 
 class FailClosedSanityBandTests(unittest.TestCase):
     def test_rejects_non_positive_measurement(self):
-        """Procedure §5 rule 4: zero measurement → exit code 3."""
+        """Procedure §5 rule 4: zero raw measurement → exit code 3."""
         rc, _, err = run_helper({"iters": [1.0], "times": [0.0]})
         self.assertEqual(rc, 3)
         self.assertIn("non-positive", err)
+
+    def test_rejects_post_rounding_zero_from_subnanosecond_positive(self):
+        """Procedure §5 rule 4 post-rounding seam: raw 0.4 ns rounds to 0;
+        helper must fail-closed rather than emit `median_ns: 0` as a
+        plausible baseline row.
+
+        Per gpt-5-5-pro BLOCKING review on PR #2263 — the raw `> 0` check
+        passes for sub-nanosecond positives but `round(0.4) == 0` would
+        fabricate a zero baseline. Helper now validates POST-rounding
+        too, returning a distinct exit code (6).
+        """
+        rc, _, err = run_helper({"iters": [10.0], "times": [4.0]})
+        self.assertEqual(rc, 6)
+        self.assertIn("post-rounding", err)
+
+    def test_rejects_corruption_with_typed_exit_code(self):
+        """Sample-file corruption (length mismatch / missing keys / division
+        by zero on iters[i]==0 / JSON parse failure) → exit code 5 with
+        named diagnostic, not raw traceback. Per gpt-5-5-pro NON-BLOCKING
+        review — boundary contract consistency with named exit codes (2, 3,
+        4, 5, 6) for all CLI failure modes.
+        """
+        # Length mismatch
+        rc, _, err = run_helper({"iters": [1.0, 2.0], "times": [10.0]})
+        self.assertEqual(rc, 5)
+        self.assertIn("corruption", err)
+        # iters[i] == 0 → ZeroDivisionError caught and remapped
+        rc, _, err = run_helper({"iters": [0.0], "times": [10.0]})
+        self.assertEqual(rc, 5)
+        # Empty sample → ValueError caught and remapped
+        rc, _, err = run_helper({"iters": [], "times": []})
+        self.assertEqual(rc, 5)
 
     def test_rejects_p99_below_median(self):
         """Procedure §5 rule 3: p99 < median is impossible by construction.
@@ -93,15 +125,9 @@ class FailClosedSanityBandTests(unittest.TestCase):
         result = json.loads(out)
         self.assertGreaterEqual(result["p99_ns"], result["median_ns"])
 
-    def test_rejects_length_mismatch(self):
-        """sample.json with len(times) != len(iters) → corruption error."""
-        rc, _, err = run_helper({"iters": [1.0, 2.0], "times": [10.0]})
-        self.assertNotEqual(rc, 0)
-
-    def test_rejects_empty_sample(self):
-        """Empty times/iters → corruption error (no measurement slots)."""
-        rc, _, err = run_helper({"iters": [], "times": []})
-        self.assertNotEqual(rc, 0)
+    # (Length-mismatch + empty-sample rejection are now covered with
+    # exact exit-code 5 assertions in
+    # `test_rejects_corruption_with_typed_exit_code` above.)
 
 
 class IntegerRoundingTests(unittest.TestCase):
