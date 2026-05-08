@@ -2,12 +2,13 @@
 //!
 //! This module is intentionally a readiness/checklist surface, not production
 //! routing certification. `docs/audit/grounding-tests-stratum-b-scaffold-readiness.md`
-//! concludes that full Stratum B assertions are still gated on declared
-//! Coercion-Fold projection facts. Until those land, this module keeps the gates
-//! typed and visible without constructing local candidate rows or reading
-//! `ScratchIntExamples` as if it were the production fold.
+//! concludes that full Stratum B assertions are gated on declared Coercion-Fold
+//! projection facts. Integer inhabitance rows now have an executable declared
+//! projection path; remaining gates stay typed and visible without reading
+//! `ScratchIntExamples` as if it were production.
 
 use v3_compiler::dag::{Dag, TypeConnective};
+use v3_grounding_coercion_fold::MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS;
 
 use crate::diagnostic::GroundingTestsDiagnostic;
 
@@ -71,9 +72,7 @@ pub fn stratum_b_readiness(dag: &Dag) -> Vec<StratumBReadinessEntry> {
         },
         StratumBReadinessEntry {
             prerequisite: StratumBPrerequisite::IntegerInhabitanceRows,
-            state: StratumBPrerequisiteState::PendingExternal {
-                detail: "Rust/Python/Go integer inhabitance rows must carry algebra and BoundDeclaration facts",
-            },
+            state: integer_inhabitance_rows_state(dag),
         },
         StratumBReadinessEntry {
             prerequisite: StratumBPrerequisite::AlgebraIntentFacts,
@@ -153,11 +152,54 @@ fn bound_declaration_carrier_state(dag: &Dag) -> StratumBPrerequisiteState {
     }
 }
 
+fn integer_inhabitance_rows_state(dag: &Dag) -> StratumBPrerequisiteState {
+    let Some(meta) = dag.declaration_by_name("TargetIntegerTypeInhabitance") else {
+        return StratumBPrerequisiteState::Missing(
+            GroundingTestsDiagnostic::StratumBPrerequisiteMissing {
+                prerequisite: StratumBPrerequisite::IntegerInhabitanceRows.label(),
+                detail: "missing substrate declaration `TargetIntegerTypeInhabitance`".to_string(),
+            },
+        );
+    };
+    let row_count = dag
+        .declarations()
+        .iter()
+        .filter(|decl| decl.meta_tag == Some(meta.id))
+        .count();
+    if row_count >= MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS {
+        StratumBPrerequisiteState::Ready
+    } else {
+        StratumBPrerequisiteState::Missing(GroundingTestsDiagnostic::StratumBPrerequisiteMissing {
+            prerequisite: StratumBPrerequisite::IntegerInhabitanceRows.label(),
+            detail: format!(
+                "expected at least {MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS} `TargetIntegerTypeInhabitance` rows, got {row_count}"
+            ),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use v3_compiler::dag::{Interval, IntervalWidth, PositiveIntervalWidth};
     use v3_compiler::generated_full_bootstrap_dag;
+    use v3_grounding_coercion_fold::{
+        fold_program_to_target, IntegerBoundProjection, IntegerTargetIntent,
+        LanguageSpecProjection, TargetInhabitance,
+    };
+    use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 
     use super::*;
+
+    fn declaration_id_by_name(
+        dag: &v3_compiler::dag::Dag,
+        name: &str,
+    ) -> v3_compiler::dag::DeclarationId {
+        dag.declaration_by_name(name)
+            .unwrap_or_else(|| panic!("missing declaration `{name}`"))
+            .id
+    }
 
     #[test]
     fn bound_declaration_carrier_is_ready_in_full_bootstrap() {
@@ -175,13 +217,51 @@ mod tests {
     }
 
     #[test]
-    fn current_readiness_reports_external_gates_without_production_assertions() {
+    fn integer_inhabitance_rows_are_ready_in_full_bootstrap() {
+        let dag = generated_full_bootstrap_dag();
+        let readiness = stratum_b_readiness(&dag);
+        assert_eq!(
+            readiness
+                .iter()
+                .find(|entry| {
+                    entry.prerequisite == StratumBPrerequisite::IntegerInhabitanceRows
+                })
+                .map(|entry| &entry.state),
+            Some(&StratumBPrerequisiteState::Ready)
+        );
+    }
+
+    #[test]
+    fn declared_integer_projection_selects_bootstrap_inhabitance_row() {
+        let dag = generated_full_bootstrap_dag();
+        let lifetime: LifetimeAnalysisReport = Default::default();
+        let projection = LanguageSpecProjection::DeclaredIntegerIntents(BTreeMap::from([(
+            BindingId(11),
+            IntegerTargetIntent {
+                target_language: dag.rust_language_spec().expect("Rust LanguageSpec"),
+                kernel_integer: declaration_id_by_name(&dag, "UInt32"),
+                algebra: declaration_id_by_name(&dag, "UInt32"),
+                bound: IntegerBoundProjection::Static(Interval::BoundedInterval {
+                    lower: 0,
+                    width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::UnitCount {
+                        units: 4_294_967_295,
+                    }),
+                }),
+            },
+        )]));
+
+        let got = fold_program_to_target(&dag, &lifetime, &projection).expect("projection");
+        assert_eq!(got.get(&BindingId(11)), Some(&TargetInhabitance::RustU32));
+    }
+
+    #[test]
+    fn current_readiness_reports_remaining_external_gates_without_scratch_examples() {
         let dag = generated_full_bootstrap_dag();
         let missing = stratum_b_missing_prerequisites(&dag);
         assert_eq!(
             missing.len(),
-            6,
-            "only the BoundDeclaration carrier should be ready today"
+            5,
+            "BoundDeclaration and integer inhabitance rows should be ready today"
         );
         assert!(missing.iter().all(|diagnostic| matches!(
             diagnostic,
