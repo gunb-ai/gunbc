@@ -211,3 +211,48 @@ fn require_field_int(
             detail: "realization data item is missing a required Int field (`cost`)",
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::generated_full_bootstrap_dag;
+
+    /// Slice 1a smoke: builder against bootstrap rust.dag spec data
+    /// produces a non-empty `RealizationCostTable` with at-least-one
+    /// known-key cost lookup. Per Substrate Mgr disposition at gunbc#2068
+    /// #issuecomment-4402516739: minimal 1a self-test at the boundary;
+    /// exhaustive variant coverage lives in Slice 1b's parameterized-fold
+    /// tests.
+    #[test]
+    fn build_for_rust_language_produces_nonempty_table() {
+        let dag = generated_full_bootstrap_dag();
+        let rust_id = dag
+            .rust_language_spec()
+            .expect("bootstrap dag has rust_language");
+        let table = RealizationCostTable::build_for_language(&dag, rust_id)
+            .expect("build_for_language(rust) succeeds against bootstrap dag");
+
+        // Smoke: at least one TypeRealization landed in the type table
+        // (bootstrap rust.dag has rust_int / rust_uint8 / rust_i32 / etc.,
+        // all with `cost: 1`).
+        assert!(
+            table.type_count() > 0,
+            "RealizationCostTable types map is empty for Rust; expected at least one \
+             TypeRealization row from bootstrap rust.dag"
+        );
+
+        // At-least-one known-key cost lookup: the `Int` primitive has a
+        // `rust_int: TypeRealization { cost: 1, ... }` row in
+        // src/v3/spec/rust.dag (line ~118).
+        let int_decl = dag
+            .declaration_by_name("Int")
+            .expect("bootstrap dag has Int declaration");
+        let int_cost = table.type_cost(int_decl.id);
+        assert_eq!(
+            int_cost,
+            Some(1),
+            "type_cost(Int) for Rust target should be 1 per src/v3/spec/rust.dag rust_int row; \
+             got {int_cost:?}"
+        );
+    }
+}
