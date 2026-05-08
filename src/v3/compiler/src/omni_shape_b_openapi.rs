@@ -1,3 +1,11 @@
+//! Shape B OpenAPI demonstration helpers.
+//!
+//! OpenAPI is deliberately not a compiler emit target: Shape B artifacts are
+//! user-program outputs derived from a compiled DAG, while `emit.rs` remains
+//! scoped to Shape A programming-language targets. This module provides the
+//! narrow Rust-side receipt used by the R3 demo until the equivalent `.dag`
+//! program can own the artifact projection.
+
 use std::collections::BTreeSet;
 
 use crate::dag::{DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
@@ -10,11 +18,11 @@ pub struct RestRoute {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EmitOpenApiError {
+pub enum ProjectOpenApiError {
     MalformedOperation { declaration: String, detail: String },
 }
 
-pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, EmitOpenApiError> {
+pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpenApiError> {
     let mut routes = BTreeSet::new();
     for decl in dag.declarations() {
         let Some(ValueBody::List(rows)) = &decl.value_body else {
@@ -52,7 +60,7 @@ pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, EmitOpenApi
     Ok(routes)
 }
 
-pub fn emit_openapi_yaml(dag: &Dag) -> Result<String, EmitOpenApiError> {
+pub fn project_openapi_yaml(dag: &Dag) -> Result<String, ProjectOpenApiError> {
     let routes = extract_rest_routes(dag)?;
     let mut out = String::from(
         "openapi: 3.1.0\ninfo:\n  title: GunBC generated service\n  version: 0.1.0\npaths:\n",
@@ -79,8 +87,8 @@ pub fn emit_openapi_yaml(dag: &Dag) -> Result<String, EmitOpenApiError> {
     Ok(out)
 }
 
-fn malformed(declaration: Option<&str>, detail: impl Into<String>) -> EmitOpenApiError {
-    EmitOpenApiError::MalformedOperation {
+fn malformed(declaration: Option<&str>, detail: impl Into<String>) -> ProjectOpenApiError {
+    ProjectOpenApiError::MalformedOperation {
         declaration: declaration.unwrap_or("<anonymous>").to_string(),
         detail: detail.into(),
     }
@@ -97,8 +105,8 @@ fn require_record<'a>(
     declaration: &str,
     field: &str,
     value: &'a FieldValue,
-) -> Result<&'a [(String, FieldValue)], EmitOpenApiError> {
-    record_fields(value).ok_or_else(|| EmitOpenApiError::MalformedOperation {
+) -> Result<&'a [(String, FieldValue)], ProjectOpenApiError> {
+    record_fields(value).ok_or_else(|| ProjectOpenApiError::MalformedOperation {
         declaration: declaration.to_string(),
         detail: format!("`{field}` must be a record"),
     })
@@ -112,25 +120,25 @@ fn parse_http_method(
     dag: &Dag,
     declaration: &str,
     value: &FieldValue,
-) -> Result<String, EmitOpenApiError> {
+) -> Result<String, ProjectOpenApiError> {
     let FieldValue::Variant {
         constructor,
         payload,
     } = value
     else {
-        return Err(EmitOpenApiError::MalformedOperation {
+        return Err(ProjectOpenApiError::MalformedOperation {
             declaration: declaration.to_string(),
             detail: "`endpoint.method` must be an HttpMethod variant".to_string(),
         });
     };
     if !payload.is_empty() {
-        return Err(EmitOpenApiError::MalformedOperation {
+        return Err(ProjectOpenApiError::MalformedOperation {
             declaration: declaration.to_string(),
             detail: "HttpMethod variants must not carry payload".to_string(),
         });
     }
     variant_label_in_parent(dag, "HttpMethod", *constructor).ok_or_else(|| {
-        EmitOpenApiError::MalformedOperation {
+        ProjectOpenApiError::MalformedOperation {
             declaration: declaration.to_string(),
             detail: "HttpMethod constructor is not a variant of HttpMethod".to_string(),
         }
@@ -141,15 +149,15 @@ fn parse_path_template(
     dag: &Dag,
     declaration: &str,
     value: &FieldValue,
-) -> Result<String, EmitOpenApiError> {
+) -> Result<String, ProjectOpenApiError> {
     let fields = require_record(declaration, "endpoint.path", value)?;
     let tokens =
-        record_field(fields, "tokens").ok_or_else(|| EmitOpenApiError::MalformedOperation {
+        record_field(fields, "tokens").ok_or_else(|| ProjectOpenApiError::MalformedOperation {
             declaration: declaration.to_string(),
             detail: "PathTemplate missing `tokens` field".to_string(),
         })?;
     let FieldValue::List(tokens) = tokens else {
-        return Err(EmitOpenApiError::MalformedOperation {
+        return Err(ProjectOpenApiError::MalformedOperation {
             declaration: declaration.to_string(),
             detail: "PathTemplate.tokens must be a list".to_string(),
         });
@@ -161,28 +169,29 @@ fn parse_path_template(
             payload,
         } = token
         else {
-            return Err(EmitOpenApiError::MalformedOperation {
+            return Err(ProjectOpenApiError::MalformedOperation {
                 declaration: declaration.to_string(),
                 detail: "PathTemplate token must be a UrlPathToken variant".to_string(),
             });
         };
         let label =
             variant_label_in_parent(dag, "UrlPathToken", *constructor).ok_or_else(|| {
-                EmitOpenApiError::MalformedOperation {
+                ProjectOpenApiError::MalformedOperation {
                     declaration: declaration.to_string(),
                     detail: "token constructor is not a variant of UrlPathToken".to_string(),
                 }
             })?;
-        let text =
-            single_string_payload(payload).ok_or_else(|| EmitOpenApiError::MalformedOperation {
+        let text = single_string_payload(payload).ok_or_else(|| {
+            ProjectOpenApiError::MalformedOperation {
                 declaration: declaration.to_string(),
                 detail: format!("{label} token payload must contain one string"),
-            })?;
+            }
+        })?;
         match label.as_str() {
             "LiteralToken" => segments.push(text),
             "ParamToken" => segments.push(format!("{{{text}}}")),
             other => {
-                return Err(EmitOpenApiError::MalformedOperation {
+                return Err(ProjectOpenApiError::MalformedOperation {
                     declaration: declaration.to_string(),
                     detail: format!("unsupported UrlPathToken variant `{other}`"),
                 })

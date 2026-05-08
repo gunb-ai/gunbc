@@ -16,7 +16,6 @@
 //! cross-target code should read them.
 
 pub(crate) mod collection_ops_method_contract;
-pub(crate) mod openapi_target;
 pub(crate) mod python_target;
 pub(crate) mod rust_target;
 
@@ -52,9 +51,6 @@ impl<T> VariantPayloadBinding<T> {
     }
 }
 
-pub use self::openapi_target::{
-    emit_openapi_yaml, extract_rest_routes, EmitOpenApiError, RestRoute,
-};
 pub use self::python_target::EmitPythonError;
 use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{

@@ -1,6 +1,6 @@
 //! **Layer:** integration
 //!
-//! Brief #2219 receipt: one lowered endpoint-bearing fixture feeds both the
+//! Brief #2219 receipt: one lowered endpoint-bearing fixture feeds the Shape B
 //! OpenAPI 3.1 YAML projection and the canonical route projection used as the
 //! interim backend exposure set. The cross-target equality test is interim until
 //! a cross-target TestPredicate variant exists.
@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::emit::{emit_openapi_yaml, extract_rest_routes, RestRoute};
+use v3_compiler::omni_shape_b_openapi::{extract_rest_routes, project_openapi_yaml, RestRoute};
 
 static COMPILE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -54,8 +54,11 @@ fn compile_omni_service_fixture() -> v3_compiler::Dag {
         .name("m1_5_openapi_fixture_compile".to_string())
         .stack_size(32 * 1024 * 1024)
         .spawn(|| {
-            compile_to_dag(OMNI_SERVICE_FIXTURE, "m1_5_openapi_target_fixture.dag")
-                .expect("OpenAPI demo fixture compiles")
+            compile_to_dag(
+                OMNI_SERVICE_FIXTURE,
+                "m1_5_omni_shape_b_openapi_fixture.dag",
+            )
+            .expect("Shape B OpenAPI demo fixture compiles")
         })
         .expect("spawn larger-stack compile thread")
         .join()
@@ -107,20 +110,20 @@ fn omni_layers_share_one_node_tree() {
     let dag = compile_omni_service_fixture();
 
     let _canonical_routes = extract_rest_routes(&dag).expect("canonical route projection extracts");
-    let _openapi = emit_openapi_yaml(&dag).expect("OpenAPI target emits from shared DAG");
+    let _openapi = project_openapi_yaml(&dag).expect("Shape B OpenAPI projects from shared DAG");
 
     assert_eq!(
         COMPILE_COUNT.load(Ordering::SeqCst),
         1,
-        "Rust and OpenAPI projections must consume the same compile_to_dag \
+        "backend and Shape B OpenAPI projections must consume the same compile_to_dag \
          result; recompiling per target would break the structural-fold receipt."
     );
 }
 
 #[test]
-fn openapi_emit_produces_3_1_yaml_for_rest_operations() {
+fn shape_b_openapi_projection_produces_3_1_yaml_for_rest_operations() {
     let dag = compile_omni_service_fixture();
-    let yaml = emit_openapi_yaml(&dag).expect("OpenAPI YAML emits");
+    let yaml = project_openapi_yaml(&dag).expect("OpenAPI YAML projects");
 
     assert!(yaml.starts_with("openapi: 3.1.0\n"));
     assert!(yaml.contains("  '/users':\n"));
@@ -139,7 +142,8 @@ fn openapi_routes_match_canonical_dag_routes_interim() {
     // Rust target does not yet expose a structured route projection, so this
     // shared DAG extraction is the canonical backend exposure set for Brief #1.
     let canonical_routes = extract_rest_routes(&dag).expect("canonical route projection extracts");
-    let openapi_routes = openapi_yaml_routes(&emit_openapi_yaml(&dag).expect("OpenAPI YAML emits"));
+    let openapi_routes =
+        openapi_yaml_routes(&project_openapi_yaml(&dag).expect("OpenAPI YAML projects"));
 
     assert_eq!(canonical_routes, expected_routes());
     assert_eq!(openapi_routes, canonical_routes);
