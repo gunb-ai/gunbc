@@ -387,6 +387,17 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Rust integration tests exercising `lens_cost_target_realization` `.dag`-tier
     // consumer of `declaration_by_name` (introduced by Slice 1a.0 / PR #2194).
     // P2 same-PR-consumer-evidence per codex BLOCKING surfaced post-merge.
+    //
+    // **Dissolution trigger (P5)**: retires when T-Tests-As-Data infrastructure
+    // expresses ".dag-fn-resolution-against-bootstrap" assertions as structural
+    // `TestClaim` data instead of hand-Rust integration tests. The 6 assertions
+    // here (one per `*Realization` meta-type — `assert meta.is_some() && name ==
+    // "X"`) factor as `OutputEquals` / declaration-resolution claims under the
+    // T-Tests-As-Data umbrella (#1966 §3 ratchet predicate scope). Until that
+    // landing, hand-Rust is the consumption path for `.dag`-fn-from-Rust
+    // assertions; Mgr standing-authority approval at gunbc#2221
+    // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1
+    // window.
     "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
