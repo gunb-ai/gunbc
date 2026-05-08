@@ -36,7 +36,7 @@ Wire the substrate-tier `PerfWithinBaseline` TestPredicate (landed via #2204 / P
 
 **Note on jolly-dove-416 prior art:** child session's stripped-from-#2252 `eval_perf_within_baseline` impl is structurally a fit; reuse-with-attribution is acceptable (option-B carve places this code here, not there). Worker should cross-check the stripped form against this brief's spec — not re-invent wholesale.
 
-**Acceptance:** unit test in `tests/integration/test_runner_test.rs` exercising the four cases — pass-when-under-budget, fail-on-median-over, fail-on-p99-over, fail-on-overflow.
+**Acceptance:** unit tests in `#[cfg(test)] mod` inside `src/v3/compiler/src/test_runner.rs` exercising the four cases — pass-when-under-budget, fail-on-median-over, fail-on-p99-over, fail-on-overflow. Per `TESTING.md` unit-vs-integration discipline, this is a narrow crate-internal helper; tests live alongside source. Integration coverage in `tests/integration/test_runner_test.rs` is reserved for the pipeline-as-unit gate-clearing path exercised through deliverable §3 (the `tier3_mirror_dissolution_perf_within_budget` TestClaim end-to-end).
 
 ### 2. Bench-harness integration with `tier3_mirror_perf.rs`
 
