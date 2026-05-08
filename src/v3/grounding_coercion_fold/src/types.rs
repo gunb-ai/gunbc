@@ -30,6 +30,11 @@ pub enum LanguageSpecProjection {
 }
 
 /// Program-side integer bound projected into the fold.
+///
+/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — mirrors the declared
+/// `TargetIntegerInhabitanceBound` static/platform split only for the executable
+/// LanguageSpec projection carrier; retires as a distinct public coproduct once
+/// program-bound extraction can pass substrate bound declarations directly (#1133 / #1286).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IntegerBoundProjection {
     Static(Interval<i64>),
