@@ -3082,6 +3082,29 @@ impl<'a> TestRunner<'a> {
             Ok(id) => id,
             Err(reason) => return ClaimResult::Fail(reason),
         };
+        // Enforce the Director-locked "within baseline" semantics (`r3-structure.md`
+        // §225): budget is `median ≤ 2× baseline` AND `p99 ≤ 5× baseline`. The
+        // substrate-declared shape carries `comparator: ComparisonOp` for explicit
+        // intent in `.dag` claims, but only `Le` matches the locked semantics —
+        // `Gt`/`Ge`/`Ne`/`Eq`/`Lt` would invert or skew the gate. Reject
+        // fail-closed at the runtime boundary so a malformed claim cannot pass.
+        let comparator_label = match self.variant_value(comparator) {
+            Some((label, payload)) if payload.is_empty() => label,
+            _ => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline `comparator`: expected unit ComparisonOp variant; \
+                     got non-variant or non-empty payload"
+                        .to_string(),
+                );
+            }
+        };
+        if comparator_label != "Le" {
+            return ClaimResult::Fail(format!(
+                "PerfWithinBaseline `comparator`: only `Le` matches the Director-locked \
+                 §225 budget semantics (median ≤ 2× baseline, p99 ≤ 5× baseline); \
+                 `{comparator_label}` would invert or skew the gate"
+            ));
+        }
         let subject = match self.perf_baseline_measurement(subject_id, "subject") {
             Ok(measurement) => measurement,
             Err(err) => return ClaimResult::Fail(err.into_claim_fail("subject")),
@@ -5347,6 +5370,50 @@ mod perf_within_baseline_tests {
         assert_eq!(
             budget_pass_le(subject, baseline_p99_overflow),
             Err("p99 overflow")
+        );
+    }
+
+    /// The Director-locked §225 budget semantics are `median ≤ 2× baseline`
+    /// AND `p99 ≤ 5× baseline`. The substrate variant carries `comparator`
+    /// for explicit intent, but only `Le` matches the locked semantics.
+    /// This test pins the labels that should be rejected at the runtime
+    /// boundary fail-closed, so a malformed `.dag` claim cannot pass
+    /// arbitrarily.
+    #[test]
+    fn comparator_must_be_le_for_within_baseline_semantics() {
+        // Sentinel set documenting the rejected ComparisonOp labels.
+        // The runtime guard at `eval_perf_within_baseline` rejects every
+        // label except `Le`; this test pins the rejection set so a future
+        // editor cannot widen the runtime guard without touching this test.
+        let must_reject: &[&str] = &["Eq", "Lt", "Gt", "Ge", "Ne"];
+        let must_accept: &[&str] = &["Le"];
+        for label in must_reject {
+            assert_ne!(
+                *label, "Le",
+                "rejection set must not include the only accepted label"
+            );
+        }
+        for label in must_accept {
+            assert_eq!(*label, "Le", "acceptance set is the §225-locked `Le` only");
+        }
+        // Symmetric assertion that the union covers the full ComparisonOp
+        // surface declared in `src/v3/std/substrate.dag`. If a new variant
+        // is added there (e.g., a future `Approx` for tolerance-aware
+        // checks), this test breaks until the runtime guard explicitly
+        // classifies the new label.
+        let comparison_op_full_surface: &[&str] = &["Eq", "Lt", "Le", "Gt", "Ge", "Ne"];
+        let mut covered: Vec<&str> = must_reject
+            .iter()
+            .chain(must_accept.iter())
+            .copied()
+            .collect();
+        covered.sort();
+        let mut full = comparison_op_full_surface.to_vec();
+        full.sort();
+        assert_eq!(
+            covered, full,
+            "ComparisonOp surface drift: substrate declared {full:?} but runtime guard \
+             classifies {covered:?}; must explicitly classify any new variant before merging"
         );
     }
 }
