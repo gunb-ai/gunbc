@@ -891,46 +891,55 @@ fn ep_count_acc(xs: EpListA, acc: Int, limit: Int) -> Int =
 }
 
 #[test]
-fn e_p_per_call_descent_evidence_emits_per_arg_arithmetic_descent_on_non_first_param() {
-    // Phase-1 broadening Slice 4 (continued): arithmetic descent on a
-    // parameter OTHER than the first. Pins the per-arg classifier's
-    // independence — arg N is classified against `caller.params[N]`,
-    // not always against `params[0]`.
+fn e_p_per_call_descent_evidence_emits_distinct_per_arg_param_labels_for_arithmetic_descent() {
+    // Phase-1 broadening Slice 4 (continued): when arithmetic descent
+    // applies to multiple arguments at the same call site, each evidence
+    // entry's `param` label must reflect the per-arg parameter index
+    // (`param_0`, `param_1`, ...), not collapse to a single global label.
+    // Pins the per-arg classifier's parameter-index independence at the
+    // SubValueRelation level.
+    //
+    // (v3's existing termination prover requires the first arg to descend
+    // structurally; `n - 1` on arg 0 satisfies that, while `m - 1` on arg
+    // 1 lets us also exercise classification for a non-first parameter.)
     let dag = compile_to_dag(
         "\
-fn ep_two_param_descent(x: Int, n: Int) -> Int =
-  if n == 0 then x else ep_two_param_descent(x, n - 1)
+fn ep_two_descent(n: Int, m: Int) -> Int =
+  if n == 0 then m else ep_two_descent(n - 1, m - 1)
 ",
         "e_p_multi_arg_arith.v3",
     )
     .expect("two-param arithmetic-descent fixture compiles");
 
     let entries = per_call_descent_evidence(&dag);
-    let two_param = entries
+    let two_descent = entries
         .iter()
-        .find(|entry| {
-            entry.caller == "ep_two_param_descent" && entry.callee == "ep_two_param_descent"
-        })
-        .expect("expected ep_two_param_descent self-call evidence");
+        .find(|entry| entry.caller == "ep_two_descent" && entry.callee == "ep_two_descent")
+        .expect("expected ep_two_descent self-call evidence");
 
-    assert_eq!(two_param.evidence.len(), 2);
-    // arg 0: `x` unchanged → PreservedValue.
-    assert_eq!(two_param.evidence[0], SubValueRelation::PreservedValue);
-    // arg 1: `n - 1` → ArithmeticDescent classified against param_1, NOT param_0.
-    match &two_param.evidence[1] {
+    assert_eq!(two_descent.evidence.len(), 2);
+    let expected_factor = ShrinkFactor::ConstantShrink {
+        steps: PositiveDescentAmount::OneStep,
+    };
+    // arg 0: `n - 1` → ArithmeticDescent against param_0.
+    match &two_descent.evidence[0] {
+        SubValueRelation::ArithmeticDescent { param, factor } => {
+            assert_eq!(param, "param_0");
+            assert_eq!(factor, &expected_factor);
+        }
+        other => panic!("expected ArithmeticDescent for arg 0 (n - 1), got {other:?}"),
+    }
+    // arg 1: `m - 1` → ArithmeticDescent against param_1, with the
+    // PER-ARG ordinal label (not collapsed to param_0).
+    match &two_descent.evidence[1] {
         SubValueRelation::ArithmeticDescent { param, factor } => {
             assert_eq!(
                 param, "param_1",
-                "arithmetic descent ordinal label tracks the per-arg parameter index"
+                "second-argument arithmetic descent's ordinal label tracks the per-arg parameter index"
             );
-            assert_eq!(
-                factor,
-                &ShrinkFactor::ConstantShrink {
-                    steps: PositiveDescentAmount::OneStep,
-                }
-            );
+            assert_eq!(factor, &expected_factor);
         }
-        other => panic!("expected ArithmeticDescent for arg 1 (n - 1), got {other:?}"),
+        other => panic!("expected ArithmeticDescent for arg 1 (m - 1), got {other:?}"),
     }
 }
 
