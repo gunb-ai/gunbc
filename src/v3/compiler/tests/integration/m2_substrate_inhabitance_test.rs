@@ -991,8 +991,8 @@ fn ep_halve(n: Int) -> Int =
 }
 
 #[test]
-fn e_p_per_call_descent_evidence_proportional_descent_termination_matches_producer_acceptance_boundary()
- {
+fn e_p_per_call_descent_evidence_proportional_descent_termination_matches_producer_acceptance_boundary(
+) {
     // Slice 5 follow-up: the termination prover and per-call descent
     // producer MUST share the same acceptance boundary for proportional
     // shrink (Div). The producer's `proportional_divisor_from_i64`
