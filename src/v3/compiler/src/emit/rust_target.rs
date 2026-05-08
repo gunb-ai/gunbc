@@ -4255,7 +4255,10 @@ impl<'a> Ctx<'a> {
                 InputSlot::Positional(0),
                 locals,
             )?);
-            let source_port = if arg.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
+            let source_port = if arg
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            {
                 format!("*{arg}")
             } else {
                 arg

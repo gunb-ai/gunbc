@@ -1,4 +1,5 @@
 // Lane 2 Stage 2d / DB-7 — symbolic-cost lens acceptance tests.
+#![allow(clippy::needless_borrows_for_generic_args)]
 //
 // Authority: `src/v3/lenses/cost.dag` (projection:
 // `src/v3/compiler/src/lens_cost_symbolic_generated.rs`).

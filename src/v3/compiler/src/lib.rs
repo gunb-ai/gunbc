@@ -3394,7 +3394,10 @@ pub mod lens_cost {
         use crate::dag::Behavior;
         match behavior {
             Behavior::Value(v) => (v.result_port(), CostLookup::Hit(0)),
-            Behavior::Transform(t) => (t.result_port(), legacy_add_one(&legacy_sum_costs(acc, &t.inputs))),
+            Behavior::Transform(t) => (
+                t.result_port(),
+                legacy_add_one(&legacy_sum_costs(acc, &t.inputs)),
+            ),
             Behavior::Branch(b) => (
                 b.result_port(),
                 legacy_add_one(&legacy_add_cost(
@@ -3409,7 +3412,10 @@ pub mod lens_cost {
                     &legacy_lookup_cost(acc, &l.init),
                 )),
             ),
-            Behavior::Bind(bind) => (bind.result_port(), legacy_lookup_cost(acc, &bind.result_port())),
+            Behavior::Bind(bind) => (
+                bind.result_port(),
+                legacy_lookup_cost(acc, &bind.result_port()),
+            ),
         }
     }
 

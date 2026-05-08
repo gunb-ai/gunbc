@@ -105,6 +105,16 @@ fn expected_origin_from_producer_behavior(behavior: &Behavior) -> Origin {
 const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] =
     &[("cost", "complexity_lens_behavioral_completion")];
 
+fn run_with_cementing_stack(f: impl FnOnce() + Send + 'static) {
+    std::thread::Builder::new()
+        .name("cementing-register-ratchet".to_string())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(f)
+        .expect("spawn cementing register ratchet thread")
+        .join()
+        .expect("cementing register ratchet thread should not panic");
+}
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -446,35 +456,39 @@ fn provenance_origin_of_cements_complete_row_via_compile_to_dag_fixture() {
 
 #[test]
 fn cementing_escalation_slice_matches_capability_register() {
-    let expected = registry_names_required_by_register_and_regen();
-    let declared: BTreeSet<&str> = CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
-        .iter()
-        .map(|(name, _)| *name)
-        .collect();
-    let expected_refs: BTreeSet<&str> = expected.iter().map(String::as_str).collect();
-    assert_eq!(
-        declared, expected_refs,
-        "`CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` must list exactly the registry `name` keys \
-         for rows where docs/v3-lens-capability-register.md marks `COMPLETE` with a real v2 \
-         counterpart (not `None (v3-native)` / not `N/A` per `TESTING.md`) — update the slice \
-         (and cementing modules + `#[path]` wiring) in the same PR as the register promotion."
-    );
+    run_with_cementing_stack(|| {
+        let expected = registry_names_required_by_register_and_regen();
+        let declared: BTreeSet<&str> = CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+        let expected_refs: BTreeSet<&str> = expected.iter().map(String::as_str).collect();
+        assert_eq!(
+            declared, expected_refs,
+            "`CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` must list exactly the registry `name` keys \
+             for rows where docs/v3-lens-capability-register.md marks `COMPLETE` with a real v2 \
+             counterpart (not `None (v3-native)` / not `N/A` per `TESTING.md`) — update the slice \
+             (and cementing modules + `#[path]` wiring) in the same PR as the register promotion."
+        );
+    });
 }
 
 #[test]
 fn cementing_test_modules_exist_for_escalated_v2_complete_registry_claims() {
-    let cementing_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("integration")
-        .join("cementing");
-    let integration_rs = integration_rs_text();
-    for (registry_name, stem) in CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS {
-        let path = cementing_dir.join(format!("{stem}.rs"));
-        assert!(
-            path.is_file(),
-            "registry lens `{registry_name}` is listed for v2-complete cementing; expected cementing module at {}",
-            path.display()
-        );
-        assert_cementing_stem_wired_in_integration_rs(&integration_rs, stem, registry_name);
-    }
+    run_with_cementing_stack(|| {
+        let cementing_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("integration")
+            .join("cementing");
+        let integration_rs = integration_rs_text();
+        for (registry_name, stem) in CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS {
+            let path = cementing_dir.join(format!("{stem}.rs"));
+            assert!(
+                path.is_file(),
+                "registry lens `{registry_name}` is listed for v2-complete cementing; expected cementing module at {}",
+                path.display()
+            );
+            assert_cementing_stem_wired_in_integration_rs(&integration_rs, stem, registry_name);
+        }
+    });
 }
