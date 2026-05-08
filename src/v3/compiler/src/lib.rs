@@ -3323,18 +3323,11 @@ pub mod parse_tables {
     include!("parse_tables_generated.rs");
 }
 
-/// Cost lens. The authority lives in `src/v3/lenses/complexity.dag`;
-/// the Rust surface is `emit_rust_module` output in
-/// `lens_cost_generated.rs` (committed; same PR as the `.dag` when the lens
-/// changes). Generated `cost_of` / `CostEntry` use `crate::dag::Lookup<i64>`,
-/// the Rust projection of `v3.std.lookup::Lookup<Int>`. `CostLookup` below is
-/// **only** a public type alias (`Lookup<i64>`), not a second sum type — single
-/// carrier, facts-flow-forward from the lens authority.
-/// Editing the lens means editing the `.dag` and regenerating — there is no
-/// hand-written implementation on this crate side.
-///
-/// L-8 compliance: callers pattern-match on `Hit` / `Miss` (via `CostLookup` or
-/// `Lookup<i64>`) rather than a panicked-collapsed `usize`.
+/// Complexity lens. The authority lives in `src/v3/lenses/complexity.dag`;
+/// the generated surface now returns `Lookup<ComplexitySummary>` via
+/// `complexity_of`. `cost_of` below is a compatibility adapter for older
+/// structural-depth test-runner paths; new consumers should read
+/// `complexity_of`.
 pub mod lens_cost {
     #[allow(
         dead_code,
@@ -3356,10 +3349,130 @@ pub mod lens_cost {
         include!("lens_cost_generated.rs");
     }
 
-    pub use generated::cost_of;
-    /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
-    /// (`Miss | Hit`); stability alias for embedders.
+    pub use generated::{
+        complexity_of, Certainty, ComplexityEntry, ComplexitySummary, DominanceOutcome,
+    };
+    pub type ComplexityLookup = crate::dag::Lookup<ComplexitySummary>;
+
+    /// Back-compat projection for pre-`ComplexitySummary` callers that still
+    /// assert the old structural depth integer. This is not the behavioral
+    /// completion surface.
     pub type CostLookup = crate::dag::Lookup<i64>;
+
+    pub fn cost_of(dag: &crate::dag::Dag, port: &crate::dag::PortId) -> CostLookup {
+        legacy_lookup_cost(&legacy_compute_costs(dag), port)
+    }
+
+    fn legacy_compute_costs(dag: &crate::dag::Dag) -> Vec<(crate::dag::PortId, CostLookup)> {
+        dag.nodes()
+            .iter()
+            .fold(legacy_seed_bind_params(dag.nodes()), |mut acc, behavior| {
+                acc.insert(0, legacy_entry_for(dag, &acc, behavior));
+                acc
+            })
+    }
+
+    fn legacy_seed_bind_params(
+        nodes: &[crate::dag::Behavior],
+    ) -> Vec<(crate::dag::PortId, CostLookup)> {
+        let mut out = Vec::new();
+        for behavior in nodes {
+            if let crate::dag::Behavior::Bind(bind) = behavior {
+                for param in &bind.params {
+                    out.insert(0, (*param, CostLookup::Hit(0)));
+                }
+            }
+        }
+        out
+    }
+
+    fn legacy_entry_for(
+        _dag: &crate::dag::Dag,
+        acc: &[(crate::dag::PortId, CostLookup)],
+        behavior: &crate::dag::Behavior,
+    ) -> (crate::dag::PortId, CostLookup) {
+        use crate::dag::Behavior;
+        match behavior {
+            Behavior::Value(v) => (v.result_port(), CostLookup::Hit(0)),
+            Behavior::Transform(t) => (
+                t.result_port(),
+                legacy_add_one(&legacy_sum_costs(acc, &t.inputs)),
+            ),
+            Behavior::Branch(b) => (
+                b.result_port(),
+                legacy_add_one(&legacy_add_cost(
+                    &legacy_lookup_cost(acc, &b.input),
+                    &legacy_max_path_cost(acc, &b.paths),
+                )),
+            ),
+            Behavior::Loop(l) => (
+                l.result_port(),
+                legacy_add_one(&legacy_add_cost(
+                    &legacy_lookup_cost(acc, &l.source),
+                    &legacy_lookup_cost(acc, &l.init),
+                )),
+            ),
+            Behavior::Bind(bind) => (
+                bind.result_port(),
+                legacy_lookup_cost(acc, &bind.result_port()),
+            ),
+        }
+    }
+
+    fn legacy_sum_costs(
+        acc: &[(crate::dag::PortId, CostLookup)],
+        ports: &[crate::dag::PortId],
+    ) -> CostLookup {
+        ports.iter().fold(CostLookup::Hit(0), |sum, port_id| {
+            legacy_add_cost(&sum, &legacy_lookup_cost(acc, port_id))
+        })
+    }
+
+    fn legacy_max_path_cost(
+        acc: &[(crate::dag::PortId, CostLookup)],
+        paths: &[crate::dag::Path],
+    ) -> CostLookup {
+        paths.iter().fold(CostLookup::Hit(0), |best, path| {
+            legacy_max_cost(&best, &legacy_lookup_cost(acc, &path.result_port()))
+        })
+    }
+
+    fn legacy_lookup_cost(
+        acc: &[(crate::dag::PortId, CostLookup)],
+        port_id: &crate::dag::PortId,
+    ) -> CostLookup {
+        acc.iter()
+            .find(|(port, _)| port == port_id)
+            .map(|(_, cost)| cost.clone())
+            .unwrap_or(CostLookup::Miss)
+    }
+
+    fn legacy_add_one(c: &CostLookup) -> CostLookup {
+        match c {
+            CostLookup::Miss => CostLookup::Miss,
+            CostLookup::Hit(n) => CostLookup::Hit(n + 1),
+        }
+    }
+
+    fn legacy_add_cost(a: &CostLookup, b: &CostLookup) -> CostLookup {
+        match a {
+            CostLookup::Miss => CostLookup::Miss,
+            CostLookup::Hit(x) => match b {
+                CostLookup::Miss => CostLookup::Miss,
+                CostLookup::Hit(y) => CostLookup::Hit(x + y),
+            },
+        }
+    }
+
+    fn legacy_max_cost(a: &CostLookup, b: &CostLookup) -> CostLookup {
+        match a {
+            CostLookup::Miss => CostLookup::Miss,
+            CostLookup::Hit(x) => match b {
+                CostLookup::Miss => CostLookup::Miss,
+                CostLookup::Hit(y) => CostLookup::Hit((*x).max(*y)),
+            },
+        }
+    }
 
     #[cfg(test)]
     mod tests {
