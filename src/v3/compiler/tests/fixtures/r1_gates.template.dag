@@ -81,9 +81,19 @@ data p0_repeat_string_correct: TestClaim = {
   requires: []
 }
 
+// Same fold path as `p0_repeat_string_correct`; covers the space-padding slice used by
+// `indent_text`-style composition in `dsl/std/render.dag` (live v2 oracle on `concat` retired).
+data p0_repeat_string_space_pad_correct: TestClaim = {
+  name: "p0_repeat_string_space_pad_correct",
+  source: "data repeat_string_two_spaces: String = repeat_string(s: \" \", n: 2)\n",
+  file_name: "r1_p0_repeat_string_space_pad.v3",
+  predicate: OutputEquals("\"  \""),
+  requires: []
+}
+
 data p0_repeat_string_correct_gate: TestSuite = {
   name: "p0_repeat_string_correct_gate",
-  claims: [p0_repeat_string_correct]
+  claims: [p0_repeat_string_correct, p0_repeat_string_space_pad_correct]
 }
 
 // R1C-B / T-P0 — `p0_no_fabrication_sentinel` + `p0_rest_ops_aligned` (Worker B): DB-15

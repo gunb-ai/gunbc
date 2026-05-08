@@ -1,5 +1,5 @@
-//! Shared receipts for `tests/fixtures/r1_gates.dag` R1C-B / T-P0 gates (`p0_repeat_string_correct`,
-//! host sentinel / REST alignment suite).
+//! Shared receipts for `tests/fixtures/r1_gates.dag` R1C-B / T-P0 gates (`p0_repeat_string_correct` +
+//! `p0_repeat_string_space_pad_correct`, host sentinel / REST alignment suite).
 
 use std::path::PathBuf;
 
@@ -21,17 +21,20 @@ fn load_r1_gates_dag() -> v3_compiler::Dag {
     }
 }
 
-/// Loads `r1_gates.dag` and asserts `p0_repeat_string_correct_gate` evaluates one `Pass` claim.
+/// Loads `r1_gates.dag` and asserts `p0_repeat_string_correct_gate` passes on every claim.
 pub fn assert_p0_repeat_string_correct_gate_passes() {
     let dag = load_r1_gates_dag();
     let results = TestRunner::new(&dag).run_suite("p0_repeat_string_correct_gate");
-    assert_eq!(results.len(), 1, "{results:?}");
-    assert_eq!(
-        results[0].result,
-        ClaimResult::Pass,
-        "expected Pass on p0_repeat_string_correct, got {:?}",
-        results[0]
-    );
+    assert_eq!(results.len(), 2, "{results:?}");
+    for r in &results {
+        assert_eq!(
+            r.result,
+            ClaimResult::Pass,
+            "expected Pass on {}, got {:?}",
+            r.claim_name,
+            r
+        );
+    }
 }
 
 /// `p0_no_fabrication_sentinel` + `p0_rest_ops_aligned` (`ExecuteCommand` host scripts).
