@@ -762,7 +762,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 
 | # | Question | PM recommendation | Status |
 |---|---|---|---|
-| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; **96 closure gates total** (80 R3 lane gates across 18 lanes including 5 NEW Pattern-A executable + 20 lane gates added 2026-05-06 to §"Acceptance" per codex BLOCKING + 1 NEW ValueBody isomorphism added 2026-05-08 + 5 substrate-gap-class + 10 demonstration + 1 PR-anticipation-discipline; precise enumeration per §1.5 + §1.8) | RATIFIED |
+| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; **96 closure gates total** across 18 lanes + 1 standing program; per-lane breakdown + history (Pattern-A executable family + 2026-05-06 codex BLOCKING fix lanes + 2026-05-08 ValueBody isomorphism) authoritative at §1.5 + §1.8 — Q1 row defers to those for sub-counts to preserve single-authority discipline | RATIFIED |
 | Q2 | 5 substrate-gap classes — separate lanes vs closure-criteria-over-existing-lanes | Closure-criteria framing (§1.4 + §4) | RATIFIED |
 | Q3 | v2 retirement Mgr ownership | PB Mgr owns all (existing T-V2-Retirement scope) | RATIFIED |
 | Q4 | Mgr structure (keep 9 vs reorganize) | Keep 9 standing Mgrs with re-anchored scope | RATIFIED |
