@@ -5,13 +5,10 @@
 //! interim backend exposure set. The cross-target equality test is interim until
 //! a cross-target TestPredicate variant exists.
 
-use std::collections::BTreeSet;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::{BTreeMap, BTreeSet};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::omni_shape_b_openapi::{extract_rest_routes, project_openapi_yaml, RestRoute};
-
-static COMPILE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 const OMNI_SERVICE_FIXTURE: &str = r#"
 module t.openapi_demo
@@ -22,6 +19,10 @@ import v3.std.services { RestEndpointBinding }
 
 type DemoOperation {
   endpoint: RestEndpointBinding
+}
+
+type NotAServiceOperation {
+  endpoint: String
 }
 
 data omni_service_operations: List<DemoOperation> = [
@@ -46,10 +47,13 @@ data omni_service_operations: List<DemoOperation> = [
     }
   }
 ]
+
+data non_service_endpoint_rows: List<NotAServiceOperation> = [
+  { endpoint: "not a route" }
+]
 "#;
 
 fn compile_omni_service_fixture() -> v3_compiler::Dag {
-    COMPILE_COUNT.fetch_add(1, Ordering::SeqCst);
     std::thread::Builder::new()
         .name("m1_5_openapi_fixture_compile".to_string())
         .stack_size(32 * 1024 * 1024)
@@ -70,51 +74,81 @@ fn expected_routes() -> BTreeSet<RestRoute> {
         RestRoute {
             method: "GET".to_string(),
             path: "/users".to_string(),
+            path_parameters: vec![],
         },
         RestRoute {
             method: "GET".to_string(),
             path: "/users/{id}".to_string(),
+            path_parameters: vec!["id".to_string()],
         },
         RestRoute {
             method: "POST".to_string(),
             path: "/users".to_string(),
+            path_parameters: vec![],
         },
     ])
 }
 
 fn openapi_yaml_routes(yaml: &str) -> BTreeSet<RestRoute> {
-    let mut routes = BTreeSet::new();
+    let mut routes: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
     let mut current_path: Option<String> = None;
+    let mut current_route: Option<(String, String)> = None;
     for line in yaml.lines() {
         if let Some(path) = line.strip_prefix("  '").and_then(|s| s.strip_suffix("':")) {
             current_path = Some(path.replace("''", "'"));
+            current_route = None;
             continue;
         }
         for method in ["get", "post", "put", "patch", "delete", "head", "options"] {
             if line == format!("    {method}:") {
-                routes.insert(RestRoute {
-                    method: method.to_ascii_uppercase(),
-                    path: current_path
+                let route = (
+                    method.to_ascii_uppercase(),
+                    current_path
                         .clone()
                         .expect("method appears under a path in emitted YAML"),
-                });
+                );
+                routes.entry(route.clone()).or_default();
+                current_route = Some(route);
             }
+        }
+        if let Some(parameter) = line
+            .strip_prefix("        - name: ")
+            .or_else(|| line.strip_prefix("          name: "))
+        {
+            let route = current_route
+                .as_ref()
+                .expect("parameter appears under an operation");
+            routes
+                .get_mut(route)
+                .expect("route exists before parameter")
+                .insert(parameter.to_string());
         }
     }
     routes
+        .into_iter()
+        .map(|((method, path), parameters)| RestRoute {
+            method,
+            path,
+            path_parameters: parameters.into_iter().collect(),
+        })
+        .collect()
+}
+
+fn compile_omni_service_fixture_counted(count: &mut usize) -> v3_compiler::Dag {
+    *count += 1;
+    compile_omni_service_fixture()
 }
 
 #[test]
 fn omni_layers_share_one_node_tree() {
-    COMPILE_COUNT.store(0, Ordering::SeqCst);
-    let dag = compile_omni_service_fixture();
+    let mut compile_count = 0;
+    let dag = compile_omni_service_fixture_counted(&mut compile_count);
 
     let _canonical_routes = extract_rest_routes(&dag).expect("canonical route projection extracts");
     let _openapi = project_openapi_yaml(&dag).expect("Shape B OpenAPI projects from shared DAG");
 
     assert_eq!(
-        COMPILE_COUNT.load(Ordering::SeqCst),
-        1,
+        compile_count, 1,
         "backend and Shape B OpenAPI projections must consume the same compile_to_dag \
          result; recompiling per target would break the structural-fold receipt."
     );
@@ -130,6 +164,8 @@ fn shape_b_openapi_projection_produces_3_1_yaml_for_rest_operations() {
     assert!(yaml.contains("    get:\n"));
     assert!(yaml.contains("    post:\n"));
     assert!(yaml.contains("  '/users/{id}':\n"));
+    assert_eq!(yaml.matches("  '/users':\n").count(), 1);
+    assert!(yaml.contains("      parameters:\n        - name: id\n          in: path\n          required: true\n          schema:\n            type: string\n"));
     assert_eq!(openapi_yaml_routes(&yaml), expected_routes());
 }
 
@@ -147,4 +183,16 @@ fn openapi_routes_match_canonical_dag_routes_interim() {
 
     assert_eq!(canonical_routes, expected_routes());
     assert_eq!(openapi_routes, canonical_routes);
+}
+
+#[test]
+fn openapi_projection_ignores_non_service_endpoint_fields() {
+    let dag = compile_omni_service_fixture();
+
+    assert_eq!(
+        extract_rest_routes(&dag).expect("canonical route projection extracts"),
+        expected_routes(),
+        "Only declarations whose list element type carries the canonical \
+         services.dag RestEndpointBinding field should become OpenAPI routes."
+    );
 }

@@ -264,6 +264,11 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
+    // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): transitional
+    // Rust-side OpenAPI projection receipt after the Shape A/Shape B boundary
+    // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
+    // `.dag` program owns the OpenAPI artifact projection end-to-end.
+    "src/v3/compiler/src/omni_shape_b_openapi.rs",
     // R3 row 85 / PB #1560 Gap 4: target-keyed projection of the
     // `MethodTemplateContract` rows from the full bootstrap `Dag` for
     // PB-zero / v2-retirement consumers (decision in
@@ -415,6 +420,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/m0_acceptance.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs",
+    // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): integration receipt
+    // for same-DAG Shape B OpenAPI projection. Dissolves into TestClaim /
+    // `.dag`-native Shape B demo coverage with the OpenAPI projector above.
+    "src/v3/compiler/tests/integration/m1_5_omni_shape_b_openapi_test.rs",
     "src/v3/compiler/tests/integration/m1_5_testgen_test.rs",
     "src/v3/compiler/tests/integration/m1_5_user_authored_lens_gate_test.rs",
     "src/v3/compiler/tests/integration/m1_5_verification_test.rs",

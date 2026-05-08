@@ -6,15 +6,16 @@
 //! narrow Rust-side receipt used by the R3 demo until the equivalent `.dag`
 //! program can own the artifact projection.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::dag::{DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
+use crate::dag::{Declaration, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 use crate::Dag;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RestRoute {
     pub method: String,
     pub path: String,
+    pub path_parameters: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +29,9 @@ pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpen
         let Some(ValueBody::List(rows)) = &decl.value_body else {
             continue;
         };
+        if !list_element_has_rest_endpoint_binding(dag, decl) {
+            continue;
+        }
         for row in rows {
             let Some(fields) = record_fields(row) else {
                 continue;
@@ -54,10 +58,40 @@ pub fn extract_rest_routes(dag: &Dag) -> Result<BTreeSet<RestRoute>, ProjectOpen
                     malformed(decl.name.as_deref(), "endpoint missing `path` field")
                 })?,
             )?;
-            routes.insert(RestRoute { method, path });
+            routes.insert(RestRoute {
+                method,
+                path: path.path,
+                path_parameters: path.parameters,
+            });
         }
     }
     Ok(routes)
+}
+
+fn list_element_has_rest_endpoint_binding(dag: &Dag, decl: &Declaration) -> bool {
+    let Some(element) = list_element_type(dag, decl) else {
+        return false;
+    };
+    let TypeConnective::Conj { children } = &dag.declaration(element).connective else {
+        return false;
+    };
+    let Some(endpoint_field) = children.iter().find(|field| field.label == "endpoint") else {
+        return false;
+    };
+    dag.declaration(endpoint_field.ty).name.as_deref() == Some("RestEndpointBinding")
+        && dag.declaration(endpoint_field.ty).span.file == "src/v3/std/services.dag"
+}
+
+fn list_element_type(dag: &Dag, decl: &Declaration) -> Option<DeclarationId> {
+    match &decl.connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if dag.declaration(*template).name.as_deref() == Some("List") => {
+            arguments.first().map(|arg| arg.value)
+        }
+        _ => None,
+    }
 }
 
 pub fn project_openapi_yaml(dag: &Dag) -> Result<String, ProjectOpenApiError> {
@@ -70,19 +104,35 @@ pub fn project_openapi_yaml(dag: &Dag) -> Result<String, ProjectOpenApiError> {
         return Ok(out);
     }
 
-    let mut current_path: Option<&str> = None;
+    let mut routes_by_path: BTreeMap<&str, Vec<&RestRoute>> = BTreeMap::new();
     for route in &routes {
-        if current_path != Some(route.path.as_str()) {
-            out.push_str("  ");
-            out.push_str(&yaml_quoted(&route.path));
-            out.push_str(":\n");
-            current_path = Some(route.path.as_str());
+        routes_by_path
+            .entry(route.path.as_str())
+            .or_default()
+            .push(route);
+    }
+
+    for (path, path_routes) in routes_by_path {
+        out.push_str("  ");
+        out.push_str(&yaml_quoted(path));
+        out.push_str(":\n");
+        for route in path_routes {
+            out.push_str("    ");
+            out.push_str(&route.method.to_ascii_lowercase());
+            out.push_str(":\n      operationId: ");
+            out.push_str(&yaml_plain_operation_id(&route.method, &route.path));
+            if !route.path_parameters.is_empty() {
+                out.push_str("\n      parameters:\n");
+                for parameter in &route.path_parameters {
+                    out.push_str("        - name: ");
+                    out.push_str(parameter);
+                    out.push_str(
+                        "\n          in: path\n          required: true\n          schema:\n            type: string",
+                    );
+                }
+            }
+            out.push_str("\n      responses:\n        '200':\n          description: OK\n");
         }
-        out.push_str("    ");
-        out.push_str(&route.method.to_ascii_lowercase());
-        out.push_str(":\n      operationId: ");
-        out.push_str(&yaml_plain_operation_id(&route.method, &route.path));
-        out.push_str("\n      responses:\n        '200':\n          description: OK\n");
     }
     Ok(out)
 }
@@ -145,11 +195,17 @@ fn parse_http_method(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedPathTemplate {
+    path: String,
+    parameters: Vec<String>,
+}
+
 fn parse_path_template(
     dag: &Dag,
     declaration: &str,
     value: &FieldValue,
-) -> Result<String, ProjectOpenApiError> {
+) -> Result<ParsedPathTemplate, ProjectOpenApiError> {
     let fields = require_record(declaration, "endpoint.path", value)?;
     let tokens =
         record_field(fields, "tokens").ok_or_else(|| ProjectOpenApiError::MalformedOperation {
@@ -163,6 +219,7 @@ fn parse_path_template(
         });
     };
     let mut segments = Vec::with_capacity(tokens.len());
+    let mut parameters = Vec::new();
     for token in tokens {
         let FieldValue::Variant {
             constructor,
@@ -189,7 +246,10 @@ fn parse_path_template(
         })?;
         match label.as_str() {
             "LiteralToken" => segments.push(text),
-            "ParamToken" => segments.push(format!("{{{text}}}")),
+            "ParamToken" => {
+                segments.push(format!("{{{text}}}"));
+                parameters.push(text);
+            }
             other => {
                 return Err(ProjectOpenApiError::MalformedOperation {
                     declaration: declaration.to_string(),
@@ -198,7 +258,10 @@ fn parse_path_template(
             }
         }
     }
-    Ok(format!("/{}", segments.join("/")))
+    Ok(ParsedPathTemplate {
+        path: format!("/{}", segments.join("/")),
+        parameters,
+    })
 }
 
 fn variant_label_in_parent(
