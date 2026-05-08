@@ -290,6 +290,18 @@ type ComparisonOp
   | Gt
   | Ge
 
+// 🟢 TERMINAL at T-Tier3 perf-budget substrate scope. Wall-clock
+// mirror-dissolution baseline facts are measured values, not symbolic
+// cost expressions: consumers compare live/captured measurements to a
+// declared baseline using the Tier-3 budget thresholds (median <= 2x,
+// p99 <= 5x). Durations are `Nat`, and `p99_delta_ns` encodes
+// `p99_ns - median_ns`, making negative durations and `p99 < median`
+// uninhabitable in the carrier shape.
+type PerfBaselineMeasurement {
+  median_ns: Nat
+  p99_delta_ns: Nat
+}
+
 // 🟡 SCAFFOLD. `&&` / `||` are structurally tracked for the current
 // surface grammar, but they stay on the operator-shim path until the
 // M2+ parser/desugarer lowers them to direct BooleanAlgebra
