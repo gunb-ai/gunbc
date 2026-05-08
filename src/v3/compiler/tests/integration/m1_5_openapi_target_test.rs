@@ -1,9 +1,9 @@
 //! **Layer:** integration
 //!
 //! Brief #2219 receipt: one lowered endpoint-bearing fixture feeds both the
-//! OpenAPI 3.1 YAML projection and the route projection used here as the Rust
-//! backend exposure set. The cross-target equality test is interim until a
-//! cross-target TestPredicate variant exists.
+//! OpenAPI 3.1 YAML projection and the canonical route projection used as the
+//! interim backend exposure set. The cross-target equality test is interim until
+//! a cross-target TestPredicate variant exists.
 
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -106,7 +106,7 @@ fn omni_layers_share_one_node_tree() {
     COMPILE_COUNT.store(0, Ordering::SeqCst);
     let dag = compile_omni_service_fixture();
 
-    let _rust_backend = extract_rest_routes(&dag).expect("Rust route projection extracts");
+    let _canonical_routes = extract_rest_routes(&dag).expect("canonical route projection extracts");
     let _openapi = emit_openapi_yaml(&dag).expect("OpenAPI target emits from shared DAG");
 
     assert_eq!(
@@ -131,14 +131,16 @@ fn openapi_emit_produces_3_1_yaml_for_rest_operations() {
 }
 
 #[test]
-fn openapi_routes_match_rust_backend_routes_interim() {
+fn openapi_routes_match_canonical_dag_routes_interim() {
     let dag = compile_omni_service_fixture();
 
     // Interim until cross-target TestPredicate exists: both projections are
     // extracted from the same compiled DAG and compared here in `tests/`.
-    let rust_backend_routes = extract_rest_routes(&dag).expect("Rust route projection extracts");
+    // Rust target does not yet expose a structured route projection, so this
+    // shared DAG extraction is the canonical backend exposure set for Brief #1.
+    let canonical_routes = extract_rest_routes(&dag).expect("canonical route projection extracts");
     let openapi_routes = openapi_yaml_routes(&emit_openapi_yaml(&dag).expect("OpenAPI YAML emits"));
 
-    assert_eq!(rust_backend_routes, expected_routes());
-    assert_eq!(openapi_routes, rust_backend_routes);
+    assert_eq!(canonical_routes, expected_routes());
+    assert_eq!(openapi_routes, canonical_routes);
 }
