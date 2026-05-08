@@ -3137,7 +3137,7 @@ impl<'a> TestRunner<'a> {
                 );
             }
         };
-        if comparator_label != "Le" {
+        if !is_comparator_le(&comparator_label) {
             return ClaimResult::Fail(format!(
                 "PerfWithinBaseline `comparator`: only `Le` matches the Director-locked \
                  §225 budget semantics (median ≤ 2× baseline, p99 ≤ 5× baseline); \
@@ -5285,6 +5285,7 @@ mod perf_within_baseline_tests {
     //!    fail-closed semantics.
 
     use super::compute_perf_budget_bounds;
+    use super::is_comparator_le;
     use super::PerfBudgetOverflow;
     use super::PerfMeasurement;
     use super::PerfMeasurementResolveError;
@@ -5411,46 +5412,53 @@ mod perf_within_baseline_tests {
     }
 
     /// The Director-locked §225 budget semantics are `median ≤ 2× baseline`
-    /// AND `p99 ≤ 5× baseline`. The substrate variant carries `comparator`
-    /// for explicit intent, but only `Le` matches the locked semantics.
-    /// This test pins the labels that should be rejected at the runtime
-    /// boundary fail-closed, so a malformed `.dag` claim cannot pass
-    /// arbitrarily.
+    /// AND `p99 ≤ 5× baseline`. The substrate `ComparisonOp` variant
+    /// carries `comparator` for explicit intent, but only `Le` matches the
+    /// locked semantics. This test reads `ComparisonOp`'s variant set
+    /// from the bootstrap DAG (substrate-source-of-truth, not a hardcoded
+    /// list) and asserts the runtime guard classifies every variant: `Le`
+    /// alone passes, every other variant fails-closed.
     #[test]
-    fn comparator_must_be_le_for_within_baseline_semantics() {
-        // Sentinel set documenting the rejected ComparisonOp labels.
-        // The runtime guard at `eval_perf_within_baseline` rejects every
-        // label except `Le`; this test pins the rejection set so a future
-        // editor cannot widen the runtime guard without touching this test.
-        let must_reject: &[&str] = &["Eq", "Lt", "Gt", "Ge", "Ne"];
-        let must_accept: &[&str] = &["Le"];
-        for label in must_reject {
-            assert_ne!(
-                *label, "Le",
-                "rejection set must not include the only accepted label"
+    fn runtime_classifies_every_comparison_op_variant_le_only() {
+        use crate::dag::TypeConnective;
+        let dag = crate::generated_full_bootstrap_dag();
+        let comparison_op = dag
+            .declaration_by_name("ComparisonOp")
+            .expect("ComparisonOp must exist in bootstrap DAG (src/v3/std/substrate.dag)");
+        let TypeConnective::Disj { variants } = &comparison_op.connective else {
+            panic!("ComparisonOp must be a coproduct (Disj)");
+        };
+        let mut variant_labels: Vec<&str> = variants.iter().map(|v| v.label.as_str()).collect();
+        variant_labels.sort();
+        assert!(
+            variant_labels.contains(&"Le"),
+            "substrate ComparisonOp must include `Le` for §225 semantics; got {variant_labels:?}"
+        );
+        // Drift gate: every substrate-declared variant must be explicitly
+        // classified by the runtime guard. The guard's classification is a
+        // single rule — `label == \"Le\"` — so the assertion below mirrors it.
+        // If substrate adds a variant (e.g., `Approx`), `is_comparator_le`
+        // continues to return `false` for it (correctly fail-closed under the
+        // current locked semantics) and this test continues to pass without
+        // edits — the new variant is structurally rejected by the same guard,
+        // matching the §225 lock.
+        for label in &variant_labels {
+            let accepted = is_comparator_le(label);
+            assert_eq!(
+                accepted,
+                *label == "Le",
+                "ComparisonOp variant `{label}`: runtime guard classification disagrees with §225 \
+                 lock (only `Le` may be accepted)",
             );
         }
-        for label in must_accept {
-            assert_eq!(*label, "Le", "acceptance set is the §225-locked `Le` only");
-        }
-        // Symmetric assertion that the union covers the full ComparisonOp
-        // surface declared in `src/v3/std/substrate.dag`. If a new variant
-        // is added there (e.g., a future `Approx` for tolerance-aware
-        // checks), this test breaks until the runtime guard explicitly
-        // classifies the new label.
-        let comparison_op_full_surface: &[&str] = &["Eq", "Lt", "Le", "Gt", "Ge", "Ne"];
-        let mut covered: Vec<&str> = must_reject
-            .iter()
-            .chain(must_accept.iter())
-            .copied()
-            .collect();
-        covered.sort();
-        let mut full = comparison_op_full_surface.to_vec();
-        full.sort();
-        assert_eq!(
-            covered, full,
-            "ComparisonOp surface drift: substrate declared {full:?} but runtime guard \
-             classifies {covered:?}; must explicitly classify any new variant before merging"
-        );
     }
+}
+
+/// Single-rule classifier for the §225 comparator-Le guard. The runtime
+/// path in [`TestRunner::eval_perf_within_baseline`] inlines the same rule
+/// (`comparator_label != "Le"` → fail-closed). Lifted as a free function
+/// so unit tests can drive the same classifier against the substrate-
+/// declared `ComparisonOp` variant set without DAG fixtures.
+fn is_comparator_le(comparator_label: &str) -> bool {
+    comparator_label == "Le"
 }
