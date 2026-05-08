@@ -3321,8 +3321,8 @@ fn substrate_accessor_rust_binding_invariants() {
         checked += 1;
     }
     assert_eq!(
-        checked, 6,
-        "expected 6 substrate accessor bindings (port, node, resolve_producer, lane2_workflow_at, declaration_by_id, workflow_root_port)"
+        checked, 7,
+        "expected 7 substrate accessor bindings (port, node, resolve_producer, lane2_workflow_at, declaration_by_id, workflow_root_port, declaration_by_name)"
     );
     let missing: Vec<_> = universe.difference(&rust_covered).copied().collect();
     assert!(
