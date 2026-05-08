@@ -5,7 +5,7 @@
 **Merge gates** (distinct from PR-open status — per openai-pro 2026-05-06 finding):
 - **PR open**: ✓ at sha `d1bfbbe22`
 - **Plan PR merge-eligible**: open RED escalations in §10.3 acknowledged + tracked (not necessarily resolved); PR can merge with RED items in flight provided they're explicitly tracked + assigned routing
-- **R3 close** (NOT plan PR merge): all **R3-load-bearing** §1.8 closure gates GREEN (**96** gate IDs enumerated; **#81**/**#82**/**#95** are **CARVED to R4** per `docs/r4-carve-out-routing.md` C1/C2/C1 — not in the R3 conjunction; **#96** added 2026-05-08 per Q-ValueBody-Isomorphism RATIFIED at gunbc#828 #issuecomment-4403972737 + Brian sanction at gunbc#846) + §10.3 Q-Lens-Behavioral-Parity-R3-Closeability **option (b)** (T-LBP = complexity + cost in R3; parallelism + effect_enum R4) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt + other §10.3 RED items resolved per their owners
+- **R3 close** (NOT plan PR merge): all **R3-load-bearing** §1.8 closure gates GREEN (**97** gate IDs enumerated; **#81**/**#82**/**#95** are **CARVED to R4** per `docs/r4-carve-out-routing.md` C1/C2/C1 — not in the R3 conjunction; **#96** added 2026-05-08 per Q-ValueBody-Isomorphism RATIFIED at gunbc#828 #issuecomment-4403972737 + Brian sanction at gunbc#846; **#97** added 2026-05-08 per Q-V2-Retirement-Boundary-Matrix Gunbc **[#1982](https://github.com/gunb-ai/gunbc/issues/1982)** — Gap-4 emit-shim coherence consumer in R2-Grounding-Rust) + §10.3 Q-Lens-Behavioral-Parity-R3-Closeability **option (b)** (T-LBP = complexity + cost in R3; parallelism + effect_enum R4) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt + other §10.3 RED items resolved per their owners
 
 **Purpose.** Forward-looking program plan for **R3 close with zero debt**. Per user directive 2026-05-05 (gunbc#846): *"clear dependency graph from here to R3 close"* + *"surface escalations now and solve them"*.
 
@@ -81,7 +81,7 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 ### §1.5 Closure-ledger total
 
-**Total R3 closure gates** (post-Q1 + Q2 ratification + codex BLOCKING fix 2026-05-06 on PR #1809 + Q-ValueBody-Isomorphism RATIFIED 2026-05-08): **96 gate IDs** enumerated at this commit per `r3-structure.md` §"Acceptance" (**93** are **R3 thesis-load-bearing**; **#81**/**#82**/**#95** are **R4-carved** — see carve paragraph immediately below + `r4-carve-out-routing.md`). Composition: existing R3 lane gates across 18 lanes (`T-Tier3-Dissolution` 4, `T-LensProducer-Retirement` 4, `T-V-L4-L7-Direct` 2 + 4 NEW Pattern-A executable + 1 ValueBody isomorphism = 7, `T-V-L5-Corpus` 1, `T-FixedPoint` 1, `T-Numeric-Construction` 8, `T-Omni-Shape-B` 4, `T-Anthropic-Wire` 2, `T-Bridge-Retirement` 6, `T-CostLens-Composition` 3 + 1 NEW = 4, `T-V2-Retirement` 2, `T-Free-Consequences-Demonstration` 10, `T-E-P-Producer-Broadening` 3, `T-Lens-Behavioral-Parity` 5, `T-Tests-As-Data-Completeness` 4, `T-Lens-Application-Surface` 8, `T-Workflow-As-Data` 4, `T-Lens-Self-Application` 3) = 80 lane gates; plus 5 substrate-gap-class gates + 10 demonstration gates + 1 PR-anticipation-discipline gate = 16 gates added 2026-05-06. Total: 80 + 16 = **96** across 18 lanes + 1 standing program.
+**Total R3 closure gates** (post-Q1 + Q2 ratification + codex BLOCKING fix 2026-05-06 on PR #1809 + Q-ValueBody-Isomorphism RATIFIED 2026-05-08): **97 gate IDs** enumerated at this commit per `r3-structure.md` §"Acceptance" (**94** are **R3 thesis-load-bearing**; **#81**/**#82**/**#95** are **R4-carved** — see carve paragraph immediately below + `r4-carve-out-routing.md`). Composition: existing R3 lane gates across 18 lanes (`T-Tier3-Dissolution` 4, `T-LensProducer-Retirement` 4, `T-V-L4-L7-Direct` 2 + 4 NEW Pattern-A executable + 1 ValueBody isomorphism = 7, `T-V-L5-Corpus` 1, `T-FixedPoint` 1, `T-Numeric-Construction` 8, `T-Omni-Shape-B` 4, `T-Anthropic-Wire` 2, `T-Bridge-Retirement` 6, `T-CostLens-Composition` 3 + 1 NEW = 4, `T-V2-Retirement` 2, `T-Free-Consequences-Demonstration` 10, `T-E-P-Producer-Broadening` 3, `T-Lens-Behavioral-Parity` 5, `T-Tests-As-Data-Completeness` 4, `T-Lens-Application-Surface` 8, `T-Workflow-As-Data` 4, `T-Lens-Self-Application` 3) = 80 lane gates; **+ Gate #97** (`method_template_projection_emit_shim_retirement_coherence`, R2-Grounding-Rust / Gunbc **#1982**) = **81** lane-aligned gate rows; plus 5 substrate-gap-class gates + 10 demonstration gates + 1 PR-anticipation-discipline gate = 16 gates added 2026-05-06. Total: 81 + 16 = **97** across 18 lanes + 1 standing program.
 
 **Per codex BLOCKING 2026-05-06 (relayed via PR #1808 inline; PR #1808 already merged so fix lands on PR #1809)**: prior 75-count omitted 20 gate IDs from 4 lanes (T-E-P-Producer-Broadening 3 + T-Lens-Behavioral-Parity 5 + T-Tests-As-Data-Completeness 4 + T-Lens-Application-Surface 8) which were declared in `r3-structure.md` §"Lane structure" prose but never landed in §"Acceptance" canonical authority. Both gaps closed 2026-05-06 on PR #1809 — single-authority restored across all 18 lanes.
 
@@ -92,10 +92,10 @@ R3 closes when **all non-carved §1.8 gates** pass + zero tracked-debt rows surv
 **R4-carved §1.8 rows** (enumerated for traceability; **excluded** from R3 thesis-close conjunction — **INVARIANTS** §P2): **`#81`** `parallelism_lens_behaviorally_complete`, **`#82`** `effect_enumeration_lens_behaviorally_complete`, **`#95`** `opt_in_iteration_parallelism_via_lens_application_demonstrated` — per `docs/r4-carve-out-routing.md` C1/C2/C1 cascade + `docs/design-lens-application-surface.md` §7.
 
 **Two distinct Pass surfaces** (per Debt-Paydown Mgr poke-hole 2026-05-06 — clarification prevents conflating predicates):
-- **Lane `.dag` TestClaim gates (96 enumerated; 93 load-bearing for R3 thesis close)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
+- **Lane `.dag` TestClaim gates (97 enumerated; 94 load-bearing for R3 thesis close)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
 - **`r3_debt_paydown_zero_remaining`**: standing-program ledger predicate — no tracked ROADMAP debt rows survive R3 close (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" + §1.5 tracked-debt inclusion list).
 
-Both must hold for R3 close. "**93** R3-load-bearing gates green" (equivalently: all non-carved §1.8 rows) alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
+Both must hold for R3 close. "**94** R3-load-bearing gates green" (equivalently: all non-carved §1.8 rows) alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
 
 **Tracked-debt inclusion list for `r3_debt_paydown_zero_remaining`** (per Director poke-hole 2026-05-06 finding 3.1; closes definition gap):
 
@@ -106,7 +106,9 @@ Predicate cannot be satisfied by deletion-of-rows-without-actual-resolution; eac
 
 ### §1.7 Closure-criteria status — DECLARATIONS-ONLY staging (per openai-pro meta-review 2026-05-06)
 
-**This plan + r3-structure.md DECLARE 96 closure gates. The declarations are NOT YET load-bearing closure predicates — no consumer infrastructure verifies them at HEAD.**
+**This plan + r3-structure.md DECLARE 97 closure gates. Most closures are still **DECLARED** (document-level only); lane-owning consumers ratchet gates to **CONSUMER_LANDED** then **PASSING** under the taxonomy below.**
+
+**Concrete exception at HEAD (emit-shim retirement boundary-matrix consumer): §1.8 **#97** **`method_template_projection_emit_shim_retirement_coherence`** — **CONSUMER_LANDED + PASSING** via **`src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs`** (Gunbc **[#1982](https://github.com/gunb-ai/gunbc/issues/1982)** / Q-V2-Retirement-Boundary-Matrix).**
 
 Per openai-pro meta-review on PR #1808 sha `cf249389` ([#issuecomment-4384405832](https://github.com/gunb-ai/gunbc/pull/1808#issuecomment-4384405832)) PAUSE_AND_REGROUP verdict — structurally honest framing of where this PR sits in the closure-evidence chain:
 
@@ -116,9 +118,9 @@ Per openai-pro meta-review on PR #1808 sha `cf249389` ([#issuecomment-4384405832
 - **CONSUMER_LANDED** — the consumer (CI check, `.dag` TestClaim runner executing through Evaluator, manual demonstration receipt) executes the Pass condition + can fail-closed if violated.
 - **PASSING** — consumer landed AND Pass condition currently true.
 
-**Status at HEAD**: per §1.8 canonical ledger Status column — most gates are **DECLARED**; `pb_self_compile_fixed_point` is the canonical CONSUMER_LANDED exemplar (R1 horizon Pass = current `verification.dag` + `test_runner` evaluation). `tier3_*_mirror_dissolved` gates remain **DECLARED** at HEAD (T-Tier3-Dissolution lane work in flight per §3 lane status; consumer count / mirror-symbol count test not yet authored). Per-gate status updates flow through §1.8 ledger as Mgrs land consumer infrastructure per their lane scope; all 16 NEW gates added 2026-05-06 in PR #1808 are DECLARED-only.
+**Status at HEAD**: per §1.8 canonical ledger Status column — most gates are **DECLARED**; `pb_self_compile_fixed_point` is a canonical CONSUMER_LANDED exemplar (R1 horizon Pass = current `verification.dag` + `test_runner` evaluation). **`method_template_projection_emit_shim_retirement_coherence` (§1.8 #97)** is **CONSUMER_LANDED + PASSING** via the integration test cited in the §1.8 ledger row. `tier3_*_mirror_dissolved` gates remain **DECLARED** at HEAD (T-Tier3-Dissolution lane work in flight per §3 lane status; consumer count / mirror-symbol count test not yet authored). Per-gate status updates flow through §1.8 ledger as Mgrs land consumer infrastructure per their lane scope; all 16 NEW gates added 2026-05-06 in PR #1808 are DECLARED-only.
 
-**R3 close criteria implies CONSUMER_LANDED for all R3-load-bearing §1.8 gates** (96 enumerated **minus** **#81**/**#82**/**#95** carved — see carve paragraph under §1.5): declarations alone don't satisfy `r3_debt_paydown_zero_remaining` or the substrate-gap-class closures or the demonstration principle. Per Brian directive `feedback_no_textual_enforcement_bridges` + Director poke-hole 2026-05-06 finding 1.1 (demo-gate minimum bar) — closure requires runtime-executable verification, not document-level claims.
+**R3 close criteria implies CONSUMER_LANDED for all R3-load-bearing §1.8 gates** (97 enumerated **minus** **#81**/**#82**/**#95** carved — see carve paragraph under §1.5): declarations alone don't satisfy `r3_debt_paydown_zero_remaining` or the substrate-gap-class closures or the demonstration principle. Per Brian directive `feedback_no_textual_enforcement_bridges` + Director poke-hole 2026-05-06 finding 1.1 (demo-gate minimum bar) — closure requires runtime-executable verification, not document-level claims.
 
 **Consumer infrastructure to land before R3 close**:
 - **T-Tests-As-Data-Completeness lane** (existing R3 lane): every test ports to `.dag` TestClaim or generated target-language test code; predicates execute via Evaluator. Closes the predicate→consumer gap for substrate-gap-class + Pattern-A predicate gates.
@@ -177,7 +179,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 
 ### §1.8 Canonical R3 Closure-Authority Ledger (per openai-pro meta-review structural recommendation; Brian B2 path-(b) ratified 2026-05-06)
 
-**Single canonical view of all 96 closure gates** — consolidates per-lane enumeration in `r3-structure.md` §"Acceptance" + plan §1.5 count summary + §1.6 demonstration audit + §1.7 status taxonomy into one row-per-gate table. Eliminates "duplicate authority" class of cross-doc consistency findings (per openai-pro 2026-05-06 PAUSE_AND_REGROUP verdict).
+**Single canonical view of all 97 closure gates** — consolidates per-lane enumeration in `r3-structure.md` §"Acceptance" + plan §1.5 count summary + §1.6 demonstration audit + §1.7 status taxonomy into one row-per-gate table. Eliminates "duplicate authority" class of cross-doc consistency findings (per openai-pro 2026-05-06 PAUSE_AND_REGROUP verdict).
 
 **Predicate-family legend**:
 - **substrate-shape**: declarations of carriers/types/algebra in `dsl/std/` (state-fact)
@@ -293,11 +295,12 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 | 94 | `memory_peak_cost_basis_demonstrated` | demonstration | T-Lens-Application-Surface | DECLARED (added to §"Acceptance" 2026-05-06) | memory-peak cost basis |
 | 95 | `opt_in_iteration_parallelism_via_lens_application_demonstrated` | demonstration | T-Lens-Application-Surface → **R4-CARVED (C1)** | **CARVED to R4** per `docs/r4-carve-out-routing.md` C1 cascade with `parallelism_lens_behaviorally_complete` — Pass requires parallelism lens BEHAVIORALLY COMPLETE (`docs/design-lens-application-surface.md` §4.4 / §7); **not** R3 thesis-close load-bearing |
 | 96 | `value_body_substrate_mirror_isomorphism_executable` | substrate-shape | T-V-L4-L7-Direct (Verification cross-program with Substrate) | DECLARED (NEW 2026-05-08; Q-ValueBody-Isomorphism RATIFIED at gunbc#828 #issuecomment-4403972737 + Brian sanction at gunbc#846) | Rust `ValueBody` ↔ substrate `.dag` mirror isomorphism gate; canonical Pass-condition body at `r3-structure.md` §Acceptance T-Verification-L4-L7-Direct (per §1.8 authority convention `r3-program-plan.md:302`); brief at `docs/briefs/r3-v-valuebody-substrate-mirror-isomorphism-v1-worker.md`. |
+| 97 | `method_template_projection_emit_shim_retirement_coherence` | state-check | R2-Grounding-Rust ([Gunbc **#1982**](https://github.com/gunb-ai/gunbc/issues/1982)) | **CONSUMER_LANDED + PASSING** | Q-V2-Retirement-Boundary-Matrix (**G6**) — Gap-4 `pb_method_template_projection_dag_emit` + `emit_method_template_projection` bin must exist **iff** **`src/v2/stage0/`** remains; fails closed when PB lands **`v2_directory_deleted`** without Grounding shim removal (or prematurely deletes shim while v2 remains). Consumer: **`src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs`** + SG-0 census path gate. Terminal retirement = shim absent + v2 tree absent; coherence holds continuously. |
 
 **Plus standing-program ledger predicate** (NOT a lane gate; separate Pass surface per §1):
 - `r3_debt_paydown_zero_remaining` — no tracked-debt rows survive R3 close (per §1.5 inclusion list); ROADMAP `Post-merge debt` rows + sweep §1 Class A/B/C/F/G entries + §10 RED escalations.
 
-**R3 close = ALL non-carved §1.8 lane gates GREEN (93 load-bearing; **#81**/**#82**/**#95** carved — §1.5) + `r3_debt_paydown_zero_remaining` GREEN** (per §1 Two distinct Pass surfaces).
+**R3 close = ALL non-carved §1.8 lane gates GREEN (94 load-bearing; **#81**/**#82**/**#95** carved — §1.5) + `r3_debt_paydown_zero_remaining` GREEN** (per §1 Two distinct Pass surfaces).
 
 **Authoritative source per gate**: `r3-structure.md` §"Acceptance" carries the Pass-condition body for each row above. This ledger is the consolidated index — body lives in canonical archive.
 
@@ -584,7 +587,7 @@ Pattern A executable (4-family cluster — see §1.1):
    - Remaining families (RustDagIsomorphism / SymbolicCostExprEquals / BridgeLedgerZero / Free-Consequences)
      have separate unblock paths per §2.1
 
-R3 close = **non-carved §1.8 gates GREEN** (**93** load-bearing; **#81**/**#82**/**#95** carved — §1.5) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt-rows-remaining (per §1 two-Pass-surfaces clarification; both must hold)
+R3 close = **non-carved §1.8 gates GREEN** (**94** load-bearing; **#81**/**#82**/**#95** carved — §1.5) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt-rows-remaining (per §1 two-Pass-surfaces clarification; both must hold)
 ```
 
 **Edges added in §6 graph per Director poke-hole 2026-05-06**:
@@ -762,7 +765,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 
 | # | Question | PM recommendation | Status |
 |---|---|---|---|
-| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; **96 closure gates total** across 18 lanes + 1 standing program; per-lane breakdown + history (Pattern-A executable family + 2026-05-06 codex BLOCKING fix lanes + 2026-05-08 ValueBody isomorphism) authoritative at §1.5 + §1.8 — Q1 row defers to those for sub-counts to preserve single-authority discipline | RATIFIED |
+| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; **97 closure gates total** across 18 lanes + 1 standing program; per-lane breakdown + history (Pattern-A executable family + 2026-05-06 codex BLOCKING fix lanes + 2026-05-08 ValueBody isomorphism Gate **#96** + 2026-05-08 emit-shim boundary coherence Gate **#97**) authoritative at §1.5 + §1.8 — Q1 row defers to those for sub-counts to preserve single-authority discipline | RATIFIED |
 | Q2 | 5 substrate-gap classes — separate lanes vs closure-criteria-over-existing-lanes | Closure-criteria framing (§1.4 + §4) | RATIFIED |
 | Q3 | v2 retirement Mgr ownership | PB Mgr owns all (existing T-V2-Retirement scope) | RATIFIED |
 | Q4 | Mgr structure (keep 9 vs reorganize) | Keep 9 standing Mgrs with re-anchored scope | RATIFIED |
@@ -841,6 +844,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 - **Needs**: R3 plan must state whether Grounding owns direct execution here or only consumes PB/Substrate/v2-retirement milestones.
 - **R3 zero-debt impact**: must resolve before zero-debt close if hand-Rust target emitters unacceptable at R3 close.
 - **Plan integration**: §10.3 Q-Emit-Shim-Handoff.
+- **§1.8 coherence consumer (Gunbc [#1982](https://github.com/gunb-ai/gunbc/issues/1982) / Q-V2-Retirement-Boundary-Matrix, 2026-05-08):** **`method_template_projection_emit_shim_retirement_coherence` (#97)** — `src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs` + ledger row rats that Gap-4 `pb_method_template_projection_dag_emit` + `emit_method_template_projection` bin track **`src/v2/stage0/`** presence; **terminal** Grounding retirement deletes those surfaces after PB **`v2_directory_deleted`**.
 
 **G7. Coercion-Fold `ScratchIntExamples` bridge live**
 - **Description**: PR #1804 §2 verified `LanguageSpecProjection::ScratchIntExamples` and `TargetInhabitance` remain live in `src/v3/grounding_coercion_fold`; trigger "real LanguageSpec projection".
@@ -961,7 +965,7 @@ PB Mgr's substantive review on PR #1808 + canvas/refinements receipt at gunbc#84
 #### §10.2.6 R3 Debt-Paydown Mgr (quiet-otter-416) — full canvas + plan-poke-hole absorbed at sha `e41e4fbe8` (2026-05-06)
 
 Substrate canvas + plan-poke-hole both folded in. Key absorptions:
-- **§1 Two-Pass-surfaces clarification**: lane TestClaim gates (96 total) AND `r3_debt_paydown_zero_remaining` are distinct Pass surfaces; both must hold for R3 close
+- **§1 Two-Pass-surfaces clarification**: lane TestClaim gates (97 total) AND `r3_debt_paydown_zero_remaining` are distinct Pass surfaces; both must hold for R3 close
 - **§7 four-mechanism structure** (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" canonical authority): added §7.6 Velocity tripwire + §7.7 Closure-receipt cadence + §7.8 SG-0 PR-window net-shrink discipline
 - **§3 T-Debt-Paydown row** updated from "(TBD from canvas)" → YELLOW with PR #1807 + PR #1566 + Tier-1 dispatch-brief-drift-sweep anchors
 
