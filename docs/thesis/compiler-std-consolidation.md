@@ -121,7 +121,7 @@ The consolidation can be measured:
 
 Positive-definition set (NOT counted against the ratchet):
 - `pipeline.dag` types, `regen.dag` types
-- Lens-local return-type carriers that represent the lens's published API (e.g., `Origin`, `UnusedParameter`, `CostEntry`) — **except** generic-Lookup-pattern duplicates (see below)
+- Lens-local return-type carriers that represent the lens's published API (e.g., `Origin`, `UnusedParameter`, `ComplexitySummary` / `ComplexityEntry`) — **except** generic-Lookup-pattern duplicates (see below)
 - Substrate reflection accessor declarations
 
 Exempted (pending named trigger, not counted either direction):
@@ -140,7 +140,7 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"` after the tokenizer 
 | `src/v3/compiler/operators.dag` | 0 | — |
 | `src/v3/compiler/pipeline.dag` | 3 | positive-def |
 | `src/v3/compiler/regen.dag` | 1 | positive-def |
-| `src/v3/lenses/complexity.dag` | 1 | 1 positive-def (`CostEntry`); return surface is imported `v3.std.lookup::Lookup` (not a lens-local `type` decl) |
+| `src/v3/lenses/complexity.dag` | 4 | 4 positive-def (`Certainty`, `ComplexitySummary`, `ComplexityEntry`, `DominanceOutcome`); return surface is imported `v3.std.lookup::Lookup` (not a lens-local `type` decl) |
 | `src/v3/lenses/cost.dag` | 1 | 1 positive-def (`SymbolicCostEntry`); return surface is imported `v3.std.lookup::Lookup<SymbolicCost>` (not a lens-local `type` decl) |
 | `src/v3/lenses/idempotency.dag` | 0 | — |
 | `src/v3/lenses/infer_helpers.dag` | 4 | 3 in-ratchet (`TemplateArgumentsMatch`, `TemplateArgumentCursor`, `NormalizedInstantiationArgs` — workaround-shaped coproduct scaffolds with named dissolution triggers) + 1 positive-def (`TemplateArgumentBinding = Conflict \| NoOp \| Append \| ReplaceAt` — semantic carrier); template-argument presence uses imported `Lookup<DeclarationId>` |
