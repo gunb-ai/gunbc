@@ -53094,13 +53094,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 fields: vec![(
                     "carrier".to_string(),
                     FieldValue::Literal(LiteralBits::String(
-                        "({p0}).declaration_by_name(&{p1}).cloned()".to_string(),
+                        "({p0}).declaration_by_name({p1}).cloned()".to_string(),
                     )),
                 )],
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 53293, 53423),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 53293, 53422),
         });
         declarations.push(Declaration {
             id: DeclarationId(1529),
@@ -53132,7 +53132,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/spec/rust.dag", 53425, 53601),
+            span: SourceSpan::new("src/v3/spec/rust.dag", 53424, 53600),
         });
         declarations.push(Declaration {
             id: DeclarationId(1530),
