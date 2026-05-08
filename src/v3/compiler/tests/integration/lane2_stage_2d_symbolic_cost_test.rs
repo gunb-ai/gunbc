@@ -82,7 +82,10 @@ fn two_distinct_ports() -> (PortId, PortId) {
 }
 
 fn size_var(source_port: PortId) -> SizeVariable {
-    SizeVariable { source_port }
+    SizeVariable {
+        source_port,
+        display_name: None,
+    }
 }
 
 fn linear(port: PortId) -> SymbolicCost {

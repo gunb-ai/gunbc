@@ -96,11 +96,9 @@ fn compute_summaries(d: Dag) -> List<ComplexityEntry> =
   )
 
 fn seed_bind_params(nodes: List<Behavior>) -> List<ComplexityEntry> =
-  match nodes {
-    Empty => empty()
-    Cons(payload) =>
-      concat(params_of(payload.head), seed_bind_params(payload.tail))
-  }
+  fold(nodes, empty(), |acc, behavior|
+    concat(params_of(behavior), acc)
+  )
 
 fn params_of(behavior: Behavior) -> List<ComplexityEntry> =
   match behavior {
@@ -290,14 +288,16 @@ fn max_path_summaries(
   )
 
 fn lookup_summary(acc: List<ComplexityEntry>, port_id: PortId) -> Lookup<ComplexitySummary> =
-  match acc {
-    Empty => miss_complexity_summary_lookup()
-    Cons(payload) =>
-      if payload.head.port == port_id then
-        payload.head.summary
-      else
-        lookup_summary(payload.tail, port_id)
-  }
+  fold(acc, miss_complexity_summary_lookup(), |running, entry|
+    match running {
+      Hit(_) => running
+      Miss =>
+        if entry.port == port_id then
+          entry.summary
+        else
+          miss_complexity_summary_lookup()
+    }
+  )
 
 fn combine_sequential(
   a: Lookup<ComplexitySummary>,

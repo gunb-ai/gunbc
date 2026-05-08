@@ -44,14 +44,11 @@ pub fn compute_summaries(p0: &Dag) -> Vec<ComplexityEntry> {
         })
 }
 pub fn seed_bind_params(p0: &[Behavior]) -> Vec<ComplexityEntry> {
-    match p0 {
-        [] => Vec::new(),
-        [__list_head, __list_tail @ ..] => {
-            let mut __left = params_of(__list_head);
-            __left.extend(seed_bind_params(__list_tail));
-            __left
-        }
-    }
+    (p0).iter().fold(Vec::new(), |__fold_acc, __fold_item| {
+        let mut __left = params_of(__fold_item);
+        __left.extend((__fold_acc).clone());
+        __left
+    })
 }
 pub fn params_of(p0: &Behavior) -> Vec<ComplexityEntry> {
     match p0 {
@@ -338,16 +335,19 @@ pub fn max_path_summaries(p0: &[ComplexityEntry], p1: &[Path]) -> Lookup<Complex
     )
 }
 pub fn lookup_summary(p0: &[ComplexityEntry], p1: &PortId) -> Lookup<ComplexitySummary> {
-    match p0 {
-        [] => miss_complexity_summary_lookup(),
-        [__list_head, __list_tail @ ..] => {
-            if ((__list_head).port == (*(p1))) {
-                ((__list_head).summary).clone()
-            } else {
-                lookup_summary(__list_tail, p1)
+    (p0).iter().fold(
+        miss_complexity_summary_lookup(),
+        |__fold_acc, __fold_item| match &__fold_acc {
+            Lookup::Hit(_) => __fold_acc,
+            Lookup::Miss => {
+                if ((__fold_item).port == (*(p1))) {
+                    ((__fold_item).summary).clone()
+                } else {
+                    miss_complexity_summary_lookup()
+                }
             }
-        }
-    }
+        },
+    )
 }
 pub fn combine_sequential(
     p0: &Lookup<ComplexitySummary>,

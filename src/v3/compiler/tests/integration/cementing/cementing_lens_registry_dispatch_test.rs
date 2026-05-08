@@ -102,7 +102,8 @@ fn expected_origin_from_producer_behavior(behavior: &Behavior) -> Origin {
 /// not `N/A` per `TESTING.md` Band-C). Land the new
 /// `cementing/<stem>.rs` module and a `#[path = ...]` line in
 /// `tests/integration.rs` in the same PR.
-const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] = &[];
+const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] =
+    &[("cost", "complexity_lens_behavioral_completion")];
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
