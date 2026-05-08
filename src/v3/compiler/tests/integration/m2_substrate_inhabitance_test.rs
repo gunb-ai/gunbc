@@ -1011,6 +1011,44 @@ fn invoke(w: Wrapper, x: Int) -> Int = w.f(x)
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_constant_descent_termination_matches_producer_acceptance_boundary()
+{
+    // Symmetric to the proportional-descent boundary test below but for
+    // the Sub arm: the termination prover and per-call descent producer
+    // MUST share the same acceptance boundary on `param - k`.
+    // `positive_amount_from_i64` (dag.rs:1031-1032) materializes
+    // `PositiveDescentAmount` for `1..=MAX_PEANO_MATERIALIZATION`;
+    // accepting any larger literal in `is_strictly_smaller` would let
+    // `f(n - 257)` pass termination while the producer fails to
+    // materialize and emits `SubValueUnknown` — parallel-authority
+    // split-brain (the discipline Slice 3 cemented for descent_provable
+    // / ClusterDescentChecker single-authority alignment).
+    //
+    // This test pins the boundary by rejecting `n - 257` at compile
+    // time. If either authority's range shifts, this test surfaces the
+    // divergence.
+    let err = compile_to_dag(
+        "\
+fn ep_oversize_subtractor(n: Int) -> Int =
+  if n == 0 then 0 else ep_oversize_subtractor(n - 257)
+",
+        "e_p_oversize_subtractor.v3",
+    )
+    .expect_err("subtractor beyond producer's materialization range must be rejected");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic diagnostics, got {err:?}");
+    };
+    let saw_termination_diagnostic = dag.diagnostics().iter().any(|(_, d)| match d {
+        Diagnostic::ResolveError { name, .. } => name.contains("ep_oversize_subtractor"),
+        _ => false,
+    });
+    assert!(
+        saw_termination_diagnostic,
+        "expected a termination diagnostic naming `ep_oversize_subtractor`"
+    );
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\
