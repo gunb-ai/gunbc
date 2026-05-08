@@ -41,6 +41,15 @@ pub enum BuildError {
         declaration: DeclarationId,
         detail: &'static str,
     },
+    /// `language_id` matched zero realization rows across all four
+    /// categories. Either the id doesn't reference a valid LanguageSpec
+    /// declaration, or the spec exists but has no realization rows
+    /// authored. Either is a bug-like state for a downstream consumer
+    /// expecting per-primitive cost facts; fail-closed at the
+    /// substrate-consumer boundary.
+    NoRealizationCostsForLanguage {
+        language: DeclarationId,
+    },
 }
 
 #[derive(Copy, Clone)]
@@ -155,6 +164,21 @@ impl RealizationCostTable {
             }
         }
 
+        // Fail-closed: a language_id that matched zero realization rows is
+        // either bogus (not a LanguageSpec) or a spec with no realization
+        // rows authored — neither is a state a downstream consumer should
+        // see as a "successful build". Surface as typed error rather than
+        // returning a fabricated-empty table.
+        if table.types.is_empty()
+            && table.callables.is_empty()
+            && table.operators.is_empty()
+            && table.behaviors.is_empty()
+        {
+            return Err(BuildError::NoRealizationCostsForLanguage {
+                language: language_id,
+            });
+        }
+
         Ok(table)
     }
 
@@ -246,5 +270,36 @@ mod tests {
             "type_cost(Int) for Rust target should be 1 per src/v3/spec/rust.dag rust_int row; \
              got {int_cost:?}"
         );
+    }
+
+    /// Negative coverage of the fail-closed boundary: a `language_id`
+    /// that doesn't reference a LanguageSpec (here: the `Int` primitive
+    /// declaration itself) must yield `BuildError::NoRealizationCostsForLanguage`,
+    /// NOT a successful empty table. Per gpt-5-5-pro REQUEST_CHANGES on
+    /// PR #2194 sha 36e63d22 (LAYER MODEL + Fail-Closed BLOCKING).
+    #[test]
+    fn build_for_non_language_id_fails_closed() {
+        let dag = generated_full_bootstrap_dag();
+        let int_decl = dag
+            .declaration_by_name("Int")
+            .expect("bootstrap dag has Int declaration");
+        let bogus_language = int_decl.id;
+
+        let result = RealizationCostTable::build_for_language(&dag, bogus_language);
+        match result {
+            Err(BuildError::NoRealizationCostsForLanguage { language }) => {
+                assert_eq!(
+                    language, bogus_language,
+                    "error should carry the bogus language id back"
+                );
+            }
+            Err(other) => panic!(
+                "expected NoRealizationCostsForLanguage for bogus language id; got {other:?}"
+            ),
+            Ok(_) => panic!(
+                "expected fail-closed error for bogus language id; got Ok(table) instead — \
+                 fabricated-empty-table fail-closed contract violated"
+            ),
+        }
     }
 }
