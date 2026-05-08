@@ -37,9 +37,6 @@ num-bigint = { workspace = true }
 libc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
-# Interpreter-backed receipts for substrate behavior (repeat_string, etc.).
-v2-compiler = { path = "../../v2/stage0" }
-v2-compiler-tests = { path = "../../v2/tests" }
 # R3 C1 — Tier-3 mirror dissolution perf budget (Phase 1 baseline capture); see
 # `docs/briefs/r3-pb-tier3-perf-budget-worker.md` deliverable 0a/0b.
 criterion = "0.5"
