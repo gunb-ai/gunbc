@@ -81,6 +81,8 @@ mod lane2_stage_2d_symbolic_cost_test;
 mod lane2_stage_2e_parallelism_test;
 #[path = "integration/lane3_stage_3b_db1_test.rs"]
 mod lane3_stage_3b_db1_test;
+#[path = "integration/lens_cost_target_realization_test.rs"]
+mod lens_cost_target_realization_test;
 #[path = "integration/lens_register_correspondence_test.rs"]
 mod lens_register_correspondence_test;
 #[path = "integration/lens_substrate_carrier_test.rs"]
@@ -117,8 +119,6 @@ mod m2_emit_multi_field_struct_variant_test;
 mod m2_feature_parity_test;
 #[path = "integration/m2_field_access_binding_test.rs"]
 mod m2_field_access_binding_test;
-#[path = "integration/lens_cost_target_realization_test.rs"]
-mod lens_cost_target_realization_test;
 #[path = "integration/m2_lens_cost_migration_test.rs"]
 mod m2_lens_cost_migration_test;
 #[path = "integration/m2_lens_idempotency_emit_test.rs"]

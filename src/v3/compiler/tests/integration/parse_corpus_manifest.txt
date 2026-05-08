@@ -15,7 +15,7 @@ dsl/std/types.dag	107	193393	4d42cf90e4d08732
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	43	92946	f6a6c0d08e3081bb
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
-src/v3/compiler/regen.dag	12	34377	2ea9e99e1b34fd0b
+src/v3/compiler/regen.dag	13	37988	27d7cc07da9fa722
 src/v3/compiler/tests/four_fixture_pressure/drop.v3	2	2517	00953bc6b6d8c811
 src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6755	00117f14eb43dd20
@@ -23,7 +23,7 @@ src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
 src/v3/compiler/tokenize.dag	30	64719	286ece4c5bb39038
 src/v3/spec/go.dag	131	1170580	2ddf8468392612ee
 src/v3/spec/python.dag	93	602105	4ec88ac58c60fe63
-src/v3/spec/rust.dag	168	1352292	9d96a693417fde93
+src/v3/spec/rust.dag	170	1357477	9bfd82407452889b
 src/v3/spec/v3_l1.dag	8	2246	57294d687b4753f4
 src/v3/std/algebra.dag	47	339773	40b62a1381f56e84
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
@@ -58,7 +58,7 @@ src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/runtime.dag	14	16342	4eaaff1aac38d20d
 src/v3/std/rust_method_template_contracts.dag	9	109835	378c75ae8055bf97
 src/v3/std/services.dag	8	5791	840c901943fce7bf
-src/v3/std/substrate.dag	64	139633	397ff60269cb002f
+src/v3/std/substrate.dag	65	141515	1b2a4d2f9c834025
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	25	45796	572819e153cb8b5b
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
