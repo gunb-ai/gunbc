@@ -48,6 +48,9 @@ type TargetIntegerTypeInhabitance {
   kernel_integer: DeclarationRef
   algebra: DeclarationRef
   bound: TargetIntegerInhabitanceBound
+  // Row field stays `DeclarationRef`; **`v3-grounding-coercion-fold`** fail-closed-refines at
+  // selection time: referenced declaration must carry `TypeRealization` meta
+  // (`dag.type_realization_meta()`) before `SelectedTargetInhabitance` is returned.
   type_realization: DeclarationRef
 }
 
