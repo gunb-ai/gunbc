@@ -118,16 +118,33 @@ type AnthropicMessages200Citation
   | WebSearchResultLocation { cited_text: String, encrypted_index: String, title: String?, url: String }
   | SearchResultLocation { cited_text: String, source: String, title: String?, search_result_index: Int, start_block_index: Int, end_block_index: Int }
 
-// 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200TextBlock`
-// in `dsl/extdeps/llm/anthropic.dag`. Narrow text slice of the 200 response's
-// `content[]` per `from "content/0/text"` extraction in the operation;
-// thinking/tool-use/image content blocks remain gap-carried on the v2 source's
-// `structural_coverage_gap_anthropic_messages_200_residual`.
-type AnthropicMessages200TextBlock {
-  type:      String
-  text:      String
-  citations: List<AnthropicMessages200Citation>?
-}
+// 🟡 SCAFFOLD response coproduct mirroring `AnthropicMessages200ContentBlock`
+// in `dsl/extdeps/llm/anthropic.dag`. The wire rows are `type`-tagged
+// alternatives, not optional coordinates on a text record. The v2
+// `MessagesRedactedThinkingBlock.data` label is mirrored as `redacted_data`
+// because `data` is a v3 keyword; the lockstep ratchet maps that single label.
+// Remaining JSON payload and typed-response projection blockers stay tracked on
+// the v2 source's `structural_coverage_gap_anthropic_messages_200_residual`.
+type AnthropicMessages200ContentBlock
+  = MessagesTextBlock { text: String, citations: List<AnthropicMessages200Citation>? }
+  | MessagesThinkingBlock { thinking: String, signature: String }
+  | MessagesRedactedThinkingBlock { redacted_data: String }
+  | MessagesToolUseBlock { id: String, name: String, input: Json, caller: Json? }
+  | MessagesServerToolUseBlock { id: String, name: AnthropicServerToolName, input: Json, caller: Json? }
+  | MessagesWebSearchToolResultBlock { tool_use_id: String, content: Json }
+
+// 🟡 SCAFFOLD provider-domain enum mirroring `AnthropicServerToolName` in
+// `dsl/extdeps/llm/anthropic.dag`. Per-tool input payload typing remains
+// tracked by the v2 residual row.
+type AnthropicServerToolName
+  = WebSearch
+  | WebFetch
+  | CodeExecution
+  | BashCodeExecution
+  | TextEditorCodeExecution
+  | ToolSearchToolRegex
+  | ToolSearchToolBm25
+  | Advisor
 
 // 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200Usage`
 // in `dsl/extdeps/llm/anthropic.dag`.
@@ -148,7 +165,7 @@ type AnthropicMessages200Body {
   id:            String
   type:          String
   role:          String
-  content:       List<AnthropicMessages200TextBlock>
+  content:       List<AnthropicMessages200ContentBlock>
   model:         String
   stop_reason:   AnthropicStopReason
   stop_sequence: String?
