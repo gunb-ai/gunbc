@@ -991,6 +991,42 @@ fn ep_halve(n: Int) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_proportional_descent_termination_matches_producer_acceptance_boundary()
+ {
+    // Slice 5 follow-up: the termination prover and per-call descent
+    // producer MUST share the same acceptance boundary for proportional
+    // shrink (Div). The producer's `proportional_divisor_from_i64`
+    // materializes divisors in `2..=MAX_PEANO_MATERIALIZATION` (256);
+    // accepting any larger divisor in `is_strictly_smaller` would let
+    // `f(n / 300)` pass termination while the producer fail-closes to
+    // `SubValueUnknown` — parallel-authority split-brain (the same
+    // discipline Slice 3's ClusterDescentChecker fix established).
+    //
+    // This test pins the boundary by rejecting `n / 257` at compile
+    // time. If the boundary widens (or contracts) on either authority,
+    // this test surfaces the divergence.
+    let err = compile_to_dag(
+        "\
+fn ep_oversize_divisor(n: Int) -> Int =
+  if n == 0 then 0 else ep_oversize_divisor(n / 257)
+",
+        "e_p_oversize_divisor.v3",
+    )
+    .expect_err("divisor beyond producer's materialization range must be rejected at compile time");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic diagnostics, got {err:?}");
+    };
+    let saw_termination_diagnostic = dag.diagnostics().iter().any(|(_, d)| match d {
+        Diagnostic::ResolveError { name, .. } => name.contains("ep_oversize_divisor"),
+        _ => false,
+    });
+    assert!(
+        saw_termination_diagnostic,
+        "expected a termination diagnostic naming `ep_oversize_divisor`"
+    );
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\

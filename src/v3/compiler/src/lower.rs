@@ -30,7 +30,7 @@ use crate::dag::{
     Declaration, DeclarationId, Field, FieldMap, IntraClusterCall, LiteralBits, LoopBound,
     LoopNode, MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path,
     PayloadBinding, PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective, ValueNode,
+    TypeConnective, ValueNode, MAX_PEANO_MATERIALIZATION,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -8772,13 +8772,21 @@ fn is_strictly_smaller(
         return false;
     };
     // For Sub: any positive integer literal shrinks the parameter
-    // (`n - 1`, `n - 2`, ...). For Div: the divisor must be > 1 —
-    // dividing by 1 is identity, dividing by 0 is undefined, and
-    // dividing by a literal ≤ 0 doesn't yield the strictly-smaller
-    // halving/quartering shape this gate is meant to recognize.
+    // (`n - 1`, `n - 2`, ...). For Div: the divisor must be in
+    // `2..=MAX_PEANO_MATERIALIZATION` — dividing by 1 is identity,
+    // dividing by 0 is undefined, and the upper bound matches the
+    // descent-evidence carrier's `proportional_divisor_from_i64`
+    // materialization range (`dag.rs:1045-1046`). The two authorities
+    // (termination prover + per-call descent producer) MUST share the
+    // same acceptance boundary for the same termination fact — accepting
+    // `f(n / 300)` here while the producer fail-closes to
+    // `SubValueUnknown` would re-create the parallel-authority
+    // split-brain Slice 3's BLOCKING fix already established discipline
+    // against (descent_provable / ClusterDescentChecker single-authority
+    // alignment).
     let rhs_satisfies_descent = match arith_op {
         ArithmeticOp::Sub => *v > 0,
-        ArithmeticOp::Div => *v > 1,
+        ArithmeticOp::Div => (2..=MAX_PEANO_MATERIALIZATION).contains(v),
         ArithmeticOp::Add | ArithmeticOp::Mul => unreachable!("rejected by op-kind match above"),
     };
     lhs_is_param && rhs_satisfies_descent
