@@ -658,17 +658,25 @@ fn atomic_cost_to_symbolic(cost: AtomicCost) -> SymbolicCost =
   }
 
 fn product_atoms_to_symbolic(factors: List<AtomicCost>) -> SymbolicCost =
-  fold(factors, ConstantCost(1), |running, atom|
-    iterate(running, atomic_cost_to_symbolic(atom))
-  )
+  match factors {
+    Empty => ConstantCost(1)
+    Cons(_) =>
+      fold(factors, ConstantCost(1), |running, atom|
+        iterate(running, atomic_cost_to_symbolic(atom))
+      )
+  }
 
 fn product_term_to_symbolic(factors: List<AtomicCost>) -> SymbolicCost =
   product_atoms_to_symbolic(factors)
 
 fn sum_products_to_symbolic(terms: List<List<AtomicCost>>) -> SymbolicCost =
-  fold(terms, ConstantCost(0), |running, term|
-    sequential(running, product_term_to_symbolic(term))
-  )
+  match terms {
+    Empty => ConstantCost(0)
+    Cons(_) =>
+      fold(terms, ConstantCost(0), |running, term|
+        sequential(running, product_term_to_symbolic(term))
+      )
+  }
 
 fn cost_constant() -> CostBound { ConstantBound }
 fn cost_linear(param: String) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: poly_exp_degree_one() } } }
