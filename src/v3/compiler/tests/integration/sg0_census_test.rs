@@ -383,6 +383,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
     "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
+    // T-CostLens-Composition Slice 1a.1 (#2141 ε scope per gunbc#2181 ratification):
+    // Rust integration tests exercising `lens_cost_target_realization` `.dag`-tier
+    // consumer of `declaration_by_name` (introduced by Slice 1a.0 / PR #2194).
+    // P2 same-PR-consumer-evidence per codex BLOCKING surfaced post-merge.
+    "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
     // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
