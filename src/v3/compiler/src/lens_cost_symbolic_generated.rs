@@ -93,7 +93,7 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
 }
 pub fn loop_cost(p0: &Dag, p1: &[SymbolicCostEntry], p2: &LoopNode) -> Lookup<SymbolicCost> {
     combine_iterate(
-        &(linear_at((p2).source)),
+        &(linear_at(&((p2).source))),
         &(body_cost(p0, p1, &((p2).body))),
     )
 }
@@ -112,9 +112,12 @@ pub fn behavior_result_port(p0: &Behavior) -> PortId {
         Behavior::Bind(bind) => (bind).result_port(),
     }
 }
-pub fn linear_at(p0: PortId) -> Lookup<SymbolicCost> {
+pub fn linear_at(p0: &PortId) -> Lookup<SymbolicCost> {
     Lookup::Hit(SymbolicCost::LinearCost {
-        _0: SizeVariable { source_port: p0 },
+        _0: SizeVariable {
+            source_port: *p0,
+            display_name: None,
+        },
     })
 }
 pub fn combine_iterate(

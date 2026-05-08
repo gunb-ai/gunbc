@@ -4255,8 +4255,13 @@ impl<'a> Ctx<'a> {
                 InputSlot::Positional(0),
                 locals,
             )?);
+            let source_port = if arg.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
+                format!("*{arg}")
+            } else {
+                arg
+            };
             return Ok(Some(format!(
-                "SizeVariable {{ source_port: {arg}, display_name: None }}"
+                "SizeVariable {{ source_port: {source_port}, display_name: None }}"
             )));
         }
         Ok(None)

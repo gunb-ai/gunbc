@@ -54,7 +54,6 @@ import std.computation {
   SameArgumentCall,
   per_call_pattern_at
 }
-import std.induction { CostBound, cost_bound_to_symbolic }
 import v3.std.lookup { Lookup }
 
 // Certainty: how tight is the bound?
@@ -388,15 +387,7 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
     Conservative => Conservative
   }
 
-// Receipt helper for the design's CostBound projection. Loop recurrence
-// derivation currently reaches SymbolicCost directly through the live
-// CallPattern query because CostBound still carries string parameters, not
-// structural PortIds; the projection remains the named bridge for consumers
-// that already hold a CostBound proof object.
-fn projected_cost_bound_summary(bound: CostBound) -> ComplexitySummary =
-  summary_from_costs(
-    cost_bound_to_symbolic(bound),
-    cost_bound_to_symbolic(bound),
-    Conservative,
-    Conservative
-  )
+// CostBound projection authority lives in `std.induction::cost_bound_to_symbolic`.
+// This lens consumes the live CallPattern query directly because structural
+// SizeVariable construction needs PortIds, while CostBound atoms still carry
+// string parameter names.
