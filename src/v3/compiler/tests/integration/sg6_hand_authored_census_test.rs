@@ -348,6 +348,11 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
             "src/v3/compiler/src/lens_cost_symbolic_generated.rs",
         ),
         (
+            "cost_target_realization",
+            "src/v3/lenses/cost_target_realization.dag",
+            "src/v3/compiler/src/lens_cost_target_realization_generated.rs",
+        ),
+        (
             "effect_enumeration",
             "src/v3/lenses/effect_enumeration.dag",
             "src/v3/compiler/src/lens_effect_enumeration_generated.rs",
