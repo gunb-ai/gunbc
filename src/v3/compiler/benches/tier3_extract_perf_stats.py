@@ -85,15 +85,22 @@ def main() -> int:
         print(f"sample.json not found: {args.sample_json}", file=sys.stderr)
         return 2
 
-    sample_json = json.loads(args.sample_json.read_text())
-    per_iter = per_iter_ns(sample_json)
+    try:
+        sample_json = json.loads(args.sample_json.read_text())
+        per_iter = per_iter_ns(sample_json)
+    except (json.JSONDecodeError, KeyError, ValueError, ZeroDivisionError) as err:
+        print(
+            f"sample.json corruption (procedure §5): {type(err).__name__}: {err}",
+            file=sys.stderr,
+        )
+        return 5
     per_iter.sort()
     median = quantile(per_iter, 0.5)
     p99 = quantile(per_iter, 0.99)
 
     if median <= 0 or p99 <= 0:
         print(
-            f"non-positive measurement (procedure §5 rule 4): median={median} p99={p99}",
+            f"non-positive raw measurement (procedure §5 rule 4): median={median} p99={p99}",
             file=sys.stderr,
         )
         return 3
@@ -105,10 +112,28 @@ def main() -> int:
         )
         return 4
 
+    median_ns = round(median)
+    p99_ns = round(p99)
+
+    # Post-rounding non-zero check (procedure §5 rule 4): a positive
+    # sub-nanosecond raw measurement (e.g., 0.4 ns) passes the raw `> 0`
+    # check above but rounds to integer 0. Emitting `0` for either field
+    # would fabricate a plausible baseline row from invalid measurement
+    # resolution. Fail-closed at this seam: if rounding collapses a real
+    # positive measurement to 0, the helper rejects rather than emit.
+    if median_ns <= 0 or p99_ns <= 0:
+        print(
+            f"post-rounding non-positive (procedure §5 rule 4): "
+            f"raw median={median} → {median_ns}, raw p99={p99} → {p99_ns}; "
+            f"sub-nanosecond resolution is below the helper's integer-ns contract",
+            file=sys.stderr,
+        )
+        return 6
+
     output = {
         "name": args.name,
-        "median_ns": round(median),
-        "p99_ns": round(p99),
+        "median_ns": median_ns,
+        "p99_ns": p99_ns,
     }
     print(json.dumps(output))
     return 0
