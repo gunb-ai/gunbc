@@ -102,9 +102,9 @@ If Option B is chosen, single-run capture matches the original §2 wording; this
 
 The decider drops one of the following lines into `docs/r3-structure.md` (or a sibling authority doc) under the C1 / T-Tier3-Dissolution lane block. Authority lands the moment the line is committed.
 
-### 5.1 If Option A chosen
+### 5.1 Option A — RATIFIED 2026-05-08 (PB Manager warm-dove-618; Director ratification at gunbc#828 c#4403509523)
 
-> **Canonical bench host for C1 Phase 1 0c (R-3 satisfied 2026-MM-DD per PB Manager):** `ubicloud-standard-2` (the existing CI runner label; see `.github/workflows/ci.yml`). Phase 1 0c capture and all Phase 2 perf measurements MUST run on this label. Multi-run capture discipline per `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md` §4 (N≥3). **Recapture triggers (any of, Director-approved):** hardware-spec change (vCPU model / RAM size); runner-image change (Ubicloud `ubicloud-standard-2` image bump per <https://www.ubicloud.com/docs/github-actions-integration/runner-types>); OS / kernel change; toolchain change (rustc minor bump per `actions-rust-lang/setup-rust-toolchain` `toolchain` field).
+> **Canonical bench host for C1 Phase 1 0c (R-3 satisfied 2026-05-08 per PB Manager):** `ubicloud-standard-2` (the existing CI runner label; see `.github/workflows/ci.yml`). Phase 1 0c capture and all Phase 2 perf measurements MUST run on this label. Multi-run capture discipline per `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md` §4 (N=5 preferred, N≥3 minimum). **Recapture triggers (any of, Director-approved):** hardware-spec change (vCPU model / RAM size); runner-image change (Ubicloud `ubicloud-standard-2` image bump per <https://www.ubicloud.com/docs/github-actions-integration/runner-types>); OS / kernel change; toolchain change (rustc minor bump per `actions-rust-lang/setup-rust-toolchain` `toolchain` field).
 
 ### 5.2 If Option B chosen (then operator action follows)
 
