@@ -468,6 +468,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // covers reflected-Dag structural assertions over std/ types.
     "src/v3/compiler/tests/integration/method_registry_test.rs",
     "src/v3/compiler/tests/integration/method_template_contract_test.rs",
+    // Gunbc #1982 / §1.8 gate #97 — emit-shim retirement coherence (v2 tree vs Gap-4 producer).
+    "src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs",
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     // R3 row 85 / PB #1560 Gap 4: focused acceptance for the

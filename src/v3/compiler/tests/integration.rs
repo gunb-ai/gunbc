@@ -143,6 +143,8 @@ mod m2_substrate_inhabitance_test;
 mod method_registry_test;
 #[path = "integration/method_template_contract_test.rs"]
 mod method_template_contract_test;
+#[path = "integration/method_template_projection_emit_shim_coherence_test.rs"]
+mod method_template_projection_emit_shim_coherence_test;
 #[path = "integration/p0_std_render_repeat_string_test.rs"]
 mod p0_std_render_repeat_string_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]
