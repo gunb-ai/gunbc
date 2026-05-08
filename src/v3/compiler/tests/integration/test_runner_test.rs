@@ -887,7 +887,11 @@ fn r1_canonical_complexity_lens_bytes_declare_complexity_of() {
     // `complexity_of` directly.
     assert!(
         bytes.contains("fn complexity_of"),
+<<<<<<< HEAD
         "canonical lens should declare complexity_of (post-PR #2271 BEHAVIORALLY COMPLETE widening)"
+=======
+        "canonical lens should declare complexity_of"
+>>>>>>> origin/main
     );
     assert!(
         bytes.contains("fn compute_summaries") && bytes.contains("fn seed_bind_params"),
