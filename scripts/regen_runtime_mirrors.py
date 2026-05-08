@@ -914,6 +914,23 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
 
 
 def render_value_body_sum(variants: list[VariantDef]) -> str:
+    expected = [
+        ("ValueBodyUnparsed", "tuple", "SourceSpan", ()),
+        ("ValueBodyStructural", "record", None, (("fields", "List<FieldEntry>"),)),
+        ("ValueBodyScalar", "tuple", "LiteralBits", ()),
+        ("ValueBodyList", "tuple", "List<FieldValue>", ()),
+        ("ValueBodyMap", "tuple", "List<FieldEntry>", ()),
+    ]
+    actual = [
+        (variant.name, variant.kind, variant.payload, tuple(variant.fields or []))
+        for variant in variants
+    ]
+    if actual != expected:
+        raise ValueError(
+            "ValueBody substrate shape changed; update the Rust mirror renderer "
+            f"explicitly. expected={expected!r} actual={actual!r}"
+        )
+
     variant_name_overrides = {
         "ValueBodyUnparsed": "Unparsed",
         "ValueBodyStructural": "Structural",
@@ -930,16 +947,18 @@ def render_value_body_sum(variants: list[VariantDef]) -> str:
 
     lines = ["#[derive(Debug, Clone)]", "pub enum ValueBody {"]
     for variant in variants:
-        variant_name = variant_name_overrides.get(variant.name, variant.name)
+        variant_name = variant_name_overrides[variant.name]
         if variant.kind == "unit":
             lines.append(f"    {variant_name},")
         elif variant.kind == "tuple":
-            payload_ty = tuple_payload_overrides.get(variant.name, rust_type(variant.payload))
+            payload_ty = tuple_payload_overrides.get(variant.name)
+            if payload_ty is None:
+                payload_ty = rust_type(variant.payload)
             lines.append(f"    {variant_name}({payload_ty}),")
         elif variant.kind == "record":
             lines.append(f"    {variant_name} {{")
             for label, ty in variant.fields or []:
-                field_ty = record_field_overrides.get((variant.name, label), rust_type(ty))
+                field_ty = record_field_overrides[(variant.name, label)]
                 lines.append(f"        {label}: {field_ty},")
             lines.append("    },")
         else:
