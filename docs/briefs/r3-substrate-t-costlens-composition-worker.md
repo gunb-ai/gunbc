@@ -1,8 +1,19 @@
-# Worker brief — Substrate T-CostLens-Composition (γ ratified)
+# Worker brief — Substrate T-CostLens-Composition (ε ratified — supersedes γ)
+
+**SCOPE-SUPERSESSION 2026-05-08 (post-PR #2181 merge `eff426de5`)**: this brief now operates under **ε ratification** per Director at gunb-ai/gunbc#2181 #issuecomment-4401584012 (Q-Cost-Composition-Layering canvas RATIFIED canonical-not-transitional for cost). γ scope (`Lookup<SymbolicCost>` .dag-side composition driving PROXY → BEHAVIORALLY COMPLETE) is superseded. Under ε: **`cost.dag` stays PROXY**; cost composition happens **Rust-side** (target-agnostic abstract `SymbolicCost` shape from `cost.dag` lens output × target-specific per-primitive realization-cost values composed by Rust consumer at emit time). Authority documents: `docs/proposals/q-cost-composition-layering-canvas.md` (ε canvas, RATIFIED) + `docs/proposals/q-lens-target-context-canvas.md` (β-extended sibling DEFERRED to N=2 trigger). Sections below originally authored under γ — read through the ε lens: any "Lookup<SymbolicCost> .dag-side composition" reference now means "Rust-side composition consuming abstract `SymbolicCost` shape from the .dag-side lens output". γ-historical text retained for context per single-authority discipline; the supersession header is binding.
 
 **Sub-issue**: gunbc#2141 (parented under #1939 Substrate Mgr lane; supersedes #1957 per surgical-recreate at gunbc#828 #issuecomment-4397693699).
-**Authority**: Director ratification of **option γ** at gunbc#828 #issuecomment-4395691775 (2026-05-07); supersedes the canvas at `docs/briefs/r3-substrate-t-costlens-composition-canvas.md` (canvas may be deleted after this brief lands per single-authority discipline).
-**Closure predicate**: §1.8 gates #37 `cost_lens_reads_target_realization`, #38 `coercion_cost_equals_complexity_by_construction`, #39 `no_coercion_cost_dimension`, #40 `symbolic_cost_expr_equals_executable`, plus #70 `cost_lens_demonstration`.
+**Authority (live)**: Director ratification of **option ε** at gunb-ai/gunbc#2181 #issuecomment-4401584012 (2026-05-08, post-PR-#2181-merge). Supersedes prior γ ratification at gunbc#828 #issuecomment-4395691775; γ-historical authority retained as context-only.
+**Closure predicate**: §1.8 gates #37 `cost_lens_reads_target_realization` (ε: closes via Rust-side consumer reading abstract `SymbolicCost` shape + composing per-target concrete cost), #38 `coercion_cost_equals_complexity_by_construction` (already by construction at HEAD per α-narrow PR #2171), #39 `no_coercion_cost_dimension` (already by construction at HEAD), #40 `symbolic_cost_expr_equals_executable` (ε: SymbolicCostExprEquals predicate consumes Rust-side composition output), plus #70 `cost_lens_demonstration` (ε: fixture program with ≥2 algebra-instances + ≥1 recursive call + observable cost-bound output via Rust-side end-to-end cost reading).
+**`cost.dag` status header refines to**: `STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE for abstract-shape (.dag-side); concrete composition Rust-side per ε ratification PR #2181`. PROXY framing for the abstract→concrete boundary stays.
+
+**Out-of-scope (unchanged under ε)**: `Lens<C>` generic carrier-shape refactor (β-extended DEFERRED to N=2 trigger per sibling canvas — STOP-and-PING if surfaces); `data symbolic_cost_dimension` (separate Dimensions sub-lane).
+
+— Supersession authored by warm-wolf-698 (Substrate Mgr) 2026-05-08 post-PR-#2181 merge. γ-section text below retained as context-only; the ε supersession header above is the live binding scope.
+
+---
+
+## (γ-historical context — superseded by ε header above)
 
 ## Important framing — this is NOT a substrate-fact-introduction
 
