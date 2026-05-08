@@ -46,7 +46,9 @@
 
 ## Downstream consumer (this doc's role in the gate)
 
-This inventory is **input to D1**, not a Slice 2 deliverable. Once Substrate lands D1 (mirror parity or codegen) + D2 (CI hook-point agreed: build-time enum walk / boot-time structural check / `.dag` `TestClaim`), Verification authors Slice 2 (`value_body_substrate_mirror_isomorphism_executable` consumer harness) against the substrate-side carrier shape.
+**Canonical gate**: §1.8 **#96** `value_body_substrate_mirror_isomorphism_executable` (assigned by PM deep-wolf-155 #846 issuecomment-4404054226; durable on branch HEAD via PR #2217).
+
+This inventory is **input to D1**, not a Slice 2 deliverable. Once Substrate lands D1 (mirror parity or codegen) + D2 (CI hook-point agreed: build-time enum walk / boot-time structural check / `.dag` `TestClaim`), Verification authors Slice 2 (the §1.8 #96 consumer harness) against the substrate-side carrier shape.
 
 ## Footer
 
