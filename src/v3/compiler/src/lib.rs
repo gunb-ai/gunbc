@@ -295,6 +295,60 @@ pub mod realization_cost {
             }),
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        use crate::generated_full_bootstrap_dag;
+
+        #[test]
+        fn realization_cost_table_rejects_negative_cost_rows() {
+            let mut dag = bootstrap_dag();
+            let rust_language = named_id(&dag, "rust_language");
+            let rust_int = named_id(&dag, "rust_int");
+            set_int_field(&mut dag, rust_int, "cost", -1);
+
+            let err = RealizationCostTable::for_language(&dag, rust_language)
+                .expect_err("negative realization cost should fail closed");
+
+            assert_eq!(
+                err,
+                RealizationCostError::NegativeRealizationCost {
+                    declaration: rust_int,
+                    cost: -1,
+                }
+            );
+        }
+
+        fn named_id(dag: &Dag, name: &str) -> DeclarationId {
+            dag.declaration_by_name(name)
+                .unwrap_or_else(|| panic!("missing declaration `{name}`"))
+                .id
+        }
+
+        fn bootstrap_dag() -> Dag {
+            std::thread::Builder::new()
+                .name("realization-cost-bootstrap".to_string())
+                .stack_size(64 * 1024 * 1024)
+                .spawn(generated_full_bootstrap_dag)
+                .expect("spawn bootstrap builder")
+                .join()
+                .expect("bootstrap builder should not panic")
+        }
+
+        fn set_int_field(dag: &mut Dag, decl: DeclarationId, field_name: &str, value: i64) {
+            let Some(ValueBody::Structural { fields }) = &mut dag.declaration_mut(decl).value_body
+            else {
+                panic!("declaration {:?} should have structural value_body", decl);
+            };
+            let field = fields
+                .iter_mut()
+                .find_map(|(label, field_value)| (label == field_name).then_some(field_value))
+                .unwrap_or_else(|| panic!("missing field `{field_name}`"));
+            *field = FieldValue::Literal(LiteralBits::Int(value));
+        }
+    }
 }
 pub mod self_host_receipt_p0;
 pub mod evaluator {
