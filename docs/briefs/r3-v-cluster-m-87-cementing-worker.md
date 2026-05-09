@@ -73,7 +73,7 @@ Pick the smallest hand-Rust cementing test in `src/v3/compiler/tests/integration
 
 - New `.dag` declaration `cementing_dispatch.dag` reads the lens-capability register projection.
 - Verification: every register row matching `(BEHAVIORALLY COMPLETE, non-N/A v2 counterpart)` has a corresponding `.dag` `TestClaim` with `DifferentialEquals` predicate naming the row's v3 + v2 lens refs.
-- For v3-native rows: `LensOutputEquals` matched against `expected_output_ref` declaration.
+- For v3-native rows: `LensOutputEquals` matched against `expected_ref` declaration (per verification.dag field name).
 
 This dispatch successor lands in a follow-on slice within Phase 2 (after first-receipt; before Phase 3 bulk-port begins). It does NOT need to land in the same PR as the first receipt — sequence is: pattern-receipt → dispatch-ratchet-successor → Phase 3 bulk-port.
 
