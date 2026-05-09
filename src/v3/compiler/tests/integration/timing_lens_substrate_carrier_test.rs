@@ -144,6 +144,45 @@ fn nanoseconds_count_field_is_nat() {
     );
 }
 
+/// P2 / gate #55 inv.3–4: provenance roles and run key use distinct branded
+/// `std.types` nominals, not bare `String`.
+#[test]
+fn workflow_observation_anchor_provenance_ids_are_branded() {
+    let dag = generated_full_bootstrap_dag();
+    let producer = dag
+        .declaration_by_name("WorkflowProducerId")
+        .expect("`WorkflowProducerId` missing from full bootstrap")
+        .id;
+    let observer = dag
+        .declaration_by_name("WorkflowObserverId")
+        .expect("`WorkflowObserverId` missing from full bootstrap")
+        .id;
+    let prover = dag
+        .declaration_by_name("WorkflowProverId")
+        .expect("`WorkflowProverId` missing from full bootstrap")
+        .id;
+    let run = dag
+        .declaration_by_name("WorkflowRunId")
+        .expect("`WorkflowRunId` missing from full bootstrap")
+        .id;
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "producer_id"),
+        producer
+    );
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "observer_id"),
+        observer
+    );
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "prover_id"),
+        prover
+    );
+    assert_eq!(
+        conj_field_ty(&dag, "WorkflowObservationAnchor", "workflow_run_id"),
+        run
+    );
+}
+
 /// P2 / gate #55 inv.2: artifact digest must be `ContentHash`, not bare `String`
 /// (M9 content-addressed nominal vs free-form text).
 #[test]

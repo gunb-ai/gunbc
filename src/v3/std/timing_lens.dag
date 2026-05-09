@@ -13,7 +13,14 @@ module v3.std.timing_lens
 
 import std.list { List, is_empty }
 import std.nat { Nat }
-import std.types { Bool, ContentHash }
+import std.types {
+  Bool,
+  ContentHash,
+  WorkflowProducerId,
+  WorkflowObserverId,
+  WorkflowProverId,
+  WorkflowRunId,
+}
 import std.substrate { Dag, Behavior, LoopBound, NodeId }
 import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
@@ -73,17 +80,22 @@ type TimingMeasurement
 // Gate #55 invariant 2 (observed-artifact identity): `artifact_digest` is
 // `ContentHash` (`std.types`), not bare `String` — content-addressed binding /
 // M9 nominal discipline so arbitrary prose cannot masquerade as a digest.
+// Gate #55 invariant 3 (role separation): `producer_id`, `observer_id`, and
+// `prover_id` use distinct branded nominals (`WorkflowProducerId`, …) so the
+// three provenance roles cannot be mixed at callsites (vs three anonymous `String`s).
+// Gate #55 invariant 4 (run context): `workflow_run_id` is `WorkflowRunId`, not
+// bare `String`, so run scope is typed as a dedicated external-run key nominal.
 // Declared before `TimingObservationEntry` so each observation row embeds the
 // same anchor authority as its measurement (Boundary Discipline: one product
 // fact, no join drift between payload and provenance).
 type WorkflowObservationAnchor {
   subject_node: NodeId
   artifact_digest: ContentHash
-  producer_id: String
-  observer_id: String
-  prover_id: String
+  producer_id: WorkflowProducerId
+  observer_id: WorkflowObserverId
+  prover_id: WorkflowProverId
   attached_at_ns: Nanoseconds
-  workflow_run_id: String
+  workflow_run_id: WorkflowRunId
 }
 
 // Batched timing observations: each entry is anchor × measurement (typed edge).
