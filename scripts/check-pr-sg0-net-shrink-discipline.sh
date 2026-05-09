@@ -120,6 +120,19 @@ sg0_validate_pr_body_format() {
         echo "::error::SG-0 pairing (c) must cite concrete dispatch evidence — a tracker issue ref (gunbc#NNNN or #NNNN), a full GitHub issue URL, OR a queued brief path (docs/briefs/*.md). Tightened 2026-05-09 per PB-0 velocity walk."
         return 1
       fi
+      # Tightened 2026-05-09 per codex BLOCKING on PR #2361 sha b925b174:
+      # cited brief paths must exist in the checkout — string-pattern match alone is escapable.
+      # Issue refs / URLs are external; not file-checkable here. Brief paths get file existence verification.
+      cited_brief_paths=$(grep -oE 'docs/briefs/[[:alnum:]_./-]+\.md' <<<"$pairing_flat" || true)
+      if [ -n "$cited_brief_paths" ]; then
+        while IFS= read -r p; do
+          [ -z "$p" ] && continue
+          if [ ! -f "$ROOT/$p" ]; then
+            echo "::error::SG-0 pairing (c) cited brief path '$p' does not exist in the checkout. Either author the brief in this PR, fix the path, or use an issue ref instead. Tightened 2026-05-09 per codex BLOCKING."
+            return 1
+          fi
+        done <<<"$cited_brief_paths"
+      fi
     else
       echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks \`SG-0 pairing: (a)\`, \`(b)\`, or \`(c)\`"
       return 1
@@ -305,10 +318,11 @@ self_test() {
   run_case "CRLF +0 skips pairing" $'SG-0 hand-path delta: +0\r\n' pass
   run_case "shrink skips pairing" $'SG-0 hand-path delta: -2' pass
   run_case "(a) pairing" $'SG-0 hand-path delta: +3\nSG-0 pairing: (a) removed foo.rs bar.rs' pass
-  run_case "(c) pairing with brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/r3-example-worker.md' pass
+  run_case "(c) pairing with existing brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/r3-v-tests-as-data-v1-worker.md' pass
   run_case "(c) pairing with issue ref" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via gunbc#1234' pass
   run_case "(c) pairing with full GitHub issue URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via https://github.com/gunb-ai/gunbc/issues/1234' pass
   run_case "(c) without dispatch evidence (tightened 2026-05-09)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch: vague-lane-name' fail
+  run_case "(c) cited brief path that does not exist (tightened 2026-05-09 codex BLOCKING)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/r3-nonexistent-brief-2026.md' fail
   run_case "missing delta line" $'Summary only\nSG-0 pairing: (a) x' fail
   run_case "malformed negative delta token" $'SG-0 hand-path delta: -not-a-number' fail
   run_case "bare (b) without URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)' fail
@@ -321,7 +335,7 @@ self_test() {
   run_case "(b) URL on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)\nhttps://github.com/gunb-ai/gunbc/issues/1' pass
   run_case "CRLF (b) URL on following line" $'SG-0 hand-path delta: +1\r\nSG-0 pairing: (b)\r\nhttps://github.com/gunb-ai/gunbc/issues/1\r\n' pass
   run_case "(a) path evidence on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a)\nremoved src/v3/compiler/src/foo.rs' pass
-  run_case "(c) dispatch on following line with brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c)\nfollow-up dispatch via docs/briefs/r3-example.md' pass
+  run_case "(c) dispatch on following line with existing brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c)\nfollow-up dispatch via docs/briefs/r3-v-tests-as-data-v1-worker.md' pass
   run_case "mid-line SG-0 pairing mention ignored" $'SG-0 hand-path delta: +1\nNarrative: not SG-0 pairing: (b) https://trap.example\nSG-0 pairing: (b) https://github.com/gunb-ai/gunbc/issues/1' pass
   run_case "only mid-line pairing substring" $'SG-0 hand-path delta: +1\nNote: not SG-0 pairing: (b) https://x.com' fail
   run_case "indented SG-0 pairing rejected" $'SG-0 hand-path delta: +1\n    SG-0 pairing: (b) https://example.com/budget' fail
@@ -353,7 +367,7 @@ self_test() {
     fail
   run_synthetic_delta_then_validate \
     "+N prepend passes when pairing already authored" \
-    $'Intro\nSG-0 pairing: (c) structural deferral; follow-up dispatch via docs/briefs/r3-example-worker.md\n' \
+    $'Intro\nSG-0 pairing: (c) structural deferral; follow-up dispatch via docs/briefs/r3-v-tests-as-data-v1-worker.md\n' \
     2 \
     pass
   run_synthetic_delta_then_validate \

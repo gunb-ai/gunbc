@@ -55,7 +55,7 @@ Phase 3 (bulk port):
 
 - **#85 + #86 must land first** (substrate carriers): without them, #87 cementing-test discipline cannot express the per-lens claims that current hand-Rust cementing tests assert. Phase 1 is the substrate-introduction.
 - **#87 must land before bulk port** (#84): the cementing-test discipline IS the migration pattern. Hand-Rust cementing tests (e.g., `complexity_lens_behavioral_completion.rs`, `cost_lens_behavioral_completion.rs`) are the largest single class in `EXPECTED_HAND_AUTHORED_TEST`; #87 dissolves them via a single discipline-pattern landing + bulk migration.
-- **#84 closes when bulk port runs to zero**: state-check gate; not authored as a single PR but as the convergence of bulk-migration PRs. Closes when SG-0 census `EXPECTED_HAND_AUTHORED_TEST` count = 0 (or carries only Director-allocated exceptions).
+- **#84 closes when bulk port runs to zero — strict**: state-check gate; not authored as a single PR but as the convergence of bulk-migration PRs. Closes when SG-0 census `EXPECTED_HAND_AUTHORED_TEST` count = 0. **Per codex BLOCKING on PR #2361 sha `b925b174` (2026-05-09)**: temporary exception handling (e.g., Director Option 2 timed-carry tests like `cross_target_coverage_carrier_test.rs`) is **NOT folded into close condition** — exceptions remain blockers / non-close risk until SG-0 test partition is actually zero. R3-honest-close requires the count itself to reach zero, not "zero except exceptions." Director-allocated timed-carries must dissolve via testgen-coverage migration before #84 fires; otherwise #84 remains DECLARED.
 
 ## §2. Lane-Mgr partition
 
@@ -114,7 +114,7 @@ PM authors the brief draft; Verification Mgr (wise-bear-525) consumes as Mgr-tie
 - Scope: track 80-90 hand-Rust test entries in `EXPECTED_HAND_AUTHORED_TEST` partitioned by dissolution-trigger class
 - Per-class brief authoring queue: each "Dissolves when..." comment in `sg0_census_test.rs` becomes a brief for that class
 - Bulk-port dispatch: parallel worker dispatch per class (operator directive: staffing not a concern)
-- Receipt: SG-0 census `EXPECTED_HAND_AUTHORED_TEST` count drops to 0 (or Director-allocated exceptions only)
+- Receipt: SG-0 census `EXPECTED_HAND_AUTHORED_TEST` count drops to 0 — strict (per codex BLOCKING 2026-05-09; no Director-allocated-exception fold-into-close)
 
 ### §5.2 Per-class brief queue (estimated from velocity-walk §2.1)
 
