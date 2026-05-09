@@ -241,6 +241,22 @@ fn workflow_observation_anchor_subject_node_is_node_id() {
     );
 }
 
+/// Gate #55 inv.4 / Practice 4: attachment instant shares the `Nanoseconds` nominal
+/// used for duration magnitudes (openai-pro — label-only anchor tests miss this).
+#[test]
+fn workflow_observation_anchor_attached_at_ns_is_nanoseconds() {
+    let dag = generated_full_bootstrap_dag();
+    let nanoseconds = dag
+        .declaration_by_name("Nanoseconds")
+        .expect("`Nanoseconds` missing from full bootstrap")
+        .id;
+    let ty = conj_field_ty(&dag, "WorkflowObservationAnchor", "attached_at_ns");
+    assert_eq!(
+        ty, nanoseconds,
+        "`WorkflowObservationAnchor.attached_at_ns` must be `Nanoseconds` (SI-ns scaffold coordinate)"
+    );
+}
+
 #[test]
 fn timing_budget_shape_locked() {
     let dag = generated_full_bootstrap_dag();
