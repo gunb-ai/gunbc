@@ -219,6 +219,8 @@ mod tc1_substrate_lens_eta_equivalence_strict_fire_test;
 mod tc2_church_rosser_strict_fire_test;
 #[path = "integration/tc3_strong_normalization_deferred_test.rs"]
 mod tc3_strong_normalization_deferred_test;
+#[path = "integration/tc3_strong_normalization_strict_fire_test.rs"]
+mod tc3_strong_normalization_strict_fire_test;
 #[path = "integration/test_runner_test.rs"]
 mod test_runner_test;
 #[path = "integration/thesis_parallelism_test.rs"]
