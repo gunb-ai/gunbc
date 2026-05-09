@@ -814,6 +814,7 @@ impl Dag {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dag::literal_bits_int;
     use crate::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
 
     fn span() -> SourceSpan {
@@ -857,11 +858,11 @@ mod tests {
     #[test]
     fn push_value_sets_output_shape_and_producer() {
         let mut dag = Dag::new();
-        let output = dag.push_value(LiteralBits::Int(7), span());
+        let output = dag.push_value(literal_bits_int(7), span());
         let producer = dag.port(output).produced_by.expect("value producer");
         let value = dag.node(producer).as_value().expect("value node");
         assert_eq!(value.output, output);
-        assert_eq!(value.data, LiteralBits::Int(7));
+        assert_eq!(value.data, literal_bits_int(7));
         assert_eq!(
             dag.port(output).state(),
             &PortState::Resolved(dag.int_shape().expect("bootstrap Int"))
@@ -874,8 +875,8 @@ mod tests {
     #[test]
     fn hand_built_operator_add_transform_carries_structural_target_and_int_shape() {
         let mut dag = Dag::new();
-        let a = dag.push_value(LiteralBits::Int(1), span());
-        let b = dag.push_value(LiteralBits::Int(2), span());
+        let a = dag.push_value(literal_bits_int(1), span());
+        let b = dag.push_value(literal_bits_int(2), span());
         let out = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
             vec![a, b],
@@ -1150,8 +1151,8 @@ mod tests {
     fn push_branch_reuses_arm_shapes_for_output() {
         let mut dag = Dag::new();
         let cond = dag.push_value(LiteralBits::Bool(true), span());
-        let lhs = dag.push_value(LiteralBits::Int(1), span());
-        let rhs = dag.push_value(LiteralBits::Int(2), span());
+        let lhs = dag.push_value(literal_bits_int(1), span());
+        let rhs = dag.push_value(literal_bits_int(2), span());
         let lhs_body = dag.push_bind("lhs", lhs, Vec::new(), span());
         let rhs_body = dag.push_bind("rhs", rhs, Vec::new(), span());
 
@@ -1194,9 +1195,9 @@ mod tests {
     #[test]
     fn push_loop_reuses_init_shape_for_output() {
         let mut dag = Dag::new();
-        let source = dag.push_value(LiteralBits::Int(4), span());
-        let count = dag.push_value(LiteralBits::Int(8), span());
-        let init = dag.push_value(LiteralBits::Int(0), span());
+        let source = dag.push_value(literal_bits_int(4), span());
+        let count = dag.push_value(literal_bits_int(8), span());
+        let init = dag.push_value(literal_bits_int(0), span());
         let body = dag.push_bind("loop_body", init, Vec::new(), span());
         let bound = LoopBound::Cardinality { count };
 
@@ -1272,7 +1273,7 @@ mod tests {
     #[should_panic(expected = "push_transform(Operator) requires exactly two input ports")]
     fn push_transform_rejects_wrong_operator_arity() {
         let mut dag = Dag::new();
-        let lhs = dag.push_value(LiteralBits::Int(1), span());
+        let lhs = dag.push_value(literal_bits_int(1), span());
         let _ = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
             vec![lhs],
@@ -1283,8 +1284,8 @@ mod tests {
     #[test]
     fn push_transform_comparison_uses_bool_shape() {
         let mut dag = Dag::new();
-        let lhs = dag.push_value(LiteralBits::Int(1), span());
-        let rhs = dag.push_value(LiteralBits::Int(2), span());
+        let lhs = dag.push_value(literal_bits_int(1), span());
+        let rhs = dag.push_value(literal_bits_int(2), span());
 
         let output = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)),
@@ -1381,7 +1382,7 @@ mod tests {
     fn push_branch_rejects_unknown_resolved_variant() {
         let mut dag = Dag::new();
         let cond = dag.push_value(LiteralBits::Bool(true), span());
-        let arm_output = dag.push_value(LiteralBits::Int(1), span());
+        let arm_output = dag.push_value(literal_bits_int(1), span());
         let arm_body = dag.push_bind("arm", arm_output, Vec::new(), span());
 
         let _ = dag.push_branch(
