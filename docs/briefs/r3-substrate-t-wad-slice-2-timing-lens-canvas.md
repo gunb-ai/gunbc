@@ -101,7 +101,7 @@ Convergence path requires TWO edits, not one:
 1. Add `<Subject, Source>` type parameters to anchor header (low-cost forward-compat for ProofReceipt second consumer).
 2. **Add `observation_outcome: ObservationOutcome<Source>` field to the anchor**, carrying invariant 5 on the anchor itself. Worker's `TimingMeasurement = Observed { nanoseconds: Int } | Missing | Ambiguous | Stale` becomes `Source = TimingPayload { nanoseconds: Int }` (Observed-payload only) + `ObservationOutcome<Source> = Observed { value: Source } | Missing | Ambiguous | Stale` (anchor-side report state).
 
-This collapses Q-WAD-S2-Output (c) folded-into-payload back into Q-WAD-S2-Output (a)(i) — payload is the Observed value, ObservationOutcome wraps it on the anchor. Trade-off: (c) was simpler at carrier-count but split P2 invariant 5 authority; canvas-(b)-revised + (a)(i) keeps single-authority on anchor at cost of one extra type.
+This collapses Q-WAD-S2-Output (c) folded-into-payload back into anchor-side ObservationOutcome carriage — payload is the Observed value, `ObservationOutcome<Source>` wraps it on the anchor. Per canvas:118 fix, downstream `violates`-path resolution is (a)(ii) or (a)(iii) substrate-extension (NOT the rejected (a)(i) Budget fabrication). Trade-off: (c) was simpler at carrier-count but split P2 invariant 5 authority; canvas-(b)-revised + anchor-side ObservationOutcome keeps single-authority on anchor at cost of one extra type + Director-tier `LensEnforcement` substrate change.
 
 ## Question 3 (Q-WAD-S2-Output) — Output projection shape
 
@@ -126,17 +126,17 @@ Two-level: outcome is `Result`, failure is enum. Shifts the ambiguous/stale/miss
 - **Pro**: matches stdlib-Result-style intuition.
 - **Con**: extra indirection; gate #55 acceptance language reads as flat-sum (Observed *and* the failure variants are peer report states); fail-closed is more verbose to express.
 
-**Recommended (Mgr-tier preliminary)**: **(a)** with projection-step report-state fold (option (a)(i) — projection fabricates violating Budget for non-Observed). NOT option (a)(ii) — substrate extension of `LensEnforcement.violates` signature is canvas-tier and would cascade across all lens-application consumers (T-LBP / T-CostLens / T-LAS), not just timing.
+**Recommended (Mgr-tier — corrected per PR #2333 inline review at canvas:118)**: **(a) with sub-option pending Director disposition** between (a)(ii) full-signature-extension (canvas-tier; cascades across all lens consumers) and (a)(iii) Result-typed projection with `auto_violate_on_left` bit (smaller substrate change). **(a)(i) Budget fabrication is REJECTED** per P3/C-8 fail-closed — erases typed report-state failure evidence. Director-tier disposition required.
 
 ### Option (c) — Output-folded-into-carrier (worker tidy-raven-610 PR #2360 shape)
 
 Worker authored `TimingMeasurement = Observed { nanoseconds: Int } | Missing | Ambiguous | Stale` directly — the carrier IS the report state, no separate Output projection.
 
-**Dissolution classification: 🟢 GREEN (terminal)** — same rationale as (a); the four variants exhaust the externally-attested observation states. Worker `.dag` MUST carry the 🟢 marker comment. `Lens<TimingMeasurement>` is per-observation; `TimingObservationSet` is separate aggregation. Budget projection (TimingMeasurement → TimingBudget compare-shape) handles the (a)(i) fabrication naturally: non-Observed variants project to a violating Budget value.
+**Dissolution classification: 🟢 GREEN (terminal)** — same rationale as (a); the four variants exhaust the externally-attested observation states. Worker `.dag` MUST carry the 🟢 marker comment. `Lens<TimingMeasurement>` is per-observation; `TimingObservationSet` is separate aggregation. **(c) sidesteps the `violates: (Budget, Budget) -> Bool` signature collision but does NOT escape the P3/C-8 fail-closed requirement** — non-Observed variants of `TimingMeasurement` reaching the projection step still need typed-evidence preservation, not Budget fabrication. With invariant 5 split-authority concern (per Q-WAD-S2-Anchor revised convergence: report-state belongs on anchor not payload), (c) effectively reduces to (a)(ii) or (a)(iii) substrate-extension paths via the anchor's `observation_outcome` field.
 
 - **Pro**: avoids the `violates: (Budget, Budget) -> Bool` signature collision entirely — projection step IS where Observed-vs-non-Observed semantics live, no fabrication ambiguity. Substrate carrier count is lower (no separate Output projection type).
 - **Con**: \"per-observation\" framing means TimingObservationSet lens-fold semantics need explicit aggregation logic (sequential / parallel composition over per-observation TimingMeasurement values).
-- **Status**: shape ratification pending — Director call between (a)(i) separate-projection vs (c) folded-carrier per #828 c#4412018726.
+- **Status**: shape ratification pending — Director call between (a)(ii)/(a)(iii) substrate-extension-via-anchor vs (c) folded-carrier-via-anchor (per Q-WAD-S2-Anchor revised convergence; (a)(i) Budget fabrication REJECTED per canvas:118 fix). Per #828 c#4412018726 + canvas updates.
 
 ## Question 4 (Q-WAD-S2-Placement) — Carrier placement: `src/v3/std/` vs `dsl/extdeps/`
 
