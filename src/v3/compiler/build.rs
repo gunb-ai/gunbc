@@ -493,6 +493,7 @@ fn main() {
         "src/v3/compiler/src/dag_lookup_generated.rs",
         "src/v3/compiler/src/dag_cost_generated.rs",
         "src/v3/compiler/src/dag_scalar_generated.rs",
+        "src/v3/compiler/src/dag_value_body_generated.rs",
         "src/v3/compiler/src/diagnostics_generated.rs",
         "src/v3/compiler/src/infer_helpers_generated.rs",
         "src/v3/compiler/src/lens_cost_generated.rs",
