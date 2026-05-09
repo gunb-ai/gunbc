@@ -11,7 +11,7 @@ dsl/std/magnitude.dag	2	560	d1579da2ea458db8
 dsl/std/nat.dag	4	1895	9c5eb0ac8d25a015
 dsl/std/rational.dag	4	2379	3c3b86f7e18caf82
 dsl/std/string_type.dag	4	1910	119741c6fb9de2e3
-dsl/std/types.dag	107	193393	4d42cf90e4d08732
+dsl/std/types.dag	111	198767	0922d0c6a5e704cc
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	43	92946	f6a6c0d08e3081bb
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
@@ -31,7 +31,7 @@ src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	13	69184	3115dc7ce99d10ff
 src/v3/std/approximate_field.dag	11	16864	fb342d17eec1c8ac
 src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
-src/v3/std/bootstrap_authority.dag	4	69569	c27eb2482c2067a9
+src/v3/std/bootstrap_authority.dag	4	70609	e228bb8bb2449ece
 src/v3/std/bridge_ledger.dag	7	31662	ec3b4ea8c0455eb7
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	20	39025	b0f1580c4f7bfadd
@@ -61,6 +61,7 @@ src/v3/std/services.dag	8	5791	840c901943fce7bf
 src/v3/std/substrate.dag	66	144850	d8b8657f20edc1a5
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	25	45796	572819e153cb8b5b
+src/v3/std/timing_lens.dag	29	150030	0cd241572634bc8e
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
 src/v3/std/verification.dag	31	71113	fbcf52754767da98
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6
