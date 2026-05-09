@@ -1681,7 +1681,7 @@ impl<'a> Ctx<'a> {
 
 fn render_value(v: &crate::dag::ValueNode) -> String {
     match &v.data {
-        LiteralBits::Int(n) => n.to_string(),
+        LiteralBits::Int(decimal) => decimal.clone(),
         LiteralBits::Bool(true) => "True".to_string(),
         LiteralBits::Bool(false) => "False".to_string(),
         LiteralBits::String(s) => format!("{:?}", s),

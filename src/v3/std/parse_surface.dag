@@ -132,8 +132,9 @@ type SurfacePattern
 // `Bool` / `String` — the same names as the historical handwritten parser — so generated Rust
 // matches `lower.rs` and every `SurfaceLiteral::…` constructor site. Do not rename to
 // `IntLit` / `BoolLit` / `StringLit` (tokenizer token kinds, not surface literals).
+// `Int` payload: signed decimal string (matches `LiteralBits::LitInt` / tokenizer).
 type SurfaceLiteral
-  = Int(Int)
+  = Int(String)
   | Bool(Bool)
   | String(String)
 

@@ -552,7 +552,12 @@ fn w1_dag_eval_output_int(program_dag: &Dag, output_bind: &BindNode) -> Result<i
             )
         })?;
     match &value {
-        crate::evaluator::Value::LiteralValue(LiteralBits::Int(n)) => Ok(*n),
+        crate::evaluator::Value::LiteralValue(LiteralBits::Int(s)) => s.parse::<i64>().map_err(|_| {
+            format!(
+                "W1 dag_eval_output: Int literal is not a valid i64 decimal string for bind `{}`",
+                output_bind.name
+            )
+        }),
         other => Err(format!(
             "W1 dag_eval_output: only `Value::LiteralValue(Int)` is supported for slice-1 Int parity \
              (transitional debt; dissolution: substrate `ValueKind` widening + observation normalization): {other:?}"
@@ -690,7 +695,7 @@ fn int_commutativity_holds_all_pairs(
     lens_decl_id: DeclarationId,
     pairs: &[(i64, i64)],
 ) -> Result<bool, crate::lens_apply::LensApplyError> {
-    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n.to_string()));
     for &(a, b) in pairs {
         let left = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), int(b)])?;
         let right = apply_lens_declaration(program_dag, lens_decl_id, &[int(b), int(a)])?;
@@ -715,7 +720,7 @@ pub fn parse_execute_command_fields(payload: &[FieldValue]) -> Option<(String, V
                 .iter()
                 .find(|(label, _)| label == "expect_exit_code")
                 .and_then(|(_, value)| match value {
-                    FieldValue::Literal(LiteralBits::Int(n)) => Some(*n),
+                    FieldValue::Literal(LiteralBits::Int(s)) => s.parse::<i64>().ok(),
                     _ => None,
                 })?;
             let args = fields
@@ -729,10 +734,11 @@ pub fn parse_execute_command_fields(payload: &[FieldValue]) -> Option<(String, V
                 return None;
             };
             let argv = list_string_literal_values(args)?;
-            let FieldValue::Literal(LiteralBits::Int(expect_exit_code)) = code else {
+            let FieldValue::Literal(LiteralBits::Int(expect_s)) = code else {
                 return None;
             };
-            Some((command.clone(), argv, *expect_exit_code))
+            let expect_exit_code = expect_s.parse::<i64>().ok()?;
+            Some((command.clone(), argv, expect_exit_code))
         }
         _ => None,
     }
@@ -2353,7 +2359,14 @@ impl<'a> TestRunner<'a> {
             // M1(2.8): `Lookup<Int>` is not yet structurally authorable in `data` bodies for this
             // fixture module — compare the lens `Hit(n)` against a scalar `Int` witness.
             let expected_int = match expected_decl.value_body.as_ref() {
-                Some(ValueBody::Scalar(LiteralBits::Int(i))) => *i,
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(cost_of): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
                 _ => {
                     return ClaimResult::Fail(format!(
                         "LensOutputEquals(cost_of): expected_ref `{expected_name}` must be `data …: Int = <literal>` (M1(2.8); `Lookup<Int>` data literals are deferred)"
@@ -3066,11 +3079,16 @@ impl<'a> TestRunner<'a> {
     }
 
     fn eval_cost_bounded(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
-        let [FieldValue::Literal(LiteralBits::String(bind_name)), comparator, FieldValue::Literal(LiteralBits::Int(bound))] =
+        let [FieldValue::Literal(LiteralBits::String(bind_name)), comparator, FieldValue::Literal(LiteralBits::Int(bound_s))] =
             payload
         else {
             return ClaimResult::Fail(
                 "CostBounded payload should be (String, ComparisonOp, Int)".to_string(),
+            );
+        };
+        let Ok(bound) = bound_s.parse::<i64>() else {
+            return ClaimResult::Fail(
+                "CostBounded: bound must be a valid decimal i64 literal".to_string(),
             );
         };
         let dag = match compile_to_dag(&claim.source, &claim.file_name) {
@@ -3095,10 +3113,12 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        if self.compare_cost(comparator, actual, *bound) {
+        if self.compare_cost(comparator, actual, bound) {
             ClaimResult::Pass
         } else {
-            ClaimResult::Fail(format!("cost {actual} did not satisfy bound {bound}"))
+            ClaimResult::Fail(format!(
+                "cost {actual} did not satisfy bound {bound} (predicate literal `{bound_s}`)"
+            ))
         }
     }
 
@@ -3209,7 +3229,12 @@ impl<'a> TestRunner<'a> {
             _ => return Err(PerfMeasurementResolveError::WrongConnective),
         };
         let median_ns = match field(fields, "median_ns") {
-            Some(FieldValue::Literal(LiteralBits::Int(v))) => *v,
+            Some(FieldValue::Literal(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => {
+                    return Err(PerfMeasurementResolveError::WrongFieldKind { field: "median_ns" });
+                }
+            },
             Some(_) => {
                 return Err(PerfMeasurementResolveError::WrongFieldKind { field: "median_ns" });
             }
@@ -3218,7 +3243,14 @@ impl<'a> TestRunner<'a> {
             }
         };
         let p99_delta_ns = match field(fields, "p99_delta_ns") {
-            Some(FieldValue::Literal(LiteralBits::Int(v))) => *v,
+            Some(FieldValue::Literal(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => {
+                    return Err(PerfMeasurementResolveError::WrongFieldKind {
+                        field: "p99_delta_ns",
+                    });
+                }
+            },
             Some(_) => {
                 return Err(PerfMeasurementResolveError::WrongFieldKind {
                     field: "p99_delta_ns",
@@ -3251,11 +3283,16 @@ impl<'a> TestRunner<'a> {
         _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [authority, list_constant, FieldValue::Literal(LiteralBits::Int(bound))] = payload
+        let [authority, list_constant, FieldValue::Literal(LiteralBits::Int(bound_s))] = payload
         else {
             return ClaimResult::Fail(
                 "CensusBoundCheck payload should be (DeclarationRef, CensusListConstant, Int)"
                     .to_string(),
+            );
+        };
+        let Ok(bound) = bound_s.parse::<i64>() else {
+            return ClaimResult::Fail(
+                "CensusBoundCheck: bound must be a valid decimal i64 literal".to_string(),
             );
         };
         if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
@@ -3269,7 +3306,7 @@ impl<'a> TestRunner<'a> {
             Ok(count) => count,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        if count <= *bound {
+        if count <= bound {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(

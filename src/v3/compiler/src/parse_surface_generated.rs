@@ -103,7 +103,7 @@ pub enum SurfacePattern {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SurfaceLiteral {
-    Int(i64),
+    Int(String),
     Bool(bool),
     String(String),
 }
