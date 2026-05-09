@@ -701,25 +701,11 @@ fn render_diagnostics(dag: &Dag) -> String {
             "        table.insert({}, {}, {});",
             render_port_id(port),
             render_diagnostic(diagnostic),
-<<<<<<< HEAD
             render_diagnostic_attribution(attribution),
-=======
-            render_diagnostic_attribution(attribution)
->>>>>>> origin/main
         );
     }
     out.push_str("        table }\n");
     out
-}
-
-fn render_diagnostic_attribution(attribution: &DiagnosticAttribution) -> String {
-    match attribution {
-        DiagnosticAttribution::Unattributed => "DiagnosticAttribution::Unattributed".to_string(),
-        DiagnosticAttribution::BootstrapAuthority(key) => format!(
-            "DiagnosticAttribution::BootstrapAuthority(BootstrapAuthorityKey::new({:?}))",
-            key.path()
-        ),
-    }
 }
 
 fn render_diagnostic(diagnostic: &Diagnostic) -> String {
