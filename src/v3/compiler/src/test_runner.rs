@@ -3229,9 +3229,7 @@ impl<'a> TestRunner<'a> {
             }
         };
         if median_ns < 0 {
-            return Err(PerfMeasurementResolveError::NegativeNatLiteral {
-                field: "median_ns",
-            });
+            return Err(PerfMeasurementResolveError::NegativeNatLiteral { field: "median_ns" });
         }
         if p99_delta_ns < 0 {
             return Err(PerfMeasurementResolveError::NegativeNatLiteral {
@@ -5345,9 +5343,7 @@ mod perf_within_baseline_tests {
             PerfMeasurementResolveError::WrongFieldKind {
                 field: "p99_delta_ns",
             },
-            PerfMeasurementResolveError::NegativeNatLiteral {
-                field: "median_ns",
-            },
+            PerfMeasurementResolveError::NegativeNatLiteral { field: "median_ns" },
             PerfMeasurementResolveError::NegativeNatLiteral {
                 field: "p99_delta_ns",
             },
