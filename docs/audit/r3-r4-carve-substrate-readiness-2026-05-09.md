@@ -16,17 +16,15 @@ Per Director's three outcomes:
 | Carve | Gate | Substrate state | Recommendation |
 |---|---|---|---|
 | **C1** parallelism lens behaviorally complete | **#81** | **substrate-ready** — `effects.dag` provides EffectShape/OperationEffect/CompositionVerdict; workflow_parallelism.rs imports map cleanly to substrate; port-and-rewire bounded (M-sized lane) | **Full carve-promotion to R3** — fold into Cluster F |
-| **C2** effect_enumeration lens behaviorally complete | **#82** | **MIXED** — 4a/4b/4d bounded (consumer migration + cleanup); 4c (caller-side effect-set pinning carrier) is **NEW P1 substrate-fact-introduction** not landed at HEAD | **Director disposition needed**: (a) full carve-promotion (4c lands in R3 as new substrate intro per "staffing not concern") OR (b) (γ) `.dag`-stub-form for #82 declarations (NYI bodies until 4c lands; substantive R4 work) |
-| **C3** opt-in iteration parallelism via lens application demonstrated | **#95** | **substrate-ready conditional on C1** — `lens_application.dag` exists; cascade-gated on parallelism lens BEHAVIORALLY COMPLETE | **Full carve-promotion to R3** — lands when C1 lands |
+| **C2** effect_enumeration lens behaviorally complete | **#82** | **substrate-ready** (corrected 2026-05-09 post-codex BLOCKING) — `services.dag::Operation` carrier already exists per locked design [`design-effect-enumeration-resource-threading.md`](../design-effect-enumeration-resource-threading.md) §3.2 + §6.2. **No new substrate type required.** Atomic-migration shape feasible per design §6.2. | **Full carve-promotion to R3** — fold into Cluster F (atomic migration; same shape as C1) |
+| **C3** opt-in iteration parallelism via lens application demonstrated | **#95** | **substrate-ready conditional on T-LAS Slice B + C1** (corrected 2026-05-09 post-codex BLOCKING) — Slice A landed (#88-#90 PR #2145); Slice B (#91 per-lens LensEnforcement projection + violation routing) not yet landed. #95 is a worked-example demonstration gate, not a separate carve | **Full carve-promotion to R3** — cascade-gates on Slice B + C1 |
 
-**Net**: 2 of 3 carves are substrate-ready for full promotion (C1 + C3); 1 has a specific substrate-cliff (C2 4c).
+**Net (corrected 2026-05-09 post-codex BLOCKING)**: **all 3 carves are substrate-ready for full carve-promotion to R3.** No substrate-cliff. Earlier framing of "C2 4c is a substrate-cliff requiring NEW P1 substrate-fact-introduction" was based on stale carve-doc claim; the locked design at `design-effect-enumeration-resource-threading.md` §3.2 + §6.2 is the more recent authority and says the carrier already exists at `services.dag::Operation`.
 
-**Decision-state scope clarification (added 2026-05-09 per openai-pro REQUEST_CHANGES)**:
-
-- **(α) carve-promotion-IN-R3 thesis is RATIFIED** at gunbc#846 c#4412330468 — broad framework: R4 carves C1/C2/C3 dissolve; gates #81/#82/#95 are R3-load-bearing. This is settled.
-- **C2 #82 sub-disposition (a) vs (γ-stub) is OPEN** — a finer-grain decision *within* the ratified (α) framework. Whether to author 4c P1 substrate-fact-introduction in R3 (path (a)) or land #82 as `.dag`-stub-form with NYI bodies (path (γ)) is the open Director disposition. Both paths satisfy operator's strict-zero hand-Rust framing; they differ on whether #82's behavioral completion happens in R3 (path (a)) or is deferred to R4 with R3-stub-form retirement of the hand-Rust file (path (γ)).
-
-The two scopes do not contradict; (α) is ratified at thesis level, (a) vs (γ) is the open sub-decision under (α). The "Recommendation" column for C2 lists both (a) and (γ) as options for Director ratification at the sub-disposition level.
+**Decision-state status**:
+- **(α) carve-promotion-IN-R3 thesis is RATIFIED** at gunbc#846 c#4412330468 — R4 carves C1/C2/C3 dissolve; gates #81/#82/#95 are R3-load-bearing.
+- **No open sub-dispositions**: prior "C2 (a) vs (γ-stub)" disposition is **MOOT** — there is no 4c canvas to author since the Operation carrier already exists. C2 simply promotes alongside C1 (port-and-rewire / atomic migration shape).
+- **C3 substrate prerequisites**: T-LAS Slice B landing (#91 per-lens LensEnforcement projection + violation routing) + parallelism lens BEHAVIORALLY COMPLETE (C1 #81). These are tracked in their respective lanes; not blockers for the carve-promotion ratification, just sequencing prerequisites for the gate firing.
 
 ---
 
@@ -75,52 +73,47 @@ Bulk-dissolution event: ~3 entries collapse from `EXPECTED_HAND_AUTHORED_NON_TES
 
 ## §2. C2 — effect_enumeration lens behaviorally complete (#82)
 
-### §2.1 Substrate state
+**MAJOR REVISION 2026-05-09 per codex BLOCKING on PR #2363 sha `c3a4b110`**: prior audit relied on grep names (`EffectSet`, `EffectPin`) instead of the locked design authority at [`docs/design-effect-enumeration-resource-threading.md`](../design-effect-enumeration-resource-threading.md). Codex correct: the design doc §3.2 + §6.2 explicitly says **the carrier already exists**. C2 4c is NOT a substrate-cliff requiring new substrate-fact-introduction.
 
-- `src/v3/std/effects.dag` + `dsl/std/effects.dag` — both exist with substrate carriers above.
-- **No 4c carrier at HEAD**: grep for `EffectSet`, `EffectPin`, `caller-side effect-set` in `effects.dag` returns no matches. Per carve doc: "4c: caller-side effect-set pinning carrier — **NEW substrate introduction required** (not landed at R3 horizon)."
+### §2.1 Locked-design authority (replaces prior grep-based assessment)
 
-### §2.2 Hand-Rust producer
+[`docs/design-effect-enumeration-resource-threading.md`](../design-effect-enumeration-resource-threading.md) §3.2 — "The pinning surface — `Operation` declarations":
+> "The pinning *substrate carrier* already exists: `src/v3/std/services.dag::Operation`."
+> "Resource pinning IS the `callable: CallableRef` field plus the threaded signature on the referenced declaration. **No new top-level carrier is required**; the thread-through-signature rule of §2 plus the existing `Operation.callable: CallableRef` provides the pinning surface."
 
-- `src/v3/compiler/src/lens_effect_enumeration_generated.rs` — **GENERATED** (not hand-Rust; doesn't count toward SG-0).
-- The hand-Rust walker analog is distributed across `lens_apply.rs`, `dag.rs` (via OperationEffect handling), etc. Per carve doc 4-task split:
-  - **4a**: resource-threading migration (substrate exists; consumer migration only — bounded)
-  - **4b**: ambient metadata removal (cleanup — bounded)
-  - **4c**: caller-side effect-set pinning carrier — **NEW substrate intro** (NOT bounded; P1 substrate-fact-introduction procedure)
-  - **4d**: full `OperationEffect` retirement (depends on 4a-4c)
+§6.2 — "Why atomic is feasible (not aspirational)":
+> "**`Operation` already exists.** `src/v3/std/services.dag:122` declares the carrier with `callable: CallableRef + inputs: Map + endpoint: RestEndpointBinding` — exactly what §3.2 needs. **No new substrate type.**"
 
-### §2.3 Substrate-cliff specifics
+§6.2 also: "**`Arrow.body` E-9 binding is landed (DB-14).** The transport block migration target is already a live substrate facility per [`../INVARIANTS.md`](../INVARIANTS.md) §E-9 and DB-14. Moving `transport shell { argv: [...] }` to per-target binding is mechanical, not novel substrate work."
 
-4c is the cliff. **Two distinct gating layers** (corrected 2026-05-09 per openai-pro REQUEST_CHANGES on PR #2363 sha `c3a4b110` — prior framing folded both into one "P1 procedure" label):
+### §2.2 Substrate state — corrected
 
-**Layer 1 — `INVARIANTS.md` P1 substrate-fact-introduction modeling checks (per [`INVARIANTS.md`](../../INVARIANTS.md):94-129)**:
+- `src/v3/std/services.dag::Operation` — **EXISTS** (line 122 per design doc cite). Provides the caller-side effect-set pinning surface via `Operation.callable: CallableRef` + threaded signature on the referenced declaration.
+- `src/v3/std/effects.dag` — provides EffectShape / OperationEffect / CompositionVerdict / compose_effects (substrate carriers).
+- `Arrow.body` E-9 binding — landed per DB-14.
 
-1. **DAG-ancestor check** ([`INVARIANTS.md`](../../INVARIANTS.md):100-108): does an ancestor type already exist? Caller-side effect-set pinning — attaches via inhabitance to existing `EffectShape` / `OperationEffect` parents, or stands as new substrate primitive? Not run at HEAD.
-2. **Coproduct-vs-coordinate check** ([`INVARIANTS.md`](../../INVARIANTS.md):109-119): if proposing `EffectSet = A | B | C` shape, are these alternatives (one-at-a-time) or coordinates (all-at-once record)?
-3. **Primitive-vs-lens-extensible check** ([`INVARIANTS.md`](../../INVARIANTS.md):120-128): substrate primitive (sibling to existing primitives) or lens-extensible label?
+The carve doc's claim "4c: caller-side effect-set pinning carrier — NEW substrate introduction required" is **stale** relative to the locked design at `design-effect-enumeration-resource-threading.md`. Either the carve doc is wrong or the design doc is wrong; the design doc is the more recent locked authority and should be cited.
 
-These three modeling checks **must surface in the canvas authoring before carrier shape is ratified**. Without running them, carve-promotion authorizes a substrate addition without proving it's the right substrate fact.
+### §2.3 Migration scope (per design doc §6.2 atomic-migration shape)
 
-**Layer 2 — Dispatch / process gates (separate from P1 modeling checks)**:
+Per design §6.2 "Why atomic is feasible (not aspirational)":
+- **Lens body changes only in kind-classification dispatch** — current path (signature/body shape inference) retires; new path reads effect set from arrow signature directly + dispatches on `callable_inhabits` lookup.
+- **`Operation` already exists** — no new carrier needed.
+- **`Arrow.body` E-9 binding landed** — transport block migration is mechanical.
 
-1. Confirmed bridge consumer (downstream consumer demand surfaces)
-2. Carrier shape ratification (post-Layer-1 modeling checks)
-3. Worker brief authoring
-4. Substrate-introduction PR
+This makes C2 an **atomic migration** (single PR shippable), not a multi-stage substrate-introduction sequence. The 4-task split (4a/4b/4c/4d) from the carve doc reframes:
+- **4a (resource-threading migration)**: bounded consumer migration; substrate exists.
+- **4b (ambient metadata removal)**: bounded cleanup.
+- **4c (caller-side effect-set pinning carrier)**: **substrate ALREADY exists** at `services.dag::Operation`; no new introduction required. Prior carve-doc claim was stale.
+- **4d (full OperationEffect retirement)**: depends on 4a-4c convergence.
 
-Layer 1 is the P1 modeling discipline; Layer 2 is dispatch/process discipline. Both are required.
+### §2.4 Recommendation — substrate-ready (revised)
 
-This is **substantive substrate authoring**, not port-and-rewire. Operator's "staffing not concern" directive permits this scope, but it expands R3 substrate intro work — and the canvas must run the P1 Layer 1 checks before recommending a carrier shape.
+**C2 is substrate-ready, not substrate-cliff.** Full carve-promotion to R3 — port-and-rewire (atomic migration shape per design §6.2). Same shape as C1 #81. Fold into Cluster F.
 
-### §2.4 Recommendation — Director disposition needed
+The earlier "(a) full carve-promotion (4c canvas authoring) vs (b) (γ) `.dag`-stub-form interim" disposition is **MOOT** — there's no 4c canvas to author since the carrier already exists. C2 just promotes alongside C1.
 
-Two paths:
-
-- **(a) Full carve-promotion** — include 4c P1 substrate-fact-introduction in R3 scope. New substrate canvas at `docs/briefs/r3-substrate-effect-set-pinning-canvas-2026-05-09.md`; Substrate Mgr dispatches under standing authority. R3 scope expands by ~M-sized substrate work (analog to Cluster M Phase 1 #85/#86 canvases). Per operator framing + "staffing not concern" — this is the canonical strict-zero answer.
-
-- **(b) (γ) `.dag`-stub-form interim** — gate #82 lands as `.dag` declaration with `NotYetImplemented` body for the effect_enumeration lens producer; 4c carrier authoring deferred to R4. Hand-Rust file (if any) retires (declarations exist in .dag); SG-0 census drops correctly. Behavioral completion of #82 stays R4 work.
-
-**PM recommendation: (a)** — aligns with operator framing "no need to edit stage0 ever" + "0 hand-Rust including stage0" + "staffing not concern." (γ) interim drops a behavioral gap into the 93-load-bearing set; (a) closes it strictly.
+This corrects the audit's prior framing. C2's gate #82 #issuecomment-needed-disposition doesn't apply.
 
 ---
 
@@ -128,16 +121,24 @@ Two paths:
 
 ### §3.1 Substrate state
 
-- `src/v3/std/lens_application.dag` — exists. Per file body lines 30/88/94: parallelism is mentioned as one of the lenses the apply_lens carrier supports.
-- **Cascade dependency**: per carve doc, "Pass requires parallelism lens BEHAVIORALLY COMPLETE (`docs/design-lens-application-surface.md` §4.4 / §7)." So #95 lands when C1 #81 lands.
+**REVISION 2026-05-09 per codex BLOCKING on PR #2363 sha `c3a4b110`**: prior assessment treated `lens_application.dag` existence as substrate-ready for #95. Codex correct: **Slice A landed (#88-#90) but Slice B is pending** — `lens_enforcement_carrier_landed` (#91) + `enforce_violation_routing_landed` per design §10 step 2 are deferred to T-LAS Slice B. C3 readiness is conditional on Slice B + C1, not just lens_application.dag existence.
 
-### §3.2 Substrate readiness
+- `src/v3/std/lens_application.dag` — Slice A landed (gates #88/#89/#90 CONSUMER_LANDED per PR #2145). Provides `EnforcedApplication<Output, Budget>` + `IntrospectApplication<Output>` + `SectionRef` carriers.
+- **Slice B pending**: per [`docs/r3-structure.md`](../r3-structure.md):157-164 (T-Lens-Application-Surface lane gates) — `lens_enforcement_carrier_landed` (#91; per-lens `LensEnforcement<Output, Budget>` projection + violation-relation declarations co-located with each lens) + `enforce_violation_routing_landed` are NOT yet landed. These are required for the demonstration cascade per design [`docs/design-lens-application-surface.md`](../design-lens-application-surface.md) §10 step 2.
+- **Cascade chain for #95** per `r3-structure.md`:164: "Pass requires parallelism lens BEHAVIORALLY COMPLETE (design §7 / §9 substantive-semantics cascade)." Plus T-LAS Slice B landing.
 
-Substrate-ready conditional on C1. lens_application.dag is the consumer surface; once parallelism lens behavior is in `.dag` form (post-C1 port), #95's demonstration follows naturally.
+### §3.2 Substrate readiness — corrected scope
 
-### §3.3 Recommendation
+C3's gate #95 is a **demonstration gate** under the T-Lens-Application-Surface lane (per `r3-structure.md`:164 — "fourth worked example (design §4.4): opt-in cross-iteration parallelism via `Lens<Iteration-Independence>`"). Not a separate substrate carve — it's a worked-example demo of the shared lens-application surface lane.
 
-**Full carve-promotion to R3.** Cascade-gated on C1; lands when C1 lands. Gate #95 reclassifies from R4-carved → R3-load-bearing.
+**Cascade-gating chain**:
+1. **T-LAS Slice B landing** (#91 lens_enforcement carrier per-lens projections + violation routing) — substrate prerequisite, not yet landed.
+2. **Parallelism lens BEHAVIORALLY COMPLETE** (C1 #81 carve-promotion).
+3. **#95 demonstration** lands as worked example via `apply_lens(parallelism, fn, Enforce { ... })`.
+
+### §3.3 Recommendation — substrate-ready conditional on Slice B + C1
+
+**Full carve-promotion to R3** with corrected scope: #95 cascade-gates on **(a) T-LAS Slice B landing** AND **(b) C1 parallelism lens BEHAVIORALLY COMPLETE**. Slice B is its own scoped lane work (within T-Lens-Application-Surface, not a separate carve). C3 promotes to R3-load-bearing as a worked-example demo gate; the substrate prerequisites (Slice B + C1) are tracked in their respective lanes.
 
 ---
 
@@ -148,8 +149,8 @@ Per Director's structural framing, all three carve gates are **lens-producer-ret
 | Sub-gate | Scope | Owner | Phase |
 |---|---|---|---|
 | **#81** parallelism lens | port `workflow_parallelism.rs` → `.dag` (M-sized lane; substrate-ready) | Substrate Mgr (warm-wolf-698) | Cluster F sub-phase α |
-| **#82** effect_enum lens | per Director disposition: (a) full + 4c canvas OR (b) γ stub | Substrate Mgr (warm-wolf-698) | Cluster F sub-phase β (depends on disposition) |
-| **#95** opt-in iteration parallelism demo | lens_application demonstration (cascade post-#81) | Verification Mgr (wise-bear-525) | Cluster F sub-phase γ (post-#81) |
+| **#82** effect_enum lens | atomic migration per design §6.2 (`services.dag::Operation` carrier exists; no new substrate intro) | Substrate Mgr (warm-wolf-698) | Cluster F sub-phase β (parallel-dispatchable with α) |
+| **#95** opt-in iteration parallelism demo | lens_application demonstration (cascade post-#81 + T-LAS Slice B) | Verification Mgr (wise-bear-525) | Cluster F sub-phase γ (post-#81 + Slice B) |
 
 Cluster F existing scope (#5/#6/#7 LP-retirement + #71 self-host trampoline) absorbs these as additional sub-gates per "lens-producer-retirement" structural framing.
 
@@ -157,19 +158,21 @@ Cluster F existing scope (#5/#6/#7 LP-retirement + #71 self-host trampoline) abs
 
 ## §5. Open questions for Director ratification
 
-1. **C2 #82 disposition**: (a) full carve-promotion with 4c canvas authoring in R3 OR (b) (γ) `.dag`-stub-form interim with 4c R4-carved? PM recommends (a) per operator strict-zero framing.
+**Revised 2026-05-09 post-codex BLOCKING** — C2 (a vs γ) disposition is **MOOT** (carrier already exists per design doc; no canvas to author). Remaining open questions:
 
-2. **Cluster F sequencing within itself**: do #81 + #82 + #95 sub-phases run sequentially (α → β → γ) or are #81 + #82 parallel-dispatchable (independent substrate; same Mgr)? PM recommends parallel for #81+#82 (no mutual substrate dep), serial for #95 (cascade-gated on #81).
+1. **Cluster F sequencing within itself**: #81 + #82 are both substrate-ready (parallel-dispatchable, no mutual substrate dep). #95 cascade-gates on #81 + T-LAS Slice B. PM recommends parallel for #81+#82, serial for #95 (cascade-gated).
 
-3. **R4 carve doc dissolution**: amend `docs/r4-carve-out-routing.md` to remove C1/C2/C3? Per Director's ratification language ("R4 carves dissolve") — yes; PM authors amendment in carve-promotion PR.
+2. **R4 carve doc dissolution**: amend `docs/r4-carve-out-routing.md` to remove C1/C2/C3 entries? Per Director's ratification language ("R4 carves dissolve") — yes; PM authors amendment in carve-promotion PR.
+
+3. **T-LAS Slice B sequencing for #95**: Slice B (#91 per-lens LensEnforcement projection + violation routing per design §10 step 2) is a separate T-Lens-Application-Surface lane work item (not a separate carve). Does #95's R3 promotion require Slice B's R3 landing also explicitly tracked? PM recommends yes — both #91 + #95 are in the same lane-Mgr scope; tracking together in Cluster F sequencing folder.
 
 ---
 
 ## §6. Cycle-aggregate update
 
-Director's velocity-to-zero update per #846 #issuecomment-4412330468:
+Director's velocity-to-zero update per #846 #issuecomment-4412330468 (revised 2026-05-09 post-codex BLOCKING):
 - Original audit identified 4-6 bulk-dissolution events
-- Carve-promotion adds: C1 walker port (+1 bulk event), C2 walker port (+1 if (a)), C3 lens application demo (+1)
+- Carve-promotion adds: C1 walker port (+1 bulk event), C2 atomic migration (+1 bulk event; was +1 if (a) but disposition moot), C3 lens application demo (+1; cascade post-Slice-B + C1)
 - **Updated estimate: 5-9 bulk events** for full PB-0 + carve-promotion R3 close
 
 Each bounded substrate / cluster work; staffing-not-a-concern directive applies.
