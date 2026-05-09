@@ -1,7 +1,7 @@
 # R3 Cluster M (Tests-As-Data-Completeness) Sequencing Plan — 2026-05-09
 
 **Author**: deep-wolf-155 (PM)
-**Authority scope**: PM-tier sequencing plan. **Director ratifies before dispatch** per operator directive 2026-05-09 ("course correct; existing plan stays canonical; staffing is not a concern; this is planning/correction") + Director ratification at gunbc#846 #issuecomment-4412008376.
+**Authority scope**: PM-tier sequencing plan. Director ratification at gunbc#846 #issuecomment-4412008376 covers the cluster-level sequencing decisions (Phase 1 → Phase 2 → Phase 3 ordering; γ-hybrid dispatch shape). **Per-task substrate-shape questions do NOT require Director ratification** — locked design `docs/design-tests-as-data-completeness.md` §1 Authority discipline: "no Director ratification required before lane dispatch; existing TestClaim infrastructure from DB-15 R2." Substrate Mgr lands #85/#86 carriers under standing authority; #87 cementing-discipline dispatches independently. STOP-and-PING via Mgr inbox if shape questions arise that locked design doesn't resolve. Per operator directive 2026-05-09 ("course correct; existing plan stays canonical; staffing is not a concern; this is planning/correction").
 **Parent docs**:
 - [`docs/audit/r3-pb0-velocity-walk-2026-05-09.md`](r3-pb0-velocity-walk-2026-05-09.md) — load-bearing finding: Cluster M is critical-path for PB-0 closure
 - [`docs/audit/r3-cluster-analysis-2026-05-09.md`](r3-cluster-analysis-2026-05-09.md) — original 15-cluster decomposition (this plan corrects Cluster M classification)

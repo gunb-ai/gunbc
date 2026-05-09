@@ -6,7 +6,7 @@
 
 **Design lock:** [`docs/design-lens-application-surface.md`](../design-lens-application-surface.md).
 
-**Cascade / carve (INVARIANTS §P2):** Internal LAS cascade in [`docs/design-lens-application-surface.md`](../design-lens-application-surface.md) §**7** / §**9** requires each worked example’s lens to be **behaviorally substantive**. Under Director **option (b)** + [`docs/r4-carve-out-routing.md`](../r4-carve-out-routing.md) **C1**, **`parallelism_lens_behaviorally_complete`** is **R4-carved**, and **`opt_in_iteration_parallelism_via_lens_application_demonstrated` (#95) carves with it** — **no #95 PASSING in R3** (demo §4.4 needs parallelism lens parity per design §4.4). **R3** executes substrate **88–91** + demos **92–94** only after **complexity+cost** T-LBP completeness + register **C3**; **#95** schedules against **R4** parallelism landing.
+**Cascade (INVARIANTS §P2):** Internal LAS cascade in [`docs/design-lens-application-surface.md`](../design-lens-application-surface.md) §**7** / §**9** requires each worked example's lens to be **behaviorally substantive**. **AMENDED 2026-05-09 per Director carve-promotion-IN-R3 ratification at gunbc#846 #issuecomment-4412330468 + (a) at #issuecomment-4412380947**: prior option-(b) C1 carving of `parallelism_lens_behaviorally_complete` to R4 is **DISSOLVED** — #81 + #95 are R3-load-bearing within Cluster F per [`docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md`](../audit/r3-cluster-f-sequencing-plan-2026-05-09.md). **R3** executes substrate **88–91** + demos **92–95** after relevant T-LBP slices BEHAVIORALLY COMPLETE per Cluster F sequencing (#95 cascade-gates on F-α + T-LAS Slice B; sub-phase F-γ.1).
 
 ## Execution slice A — substrate-shape + routing (Substrate-primary)
 
