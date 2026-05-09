@@ -34,22 +34,23 @@ Per [`docs/design-emission-model.md`](../design-emission-model.md) ~944:
 
 **Corollary:** PB **must not** “close” this bridge by **reading `pipeline.dag` bytes from disk at runtime** as a substitute for `include_str!` — that repeats the **side-channel** failure mode #1171 explicitly rejected.
 
-**Live check (2026-05-09T01:50Z UTC):** `src/v3/compiler/src/pipeline_authority.rs` still documents this suspension, and its test `pipeline_compile_body_remains_unparsed_blocking_structural_retirement` pins the blocker: `fn compile` lowers to `ArrowBody::Unparsed`. The remaining active in-scope `include_str!("../../pipeline.dag")` is in `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs`; it is intentionally part of the blocked dispatch because replacing it before T1 would only move the same authority problem to another non-structural channel.
+**Live check (2026-05-09T01:50Z UTC):** `src/v3/compiler/src/pipeline_authority.rs` still documents this suspension, and its test `pipeline_compile_body_remains_unparsed_blocking_structural_retirement` pins the blocker: `fn compile` lowers to `ArrowBody::Unparsed`. Per [`bridge-retirement-audit-include-str-family.md`](bridge-retirement-audit-include-str-family.md) BR-20, this site has **0 live macro consumers** today; the blocked dispatch is the future structural witness for the rejected source-text reconcile, not a grep-delete of hermetic fixture inputs.
 
 ## Acceptance (`bridge_include_str_side_channels_retired` — scoped slice)
 
 **Green for this site** when **all** hold:
 
-1. **No `include_str!`** of **`pipeline.dag`** at any callsite at the **compile-pipeline authority boundary** (NOT file-tree-locality `src/` only). Scope-locked 2026-05-08 (PB Mgr `warm-dove-618` + Verification Mgr `wise-bear-525` concur, citing Director Option 1 multi-site umbrella ratchet precedent at #828 c#4401659641 and `feedback_substrate_principle_audit` "substrate facts close all-or-nothing"). At lock time the in-scope active set is `src/v3/compiler/src/pipeline_authority.rs` (already zero active, doc-comment only) **and** `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs:12` (active `include_str!("../../pipeline.dag")` — rewrite to consume the structural witness is **part of this dispatch**, not a separate worker).
+1. **No source-text channel at the BR-20 compile-pipeline authority boundary**: do not reintroduce `include_str!("../pipeline.dag")`, `std::fs::read_to_string`, or span slicing in `src/v3/compiler/src/pipeline_authority.rs` for compile-body reconciliation. Scope is the `pipeline_authority` anti-bridge named by #1171 and BR-20, not every hermetic test fixture that happens to embed `pipeline.dag`.
 2. **Stage-order / compile-body facts** required by pipeline authority consumers are obtainable from **structured Dag data** (existing `PipelineStageBinding` discipline **and/or** a **derived lowered compile-body witness** once authored — substrate/evaluator coordination).
-3. **Ratchet test**: a CI assertion that
+3. **Ratchet test**: a CI assertion scoped to `pipeline_authority.rs` / BR-20 source-text reconciliation that rejects reintroduction of the forbidden source channel, for example:
     ```
-    grep -rE 'include_str!\s*\([^)]*pipeline\.dag' src/v3/compiler/
+    grep -E 'include_str!\s*\([^)]*pipeline\.dag|read_to_string\([^)]*pipeline\.dag' src/v3/compiler/src/pipeline_authority.rs
     ```
-    returns **zero matches** at HEAD post-retirement (file-path-suffix predicate, ungameable-by-relocation under `src/v3/compiler/`). Catches the production callsite, the test callsite surfaced 2026-05-08, and any future relocation that re-introduces the pattern. Locked pre-merge per Director Option 1 precedent.
+    returns **zero matches** at HEAD post-retirement. This is intentionally **not** a repository-wide ban on hermetic fixture bytes; Appendix A of the family audit keeps `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs` outside row-3 bridge debt unless that fixture channel becomes duplicated production authority.
 
 **Out-of-scope** (do not double-count under §1/§3):
 - `src/v3/compiler/build.rs` `collect_dag_entries(..., &["pipeline.dag"])` — build-time filename enumeration, not source-text-as-string consumption.
+- `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs` `include_str!("../../pipeline.dag")` — Appendix A hermetic fixture input per [`bridge-retirement-audit-include-str-family.md`](bridge-retirement-audit-include-str-family.md); not BR-20 debt unless it becomes a duplicated production authority.
 - `pipeline_compile_body_remains_unparsed_blocking_structural_retirement` test — tracked under `bridge_source_span_file_participation_retired` (bridge #1) per `docs/briefs/r3-v-bridge-row-1-sourcespan-deeper-detail-receipt.md:82`.
 - `bootstrap.rs` `PIPELINE_AUTHORITY_FILE` slice — already retired in PR #2150 per `docs/briefs/bridge-retirement-audit-sourcespan-family.md:85`.
 
