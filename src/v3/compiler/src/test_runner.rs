@@ -2541,11 +2541,11 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        let expected_pattern = match field_value_to_symbolic_cost_eq_pattern(self.dag, &expected_field)
-        {
-            Ok(p) => p,
-            Err(msg) => return ClaimResult::Fail(msg),
-        };
+        let expected_pattern =
+            match field_value_to_symbolic_cost_eq_pattern(self.dag, &expected_field) {
+                Ok(p) => p,
+                Err(msg) => return ClaimResult::Fail(msg),
+            };
 
         let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(dag) => dag,
@@ -4207,9 +4207,7 @@ fn field_value_for_symbolic_cost_expected(
     body: &ValueBody,
 ) -> Result<FieldValue, crate::lens_apply::LensApplyError> {
     match body {
-        ValueBody::Structural { fields }
-            if fields.len() == 1 && fields[0].0 == "_" =>
-        {
+        ValueBody::Structural { fields } if fields.len() == 1 && fields[0].0 == "_" => {
             Ok(fields[0].1.clone())
         }
         other => field_value_from_value_body(fixture_dag, other),
@@ -4222,8 +4220,12 @@ fn field_value_for_symbolic_cost_expected(
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SymbolicCostEqPattern {
     Constant(i64),
-    Linear { display_name: Option<String> },
-    Log { display_name: Option<String> },
+    Linear {
+        display_name: Option<String>,
+    },
+    Log {
+        display_name: Option<String>,
+    },
     Polynomial {
         display_name: Option<String>,
         degree_raw: i64,
@@ -4258,6 +4260,17 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
         ),
         SymbolicCost::UnknownCost { _0: s } => SymbolicCostEqPattern::Unknown(s.clone()),
     }
+}
+
+fn symbolic_cost_variant_label_for_constructor(dag: &Dag, ctor: DeclarationId) -> Option<String> {
+    let symbolic_cost = dag.declaration_by_name("SymbolicCost")?;
+    let TypeConnective::Disj { variants } = &symbolic_cost.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.ty == ctor)
+        .map(|v| v.label.clone())
 }
 
 fn field_value_to_symbolic_cost_eq_pattern(
@@ -4346,7 +4359,7 @@ fn field_value_to_symbolic_cost_eq_pattern(
     }
 }
 
-fn single_payload<'a>(payload: &'a [FieldValue]) -> Result<&'a FieldValue, String> {
+fn single_payload(payload: &[FieldValue]) -> Result<&FieldValue, String> {
     match payload {
         [one] => Ok(one),
         _ => Err(format!(
@@ -4399,7 +4412,10 @@ fn optional_string_field_for_record(
     };
     match fv {
         FieldValue::Literal(LiteralBits::String(s)) => Ok(Some(s.clone())),
-        FieldValue::Variant { constructor, payload } => {
+        FieldValue::Variant {
+            constructor,
+            payload,
+        } => {
             let name = dag.declaration(*constructor).name.as_deref().unwrap_or("");
             if name == "None" || name.ends_with("None") {
                 return Ok(None);
@@ -4444,7 +4460,9 @@ fn degree_raw_from_degree_at_least_two_field_value(
         .declaration(*constructor)
         .name
         .as_deref()
-        .ok_or_else(|| "SymbolicCostExprEquals: anonymous DegreeAtLeastTwo constructor".to_string())?;
+        .ok_or_else(|| {
+            "SymbolicCostExprEquals: anonymous DegreeAtLeastTwo constructor".to_string()
+        })?;
     match label {
         "DegreeTwo" => Ok(2),
         "DegreeSuccessor" => {
@@ -4477,15 +4495,12 @@ fn parse_non_singleton_symbolic_cost_patterns(
             fv
         )
     })?;
-    let first = field(fields, "first").ok_or_else(|| {
-        "SymbolicCostExprEquals: NonSingletonList missing `first`".to_string()
-    })?;
-    let second = field(fields, "second").ok_or_else(|| {
-        "SymbolicCostExprEquals: NonSingletonList missing `second`".to_string()
-    })?;
-    let rest = field(fields, "rest").ok_or_else(|| {
-        "SymbolicCostExprEquals: NonSingletonList missing `rest`".to_string()
-    })?;
+    let first = field(fields, "first")
+        .ok_or_else(|| "SymbolicCostExprEquals: NonSingletonList missing `first`".to_string())?;
+    let second = field(fields, "second")
+        .ok_or_else(|| "SymbolicCostExprEquals: NonSingletonList missing `second`".to_string())?;
+    let rest = field(fields, "rest")
+        .ok_or_else(|| "SymbolicCostExprEquals: NonSingletonList missing `rest`".to_string())?;
     let mut out = vec![
         field_value_to_symbolic_cost_eq_pattern(dag, first)?,
         field_value_to_symbolic_cost_eq_pattern(dag, second)?,

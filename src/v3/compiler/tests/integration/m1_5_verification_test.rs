@@ -712,6 +712,9 @@ fn symbolic_cost_expr_equals_smoke_suite_passes() {
     };
     let results = TestRunner::new(&dag).run_suite("symbolic_cost_expr_equals_suite");
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].claim_name, "literal_symbolic_cost_matches_expected");
+    assert_eq!(
+        results[0].claim_name,
+        "literal_symbolic_cost_matches_expected"
+    );
     assert_eq!(results[0].result, ClaimResult::Pass);
 }
