@@ -116,8 +116,8 @@ sg0_validate_pr_body_format() {
         echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
         return 1
       fi
-      if ! grep -qE '(gunbc#|gunb-ai/gunbc#|^#|[[:space:]]#)[0-9]+|docs/briefs/[[:alnum:]_./-]+\.md|https?://github\.com/[[:alnum:]_./-]+/issues/[0-9]+' <<<"$pairing_flat"; then
-        echo "::error::SG-0 pairing (c) must cite concrete dispatch evidence — a tracker issue ref (gunbc#NNNN or #NNNN), a full GitHub issue URL, OR a queued brief path (docs/briefs/*.md). Tightened 2026-05-09 per PB-0 velocity walk."
+      if ! grep -qE '(gunbc#|gunb-ai/gunbc#)[0-9]+|docs/briefs/[[:alnum:]_./-]+\.md|https?://github\.com/[[:alnum:]_./-]+/issues/[0-9]+' <<<"$pairing_flat"; then
+        echo "::error::SG-0 pairing (c) must cite concrete dispatch evidence — a qualified tracker issue ref (gunbc#NNNN or gunb-ai/gunbc#NNNN), a full GitHub issue URL, OR a queued brief path (docs/briefs/*.md). Bare #NNNN refs (which could be gate numbers in prose) no longer accepted. Tightened 2026-05-09 per codex BLOCKING."
         return 1
       fi
       # Tightened 2026-05-09 per codex BLOCKING on PR #2361 sha b925b174:
@@ -340,6 +340,7 @@ self_test() {
   run_case "(c) without dispatch evidence (tightened 2026-05-09)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch: vague-lane-name' fail
   run_case "(c) cited brief path that does not exist (tightened 2026-05-09 codex BLOCKING)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/r3-nonexistent-brief-2026.md' fail
   run_case "(c) cited brief path with path-traversal (.. segment)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/../r3-program-plan.md' fail
+  run_case "(c) bare #NNNN gate-number-in-prose (tightened 2026-05-09 codex BLOCKING)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch for gate #84' fail
   run_case "missing delta line" $'Summary only\nSG-0 pairing: (a) x' fail
   run_case "malformed negative delta token" $'SG-0 hand-path delta: -not-a-number' fail
   run_case "bare (b) without URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)' fail
