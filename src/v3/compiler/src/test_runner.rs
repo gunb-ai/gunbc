@@ -2408,18 +2408,15 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        let computed = match apply_lens_declaration(
-            self.dag,
-            lens_id,
-            std::slice::from_ref(&input_field),
-        ) {
-            Ok(v) => v,
-            Err(err) => {
-                return ClaimResult::Fail(format!(
-                    "LensOutputEquals: applying lens `{lens_name}` failed: {err:?}"
-                ));
-            }
-        };
+        let computed =
+            match apply_lens_declaration(self.dag, lens_id, std::slice::from_ref(&input_field)) {
+                Ok(v) => v,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals: applying lens `{lens_name}` failed: {err:?}"
+                    ));
+                }
+            };
 
         if computed == expected_field {
             ClaimResult::Pass
