@@ -23,6 +23,9 @@
 // declaration, no name-based inhabitance walk at infer time.
 
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
+
+use num_bigint::BigInt;
 
 use crate::dag::{
     type_connective_cardinality, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
@@ -991,7 +994,7 @@ fn synthesize_predicate_body(
         span: span.clone(),
     };
     let int_literal = |value: i64| SurfaceExpr::Literal {
-        value: SurfaceLiteral::Int(value),
+        value: SurfaceLiteral::Int(value.to_string()),
         span: span.clone(),
     };
     match spec.name {
@@ -1045,9 +1048,12 @@ fn synthesize_predicate_body(
                 else {
                     return None;
                 };
+                let Ok(parsed) = i64::from_str(n.as_str()) else {
+                    return None;
+                };
                 match field.name.as_str() {
-                    "min" => min_value = Some(*n),
-                    "max" => max_value = Some(*n),
+                    "min" => min_value = Some(parsed),
+                    "max" => max_value = Some(parsed),
                     _ => return None,
                 }
             }
@@ -3704,7 +3710,7 @@ fn try_lower_repeat_string_string_data(
                 SurfaceExpr::Literal {
                     value: SurfaceLiteral::Int(n),
                     ..
-                } => n_value = Some(*n),
+                } => n_value = Some(i64::from_str(n.as_str()).ok()?),
                 _ => return None,
             },
             _ => return None,
@@ -4412,12 +4418,27 @@ fn enforce_non_negative_unit_count_payload(
         });
     };
     match first {
-        crate::dag::FieldValue::Literal(LiteralBits::Int(n)) if *n >= 0 => Ok(()),
-        crate::dag::FieldValue::Literal(LiteralBits::Int(n)) => Err(Diagnostic::ResolveError {
-            name: crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message(*n),
-            span: span.clone(),
-            fixes: Vec::new(),
-        }),
+        crate::dag::FieldValue::Literal(LiteralBits::Int(s)) => {
+            let Ok(n) = i128::from_str(s.as_str()) else {
+                return Err(Diagnostic::ResolveError {
+                    name: "PositiveIntervalWidth.UnitCount requires a literal Int `units` field"
+                        .to_string(),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                });
+            };
+            if n >= 0 {
+                Ok(())
+            } else {
+                Err(Diagnostic::ResolveError {
+                    name: crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
+                        s.as_str(),
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                })
+            }
+        }
         _ => Err(Diagnostic::ResolveError {
             name: "PositiveIntervalWidth.UnitCount requires a literal Int `units` field"
                 .to_string(),
@@ -4997,7 +5018,7 @@ fn lower_scalar_literal_for_type(
         return LowerScalarLiteralOutcome::NotApplicable;
     };
     let literal_bits = match value {
-        SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
+        SurfaceLiteral::Int(v) => LiteralBits::Int(v.clone()),
         SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
         SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
     };
@@ -5005,12 +5026,19 @@ fn lower_scalar_literal_for_type(
     let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
     let type_ok = match &literal_bits {
-        LiteralBits::Int(value) => {
+        LiteralBits::Int(s) => {
+            let Ok(int_value) = BigInt::from_str(s.as_str()) else {
+                return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
+                    name: "internal: malformed decimal integer literal".to_string(),
+                    span: expr_span(expr),
+                    fixes: Vec::new(),
+                });
+            };
             int_decl_id
                 .map(|id| walks_to(dag, expected_type, id))
                 .unwrap_or(false)
                 || matches!(
-                    int_literal_fits_expected_type(dag, *value, expected_type),
+                    int_literal_fits_expected_type(dag, &int_value, expected_type),
                     Ok(Some(true))
                 )
         }
@@ -5032,11 +5060,18 @@ fn lower_scalar_literal_for_type(
         }
         return LowerScalarLiteralOutcome::Literal(literal_bits);
     }
-    if let LiteralBits::Int(value) = literal_bits {
+    if let LiteralBits::Int(s) = &literal_bits {
+        let Ok(int_value) = BigInt::from_str(s.as_str()) else {
+            return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
+                name: "internal: malformed decimal integer literal".to_string(),
+                span: expr_span(expr),
+                fixes: Vec::new(),
+            });
+        };
         match integer_range_for_decl(dag, expected_type) {
             IntegerRangeLookup::Found(range) => {
                 return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range_for_interval(
-                    value,
+                    &int_value,
                     TypeShape::new(expected_type),
                     range,
                     expr_span(expr),
@@ -7447,7 +7482,7 @@ fn lower_expr(
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             let data = match value {
-                SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
+                SurfaceLiteral::Int(v) => LiteralBits::Int(v.clone()),
                 SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
                 SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
             };
@@ -8835,7 +8870,7 @@ fn is_strictly_smaller(
         &args[1],
         SurfaceExpr::Literal {
             value: SurfaceLiteral::Int(v), ..
-        } if (1..=MAX_PEANO_MATERIALIZATION).contains(v)
+        } if v.parse::<i64>().ok().is_some_and(|n| (1..=MAX_PEANO_MATERIALIZATION).contains(&n))
     );
     lhs_is_param && rhs_in_descent_range
 }
@@ -9578,7 +9613,7 @@ mod tests {
                     key: "one".to_string(),
                     key_span: span.clone(),
                     value: SurfaceExpr::Literal {
-                        value: SurfaceLiteral::Int(1),
+                        value: SurfaceLiteral::Int("1".to_string()),
                         span: span.clone(),
                     },
                     span: span.clone(),
@@ -9601,7 +9636,7 @@ mod tests {
             map.entries(),
             &[(
                 "one".to_string(),
-                crate::dag::FieldValue::Literal(LiteralBits::Int(1))
+                crate::dag::FieldValue::Literal(LiteralBits::Int("1".to_string()))
             )]
         );
 
@@ -9648,7 +9683,7 @@ mod tests {
                     key: "one".to_string(),
                     key_span: span.clone(),
                     value: SurfaceExpr::Literal {
-                        value: SurfaceLiteral::Int(1),
+                        value: SurfaceLiteral::Int("1".to_string()),
                         span: span.clone(),
                     },
                     span: span.clone(),
@@ -9671,7 +9706,7 @@ mod tests {
             map.entries(),
             &[(
                 "one".to_string(),
-                crate::dag::FieldValue::Literal(LiteralBits::Int(1))
+                crate::dag::FieldValue::Literal(LiteralBits::Int("1".to_string()))
             )]
         );
     }
@@ -9694,7 +9729,7 @@ mod tests {
                     .expect("UnitCount variant")
                     .ty;
                 let span = test_span();
-                let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int(-1))];
+                let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int("-1".to_string()))];
                 let err = enforce_non_negative_unit_count_payload(
                     &dag,
                     unit_count_payload_ty,
@@ -10020,7 +10055,7 @@ mod tests {
             .nodes()
             .iter()
             .find_map(|node| match node {
-                Behavior::Value(value) if value.data == LiteralBits::Int(1) => Some(value),
+                Behavior::Value(value) if value.data == LiteralBits::Int("1".to_string()) => Some(value),
                 _ => None,
             })
             .expect("literal function body should still lower to a ValueNode");

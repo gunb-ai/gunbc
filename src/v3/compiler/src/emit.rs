@@ -2871,13 +2871,19 @@ fn parse_callable_parameter(
             declaration,
             detail: "CallableParameter is missing required `slot` field",
         })?;
-    let FieldValue::Literal(LiteralBits::Int(slot_int)) = slot else {
+    let FieldValue::Literal(LiteralBits::Int(slot_str)) = slot else {
         return Err(EmitError::MalformedRealization {
             declaration,
             detail: "CallableParameter.slot must be an Int literal",
         });
     };
-    if *slot_int < 0 {
+    let Some(slot_int) = crate::dag::literal_decimal_i64(slot_str.as_str()) else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter.slot must be a decimal Int literal",
+        });
+    };
+    if slot_int < 0 {
         return Err(EmitError::MalformedRealization {
             declaration,
             detail: "CallableParameter.slot must be non-negative",
@@ -2892,7 +2898,7 @@ fn parse_callable_parameter(
             detail: "CallableParameter is missing required `disposition` field",
         })?;
     let disposition = parse_parameter_disposition(dag, disposition_value, declaration)?;
-    Ok((*slot_int as usize, disposition))
+    Ok((slot_int as usize, disposition))
 }
 
 fn parse_parameter_disposition(

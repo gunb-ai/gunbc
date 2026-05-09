@@ -532,6 +532,21 @@ pub fn literal_bits_int(i: i64) -> LiteralBits {
     LiteralBits::Int(i.to_string())
 }
 
+/// Parse a signed decimal [`LiteralBits::Int`] payload as `i64` (evaluator / emit paths).
+#[inline]
+pub fn literal_decimal_i64(s: &str) -> Option<i64> {
+    s.parse().ok()
+}
+
+/// Parse a nonnegative decimal [`LiteralBits::Int`] payload as `usize` (emit slot indices, …).
+#[inline]
+pub fn literal_decimal_usize(s: &str) -> Option<usize> {
+    if s.starts_with('-') {
+        return None;
+    }
+    s.parse().ok()
+}
+
 impl CardinalityBound {
     pub fn interval(self) -> Interval<u32> {
         match self {

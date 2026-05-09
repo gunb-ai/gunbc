@@ -60,11 +60,14 @@ pub mod evaluator {
     //! substrate-backed calls instead of becoming a parallel evaluator runtime.
 
     use std::collections::HashMap;
+    use std::str::FromStr;
+
+    use num_bigint::BigInt;
 
     use crate::dag::{
-        ArithmeticOp, ArrowBody, Behavior, BranchNode, BranchPattern, ClusterId, ComparisonOp, Dag,
-        DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode,
-        TransformTarget, TypeConnective,
+        literal_bits_int, ArithmeticOp, ArrowBody, Behavior, BranchNode, BranchPattern, ClusterId,
+        ComparisonOp, Dag, DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path,
+        PortId, TransformNode, TransformTarget, TypeConnective,
     };
 
     /// Rust mirror of the substrate runtime `Value` carrier in

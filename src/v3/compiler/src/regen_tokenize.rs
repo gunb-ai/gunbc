@@ -854,7 +854,9 @@ fn extract_int_field(fields: &[(String, FieldValue)], key: &str) -> i64 {
         .find_map(|(k, v)| (k == key).then_some(v))
         .unwrap_or_else(|| panic!("missing field {key}"));
     match fv {
-        FieldValue::Literal(LiteralBits::Int(n)) => *n,
+        FieldValue::Literal(LiteralBits::Int(s)) => s.parse::<i64>().unwrap_or_else(|_| {
+            panic!("field {key}: expected int literal decimal string, got {s:?}")
+        }),
         _ => panic!("field {key}: expected int literal"),
     }
 }

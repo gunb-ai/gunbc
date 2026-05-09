@@ -50,6 +50,8 @@ use crate::infer_helpers::{
     template_argument_value as generated_template_argument_value, NormalizedInstantiationArgs,
     TemplateArgumentBinding, TemplateArgumentsMatch,
 };
+use std::str::FromStr;
+
 use num_bigint::BigInt;
 
 use crate::int_literal_ranges::{
@@ -864,7 +866,7 @@ fn int_literal_magnitude_narrow_merge(
     from: &TypeShape,
     to: &TypeShape,
 ) -> IntLiteralNarrowMerge {
-    let Some(lit) = literal_int_at(dag, port) else {
+    let Some(lit) = literal_bigint_at(dag, port) else {
         return IntLiteralNarrowMerge::NotApplicable;
     };
     let Some(int_shape) = dag.int_shape() else {
@@ -874,11 +876,11 @@ fn int_literal_magnitude_narrow_merge(
         return IntLiteralNarrowMerge::NotApplicable;
     }
     let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
-    match int_literal_fits_expected_type(dag, lit, to.declaration) {
+    match int_literal_fits_expected_type(dag, &lit, to.declaration) {
         Ok(Some(true)) => IntLiteralNarrowMerge::Merge,
         Ok(Some(false)) => match integer_range_for_decl(dag, to.declaration) {
             IntegerRangeLookup::Found(bound) => IntLiteralNarrowMerge::Reject(
-                magnitude_out_of_range_for_interval(lit, *to, bound, span),
+                magnitude_out_of_range_for_interval(&lit, *to, bound, span),
             ),
             IntegerRangeLookup::Invalid(diag) => IntLiteralNarrowMerge::Reject(diag),
             IntegerRangeLookup::Missing => {
@@ -913,13 +915,23 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
             // Otherwise fail closed with `MagnitudeOutOfRange` (same contract as
             // call-site narrowing) or fall through so normal mismatch handling
             // applies when there is no range-backed check.
-            if let LiteralBits::Int(literal) = &v.data {
+            if let LiteralBits::Int(lit_str) = &v.data {
+                let Some(literal) = BigInt::from_str(lit_str.as_str()).ok() else {
+                    return Decision::Fail(
+                        v.output,
+                        Diagnostic::ResolveError {
+                            name: "internal: malformed decimal integer literal".to_string(),
+                            span: v.span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                };
                 if let PortState::Resolved(existing) = dag.port(v.output).state() {
                     if let Some(int_sh) = dag.int_shape() {
                         if !type_shapes_equivalent(dag, existing, &int_sh) {
                             match int_literal_fits_expected_type(
                                 dag,
-                                *literal,
+                                &literal,
                                 existing.declaration,
                             ) {
                                 Ok(Some(true)) => return Decision::Retry,
@@ -929,7 +941,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                             return Decision::Fail(
                                                 v.output,
                                                 magnitude_out_of_range_for_interval(
-                                                    *literal,
+                                                    &literal,
                                                     *existing,
                                                     range,
                                                     v.span.clone(),
@@ -1303,9 +1315,12 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                     return Decision::Fail(t.output, diag);
                 }
                 if !types_equivalent {
-                    if let Some(literal) = literal_int_at(dag, *input_port) {
-                        match int_literal_fits_expected_type(dag, literal, expected_ty.declaration)
-                        {
+                    if let Some(literal) = literal_bigint_at(dag, *input_port) {
+                        match int_literal_fits_expected_type(
+                            dag,
+                            &literal,
+                            expected_ty.declaration,
+                        ) {
                             Ok(Some(true)) => {
                                 if let Some(diag) = check_refinement_discharge(
                                     dag,
@@ -1329,7 +1344,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                                 return Decision::Fail(
                                     *input_port,
                                     magnitude_out_of_range_for_interval(
-                                        literal,
+                                        &literal,
                                         *expected_ty,
                                         range,
                                         t.span.clone(),
@@ -2570,14 +2585,14 @@ fn int_literal_implicit_bind_tolerated_for_expected(
     input_port: PortId,
     span: &SourceSpan,
 ) -> Result<bool, Diagnostic> {
-    let Some(literal) = literal_int_at(dag, input_port) else {
+    let Some(literal) = literal_bigint_at(dag, input_port) else {
         return Ok(false);
     };
-    match int_literal_fits_expected_type(dag, literal, expected) {
+    match int_literal_fits_expected_type(dag, &literal, expected) {
         Ok(Some(true)) => Ok(true),
         Ok(Some(false)) => match integer_range_for_decl(dag, expected) {
             IntegerRangeLookup::Found(range) => Err(magnitude_out_of_range_for_interval(
-                literal,
+                &literal,
                 TypeShape::new(expected),
                 range,
                 span.clone(),
