@@ -233,6 +233,9 @@ fn combine_max(
         Hit(bx) => hit_symbolic_cost_lookup(dominant(ax, bx))
       }
   }
+// **Gate #94 (memory_peak_cost_basis_demonstrated):** the same dominance-max
+// lattice models **branch peak bounds** (`src/v3/compiler/src/memory_peak_cost.rs`).
+// Work along a path uses `combine_sequential` elsewhere; disjoint arm peaks use this `max_path` step.
 
 fn dominant(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   max_path(cons(a, cons(b, empty())))
