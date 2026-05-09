@@ -299,10 +299,9 @@ where
             if raw == 2 {
                 AsymptoticClass::ClassQuadratic
             } else {
-                AsymptoticClass::ClassPolynomial {
-                    degree: positive_amount_from_i64(raw).expect(
-                        "PolynomialCost.degree is DegreeAtLeastTwo (2..=256 materialization cap)",
-                    ),
+                match positive_amount_from_i64(raw) {
+                    Some(pos) => AsymptoticClass::ClassPolynomial { degree: pos },
+                    None => AsymptoticClass::ClassUnknown,
                 }
             }
         }

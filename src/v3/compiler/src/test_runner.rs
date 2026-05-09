@@ -1892,7 +1892,8 @@ fn compute_perf_budget_bounds(baseline: PerfMeasurement) -> Result<(i64, i64), P
 /// **🟢 TERMINAL coproduct** (per `docs/modeling-discipline.md` Practice 4
 /// classification checkpoint). Variants enumerate failure shapes when reading a
 /// `PerfBaselineMeasurement` data declaration: missing declaration, wrong
-/// connective, missing/wrong-kind fields, or `median_ns + p99_delta_ns` overflow
+/// connective, missing/wrong-kind fields, negative `Nat` literals where the
+/// substrate requires nonnegative durations, or `median_ns + p99_delta_ns` overflow
 /// when constructing absolute p99 for evaluation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PerfMeasurementResolveError {
@@ -1907,6 +1908,9 @@ enum PerfMeasurementResolveError {
     MissingField { field: &'static str },
     /// Required field present but not `FieldValue::Literal(LiteralBits::Int(_))`.
     WrongFieldKind { field: &'static str },
+    /// Field is an `Int` literal but negative while `PerfBaselineMeasurement` uses
+    /// `Nat` in `substrate.dag` (fail-closed vs silently treating delta as signed).
+    NegativeNatLiteral { field: &'static str },
     /// `median_ns + p99_delta_ns` does not fit in `i64` (substrate uses `Nat`;
     /// absolute p99 construction is fail-closed).
     P99ConstructionOverflow,
@@ -1931,6 +1935,9 @@ impl PerfMeasurementResolveError {
             Self::WrongFieldKind { field } => {
                 format!("PerfWithinBaseline `{role}`: field `{field}` is not an Int literal")
             }
+            Self::NegativeNatLiteral { field } => format!(
+                "PerfWithinBaseline `{role}`: field `{field}` must be a nonnegative Nat literal"
+            ),
             Self::P99ConstructionOverflow => format!(
                 "PerfWithinBaseline `{role}`: median_ns + p99_delta_ns overflowed i64 \
                  (absolute p99 construction fail-closed)"
@@ -3181,7 +3188,8 @@ impl<'a> TestRunner<'a> {
     }
 
     /// Structurally resolve a `PerfBaselineMeasurement` data declaration to absolute
-    /// `{ median_ns, p99_ns }` (`p99_ns = median_ns + p99_delta_ns`, checked).
+    /// `{ median_ns, p99_ns }` (`p99_ns = median_ns + p99_delta_ns`, checked). Rejects
+    /// negative `Int` literals for either field (`substrate.dag` uses `Nat` for both).
     /// Returns a typed `PerfMeasurementResolveError` per `CODING.md` typed-error discipline;
     /// the outer [`Self::eval_perf_within_baseline`] boundary converts to
     /// `ClaimResult::Fail(...)` with the role label preserved.
@@ -3220,6 +3228,16 @@ impl<'a> TestRunner<'a> {
                 });
             }
         };
+        if median_ns < 0 {
+            return Err(PerfMeasurementResolveError::NegativeNatLiteral {
+                field: "median_ns",
+            });
+        }
+        if p99_delta_ns < 0 {
+            return Err(PerfMeasurementResolveError::NegativeNatLiteral {
+                field: "p99_delta_ns",
+            });
+        }
         let p99_ns = median_ns
             .checked_add(p99_delta_ns)
             .ok_or(PerfMeasurementResolveError::P99ConstructionOverflow)?;
@@ -5325,6 +5343,12 @@ mod perf_within_baseline_tests {
             },
             PerfMeasurementResolveError::WrongFieldKind { field: "median_ns" },
             PerfMeasurementResolveError::WrongFieldKind {
+                field: "p99_delta_ns",
+            },
+            PerfMeasurementResolveError::NegativeNatLiteral {
+                field: "median_ns",
+            },
+            PerfMeasurementResolveError::NegativeNatLiteral {
                 field: "p99_delta_ns",
             },
             PerfMeasurementResolveError::P99ConstructionOverflow,
