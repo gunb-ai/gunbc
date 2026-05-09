@@ -4,8 +4,8 @@
 **Authority scope**: PM-tier audit. Director-greenlit follow-up to PR #2300 cluster analysis (Director acknowledgment relayed at [gunbc#846 #issuecomment-4411924843](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4411924843), 2026-05-09; subsequent ratification + partner-work delegation at [gunbc#846 #issuecomment-4412008376](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4412008376)).
 **Parent docs**:
 - [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.8 gates **#8** + **#84** (Pure-Bootstrap-Zero closure gates)
-- [`THESIS.md`](../../THESIS.md):298 — "v3's trajectory is the Pure Bootstrap to Zero program (0 hand-maintained)"
-- [`ROADMAP.md`](../../ROADMAP.md):53 (T-PB-A non-test → 0) + :88 (T-PB-B test → 0)
+- [`THESIS.md`](../../THESIS.md) "Pure Bootstrap to Zero" framing — quote: "v3's trajectory is the Pure Bootstrap to Zero program (0 hand-maintained)" (section anchor per `feedback_section_anchors_over_line_numbers` — line numbers drift)
+- [`ROADMAP.md`](../../ROADMAP.md) **T-PB-A** lane row (`pb_hand_rust_at_shim_floor` predicate — non-test SG-0 census → 0) + **T-PB-B** lane row (`pb_rust_tests_outside_residual_zero` predicate — test census → 0)
 - [`docs/audit/r3-cluster-analysis-2026-05-09.md`](r3-cluster-analysis-2026-05-09.md) — prior cluster analysis (under-weighted #8/#84)
 
 ---
