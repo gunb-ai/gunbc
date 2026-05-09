@@ -422,12 +422,12 @@ fn complexity_enforcement_project(summary: ComplexitySummary) -> AsymptoticClass
 //
 // **Executable parity (P2 / T-LAS):** this lowers to `complexity_lens_generated` calling
 // `v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates` (imported as
-// `asymptotic_dominates` inside the generated module), which matches the staged
-// `.dag` relation on every tier **and** refines `ClassPolynomial`×`ClassPolynomial` to
-// compare Peano degrees (k1 ≥ k2). `algebra.dag` remains tier-coarse for poly–poly in
-// `meet`/`join`/`asymptotic_dominates` until bootstrap lowering accepts the same-degree
-// story structurally in substrate (dissolution: algebra `ClassPolynomial` match payloads
-// + Peano compare without host/Rust-only split — program-plan gate #92 / ROADMAP).
+// `asymptotic_dominates` inside the generated module), which matches
+// `v3.std.algebra::asymptotic_dominates` on every tier including `ClassPolynomial`×
+// `ClassPolynomial` (Peano `degree` compare via `positive_descent_count` in substrate).
+// Host `classify_symbolic_cost` (`dag_cost_generated.rs`, regen from `algebra.dag`) maps
+// `PolynomialCost` degree `k==2` → `ClassQuadratic` and `k≥3` → `ClassPolynomial { degree }`
+// so stored `asymptotic_class` stays comparable to classified work under the same lattice.
 // **Budget enforcement** must follow this named bridge (single consumer:
 // `enforced_lens_application`); do not conflate it with substrate `meet`/`join` alone.
 fn complexity_enforcement_violates(declared: AsymptoticClass, observed: AsymptoticClass) -> Bool =
