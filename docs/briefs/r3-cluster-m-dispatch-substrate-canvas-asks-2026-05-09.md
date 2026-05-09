@@ -1,7 +1,7 @@
 # R3 Cluster M Phase 1 — Substrate Carrier Landing Asks (2026-05-09)
 
 **Owner**: Substrate Mgr (warm-wolf-698 / gunbc#2068)
-**Authority**: PM-tier dispatch coordination per Director ratification at gunbc#846 #issuecomment-4412309986 (Director answered Ask 2 with "Substrate Mgr standing authority"). Sequencing structure lives at [`docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md`](../audit/r3-cluster-m-sequencing-plan-2026-05-09.md) §3 — this brief is a light-touch dispatch surface.
+**Authority**: PM-tier dispatch coordination per Director ratification at gunbc#846 #issuecomment-4412309986 (Director answered Ask 2 with "Substrate Mgr standing authority"). Sequencing structure lives at [`docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md`](../audit/r3-cluster-m-sequencing-plan-2026-05-09.md) §3 (in-flight via concurrent PR #2361; this brief is the dispatch overlay — substantive content here is self-contained and grounded in locked-design authority `docs/design-tests-as-data-completeness.md` §2.1/§2.2 cited below). This brief is a light-touch dispatch surface.
 
 ---
 

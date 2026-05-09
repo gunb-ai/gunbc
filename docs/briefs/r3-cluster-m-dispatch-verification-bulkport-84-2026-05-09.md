@@ -1,7 +1,7 @@
 # R3 Cluster M Phase 3 — Verification Bulk-Port Coordinator #84 Dispatch (2026-05-09)
 
 **Owner**: Verification Mgr (wise-bear-525 / gunbc#2075) — coordinator role
-**Authority**: PM-tier dispatch coordination per Director ratification at gunbc#846 #issuecomment-4412309986 (Director answered Ask 3 with "Verification Mgr coordinator"). Sequencing structure lives at [`docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md`](../audit/r3-cluster-m-sequencing-plan-2026-05-09.md) §5 — this brief is a light-touch dispatch surface.
+**Authority**: PM-tier dispatch coordination per Director ratification at gunbc#846 #issuecomment-4412309986 (Director answered Ask 3 with "Verification Mgr coordinator"). Sequencing structure lives at [`docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md`](../audit/r3-cluster-m-sequencing-plan-2026-05-09.md) §5 (in-flight via concurrent PR #2361; this brief is the dispatch overlay — substantive content here is self-contained and grounded in live ledger authority below). This brief is a light-touch dispatch surface.
 
 ---
 
@@ -15,7 +15,7 @@ Per Director ratification at gunbc#846 #issuecomment-4412309986 Ask 4: **strict-
 
 - Director Option 2 timed-carries (`cross_target_coverage_carrier_test.rs`, `method_template_contract_test.rs`, etc.) are **NOT** folded into closure-allowed; they are blockers / non-close-risk until they migrate to testgen coverage
 - Where testgen can't cover (e.g., reflected-Dag structural assertions over std/ row authorities) → **Cluster M scope expansion**, not a closure-allowed carve
-- **Bulk-port scope = all 102 entries** in `EXPECTED_HAND_AUTHORED_TEST` (post #85/#86/#87 substrate landing)
+- **Bulk-port scope = all entries in `EXPECTED_HAND_AUTHORED_TEST`** at PR-merge time (live authority: [`src/v3/compiler/tests/integration/sg0_census_test.rs`](../../src/v3/compiler/tests/integration/sg0_census_test.rs); count is `wc -l`-derivable from the array literal — **not hardcoded here** to avoid duplicate-authority drift). This is post #85/#86/#87 substrate landing.
 - Cluster M's job is making testgen capable enough to cover them all
 
 This is the load-bearing answer per `feedback_pb_zero_is_r3_close_target`: cascade promotion 2026-04-25 target is `0 hand-Rust + 0 TESTING residual`.
