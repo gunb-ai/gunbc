@@ -28,9 +28,9 @@ import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.workflows { behavior_spine }
 
-// Module-authority `FilePath` for the degenerate no-declaration DAG case in
-// `timing_lens_validate_non_observed` (DB-11 witness at `data` load time).
-data timing_lens_module_file_for_diagnostics: FilePath =
+// DB-11 `FilePath` witness for this module (same narrowing discipline as
+// `LensRegistryEntry.lens_file` in `v3.compiler.regen`).
+fn timing_lens_module_path_witness() -> FilePath =
   "src/v3/std/timing_lens.dag"
 
 // PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — nominal SI-nanosecond coordinate for
@@ -198,11 +198,11 @@ fn timing_lens_scaffold_non_evidence_diagnostic(text: String, at: SourceSpan) ->
   }
 
 // Degenerate DAG case: no declarations (cannot borrow a declaration `span`).
-// Isolated as an arrow body so the `SourceSpan` record literal is typed under
-// an expected `SourceSpan` return (DB-11 / refinement discharge at literals).
+// Arrow return type directs `SourceSpan` field narrowing (DB-11), matching
+// `LensRegistryEntry`-style `FilePath` witnesses plus kernel `Int` literals.
 fn timing_lens_degenerate_empty_dag_span() -> SourceSpan =
   {
-    file: timing_lens_module_file_for_diagnostics
+    file: timing_lens_module_path_witness()
     start: 0
     end: 0
   }

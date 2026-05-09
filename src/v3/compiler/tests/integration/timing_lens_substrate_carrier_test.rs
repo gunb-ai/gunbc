@@ -377,8 +377,10 @@ fn timing_lens_validate_surfaces_diagnostic_for_non_observed_states() {
         "timing_lens_validate_non_observed must not fail-open non-evidence on empty behavior_spine (P3); remove Empty => NoDiagnostic"
     );
     assert!(
-        src.contains("timing_lens_empty_spine_diagnostic_span"),
-        "empty spine path must still attach a DB-11 SourceSpan via timing_lens_empty_spine_diagnostic_span"
+        src.contains("d.declarations")
+            && (src.contains("timing_lens_degenerate_empty_dag_span")
+                || src.contains("dd.head.span")),
+        "empty behavior_spine path must borrow a real `SourceSpan` (first declaration span) or the degenerate placeholder helper; got missing wiring"
     );
 }
 
