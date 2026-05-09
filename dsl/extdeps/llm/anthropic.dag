@@ -182,6 +182,12 @@ type AnthropicMessages200Usage {
   service_tier: String?
 }
 
+// Anthropic Messages 200 response role. The API currently returns only
+// "assistant"; keep the slot typed and let the module wire_contract serialize
+// the unit variant as the required snake-case string.
+type AnthropicMessages200Role
+  = Assistant {}
+
 // 🟢 TERMINAL provider-domain coproduct for Anthropic Messages `stop_reason`
 // wire values. Dissolution receipt: fact placement fails because every value is
 // the same response-field fact consumed at `stop_reason`; variant-is-data would
@@ -196,7 +202,7 @@ type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseT
 type AnthropicMessages200Body {
   id: String
   type: String
-  role: String
+  role: AnthropicMessages200Role
   content: List<AnthropicMessages200ContentBlock>
   model: String
   stop_reason: AnthropicStopReason
