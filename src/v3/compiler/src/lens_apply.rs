@@ -1048,6 +1048,19 @@ mod tests {
     }
 
     #[test]
+    fn identity_witness_samples_align_with_commutativity_witness_authority() {
+        for &s in IDENTITY_WITNESS_SAMPLES {
+            assert!(
+                COMMUTATIVITY_WITNESS_PAIRS
+                    .iter()
+                    .any(|&(a, b)| a == s || b == s),
+                "every IDENTITY_WITNESS_SAMPLES entry must appear in COMMUTATIVITY_WITNESS_PAIRS \
+                 (doc invariant on IDENTITY_WITNESS_SAMPLES); missing sample {s}"
+            );
+        }
+    }
+
+    #[test]
     fn int_add_lens_associativity_sample() {
         let src = r#"module w
 fn lens_composition_op(a: Int, b: Int) -> Int = a + b
