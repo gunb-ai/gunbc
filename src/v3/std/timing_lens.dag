@@ -15,6 +15,7 @@ import std.list { List, is_empty }
 import std.nat { Nat }
 import std.types { Bool }
 import std.substrate { Dag, Behavior, LoopBound }
+import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.workflows { behavior_spine }
 
@@ -135,6 +136,28 @@ fn timing_sequential_identity() -> TimingMeasurement =
 fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
   timing_measurement_lens_combine(a, b, false)
 
+fn timing_lens_empty_corrections() -> List<Correction> =
+  Empty
+
+// Placeholder `Diagnostic` for scaffold validate: non-`Observed` carriers are
+// not admissible as validated evidence until runner-backed observation wiring
+// lands (`ResolveError` is the closest Layer-1 kind for “evidence not resolved”).
+fn timing_lens_scaffold_non_evidence_diagnostic(text: String) -> Diagnostic =
+  {
+    kind: CompilerKind(ResolveError)
+    span: { file: "src/v3/std/timing_lens.dag", start: 0, end: 0 }
+    message: text
+    fixes: timing_lens_empty_corrections()
+  }
+
+// Threads `d` through `behavior_spine` so `lenses.unused_parameters` stays
+// clean; both branches agree until real DAG-backed validation exists.
+fn timing_lens_validate_non_observed(d: Dag, text: String) -> OptionalDiagnostic =
+  if is_empty(behavior_spine(d)) then
+    SomeDiagnostic { value: timing_lens_scaffold_non_evidence_diagnostic(text) }
+  else
+    SomeDiagnostic { value: timing_lens_scaffold_non_evidence_diagnostic(text) }
+
 // Bounded iteration witness hook — identity until `LoopBound` measure ports
 // lower into compositional timing algebra (deferred; see module banner).
 fn timing_measurement_iterate(body: TimingMeasurement, bound: LoopBound) -> TimingMeasurement =
@@ -165,9 +188,18 @@ fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnost
     Observed { duration: _ } =>
       if is_empty(behavior_spine(d)) then NoDiagnostic else NoDiagnostic
     Unobserved =>
-      if is_empty(behavior_spine(d)) then NoDiagnostic else NoDiagnostic
+      timing_lens_validate_non_observed(
+        d,
+        "timing_lens_validate: TimingMeasurement.Unobserved is not admissible evidence at this scaffold (missing external timing row)."
+      )
     Ambiguous =>
-      if is_empty(behavior_spine(d)) then NoDiagnostic else NoDiagnostic
+      timing_lens_validate_non_observed(
+        d,
+        "timing_lens_validate: TimingMeasurement.Ambiguous is not admissible evidence at this scaffold (conflicting timing facts)."
+      )
     Stale =>
-      if is_empty(behavior_spine(d)) then NoDiagnostic else NoDiagnostic
+      timing_lens_validate_non_observed(
+        d,
+        "timing_lens_validate: TimingMeasurement.Stale is not admissible evidence at this scaffold (digest/run mismatch vs attachment)."
+      )
   }
