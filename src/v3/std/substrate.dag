@@ -28,8 +28,13 @@ type DagPort {
 // Leaf structural types.
 // 🟢 TERMINAL. Literal carrier split matches dag.rs's runtime enum
 // one-for-one and is expected to persist as the leaf literal surface.
+//
+// `LitInt` payload is a signed decimal magnitude string (optional leading `-`;
+// no `+` prefix), same decimal authority as `IntegerPrimitive` range facts.
+// R3 gate `int_lit_full_magnitude_consumer`: accepts full host narrowing range
+// (unsigned through `u128::MAX`; signed unary `-` through `i128::MIN`).
 type LiteralBits
-  = LitInt(Int)
+  = LitInt(String)
   | LitBool(Bool)
   | LitString(String)
 

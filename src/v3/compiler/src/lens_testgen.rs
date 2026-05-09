@@ -50,7 +50,7 @@ impl<'a> GeneratedClaim<'a> {
 
     fn render_field_value(&self, value: &FieldValue) -> String {
         match value {
-            FieldValue::Literal(LiteralBits::Int(n)) => n.to_string(),
+            FieldValue::Literal(LiteralBits::Int(decimal)) => decimal.clone(),
             FieldValue::Literal(LiteralBits::Bool(b)) => b.to_string(),
             FieldValue::Literal(LiteralBits::String(s)) => quote_string(s),
             FieldValue::Reference(decl_id) => self
@@ -437,7 +437,7 @@ impl<'a> TestgenLens<'a> {
             vec![
                 FieldValue::Literal(LiteralBits::String(bind_name.to_string())),
                 self.sum_variant("ComparisonOp", comparator, Vec::new()),
-                FieldValue::Literal(LiteralBits::Int(bound as i64)),
+                FieldValue::Literal(LiteralBits::Int((bound as i64).to_string())),
             ],
         )
     }

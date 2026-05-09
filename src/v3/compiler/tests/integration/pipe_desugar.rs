@@ -1,5 +1,7 @@
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{AtomPayload, Behavior, Dag, LiteralBits, TransformTarget, TypeConnective};
+use v3_compiler::dag::{
+    literal_bits_int, AtomPayload, Behavior, Dag, LiteralBits, TransformTarget, TypeConnective,
+};
 use v3_compiler::types::TypeShape;
 use v3_compiler::{CompileError, Diagnostic};
 
@@ -73,7 +75,7 @@ let y = 5 |> negate
 
     assert_target_name(&dag, &call.target, "negate");
     assert_eq!(call.inputs.len(), 1, "negate takes one injected argument");
-    assert_eq!(literal_input(&dag, call.inputs[0]), &LiteralBits::Int(5));
+    assert_eq!(literal_input(&dag, call.inputs[0]), &literal_bits_int(5));
     assert_eq!(
         dag.port(bind_y.value).value_type(),
         Some(&primitive_shape(&dag, "Int")),
@@ -108,12 +110,12 @@ let y = 5 |> keep_first(6)
     );
     assert_eq!(
         literal_input(&dag, call.inputs[0]),
-        &LiteralBits::Int(5),
+        &literal_bits_int(5),
         "the piped value becomes argument 0",
     );
     assert_eq!(
         literal_input(&dag, call.inputs[1]),
-        &LiteralBits::Int(6),
+        &literal_bits_int(6),
         "the original call arguments keep their order after the injected value",
     );
     assert!(dag.diagnostics().is_empty());
@@ -152,7 +154,7 @@ let y = 5 |> add1 |> double
     assert_eq!(inner_call.inputs.len(), 1);
     assert_eq!(
         literal_input(&dag, inner_call.inputs[0]),
-        &LiteralBits::Int(5)
+        &literal_bits_int(5)
     );
     assert!(dag.diagnostics().is_empty());
 }
@@ -186,8 +188,8 @@ let y = 5 |> negate + 1
         .as_transform()
         .expect("lhs is the piped call");
     assert_target_name(&dag, &negate.target, "negate");
-    assert_eq!(literal_input(&dag, negate.inputs[0]), &LiteralBits::Int(5));
-    assert_eq!(literal_input(&dag, add.inputs[1]), &LiteralBits::Int(1));
+    assert_eq!(literal_input(&dag, negate.inputs[0]), &literal_bits_int(5));
+    assert_eq!(literal_input(&dag, add.inputs[1]), &literal_bits_int(1));
     assert!(dag.diagnostics().is_empty());
 }
 
@@ -222,9 +224,9 @@ let is_five = 5 |> identity == 5
     assert_target_name(&dag, &identity.target, "identity");
     assert_eq!(
         literal_input(&dag, identity.inputs[0]),
-        &LiteralBits::Int(5)
+        &literal_bits_int(5)
     );
-    assert_eq!(literal_input(&dag, cmp.inputs[1]), &LiteralBits::Int(5));
+    assert_eq!(literal_input(&dag, cmp.inputs[1]), &literal_bits_int(5));
     assert_eq!(
         dag.port(bind.value).value_type(),
         Some(&primitive_shape(&dag, "Bool")),
