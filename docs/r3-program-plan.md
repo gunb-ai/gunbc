@@ -81,10 +81,11 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 ### §1.5 Closure-ledger total
 
-**Total R3 closure gates** (post-Q1 + Q2 ratification + codex BLOCKING fix 2026-05-06 on PR #1809 + Q-ValueBody-Isomorphism RATIFIED 2026-05-08 + Q-V2-Retirement-Boundary-Matrix #97 RATIFIED 2026-05-08 + Director (a)-disposition on TC1 #11 RATIFIED 2026-05-09): **97 gate IDs** enumerated at this commit per `r3-structure.md` §"Acceptance". Three numbers cited in this plan; each canonical for distinct purposes (see canonicalization paragraph immediately below):
-- **97 enumerated** (the full set including all carve / deferral subsets)
-- **94 post-R4-carve enumerated** = `97 - 3` carved {#81, #82, #95}
-- **93 R3-thesis-honest-load-bearing** = `97 - 3 carved - 1 canvas-deferred {#11}` — the actual closure-arithmetic conjunction count
+**Total R3 closure gates** (post-Q1 + Q2 ratification + codex BLOCKING fix 2026-05-06 on PR #1809 + Q-ValueBody-Isomorphism RATIFIED 2026-05-08 + Q-V2-Retirement-Boundary-Matrix #97 RATIFIED 2026-05-08 + Director (a)-disposition on TC1 #11 RATIFIED 2026-05-09 + Director carve-promotion-IN-R3 ratification 2026-05-09 c#4412330468): **97 gate IDs** enumerated at this commit per `r3-structure.md` §"Acceptance". Two canonical numbers (see canonicalization block below for full breakdown):
+- **97 enumerated** (the full set; all R4 carves dissolved per Director ratification 2026-05-09)
+- **96 R3-thesis-load-bearing** = `97 − 1` (only canvas-deferral subtracted; gate #11 TC1 V1 strict-fire per Director (a)-disposition `473b99fb...`)
+
+**No R4 carves at R3 close** per Director ratification 2026-05-09 c#4412330468 — gates #81/#82/#95 (formerly R4-carved as C1/C2/C3) are PROMOTED-IN-R3 as lens-producer-retirement work folded into Cluster F. The prior "94 post-R4-carve" intermediate count is superseded; forward-looking R3 close target is 96 (no carves; only #11 canvas-deferral subtracted).
 
 Composition: existing R3 lane gates across 18 lanes (`T-Tier3-Dissolution` 4, `T-LensProducer-Retirement` 4, `T-V-L4-L7-Direct` 2 + 4 NEW Pattern-A executable + 1 ValueBody isomorphism = 7, `T-V-L5-Corpus` 1, `T-FixedPoint` 1, `T-Numeric-Construction` 8, `T-Omni-Shape-B` 4, `T-Anthropic-Wire` 2, `T-Bridge-Retirement` 6, `T-CostLens-Composition` 3 + 1 NEW = 4, `T-V2-Retirement` 2, `T-Free-Consequences-Demonstration` 10, `T-E-P-Producer-Broadening` 3, `T-Lens-Behavioral-Parity` 5, `T-Tests-As-Data-Completeness` 4, `T-Lens-Application-Surface` 8, `T-Workflow-As-Data` 4, `T-Lens-Self-Application` 3) = 80 lane gates; **+ Gate #97** (`method_template_projection_emit_shim_retirement_coherence`, R2-Grounding-Rust / Gunbc **#1982**) = **81** lane-aligned gate rows; plus 5 substrate-gap-class gates + 10 demonstration gates + 1 PR-anticipation-discipline gate = 16 gates added 2026-05-06. Total: 81 + 16 = **97** across 18 lanes + 1 standing program.
 
