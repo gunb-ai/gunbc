@@ -14,7 +14,7 @@
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, Dag, literal_bits_int, LiteralBits, LoopBound, PortId, PortState, TransformTarget,
+    literal_bits_int, AtomPayload, Behavior, Dag, LoopBound, PortId, PortState, TransformTarget,
     TypeConnective,
 };
 use v3_compiler::types::TypeShape;

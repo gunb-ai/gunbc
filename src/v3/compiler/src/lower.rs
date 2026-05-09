@@ -9729,7 +9729,9 @@ mod tests {
                     .expect("UnitCount variant")
                     .ty;
                 let span = test_span();
-                let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int("-1".to_string()))];
+                let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int(
+                    "-1".to_string(),
+                ))];
                 let err = enforce_non_negative_unit_count_payload(
                     &dag,
                     unit_count_payload_ty,
@@ -10055,7 +10057,9 @@ mod tests {
             .nodes()
             .iter()
             .find_map(|node| match node {
-                Behavior::Value(value) if value.data == LiteralBits::Int("1".to_string()) => Some(value),
+                Behavior::Value(value) if value.data == LiteralBits::Int("1".to_string()) => {
+                    Some(value)
+                }
                 _ => None,
             })
             .expect("literal function body should still lower to a ValueNode");

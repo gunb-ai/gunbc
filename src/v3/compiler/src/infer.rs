@@ -1316,11 +1316,8 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                 }
                 if !types_equivalent {
                     if let Some(literal) = literal_bigint_at(dag, *input_port) {
-                        match int_literal_fits_expected_type(
-                            dag,
-                            &literal,
-                            expected_ty.declaration,
-                        ) {
+                        match int_literal_fits_expected_type(dag, &literal, expected_ty.declaration)
+                        {
                             Ok(Some(true)) => {
                                 if let Some(diag) = check_refinement_discharge(
                                     dag,

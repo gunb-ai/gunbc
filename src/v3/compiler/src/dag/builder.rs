@@ -814,6 +814,7 @@ impl Dag {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dag::literal_bits_int;
     use crate::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
 
     fn span() -> SourceSpan {

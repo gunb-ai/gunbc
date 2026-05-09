@@ -6427,7 +6427,7 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
             FieldValue::Record(vec![
                 (
                     "slot".to_string(),
-                    FieldValue::Literal(LiteralBits::Int(slot)),
+                    FieldValue::Literal(LiteralBits::Int(slot.to_string())),
                 ),
                 (
                     "disposition".to_string(),

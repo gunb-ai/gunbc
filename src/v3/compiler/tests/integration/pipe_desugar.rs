@@ -1,5 +1,7 @@
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{AtomPayload, Behavior, Dag, literal_bits_int, LiteralBits, TransformTarget, TypeConnective};
+use v3_compiler::dag::{
+    literal_bits_int, AtomPayload, Behavior, Dag, LiteralBits, TransformTarget, TypeConnective,
+};
 use v3_compiler::types::TypeShape;
 use v3_compiler::{CompileError, Diagnostic};
 

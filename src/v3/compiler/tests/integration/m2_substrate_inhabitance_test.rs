@@ -3,12 +3,12 @@ use std::collections::{HashMap, HashSet};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
-    join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
+    join_evidence, literal_bits_int, lower_call_pattern, map_evidence_merge_at, merge_evidence,
     optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
     positive_amount_from_i64, promote_to_strict, size_bound_param,
     sub_value_relation_to_call_pattern, tree_size_bound, type_iteration_dimension, AlgebraProfile,
     ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue,
-    Interval, IntervalWidth, IterationDimension, IterationPrimitive, literal_bits_int, LiteralBits, LoweringTarget,
+    Interval, IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget,
     PositiveDescentAmount, PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound,
     SubValueRelation, TypeConnective, ValueBody,
 };
@@ -3067,10 +3067,8 @@ let note = \"ok\"\n";
                     ));
                     assert!(matches!(
                         &arms[1].body,
-                        parse_surface::SurfaceExpr::Literal {
-                            value: parse_surface::SurfaceLiteral::Int("0".into()),
-                            ..
-                        }
+                        parse_surface::SurfaceExpr::Literal { value, .. }
+                            if matches!(value, parse_surface::SurfaceLiteral::Int(s) if s == "0")
                     ));
                 }
                 other => panic!("expected reflected match expr, got {other:?}"),

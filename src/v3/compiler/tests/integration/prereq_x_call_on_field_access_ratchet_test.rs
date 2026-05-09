@@ -206,7 +206,7 @@ fn invoke(w: Wrapper, x: Int) -> Int = { let g = w.f; g(x) }
 /// Asserts `Value::LiteralValue(Int(42))`.
 #[test]
 fn x1a_static_data_field_call_executes_through_public_evaluator() {
-    use v3_compiler::dag::{ArrowBody, LiteralBits, TypeConnective};
+    use v3_compiler::dag::{ArrowBody, TypeConnective};
     use v3_compiler::evaluator::{
         evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
     };

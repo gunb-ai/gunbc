@@ -508,10 +508,9 @@ pub mod evaluator {
     ) -> Result<usize, EvalError> {
         match eval_port(dag, count, state, strategy)? {
             Value::LiteralValue(LiteralBits::Int(s)) => {
-                let n: i128 = s.parse().map_err(|_| EvalError::LoopCardinalityNonInteger {
-                    node,
-                    count,
-                })?;
+                let n: i128 = s
+                    .parse()
+                    .map_err(|_| EvalError::LoopCardinalityNonInteger { node, count })?;
                 if n < 0 {
                     return Err(EvalError::LoopCardinalityNegative {
                         node,
@@ -620,12 +619,14 @@ pub mod evaluator {
                         Value::LiteralValue(LiteralBits::Int(a)),
                         Value::LiteralValue(LiteralBits::Int(b)),
                     ) => {
-                        let ai = BigInt::from_str(a).map_err(|_| EvalError::BadTransformOperands {
-                            reason: "expected Int literal",
-                        })?;
-                        let bi = BigInt::from_str(b).map_err(|_| EvalError::BadTransformOperands {
-                            reason: "expected Int literal",
-                        })?;
+                        let ai =
+                            BigInt::from_str(a).map_err(|_| EvalError::BadTransformOperands {
+                                reason: "expected Int literal",
+                            })?;
+                        let bi =
+                            BigInt::from_str(b).map_err(|_| EvalError::BadTransformOperands {
+                                reason: "expected Int literal",
+                            })?;
                         match op {
                             ComparisonOp::Eq => ai == bi,
                             ComparisonOp::Ne => ai != bi,
@@ -808,11 +809,12 @@ pub mod evaluator {
 
     fn expect_int_literal(value: &Value) -> Result<i64, EvalError> {
         match value {
-            Value::LiteralValue(LiteralBits::Int(s)) => s.parse::<i64>().map_err(|_| {
-                EvalError::BadTransformOperands {
-                    reason: "expected Int literal in i64 range",
-                }
-            }),
+            Value::LiteralValue(LiteralBits::Int(s)) => {
+                s.parse::<i64>()
+                    .map_err(|_| EvalError::BadTransformOperands {
+                        reason: "expected Int literal in i64 range",
+                    })
+            }
             _ => Err(EvalError::BadTransformOperands {
                 reason: "expected Int literal",
             }),
@@ -3095,8 +3097,7 @@ pub mod lens_unused_parameters {
     mod tests {
         use super::{UnusedParametersConfig, UnusedParametersLens};
         use crate::dag::{
-            literal_bits_int, BranchPattern, Dag, LiteralBits, LoopBound, Path, PortId,
-            TransformTarget,
+            literal_bits_int, BranchPattern, Dag, LoopBound, Path, PortId, TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
         use crate::operators::{ArithmeticOp, ComparisonOp, OperatorKind};

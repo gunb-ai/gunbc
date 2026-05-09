@@ -3,7 +3,8 @@
 use std::collections::HashSet;
 
 use v3_compiler::dag::{
-    Behavior, CardinalityBound, FieldValue, literal_bits_int, LiteralBits, PortState, TypeConnective, ValueBody,
+    literal_bits_int, Behavior, CardinalityBound, FieldValue, LiteralBits, PortState,
+    TypeConnective, ValueBody,
 };
 use v3_compiler::emit_rust;
 use v3_compiler::{compile_to_dag, integer_literal_routing_witness, CompileError};

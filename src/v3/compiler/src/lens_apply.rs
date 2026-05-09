@@ -745,9 +745,9 @@ impl<'a> EvalCtx<'a> {
 
 fn int_from_value(v: &FieldValue) -> Result<i64, LensApplyError> {
     match v {
-        FieldValue::Literal(LiteralBits::Int(s)) => s.parse::<i64>().map_err(|_| {
-            LensApplyError::TypeMismatch("expected Int literal in i64 range")
-        }),
+        FieldValue::Literal(LiteralBits::Int(s)) => s
+            .parse::<i64>()
+            .map_err(|_| LensApplyError::TypeMismatch("expected Int literal in i64 range")),
         _ => Err(LensApplyError::TypeMismatch("expected Int literal")),
     }
 }

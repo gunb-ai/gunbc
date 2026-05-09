@@ -2,8 +2,8 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::OnceLock;
 
 use v3_compiler::dag::{
-    Behavior, Dag, Declaration, DeclarationId, FieldValue, literal_bits_int, LiteralBits, PortState, TypeConnective,
-    ValueBody,
+    literal_bits_int, Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
+    PortState, TypeConnective, ValueBody,
 };
 use v3_compiler::lens_cost::cost_of;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};

@@ -25,8 +25,8 @@
 
 use crate::common::{cached_compile_to_dag, find_list_empty_constructor_tag};
 use v3_compiler::dag::{
-    AtomPayload, Behavior, CardinalityBound, DeclarationId, literal_bits_int, LiteralBits, TransformTarget,
-    TypeConnective, ValueNode,
+    literal_bits_int, AtomPayload, Behavior, CardinalityBound, DeclarationId, LiteralBits,
+    TransformTarget, TypeConnective, ValueNode,
 };
 use v3_compiler::diagnostics::SourceSpan;
 use v3_compiler::evaluator::{

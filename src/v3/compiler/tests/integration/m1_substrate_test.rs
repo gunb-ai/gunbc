@@ -1,7 +1,7 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, PortState, TransformTarget,
-    TypeConnective,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, PortState,
+    TransformTarget, TypeConnective,
 };
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
@@ -2219,7 +2219,9 @@ fn top_level_list_data_body_lowers_to_value_body_list() {
         .iter()
         .map(|element| match element {
             v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(value)) => {
-                value.parse::<i64>().expect("fixture list element Int decimal")
+                value
+                    .parse::<i64>()
+                    .expect("fixture list element Int decimal")
             }
             other => panic!("expected literal int list element, got {other:?}"),
         })

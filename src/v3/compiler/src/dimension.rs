@@ -261,7 +261,7 @@ pub fn analyze_complexity(dag: &Dag, workflow_root: NodeId) -> DimensionReport<S
 #[cfg(test)]
 mod analyze_complexity_tests {
     use super::*;
-    use crate::dag::{literal_bits_int, Dag, LiteralBits, TransformTarget};
+    use crate::dag::{literal_bits_int, Dag, TransformTarget};
     use crate::operators::{ArithmeticOp, OperatorKind};
 
     fn span() -> SourceSpan {
@@ -459,7 +459,7 @@ mod analyze_complexity_tests {
 #[cfg(test)]
 mod fail_closed_tests {
     use super::*;
-    use crate::dag::{Dag, LiteralBits, TransformTarget};
+    use crate::dag::{literal_bits_int, Dag, TransformTarget};
     use crate::operators::{ArithmeticOp, OperatorKind};
 
     #[test]

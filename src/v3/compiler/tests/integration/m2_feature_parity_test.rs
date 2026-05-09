@@ -9,9 +9,9 @@
 
 use crate::common::{cached_compile_any, cached_compile_to_dag};
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{literal_bits_int, 
-    ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId, LogicalOp, OperatorKind,
-    TransformTarget, TypeConnective,
+use v3_compiler::dag::{
+    literal_bits_int, ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId,
+    LogicalOp, OperatorKind, TransformTarget, TypeConnective,
 };
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
@@ -1165,7 +1165,7 @@ fn test_brand_takes_placeholder_pending_mixed_clause_fix() {
 /// must have actual refinement-body lowering, not placeholder semantics.
 #[test]
 fn test_gt_zero_lowers_to_real_refinement_body_not_placeholder() {
-    use v3_compiler::dag::{ArrowBody, Behavior, LiteralBits, TransformTarget, TypeConnective};
+    use v3_compiler::dag::{ArrowBody, Behavior, TransformTarget, TypeConnective};
     use v3_compiler::operators::{ComparisonOp, OperatorKind};
 
     let f = "dsl/std/integer.dag";

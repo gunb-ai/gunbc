@@ -3466,7 +3466,9 @@ fn algebra_field_for_operator(
 mod tests {
     use super::*;
     use crate::compile_to_dag;
-    use crate::dag::{literal_bits_int, BindEmitParticipation, BranchEmitParticipation, TransformTarget};
+    use crate::dag::{
+        literal_bits_int, BindEmitParticipation, BranchEmitParticipation, TransformTarget,
+    };
     use crate::diagnostics::SourceSpan;
 
     // DELETED: go_gc_targets_skip_rendering_model_loading
