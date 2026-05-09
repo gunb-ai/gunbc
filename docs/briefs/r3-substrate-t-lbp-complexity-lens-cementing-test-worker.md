@@ -72,7 +72,14 @@ claim that warm-stag-135 re-ran the original full-workspace acceptance
 suite, performed an external snapshot mutation test, or added new
 code beyond the existing #2271 implementation.
 
-## Precondition gates
+## Historical dispatch packet
+
+The remaining sections preserve the original 2026-05-06 dispatch packet
+for provenance. They are not the live closure contract for this PR;
+see **Completion receipt** and **Acceptance accounting** above for the
+evidence this receipt actually claims.
+
+### Precondition gates
 
 Brief dispatched after **all** of the following landed:
 
@@ -90,9 +97,9 @@ Brief dispatched after **all** of the following landed:
 If any precondition is missing at dispatch, STOP and surface — this
 brief is consumer-side cementing-test landing, not substrate-producer.
 
-## Scope
+### Scope
 
-### Deliverable 1 — Representative `.dag` source corpus
+#### Deliverable 1 — Representative `.dag` source corpus
 
 DFS-catalog `dsl/std/` and `src/v3/std/` to choose ≥1 representative
 `.dag` source(s) that exercise:
@@ -110,7 +117,7 @@ Per row #79's "asymptotic classification" — cementing test verifies
 the lens outputs the expected asymptotic class for each
 representative input.
 
-### Deliverable 2 — Frozen v2-oracle snapshot (consumer-only)
+#### Deliverable 2 — Frozen v2-oracle snapshot (consumer-only)
 
 The snapshot is **NOT authored by this brief** — it must already exist
 as a captured file (precondition #2 above). This brief consumes it.
@@ -122,7 +129,7 @@ pre-retirement). Bundling capture into this brief would require the
 v2 oracle to still be live at PR time; per
 `v2_oracle_no_remaining_test_consumers`, that's structurally barred.
 
-### Deliverable 3 — Cementing test landing
+#### Deliverable 3 — Cementing test landing
 
 Author cementing test in `tests/` (or canonical equivalent — worker
 greps existing `Lens<C>` cementing-test convention; T-CostLens
@@ -140,7 +147,7 @@ precedent if landed):
    or `Lens<Complexity>` instance isn't loadable, test errors out
    (not skipped)
 
-### Deliverable 4 — §1.8 ledger receipt
+#### Deliverable 4 — §1.8 ledger receipt
 
 Cementing test landing advances:
 - Row #79 (`complexity_lens_behaviorally_complete`) — cementing test
@@ -150,7 +157,7 @@ Cementing test landing advances:
   for #87 GREEN per option (b) ratification narrowing T-LBP to two
   lenses
 
-## Slice — single PR
+### Slice — single PR
 
 Phase ordering (PR-internal):
 1. Verify preconditions at HEAD (Lens<Complexity> + snapshot) — STOP
