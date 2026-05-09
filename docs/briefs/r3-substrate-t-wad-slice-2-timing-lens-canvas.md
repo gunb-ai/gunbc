@@ -93,7 +93,15 @@ Timing instantiation: `WorkflowObservationAnchor<BehaviorId, TimingPayload>` wit
 - **Pro**: gate #55 closure predicate ("`WorkflowObservationAnchor` factored separately as reusable external-data attachment primitive") is satisfied; second-consumer promotion (ProofReceipt per ctrl#369) is zero-substrate-edit (rebind type parameters); six invariants are explicitly carried on the anchor (not abstracted away).
 - **Con**: novel-substrate authoring at first consumer; per `feedback_strict_mirror_vs_novel_substrate_fact` this needs canvas justification (which this canvas provides). `ProducerIdentity` / `ObserverIdentity` / `ProverIdentity` / `ContentDigest` / `RunId` types may need substrate sub-carriers if not already declared (worker grep at dispatch).
 
-**Recommended (Mgr-tier — corrected per PR #2333 inline review)**: **(b)** with explicit six-invariant field shape (per worker's flat (a) carrier-fact carriage discipline); type parameters are `Subject` + `Source` for the variable parts only. Worker tidy-raven-610 PR #2360 flat shape (`subject_stable_id` / `artifact_digest` / `producer_id` / `observer_id` / `prover_id` / `attached_at_epoch_ns` / `workflow_run_id`) is **already gate-#55-compliant** at the field level — only missing type parameters for `Subject` + `Source` to satisfy the second-consumer-promotion zero-edit goal. Convergence path: worker's flat shape + add `<Subject, Source>` parameters = (b)-revised; minimal rework.
+**Recommended (Mgr-tier — corrected per PR #2333 inline review)**: **(b)** with explicit six-invariant field shape (per worker's flat (a) carrier-fact carriage discipline); type parameters are `Subject` + `Source` for the variable parts only.
+
+**Convergence assessment for worker tidy-raven-610 PR #2360 flat shape** (`subject_stable_id` / `artifact_digest` / `producer_id` / `observer_id` / `prover_id` / `attached_at_epoch_ns` / `workflow_run_id`): five of six gate #55 invariants are concrete fields on the anchor ✓. **Invariant 5 (report state — Observed/Missing/Ambiguous/Stale) is NOT on the anchor** — it lives on `TimingMeasurement` variants in worker's PR #2360. This is a **P2 split-authority** for invariant 5: the report-state fact should be carried on the single anchor carrier (per gate #55 facts-flow-forward), not on the payload type.
+
+Convergence path requires TWO edits, not one:
+1. Add `<Subject, Source>` type parameters to anchor header (low-cost forward-compat for ProofReceipt second consumer).
+2. **Add `observation_outcome: ObservationOutcome<Source>` field to the anchor**, carrying invariant 5 on the anchor itself. Worker's `TimingMeasurement = Observed { nanoseconds: Int } | Missing | Ambiguous | Stale` becomes `Source = TimingPayload { nanoseconds: Int }` (Observed-payload only) + `ObservationOutcome<Source> = Observed { value: Source } | Missing | Ambiguous | Stale` (anchor-side report state).
+
+This collapses Q-WAD-S2-Output (c) folded-into-payload back into Q-WAD-S2-Output (a)(i) — payload is the Observed value, ObservationOutcome wraps it on the anchor. Trade-off: (c) was simpler at carrier-count but split P2 invariant 5 authority; canvas-(b)-revised + (a)(i) keeps single-authority on anchor at cost of one extra type.
 
 ## Question 3 (Q-WAD-S2-Output) — Output projection shape
 
