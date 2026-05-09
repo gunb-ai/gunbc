@@ -17,15 +17,16 @@ Cluster F (T-LP-Retirement) framework absorbs C1/C2/C3 carve-promotion per Direc
 | Phase | Carve | Gate | Work | Substrate-readiness |
 |---|---|---|---|---|
 | **F-α** | C1 | #81 parallelism | walker port from `workflow_parallelism.rs` → `.dag`; rewire via `lane2_workflow_at` / `std.effects` | substrate-ready (M-sized port) |
-| **F-β** | C2 | #82 effect_enum | **atomic migration** using existing `services.dag::Operation` carrier per locked design `docs/design-effect-enumeration-resource-threading.md` §3.2 + §6.2; lens body change (kind-classification dispatch) + 4a/4b/4d bounded migration | substrate-ready (no canvas needed; same shape as F-α port) |
+| **F-β.1** | C2 | #82 (canvas) | **migration-shape ratification canvas** — Operation field/walker rewire shape per locked design `docs/design-effect-enumeration-resource-threading.md` §3.2 + §6.2; surfaces: which fields of `services.dag::Operation` the lens body reads, walker rewire surface, test-consumer breaking changes | Substrate Mgr standing-authority canvas; Director ratifies surfaced questions |
+| **F-β.2** | C2 | #82 (impl) | atomic-migration implementation per F-β.1 ratified shape; 4a/4b/4d bounded migration over existing `services.dag::Operation` carrier (no new substrate type) | post-canvas-ratification worker dispatch |
 | **F-γ.1** | (was C3) | #95 demo | opt-in iteration parallelism worked-example demo via `apply_lens(parallelism, fn, Enforce { ... })` | cascade post-F-α (parallelism BEHAVIORALLY COMPLETE) + T-LAS Slice B landing (#91 per-lens LensEnforcement projection) |
-| **F-γ.2** | (#83 narrowing dissolution) | #83 register full-scope | register status update — fires for all 4 in-R3 lenses (complexity + cost + parallelism + effect_enum) at R3 close | cascade post-**all 4 lenses BEHAVIORALLY COMPLETE** = F-α (#81 parallelism) + F-β (#82 effect_enum) + #79 (complexity, T-LBP existing) + #80 (cost, T-LBP existing) |
+| **F-γ.2** | (#83 narrowing dissolution) | #83 register full-scope | register status update — fires for all 4 in-R3 lenses (complexity + cost + parallelism + effect_enum) at R3 close | cascade post-**all 4 lenses BEHAVIORALLY COMPLETE** = F-α (#81 parallelism) + F-β.2 (#82 effect_enum) + #79 (complexity, T-LBP existing) + #80 (cost, T-LBP existing) |
 
-F-α + F-β **parallel-dispatchable** (both substrate-ready, no canvas-tier blocker). F-γ split into F-γ.1 + F-γ.2 per codex BLOCKING on PR #2364 sha `14e4d8ff6` line 22 — the two gates have different prerequisite sets and were collapsed prior; one canonical close predicate per phase per INVARIANTS P2:
-- **F-γ.1 (#95)**: cascade post-F-α + T-LAS Slice B (only parallelism + apply_lens prereqs)
-- **F-γ.2 (#83)**: cascade post-all-4-lenses BEHAVIORALLY COMPLETE (F-α + F-β + #79 + #80) — full-scope register cannot fire if any of the 4 lenses is incomplete
+**F-α + F-β.1 parallel-dispatchable** on Task 12 merge (both substrate-ready; F-β.1 is canvas-tier work, not blocked on substrate). F-β.2 cascade-gates on F-β.1 ratification. F-γ.1 cascade-gates on F-α + T-LAS Slice B. F-γ.2 cascade-gates on all 4 lenses BEHAVIORALLY COMPLETE.
 
-Per Director (a-corrected) ratification at gunbc#846 #issuecomment-4412433924 (refining the initial (a) at #issuecomment-4412380947 against locked design doc): F-β collapses from prior 2-phase (canvas + implementation) to single-phase atomic migration. No new substrate canvas required. Director cited PM round-1 audit fix at sha `530376d50` as structurally correct; (a-as-stated) would have authored parallel 4c carrier alongside existing `Operation` — `feedback_parallel_representation_debt` violation.
+**Director sequencing per gunbc#846 #issuecomment-4412475559** (revising prior (a-corrected) at #issuecomment-4412433924): F-β.1 stays as separate migration-shape ratification canvas phase — migration shape decisions (Operation field reads / walker rewire surface / test-consumer breaking changes) are substantive enough to warrant early Director-tier ratification per `feedback_construction_over_ratchets`. Pattern: **substrate-shape canvases for novel substrate; migration-shape canvases for non-trivial ports**. Both surface decisions upfront.
+
+The locked-design discipline holds (no new top-level carrier per §3.2 + §6.2; uses existing `services.dag::Operation`); F-β.1 is canvas-tier ratification of migration shape, not substrate-fact-introduction.
 
 ---
 
@@ -43,26 +44,43 @@ Per Director (a-corrected) ratification at gunbc#846 #issuecomment-4412433924 (r
 - Gate #81 status: DECLARED → CONSUMER_LANDED → PASSING.
 - ~3 entries dissolve from SG-0 census.
 
-### §1.2 F-β — C2 #82 effect_enumeration atomic migration
+### §1.2 F-β.1 — C2 #82 migration-shape ratification canvas
 
-**Owner**: Substrate Mgr (warm-wolf-698 / gunbc#2068).
+**Owner**: Substrate Mgr (warm-wolf-698 / gunbc#2068) — canvas authoring under standing authority.
 
-**Scope (per Director (a-corrected) ratification at gunbc#846 #issuecomment-4412433924)**: atomic migration using existing `services.dag::Operation` carrier per locked design [`docs/design-effect-enumeration-resource-threading.md`](../design-effect-enumeration-resource-threading.md) §3.2 + §6.2.
+**Scope (per Director ratification at gunbc#846 #issuecomment-4412475559 — revised from prior (a-corrected) collapse)**: migration-shape ratification canvas (NOT new-substrate-introduction; substrate authority remains the existing `services.dag::Operation` carrier per locked design §3.2 + §6.2). Pattern: **migration-shape canvases for non-trivial ports** — surface decisions upfront per `feedback_construction_over_ratchets`.
 
-Director cited:
-> "PR #2363 round-1 audit fix at sha `530376d50` is structurally correct. (a-as-stated) would author parallel 4c carrier alongside existing `Operation` — direct violation of `feedback_parallel_representation_debt`. Locked design doc is single-authority per P2."
+Director's sequencing reasoning:
+> "Migration shape decisions that warrant early ratification:
+> - Which fields of `services.dag::Operation` does the lens body read?
+> - Walker rewire surface on Operation
+> - Test-consumer breaking changes
+> These are smaller than full substrate-shape questions but still worth Director-tier ratification before worker port."
 
-**Substrate guidance** (locked-design authority):
+**Locked-design citations** (canvas authoring substrate):
 - Design §3.2: "The pinning *substrate carrier* already exists: `src/v3/std/services.dag::Operation`. No new top-level carrier is required."
 - Design §6.2: "Operation already exists. ... No new substrate type."
 
-**Migration shape** (per design §6.2 atomic-migration shape):
+**Migration-shape questions for canvas to surface** (Director ratifies):
+- Which fields of `services.dag::Operation` does the new lens body read?
+- Walker rewire surface (lens body kind-classification dispatch)
+- Test-consumer breaking changes (e.g., effect_enumeration test fixtures that consume the old hand-Rust walker)
+- Sequencing of 4a (resource-threading migration) / 4b (ambient metadata removal) / 4c (lens body change) / 4d (full OperationEffect retirement)
+
+**Receipt**:
+- Canvas ratified by Director (with migration-shape dispositions on Operation field reads / walker rewire surface / test-consumer changes).
+- F-β.2 implementation worker dispatches against locked migration shape.
+
+### §1.3 F-β.2 — C2 #82 atomic-migration implementation
+
+**Owner**: Substrate Mgr worker (post-F-β.1 canvas-ratification dispatch).
+
+**Scope** (per F-β.1 ratified migration shape): atomic migration per design §6.2 (single-PR shippable). Same shape as F-α walker port — port-and-rewire bounded work using existing `services.dag::Operation` carrier (no new substrate type per design §3.2/§6.2).
+
 - **4a — resource-threading migration**: substrate exists; consumer migration only (bounded)
 - **4b — ambient metadata removal**: cleanup (bounded)
 - **4c — lens body change (kind-classification dispatch)**: lens reads effect set from arrow signature directly + dispatches on `callable_inhabits` lookup per design §2.4(b). Bounded; no new substrate.
 - **4d — full `OperationEffect` retirement**: depends on 4a-4c convergence.
-
-Single-PR shippable per design §6.2 "Why atomic is feasible (not aspirational)." Same shape as F-α walker port — port-and-rewire bounded work.
 
 **Receipt**:
 - Effect-enumeration walker hand-Rust retires (drops from `EXPECTED_HAND_AUTHORED_NON_TEST`).
@@ -75,11 +93,11 @@ Single-PR shippable per design §6.2 "Why atomic is feasible (not aspirational).
 - Gate #82 status: DECLARED → CONSUMER_LANDED → PASSING.
 - ~3 entries dissolve from SG-0 census.
 
-### §1.3 F-γ — split into F-γ.1 (#95 demo) + F-γ.2 (#83 register)
+### §1.4 F-γ — split into F-γ.1 (#95 demo) + F-γ.2 (#83 register)
 
 **Split rationale (per codex BLOCKING on PR #2364 sha `14e4d8ff6` line 22)**: prior single-phase F-γ collapsed two gates with different prerequisite sets — #95 cascades on F-α + T-LAS Slice B (parallelism + apply_lens only), while #83 register cascades on ALL 4 lenses BEHAVIORALLY COMPLETE. Each gate gets one canonical close predicate per INVARIANTS P2.
 
-#### §1.3.1 F-γ.1 — C3 #95 demo
+#### §1.4.1 F-γ.1 — C3 #95 demo
 
 **Owner**: Verification Mgr (wise-bear-525 / gunbc#2075).
 
@@ -91,7 +109,7 @@ Single-PR shippable per design §6.2 "Why atomic is feasible (not aspirational).
 
 **Receipt**: #95 status DECLARED → CONSUMER_LANDED → PASSING (worked-example demo).
 
-#### §1.3.2 F-γ.2 — #83 register full-scope
+#### §1.4.2 F-γ.2 — #83 register full-scope
 
 **Owner**: Substrate Mgr (warm-wolf-698 / gunbc#2068) for register state update; cross-program with Verification.
 
@@ -112,7 +130,8 @@ Single-PR shippable per design §6.2 "Why atomic is feasible (not aspirational).
 | Phase | Substrate Mgr | Verification Mgr | PB Mgr |
 |---|---|---|---|
 | F-α | author worker brief; dispatch | (none) | (none) |
-| F-β | atomic-migration worker (port + rewire; same shape as F-α) | (none) | (none) |
+| F-β.1 | author canvas (migration-shape ratification) | (none) | (none) |
+| F-β.2 | atomic-migration worker (port + rewire; same shape as F-α) | (none) | (none) |
 | F-γ | (#83 register) | (#95 demo) | (none) |
 
 T-LAS Slice B landing is a separate T-Lens-Application-Surface lane work item (not a Cluster F sub-phase); its sequencing is tracked in T-LAS lane-Mgr scope (Substrate Mgr per `r3-structure.md` §"Lane structure"). F-γ cascade-gates on T-LAS Slice B landing as an external dependency.
@@ -125,7 +144,7 @@ Per [`docs/audit/r3-pb0-velocity-walk-2026-05-09.md`](r3-pb0-velocity-walk-2026-
 
 **Cluster F bulk-dissolution events (carve-promotion contribution)**:
 - F-α: ~3 entries dissolve (workflow_parallelism.rs + supporting files)
-- F-β: ~3 entries dissolve (effect-enum walker hand-Rust)
+- F-β.2: ~3 entries dissolve (effect-enum walker hand-Rust; post-F-β.1 canvas ratification)
 - F-γ: ~2 entries dissolve (#95 demo wiring; varies by implementation shape)
 
 Plus existing Cluster F scope (#5/#6/#7 LP-retirement + #71 self-host trampoline): ~14 entries dissolve.
@@ -140,11 +159,12 @@ Per Director's bulk-event sequencing in #issuecomment-4412008376 §C, refined by
 
 | Bulk event | Cycle window | Cluster F phase |
 |---|---|---|
-| Cluster M Phase 1 (#85/#86) | weeks 1-4 | (parallel with F-α + F-β) |
+| Cluster M Phase 1 (#85/#86) | weeks 1-4 | (parallel with F-α + F-β.1) |
 | Cluster M Phase 2 (#87) | weeks 2-5 | (parallel) |
 | Cluster M Phase 3 (#84 bulk-port) | weeks 3-7 | (parallel with F-γ tail) |
 | **F-α (C1 walker port)** | **weeks 1-3** | parallel with Cluster M Phase 1 |
-| **F-β (C2 atomic migration)** | **weeks 1-3** | parallel with F-α (both substrate-ready) |
+| **F-β.1 (C2 migration-shape canvas)** | **weeks 1-2** | parallel with F-α (canvas-tier work; substrate-ready) |
+| **F-β.2 (C2 atomic-migration implementation)** | **weeks 2-4** | post-F-β.1 ratification |
 | **F-γ (#95 demo + #83 register)** | **weeks 4-7** | post-F-α + T-LAS Slice B |
 | Tail: per-file/small-class | weeks 6-8 | various |
 
@@ -159,7 +179,8 @@ Per Director's #issuecomment-4412392036:
 
 Cluster F adds to the spawn queue (alongside Cluster M Phase 1 #85/#86 canvases):
 - **F-α worker** (C1 walker port; Substrate Mgr brief)
-- **F-β atomic-migration worker** (Substrate Mgr brief; same shape as F-α port + rewire; substrate-ready per design §6.2)
+- **F-β.1 canvas-author** (Substrate Mgr standing authority — no operator spawn needed; mgr-tier canvas-drafting)
+- **F-β.2 atomic-migration worker** (post-F-β.1 ratification; Substrate Mgr brief; same shape as F-α port + rewire)
 - **F-γ #95 demo worker** (Verification Mgr brief; post-F-α + Slice B)
 
 Operator authorizes spawns; Substrate/Verification Mgrs dispatch under standing authority.
@@ -170,7 +191,8 @@ Operator authorizes spawns; Substrate/Verification Mgrs dispatch under standing 
 
 After Task 12 carve-promotion amendment PR ratifies + merges:
 - [ ] Substrate Mgr dispatched on F-α (C1 walker port worker brief)
-- [ ] Substrate Mgr dispatched on F-β (C2 atomic-migration worker — port + rewire; same shape as F-α; substrate-ready per design §6.2; no canvas needed)
+- [ ] Substrate Mgr dispatched on F-β.1 (C2 migration-shape ratification canvas under standing authority)
+- [ ] F-β.1 canvas surfaces migration-shape questions → Director ratifies → F-β.2 worker brief + dispatch
 - [ ] F-α completion + T-LAS Slice B landing → Verification Mgr dispatches F-γ #95 worker
 - [ ] §1.8 ledger Status updated for #81/#82/#83/#95 as each gate transitions DECLARED → CONSUMER_LANDED → PASSING
 - [ ] `r4-carve-out-routing.md` C1/C2/C3 entries removed (in this Task 12 PR)
