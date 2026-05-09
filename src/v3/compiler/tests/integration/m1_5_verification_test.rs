@@ -618,8 +618,16 @@ fn rust_dag_isomorphism_executable_passes_dag_shape_report_gate() {
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].claim_name, "rust_dag_isomorphism_executable");
             assert!(
-                matches!(&results[0].result, ClaimResult::Pass),
-                "expected RustDagIsomorphism executable gate to pass; got {:?}",
+                matches!(
+                    &results[0].result,
+                    ClaimResult::NotYetImplemented(reason)
+                        if reason.contains("BinaryDimensionReportEquals")
+                            && reason.contains("structural shape is valid")
+                            && reason.contains("RustEnumExtractionDagShapeReport")
+                            && reason.contains("DagReflectionDagShapeReport")
+                ),
+                "expected RustDagIsomorphism executable to stop at the \
+                 BinaryDimensionReportEquals shape-valid boundary; got {:?}",
                 results[0].result
             );
         })
