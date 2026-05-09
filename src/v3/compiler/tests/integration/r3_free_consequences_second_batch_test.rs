@@ -12,6 +12,8 @@ use v3_compiler::dag::Dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
+use crate::common::run_on_larger_stack;
+
 const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_free_consequences_second_batch.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_free_consequences_second_batch.dag";
 const SUITE_NAME: &str = "r3_free_consequences_second_batch_suite";
@@ -70,16 +72,4 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
             );
         }
     }
-}
-
-fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
-where
-    T: Send + 'static,
-{
-    std::thread::Builder::new()
-        .stack_size(32 * 1024 * 1024)
-        .spawn(f)
-        .expect("spawn larger-stack integration thread")
-        .join()
-        .expect("larger-stack integration thread panicked")
 }
