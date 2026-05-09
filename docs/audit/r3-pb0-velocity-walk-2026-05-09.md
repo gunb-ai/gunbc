@@ -220,7 +220,7 @@ Specific instances surfaced across the 3 audits — each grounded against a land
 
 | # | Drift instance | Source | Verification (landed authority) |
 |---|---|---|---|
-| 1 | **§1.8 status drift** — 9 gates likely promotable to CONSUMER_LANDED but ledger Status not refreshed | this audit §1 | grep-verified against `docs/r3-program-plan.md` §1.8 + recent merged PRs (#2251 / #2208 / #2271 / #2147 / #2190 / #2160 / #2288 / #2281) |
+| 1 | **§1.8 status drift** — ~9 gates likely promotable to CONSUMER_LANDED but ledger Status not refreshed | [`docs/audit/r3-cluster-analysis-2026-05-09.md`](r3-cluster-analysis-2026-05-09.md) §1 (PR #2300, on main) — "9 gates likely-promotable from DECLARED → CONSUMER_LANDED. 88 → ~79 still-DECLARED if Mgrs refresh ledger" | grep-verified against `docs/r3-program-plan.md` §1.8 + recent merged PRs (#2251 / #2208 / #2271 / #2147 / #2190 / #2160 / #2288 / #2281) |
 | 2 | **SG-0 trajectory drift** — census growing despite ratchet-to-zero framing | this audit §0 | grep-verified against `src/v3/compiler/tests/integration/sg0_census_test.rs` history (HEAD~500 → HEAD count progression) |
 | 3 | **TC1 #11 plan-language drift** — claimed "flips PASSING on E3.c merge" vs ratified "DECLARED through R3" | Director ask 6 (#issuecomment-4412017502) | grep-verified against `docs/r3-program-plan.md` §1.8 row #11 + Director (a)-disposition `473b99fb...`; addressed in PR #2361 sha 6efde884c |
 | 4 | **10 demonstration gates runtime-path drift** — #65-#74 DECLARED with no runtime path | Director ask 7 | grep-verified against §1.8 ledger rows #65-#74 (all DECLARED at HEAD); per-gate dissolution-trigger audit deferred to Ask 7 follow-up |
