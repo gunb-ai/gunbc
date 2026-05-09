@@ -108,8 +108,16 @@ sg0_validate_pr_body_format() {
         return 1
       fi
     elif grep -qE '^SG-0 pairing:[[:space:]]*\(c\)' <<<"$pairing_block"; then
+      # Tightened 2026-05-09 per PB-0 velocity walk (PR #2358 / docs/audit/r3-pb0-velocity-walk-2026-05-09.md):
+      # SG-0 census grew +30/9days because (c) deferrals were paper-trailed without dispatch enforcement.
+      # (c) now requires concrete dispatch evidence: an issue ref (gunbc#NNNN or #NNNN) OR a brief path
+      # (docs/briefs/*.md). Generic "dispatch" word alone no longer satisfies the discipline.
       if ! grep -qiE '\(c\).*dispatch' <<<"$pairing_flat"; then
         echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
+        return 1
+      fi
+      if ! grep -qE '(gunbc#|gunb-ai/gunbc#|^#|[[:space:]]#)[0-9]+|docs/briefs/[[:alnum:]_./-]+\.md' <<<"$pairing_flat"; then
+        echo "::error::SG-0 pairing (c) must cite concrete dispatch evidence — a tracker issue ref (gunbc#NNNN or #NNNN) OR a queued brief path (docs/briefs/*.md). Tightened 2026-05-09 per PB-0 velocity walk."
         return 1
       fi
     else
@@ -297,7 +305,9 @@ self_test() {
   run_case "CRLF +0 skips pairing" $'SG-0 hand-path delta: +0\r\n' pass
   run_case "shrink skips pairing" $'SG-0 hand-path delta: -2' pass
   run_case "(a) pairing" $'SG-0 hand-path delta: +3\nSG-0 pairing: (a) removed foo.rs bar.rs' pass
-  run_case "(c) pairing" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch: TM-0 lane' pass
+  run_case "(c) pairing with brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/r3-example-worker.md' pass
+  run_case "(c) pairing with issue ref" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via gunbc#1234' pass
+  run_case "(c) without dispatch evidence (tightened 2026-05-09)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch: vague-lane-name' fail
   run_case "missing delta line" $'Summary only\nSG-0 pairing: (a) x' fail
   run_case "malformed negative delta token" $'SG-0 hand-path delta: -not-a-number' fail
   run_case "bare (b) without URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)' fail
@@ -310,7 +320,7 @@ self_test() {
   run_case "(b) URL on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)\nhttps://github.com/gunb-ai/gunbc/issues/1' pass
   run_case "CRLF (b) URL on following line" $'SG-0 hand-path delta: +1\r\nSG-0 pairing: (b)\r\nhttps://github.com/gunb-ai/gunbc/issues/1\r\n' pass
   run_case "(a) path evidence on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a)\nremoved src/v3/compiler/src/foo.rs' pass
-  run_case "(c) dispatch on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c)\nfollow-up dispatch: TM-0 lane' pass
+  run_case "(c) dispatch on following line with brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c)\nfollow-up dispatch via docs/briefs/r3-example.md' pass
   run_case "mid-line SG-0 pairing mention ignored" $'SG-0 hand-path delta: +1\nNarrative: not SG-0 pairing: (b) https://trap.example\nSG-0 pairing: (b) https://github.com/gunb-ai/gunbc/issues/1' pass
   run_case "only mid-line pairing substring" $'SG-0 hand-path delta: +1\nNote: not SG-0 pairing: (b) https://x.com' fail
   run_case "indented SG-0 pairing rejected" $'SG-0 hand-path delta: +1\n    SG-0 pairing: (b) https://example.com/budget' fail
@@ -342,7 +352,7 @@ self_test() {
     fail
   run_synthetic_delta_then_validate \
     "+N prepend passes when pairing already authored" \
-    $'Intro\nSG-0 pairing: (c) structural deferral; follow-up dispatch: TM-example-lane\n' \
+    $'Intro\nSG-0 pairing: (c) structural deferral; follow-up dispatch via docs/briefs/r3-example-worker.md\n' \
     2 \
     pass
   run_synthetic_delta_then_validate \
