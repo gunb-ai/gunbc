@@ -11,10 +11,15 @@
 
 use crate::dag::{dominates, max_path, SymbolicCost};
 
-/// Peak memory for two **sequential** regions whose live ranges do not overlap: the peak is the
-/// asymptotic **maximum** of the two region peaks (same rule as `max_path` over branch arms).
+/// Peak memory across **alternative** control-flow possibilities (typically **branch arms**):
+/// asymptotic **`max`/dominance** of the modeled arm peaks—the same **`dominant` → `max_path`**
+/// basis used for branch sibling arms in `src/v3/lenses/cost.dag`.
+///
+/// This is **not** work-style sequencing (`sequential` / sum along a single path). Separate
+/// composition rules apply when allocations **overlap** in time (live-range overlap)—not modeled
+/// here; callers encode overlap facts in the composed `SymbolicCost` before invoking this helper.
 #[must_use]
-pub fn compose_sequential_memory_peak(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+pub fn compose_branch_memory_peak(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
     max_path(&[a, b])
 }
 
@@ -44,14 +49,14 @@ mod tests {
     }
 
     #[test]
-    fn compose_sequential_memory_peak_delegates_to_max_path() {
+    fn compose_branch_memory_peak_delegates_to_max_path() {
         // Pin the authoritative composition operator: branch / peak merges must not drift.
         let p0 = PortId::test_raw(110);
         let p1 = PortId::test_raw(111);
         let a = SymbolicCost::LinearCost { _0: var(p0) };
         let b = SymbolicCost::LogCost { _0: var(p1) };
         assert_eq!(
-            compose_sequential_memory_peak(a.clone(), b.clone()),
+            compose_branch_memory_peak(a.clone(), b.clone()),
             max_path(&[a, b])
         );
     }
@@ -82,7 +87,7 @@ mod tests {
             var: n.clone(),
             degree: DegreeAtLeastTwo::TWO,
         };
-        let peak_branch = compose_sequential_memory_peak(q.clone(), q);
+        let peak_branch = compose_branch_memory_peak(q.clone(), q);
         assert!(
             memory_peak_enforcement_violates(
                 &SymbolicCost::LinearCost { _0: n.clone() },
