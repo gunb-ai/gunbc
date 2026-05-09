@@ -126,7 +126,7 @@ Fold the four carriers into the existing `dsl/extdeps/github/actions.dag` adjace
 Per r3-structure.md:169 (verbatim, for worker brief reference):
 
 1. **Stable subject identity** — not span-based; identity is structural (`NodeId` / substrate node-table key in landed carriers), not source-position or free-form path text.
-2. **Observed-artifact identity/digest** — content-addressed; stale detection works against digest, not timestamp alone.
+2. **Observed-artifact identity/digest** — content-addressed via landed `artifact_digest: ContentHash` (`std.types`); stale detection works against digest, not timestamp alone.
 3. **Producer/observer/prover identity** — three roles distinguishable; producer = workflow runner, observer = measurement-capture process, prover = signature/attestation source.
 4. **Attachment timestamp + run id** — both fields required; run id provides workflow-scope, timestamp provides ordering.
 5. **Stale/ambiguous/missing/observed report states** — per Q-WAD-S2-Output (a) above; flat sum.

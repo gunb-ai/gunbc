@@ -144,6 +144,22 @@ fn nanoseconds_count_field_is_nat() {
     );
 }
 
+/// P2 / gate #55 inv.2: artifact digest must be `ContentHash`, not bare `String`
+/// (M9 content-addressed nominal vs free-form text).
+#[test]
+fn workflow_observation_anchor_artifact_digest_is_content_hash() {
+    let dag = generated_full_bootstrap_dag();
+    let content_hash = dag
+        .declaration_by_name("ContentHash")
+        .expect("`ContentHash` missing from full bootstrap (std.types authority)")
+        .id;
+    let ty = conj_field_ty(&dag, "WorkflowObservationAnchor", "artifact_digest");
+    assert_eq!(
+        ty, content_hash,
+        "`WorkflowObservationAnchor.artifact_digest` must be `ContentHash`, not `String`"
+    );
+}
+
 /// P2 / gate #55 inv.1: subject key must be structural (`NodeId`), not free-form
 /// `String` (span/path blobs must not type-check as the stable subject slot).
 #[test]
