@@ -232,9 +232,9 @@ pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenAp
     for route in routes {
         out.push_str("| ");
         out.push_str(&markdown_table_cell(&route.method));
-        out.push_str(" | `");
-        out.push_str(&markdown_code_table_cell(&route.path));
-        out.push_str("` | ");
+        out.push_str(" | ");
+        out.push_str(&markdown_code_span_table_cell(&route.path));
+        out.push_str(" | ");
         if route.path_parameters.is_empty() {
             out.push_str("_none_");
         } else {
@@ -242,9 +242,7 @@ pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenAp
                 if index > 0 {
                     out.push_str(", ");
                 }
-                out.push('`');
-                out.push_str(&markdown_code_table_cell(parameter));
-                out.push('`');
+                out.push_str(&markdown_code_span_table_cell(parameter));
             }
         }
         out.push_str(" |\n");
@@ -474,12 +472,27 @@ fn markdown_table_cell(value: &str) -> String {
     value.replace('\\', "\\\\").replace('|', "\\|")
 }
 
-fn markdown_code(value: &str) -> String {
-    value.replace('`', "\\`")
+fn markdown_code_span(value: &str) -> String {
+    let delimiter = "`".repeat(max_backtick_run(value) + 1);
+    format!("{delimiter}{value}{delimiter}")
 }
 
-fn markdown_code_table_cell(value: &str) -> String {
-    markdown_table_cell(&markdown_code(value))
+fn markdown_code_span_table_cell(value: &str) -> String {
+    markdown_table_cell(&markdown_code_span(value))
+}
+
+fn max_backtick_run(value: &str) -> usize {
+    let mut max = 0;
+    let mut current = 0;
+    for ch in value.chars() {
+        if ch == '`' {
+            current += 1;
+            max = max.max(current);
+        } else {
+            current = 0;
+        }
+    }
+    max
 }
 
 #[cfg(test)]
@@ -586,7 +599,14 @@ data service_operations: List<DemoOperation> = [
     }
 
     #[test]
-    fn markdown_code_cells_escape_table_delimiters() {
-        assert_eq!(markdown_code_table_cell("a|b`c\\d"), "a\\|b\\\\`c\\\\d");
+    fn markdown_code_cells_choose_safe_delimiters_and_escape_table_delimiters() {
+        assert_eq!(
+            markdown_code_span_table_cell("a|b`c\\d"),
+            "``a\\|b`c\\\\d``"
+        );
+        assert_eq!(
+            markdown_code_span_table_cell("a``b```c"),
+            "````a``b```c````"
+        );
     }
 }

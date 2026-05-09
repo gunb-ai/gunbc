@@ -227,24 +227,11 @@ fn markdown_documentation_routes(markdown: &str) -> BTreeSet<RestRoute> {
             if cells.len() != 3 || cells[0] == "Method" {
                 return None;
             }
-            let path = cells[1]
-                .strip_prefix('`')
-                .and_then(|cell| cell.strip_suffix('`'))
-                .expect("Markdown path cell is code-formatted")
-                .replace("\\`", "`");
+            let path = markdown_code_cell_value(cells[1]);
             let path_parameters = if cells[2] == "_none_" {
                 vec![]
             } else {
-                cells[2]
-                    .split(", ")
-                    .map(|parameter| {
-                        parameter
-                            .strip_prefix('`')
-                            .and_then(|cell| cell.strip_suffix('`'))
-                            .expect("Markdown parameter cell is code-formatted")
-                            .replace("\\`", "`")
-                    })
-                    .collect()
+                cells[2].split(", ").map(markdown_code_cell_value).collect()
             };
             Some(RestRoute {
                 method: cells[0].replace("\\|", "|").replace("\\\\", "\\"),
@@ -253,6 +240,17 @@ fn markdown_documentation_routes(markdown: &str) -> BTreeSet<RestRoute> {
             })
         })
         .collect()
+}
+
+fn markdown_code_cell_value(cell: &str) -> String {
+    let delimiter_len = cell.chars().take_while(|ch| *ch == '`').count();
+    assert!(delimiter_len > 0, "Markdown code cell is code-formatted");
+    let delimiter = "`".repeat(delimiter_len);
+    cell.strip_prefix(&delimiter)
+        .and_then(|inner| inner.strip_suffix(&delimiter))
+        .expect("Markdown code cell has matching delimiter")
+        .replace("\\|", "|")
+        .replace("\\\\", "\\")
 }
 
 fn yaml_scalar_value(value: &str) -> String {
