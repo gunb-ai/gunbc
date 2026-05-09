@@ -219,15 +219,14 @@ fn markdown_documentation_routes(markdown: &str) -> BTreeSet<RestRoute> {
         // after splitting so malformed data rows still surface through shape.
         .filter(|line| line.starts_with("| ") && !line.starts_with("| ---"))
         .filter_map(|line| {
-            let cells: Vec<_> = line
-                .trim_matches('|')
-                .split('|')
-                .map(|cell| cell.trim())
+            let cells: Vec<_> = markdown_table_cells(line)
+                .into_iter()
+                .map(|cell| cell.trim().to_string())
                 .collect();
             if cells.len() != 3 || cells[0] == "Method" {
                 return None;
             }
-            let path = markdown_code_cell_value(cells[1]);
+            let path = markdown_code_cell_value(&cells[1]);
             let path_parameters = if cells[2] == "_none_" {
                 vec![]
             } else {
@@ -253,6 +252,32 @@ fn markdown_code_cell_value(cell: &str) -> String {
         .replace("\\\\", "\\")
 }
 
+fn markdown_table_cells(line: &str) -> Vec<String> {
+    let mut cells = Vec::new();
+    let mut current = String::new();
+    let mut chars = line
+        .strip_prefix('|')
+        .and_then(|inner| inner.strip_suffix('|'))
+        .expect("Markdown table row has edge delimiters")
+        .chars()
+        .peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\\' if chars.peek() == Some(&'|') => {
+                current.push('\\');
+                current.push(chars.next().expect("peeked pipe exists"));
+            }
+            '|' => {
+                cells.push(current);
+                current = String::new();
+            }
+            other => current.push(other),
+        }
+    }
+    cells.push(current);
+    cells
+}
+
 fn yaml_scalar_value(value: &str) -> String {
     if let Some(single_quoted) = value
         .strip_prefix('\'')
@@ -272,6 +297,25 @@ fn yaml_scalar_value(value: &str) -> String {
             .replace("\\\\", "\\");
     }
     value.to_string()
+}
+
+#[test]
+fn markdown_documentation_parser_round_trips_escaped_table_cells() {
+    let markdown = concat!(
+        "# GunBC generated service\n\n",
+        "| Method | Path | Path parameters |\n",
+        "| --- | --- | --- |\n",
+        "| GET | ``/a\\|b\\\\c`d`` | `p\\|q`, ``r\\\\s`t`` |\n",
+    );
+
+    assert_eq!(
+        markdown_documentation_routes(markdown),
+        BTreeSet::from([RestRoute {
+            method: "GET".to_string(),
+            path: "/a|b\\c`d".to_string(),
+            path_parameters: vec!["p|q".to_string(), "r\\s`t".to_string()],
+        }])
+    );
 }
 
 fn compile_omni_service_fixture_counted(count: &mut usize) -> v3_compiler::Dag {
