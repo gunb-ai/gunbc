@@ -4642,14 +4642,8 @@ fn numeric_inherited_bake_ins_dissolved_int_inherited_aliases_use_abstract_int()
     let dag = v3_compiler::generated_full_bootstrap_dag();
     let int_id = find_named(&dag, "Int");
 
-    for name in [
-        "Char",
-        "EpochMs",
-        "Duration",
-        "Milliseconds",
-        "Seconds",
-    ] {
-        let decl_id = find_named(&dag, name);
+    for name in ["Char", "EpochMs", "Duration", "Milliseconds", "Seconds"] {
+        let decl_id = find_named_std_types_dag(&dag, name);
         let decl = dag.declaration(decl_id);
         let base = match &decl.connective {
             TypeConnective::Instantiation { template, .. } => *template,
@@ -4660,7 +4654,8 @@ fn numeric_inherited_bake_ins_dissolved_int_inherited_aliases_use_abstract_int()
             ),
         };
         assert_eq!(
-            base, int_id,
+            base,
+            int_id,
             "{name} must consume abstract `Int` per gate #20 (resolved base decl {:?})",
             dag.declaration(base).name
         );
