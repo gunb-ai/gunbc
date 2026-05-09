@@ -38,10 +38,18 @@ pub struct Lens<T> {
     pub validate: Rc<LensValidateFn<T>>,
 }
 
+/// Mirrors `ProjectionFailure` sum-type in `v3.std.lens_application`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ProjectionFailure {
+    MissingObservation,
+    AmbiguousObservation,
+    StaleObservation,
+}
+
 /// Mirrors `LensEnforcement<Output, Budget>` in `v3.std.lens_application`.
 #[derive(Clone)]
 pub struct LensEnforcement<Output, Budget> {
-    pub project: Rc<dyn Fn(Output) -> Budget>,
+    pub project: Rc<dyn Fn(Output) -> Result<Budget, ProjectionFailure>>,
     pub violates: Rc<dyn Fn(Budget, Budget) -> bool>,
 }
 

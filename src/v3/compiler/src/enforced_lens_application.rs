@@ -139,12 +139,29 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         }
         .unwrap_or_else(|| decl.span.clone());
 
-        let observed = match complexity_of(dag, &port) {
-            Lookup::Hit(s) => complexity_enforcement_project(&s),
+        let summary = match complexity_of(dag, &port) {
+            Lookup::Hit(s) => s,
             Lookup::Miss => {
                 violations.push(Diagnostic::ParseError {
                     message: "lens enforcement: complexity lens returned Miss for section — \
                               cannot enforce budget"
+                        .to_string(),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            }
+        };
+        let observed = match complexity_enforcement_project(&summary) {
+            Ok(b) => b,
+            Err(_) => {
+                // Per (a)(iii)-β-simplified fail-closed: project Result-Err
+                // counts as violation without invoking violates. Complexity is
+                // structural-static so this branch is unreachable in practice;
+                // shape is uniform with observation-driven lens callsites.
+                violations.push(Diagnostic::ParseError {
+                    message: "lens enforcement: complexity projection failed — \
+                              fail-closed violation"
                         .to_string(),
                     span: span.clone(),
                     fixes: Vec::new(),

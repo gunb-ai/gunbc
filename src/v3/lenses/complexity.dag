@@ -59,7 +59,7 @@ import std.computation {
 import v3.std.lookup { Lookup }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.lens { Lens }
-import v3.std.lens_application { LensEnforcement, EnforceableLens, EnforcedApplication }
+import v3.std.lens_application { LensEnforcement, EnforceableLens, EnforcedApplication, ProjectionFailure }
 
 // Certainty: how tight is the bound?
 // Proven means the bound is exact for that coordinate; Conservative means it
@@ -413,8 +413,11 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
 // **Read / monoid / branch / iterate:** wired to `complexity_of` + `compose_*` (same
 // fold as `compute_summaries`) — not a placeholder dissolution; the remaining lift is
 // `validate`→`SomeDiagnostic` (paragraph above).
-fn complexity_enforcement_project(summary: ComplexitySummary) -> AsymptoticClass =
-  summary.asymptotic_class
+// Per LensEnforcement (a)(iii)-β-simplified signature change (gunbc#828
+// c#4413567822): project returns Result<Budget, ProjectionFailure>.
+// ComplexitySummary is structural-static; projection always succeeds.
+fn complexity_enforcement_project(summary: ComplexitySummary) -> Result<AsymptoticClass, ProjectionFailure> =
+  Ok(summary.asymptotic_class)
 
 // Strict excess: observed strictly dominates declared budget under `asymptotic_dominates`
 // (`algebra.dag`), and not conversely. Bool via `0 == 0` / `0 == 1` so rust emit
