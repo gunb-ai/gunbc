@@ -35,7 +35,7 @@ type tc2_rightfirst_strategy_dimension_report = DimensionReport<Dag>
 // §1.8 gate #12 canonical TestClaim name.
 data tc2_church_rosser_executable_claim: TestClaim = {
   name: "tc2_church_rosser_executable",
-  source: "// TC2 strict-fire — binary Transform + two argument sites (non-atomic subexpressions).\n// Vacuity guard: LeftFirst vs RightFirst eager schedules traverse distinct operand-eval order.\nmodule user.tc2_church_rosser_executable\n\nfn sub_pos(a: Int, b: Int) -> Int = a - b\n\nlet _: Int = sub_pos(2 + 3, 1 + 1)\n",
+  source: "// TC2 strict-fire - binary Transform + two argument sites (non-atomic subexpressions).\n// Vacuity guard: LeftFirst vs RightFirst eager schedules traverse distinct operand-eval order.\nmodule user.tc2_church_rosser_executable\n\nfn sub_pos(a: Int, b: Int) -> Int = a - b\n\nlet _: Int = sub_pos(2 + 3, 1 + 1)\n",
   file_name: "tc2_church_rosser_executable.v3",
   predicate: BinaryDimensionReportEquals(
     tc2_leftfirst_strategy_dimension_report,

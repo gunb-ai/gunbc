@@ -21,16 +21,19 @@
 //! authoritative dissolution bookkeeping (`INVARIANTS.md` §P5 Dispatch-Discipline mechanism (b)).
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::test_runner::{ClaimResult, TestRunner};
+use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
 const FIXTURE_SOURCE: &str = include_str!("../fixtures/tc2_church_rosser_strict_fire.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/tc2_church_rosser_strict_fire.dag";
 const SUITE_NAME: &str = "tc2_church_rosser_strict_fire_suite";
 
-/// Byte-identical to `TestClaim.source` in `tc2_church_rosser_strict_fire.dag` (canonical program authority).
+/// Sidecar bytes for the §1.8 claim program — **must** match parsed `TestClaim.source` from the
+/// `.dag` fixture (`tc2_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape`).
 const CLAIM_PROGRAM_SOURCE: &str = include_str!("../fixtures/tc2_church_rosser_executable.v3");
 const CLAIM_PROGRAM_PATH: &str = "src/v3/compiler/tests/fixtures/tc2_church_rosser_executable.v3";
+
+const TC2_CLAIM_DATA_NAME: &str = "tc2_church_rosser_executable_claim";
 
 #[test]
 fn tc2_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape() {
@@ -50,6 +53,35 @@ fn tc2_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape(
         Err(other) => panic!("unexpected compile error for {FIXTURE_PATH}: {other:?}"),
     };
 
+    let claim_decl = dag
+        .declaration_by_name(TC2_CLAIM_DATA_NAME)
+        .unwrap_or_else(|| panic!("missing `{TC2_CLAIM_DATA_NAME}` in {FIXTURE_PATH}"));
+    let claim = TestClaimValue::from_declaration(claim_decl).unwrap_or_else(|e| {
+        panic!("`{TC2_CLAIM_DATA_NAME}` should lower as TestClaim: {e}");
+    });
+    assert_eq!(
+        claim.source, CLAIM_PROGRAM_SOURCE,
+        "embedded `TestClaim.source` in {FIXTURE_PATH} must stay byte-identical to {CLAIM_PROGRAM_PATH} (single program authority per INVARIANTS P2)"
+    );
+    assert_eq!(
+        claim.file_name, "tc2_church_rosser_executable.v3",
+        "TestClaim.file_name must match the sidecar program path used in lowering checks"
+    );
+
+    let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+        Ok(program_dag) => program_dag,
+        Err(CompileError::Semantic(program_dag)) => panic!(
+            "embedded TestClaim.source should lower cleanly; diagnostics: {:?}",
+            program_dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("embedded TestClaim.source compile error: {other:?}"),
+    };
+    assert!(
+        program_dag.diagnostics().is_empty(),
+        "embedded claim program expected no diagnostics, got {:?}",
+        program_dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+
     let results = TestRunner::new(&dag).run_suite(SUITE_NAME);
     assert_eq!(results.len(), 1, "strict-fire suite has exactly one claim");
     assert_eq!(
@@ -65,21 +97,5 @@ fn tc2_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape(
         ),
         "expected BinaryDimensionReportEquals shape-valid NotYetImplemented, got {:?}",
         results[0].result
-    );
-}
-
-#[test]
-fn tc2_executable_claim_source_lowers_without_diagnostics() {
-    let dag = match compile_to_dag(CLAIM_PROGRAM_SOURCE, CLAIM_PROGRAM_PATH) {
-        Ok(dag) => dag,
-        Err(CompileError::Semantic(dag)) => panic!(
-            "{CLAIM_PROGRAM_PATH}: embedded claim program should lower cleanly; got {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
-        ),
-        Err(other) => panic!("unexpected compile error for {CLAIM_PROGRAM_PATH}: {other:?}"),
-    };
-    assert!(
-        dag.diagnostics().is_empty(),
-        "{CLAIM_PROGRAM_PATH}: expected empty diagnostics on §1.8 claim program"
     );
 }

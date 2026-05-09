@@ -1,4 +1,4 @@
-// TC2 strict-fire — binary Transform + two argument sites (non-atomic subexpressions).
+// TC2 strict-fire - binary Transform + two argument sites (non-atomic subexpressions).
 // Vacuity guard: LeftFirst vs RightFirst eager schedules traverse distinct operand-eval order.
 module user.tc2_church_rosser_executable
 
