@@ -10,8 +10,8 @@
 use crate::common::{cached_compile_any, cached_compile_to_dag};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId, LogicalOp, OperatorKind,
-    TransformTarget, TypeConnective,
+    literal_bits_int, ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId,
+    LogicalOp, OperatorKind, TransformTarget, TypeConnective,
 };
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
@@ -274,7 +274,7 @@ fn test_3a2_data_reference_is_order_independent() {
                 v3_compiler::dag::Behavior::Value(v)
                 if matches!(
                     &v.data,
-                    v3_compiler::dag::LiteralBits::Int(42)
+                    v3_compiler::dag::LiteralBits::Int(s) if s == "42"
                 )
             )
         });
@@ -392,7 +392,7 @@ fn test_3a2_record_data_lowers_function_refs_and_nested_records() {
         .expect("identity field must be present");
     assert_eq!(
         identity,
-        &v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(0)),
+        &v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::literal_bits_int(0)),
         "`sequential.identity` must remain a checked scalar literal"
     );
 }
@@ -427,8 +427,8 @@ fn test_3a2_record_data_substitutes_generic_list_fields() {
     assert_eq!(
         items,
         &vec![
-            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1)),
-            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2)),
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::literal_bits_int(1)),
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::literal_bits_int(2)),
         ]
     );
 }
@@ -463,8 +463,8 @@ fn test_3a2_record_data_discovers_list_through_type_param_substitution() {
     assert_eq!(
         items,
         &vec![
-            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1)),
-            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2)),
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::literal_bits_int(1)),
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::literal_bits_int(2)),
         ]
     );
 }
@@ -500,7 +500,7 @@ fn test_3a2_record_data_discovers_sum_through_type_param_substitution() {
     assert_eq!(
         payload,
         &vec![v3_compiler::dag::FieldValue::Literal(
-            v3_compiler::dag::LiteralBits::Int(1)
+            v3_compiler::dag::literal_bits_int(1)
         )]
     );
 }
@@ -659,7 +659,7 @@ fn test_3a2_lens_int_data_substitutes_generic_conj_fields() {
         .unwrap();
     assert_eq!(
         identity.1,
-        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(0))
+        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::literal_bits_int(0))
     );
 }
 
@@ -796,7 +796,7 @@ fn test_3a2_data_field_access_resolves_statically() {
         matches!(
             n,
             v3_compiler::dag::Behavior::Value(v)
-            if matches!(&v.data, v3_compiler::dag::LiteralBits::Int(1))
+            if matches!(&v.data, v3_compiler::dag::LiteralBits::Int(s) if s == "1")
         )
     });
     assert!(
@@ -1165,7 +1165,7 @@ fn test_brand_takes_placeholder_pending_mixed_clause_fix() {
 /// must have actual refinement-body lowering, not placeholder semantics.
 #[test]
 fn test_gt_zero_lowers_to_real_refinement_body_not_placeholder() {
-    use v3_compiler::dag::{ArrowBody, Behavior, LiteralBits, TransformTarget, TypeConnective};
+    use v3_compiler::dag::{ArrowBody, Behavior, TransformTarget, TypeConnective};
     use v3_compiler::operators::{ComparisonOp, OperatorKind};
 
     let f = "dsl/std/integer.dag";
@@ -1217,10 +1217,10 @@ fn test_gt_zero_lowers_to_real_refinement_body_not_placeholder() {
         other => panic!("`gt_zero` body should be `Comparison(Gt)`; got {other:?}"),
     }
     // The Gt operator has 2 inputs: subject and literal 0. Find the Value
-    // node feeding one of the input ports with `LiteralBits::Int(0)`.
+    // node feeding one of the input ports with `literal_bits_int(0)`.
     let zero_literal = producer.inputs.iter().any(|input_port| {
         dag.nodes().iter().any(|node| match node {
-            Behavior::Value(v) => v.output == *input_port && v.data == LiteralBits::Int(0),
+            Behavior::Value(v) => v.output == *input_port && v.data == literal_bits_int(0),
             _ => false,
         })
     });
@@ -1314,7 +1314,7 @@ fn test_bare_predicate_with_empty_call_args_fails_closed() {
 /// the corresponding Comparison(Ge) / Comparison(Le) / And-combination Bool
 /// body. Initial enable hit a test-fixture brittleness in
 /// `int_literal_cardinality_test::let_annotated_uint8_*` — the test used
-/// `find_map(Value(LiteralBits::Int(5)))` and matched a synthesized literal
+/// `find_map(Value(literal_bits_int(5)))` and matched a synthesized literal
 /// from a types.dag `range(max: 5)` declaration before the user's literal.
 /// Resolved by filtering the test's literal lookup to the user-source span
 /// (`assert_int_value_port_resolves_to_uint8_in_file`).

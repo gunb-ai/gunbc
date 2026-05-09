@@ -2,8 +2,8 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::OnceLock;
 
 use v3_compiler::dag::{
-    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
-    ValueBody,
+    literal_bits_int, Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
+    PortState, TypeConnective, ValueBody,
 };
 use v3_compiler::lens_cost::cost_of;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
@@ -346,7 +346,10 @@ fn predicate_holds(
                 cost_of(&dag, &bind.value),
                 &format!("bind `{bind_name}`"),
             );
-            compare_cost(expectation_dag, comparator, actual, *bound)
+            let bound_i64: i64 = bound
+                .parse()
+                .expect("CostBounded payload Int must be decimal i64");
+            compare_cost(expectation_dag, comparator, actual, bound_i64)
         }
         "OutputEquals" => runner_deferred_panic("OutputEquals"),
         "BehavioralObservation" => runner_deferred_panic("BehavioralObservation"),
@@ -567,7 +570,7 @@ fn cost_bounded_predicate(dag: &Dag, bind_name: &str, comparator: &str, bound: i
         vec![
             FieldValue::Literal(LiteralBits::String(bind_name.to_string())),
             sum_variant(dag, "ComparisonOp", comparator, Vec::new()),
-            FieldValue::Literal(LiteralBits::Int(bound)),
+            FieldValue::Literal(LiteralBits::Int(bound.to_string())),
         ],
     )
 }
@@ -580,7 +583,7 @@ fn execute_command_predicate(dag: &Dag) -> FieldValue {
         vec![
             FieldValue::Literal(LiteralBits::String(String::from("true"))),
             FieldValue::List(Vec::new()),
-            FieldValue::Literal(LiteralBits::Int(0)),
+            FieldValue::Literal(literal_bits_int(0)),
         ],
     )
 }
@@ -593,7 +596,7 @@ fn for_all_targets_predicate(dag: &Dag) -> FieldValue {
         vec![
             FieldValue::Literal(LiteralBits::String(String::from("true"))),
             FieldValue::List(Vec::new()),
-            FieldValue::Literal(LiteralBits::Int(0)),
+            FieldValue::Literal(literal_bits_int(0)),
         ],
     )
 }
@@ -826,7 +829,7 @@ fn extension_predicates_reach_interpreter_boundary() {
             FieldValue::List(vec![FieldValue::Literal(LiteralBits::String(
                 String::from("hi"),
             ))]),
-            FieldValue::Literal(LiteralBits::Int(0)),
+            FieldValue::Literal(literal_bits_int(0)),
         ],
     );
     assert!(
@@ -840,7 +843,7 @@ fn extension_predicates_reach_interpreter_boundary() {
         vec![
             FieldValue::Literal(LiteralBits::String(String::from("true"))),
             FieldValue::List(Vec::new()),
-            FieldValue::Literal(LiteralBits::Int(1)),
+            FieldValue::Literal(literal_bits_int(1)),
         ],
     );
     assert!(
@@ -854,7 +857,7 @@ fn extension_predicates_reach_interpreter_boundary() {
         vec![
             FieldValue::Literal(LiteralBits::String(String::from("false"))),
             FieldValue::List(Vec::new()),
-            FieldValue::Literal(LiteralBits::Int(0)),
+            FieldValue::Literal(literal_bits_int(0)),
         ],
     );
     assert!(
