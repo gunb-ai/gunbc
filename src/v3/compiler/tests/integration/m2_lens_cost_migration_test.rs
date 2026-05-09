@@ -161,7 +161,8 @@ fn complexity_lens_migration_stop_surface_ratchet() {
     let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
         .expect("complexity.dag should compile cleanly");
     assert!(
-        dag.declaration_by_name("complexity_lens_read_stub").is_none(),
+        dag.declaration_by_name("complexity_lens_read_stub")
+            .is_none(),
         "`complexity_lens_read_stub` retired: read must delegate to `complexity_of`"
     );
     assert!(
@@ -173,7 +174,8 @@ fn complexity_lens_migration_stop_surface_ratchet() {
         "expected `complexity_lens_validate` (aggregate hook; see substrate limitation notes in complexity.dag)"
     );
     assert!(
-        dag.declaration_by_name("complexity_summary_work_class_consistent").is_some(),
+        dag.declaration_by_name("complexity_summary_work_class_consistent")
+            .is_some(),
         "expected `complexity_summary_work_class_consistent` export for fold consumers"
     );
     assert!(
