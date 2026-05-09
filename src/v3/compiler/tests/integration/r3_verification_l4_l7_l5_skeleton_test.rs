@@ -42,8 +42,6 @@ const L7_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l7_algebraic_laws.dag";
 const L7_SUITE: &str = "r3_verification_l7_algebra_skeleton_suite";
 const L7_CLAIM: &str = "r3_verification_l7_algebraic_laws_skeleton";
-const L7_SEMIGROUP_ASSOCIATIVITY_CLAIM: &str = "r3_l7_semigroup_associativity";
-const L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM: &str = "r3_l7_commutative_monoid_commutativity";
 const L7_MATRIX_SUITE: &str = "r3_verification_l7_algebra_matrix_suite";
 /// Claims wired into [`L7_MATRIX_SUITE`] — honest **additive vs multiplicative Int** slices only
 /// (`+` vs `*`); no lattice / monoid inhabitant rows (see fixture receipt limits).
@@ -195,52 +193,6 @@ fn r3_verification_l4_emit_eval_mixed_lineage_stays_not_yet_implemented() {
     });
 }
 
-#[test]
-fn r3_verification_l7_semigroup_associativity_passes_wired_associativity() {
-    run_on_larger_stack(|| {
-        let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
-        let results = TestRunner::new(dag).run_suite(L7_MATRIX_SUITE);
-        let result = results
-            .iter()
-            .find(|result| result.claim_name == L7_SEMIGROUP_ASSOCIATIVITY_CLAIM)
-            .unwrap_or_else(|| {
-                panic!(
-                    "missing `{}` in {}",
-                    L7_SEMIGROUP_ASSOCIATIVITY_CLAIM, L7_FIXTURE_PATH
-                )
-            });
-        assert!(
-            matches!(result.result, ClaimResult::Pass),
-            "expected L7 Associativity wire-up to pass for `{}`; got {:?}",
-            L7_SEMIGROUP_ASSOCIATIVITY_CLAIM,
-            result.result
-        );
-    });
-}
-
-#[test]
-fn r3_verification_l7_commutative_monoid_commutativity_passes_wired_commutativity() {
-    run_on_larger_stack(|| {
-        let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
-        let results = TestRunner::new(dag).run_suite(L7_MATRIX_SUITE);
-        let result = results
-            .iter()
-            .find(|result| result.claim_name == L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM)
-            .unwrap_or_else(|| {
-                panic!(
-                    "missing `{}` in {}",
-                    L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM, L7_FIXTURE_PATH
-                )
-            });
-        assert!(
-            matches!(result.result, ClaimResult::Pass),
-            "expected L7 Commutativity wire-up to pass for `{}`; got {:?}",
-            L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM,
-            result.result
-        );
-    });
-}
-
 /// Skeleton suite only (one `AlgebraicLaw::Identity` row on `Int` `+`); matrix receipt is
 /// [`r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts`].
 #[test]
@@ -259,6 +211,10 @@ fn r3_verification_l7_algebraic_law_identity_skeleton_passes_bounded_witness() {
 }
 
 /// Bounded-runner receipt for [`L7_MATRIX_SUITE`] only — **not** exhaustive `l7_algebraic_laws_witnessed` / ROADMAP coverage.
+///
+/// One [`TestRunner::run_suite`] covers every [`L7_MATRIX_PASS_CLAIMS`] row (including semigroup
+/// associativity and commutative-monoid commutativity) plus embedded-source `a + b` / `a * b`
+/// checks — avoids duplicate full-suite passes that tripped the Phase-0 2s ratchet.
 #[test]
 fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
     let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
