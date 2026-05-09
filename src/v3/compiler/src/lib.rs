@@ -3351,11 +3351,11 @@ pub mod lens_cost {
         use crate::complexity_lattice::complexity_enforcement_budget_dominates as asymptotic_dominates;
         use crate::dag::*;
         use crate::diagnostics::*;
+        use crate::lens_t_las_carrier::ProjectionResult::{ProjectedBudget, ProjectionFailed};
         use crate::lens_t_las_carrier::{
             EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic, ProjectionFailure,
             ProjectionResult,
         };
-        use crate::lens_t_las_carrier::ProjectionResult::{ProjectedBudget, ProjectionFailed};
         use crate::Witness;
 
         include!("complexity_lens_generated.rs");
