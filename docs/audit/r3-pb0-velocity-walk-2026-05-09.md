@@ -14,7 +14,7 @@
 
 **The SG-0 census is growing, not shrinking.** Over the last 9 days the ratchet went from 119 entries (2026-04-30) to **149 entries (2026-05-09 audit-time snapshot)** — net **+30 entries**, **+3.3/day** average. R3 close requires this number to reach **0** (gate #8 non-test = 0 + gate #84 test = 0).
 
-> **Snapshot scope (added 2026-05-09 post-codex BLOCKING review)**: numbers below are **audit-time snapshots** at indicated git sha; not refreshed as `origin/main` advances. Live source-of-truth for SG-0 trajectory is [`docs/audit/r3-sg0-trajectory-tracker.md`](r3-sg0-trajectory-tracker.md) — that artifact is updated daily/per-cycle with fragments-inclusive counts. The trajectory finding (growth rate ≥ +3.3/day; gates cannot reach zero at observed velocity) is **structural** and remains valid regardless of point-in-time count drift; specific count cells below should be read as "as of the audit window" not "as of HEAD now."
+> **Snapshot scope (added 2026-05-09 post-codex BLOCKING review; refined 2026-05-09 post-second codex BLOCKING)**: numbers below are **audit-time snapshots** at indicated git sha; not refreshed as `origin/main` advances. Live source-of-truth for the SG-0 census itself is [`src/v3/compiler/tests/integration/sg0_census_test.rs`](../../src/v3/compiler/tests/integration/sg0_census_test.rs) — `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS` arrays are the canonical authority. A daily-cadence trajectory tracker artifact lands via sibling PR #2361 (Cluster M remediation program); cite-once-merged. The trajectory finding (growth rate ≥ +3.3/day; gates cannot reach zero at observed velocity) is **structural** and remains valid regardless of point-in-time count drift; specific count cells below should be read as "as of the audit window" not "as of HEAD now."
 
 | Date | non-test (#8 target=0) | test (#84 target=0) | total | Note |
 |---|---|---|---|---|
@@ -24,7 +24,7 @@
 | 2026-05-07 (HEAD~50) | 47 | 95 | 142 | retroactive |
 | **2026-05-09 (audit-time ~`c25b2d8df`)** | **48** | **101** | **149** | **audit-time** snapshot (excluding fragments); 150 fragments-inclusive |
 
-**Numbers in this audit are point-in-time at the audit window**; main has advanced since (see tracker for live numbers). Per [`r3-sg0-trajectory-tracker.md`](r3-sg0-trajectory-tracker.md) §3 history table for live counts.
+**Numbers in this audit are point-in-time at the audit window**; main has advanced since. For live counts, run the snapshot procedure against `src/v3/compiler/tests/integration/sg0_census_test.rs` directly (`grep -E '"src/v3/' EXPECTED_HAND_AUTHORED_*` arrays). The trajectory tracker artifact lands via sibling PR #2361 (Cluster M remediation); cite-once-merged.
 
 **At current trajectory the gates never close.** The path to zero is structural — not per-file dissolution at observed velocity. It depends on **single bulk-dissolution events** firing.
 
@@ -235,7 +235,7 @@ Every instance is the same structural shape: **document text asserts a closure-s
 **Future R3 readiness audits should grep for status-vs-HEAD before trusting plan-text.** Specific tooling proposal:
 - Per Mgr cycle: each lane-Mgr cross-checks own §1.8 rows against HEAD evidence; reports drift to PM
 - PM-cycle: weekly status-vs-HEAD grep across §1.8 + §10.3 (using §1.8 ledger gate IDs as grep anchors to `dsl/std/`, `src/v3/std/`, and CI consumer paths)
-- This artifact (and the SG-0 trajectory tracker `r3-sg0-trajectory-tracker.md`) should be folded into Director-tier progress-bar authoring per operator ask 2026-05-09; honest-trajectory visualization replaces lane-completion-proxy framing
+- This artifact (and the SG-0 trajectory tracker landing via sibling PR #2361, file `r3-sg0-trajectory-tracker.md` once merged) should be folded into Director-tier progress-bar authoring per operator ask 2026-05-09; honest-trajectory visualization replaces lane-completion-proxy framing
 
 The meta-finding is structural-not-personnel: **plan-text drifts because the HEAD-vs-text reconciliation cadence is not in the standing PM/Director cycle**. Adding it explicitly closes the drift class.
 
