@@ -14,11 +14,14 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use v3_compiler::dag::{
-    dominates, iterate, max_path, normalize, sequential, Behavior, Dag, DegreeAtLeastTwo,
-    NonSingletonList, PortId, SizeVariable, SymbolicCost, TransformTarget, TypeConnective,
+    dominates, iterate, max_path, normalize, sequential, ArithmeticOp, Behavior, Dag,
+    DegreeAtLeastTwo, Lookup, NonSingletonList, OperatorKind, PortId, SizeVariable, SymbolicCost,
+    TransformTarget, TypeConnective,
 };
 use v3_compiler::emit_rust::emit_rust_module;
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::lens_cost_symbolic::{
+    symbolic_cost_of, transform_cost_for_target, SymbolicCostEntry, SymbolicCostLookup,
+};
 
 use crate::common::cached_compile_to_dag;
 
@@ -423,6 +426,97 @@ budgeted_test! {
             "recursive fn should surface a LinearCost term, got {cost:?}"
         );
     }
+}
+
+/// Operator `Div` must compose **operand** symbolic costs (`transform_cost`) with the
+/// divide surcharge `LogCost(dividend)` — not log alone (PR #2299 / openai-pro).
+#[test]
+fn symbolic_cost_operator_div_preserves_operand_costs_beside_log_surcharge() {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(|| {
+            let (p_div, p_two) = two_distinct_ports();
+            let linear = SymbolicCost::LinearCost {
+                _0: SizeVariable {
+                    source_port: p_div,
+                    display_name: None,
+                },
+            };
+            let acc_expensive = vec![
+                SymbolicCostEntry {
+                    port: p_div,
+                    cost: Lookup::Hit(linear),
+                },
+                SymbolicCostEntry {
+                    port: p_two,
+                    cost: Lookup::Hit(SymbolicCost::ConstantCost { _0: 0 }),
+                },
+            ];
+            let out_expensive = transform_cost_for_target(
+                &acc_expensive,
+                &TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                &[p_div, p_two],
+            );
+            let Lookup::Hit(cost_expensive) = out_expensive else {
+                panic!("expected Hit (expensive operands), got {out_expensive:?}");
+            };
+            // Pre-#2299 under-approx: O(1)+Log(dividend) with **no** operand rows — unsound when
+            // operands are expensive. Normalized `SumCost` may drop Log when Linear dominates Log;
+            // that is expected; the operand cost must still dominate the old ceiling.
+            let underapprox = sequential(
+                SymbolicCost::ConstantCost { _0: 1 },
+                SymbolicCost::LogCost {
+                    _0: SizeVariable {
+                        source_port: p_div,
+                        display_name: None,
+                    },
+                },
+            );
+            assert!(
+                dominates(&cost_expensive, &underapprox),
+                "Div with expensive dividend must dominate Constant(1)+Log(dividend) under-approx; got {cost_expensive:?}"
+            );
+            assert!(
+                mentions_linear(&cost_expensive),
+                "expensive dividend port should keep a Linear term until dominance normalization; got {cost_expensive:?}"
+            );
+
+            let acc_cheap = vec![
+                SymbolicCostEntry {
+                    port: p_div,
+                    cost: Lookup::Hit(SymbolicCost::ConstantCost { _0: 0 }),
+                },
+                SymbolicCostEntry {
+                    port: p_two,
+                    cost: Lookup::Hit(SymbolicCost::ConstantCost { _0: 0 }),
+                },
+            ];
+            let out_cheap = transform_cost_for_target(
+                &acc_cheap,
+                &TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                &[p_div, p_two],
+            );
+            let Lookup::Hit(cost_cheap) = out_cheap else {
+                panic!("expected Hit (cheap operands), got {out_cheap:?}");
+            };
+            assert!(
+                mentions_log(&cost_cheap),
+                "CRDT-style divide on param-ish ports must retain Log(dividend) in the lens carrier; got {cost_cheap:?}"
+            );
+
+            let out_empty = transform_cost_for_target(
+                &[],
+                &TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                &[],
+            );
+            assert!(
+                matches!(out_empty, Lookup::Miss),
+                "Div with zero operands must Miss (fail closed), got {out_empty:?}"
+            );
+        })
+        .expect("spawn stack-bumped thread for symbolic-cost lens recursion")
+        .join()
+        .expect("thread panicked");
 }
 
 // ── Composition algebra (std.algebra Rust mirror) ────────────────
