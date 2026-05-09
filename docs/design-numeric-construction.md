@@ -16,6 +16,8 @@ Today's `dsl/std/integer.dag:45` declares `type Int = Int64`, baking in 64-bit w
 
 This doc executes that end-state. The structural fix layers as the textbook math construction chain: model ℕ first as the foundational counting algebra, derive ℤ from ℕ via Grothendieck construction, derive ℚ from ℤ as the field of fractions, derive ℝ from ℚ via Cauchy completion (IEEE 754 = approximation thereof).
 
+**Gate #17 scope (2026-05-09):** `numeric_abstract_carriers_landed` closes only the carrier-prep slice that is executable and ratcheted today: `Magnitude`, `Nat`, `Int`, `Rational`, and the parametric `ApproximateField<F>` carrier axes. The `Real` alias is not part of that closure until [`docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`](audit/t-numeric-construction-approximate-field-real-parameter-stop.md) is dissolved by choosing the `ApproximateField` carrier-parameter convention and adding the corresponding ratchet.
+
 ## The construction chain
 
 ```
@@ -25,9 +27,9 @@ Nat = Semiring<Magnitude>              (ℕ — natural numbers; no neg, no div)
    ↓
 Int                                   (ℤ via Grothendieck completion of Nat; AbelianGroup<Int> witness)
    ↓
-Rational = Field<Int>                  (ℚ — fractions)
+Rational = Field<FieldOfFractions<Int>> (ℚ — fractions; field witness over fraction carrier)
    ↓
-Real = ApproximateField<Rational>      (ℝ; IEEE 754 = ApproximateField instance)
+Real alias HELD                        (ℝ; exact spelling blocked on ApproximateField carrier parameter convention)
 ```
 
 Refinements apply at any layer:
@@ -101,7 +103,9 @@ If audit confirms structural completeness, **no new substrate** for this layer.
 - Multiplicative inverse for non-zero
 - Distributivity over the underlying ring
 
-If audit confirms, **no new substrate** for `Rational = Field<Int>`.
+If audit confirms, **no new substrate** for the `Field<T>` witness layer. The
+landed rational slice uses the separate fraction carrier:
+`Rational = Field<FieldOfFractions<Int>>`.
 
 ### 5. `ApproximateField<F>` — biggest substrate-introduction
 
@@ -248,10 +252,10 @@ The construction chain has different cost characteristics per layer that the cos
 | **Nat** | `mul(a, b)` | O(1) algebraic; target: O(1) for fixed-width; O(n*m) for arbitrary-precision | |
 | **Int completion over Nat** | `add(a, b)` (via Grothendieck) | O(1) algebraic; same target cost as Nat | Sign handling adds constant factor; doesn't change asymptotic |
 | **Int** | `negate(a)` | O(1) algebraic; O(1) target | Sign flip |
-| **Rational = Field<Int>** | `mul(a, b)` (multiplying fractions) | O(1) algebraic; target: O(1) for fixed-width components; O(N) per gcd-reduction step | gcd dominates |
+| **Rational = Field<FieldOfFractions<Int>>** | `mul(a, b)` (multiplying fractions) | O(1) algebraic; target: O(1) for fixed-width components; O(N) per gcd-reduction step | gcd dominates |
 | **Rational** | `add(a, b)` (LCD'ing) | O(N) for LCD computation + O(1) for sum + gcd-reduction | |
-| **Real = ApproximateField<Rational>** | All ops | Constant rounding overhead per op | IEEE 754: ~few cycles per op on FPU; software-emulated: ~100s of cycles |
-| **Real** (unbounded) | All ops | Variable per configured precision | `decimal.Decimal` / `math/big.Float` / `rug::Float` — depends on precision config |
+| **ApproximateField<F> carrier axes** | All ops | Constant rounding overhead per op | IEEE 754: ~few cycles per op on FPU; software-emulated: ~100s of cycles. `Real` alias spelling is held by the parameter-convention STOP. |
+| **Real alias** (unbounded) | All ops | Variable per configured precision | Alias not landed; expected target realizations include `decimal.Decimal` / `math/big.Float` / `rug::Float` once the carrier convention is ratified. |
 
 T-CostLens-Composition consumes these layer-cost facts to derive end-to-end program cost. Per `feedback_lenses_not_passes`: lens reads physics, no heuristics.
 
