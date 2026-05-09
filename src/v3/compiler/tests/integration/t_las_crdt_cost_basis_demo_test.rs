@@ -17,9 +17,9 @@
 //! `O_log_replicas` as `LogCost(merge_replicas_port)` — the **`crdt_merge_step`**
 //! parameter port the divide lowers on (same logical replicas as the outer fn, but
 //! a **distinct** `PortId` from `my_crdt_field.replicas`) — plus `subject: DeclarationId`
-//! for the workflow entry `my_crdt_field` + source **`span`** from that bind.
-//! evidence the audit splits out from `apply_lens` configuration until the fold
-//! reads persisted declarations. (2) **Full symbolic-cost lens table**
+//! for the workflow entry `my_crdt_field` and source **`span`** from that bind. That is
+//! the cost-basis evidence carrier the audit separates from `apply_lens` configuration
+//! until the fold reads persisted declarations. (2) **Full symbolic-cost lens table**
 //! ([`compute_symbolic_costs`]): some port still **`Hit`s `LogCost(merge_replicas_port)`**
 //! from divide lowering inside `crdt_merge_step` — the per-write O(log replicas)
 //! factor **survives in lens output** even though dimension `composed` at the
@@ -119,9 +119,10 @@ fn symbolic_cost_lens_table_includes_cost(
 }
 
 /// Declared per-op O(log replicas) budget from §4.2 (`O_log_replicas`), keyed to the
-/// **`crdt_merge_step` parameter port** that feeds `replicas / 2` (same logical field,
-/// distinct `PortId` from `my_crdt_field`'s `replicas` parameter). The cost lens keys
-/// `ArithmeticDivideCall` → `LogCost` off that inner port.
+/// **`crdt_merge_step` parameter port** that is the dividend of `replicas / 2` (same logical
+/// field, distinct `PortId` from `my_crdt_field`'s `replicas` parameter). The symbolic-cost
+/// lens assigns `LogCost` on that port via **`TransformTarget::Operator(Div)`** in
+/// `transform_cost_for_target` (`src/v3/lenses/cost.dag`).
 fn per_write_log_replicas_budget(merge_replicas_port: PortId) -> SymbolicCost {
     SymbolicCost::LogCost {
         _0: size_var(merge_replicas_port),
