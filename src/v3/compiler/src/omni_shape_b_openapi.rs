@@ -1,10 +1,10 @@
-//! Shape B OpenAPI demonstration helpers.
+//! Shape B OpenAPI and documentation demonstration helpers.
 //!
-//! OpenAPI is deliberately not a compiler emit target: Shape B artifacts are
-//! user-program outputs derived from a compiled DAG, while `emit.rs` remains
-//! scoped to Shape A programming-language targets. This module provides the
-//! narrow Rust-side receipt used by the R3 demo until the equivalent `.dag`
-//! program can own the artifact projection.
+//! OpenAPI and Markdown are deliberately not compiler emit targets: Shape B
+//! artifacts are user-program outputs derived from a compiled DAG, while
+//! `emit.rs` remains scoped to Shape A programming-language targets. This
+//! module provides the narrow Rust-side receipt used by the R3 demo until the
+//! equivalent `.dag` programs can own the artifact projections.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -216,6 +216,36 @@ pub fn project_openapi_yaml(dag: &Dag) -> Result<String, ProjectOpenApiError> {
             }
             out.push_str("\n      responses:\n        '200':\n          description: OK\n");
         }
+    }
+    Ok(out)
+}
+
+pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenApiError> {
+    let routes = extract_rest_routes(dag)?;
+    let mut out = String::from(
+        "# GunBC generated service\n\n| Method | Path | Path parameters |\n| --- | --- | --- |\n",
+    );
+    if routes.is_empty() {
+        out.push_str("| _none_ | _none_ | _none_ |\n");
+        return Ok(out);
+    }
+    for route in routes {
+        out.push_str("| ");
+        out.push_str(&markdown_table_cell(&route.method));
+        out.push_str(" | ");
+        out.push_str(&markdown_code_span_table_cell(&route.path));
+        out.push_str(" | ");
+        if route.path_parameters.is_empty() {
+            out.push_str("_none_");
+        } else {
+            for (index, parameter) in route.path_parameters.iter().enumerate() {
+                if index > 0 {
+                    out.push_str(", ");
+                }
+                out.push_str(&markdown_code_span_table_cell(parameter));
+            }
+        }
+        out.push_str(" |\n");
     }
     Ok(out)
 }
@@ -438,6 +468,37 @@ fn yaml_plain_operation_id(method: &str, path: &str) -> String {
     format!("{}_{}", method.to_ascii_lowercase(), suffix)
 }
 
+fn markdown_table_cell(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('|', "\\|")
+}
+
+fn markdown_code_span(value: &str) -> String {
+    let delimiter = "`".repeat(max_backtick_run(value) + 1);
+    if value.starts_with('`') || value.ends_with('`') {
+        format!("{delimiter} {value} {delimiter}")
+    } else {
+        format!("{delimiter}{value}{delimiter}")
+    }
+}
+
+fn markdown_code_span_table_cell(value: &str) -> String {
+    markdown_code_span(value).replace('|', "\\|")
+}
+
+fn max_backtick_run(value: &str) -> usize {
+    let mut max = 0;
+    let mut current = 0;
+    for ch in value.chars() {
+        if ch == '`' {
+            current += 1;
+            max = max.max(current);
+        } else {
+            current = 0;
+        }
+    }
+    max
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -539,5 +600,17 @@ data service_operations: List<DemoOperation> = [
             yaml,
             "        - name: \"id:\\nrequired: false\"\n          in: path\n          required: true\n          schema:\n            type: string\n"
         );
+    }
+
+    #[test]
+    fn markdown_code_cells_choose_safe_delimiters_and_escape_table_delimiters() {
+        assert_eq!(markdown_code_span_table_cell("a|b`c\\d"), "``a\\|b`c\\d``");
+        assert_eq!(
+            markdown_code_span_table_cell("a``b```c"),
+            "````a``b```c````"
+        );
+        assert_eq!(markdown_code_span_table_cell("\\path"), "`\\path`");
+        assert_eq!(markdown_code_span_table_cell("`x"), "`` `x ``");
+        assert_eq!(markdown_code_span_table_cell("x`"), "`` x` ``");
     }
 }
