@@ -5,6 +5,7 @@
 jobs = 2                          # max parallel rustc/linker invocations per cargo run
 
 [env]
-RUST_TEST_THREADS = { value = "1", force = false }  # max parallel test threads per binary
-# v3-compiler bootstrap/integration tests exhaust default thread stacks in debug builds.
+# v3 integration tests build large `Dag` fixtures; default thread stack overflows (WSL / ctrl-build).
+# GitHub Actions sets this explicitly; workspace default keeps local + remote runners aligned.
 RUST_MIN_STACK = { value = "16777216", force = false }
+RUST_TEST_THREADS = { value = "1", force = false }  # max parallel test threads per binary
