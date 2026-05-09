@@ -437,6 +437,40 @@ fn r2_pr_a_runtime_value_model_suite_passes() {
     assert_eq!(results[0].result, ClaimResult::Pass);
 }
 
+/// Tier-3 `PerfWithinBaseline` substrate smoke (`p99_delta_ns` + `AtMostBudget`).
+const R3_PERF_WITHIN_BASELINE_SMOKE_FIXTURE: &str =
+    include_str!("../fixtures/r3_perf_within_baseline_smoke.dag");
+const R3_PERF_WITHIN_BASELINE_SMOKE_FIXTURE_PATH: &str =
+    "src/v3/compiler/tests/fixtures/r3_perf_within_baseline_smoke.dag";
+
+#[test]
+fn r3_perf_within_baseline_smoke_suite_passes() {
+    let dag = match compile_to_dag(
+        R3_PERF_WITHIN_BASELINE_SMOKE_FIXTURE,
+        R3_PERF_WITHIN_BASELINE_SMOKE_FIXTURE_PATH,
+    ) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => panic!(
+            "{R3_PERF_WITHIN_BASELINE_SMOKE_FIXTURE_PATH}: semantic compile error: {:?}",
+            dag.diagnostics()
+        ),
+        Err(e) => panic!("{R3_PERF_WITHIN_BASELINE_SMOKE_FIXTURE_PATH}: unexpected error: {e:?}"),
+    };
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{R3_PERF_WITHIN_BASELINE_SMOKE_FIXTURE_PATH}: expected no diagnostics, got {:?}",
+        dag.diagnostics()
+    );
+    let results = TestRunner::new(&dag).run_suite("perf_within_smoke_suite");
+    assert_eq!(results.len(), 1, "expected one claim");
+    assert_eq!(
+        results[0].result,
+        ClaimResult::Pass,
+        "claim {:?}",
+        results[0].claim_name
+    );
+}
+
 /// TC2 (Evaluator Manager): evaluation-order independence theorem shape.
 /// **Author-now-fire-later** `BinaryDimensionReportEquals` consumer (unified predicate
 /// PR #1318) with strategy-order role declarations; runner report equality is NYI until
