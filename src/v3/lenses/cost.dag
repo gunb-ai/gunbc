@@ -21,13 +21,15 @@
 //
 // Produces `Lookup<SymbolicCost>` per port using `SymbolicCost`
 // combinators (`sequential`, `iterate`, `max_path`) from
-// `std.algebra`. Richer than the integer-depth `complexity.dag`
-// output, but `SizeVariable` here carries only `source_port: PortId`
-// — there is no named size variable with value semantics the way v2's
-// `SizeVar { name: String }` has. Output dimensions, certainty, and
-// asymptotic classification from v2 are also not carried. Dimension
-// wiring is deferred on grammar gaps (see the `Dimension<SymbolicCost>`
-// discussion lower in this file). Lane E-C stages `CallPattern` /
+// `std.algebra`, whose `SizeVariable` carrier is `source_port: PortId` +
+// `display_name: String?` (presentation-only label; identity is `source_port`
+// per `size_variable_eq`). This lens's fold usually builds variables via
+// `unnamed_size_variable` / `linear_at`-style paths, so `display_name` is often
+// `None` until producers author labels — unlike v2's richer `SizeVar` value
+// semantics. Output dimensions, certainty, and asymptotic classification from
+// v2's complexity analysis are also not carried on this lens. Dimension wiring
+// for executable `Dimension<SymbolicCost>` records remains deferred on grammar
+// gaps (see the `Dimension<SymbolicCost>` discussion lower in this file). Lane E-C stages `CallPattern` /
 // `LoweringTarget` in `std.computation`; lane E-I stages `SubValueRelation`
 // and the `CostBound` algebra in `std.induction`. This lens still does not
 // thread per-call descent into `SymbolicCost`: the remaining gap is **E-P**
