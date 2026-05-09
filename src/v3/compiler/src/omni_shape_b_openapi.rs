@@ -474,11 +474,15 @@ fn markdown_table_cell(value: &str) -> String {
 
 fn markdown_code_span(value: &str) -> String {
     let delimiter = "`".repeat(max_backtick_run(value) + 1);
-    format!("{delimiter}{value}{delimiter}")
+    if value.starts_with('`') || value.ends_with('`') {
+        format!("{delimiter} {value} {delimiter}")
+    } else {
+        format!("{delimiter}{value}{delimiter}")
+    }
 }
 
 fn markdown_code_span_table_cell(value: &str) -> String {
-    markdown_table_cell(&markdown_code_span(value))
+    markdown_code_span(value).replace('|', "\\|")
 }
 
 fn max_backtick_run(value: &str) -> usize {
@@ -600,13 +604,13 @@ data service_operations: List<DemoOperation> = [
 
     #[test]
     fn markdown_code_cells_choose_safe_delimiters_and_escape_table_delimiters() {
-        assert_eq!(
-            markdown_code_span_table_cell("a|b`c\\d"),
-            "``a\\|b`c\\\\d``"
-        );
+        assert_eq!(markdown_code_span_table_cell("a|b`c\\d"), "``a\\|b`c\\d``");
         assert_eq!(
             markdown_code_span_table_cell("a``b```c"),
             "````a``b```c````"
         );
+        assert_eq!(markdown_code_span_table_cell("\\path"), "`\\path`");
+        assert_eq!(markdown_code_span_table_cell("`x"), "`` `x ``");
+        assert_eq!(markdown_code_span_table_cell("x`"), "`` x` ``");
     }
 }

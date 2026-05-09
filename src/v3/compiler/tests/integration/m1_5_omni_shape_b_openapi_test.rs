@@ -245,11 +245,16 @@ fn markdown_code_cell_value(cell: &str) -> String {
     let delimiter_len = cell.chars().take_while(|ch| *ch == '`').count();
     assert!(delimiter_len > 0, "Markdown code cell is code-formatted");
     let delimiter = "`".repeat(delimiter_len);
-    cell.strip_prefix(&delimiter)
+    let inner = cell
+        .strip_prefix(&delimiter)
         .and_then(|inner| inner.strip_suffix(&delimiter))
-        .expect("Markdown code cell has matching delimiter")
-        .replace("\\|", "|")
-        .replace("\\\\", "\\")
+        .expect("Markdown code cell has matching delimiter");
+    let unpadded = inner
+        .strip_prefix(' ')
+        .and_then(|candidate| candidate.strip_suffix(' '))
+        .filter(|candidate| candidate.starts_with('`') || candidate.ends_with('`'))
+        .unwrap_or(inner);
+    unpadded.replace("\\|", "|")
 }
 
 fn markdown_table_cells(line: &str) -> Vec<String> {
@@ -305,16 +310,24 @@ fn markdown_documentation_parser_round_trips_escaped_table_cells() {
         "# GunBC generated service\n\n",
         "| Method | Path | Path parameters |\n",
         "| --- | --- | --- |\n",
-        "| GET | ``/a\\|b\\\\c`d`` | `p\\|q`, ``r\\\\s`t`` |\n",
+        "| GET | ``/a\\|b\\c`d`` | `p\\|q`, ``r\\s`t`` |\n",
+        "| POST | `\\bare` | `` `edge `` |\n",
     );
 
     assert_eq!(
         markdown_documentation_routes(markdown),
-        BTreeSet::from([RestRoute {
-            method: "GET".to_string(),
-            path: "/a|b\\c`d".to_string(),
-            path_parameters: vec!["p|q".to_string(), "r\\s`t".to_string()],
-        }])
+        BTreeSet::from([
+            RestRoute {
+                method: "GET".to_string(),
+                path: "/a|b\\c`d".to_string(),
+                path_parameters: vec!["p|q".to_string(), "r\\s`t".to_string()],
+            },
+            RestRoute {
+                method: "POST".to_string(),
+                path: "\\bare".to_string(),
+                path_parameters: vec!["`edge".to_string()],
+            }
+        ])
     );
 }
 
