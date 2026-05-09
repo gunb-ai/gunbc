@@ -1,2 +1,2 @@
-SG-0 hand-path delta: +1
+SG-0 hand-path delta: +2
 SG-0 pairing: (c) Follow-up dispatch: track SG-0 census net-shrink pairing for remaining T-LAS cost-basis scaffolding in ROADMAP §1.8 sibling work (#1954 / memory-peak) rather than blocking this gate PR.
