@@ -1,0 +1,301 @@
+// v3.std.timing_lens — T-Workflow-As-Data Slice 2 timing-lens substrate
+// (gunbc#1955). Carriers consumed as `Lens<TimingMeasurement>` alongside
+// `TimingObservationSet`, `WorkflowObservationAnchor`, and `TimingBudget`.
+// Authority: `docs/design-timing-lens.md` + `docs/r3-structure.md` T-WAD row.
+//
+// 🟡 SCAFFOLD. External CI / runner timing facts are not yet reflected into
+// `timing_lens_read`; the uniform unobserved witness is an honest fail-open
+// substrate receipt until observation wiring lands. Loop-bound measure lowering
+// into compositional timing algebra is deferred: `timing_measurement_iterate` is
+// fail-closed on `Observed` (returns `Unobserved` while the bound cannot refine
+// durations) and passes `Unobserved` / `Ambiguous` / `Stale` through unchanged.
+module v3.std.timing_lens
+
+import std.list { List, is_empty }
+import std.nat { Nat }
+import std.types {
+  Bool,
+  ContentHash,
+  FilePath,
+  SourceSpan,
+  WorkflowProducerId,
+  WorkflowObserverId,
+  WorkflowProverId,
+  WorkflowRunId
+}
+import std.substrate { Dag, Behavior, LoopBound, NodeId }
+import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
+import v3.std.dimensions { Witness, OptionalDiagnostic }
+import v3.std.workflows { behavior_spine }
+
+// DB-11 `FilePath` witness for this module (same narrowing discipline as
+// `LensRegistryEntry.lens_file` in `v3.compiler.regen`).
+fn timing_lens_module_path_witness() -> FilePath =
+  "src/v3/std/timing_lens.dag"
+
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — nominal SI-nanosecond coordinate for
+// durations and POSIX-epoch instants at this substrate layer. **Magnitude**
+// uses `Nat` (non-negative; same counting authority as `PerfBaselineMeasurement`
+// `median_ns` / `p99_delta_ns` in `v3.std.substrate`). Per-field upper bounds,
+// signed pre-epoch instants, and `Measure<Time, S>` grounding remain deferred
+// per Q-Unit-4 option (c) / `dsl/std/measure.dag` posture.
+type Nanoseconds {
+  count: Nat
+}
+
+// PRACTICE 4 / P5 — `TimingMeasurement` report coproduct (T-WAD Slice 2 / §1.8 gate #54):
+// **🟢 GREEN (terminal)** — this sum is the landed observation-boundary coproduct:
+// external timing **report** states (`Observed` carries `Nanoseconds`; `Unobserved` /
+// `Ambiguous` / `Stale` are unit outcomes; no bare `Missing` label — witness-resolution
+// collision class). Four-pattern dissolution (`docs/modeling-discipline.md#4-coproduct-dissolution`):
+//   1. Fact placement — PASS: each variant names one external observation fact.
+//   2. Variant-is-data — PASS: `Observed` carries `Nanoseconds`; others unit facts.
+//   3. Algebraic form — PASS: closed sum over report outcomes (no stringly state).
+//   4. Dimensional — N/A at this layer (time magnitude is tagged via `Nanoseconds`).
+//
+// **🟡 SCAFFOLD (hooks only, not the carrier sum):** `timing_measurement_lens_combine`
+// precedence until evidence-bearing runners supply richer algebra; `timing_lens_read` /
+// `timing_lens_validate` / `timing_measurement_iterate` behavior — see module banner
+// and `timing_measurement_lens_combine` / `timing_lens_read` / `timing_lens_validate`
+// below. Run/digest / anchor coordinates for each row stay on `WorkflowObservationAnchor`
+// inside `TimingObservationEntry` (gate #55 attachment row). P5 / INVARIANTS Progress Is
+// Dissolution + modeling-discipline checkpoint (~L131–L134) — **carrier = GREEN; hooks = YELLOW**.
+//
+// **Report-state join (scaffold, one authority):** `timing_measurement_lens_combine`
+// below defines precedence for composing two `TimingMeasurement` values until
+// evidence-bearing runners supply richer algebra. **`Unobserved` is strict on
+// both operands** (never silenced by `Stale` / `Ambiguous` / `Observed`).
+// Among non-`Unobserved` faults, `Stale` dominates `Ambiguous` on the left when
+// pairing with `Observed` (see `Stale` / `Ambiguous` arms); `Observed`×`Observed`
+// uses `sequential` sum vs `branch` max only in that combine helper.
+//
+type TimingMeasurement
+  = Observed { duration: Nanoseconds }
+  | Unobserved
+  | Ambiguous
+  | Stale
+
+// Shared External Attachment Pattern — stable workflow-side anchor for facts
+// sourced outside the `.dag` program text (CI logs, artifacts, receipts).
+// Six invariants are documented in `docs/design-timing-lens.md` §2; this
+// record carries the structural coordinates those invariants reference.
+// Gate #55 invariant 1 (stable subject identity): `subject_node` is the
+// substrate `NodeId` table key (`Dag.nodes` / `behavior_spine` witness order),
+// not free-form path or source-span text — P2 Boundary Discipline / illegal-states
+// hygiene (stringly span coordinates cannot inhabit this field).
+// Gate #55 invariant 2 (observed-artifact identity): `artifact_digest` is
+// `ContentHash` (`std.types`), not bare `String` — content-addressed binding /
+// M9 nominal discipline so arbitrary prose cannot masquerade as a digest.
+// Gate #55 invariant 3 (role separation): `producer_id`, `observer_id`, and
+// `prover_id` use distinct branded nominals (`WorkflowProducerId`, …) so the
+// three provenance roles cannot be mixed at callsites (vs three anonymous `String`s).
+// Gate #55 invariant 4 (run context): `workflow_run_id` is `WorkflowRunId`, not
+// bare `String`, so run scope is typed as a dedicated external-run key nominal.
+// Declared before `TimingObservationEntry` so each observation row embeds the
+// same anchor authority as its measurement (Boundary Discipline: one product
+// fact, no join drift between payload and provenance).
+type WorkflowObservationAnchor {
+  subject_node: NodeId
+  artifact_digest: ContentHash
+  producer_id: WorkflowProducerId
+  observer_id: WorkflowObserverId
+  prover_id: WorkflowProverId
+  attached_at_ns: Nanoseconds
+  workflow_run_id: WorkflowRunId
+}
+
+// Batched timing observations: each entry is anchor × measurement (typed edge).
+type TimingObservationSet {
+  observations: List<TimingObservationEntry>
+}
+
+type TimingObservationEntry {
+  anchor: WorkflowObservationAnchor
+  measurement: TimingMeasurement
+}
+
+// Budget carrier paired with timing enforcement (`LensEnforcement` / demo
+// lanes consume this shape; substrate lands the fact here).
+type TimingBudget {
+  max: Nanoseconds
+}
+
+fn timing_measurement_unobserved() -> TimingMeasurement =
+  Unobserved
+
+// Single declared join for `Lens<TimingMeasurement>` composition hooks.
+// `sequential`: `Observed`×`Observed` sums nanoseconds; else `branch` takes max.
+fn timing_measurement_lens_combine(a: TimingMeasurement, b: TimingMeasurement, sequential: Bool) -> TimingMeasurement =
+  match a {
+    Unobserved => Unobserved
+    Stale =>
+      match b {
+        Unobserved => Unobserved
+        Stale => Stale
+        Ambiguous => Stale
+        Observed { duration: _ } => Stale
+      }
+    Ambiguous =>
+      match b {
+        Unobserved => Unobserved
+        Stale => Stale
+        Ambiguous => Ambiguous
+        Observed { duration: _ } => Ambiguous
+      }
+    Observed { duration: ax } =>
+      match b {
+        Unobserved => Unobserved
+        Stale => Stale
+        Ambiguous => Ambiguous
+        Observed { duration: bx } =>
+          if sequential then
+            Observed { duration: { count: ax.count + bx.count } }
+          else
+            Observed {
+              duration: if ax.count > bx.count then ax else bx,
+            }
+      }
+  }
+
+// Sequential monoid operation for `Lens<TimingMeasurement>.sequential`.
+fn timing_sequential_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
+  timing_measurement_lens_combine(a, b, true)
+
+fn nanoseconds_zero() -> Nanoseconds =
+  { count: 0 }
+
+fn timing_sequential_identity() -> TimingMeasurement =
+  Observed { duration: nanoseconds_zero() }
+
+// Branch composition (`Lens<TimingMeasurement>.branch`).
+fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
+  timing_measurement_lens_combine(a, b, false)
+
+fn timing_lens_empty_corrections() -> List<Correction> =
+  Empty
+
+// Reads the reflected `span` on a `Behavior` (same partition as
+// `v3.lenses.infer_helpers.behavior_span`; kept here so `v3.std.timing_lens`
+// does not depend on `v3.lenses.*`).
+fn timing_lens_behavior_span(b: Behavior) -> SourceSpan =
+  match b {
+    Value(v) => v.span
+    Transform(t) => t.span
+    Branch(br) => br.span
+    Loop(l) => l.span
+    Bind(bind) => bind.span
+  }
+
+// Placeholder `Diagnostic` for scaffold validate: non-`Observed` carriers are
+// not admissible as validated evidence until runner-backed observation wiring
+// lands (`ResolveError` is the closest Layer-1 kind for “evidence not resolved”).
+fn timing_lens_scaffold_non_evidence_diagnostic(text: String, at: SourceSpan) -> Diagnostic =
+  {
+    kind: CompilerKind(ResolveError)
+    span: at
+    message: text
+    fixes: timing_lens_empty_corrections()
+  }
+
+// Degenerate DAG case: no declarations (cannot borrow a declaration `span`).
+// Arrow return type directs `SourceSpan` field narrowing (DB-11), matching
+// `LensRegistryEntry`-style `FilePath` witnesses plus kernel `Int` literals.
+fn timing_lens_degenerate_empty_dag_span() -> SourceSpan =
+  {
+    file: timing_lens_module_path_witness()
+    start: 0
+    end: 0
+  }
+
+// Threads `d` through `behavior_spine` so `lenses.unused_parameters` stays
+// clean. Non-`Observed` validation is fail-closed (P3): always `SomeDiagnostic`.
+// With a non-empty spine, attach the first node's reflected `span`; when the
+// spine is empty, attach the first declaration's substrate `span` (still a
+// real `SourceSpan` witness). The inner `Empty` arm covers the degenerate
+// no-declaration DAG case; see `timing_lens_degenerate_empty_dag_span`.
+fn timing_lens_validate_non_observed(d: Dag, text: String) -> OptionalDiagnostic =
+  match behavior_spine(d) {
+    Empty =>
+      match d.declarations {
+        Cons(dd) =>
+          SomeDiagnostic {
+            value: timing_lens_scaffold_non_evidence_diagnostic(text, dd.head.span)
+          }
+        Empty =>
+          SomeDiagnostic {
+            value: timing_lens_scaffold_non_evidence_diagnostic(
+              text,
+              timing_lens_degenerate_empty_dag_span()
+            )
+          }
+      }
+    Cons(payload) =>
+      SomeDiagnostic {
+        value: timing_lens_scaffold_non_evidence_diagnostic(
+          text,
+          timing_lens_behavior_span(payload.head)
+        )
+      }
+  }
+
+// Bounded iteration witness hook — until `LoopBound` measure ports lower into
+// compositional timing algebra, **`Observed` × any bound must not return the
+// same `Observed`** (P3: that would fabricate loop-correct timing while silently
+// discarding the bound). Fault arms pass through unchanged (see module banner).
+fn timing_measurement_iterate(body: TimingMeasurement, bound: LoopBound) -> TimingMeasurement =
+  match body {
+    Observed { duration: _ } =>
+      match bound {
+        Cardinality(_) => timing_measurement_unobserved()
+        Descent(_) => timing_measurement_unobserved()
+      }
+    Unobserved => Unobserved
+    Ambiguous => Ambiguous
+    Stale => Stale
+  }
+
+// `d` / `b` are threaded through trivial substrate queries so
+// `lenses.unused_parameters` does not flag scaffold roots on `Dag::new()`
+// (full bootstrap clone). Semantics stay fail-open until observation wiring lands.
+//
+// P3 / DB-3 (witness partition): `Inhabits(Unobserved)` is not "success" that hides
+// absent evidence -- `Unobserved` is the `TimingMeasurement` report that no
+// external timing row is attached yet (no fabricated `Observed` / `Nat` magnitude).
+// `Violates` on `Witness<_>` is for policy/dimension faults once real `read` rules
+// exist; routing "no row yet" through `Violates` would collapse the carrier's
+// `Unobserved` arm into the wrong DB-3 bucket. See `docs/design-timing-lens.md` section 1.3
+// and `dimensions.dag` on `Witness<Carrier>`.
+fn timing_lens_read(d: Dag, b: Behavior) -> Witness<TimingMeasurement> =
+  match b {
+    Value(_) =>
+      if is_empty(behavior_spine(d)) then Inhabits(timing_measurement_unobserved()) else Inhabits(timing_measurement_unobserved())
+    Transform(_) =>
+      if is_empty(behavior_spine(d)) then Inhabits(timing_measurement_unobserved()) else Inhabits(timing_measurement_unobserved())
+    Branch(_) =>
+      if is_empty(behavior_spine(d)) then Inhabits(timing_measurement_unobserved()) else Inhabits(timing_measurement_unobserved())
+    Loop(_) =>
+      if is_empty(behavior_spine(d)) then Inhabits(timing_measurement_unobserved()) else Inhabits(timing_measurement_unobserved())
+    Bind(_) =>
+      if is_empty(behavior_spine(d)) then Inhabits(timing_measurement_unobserved()) else Inhabits(timing_measurement_unobserved())
+  }
+
+fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnostic =
+  match composed {
+    Observed { duration: _ } =>
+      if is_empty(behavior_spine(d)) then NoDiagnostic else NoDiagnostic
+    Unobserved =>
+      timing_lens_validate_non_observed(
+        d,
+        "timing_lens_validate: TimingMeasurement.Unobserved is not admissible evidence at this scaffold (missing external timing row)."
+      )
+    Ambiguous =>
+      timing_lens_validate_non_observed(
+        d,
+        "timing_lens_validate: TimingMeasurement.Ambiguous is not admissible evidence at this scaffold (conflicting timing facts)."
+      )
+    Stale =>
+      timing_lens_validate_non_observed(
+        d,
+        "timing_lens_validate: TimingMeasurement.Stale is not admissible evidence at this scaffold (digest/run mismatch vs attachment)."
+      )
+  }
