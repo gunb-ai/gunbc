@@ -29,41 +29,53 @@ This plan partitions Cluster M into a sequenced 3-phase dispatch program with la
 
 ### §1.2 Dependency structure
 
-```
-Phase 1 (parallel substrate-shape):
-  ┌─ #85 ForAll/Exists quantifier substrate
-  │   (carrier in dsl/std/quantifier.dag or similar)
-  │
-  └─ #86 ProgramGenerator carrier
-      (carrier in dsl/std/test_generation.dag or similar)
+**Authority correction 2026-05-09 (codex BLOCKING #3 on PR #2362 sha `60279789`)**: prior framing of #87 as \"consumes #85/#86 carriers\" conflated cementing axis (LensRegistry projection ratchet) with property-based axis (program-family claims). Cementing uses existing 🟢 TERMINAL `DifferentialEquals`/`LensOutputEquals` predicate variants per locked design §C5; these are available on main today, no #85/#86 dependency at the predicate level. Coupling exists at the `SuiteClaim` wrapper level only (post-#85): existing `TestSuite.claims` migrate to wrap in `Enumerated(...)` per design §6 line 344 — backward-compatible.
 
-Phase 2 (consumer-discipline):
+```
+Phase 1 (parallel substrate-shape per locked design §2.1+§2.2; 5 carriers):
+  ┌─ #85 quantifier surface
+  │   `Quantifier`, `QuantifiedTestClaim`, `SuiteClaim` in `src/v3/std/verification.dag`
+  │   (per design §2.2)
+  │
+  └─ #86 generator surface
+      `ProgramGenerator`, `ProgramShape` in `src/v3/std/verification.dag`
+      (per design §2.1)
+
+Phase 2 (cementing-test discipline; INDEPENDENT of #85/#86 at predicate level):
   #87 cementing-test discipline
-  ↑ consumes #85 (ForAll quantifier for "for-all-programs" claims)
-  ↑ consumes #86 (ProgramGenerator for representative-input claims)
-  ↑ consumes T-Tests-As-Data runner infrastructure (TestClaim execution path)
+  ↑ uses existing DB-15 TestClaim + DifferentialEquals/LensOutputEquals
+    (🟢 TERMINAL predicate variants; available on main today per design §1)
+  ↑ couples to Phase 1 only at SuiteClaim wrapper level (Enumerated(...) wrap;
+    mechanical post-#85, no predicate-level coupling)
+  Property-based axis (#85/#86 ProgramGenerator/Quantifier) is for "every
+    program in family X satisfies P" claims — orthogonal to cementing's
+    per-LensRegistry-row v2-vs-v3 same-source comparison.
 
 Phase 3 (bulk port):
   #84 every Rust test ports
-  ↑ consumes #87 cementing-test discipline as the migration pattern
-  ↑ consumes #85/#86 carriers for new TestClaim authoring
+  ↑ consumes #87 cementing-test discipline as the migration pattern for
+    cementing-test family (~20-25 entries — largest class)
+  ↑ consumes #85/#86 carriers for property-based bulk migrations (where
+    program-family claims supersede single-source TestClaims)
+  ↑ consumes existing DB-15 TestClaim infrastructure for non-cementing,
+    non-property-based bulk migrations
   → bulk-port mechanism collapses ~80-90 hand-Rust test entries
   → SG-0 EXPECTED_HAND_AUTHORED_TEST count drops to 0
 ```
 
 ### §1.3 Why this sequencing
 
-- **#85 + #86 must land first** (substrate carriers): without them, #87 cementing-test discipline cannot express the per-lens claims that current hand-Rust cementing tests assert. Phase 1 is the substrate-introduction.
-- **#87 must land before bulk port** (#84): the cementing-test discipline IS the migration pattern. Hand-Rust cementing tests (e.g., `complexity_lens_behavioral_completion.rs`, `cost_lens_behavioral_completion.rs`) are the largest single class in `EXPECTED_HAND_AUTHORED_TEST`; #87 dissolves them via a single discipline-pattern landing + bulk migration.
+- **#85 + #86 land for property-based axis** (program-family claims). Per locked design §6 line 344: 5 carriers (`ProgramGenerator`, `ProgramShape`, `Quantifier`, `QuantifiedTestClaim`, `SuiteClaim`) extend `src/v3/std/verification.dag`; existing `TestSuite.claims` migrate to wrap in `Enumerated(...)`.
+- **#87 cementing discipline can dispatch independently** of #85/#86 — cementing uses existing 🟢 TERMINAL `DifferentialEquals`/`LensOutputEquals` predicates per design §C5. The only Phase 1 coupling is the `SuiteClaim` wrapper migration (mechanical post-#85). Hand-Rust cementing tests (e.g., `complexity_lens_behavioral_completion.rs`, `cost_lens_behavioral_completion.rs`) are the largest single class in `EXPECTED_HAND_AUTHORED_TEST`; #87 dissolves them via discipline-pattern landing + bulk migration using existing predicate infrastructure.
 - **#84 closes when bulk port runs to zero — strict**: state-check gate; not authored as a single PR but as the convergence of bulk-migration PRs. Closes when SG-0 census `EXPECTED_HAND_AUTHORED_TEST` count = 0. **Per codex BLOCKING on PR #2361 sha `b925b174` (2026-05-09)**: temporary exception handling (e.g., Director Option 2 timed-carry tests like `cross_target_coverage_carrier_test.rs`) is **NOT folded into close condition** — exceptions remain blockers / non-close risk until SG-0 test partition is actually zero. R3-honest-close requires the count itself to reach zero, not "zero except exceptions." Director-allocated timed-carries must dissolve via testgen-coverage migration before #84 fires; otherwise #84 remains DECLARED.
 
 ## §2. Lane-Mgr partition
 
 | Phase | Gate | Owner Mgr | Partner | Authoring scope |
 |---|---|---|---|---|
-| 1a | #85 `Quantifier` + `QuantifiedTestClaim` carriers | **Substrate Mgr** (warm-wolf-698 / #2068) | Verification (consumer wiring) | extend `src/v3/std/verification.dag` per locked design `docs/design-tests-as-data-completeness.md` §2.2; no canvas needed (design-doc resolves shape) |
-| 1b | #86 `ProgramGenerator` carrier | **Substrate Mgr** (warm-wolf-698 / #2068) | Verification (consumer wiring) | extend `src/v3/std/verification.dag` per locked design `docs/design-tests-as-data-completeness.md` §2.1; no canvas needed (design-doc resolves shape) |
-| 2 | #87 cementing-test discipline | **Verification Mgr** (wise-bear-525 / #2075) | Substrate (#85/#86 consumer) | discipline pattern + first cementing-test migration receipt |
+| 1a | #85 `Quantifier` + `QuantifiedTestClaim` + `SuiteClaim` carriers | **Substrate Mgr** (warm-wolf-698 / #2068) | Verification (consumer wiring) | extend `src/v3/std/verification.dag` per locked design `docs/design-tests-as-data-completeness.md` §2.2; no canvas needed (design-doc resolves shape) |
+| 1b | #86 `ProgramGenerator` + `ProgramShape` carriers | **Substrate Mgr** (warm-wolf-698 / #2068) | Verification (consumer wiring) | extend `src/v3/std/verification.dag` per locked design `docs/design-tests-as-data-completeness.md` §2.1; no canvas needed (design-doc resolves shape) |
+| 2 | #87 cementing-test discipline | **Verification Mgr** (wise-bear-525 / #2075) | Substrate (SuiteClaim wrapper migration only post-#85) | discipline pattern + first cementing-test migration receipt; uses existing DB-15 TestClaim + DifferentialEquals/LensOutputEquals per design §C5 (no #85/#86 predicate-level dependency) |
 | 3 | #84 every Rust test ports | **Verification Mgr** (wise-bear-525 / #2075) | Substrate (carrier consumer) + multi-Mgr (test ownership distributed) | bulk-port coordinator role; per-test-class migration brief queue |
 
 **Per Director directive (operator: "staffing is not a concern")**: lane Mgrs dispatch as many parallel workers as needed. Substrate Mgr can land #85 + #86 carriers in parallel per locked design `docs/design-tests-as-data-completeness.md` §2.1 + §2.2 (different carrier shapes, no shared substrate dependency; no canvas-tier ratification — design-doc resolves shape per §1 Authority discipline). Verification Mgr partners with Substrate consumer-wiring work-side as #85/#86 carriers land.
@@ -143,27 +155,30 @@ Each class is a parallel-dispatchable worker batch.
 
 [`docs/briefs/r3-v-tests-as-data-v1-worker.md`](../briefs/r3-v-tests-as-data-v1-worker.md) is **PRE-AUTH DISPATCH-READY** (tier-1 queue #1859) and covers all four gates (#84/#85/#86/#87). Brief shape: "single worker coordinates lane closure."
 
-**Director ratification needed**: which dispatch shape under operator "staffing not a concern" directive?
+**Director ratification (Director answered Ask 1 with (γ) at gunbc#846 #issuecomment-4412309986)**: dispatch shape ratified.
 - **(α)** Existing single-coordinator brief — one worker authors all four gates serialized within lane
 - **(β)** Re-shape to 4 parallel-worker briefs — Substrate Mgr partner on #85 + #86, Verification Mgr partner on #87 + #84
-- **(γ)** Hybrid — single coordinator authors #87/#84 (Verification scope) + Substrate Mgr authors substrate canvases for #85/#86 in parallel
+- **(γ) RATIFIED**: Hybrid — single coordinator authors #87/#84 (Verification scope) + Substrate Mgr lands #85/#86 carriers per locked design `docs/design-tests-as-data-completeness.md` §2.1+§2.2 in parallel.
 
-**PM recommendation**: **(γ)** — separates substrate-shape introduction (Substrate authority) from consumer-discipline (Verification authority). Aligns with §2 lane-Mgr partition. Existing brief becomes the Verification-side coordinator brief; Substrate Mgr authors substrate canvases independently.
+### §8.2 Dispatch sequence
 
-### §8.2 Dispatch sequence after Director ratifies plan + dispatch shape
+**Authority correction 2026-05-09 (codex BLOCKING #4 on PR #2362 sha `60279789`)**: prior framing said \"Substrate Mgr authors #85 substrate canvas → Director ratifies\" — duplicate-authority anti-pattern (locked design §1: \"no Director ratification required before lane dispatch\").
 
-- [ ] Substrate Mgr authors #85 substrate canvas → Director ratifies → worker brief → dispatch
-- [ ] Substrate Mgr authors #86 substrate canvas → Director ratifies → worker brief → dispatch (parallel with #85)
-- [ ] Existing `r3-v-tests-as-data-v1-worker.md` cited as Verification-side coordinator brief; dispatched when #85/#86 partial-land (or per Director ratification timing)
+- [ ] Substrate Mgr lands #85 carriers (`Quantifier`, `QuantifiedTestClaim`, `SuiteClaim`) per locked design §2.2 → worker dispatch under standing authority
+- [ ] Substrate Mgr lands #86 carriers (`ProgramGenerator`, `ProgramShape`) per locked design §2.1 → worker dispatch under standing authority (parallel with #85)
+- [ ] Verification Mgr dispatches #87 cementing-test discipline pattern using existing DB-15 TestClaim + DifferentialEquals/LensOutputEquals predicates per design §C5 — **independent of #85/#86 dispatch** (cementing axis is orthogonal to property-based axis); existing `r3-v-tests-as-data-v1-worker.md` cited as Verification-side coordinator brief
+- [ ] Post-#85 SuiteClaim landing: existing `TestSuite.claims: List<TestClaim>` sites mechanically wrap in `Enumerated(...)` per design §6 line 344 (backward-compatible)
 - [ ] §1.8 ledger Status updated as each gate transitions DECLARED → CONSUMER_LANDED → PASSING
 
-## §9. Open questions for Director ratification
+## §9. Open questions
 
-1. **Substrate canvas authoring authority**: do #85 + #86 canvases route through Substrate Mgr standing authority, or do they need Director-tier canvas-tier ratification (operator directive said "operator-tier spawn-authority lacks tooling" but didn't address canvas-tier authoring)?
+All prior questions RESOLVED:
 
-2. **Phase 3 bulk-port discipline**: is bulk-port a single Verification Mgr coordinator role (PM recommendation) or distributed per-lane (each lane Mgr migrates their own tests)? Both are viable; PM defaults to coordinator for cleaner sequencing tracking.
+1. ~~**Substrate canvas authoring authority**~~: **RESOLVED 2026-05-09** per codex BLOCKING #1 on PR #2361 sha `c6c3fb96`. Locked design §1 Authority discipline: \"no Director ratification required before lane dispatch.\" #85/#86 are carrier landings per design §2.1/§2.2, not canvas-tier substrate-shape introductions. Substrate Mgr standing authority dispatches under existing pre-auth.
 
-3. ~~**#84 closure criterion under Director-allocated exceptions**~~: **RESOLVED 2026-05-09** per codex BLOCKING on PR #2361 sha `b925b174` (addressed at sha `5631cac33`). Strict-zero close-condition adopted: Director Option 2 timed-carry tests (`cross_target_coverage_carrier_test.rs`, `method_template_contract_test.rs`, etc.) are **NOT** folded into close-condition; they remain blockers / non-close-risk until they migrate to testgen-coverage. R3-honest-close requires actual zero, not "zero except exceptions." See §1.3 + §5.1 for canonical close-condition language. This question is no longer open.
+2. ~~**Phase 3 bulk-port discipline**~~: **RESOLVED 2026-05-09** per Director answer at gunbc#846 #issuecomment-4412309986 (Ask 3): \"Verification Mgr coordinator\". Single coordinator role; lane Mgr signoff workflow on per-class migrations.
+
+3. ~~**#84 closure criterion under Director-allocated exceptions**~~: **RESOLVED 2026-05-09** per codex BLOCKING on PR #2361 sha `b925b174` (addressed at sha `5631cac33`). Strict-zero close-condition adopted: Director Option 2 timed-carry tests (`cross_target_coverage_carrier_test.rs`, `method_template_contract_test.rs`, etc.) are **NOT** folded into close-condition; they remain blockers / non-close-risk until they migrate to testgen-coverage. R3-honest-close requires actual zero, not "zero except exceptions." See §1.3 + §5.1 for canonical close-condition language.
 
 ---
 
