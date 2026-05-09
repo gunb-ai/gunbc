@@ -72,7 +72,7 @@ Author `WorkflowObservationAnchor` with timing-shaped fields directly (e.g., `su
 
 ### Option (b) — Generic from authoring; timing is first instantiation
 
-Author `WorkflowObservationAnchor<Subject, Source>` (or `ExternalDataAnchor<Subject, Source>` directly) parametrically; timing is `WorkflowObservationAnchor<BehaviorId, TimingMeasurement>` instantiation.
+Author `WorkflowObservationAnchor<Subject, Source>` (or `ExternalDataAnchor<Subject, Source>` directly) parametrically; timing is `WorkflowObservationAnchor<BehaviorId, TimingPayload>` instantiation, where `TimingPayload` is the observed-value payload (e.g., `{ nanoseconds: Int }`) **without** subject identity baked in. Subject identity is owned solely by the anchor's `Subject` parameter (P2 single-authority discipline) — observation payloads carry observed values, not subject facts.
 
 - **Pro**: gate #55 closure predicate ("`WorkflowObservationAnchor` factored separately as reusable external-data attachment primitive") is naturally satisfied; second-consumer promotion is zero-substrate-edit.
 - **Con**: novel-substrate authoring at first consumer; per `feedback_strict_mirror_vs_novel_substrate_fact` this needs canvas justification (which this canvas provides).
