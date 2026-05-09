@@ -596,8 +596,8 @@ pub fn complexity_lens_iterate_op(p0: &ComplexitySummary, p1: &LoopBound) -> Com
 }
 pub fn complexity_summary_work_class_consistent(p0: &ComplexitySummary) -> bool {
     asymptotic_dominates(
-        &(classify_symbolic_cost(&((p0).work))),
         &((p0).asymptotic_class),
+        &(classify_symbolic_cost(&((p0).work))),
     )
 }
 pub fn complexity_lens_validate(p0: &Dag, p1: &ComplexitySummary) -> OptionalDiagnostic {

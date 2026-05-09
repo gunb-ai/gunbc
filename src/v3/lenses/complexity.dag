@@ -401,7 +401,8 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
 // M1(2.8)-structural — avoid wiring `compose_*` fields directly in records).
 //
 // **validate** — predicate `complexity_summary_work_class_consistent` is exported
-// for callers/folds; this hook stays `NoDiagnostic` until `SomeDiagnostic` can be
+// for callers/folds (`asymptotic_dominates(summary.asymptotic_class, classify(work))`:
+// stored class is a conservative upper bound). This hook stays `NoDiagnostic` until `SomeDiagnostic` can be
 // lowered from `lenses.*` (DB-11 `SourceSpan`/`FilePath` narrowing + M1(2.8) opaque
 // `data Diagnostic` bodies). Dissolution: class-5 `Diagnostic` authorship in lens
 // modules / span witnesses (program-plan gate #92 closure).
@@ -418,6 +419,16 @@ fn complexity_enforcement_project(summary: ComplexitySummary) -> AsymptoticClass
 // Strict excess: observed strictly dominates declared budget under `asymptotic_dominates`
 // (`algebra.dag`), and not conversely. Bool via `0 == 0` / `0 == 1` so rust emit
 // stays valid Rust `bool` (Classical `True`/`False` lowers poorly for `-> Bool` targets).
+//
+// **Executable parity (P2 / T-LAS):** this lowers to `complexity_lens_generated` calling
+// `v3_compiler::complexity_lattice::asymptotic_dominates`, which matches the staged
+// `.dag` relation on every tier **and** refines `ClassPolynomial`×`ClassPolynomial` to
+// compare Peano degrees (k1 ≥ k2). `algebra.dag` remains tier-coarse for poly–poly in
+// `meet`/`join`/`asymptotic_dominates` until bootstrap lowering accepts the same-degree
+// story structurally in substrate (dissolution: algebra `ClassPolynomial` match payloads
+// + Peano compare without host/Rust-only split — program-plan gate #92 / ROADMAP).
+// **Budget enforcement** must follow the generated lattice bridge (single consumer:
+// `enforced_lens_application`).
 fn complexity_enforcement_violates(declared: AsymptoticClass, observed: AsymptoticClass) -> Bool =
   if asymptotic_dominates(observed, declared) then
     if asymptotic_dominates(declared, observed) then 0 == 1 else 0 == 0
@@ -470,7 +481,7 @@ fn complexity_lens_iterate_op(body: ComplexitySummary, bound: LoopBound) -> Comp
   }
 
 fn complexity_summary_work_class_consistent(c: ComplexitySummary) -> Bool =
-  asymptotic_dominates(classify_symbolic_cost(c.work), c.asymptotic_class)
+  asymptotic_dominates(c.asymptotic_class, classify_symbolic_cost(c.work))
 
 fn complexity_lens_validate(d: Dag, c: ComplexitySummary) -> OptionalDiagnostic =
   NoDiagnostic

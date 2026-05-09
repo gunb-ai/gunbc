@@ -407,11 +407,13 @@ fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
 // ClassConstant <= ClassLog <= ClassLinear <= ClassLinearithmic <=
 // ClassQuadratic <= ClassPolynomial(k>=3) <= ClassExponential <= ClassUnknown.
 //
-// Note: `asymptotic_dominates(ClassPolynomial, ClassPolynomial)` stays coarse at the
+// `asymptotic_dominates(ClassPolynomial, ClassPolynomial)` stays tier-coarse at the
 // `.dag` lattice tier (any polynomial class dominates any other at this carrier
 // layer). **Polynomial degree** is enforced for T-LAS complexity budgets in the
 // executable bridge `v3_compiler::complexity_lattice::asymptotic_dominates`, which
 // matches `dominates(PolynomialCost, PolynomialCost)` (k1 >= k2) from this module.
+// Dissolution: lift the same Peano compare into this `asymptotic_dominates` match
+// once variant payload patterns lower cleanly in bootstrap (tracked with gate #92).
 type AsymptoticClass inhabits BoundedLattice<AsymptoticClass>
   = ClassConstant
   | ClassLog

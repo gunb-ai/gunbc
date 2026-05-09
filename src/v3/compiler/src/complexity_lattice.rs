@@ -1,10 +1,8 @@
-//! Rust execution mirror of `asymptotic_dominates` in `src/v3/std/algebra.dag`.
-//!
-//! `emit_rust_module(complexity.dag)` lowers calls in `complexity_enforcement_violates`
-//! to this symbol. **Polynomial-vs-polynomial** ordering uses `PositiveDescentAmount`
-//! (k1 ≥ k2), matching `dominates(PolynomialCost, PolynomialCost)` in that file; the
-//! staged `.dag` `asymptotic_dominates` carrier layer remains tier-coarse for bootstrap
-//! lowering (see comment on `AsymptoticClass` in `algebra.dag`).
+//! Rust execution mirror of **degree-refined** `asymptotic_dominates` for T-LAS
+//! enforcement: matches `v3.std.algebra::asymptotic_dominates` on non-poly arms and
+//! adds `ClassPolynomial` degree order (Peano / `positive_descent_count` grade).
+//! Stay aligned with `algebra.dag` + `complexity_enforcement_violates` (see comments
+//! on `AsymptoticClass` and `complexity.dag`).
 
 use crate::dag::{positive_descent_count, AsymptoticClass};
 
