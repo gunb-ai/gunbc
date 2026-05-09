@@ -121,7 +121,7 @@ The consolidation can be measured:
 
 Positive-definition set (NOT counted against the ratchet):
 - `pipeline.dag` types, `regen.dag` types
-- Lens-local return-type carriers that represent the lens's published API (e.g., `Origin`, `UnusedParameter`, `ComplexitySummary`) — **except** generic-Lookup-pattern duplicates (see below)
+- Lens-local return-type carriers that represent the lens's published API (e.g., `Origin`, `UnusedParameter`, `ComplexitySummary` / `ComplexityEntry`) — **except** generic-Lookup-pattern duplicates (see below)
 - Substrate reflection accessor declarations
 
 Exempted (pending named trigger, not counted either direction):
