@@ -203,6 +203,8 @@ mod sg7_prep_variant_payload_freshness_test;
 mod shape_a_target_source_filtering_authority_test;
 #[path = "integration/t_impossiblebugs_unenumerated_effects_test.rs"]
 mod t_impossiblebugs_unenumerated_effects_test;
+#[path = "integration/t_las_complexity_contract_compile_error_test.rs"]
+mod t_las_complexity_contract_compile_error_test;
 #[path = "integration/t_las_crdt_cost_basis_demo_test.rs"]
 mod t_las_crdt_cost_basis_demo_test;
 #[path = "integration/t_pb_b_1_dag_runner_test.rs"]
@@ -258,7 +260,16 @@ mod t_demo_fixture_test {
     }
 
     fn cached_t_demo_fixture_dag() -> &'static Dag {
-        T_DEMO_FIXTURE_DAG.get_or_init(|| compile_fixture(&fixture_source()))
+        T_DEMO_FIXTURE_DAG.get_or_init(|| {
+            let src = fixture_source();
+            std::thread::Builder::new()
+                .name("t-demo-fixture-dag".to_string())
+                .stack_size(64 * 1024 * 1024)
+                .spawn(move || compile_fixture(&src))
+                .expect("spawn T-Demo fixture compile thread")
+                .join()
+                .expect("T-Demo fixture compile thread should not panic")
+        })
     }
 
     /// Smoke: the checked-in T-Demo `.dag` fixture lowers with empty module diagnostics. Uses
@@ -268,7 +279,6 @@ mod t_demo_fixture_test {
     #[test]
     fn t_demo_fixture_skeleton_compiles() {
         let dag = cached_t_demo_fixture_dag();
-
         assert!(
             dag.diagnostics().is_empty(),
             "T-Demo fixture skeleton should compile without diagnostics: {:?}",

@@ -15,8 +15,11 @@
 //   on CompileError — type errors live on the Dag, not in the Err
 //   payload.
 
+pub mod complexity_lattice;
 pub mod dag;
 pub mod diagnostics;
+mod enforced_lens_application;
+pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
 pub mod pb_method_template_projection_dag_emit;
 mod regen_bootstrap_emit;
@@ -3338,22 +3341,73 @@ pub mod lens_cost {
         clippy::clone_on_copy,
         clippy::collapsible_else_if,
         clippy::double_parens,
+        clippy::eq_op,
         clippy::large_enum_variant
     )]
     mod generated {
         // Regen can emit a redundant paren around some `Hit(...)` payload
         // subexpressions (`Hit((1 + n))` vs `Hit(1 + n)`) — relax until emission
         // drops one stable layer of grouping.
+        use crate::complexity_lattice::complexity_enforcement_budget_dominates as asymptotic_dominates;
         use crate::dag::*;
         use crate::diagnostics::*;
+        use crate::lens_t_las_carrier::{
+            EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
+        };
+        use crate::Witness;
 
-        include!("lens_cost_generated.rs");
+        include!("complexity_lens_generated.rs");
     }
 
     pub use generated::{
-        complexity_of, Certainty, ComplexityEntry, ComplexitySummary, DominanceOutcome,
+        complexity_enforcement_project, complexity_enforcement_violates, complexity_of,
+        complexity_summary_work_class_consistent, Certainty, ComplexityEntry, ComplexitySummary,
+        DominanceOutcome,
     };
     pub type ComplexityLookup = crate::dag::Lookup<ComplexitySummary>;
+
+    #[cfg(test)]
+    mod complexity_summary_work_class_consistent_tests {
+        use super::{complexity_summary_work_class_consistent, Certainty, ComplexitySummary};
+        use crate::dag::{AsymptoticClass, PortId, SizeVariable, SymbolicCost};
+
+        #[test]
+        fn rejects_under_reported_asymptotic_class_class_log_vs_classified_linear_work() {
+            let summary = ComplexitySummary {
+                work: SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: PortId::test_raw(1),
+                        display_name: None,
+                    },
+                },
+                span: SymbolicCost::ConstantCost { _0: 0 },
+                asymptotic_class: AsymptoticClass::ClassLog,
+                work_certainty: Certainty::Proven,
+                span_certainty: Certainty::Proven,
+            };
+            assert!(
+                !complexity_summary_work_class_consistent(&summary),
+                "stored ClassLog must not cover classified ClassLinear work"
+            );
+        }
+
+        #[test]
+        fn accepts_stored_class_covering_classified_work_class_linear_covers_log_work() {
+            let summary = ComplexitySummary {
+                work: SymbolicCost::LogCost {
+                    _0: SizeVariable {
+                        source_port: PortId::test_raw(2),
+                        display_name: None,
+                    },
+                },
+                span: SymbolicCost::ConstantCost { _0: 0 },
+                asymptotic_class: AsymptoticClass::ClassLinear,
+                work_certainty: Certainty::Proven,
+                span_certainty: Certainty::Proven,
+            };
+            assert!(complexity_summary_work_class_consistent(&summary));
+        }
+    }
 
     /// Back-compat projection for pre-`ComplexitySummary` callers that still
     /// assert the old structural depth integer. This is not the behavioral
@@ -4461,11 +4515,40 @@ pub enum CompileError {
 // payload is on the cold failure path where the indirection would
 // matter less than the API churn. Targeted `allow` on the function
 // signature only — the rest of the crate keeps the lint enforced.
+fn is_lenses_complexity_authority_module(module: &parse::SurfaceModule) -> bool {
+    use crate::parse::SurfaceItem;
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Module { path, .. }
+                if path.len() >= 2 && path[0] == "lenses" && path[1] == "complexity"
+        )
+    })
+}
+
+fn needs_complexity_lens_authority_prepended(module: &parse::SurfaceModule) -> bool {
+    use crate::parse::SurfaceItem;
+    if is_lenses_complexity_authority_module(module) {
+        return false;
+    }
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Import { path, .. }
+                if path.len() >= 2 && path[0] == "lenses" && path[1] == "complexity"
+        )
+    })
+}
+
 #[allow(clippy::result_large_err)]
 pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
-    let mut dag = lower::lower(&surface);
+    let mut dag = if needs_complexity_lens_authority_prepended(&surface) {
+        lower::lower_prepending_complexity_lens_authority(&surface)
+    } else {
+        lower::lower(&surface)
+    };
     infer::infer(&mut dag);
     if dag.diagnostics().is_empty() {
         Ok(dag)

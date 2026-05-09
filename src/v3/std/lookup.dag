@@ -59,7 +59,7 @@ import std.types { Int }
 //     `Lookup<DeclarationId>` (monomorphized constructors live in
 //     `std.substrate` — same split as `SymbolicCost` in `std.algebra`, keeps
 //     this module free of declaration-identity imports);
-//   - `src/v3/compiler/src/lens_cost_generated.rs` and
+//   - `src/v3/compiler/src/complexity_lens_generated.rs` and
 //     `src/v3/compiler/src/lens_cost_symbolic_generated.rs` — `regen_lens` /
 //     `emit_rust_module` output; the compiler includes these modules and
 //     pattern-matches `Lookup` at the lens boundary;
@@ -69,7 +69,7 @@ import std.types { Int }
 // Generic sum: one authority for “absent vs present” at a typed value.
 // Variant labels `Miss` / `Hit` mirror the thesis `Missing | Found(T)` naming.
 // §4 + P2: **🟢 TERMINAL** ledger, four-pattern check, and structural consumers
-// (`complexity.dag`, `lens_cost_generated.rs`, `rust.dag`) are in the block
+// (`complexity.dag`, `complexity_lens_generated.rs`, `rust.dag`) are in the block
 // *above* — this `type` line is not a naked declaration.
 type Lookup<value>
   = Miss
