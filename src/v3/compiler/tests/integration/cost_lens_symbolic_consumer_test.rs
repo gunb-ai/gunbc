@@ -9,6 +9,11 @@
 //! `cost.dag` row is **PROXY** until those obligations clear; this module is only a
 //! v3-side regression pin on `compile_to_dag` fixtures (the same lookup surface
 //! `analyze_symbolic_cost_dimension` walks in `v3_compiler::dimension`).
+//!
+//! Tests below exercise **only** the generated `symbolic_cost_of` consumer by design;
+//! that is **not** a Band-C shortfall while `cost.dag` remains **PROXY** in
+//! `docs/v3-lens-capability-register.md` (Band-C would demand a v2-oracle or reviewed
+//! projection once the row is `COMPLETE` with a real v2 counterpart).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
@@ -23,6 +28,7 @@ fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
         .value
 }
 
+/// v3 `symbolic_cost_of` lookup only (no v2 oracle); see module docs for Band-C scope.
 fn expect_symbolic_cost(dag: &v3_compiler::dag::Dag, bind_name: &str) -> SymbolicCost {
     let port = find_bind_value(dag, bind_name);
     match symbolic_cost_of(dag, &port) {
