@@ -9,7 +9,7 @@ pub enum CostBasisKind {
 }
 #[derive(Clone, Debug)]
 pub struct CostBasisDeclaration {
-    pub subject: DeclarationId,
+    pub subject: SectionRef,
     pub kind: CostBasisKind,
     pub cost: SymbolicCost,
     pub span: SourceSpan,

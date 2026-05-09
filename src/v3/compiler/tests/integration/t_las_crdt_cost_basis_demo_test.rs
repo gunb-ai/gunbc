@@ -20,8 +20,9 @@
 //! *vacuous* and is **not** asserted here.
 //!
 //! **What we pin instead:** (1) **`try_build_per_write_log_cost_basis_declaration`** — single-authority
-//! materialization of **`CostBasisDeclaration`** from the lowered **`Dag`** (subject `DeclarationId`,
-//! `PerWrite`, **`LogCost(merge_replicas_port)`**, bind **`span`**) **after** verifying that port
+//! materialization of **`CostBasisDeclaration`** from the lowered **`Dag`** (subject
+//! **`SectionRef::DeclarationScope`** / workflow `DeclarationId`, `PerWrite`,
+//! **`LogCost(merge_replicas_port)`**, bind **`span`**) **after** verifying that port
 //! appears in **`LogCost` in [`compute_symbolic_costs`]** (fail-closed vs fabricated basis).
 //! The `.dag` carrier remains the type definitions in `lenses.cost` (`lens_cost_symbolic_generated.rs`).
 //! (2) **Full symbolic-cost lens table**
@@ -41,7 +42,9 @@
 //! `docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{dominates, Behavior, Lookup, PortId, SizeVariable, SymbolicCost};
+use v3_compiler::dag::{
+    dominates, Behavior, Lookup, PortId, SectionRef, SizeVariable, SymbolicCost,
+};
 use v3_compiler::lens_cost_symbolic::{
     compute_symbolic_costs, CostBasisDeclaration, CostBasisKind,
 };
@@ -223,7 +226,12 @@ fn crdt_cost_basis_demonstrated_declaration_pins_subject_span_and_per_write_log_
         let decl = dag
             .declaration_by_name("my_crdt_field")
             .expect("my_crdt_field declaration");
-        assert_eq!(basis.subject, decl.id);
+        assert_eq!(
+            basis.subject,
+            SectionRef::DeclarationScope {
+                declaration: decl.id,
+            }
+        );
         assert!(matches!(basis.kind, CostBasisKind::PerWrite));
         assert_eq!(
             basis.cost,

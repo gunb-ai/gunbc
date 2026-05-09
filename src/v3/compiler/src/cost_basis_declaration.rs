@@ -10,8 +10,8 @@
 use std::fmt;
 
 use crate::dag::{
-    ArrowBody, BindNode, Dag, DeclarationId, Lookup, PortId, SizeVariable, SymbolicCost,
-    TypeConnective,
+    ArrowBody, BindNode, Dag, DeclarationId, Lookup, PortId, SectionRef, SizeVariable,
+    SymbolicCost, TypeConnective,
 };
 use crate::lens_cost_symbolic::{compute_symbolic_costs, CostBasisDeclaration, CostBasisKind};
 
@@ -123,6 +123,9 @@ fn symbolic_table_includes_log_on_port(dag: &Dag, port: PortId) -> bool {
 /// **`LogCost` witness:** returns [`MergeStepLacksLogCostWitness`] unless
 /// [`compute_symbolic_costs`] already **`Hit`s `LogCost(merge_param_port)`** (divide-on-dividend
 /// lowering); does not fabricate basis without lens table evidence.
+/// **Subject** is `SectionRef::DeclarationScope { declaration: … }` wrapping the workflow
+/// [`DeclarationId`] (T-LAS / audit structural authority — expression-scoped bases use
+/// `NodeScope` when authors need it).
 /// `merge_step_declaration_name` is the **`fn` declaration id** (same string the author uses for
 /// the merge helper, e.g. `crdt_merge_step`); its body [`BindNode`] is read only via
 /// [`TypeConnective::Arrow`] → [`ArrowBody::UserDefined`] like the workflow (P2 single authority
@@ -147,7 +150,9 @@ pub fn try_build_per_write_log_cost_basis_declaration(
         );
     }
     Ok(CostBasisDeclaration {
-        subject,
+        subject: SectionRef::DeclarationScope {
+            declaration: subject,
+        },
         kind: CostBasisKind::PerWrite,
         cost: SymbolicCost::LogCost {
             _0: SizeVariable {

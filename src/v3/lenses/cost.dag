@@ -70,7 +70,7 @@ import std.algebra {
 }
 import v3.std.lookup { Lookup }
 import v3.std.substrate { SourceSpan }
-import v3.std.substrate_minimal { DeclarationId }
+import v3.std.lens_application { SectionRef }
 
 // Cost-lens-owned user cost basis (T-User-Authored-Cost-Basis-Discipline audit:
 // `docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`).
@@ -121,8 +121,12 @@ type CostBasisKind
 // bodies persist `data` rows and the cost fold reads them into `compute_symbolic_costs`.
 // **`PeakMemory`:** scaffold — consumer TBD per ledger §5 above (`#1954`).
 
+// `subject` is `SectionRef` (`v3.std.lens_application`; design
+// `docs/design-lens-application-surface.md` §2 — same structural authority as
+// `EnforcedApplication.section`), not a bare `DeclarationId`, so expression-scoped
+// bases can use `NodeScope` when landed.
 type CostBasisDeclaration {
-  subject: DeclarationId
+  subject: SectionRef
   kind: CostBasisKind
   cost: SymbolicCost
   span: SourceSpan

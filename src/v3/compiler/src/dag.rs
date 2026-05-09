@@ -183,6 +183,22 @@ impl DeclarationId {
     }
 }
 
+/// Structural reference to a lens-application section.
+///
+/// Authority: `src/v3/std/lens_application.dag` (`SectionRef`). Emitted lens code
+/// (`lens_cost_symbolic`) references this `dag` mirror so cost-basis subjects align with
+/// `EnforcedApplication.section` / design doc §2 (`DeclarationScope` / `NodeScope`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SectionRef {
+    DeclarationScope {
+        declaration: DeclarationId,
+    },
+    NodeScope {
+        declaration: DeclarationId,
+        node: NodeId,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ClusterId(u32);
 
