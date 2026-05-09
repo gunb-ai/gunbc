@@ -5,6 +5,9 @@
 //! this gate fails closed when the generated Rust mirror is stale or when the
 //! substrate constructors drift from the generated carrier shape.
 
+use v3_compiler::dag::{FieldMap, LiteralBits, ValueBody};
+use v3_compiler::SourceSpan;
+
 const SUBSTRATE_DAG: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../src/v3/std/substrate.dag"
@@ -18,7 +21,7 @@ const DAG_RS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/dag.
 #[test]
 fn value_body_substrate_mirror_isomorphism_executable() {
     let substrate_variants = substrate_value_body_variants(SUBSTRATE_DAG);
-    let rust_variants = generated_rust_value_body_variants(GENERATED_VALUE_BODY);
+    let rust_variants = rust_value_body_variants();
 
     assert_eq!(
         substrate_variants,
@@ -69,29 +72,27 @@ fn substrate_value_body_variants(source: &str) -> Vec<&str> {
     variants
 }
 
-fn generated_rust_value_body_variants(source: &str) -> Vec<&str> {
-    let mut variants = Vec::new();
-    let mut in_enum = false;
+fn rust_value_body_variants() -> Vec<&'static str> {
+    [
+        ValueBody::Unparsed(SourceSpan::new("value_body_gate.dag", 0, 0)),
+        ValueBody::Structural { fields: Vec::new() },
+        ValueBody::Scalar(LiteralBits::Bool(true)),
+        ValueBody::List(Vec::new()),
+        ValueBody::Map(FieldMap::from_entries(Vec::new()).expect("empty map is valid")),
+    ]
+    .iter()
+    .map(rust_value_body_variant_name)
+    .collect()
+}
 
-    for line in source.lines() {
-        let trimmed = line.trim();
-        if trimmed == "pub enum ValueBody {" {
-            in_enum = true;
-            continue;
-        }
-        if !in_enum {
-            continue;
-        }
-        if trimmed == "}" {
-            break;
-        }
-        if trimmed.is_empty() || trimmed == "}," || trimmed.contains(':') {
-            continue;
-        }
-        variants.push(variant_name(trimmed));
+fn rust_value_body_variant_name(body: &ValueBody) -> &'static str {
+    match body {
+        ValueBody::Unparsed(_) => "Unparsed",
+        ValueBody::Structural { .. } => "Structural",
+        ValueBody::Scalar(_) => "Scalar",
+        ValueBody::List(_) => "List",
+        ValueBody::Map(_) => "Map",
     }
-
-    variants
 }
 
 fn variant_name(text: &str) -> &str {
