@@ -13,14 +13,7 @@ module v3.std.timing_lens
 
 import std.list { List, is_empty }
 import std.nat { Nat }
-import std.types {
-  Bool,
-  ContentHash,
-  WorkflowProducerId,
-  WorkflowObserverId,
-  WorkflowProverId,
-  WorkflowRunId,
-}
+import std.types { Bool, ContentHash, WorkflowProducerId, WorkflowObserverId, WorkflowProverId, WorkflowRunId }
 import std.substrate { Dag, Behavior, LoopBound, NodeId }
 import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
