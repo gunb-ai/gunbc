@@ -4,11 +4,21 @@
 // emerge from the field structure. "Approximate" is honest — IEEE 754
 // rounding means associativity of add fails. The algebra captures
 // intent (field operations); the target language handles precision.
+//
+// T-Numeric-Construction / R3 gate #17 — abstract `Real` lives here (layer 5 of
+// the construction chain). Spelling per
+// `docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`
+// Option A: `ApproximateField<Rational>` collides with landed
+// `Rational = Field<FieldOfFractions<Int>>` (witness vs carrier). The `F` slot
+// binds the fraction **carrier** `FieldOfFractions<Int>` so `base: Field<F>`
+// matches `Rational`'s exact-field witness.
 
 module std.float
 
-import std.algebra { Field }
+import std.algebra { Field, FieldOfFractions }
 import std.bit { Word32, Word64 }
+import std.integer { Int }
+import v3.std.approximate_field { ApproximateField }
 
 // IEEE 754 floating-point types: fields (ring + division)
 type Float32 = Field<Word32>
@@ -16,3 +26,8 @@ type Float64 = Field<Word64>
 
 // Default alias
 type Float = Float64
+
+// Abstract reals: approximate field over the exact rational **carrier**
+// `FieldOfFractions<Int>` (see `dsl/std/rational.dag` for `Rational =
+// Field<FieldOfFractions<Int>>`).
+type Real = ApproximateField<FieldOfFractions<Int>>
