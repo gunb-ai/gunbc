@@ -95,29 +95,42 @@ type DiagnosticSeverity = Error
 //                  projection alone would leave "did observed exceed
 //                  declared?" as API-level convention; the relation
 //                  field makes it substrate authority.
+// **`project` returns Result** for partial projection on observation-driven
+// lens classes (T-Workflow-As-Data Slice 2 timing-lens et seq.). Per
+// Director ratification at gunb-ai/gunbc#828 c#4413567822
+// (Q-WAD-S2-Output (a)(iii)-β-simplified): structural-static lenses
+// (complexity, cost) wrap their existing project body in `Ok(...)` —
+// total projection returns Right side. Observation-driven lenses
+// pattern-match Output and return `Err(ProjectionFailure)` on
+// non-Observed variants (Missing/Ambiguous/Stale) preserving typed
+// report-state failure evidence per INVARIANTS P3 / C-8 fail-closed
+// without fabricating a Budget. Framework apply method dispatches:
+// `match project(output) { Err(_) => fail-closed; Ok(b) => violates(declared, b) }`.
+//
+// Earlier signature `fn(Output) -> Budget` was total — forced fabrication
+// of a Budget value for non-Observed Outputs which violates P3/C-8
+// (erases typed Missing/Ambiguous/Stale failure evidence into a
+// plausible Budget). Result-typed projection makes the failure
+// possibility a substrate fact, not an API-level convention.
+//
+// `ProjectionFailure` is a substrate-wide canonical failure carrier
+// covering observation-driven lens projection failures. Structural-static
+// lenses (complexity / cost / parallelism) never fail — their `project`
+// always returns `Ok(...)`. Observation-driven lenses (timing et seq.)
+// return `Err(ProjectionFailure::*)` on non-Observed Outputs.
+//
+// Sum-type vs per-lens-generic disposition (Mgr call per Director
+// c#4413567822): sum-type chosen for minimum-novel-substrate — keeps
+// `LensEnforcement<Output, Budget>` 2-parameter (no third generic
+// parameter cascade across all enforcement instance sites).
+type ProjectionFailure
+  = MissingObservation
+  | AmbiguousObservation
+  | StaleObservation
+
 type LensEnforcement<Output, Budget> {
-  project: fn(Output) -> Budget
-  // **violates** signature includes Output for fail-closed pattern-match
-  // discipline on observation-driven lens classes (T-Workflow-As-Data
-  // Slice 2 timing-lens et seq.). Per Director ratification at
-  // gunb-ai/gunbc#828 c#4413284764 (Q-WAD-S2-Output (a)(ii)
-  // full-signature extension): for non-Result lens Output (complexity,
-  // cost), the Output arg is semantically inert and bodies pattern-match
-  // through to the existing Budget×Budget comparison; for observation-
-  // driven Output (timing's `TimingMeasurement = Observed | Missing |
-  // Ambiguous | Stale`), bodies pattern-match Output variants returning
-  // true on non-Observed for fail-closed enforcement WITHOUT Budget
-  // fabrication at the projection boundary (preserves typed report-state
-  // failure evidence per INVARIANTS P3 / C-8).
-  //
-  // Earlier signature `fn(Budget, Budget) -> Bool` could not generically
-  // express fail-closed-on-non-Observed without erasing typed evidence
-  // into a fabricated Budget value. Per `feedback_strict_mirror_vs_novel_substrate_fact`
-  // minimum-novel-substrate: signature change at the substrate layer
-  // (one signature update + mechanical body updates) is materially
-  // smaller than per-call Budget-fabrication wrapping at the projection
-  // layer.
-  violates: fn(Output, Budget, Budget) -> Bool
+  project: fn(Output) -> Result<Budget, ProjectionFailure>
+  violates: fn(Budget, Budget) -> Bool
 }
 
 // 🟢 TERMINAL at the per-lens canonical-pairing scope. Bundles a lens

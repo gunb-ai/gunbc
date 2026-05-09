@@ -430,11 +430,7 @@ fn complexity_enforcement_project(summary: ComplexitySummary) -> AsymptoticClass
 // so stored `asymptotic_class` stays comparable to classified work under the same lattice.
 // **Budget enforcement** must follow this named bridge (single consumer:
 // `enforced_lens_application`); do not conflate it with substrate `meet`/`join` alone.
-// Per LensEnforcement (a)(ii) signature change (gunbc#828 c#4413284764):
-// adds `_output: ComplexitySummary` arg. ComplexitySummary is non-Result
-// (no failure variants); body discards Output and the existing
-// Budget×Budget comparison runs through unchanged. Semantic-equivalent.
-fn complexity_enforcement_violates(_output: ComplexitySummary, declared: AsymptoticClass, observed: AsymptoticClass) -> Bool =
+fn complexity_enforcement_violates(declared: AsymptoticClass, observed: AsymptoticClass) -> Bool =
   if asymptotic_dominates(observed, declared) then
     if asymptotic_dominates(declared, observed) then 0 == 1 else 0 == 0
   else
