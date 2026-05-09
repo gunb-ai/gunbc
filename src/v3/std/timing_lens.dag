@@ -20,10 +20,11 @@ import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.workflows { behavior_spine }
 
-// Module-authority `FilePath` witness for diagnostics when `behavior_spine(d)` is
-// empty (no `Behavior` span to borrow). Checked at `data` load time (DB-11).
-data timing_lens_module_authority_file: FilePath =
-  "src/v3/std/timing_lens.dag"
+// Placeholder `SourceSpan` for non-`Observed` diagnostics when `behavior_spine(d)`
+// is empty (no `Behavior` span to borrow). Declared as `data` so the record
+// literal is type-directed like other registry witnesses (DB-11).
+data timing_lens_empty_spine_diagnostic_span: SourceSpan =
+  { file: "src/v3/std/timing_lens.dag", start: 0, end: 0 }
 
 // PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — nominal SI-nanosecond coordinate for
 // durations and POSIX-epoch instants at this substrate layer. **Magnitude**
@@ -178,9 +179,6 @@ fn timing_lens_behavior_span(b: Behavior) -> SourceSpan =
     Bind(bind) => bind.span
   }
 
-fn timing_lens_empty_spine_diagnostic_span() -> SourceSpan =
-  SourceSpan { file: timing_lens_module_authority_file, start: 0, end: 0 }
-
 // Placeholder `Diagnostic` for scaffold validate: non-`Observed` carriers are
 // not admissible as validated evidence until runner-backed observation wiring
 // lands (`ResolveError` is the closest Layer-1 kind for “evidence not resolved”).
@@ -202,7 +200,7 @@ fn timing_lens_validate_non_observed(d: Dag, text: String) -> OptionalDiagnostic
       SomeDiagnostic {
         value: timing_lens_scaffold_non_evidence_diagnostic(
           text,
-          timing_lens_empty_spine_diagnostic_span()
+          timing_lens_empty_spine_diagnostic_span
         )
       }
     Cons(payload) =>
