@@ -4,8 +4,9 @@
 // Authority: `docs/design-timing-lens.md` + `docs/r3-structure.md` T-WAD row.
 //
 // 🟡 SCAFFOLD. External CI / runner timing facts are not yet reflected into
-// `timing_lens_read`; the uniform `Inhabits(Missing)` witness is an honest
-// fail-open substrate receipt until observation wiring lands. Loop iteration
+// `timing_lens_read`; the uniform `Inhabits(Unobserved)` witness is an honest
+// fail-open substrate receipt until observation wiring lands (`Unobserved` ≡
+// external "missing timing" state; label avoids `Missing` name collision). Loop iteration
 // scaling against `LoopBound` measure ports is likewise deferred:
 // `timing_measurement_iterate` is identity on `body` pending measure lowering.
 
