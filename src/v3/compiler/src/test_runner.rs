@@ -3236,6 +3236,8 @@ impl<'a> TestRunner<'a> {
                 field: "p99_delta_ns",
             });
         }
+        // `checked_add` only covers i64 overflow. Negative `p99_delta_ns` is rejected
+        // above so absolute p99 cannot undershoot `median_ns` (INVARIANTS P2/P3).
         let p99_ns = median_ns
             .checked_add(p99_delta_ns)
             .ok_or(PerfMeasurementResolveError::P99ConstructionOverflow)?;
