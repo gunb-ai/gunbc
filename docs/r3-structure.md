@@ -228,15 +228,21 @@ Plus 2 priority corrections folded into existing lanes (Director-ratified 2026-0
 - **C1 — Tier-3 mirror dissolution perf budget** sub-gate of T-Tier3-Dissolution: `tier3_mirror_dissolution_perf_within_budget` with thresholds **≤2× median, ≤5× p99**.
 - **C2 — Provider generalization path (a)** folded into Substrate continuation (extends T-Anthropic-Wire scope): extract `ProviderTypedWire<P>` carrier.
 
-## Standing program — R3 Debt-Paydown (NEW 2026-05-02)
+## Standing program — R3 Debt-Paydown (NEW 2026-05-02; AMENDED 2026-05-09)
 
 **R3 Debt-Paydown Manager** is the **9th standing R3 manager** (added per Director ratification 2026-05-02 + user directive *"R3 to clean up any and all debt we come across WITHIN R3 - even if it means dedicated debt paydown lanes/managers"*).
 
-**Owned program**:
+**AMENDED 2026-05-09 per Brian operator directive (~20:30Z)**: lane scope expanded from R3-only to **all v3 debt** (including post-R3 horizons); lane posture changed from cadence-only to **active organize-dispatch**. Prior Director ratification at gunbc#828 c#4411537717 ("no eager-action between cadence checkpoints") superseded by direct operator authorization. Companion artifacts: `docs/audit/v3-comprehensive-debt-audit-2026-05-09.md` (initial inventory dump) + Mgr inbox dispatch with new posture.
+
+**Owned program** (post-amendment):
 - **ROADMAP debt-row retirement** — every tracked-debt row in ROADMAP `### Post-merge debt (...)` sections gets a named retirement PR or explicit closure receipt before R3 close
+- **Comprehensive v3 debt inventory** (NEW 2026-05-09) — Class A-G framework population per `docs/audit/r3-debt-sweep-2026-05-06.md` + new **Class P (past-R3)** for substrate-capability gaps blocking R4+ ambition; lane organizes ALL v3 debt (R3 + post-R3) into the inventory
+- **Active organize cadence** (NEW 2026-05-09) — Mgr proactively polls debt sources continuously: ROADMAP / sweep-doc / §10.3 / gpt-5-5-pro reflective findings / SG-0 census / §1.8 ledger drift / TODOs / drift-class anti-patterns
+- **Active dispatch authority** (NEW 2026-05-09) — Mgr dispatches workers on P0/P1 inventory items under standing authority; surfaces to PM/Director only on shape questions
 - **Velocity-tripwire enforcement** — per `INVARIANTS.md#p5-progress-is-dissolution` (Progress Is Dissolution) Dispatch-Discipline Mechanisms (c) Velocity tripwire (introduction:dissolution PR ratio ≥3:1 in any 7-day window); manager surfaces tripwire readings to Director on cadence
-- **Per-PR discipline rule** — every R3 PR includes "debt receipt": names debt found in this PR, names debt paid in this PR, OR names a paydown-lane retirement PR for the debt; vague deferrals rejected
+- **Per-PR discipline rule** — every PR includes "debt receipt": names debt found in this PR, names debt paid in this PR, OR names a paydown-lane retirement PR for the debt; vague deferrals rejected
 - **Closure-receipt cadence** — converts Director's reflective-analysis findings into per-PR retirement work; closes the gap between "tracked debt" and "retired debt"
+- **Daily debt-paydown progress snapshot** (NEW 2026-05-09) — Mgr posts daily snapshot to PM inbox (#846); cumulative inventory state + dispatched-worker velocity + cadence-tripwire reading
 
 **Closure gate**: `r3_debt_paydown_zero_remaining` — no tracked-debt rows survive R3 close. Every tracked-debt row retires with a PR receipt before R3 close — unconditional. Per user directive 2026-05-02 (*"all 'accidentally deferred to post R3' into R3 now"*): **there is no post-R3 deferral path for tracked debt**. If a row appears unretirable within R3 it surfaces as a substrate gap requiring a named R3 lane (the directive that motivated this manager's creation), not a deferral. Per `INVARIANTS.md#p5-progress-is-dissolution` (Progress Is Dissolution): a tracked-debt row deferred past R3 close is the bridge-as-steady-state pattern P5 explicitly forbids; an escape hatch for "rare structurally-justified deferrals" reintroduces that pattern at lower cadence and must not exist.
 
