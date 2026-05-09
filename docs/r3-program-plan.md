@@ -253,7 +253,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 | 29 | `anthropic_wire_typed_serde_alignment` | substrate-shape | T-Anthropic-Wire | **PASSING** (PR #2208 G5 Anthropic re-dispatch + PR #2164 variant-aware projection; ratchets `anthropic_request_coproduct_wire_contracts_emit_targeted_serde` at `src/v2/tests/src/pipeline.rs:6482` + `anthropic_messages_request_body_json_matches_messages_wire_tags` at `src/v2/tests/src/pipeline.rs:6918` green at HEAD `9d9f7d786` per cluster-I close-shape per [`docs/audit/r3-cluster-analysis-2026-05-09.md`](audit/r3-cluster-analysis-2026-05-09.md) §2 row I; 200-body residual tracked separately by `structural_coverage_gap_anthropic_messages_200_residual` / coproduct slice 3 brief, NOT in #29 scope) | typed end-to-end |
 | 30 | `anthropic_unit_enum_role_serialization_correct` | structural-fold | T-Anthropic-Wire | **CONSUMER_LANDED** (PR #2208 G5 Anthropic re-dispatch; refresh per cluster-analysis audit §1) | role enum serializes correctly |
 | 31 | `bridge_source_span_file_participation_retired` | state-check | T-Bridge-Retirement | DECLARED | typed-identity-surface authority |
-| 32 | `bridge_mark_bootstrap_secret_nominal_opacity_retired` | state-check | T-Bridge-Retirement | DECLARED | Secret PR A continuation |
+| 32 | `bridge_mark_bootstrap_secret_nominal_opacity_retired` | state-check | T-Bridge-Retirement | **PASSING** | `dsl/std/types.dag` `type Secret nominal_opaque = String` + `src/v3/std/bridge_ledger.dag` row `Retired` + unit ratchet `dag.rs::bridge_mark_bootstrap_secret_nominal_opacity_retired` (bootstrap snapshots carry `Declaration.nominal_opacity` on `Secret`); historical name-keyed bootstrap bridge removed (#1272 / #937 lineage) |
 | 33 | `bridge_canonical_lens_name_dispatch_retired` | state-check | T-Bridge-Retirement | DECLARED | DeclarationRef/typed identity |
 | 34 | `bridge_include_str_side_channels_retired` | state-check | T-Bridge-Retirement | DECLARED | substrate query surface |
 | 35 | `bridge_exact_string_patching_residual_retired` | state-check | T-Bridge-Retirement | DECLARED | umbrella for exact-string scaffolds |
@@ -377,13 +377,13 @@ Sequence (Grounding-side):
 ### §2.3 BridgeLedgerZero (1 predicate)
 
 **Sub-bridges** (`r3-structure.md` §"Lane structure" → T-Bridge-Retirement row distribution map):
-- **Substrate-owned (2)**: `SourceSpan.file` participation checks (hand-Rust audit sites only — `bootstrap.rs:519` doc-comment + `:137` / `:287` / `:309` hardcoded path strings; per Substrate Mgr poke-hole 2026-05-06 Y4 scope-clarification: codegen-emitted `SourceSpan::new(...)` offsets in `bootstrap_generated.rs` are a separate generated-file bridge shape, NOT counted as Substrate-owned manual hand-Rust); `mark_bootstrap_secret_nominal_opacity()`
+- **Substrate-owned (2)**: `SourceSpan.file` participation checks (hand-Rust audit sites only — `bootstrap.rs:519` doc-comment + `:137` / `:287` / `:309` hardcoded path strings; per Substrate Mgr poke-hole 2026-05-06 Y4 scope-clarification: codegen-emitted `SourceSpan::new(...)` offsets in `bootstrap_generated.rs` are a separate generated-file bridge shape, NOT counted as Substrate-owned manual hand-Rust); **Secret nominal-opacity bootstrap bridge** — **retired** (R3 gate #32 **PASSING**): std declares `nominal_opaque` on `Secret`; no `Dag::mark_bootstrap_secret_nominal_opacity` helper; `dag.rs::bridge_mark_bootstrap_secret_nominal_opacity_retired` ratchets snapshots
 - **PB-owned (3)**: canonical lens-name dispatch; `include_str!` side channels (e.g., `pipeline_authority.rs`); `patch_lower_helpers_*` residual
 
 Each retires per its natural-owner program prerequisites. Verification Mgr's `bridge_retirement_ledger_zero` gate audits cross-program reporting cadence.
 
 **Sequence**:
-1. Substrate: typed-identity-surface for SourceSpan participation; Secret PR A continuation.
+1. Substrate: typed-identity-surface for SourceSpan participation; Secret nominal-opacity bridge closed (gate #32).
 2. PB: canonical lens-name dispatch retires alongside T-LensProducer-Retirement; `include_str!` retires post-T-FixedPoint; `patch_lower_helpers_*` post-Tier-2.
 3. Verification audits cumulative ledger; closes when count = 0.
 

@@ -503,12 +503,8 @@ pub fn meet_pair(p0: &Certainty, p1: Certainty) -> Certainty {
         Certainty::Conservative => Certainty::Conservative,
     }
 }
-pub fn complexity_enforcement_project(
-    p0: &ComplexitySummary,
-) -> ProjectionResult<AsymptoticClass> {
-    ProjectedBudget {
-        value: ((p0).asymptotic_class).clone(),
-    }
+pub fn complexity_enforcement_project(p0: &ComplexitySummary) -> AsymptoticClass {
+    ((p0).asymptotic_class).clone()
 }
 pub fn complexity_enforcement_violates(p0: &AsymptoticClass, p1: &AsymptoticClass) -> bool {
     if asymptotic_dominates(p1, p0) {

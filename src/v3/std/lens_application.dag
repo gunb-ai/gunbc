@@ -95,39 +95,8 @@ type DiagnosticSeverity = Error
 //                  projection alone would leave "did observed exceed
 //                  declared?" as API-level convention; the relation
 //                  field makes it substrate authority.
-// 🟢 TERMINAL. Substrate-wide canonical projection-failure carrier for
-// observation-driven lens classes (T-Workflow-As-Data Slice 2 timing-lens
-// et seq.). Structural-static lenses (complexity / cost / parallelism)
-// never fail their project step — they wrap their body in `Ok(...)`.
-// Observation-driven lenses pattern-match Output and return
-// `Err(ProjectionFailure::*)` on non-Observed report-state variants
-// (Missing/Ambiguous/Stale) preserving typed report-state failure
-// evidence per INVARIANTS P3 / C-8 fail-closed without fabricating a
-// Budget value at the projection boundary.
-//
-// Sum-type vs per-lens-generic disposition (Mgr call per Director
-// c#4413567822 + c#4413581627): sum-type chosen for minimum-novel-
-// substrate — keeps `LensEnforcement<Output, Budget>` 2-parameter (no
-// third generic parameter cascade across all enforcement instance sites).
-// Worker grep notes: 7 reversal cycles 2026-05-09 settled here.
-type ProjectionFailure
-  = MissingObservation
-  | AmbiguousObservation
-  | StaleObservation
-
-// 🟢 TERMINAL. Bespoke projection-result carrier for `LensEnforcement`.
-// Per Director ratification at gunb-ai/gunbc#828 c#4413663658: bespoke
-// sum chosen over `dsl/std/error_primitives::Result<ok, err>` to avoid
-// the DSL `Result` struct-form variants (`Ok { value: T }`) vs Rust's
-// stdlib `Result<T, E>` tuple-form mismatch surfaced at PR #2400 v3 CI.
-// `ProjectedBudget { value }` / `ProjectionFailed { failure }` map
-// cleanly to bespoke Rust enum without stdlib `Result` interaction.
-type ProjectionResult<Budget>
-  = ProjectedBudget { value: Budget }
-  | ProjectionFailed { failure: ProjectionFailure }
-
 type LensEnforcement<Output, Budget> {
-  project: fn(Output) -> ProjectionResult<Budget>
+  project: fn(Output) -> Budget
   violates: fn(Budget, Budget) -> Bool
 }
 

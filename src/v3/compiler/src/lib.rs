@@ -43,6 +43,378 @@ pub mod emit_rust;
 pub mod emit_rust_bin_shim;
 pub mod omni_shape_b_openapi;
 pub mod process_exit;
+pub mod realization_cost {
+    //! Rust-side realization-cost table for T-CostLens-Composition's epsilon path.
+    //!
+    //! The `.dag` cost lens remains target-agnostic and produces `SymbolicCost`.
+    //! This module consumes target LanguageSpec realization rows and extracts the
+    //! per-primitive concrete costs that later composition slices combine with the
+    //! abstract symbolic shape.
+
+    use std::collections::HashMap;
+
+    use crate::dag::{Dag, DeclarationId, FieldValue, LiteralBits, ValueBody};
+
+    /// 🟢 GREEN (terminal): closed mirror of the six `*Realization`
+    /// meta-types in `src/v3/std/emit_model.dag`; each variant selects a
+    /// distinct row shape with different key fields.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum RealizationCostCategory {
+        Type,
+        Callable,
+        Operator,
+        Behavior,
+        TypeInstantiation,
+        Pattern,
+    }
+
+    /// 🟢 GREEN (terminal): lookup key shape is determined by the realization
+    /// row category. Five categories key by `target`; operator rows key by
+    /// `(target, op)`, so collapsing to one record would make absent fields
+    /// meaningful for non-operator rows.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum RealizationCostKey {
+        Type(DeclarationId),
+        Callable(DeclarationId),
+        Operator {
+            target: DeclarationId,
+            op: DeclarationId,
+        },
+        Behavior(DeclarationId),
+        TypeInstantiation(DeclarationId),
+        Pattern(DeclarationId),
+    }
+
+    impl RealizationCostKey {
+        pub fn category(self) -> RealizationCostCategory {
+            match self {
+                Self::Type(_) => RealizationCostCategory::Type,
+                Self::Callable(_) => RealizationCostCategory::Callable,
+                Self::Operator { .. } => RealizationCostCategory::Operator,
+                Self::Behavior(_) => RealizationCostCategory::Behavior,
+                Self::TypeInstantiation(_) => RealizationCostCategory::TypeInstantiation,
+                Self::Pattern(_) => RealizationCostCategory::Pattern,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct RealizationCostAmount {
+        value: i64,
+    }
+
+    impl RealizationCostAmount {
+        fn new(value: i64) -> Result<Self, i64> {
+            if value >= 0 {
+                Ok(Self { value })
+            } else {
+                Err(value)
+            }
+        }
+
+        pub fn value(self) -> i64 {
+            self.value
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct RealizationCostEntry {
+        pub declaration: DeclarationId,
+        pub language: DeclarationId,
+        pub key: RealizationCostKey,
+        pub cost: RealizationCostAmount,
+    }
+
+    impl RealizationCostEntry {
+        pub fn category(&self) -> RealizationCostCategory {
+            self.key.category()
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct RealizationCostTable {
+        language: DeclarationId,
+        entries: HashMap<RealizationCostKey, RealizationCostEntry>,
+    }
+
+    /// 🟢 GREEN (terminal): fail-closed error taxonomy for this walker.
+    /// The variants distinguish missing meta-type substrate, malformed row
+    /// payload, negative cost facts, and duplicate realization keys; these are
+    /// different repair surfaces.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum RealizationCostError {
+        MissingMeta(&'static str),
+        NotLanguageSpec {
+            declaration: DeclarationId,
+        },
+        MalformedRealization {
+            declaration: DeclarationId,
+            detail: String,
+        },
+        NegativeRealizationCost {
+            declaration: DeclarationId,
+            cost: i64,
+        },
+        DuplicateRealization {
+            declaration: DeclarationId,
+            key: RealizationCostKey,
+        },
+    }
+
+    impl RealizationCostTable {
+        pub fn for_language(
+            dag: &Dag,
+            language: DeclarationId,
+        ) -> Result<Self, RealizationCostError> {
+            let metas = RealizationMetas::read(dag)?;
+            let language_spec_meta = dag
+                .declaration_by_name("LanguageSpec")
+                .map(|decl| decl.id)
+                .ok_or(RealizationCostError::MissingMeta("LanguageSpec"))?;
+            if dag.declaration(language).meta_tag != Some(language_spec_meta) {
+                return Err(RealizationCostError::NotLanguageSpec {
+                    declaration: language,
+                });
+            }
+            let mut entries = HashMap::new();
+
+            for decl in dag.declarations() {
+                let Some(meta_tag) = decl.meta_tag else {
+                    continue;
+                };
+                let Some(category) = metas.category_for(meta_tag) else {
+                    continue;
+                };
+                let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+                    return Err(RealizationCostError::MalformedRealization {
+                        declaration: decl.id,
+                        detail: "realization data item has no Structural value_body".to_string(),
+                    });
+                };
+                let row_language = require_decl_ref(fields, "language", decl.id)?;
+                if row_language != language {
+                    continue;
+                }
+                let target = require_decl_ref(fields, "target", decl.id)?;
+                let key = match category {
+                    RealizationCostCategory::Type => RealizationCostKey::Type(target),
+                    RealizationCostCategory::Callable => RealizationCostKey::Callable(target),
+                    RealizationCostCategory::Operator => RealizationCostKey::Operator {
+                        target,
+                        op: require_decl_ref(fields, "op", decl.id)?,
+                    },
+                    RealizationCostCategory::Behavior => RealizationCostKey::Behavior(target),
+                    RealizationCostCategory::TypeInstantiation => {
+                        RealizationCostKey::TypeInstantiation(target)
+                    }
+                    RealizationCostCategory::Pattern => RealizationCostKey::Pattern(target),
+                };
+                let entry = RealizationCostEntry {
+                    declaration: decl.id,
+                    language,
+                    key,
+                    cost: require_nonnegative_int(fields, "cost", decl.id)?,
+                };
+                if entries.insert(key, entry).is_some() {
+                    return Err(RealizationCostError::DuplicateRealization {
+                        declaration: decl.id,
+                        key,
+                    });
+                }
+            }
+
+            Ok(Self { language, entries })
+        }
+
+        pub fn language(&self) -> DeclarationId {
+            self.language
+        }
+
+        pub fn len(&self) -> usize {
+            self.entries.len()
+        }
+
+        pub fn is_empty(&self) -> bool {
+            self.entries.is_empty()
+        }
+
+        pub fn get(&self, key: &RealizationCostKey) -> Option<&RealizationCostEntry> {
+            self.entries.get(key)
+        }
+
+        pub fn cost(&self, key: &RealizationCostKey) -> Option<RealizationCostAmount> {
+            self.get(key).map(|entry| entry.cost)
+        }
+    }
+
+    struct RealizationMetas {
+        type_meta: DeclarationId,
+        callable_meta: DeclarationId,
+        operator_meta: DeclarationId,
+        behavior_meta: DeclarationId,
+        type_instantiation_meta: DeclarationId,
+        pattern_meta: DeclarationId,
+    }
+
+    impl RealizationMetas {
+        fn read(dag: &Dag) -> Result<Self, RealizationCostError> {
+            Ok(Self {
+                type_meta: dag
+                    .type_realization_meta()
+                    .ok_or(RealizationCostError::MissingMeta("TypeRealization"))?,
+                callable_meta: dag
+                    .callable_realization_meta()
+                    .ok_or(RealizationCostError::MissingMeta("CallableRealization"))?,
+                operator_meta: dag
+                    .operator_realization_meta()
+                    .ok_or(RealizationCostError::MissingMeta("OperatorRealization"))?,
+                behavior_meta: dag
+                    .behavior_realization_meta()
+                    .ok_or(RealizationCostError::MissingMeta("BehaviorRealization"))?,
+                type_instantiation_meta: dag.type_instantiation_realization_meta().ok_or(
+                    RealizationCostError::MissingMeta("TypeInstantiationRealization"),
+                )?,
+                pattern_meta: dag
+                    .pattern_realization_meta()
+                    .ok_or(RealizationCostError::MissingMeta("PatternRealization"))?,
+            })
+        }
+
+        fn category_for(&self, meta_tag: DeclarationId) -> Option<RealizationCostCategory> {
+            if meta_tag == self.type_meta {
+                Some(RealizationCostCategory::Type)
+            } else if meta_tag == self.callable_meta {
+                Some(RealizationCostCategory::Callable)
+            } else if meta_tag == self.operator_meta {
+                Some(RealizationCostCategory::Operator)
+            } else if meta_tag == self.behavior_meta {
+                Some(RealizationCostCategory::Behavior)
+            } else if meta_tag == self.type_instantiation_meta {
+                Some(RealizationCostCategory::TypeInstantiation)
+            } else if meta_tag == self.pattern_meta {
+                Some(RealizationCostCategory::Pattern)
+            } else {
+                None
+            }
+        }
+    }
+
+    fn require_field<'a>(
+        fields: &'a [(String, FieldValue)],
+        label: &str,
+        declaration: DeclarationId,
+    ) -> Result<&'a FieldValue, RealizationCostError> {
+        fields
+            .iter()
+            .find_map(|(field_label, value)| (field_label == label).then_some(value))
+            .ok_or(RealizationCostError::MalformedRealization {
+                declaration,
+                detail: format!("realization data item is missing required field `{label}`"),
+            })
+    }
+
+    fn require_decl_ref(
+        fields: &[(String, FieldValue)],
+        label: &str,
+        declaration: DeclarationId,
+    ) -> Result<DeclarationId, RealizationCostError> {
+        match require_field(fields, label, declaration)? {
+            FieldValue::Reference(id) => Ok(*id),
+            _ => Err(RealizationCostError::MalformedRealization {
+                declaration,
+                detail: format!("realization data item field `{label}` should be a DeclarationRef"),
+            }),
+        }
+    }
+
+    fn require_nonnegative_int(
+        fields: &[(String, FieldValue)],
+        label: &str,
+        declaration: DeclarationId,
+    ) -> Result<RealizationCostAmount, RealizationCostError> {
+        match require_field(fields, label, declaration)? {
+            FieldValue::Literal(LiteralBits::Int(value)) => {
+                RealizationCostAmount::new(*value).map_err(|cost| {
+                    RealizationCostError::NegativeRealizationCost { declaration, cost }
+                })
+            }
+            _ => Err(RealizationCostError::MalformedRealization {
+                declaration,
+                detail: format!("realization data item field `{label}` should be an Int literal"),
+            }),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        use crate::generated_full_bootstrap_dag;
+
+        #[test]
+        fn realization_cost_table_rejects_negative_cost_rows() {
+            let mut dag = bootstrap_dag();
+            let rust_language = named_id(&dag, "rust_language");
+            let rust_int = named_id(&dag, "rust_int");
+            set_int_field(&mut dag, rust_int, "cost", -1);
+
+            let err = RealizationCostTable::for_language(&dag, rust_language)
+                .expect_err("negative realization cost should fail closed");
+
+            assert_eq!(
+                err,
+                RealizationCostError::NegativeRealizationCost {
+                    declaration: rust_int,
+                    cost: -1,
+                }
+            );
+        }
+
+        #[test]
+        fn realization_cost_table_rejects_non_language_spec_context() {
+            let dag = bootstrap_dag();
+            let not_language = named_id(&dag, "Int");
+
+            let err = RealizationCostTable::for_language(&dag, not_language)
+                .expect_err("non-LanguageSpec context should fail closed");
+
+            assert_eq!(
+                err,
+                RealizationCostError::NotLanguageSpec {
+                    declaration: not_language,
+                }
+            );
+        }
+
+        fn named_id(dag: &Dag, name: &str) -> DeclarationId {
+            dag.declaration_by_name(name)
+                .unwrap_or_else(|| panic!("missing declaration `{name}`"))
+                .id
+        }
+
+        fn bootstrap_dag() -> Dag {
+            std::thread::Builder::new()
+                .name("realization-cost-bootstrap".to_string())
+                .stack_size(64 * 1024 * 1024)
+                .spawn(generated_full_bootstrap_dag)
+                .expect("spawn bootstrap builder")
+                .join()
+                .expect("bootstrap builder should not panic")
+        }
+
+        fn set_int_field(dag: &mut Dag, decl: DeclarationId, field_name: &str, value: i64) {
+            let Some(ValueBody::Structural { fields }) = &mut dag.declaration_mut(decl).value_body
+            else {
+                panic!("declaration {:?} should have structural value_body", decl);
+            };
+            let field = fields
+                .iter_mut()
+                .find_map(|(label, field_value)| (label == field_name).then_some(field_value))
+                .unwrap_or_else(|| panic!("missing field `{field_name}`"));
+            *field = FieldValue::Literal(LiteralBits::Int(value));
+        }
+    }
+}
 pub mod self_host_receipt_p0;
 pub mod evaluator {
     //! E2 evaluator frame helpers.
@@ -132,21 +504,25 @@ pub mod evaluator {
         Err(DescentResidual::EvidenceIncomplete)
     }
 
-    /// Rust mirror of the PR-A.3 eager-baseline strategy carrier.
+    /// Rust mirror of the PR-A.3 / TC2 eager strategy carrier.
     ///
-    /// **Dissolution receipt: TERMINAL at PR-A.3 eager-baseline scope.** The
+    /// **Dissolution receipt: TERMINAL at PR-A.3 / TC2 input-order scope.** The
     /// public evaluator boundary carries strategy now so downstream slices
-    /// cannot erase it, but the mirror stays identical to `runtime.dag`:
-    /// exactly `ApplicativeOrder / LeftFirst`. Additional inhabitants must land
-    /// with substrate carriers and executable evaluator rules.
+    /// cannot erase it. TC2 adds a second executable input order under the same
+    /// applicative/eager skeleton; additional strategy families must land with
+    /// substrate carriers and executable evaluator rules.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalStrategy {
         ApplicativeOrder { input_order: InputEvaluationOrder },
     }
 
+    /// 🟢 TERMINAL: Rust mirror of `std.runtime::InputEvaluationOrder`. Both
+    /// variants have executable eager evaluator behavior and key TC2
+    /// strategy-paired report producers through `EvalStrategy`.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum InputEvaluationOrder {
         LeftFirst,
+        RightFirst,
     }
 
     /// **Dissolution receipt: TERMINAL.** Typed fail-closed outcomes for
@@ -284,11 +660,6 @@ pub mod evaluator {
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
-        match strategy {
-            EvalStrategy::ApplicativeOrder {
-                input_order: InputEvaluationOrder::LeftFirst,
-            } => {}
-        }
         match dag.node_opt(&node).ok_or(EvalError::MissingNode { node })? {
             Behavior::Value(value) => Ok(eval_value(value)),
             Behavior::Transform(t) => eval_transform_node(dag, t, state, strategy),
@@ -574,10 +945,7 @@ pub mod evaluator {
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
-        let mut operands = Vec::with_capacity(t.inputs.len());
-        for port in &t.inputs {
-            operands.push(eval_port(dag, *port, state, strategy)?);
-        }
+        let operands = eval_transform_operands(dag, &t.inputs, state, strategy)?;
         match &t.target {
             TransformTarget::Operator(OperatorKind::Arithmetic(op)) => {
                 if operands.len() != 2 {
@@ -774,6 +1142,33 @@ pub mod evaluator {
                 })
             }
         }
+    }
+
+    fn eval_transform_operands(
+        dag: &Dag,
+        inputs: &[PortId],
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Vec<Value>, EvalError> {
+        let mut evaluated = Vec::with_capacity(inputs.len());
+        match strategy {
+            EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::LeftFirst,
+            } => {
+                for (index, port) in inputs.iter().enumerate() {
+                    evaluated.push((index, eval_port(dag, *port, state, strategy)?));
+                }
+            }
+            EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::RightFirst,
+            } => {
+                for (index, port) in inputs.iter().enumerate().rev() {
+                    evaluated.push((index, eval_port(dag, *port, state, strategy)?));
+                }
+                evaluated.sort_by_key(|(index, _)| *index);
+            }
+        }
+        Ok(evaluated.into_iter().map(|(_, value)| value).collect())
     }
 
     fn eval_callable_body_in_pushed_frame(
@@ -1001,6 +1396,12 @@ pub mod evaluator {
         fn eager_strategy() -> EvalStrategy {
             EvalStrategy::ApplicativeOrder {
                 input_order: InputEvaluationOrder::LeftFirst,
+            }
+        }
+
+        fn eager_right_first_strategy() -> EvalStrategy {
+            EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::RightFirst,
             }
         }
 
@@ -1421,6 +1822,53 @@ pub mod evaluator {
             let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("sub");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+        }
+
+        #[test]
+        fn transform_right_first_evaluates_inputs_without_reordering_operands() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(10), span());
+            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+            let strategy = eager_right_first_strategy();
+
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("right-first sub");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+        }
+
+        #[test]
+        fn transform_right_first_reports_rightmost_input_error_first() {
+            let mut dag = Dag::new();
+            let lhs = dag.alloc_port(None);
+            let rhs = dag.alloc_port(None);
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+
+            let mut left_first_state = empty_state();
+            let left_first_err = eval_node(&dag, entry, &mut left_first_state, &eager_strategy())
+                .expect_err("left-first should read lhs first");
+            assert_eq!(left_first_err, EvalError::UnboundPort { port: lhs });
+
+            let mut right_first_state = empty_state();
+            let right_first_err = eval_node(
+                &dag,
+                entry,
+                &mut right_first_state,
+                &eager_right_first_strategy(),
+            )
+            .expect_err("right-first should read rhs first");
+            assert_eq!(right_first_err, EvalError::UnboundPort { port: rhs });
         }
 
         #[test]
@@ -3351,10 +3799,8 @@ pub mod lens_cost {
         use crate::complexity_lattice::complexity_enforcement_budget_dominates as asymptotic_dominates;
         use crate::dag::*;
         use crate::diagnostics::*;
-        use crate::lens_t_las_carrier::ProjectionResult::{ProjectedBudget, ProjectionFailed};
         use crate::lens_t_las_carrier::{
-            EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic, ProjectionFailure,
-            ProjectionResult,
+            EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
         };
         use crate::Witness;
 
