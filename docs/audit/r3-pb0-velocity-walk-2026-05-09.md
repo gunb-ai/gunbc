@@ -202,4 +202,39 @@ The growth-trajectory finding in §0 supersedes any earlier cluster-analysis cla
 
 ---
 
+## §8. Meta-finding: closure-claims-vs-HEAD drift (added 2026-05-09 per Director audit sweep)
+
+This audit + 2 parallel Director-tier audits (gunbc#828 sweep 2026-05-09 via Director-spawned Explore agents, surfacing 6 additional drift items at gunbc#846 #issuecomment-4412017502) converge on a meta-finding: **R3 program-plan claims drift in the same direction — running ahead of HEAD reality**.
+
+Specific instances surfaced across the 3 audits:
+
+1. **§1.8 status drift** (this audit §1) — 9 gates likely promotable to CONSUMER_LANDED but ledger Status column not refreshed
+2. **SG-0 trajectory drift** (this audit §0) — census growing despite "ratchet to zero" framing in T-PB-A/T-PB-B
+3. **TC1 #11 plan-language drift** (Director ask 6) — row #11 claimed "flips PASSING on E3.c merge" but ratified disposition is "stays DECLARED through R3 (canvas-tier #1972 deferred post-R3)"
+4. **10 demonstration gates runtime-path drift** (Director ask 7) — gates #65-#74 all DECLARED with no runtime path; some need R4-carve OR honest sub-status amendment
+5. **Substrate-gap-class #61 enumeration drift** (Director ask 8) — §1.4 conjunctive closure ("gap-test executes AND bridge count=0"); §2.4 only resolved execution path, not enumeration
+6. **Gate-count canonicalization drift** (Director ask 9) — `97 enumerated / 94 load-bearing` math has +/- 1 ambiguity in plan text
+7. **Gate #95 carve-doc cross-ref drift** (Director ask 10) — `r3-structure.md` cites C1 carve but `r4-carve-out-routing.md` doesn't enumerate #95 explicitly
+8. **§10.3 ratification ledger publication drift** (Director ask 11) — single-authority §10.3 cited from ROADMAP / r3-structure without inline disposition; P2 boundary-discipline drift
+9. **R4-carve hand-Rust drift** (PM ask 2026-05-09 at #828 #issuecomment-4412052024) — R4-carved C1/C2 lens implementations (`workflow_parallelism.rs` + likely effect-enum walker) stay hand-Rust at R3 close, contradicting THESIS.md:298 "0 hand-maintained" thesis
+
+### Pattern shape
+
+Every instance is the same structural shape: **document text asserts a closure-state that HEAD does not satisfy**. Either:
+- Plan asserts gate will close on event X, but X requires post-R3 substrate (drift instances 3, 7)
+- Plan asserts ratchet trajectory shape, but HEAD trajectory diverges (instances 1, 2, 9)
+- Plan asserts conjunctive closure but only one disjunct shipped (instance 5)
+- Plan internal cross-references drift (instances 4, 6, 8)
+
+### Standing recommendation
+
+**Future R3 readiness audits should grep for status-vs-HEAD before trusting plan-text.** Specific tooling proposal:
+- Per Mgr cycle: each lane-Mgr cross-checks own §1.8 rows against HEAD evidence; reports drift to PM
+- PM-cycle: weekly status-vs-HEAD grep across §1.8 + §10.3 (using §1.8 ledger gate IDs as grep anchors to `dsl/std/`, `src/v3/std/`, and CI consumer paths)
+- This artifact (and the SG-0 trajectory tracker `r3-sg0-trajectory-tracker.md`) should be folded into Director-tier progress-bar authoring per operator ask 2026-05-09; honest-trajectory visualization replaces lane-completion-proxy framing
+
+The meta-finding is structural-not-personnel: **plan-text drifts because the HEAD-vs-text reconciliation cadence is not in the standing PM/Director cycle**. Adding it explicitly closes the drift class.
+
+---
+
 **End of audit.**
