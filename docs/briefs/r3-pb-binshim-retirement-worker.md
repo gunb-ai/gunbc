@@ -135,7 +135,7 @@ data census_subset_claim: TestClaim = {
 }
 ```
 
-Closure when count==0 (currently observes 9). Per-PR shrink receipts acceptable per Substrate Mgr disposition; closure at 0.
+**TestClaim verdict semantics**: the runtime predicate is **zero-only** (`Pass` iff count==0; otherwise `Fail` with the observed count). The TestClaim is **not** a schedule-bound gate; it does not encode an interim bound and cannot pass with a non-zero count. "Per-PR shrink receipts" referenced in the disposition are **PR-level milestones tracked outside this TestClaim** (e.g., R3 BinShim retirement lane progress reports), not TestClaim verdicts. Closure of §1.8 sub-gate #7 is gated on this TestClaim flipping to Pass at count==0.
 
 ### Other behavioral acceptance bullets (per dispatch directive)
 
