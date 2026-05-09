@@ -166,6 +166,18 @@ fn complexity_lens_migration_stop_surface_ratchet() {
         "`complexity_lens_read_stub` retired: read must delegate to `complexity_of`"
     );
     assert!(
+        dag.declaration_by_name("complexity_lens_monoid_op_stub")
+            .is_none(),
+        "`complexity_lens_monoid_op_stub` retired: monoid op must be \
+         `complexity_lens_sequential_op` / `compose_summary_sequential` so \
+         `op(a, identity) == a` (std.algebra monoid witness)"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_lens_sequential_op")
+            .is_some(),
+        "expected `complexity_lens_sequential_op` as Lens monoid op (compose spine)"
+    );
+    assert!(
         dag.declaration_by_name("complexity_lens_read").is_some(),
         "expected `complexity_lens_read` (authoritative read spine)"
     );
