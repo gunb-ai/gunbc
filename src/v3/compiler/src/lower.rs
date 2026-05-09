@@ -3286,7 +3286,8 @@ fn build_template_arguments(
         }
         return Vec::new();
     }
-    let template_param_count = dag.declaration(template).type_params.len();
+    let template_for_params = resolve_template_for_type_parameters(dag, template);
+    let template_param_count = dag.declaration(template_for_params).type_params.len();
     if template_param_count != args.len() {
         report_declaration_error(
             dag,
@@ -3312,7 +3313,7 @@ fn build_template_arguments(
         .enumerate()
         .map(|(idx, arg)| {
             let value = type_to_declaration_id(arg, symbols, local, dag);
-            let parameter = template_param_id(dag, template, idx).expect(
+            let parameter = template_param_id(dag, template_for_params, idx).expect(
                 "template_param_count equality was checked immediately above — \
                  param lookup at idx < count must succeed",
             );
@@ -3516,6 +3517,21 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
 /// `idx` requires; callers must fail-closed (not substitute a fallback).
 fn template_param_id(dag: &Dag, template: DeclarationId, idx: usize) -> Option<DeclarationId> {
     dag.declaration(template).type_params.get(idx).copied()
+}
+
+/// `import std.other { Foo }` introduces a forwarding declaration whose
+/// connective is `Atom(ResolvedByName(target))` with an empty `type_params`
+/// slot. Generic instantiation must read params from the **target** template
+/// (e.g. `ApproximateField<F>` in `src/v3/std/approximate_field.dag`), not the
+/// import stub — otherwise `Foo<Bar>` lowers as arity-0 and drops arguments.
+fn resolve_template_for_type_parameters(dag: &Dag, mut template: DeclarationId) -> DeclarationId {
+    loop {
+        match &dag.declaration(template).connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => template = *next,
+            _ => break,
+        }
+    }
+    template
 }
 
 // DB-11 (3a.3) single-construction-authority cleanup:
