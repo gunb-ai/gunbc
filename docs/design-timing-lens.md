@@ -13,6 +13,8 @@ Wall-clock durations and POSIX-style epoch coordinates are carried by a dedicate
 
 ### 1.2 `TimingMeasurement` report coproduct (Practice 4 dissolution)
 
+**PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD** — declared inline on `TimingMeasurement` in `src/v3/std/timing_lens.dag` (emoji classification + four-pattern table per `docs/modeling-discipline.md#4-coproduct-dissolution`).
+
 `TimingMeasurement` is a closed sum encoding **report state folded with the timing fact** (`Observed { duration: Nanoseconds } | Unobserved | Ambiguous | Stale`). Practice 4 four-pattern dissolution:
 
 1. **Fact placement** — PASS: each variant names one external observation outcome; no duplicate authorities.

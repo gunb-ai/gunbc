@@ -24,13 +24,15 @@ type Nanoseconds {
   count: Int
 }
 
-// PRACTICE 4 — four-pattern dissolution (report-state coproduct):
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — `TimingMeasurement` (T-WAD Slice 2 / §1.8 gate #54):
+// external workflow timing **report** coproduct (`Observed` carries `Nanoseconds`;
+// `Unobserved` / `Ambiguous` / `Stale` are unit observation outcomes; no bare
+// `Missing` label — witness-resolution collision class).
+// Four-pattern dissolution (per `docs/modeling-discipline.md#4-coproduct-dissolution`):
 //   1. Fact placement — PASS: each variant names one external observation fact.
 //   2. Variant-is-data — PASS: `Observed` carries `Nanoseconds`; others unit facts.
 //   3. Algebraic form — PASS: closed sum over report outcomes (no stringly state).
 //   4. Dimensional — N/A at this layer (time magnitude is tagged via `Nanoseconds`).
-// `Unobserved` labels the gate's "missing evidence" state without using the bare
-// identifier `Missing` (resolves ambiguously in witness expression sites).
 type TimingMeasurement
   = Observed { duration: Nanoseconds }
   | Unobserved
