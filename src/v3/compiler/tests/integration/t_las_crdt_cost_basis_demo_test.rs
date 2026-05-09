@@ -12,14 +12,10 @@
 //! **any** `LogCost`, so `dominates(my_crdt_field_composed, LogCost(replicas))` is
 //! *vacuous* and is **not** asserted here.
 //!
-//! **What we pin instead:** (1) a concrete **`CostBasisDeclaration`** (carrier from
-//! `lenses.cost` / `lens_cost_symbolic_generated.rs`): `PerWrite` + **§4.2**
-//! `O_log_replicas` as `LogCost(merge_replicas_port)` — the **`crdt_merge_step`**
-//! parameter port the divide lowers on (same logical replicas as the outer fn, but
-//! a **distinct** `PortId` from `my_crdt_field.replicas`) — plus `subject: DeclarationId`
-//! for the workflow entry `my_crdt_field` and source **`span`** from that bind. That is
-//! the cost-basis evidence carrier the audit separates from `apply_lens` configuration
-//! until the fold reads persisted declarations. (2) **Full symbolic-cost lens table**
+//! **What we pin instead:** (1) **`build_per_write_log_cost_basis_declaration`** — single-authority
+//! materialization of **`CostBasisDeclaration`** from the lowered **`Dag`** (subject `DeclarationId`,
+//! `PerWrite`, **`LogCost(merge_replicas_port)`**, bind **`span`**). The `.dag` carrier remains the
+//! type definitions in `lenses.cost` (`lens_cost_symbolic_generated.rs`). (2) **Full symbolic-cost lens table**
 //! ([`compute_symbolic_costs`]): some port still **`Hit`s `LogCost(merge_replicas_port)`**
 //! from divide lowering inside `crdt_merge_step` — the per-write O(log replicas)
 //! factor **survives in lens output** even though dimension `composed` at the
@@ -28,13 +24,14 @@
 //! — the per-write log budget is **not** a sound ceiling for the full workflow.
 //!
 //! Reading **`CostBasisDeclaration` rows from `.dag` / folding them into**
-//! **`compute_symbolic_costs`** remains follow-on; **`basis.cost`** matches the
-//! **`LogCost(merge_replicas_port)`** entries the cost lens already assigns on the DAG.
+//! **`compute_symbolic_costs`** remains follow-on; **`basis.cost`** still matches the
+//! **`LogCost(merge_replicas_port)`** rows `compute_symbolic_costs` assigns.
 //!
 //! Fixture companion: `src/v3/compiler/tests/fixtures/t_las_crdt_cost_basis_demo.dag`.
 //! Design: `docs/design-lens-application-surface.md` §4.2 + cost-basis audit
 //! `docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`.
 
+use v3_compiler::build_per_write_log_cost_basis_declaration;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{dominates, Behavior, Lookup, PortId, SizeVariable, SymbolicCost};
 use v3_compiler::lens_cost_symbolic::{
@@ -132,22 +129,8 @@ fn per_write_log_replicas_budget(merge_replicas_port: PortId) -> SymbolicCost {
 fn crdt_field_dimension_and_basis() -> (v3_compiler::dag::Dag, SymbolicCost, CostBasisDeclaration) {
     let dag = cached_compile_to_dag(MY_CRDT_FIELD, CRDT_FIELD_PROGRAM_FILE);
     let root = find_bind(&dag, "my_crdt_field");
-    let merge = find_bind(&dag, "crdt_merge_step");
-    let merge_replicas_port = *merge
-        .params
-        .first()
-        .expect("crdt_merge_step should take replicas: Int");
-    let per_op = per_write_log_replicas_budget(merge_replicas_port);
-    let subject = dag
-        .declaration_by_name("my_crdt_field")
-        .expect("named fn `my_crdt_field` should register a DeclarationId")
-        .id;
-    let basis = CostBasisDeclaration {
-        subject,
-        kind: CostBasisKind::PerWrite,
-        cost: per_op,
-        span: root.span.clone(),
-    };
+    let basis =
+        build_per_write_log_cost_basis_declaration(&dag, "my_crdt_field", "crdt_merge_step");
     let composed = match analyze_symbolic_cost_dimension(&dag, root.id) {
         DimensionReport::DimensionOk { composed, .. } => composed,
         DimensionReport::DimensionFail { violations, .. } => {

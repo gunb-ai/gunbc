@@ -4096,6 +4096,7 @@ pub use bootstrap_regen_fresh::{
     compile_full_bootstrap_without_parse_surface_dag_from_std_seed, compile_std_bootstrap_dag,
 };
 
+mod cost_basis_declaration;
 mod dimension;
 mod infer;
 
@@ -4307,6 +4308,7 @@ pub(crate) mod variant_payload {
 pub(crate) mod workflow_idempotency;
 pub(crate) mod workflow_parallelism;
 
+pub use cost_basis_declaration::build_per_write_log_cost_basis_declaration;
 pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan, LAYER1_DIAGNOSTIC_KIND_LABELS};
 pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
