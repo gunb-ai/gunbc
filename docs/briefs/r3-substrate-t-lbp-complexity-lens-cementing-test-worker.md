@@ -76,8 +76,8 @@ code beyond the existing #2271 implementation.
 
 The remaining sections preserve the original 2026-05-06 dispatch packet
 for provenance. They are not the live closure contract for this PR;
-see **Completion receipt** and **Acceptance accounting** above for the
-evidence this receipt actually claims.
+see **Completion receipt** above and **Acceptance accounting** below
+for the evidence this receipt actually claims.
 
 ### Precondition gates
 
