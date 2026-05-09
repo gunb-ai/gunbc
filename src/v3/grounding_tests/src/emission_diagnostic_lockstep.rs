@@ -145,19 +145,34 @@ fn mirror_variant_union() -> BTreeSet<String> {
 mod tests {
     use super::*;
 
+    fn with_bootstrap_stack<F, R>(f: F) -> R
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(f)
+            .expect("spawn bootstrap stack test thread")
+            .join()
+            .expect("bootstrap stack test thread panicked")
+    }
+
     #[test]
     fn lane_local_emission_diagnostic_mirrors_are_subset_of_substrate_sum() {
-        let dag = generated_full_bootstrap_dag();
-        let substrate = substrate_emission_diagnostic_variant_labels(&dag);
-        let mirrors = mirror_variant_union();
+        with_bootstrap_stack(|| {
+            let dag = generated_full_bootstrap_dag();
+            let substrate = substrate_emission_diagnostic_variant_labels(&dag);
+            let mirrors = mirror_variant_union();
 
-        let stray: Vec<_> = mirrors.difference(&substrate).cloned().collect();
-        assert!(
-            stray.is_empty(),
-            "lane-local EmissionDiagnostic mirrors contain variants not in substrate sum — add them \
-             to `src/v3/std/diagnostics.dag` first, then mirror: {stray:?}\n\
-             substrate labels: {substrate:?}"
-        );
+            let stray: Vec<_> = mirrors.difference(&substrate).cloned().collect();
+            assert!(
+                stray.is_empty(),
+                "lane-local EmissionDiagnostic mirrors contain variants not in substrate sum — add them \
+                 to `src/v3/std/diagnostics.dag` first, then mirror: {stray:?}\n\
+                 substrate labels: {substrate:?}"
+            );
+        });
     }
 
     /// Negative control: mirror-side label absent from substrate must surface via the same
@@ -171,20 +186,22 @@ pub enum EmissionDiagnostic {
 }
 ";
 
-        let dag = generated_full_bootstrap_dag();
-        let substrate = substrate_emission_diagnostic_variant_labels(&dag);
-        let body = extract_pub_enum_emission_diagnostic_body(SYNTHETIC_MIRROR);
-        let parsed = variant_labels_from_enum_body(body);
-        let stray: Vec<_> = parsed.difference(&substrate).cloned().collect();
+        with_bootstrap_stack(|| {
+            let dag = generated_full_bootstrap_dag();
+            let substrate = substrate_emission_diagnostic_variant_labels(&dag);
+            let body = extract_pub_enum_emission_diagnostic_body(SYNTHETIC_MIRROR);
+            let parsed = variant_labels_from_enum_body(body);
+            let stray: Vec<_> = parsed.difference(&substrate).cloned().collect();
 
-        assert!(
-            stray.contains(&"MirrorOnlySyntheticVariantRatchetTest".to_string()),
-            "expected synthetic mirror-only variant in stray set; got {stray:?}"
-        );
-        assert_eq!(
-            stray.len(),
-            1,
-            "synthetic mirror must declare exactly one variant for this negative control"
-        );
+            assert!(
+                stray.contains(&"MirrorOnlySyntheticVariantRatchetTest".to_string()),
+                "expected synthetic mirror-only variant in stray set; got {stray:?}"
+            );
+            assert_eq!(
+                stray.len(),
+                1,
+                "synthetic mirror must declare exactly one variant for this negative control"
+            );
+        });
     }
 }

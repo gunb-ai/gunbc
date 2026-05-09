@@ -173,6 +173,16 @@ impl DeclarationId {
     }
 }
 
+#[cfg(feature = "declaration-id-raw-test-witness")]
+impl DeclarationId {
+    /// Builds an opaque id without validating substrate indexing — **dependent test witness only**
+    /// (feature **`declaration-id-raw-test-witness`**; row-count gates that never read ids).
+    #[doc(hidden)]
+    pub const fn declaration_id_raw_for_testing(raw: u32) -> Self {
+        Self(raw)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ClusterId(u32);
 
@@ -383,125 +393,15 @@ pub struct NominalOpacity {
     pub permitted_accessors: Vec<DeclarationId>,
 }
 
-/// Value-body shape for `data foo: T = { body }` declarations. Two
-/// variants at M1(3) PR-B-unwind:
-///
-/// - **`Unparsed(SourceSpan)`** — the parser could not lower the
-///   body to a supported top-level value shape. The body's source
-///   span is preserved so sibling parser/substrate extensions (map
-///   literals and any remaining opaque forms) can reach in later. User-range declarations
-///   carrying `Unparsed` are rejected by
-///   `reject_user_unparsed_scaffolds`; bootstrap-range declarations
-///   tolerate it so std/*.dag files whose data bodies still use
-///   unsupported shapes continue to load.
-///
-/// - **`Structural { fields }`** — the body parsed as a record
-///   literal and lowering ran inhabitance checking against the
-///   declared type. Each field is a `(String, FieldValue)` pair
-///   where `FieldValue` is either a scalar literal or a typed
-///   declaration reference (the unwind shape — PR-B's initial
-///   payload was `Vec<(String, LiteralBits)>` and it forced
-///   downstream consumers like `emit_rust.rs` to dispatch on
-///   string keys, regenerating the name-bridge pattern that
-///   M1(2.7) had eliminated at the inference layer).
-///
-/// **Dissolution ledger** — mixed-lifecycle coproduct. `Unparsed`
-/// is the bounded scaffold (named dissolution trigger: M2+ parser
-/// extensions close class-5 gap #3); `Structural` is the
-/// structurally-grounded form. When the M2+ parser catches up to
-/// nested records / list literals / map literals, those non-record
-/// shapes currently landing in `Unparsed` move to structural variants
-/// (`ValueBody::List` and `ValueBody::Map` now cover top-level list
-/// and string-keyed map bodies), and `Unparsed` is removed via a
-/// reverse substrate-extension PR.
-///
-/// 4-pattern check on `Structural`:
-/// - Pattern 1 (fact placement): fails. The inline `(label,
-///   FieldValue)` list is a data-item-specific record-construction
-///   fact with no natural home on the other substrate edges.
-/// - Pattern 2 (variant-is-data): fails. `Structural`'s payload is
-///   structurally distinct from `Unparsed`'s source span.
-/// - Pattern 3 (algebraic form): fails. The two variants represent
-///   two parser-boundary states (structurally lowered vs
-///   scaffolded), not two points in a single algebra.
-/// - Pattern 4 (dimensional): fails. No shared coordinate space.
-///
-/// Verdict: `Structural` is terminal-at-current-scope for top-level
-/// record bodies, with the `FieldValue` enum carrying nested structural
-/// distinctions internally. Top-level list/map bodies use dedicated
-/// variants below because they are not records and must not be encoded
-/// as anonymous fields. Bounded by the Scaffold Boundaries invariant in
-/// `INVARIANTS.md`.
-#[derive(Debug, Clone)]
-pub enum ValueBody {
-    /// The body exists in source at the given span but is not yet
-    /// lowered to a value sub-DAG. Records, lists, and string-keyed
-    /// maps lower structurally.
-    Unparsed(SourceSpan),
-    /// The body parsed as a record literal and was inhabitance-
-    /// checked against the declared type. Each field holds a
-    /// recursively structural `FieldValue`; the label matches a
-    /// field on the type's Conj children.
-    Structural { fields: Vec<(String, FieldValue)> },
-    /// Scalar-valued data declaration: `data answer: Int = 42`.
-    /// Carries `LiteralBits` directly (Int / Bool / String) —
-    /// NOT a full `FieldValue`. This is deliberate:
-    ///
-    /// - `FieldValue::Record { .. }` at the top level is already
-    ///   representable as `ValueBody::Structural { fields }`;
-    ///   allowing `ValueBody::Scalar(FieldValue::Record(..))` would
-    ///   make illegal/overlapping states representable (two distinct
-    ///   encodings of the same top-level record body). Rejected.
-    /// - `FieldValue::Reference` and `Variant` as top-level data
-    ///   bodies are out of scope for DB-10's acceptance. Top-level
-    ///   lists use `ValueBody::List` above; do not widen `Scalar`
-    ///   to swallow non-scalar shapes.
-    ///
-    /// DB-10 (Lane 3 Stage 3a.2) — `compiler.dag` needs compile-time
-    /// scalar constants; previously the parser rejected non-
-    /// `{`-shaped RHS, so scalar `data` declarations could not exist.
-    Scalar(LiteralBits),
-    /// Top-level structural list value: `data xs: List<T> = [...]`.
-    ///
-    /// 4-pattern check for `List`:
-    /// - Pattern 1 (fact placement): fails. The ordered element sequence
-    ///   is the data declaration's value fact, not a property of the
-    ///   declaration's type edge or meta tag.
-    /// - Pattern 2 (variant-is-data): fails. `Vec<FieldValue>` is a
-    ///   distinct structural payload from source spans, record fields, and
-    ///   scalar bits.
-    /// - Pattern 3 (algebraic form): fails. List bodies are not points in
-    ///   the same algebra as records/scalars; they carry ordered
-    ///   homogeneous element facts needed by Engine/tokenizer consumers.
-    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
-    ///   `Structural` record labels or `Scalar` primitive constants.
-    ///
-    /// Verdict: terminal at the current top-level data-body layer. Elements
-    /// deliberately reuse `FieldValue`, matching nested structural list
-    /// values and preserving sum-constructor identity for list-of-sum data.
-    List(Vec<FieldValue>),
-    /// Top-level structural string-keyed map value:
-    /// `data table: Map<String, T> = { "k": v }`.
-    ///
-    /// 4-pattern check for `Map`:
-    /// - Pattern 1 (fact placement): fails. The key/value table is the
-    ///   data declaration's value fact, not a type-edge or meta-tag fact.
-    /// - Pattern 2 (variant-is-data): fails. `FieldMap` carries
-    ///   duplicate-free keyed entries, distinct from ordered lists, records,
-    ///   scalar bits, and source spans.
-    /// - Pattern 3 (algebraic form): fails. Map bodies are not points in
-    ///   the same algebra as records/scalars/lists; they carry string-keyed
-    ///   lookup facts needed by map-shaped bootstrap data.
-    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
-    ///   record labels or ordered list positions.
-    ///
-    /// Verdict: terminal at the current top-level data-body layer. Values
-    /// deliberately reuse `FieldValue`, matching nested structural map
-    /// values. `FieldMap` keeps insertion order for deterministic regen
-    /// while making duplicate keys unrepresentable. Non-string-key maps are
-    /// a separate future carrier.
-    Map(FieldMap),
-}
+// Value-body shape for `data foo: T = ...` declarations.
+//
+// Dissolution ledger: `Unparsed` is the bounded scaffold (named dissolution
+// trigger: M2+ parser extensions close class-5 gap #3); structural variants
+// carry lowered record/scalar/list/map data bodies. Keep the enum itself in the
+// generated include below so `src/v3/std/substrate.dag` remains the carrier
+// authority. Map payloads are wrapped in `FieldMap` on the Rust side to
+// preserve duplicate-key rejection.
+include!("dag_value_body_generated.rs");
 
 /// Ordered string-keyed structural map entries with duplicate keys rejected at
 /// construction. The ordered storage is deliberate: `.dag` data maps preserve
