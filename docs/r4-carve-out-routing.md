@@ -24,49 +24,17 @@ the R4 program plan as inputs.
 
 ## Carved-out items
 
-### C1 — `parallelism_lens_behaviorally_complete` (was §1.8 row #81)
+### ~~C1 — `parallelism_lens_behaviorally_complete`~~ — **DISSOLVED 2026-05-09 (carve-promotion-IN-R3)**
 
-**R3 status**: carved to R4 per S2 option-(b) ratification.
-**Substrate gap**: Stage 2e parallelism walker port from
-`src/v3/compiler/src/workflow_parallelism.rs` to `.dag`; rewire
-via `lane2_workflow_at` / `std.effects` (idempotency closure
-template). Substrate exists; work is port + rewire.
-**R4 dispatch shape**: M-sized lane in Substrate-continuation
-program. Independent from any other R4 critical-path; can dispatch
-parallel.
-**Cascade impact in R3**: T-LAS demonstration
-`opt_in_iteration_parallelism_via_lens_application_demonstrated`
-(originally part of T-LAS gates) carves alongside this lens — the
-demo cannot land without parallelism lens COMPLETE.
+**Status**: carve-promoted to R3 per Director ratification 2026-05-09 at gunbc#846 #issuecomment-4412330468 + operator framing 2026-05-09 ("0 hand-Rust including tests AND stage0; bootstrap is data + self-generated"). Walker port + rewire (M-sized lane, substrate-ready) folded into **Cluster F sub-phase F-α** per [`docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md`](audit/r3-cluster-f-sequencing-plan-2026-05-09.md). Gate #81 reclassified R4-carved → R3-load-bearing.
 
-### C2 — `effect_enumeration_lens_behaviorally_complete` (was §1.8 row #82)
+### ~~C2 — `effect_enumeration_lens_behaviorally_complete`~~ — **DISSOLVED 2026-05-09 (carve-promotion-IN-R3)**
 
-**R3 status**: carved to R4 per S2 option-(b) ratification.
-**Substrate gap**:
-- 4a: resource-threading migration (substrate exists; consumer migration)
-- 4b: ambient metadata removal (cleanup)
-- 4c: caller-side effect-set pinning carrier — **NEW substrate
-  introduction required** (not landed at R3 horizon)
-- 4d: full `OperationEffect` retirement (depends on 4a-4c)
-**R4 dispatch shape**: 4c is substrate-fact-introduction (P1
-procedure); brief authoring + worker dispatch in R4 Substrate
-continuation. 4a-4b-4d sequence after.
-**Cascade impact in R3**: none beyond T-LAS demonstration scope
-(no T-LAS demo specifically gates on effect_enumeration COMPLETE);
-T-LBP "register zero proxy / zero stub" gate (#83) narrows scope
-to in-R3 lenses (see C3).
+**Status**: carve-promoted to R3 per Director ratification 2026-05-09 at gunbc#846 #issuecomment-4412380947 (Director (a)-disposition). Per locked design [`docs/design-effect-enumeration-resource-threading.md`](design-effect-enumeration-resource-threading.md) §3.2 + §6.2: **carrier already exists** at `src/v3/std/services.dag::Operation`; atomic migration shape feasible (no new substrate type required). Folded into **Cluster F sub-phases F-β.1 (migration-shape canvas) + F-β.2 (atomic-migration implementation)** per Cluster F sequencing plan. Gate #82 reclassified R4-carved → R3-load-bearing.
 
-### C3 — `lens_capability_register_zero_proxy_zero_stub` scope narrowing (§1.8 row #83)
+### ~~C3 — `lens_capability_register_zero_proxy_zero_stub` scope narrowing (§1.8 row #83)~~ — **DISSOLVED 2026-05-09 (carve-promotion-IN-R3)**
 
-**R3 status**: gate **redefined** for R3 horizon. Original closure
-predicate "register status updated to ZERO PROXY / ZERO STUB at R3
-close" narrows to "ZERO PROXY / ZERO STUB **for in-scope lenses
-(complexity + cost)**". Parallelism + effect_enumeration entries in
-register remain at PROXY / STUB / PARTIAL with documented R4
-carve-out reference.
-**R4 dispatch shape**: at R4 close, register reaches full ZERO
-PROXY / ZERO STUB across all 4 lenses. In R3, gate #83 closes
-under the narrowed scope.
+**Status**: scope-narrowing dissolved alongside C1/C2 carve-promotion. Gate #83 fires for **all 4 in-R3 lenses** (complexity + cost + parallelism + effect_enum) at R3 close — no longer narrowed to complexity + cost only. Parallelism + effect_enumeration register entries are now in-R3-scope per C1/C2 promotion. Folded into **Cluster F sub-phase F-γ** alongside #95 demo. Gate #83 reclassified narrowed-scope → full-scope (#83 fires for ALL 4 lenses).
 
 ### C4 — Deferred `MachineConstraint<C>` axes per S3 Q-ratification
 
