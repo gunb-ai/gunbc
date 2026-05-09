@@ -10,9 +10,9 @@
 //!
 //! **`DeclaredIntegerIntents`:** before selection, the fold counts meta-tagged
 //! `TargetIntegerTypeInhabitance` declarations (**INVARIANTS.md E-6**). After a unique structural
-//! match, **`type_realization`** must name substrate `data …: TypeRealization` with
-//! **`language`/`target`** fields matching **`row.language`** / **`row.kernel_integer`**; otherwise the
-//! fold surfaces `UnderRefined` on **`target_integer_type_realization`**. Row `bound:` values use
+//! match, **`type_realization`** is accepted only through **`selected_target_after_row_type_realization_gate`**
+//! (substrate **`TypeRealization`** meta-tag + **`language`/`target`** vs row **`language`/`kernel_integer`**);
+//! mismatches surface `UnderRefined` **`target_integer_type_realization`**. Row `bound:` values use
 //! [`TargetIntegerInhabitanceBound`](../../std/emit_model.dag) — including **unit
 //! `PlatformDependentFact`** for platform-sized targets. [`match_bound`] pairs program
 //! [`BoundDeclarationView`] with those facts: kind-only **positive match** for
@@ -302,15 +302,16 @@ fn parse_target_integer_inhabitance_bound(
     }
 }
 
-/// Fail-closed check: **`row.type_realization`** must reference substrate **`data …: TypeRealization`**
-/// (**`meta_tag == type_realization_meta()`**) *and* the realization’s **`language`** /
-/// **`target`** fields (**`emit_model.dag`** `TypeRealization`) must match **`row.language`** and
-/// **`row.kernel_integer`** respectively — guarding against cross-target / cross-language spec drift
-/// (**E-6**).
-fn validate_type_realization_matches_inhabitance_row(
+/// Fail-closed `TypeRealization` payload inspection + **`SelectedTargetInhabitance`** mint (**single
+/// step** — proof and construction coincide). See **E-6** / inlined checks below.
+///
+/// **`row.type_realization`** names substrate **`data …: TypeRealization`** (**`meta_tag ==
+/// type_realization_meta()`**). Structural **`language` / `target`** must equal **`row.language`**
+/// / **`row.kernel_integer`** (**`emit_model.dag`** shape).
+fn selected_target_after_row_type_realization_gate(
     dag: &Dag,
     row: &TargetIntegerTypeInhabitanceRow,
-) -> Result<(), EmissionDiagnostic> {
+) -> Result<SelectedTargetInhabitance, EmissionDiagnostic> {
     let type_real_meta =
         dag.type_realization_meta()
             .ok_or_else(|| EmissionDiagnostic::UnderRefined {
@@ -354,7 +355,9 @@ fn validate_type_realization_matches_inhabitance_row(
         });
     }
 
-    Ok(())
+    Ok(SelectedTargetInhabitance::from_validated_type_realization(
+        realization,
+    ))
 }
 
 fn parse_target_integer_type_inhabitance_row(
@@ -414,11 +417,7 @@ fn select_declared_inhabitance(
         }
     };
 
-    validate_type_realization_matches_inhabitance_row(dag, selected)?;
-
-    Ok(SelectedTargetInhabitance::from_validated_type_realization(
-        selected.type_realization,
-    ))
+    selected_target_after_row_type_realization_gate(dag, selected)
 }
 
 fn program_integer_intent_from_projection(
@@ -582,7 +581,7 @@ mod type_realization_gate_tests {
         with_bootstrap_stack(|| {
             let dag = Dag::new();
             let row = u32_fixture_row_for_rust(&dag);
-            assert!(validate_type_realization_matches_inhabitance_row(&dag, &row).is_ok());
+            assert!(selected_target_after_row_type_realization_gate(&dag, &row).is_ok());
         });
     }
 
@@ -595,7 +594,7 @@ mod type_realization_gate_tests {
             let python_lang = dag.python_language_spec().expect("Python LanguageSpec");
 
             assert_eq!(
-                validate_type_realization_matches_inhabitance_row(
+                selected_target_after_row_type_realization_gate(
                     &dag,
                     &TargetIntegerTypeInhabitanceRow {
                         language: python_lang,
@@ -621,7 +620,7 @@ mod type_realization_gate_tests {
             let wrong_kernel = declaration_id_by_name(&dag, "Int32");
 
             assert_eq!(
-                validate_type_realization_matches_inhabitance_row(
+                selected_target_after_row_type_realization_gate(
                     &dag,
                     &TargetIntegerTypeInhabitanceRow {
                         language: rust_language,
@@ -652,7 +651,7 @@ mod type_realization_gate_tests {
             };
 
             assert_eq!(
-                validate_type_realization_matches_inhabitance_row(&dag, &row),
+                selected_target_after_row_type_realization_gate(&dag, &row),
                 Err(EmissionDiagnostic::UnderRefined {
                     unspecified_axis: "target_integer_type_realization".to_string(),
                 })
@@ -666,7 +665,7 @@ mod type_realization_gate_tests {
             let dag = Dag::new();
             let bogus = DeclarationId::declaration_id_raw_for_testing(u32::MAX);
             assert_eq!(
-                validate_type_realization_matches_inhabitance_row(
+                selected_target_after_row_type_realization_gate(
                     &dag,
                     &TargetIntegerTypeInhabitanceRow {
                         language: dag.rust_language_spec().expect("Rust LanguageSpec"),

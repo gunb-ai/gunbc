@@ -47,9 +47,9 @@ pub struct IntegerTargetIntent {
     pub bound: IntegerBoundProjection,
 }
 
-/// Selected integer target: identity from a `TargetIntegerTypeInhabitance` row after the fold’s
-/// fail-closed payload check on **`type_realization`** (substrate **`TypeRealization`** meta + row
-/// `language`/`kernel_integer` consistency with realization `language`/`target`; see `fold.rs`).
+/// Selected integer target: identity from **`selected_target_after_row_type_realization_gate`**
+/// (`fold.rs`) after substrate **`TypeRealization`** inspection (meta-tag + **`language`** /
+/// **`target`** vs row **`language`** / **`kernel_integer`**).
 ///
 /// **API contract:** downstream code must not fabricate this carrier — obtain values only from
 /// [`fold_program_to_target`](crate::fold::fold_program_to_target). The field is private so random
@@ -65,6 +65,8 @@ impl SelectedTargetInhabitance {
         self.type_realization
     }
 
+    /// Crate-local mint after **`fold::selected_target_after_row_type_realization_gate`** passes —
+    /// not a standalone proof primitive.
     pub(crate) fn from_validated_type_realization(type_realization: DeclarationId) -> Self {
         Self { type_realization }
     }
