@@ -61,42 +61,34 @@ Phase 3 (bulk port):
 
 | Phase | Gate | Owner Mgr | Partner | Authoring scope |
 |---|---|---|---|---|
-| 1a | #85 ForAll/Exists quantifier substrate | **Substrate Mgr** (warm-wolf-698 / #2068) | Verification (consumer wiring) | substrate carrier in `dsl/std/`; need substrate canvas first |
-| 1b | #86 ProgramGenerator carrier | **Substrate Mgr** (warm-wolf-698 / #2068) | Verification (consumer wiring) | substrate carrier in `dsl/std/`; need substrate canvas first |
+| 1a | #85 `Quantifier` + `QuantifiedTestClaim` carriers | **Substrate Mgr** (warm-wolf-698 / #2068) | Verification (consumer wiring) | extend `src/v3/std/verification.dag` per locked design `docs/design-tests-as-data-completeness.md` §2.2; no canvas needed (design-doc resolves shape) |
+| 1b | #86 `ProgramGenerator` carrier | **Substrate Mgr** (warm-wolf-698 / #2068) | Verification (consumer wiring) | extend `src/v3/std/verification.dag` per locked design `docs/design-tests-as-data-completeness.md` §2.1; no canvas needed (design-doc resolves shape) |
 | 2 | #87 cementing-test discipline | **Verification Mgr** (wise-bear-525 / #2075) | Substrate (#85/#86 consumer) | discipline pattern + first cementing-test migration receipt |
 | 3 | #84 every Rust test ports | **Verification Mgr** (wise-bear-525 / #2075) | Substrate (carrier consumer) + multi-Mgr (test ownership distributed) | bulk-port coordinator role; per-test-class migration brief queue |
 
-**Per Director directive (operator: "staffing is not a concern")**: lane Mgrs dispatch as many parallel workers as needed. Substrate Mgr can author #85 + #86 substrate canvases in parallel (different carrier shapes, no shared substrate dependency). Verification Mgr partners with Substrate consumer-wiring work-side as #85/#86 carriers land.
+**Per Director directive (operator: "staffing is not a concern")**: lane Mgrs dispatch as many parallel workers as needed. Substrate Mgr can land #85 + #86 carriers in parallel per locked design `docs/design-tests-as-data-completeness.md` §2.1 + §2.2 (different carrier shapes, no shared substrate dependency; no canvas-tier ratification — design-doc resolves shape per §1 Authority discipline). Verification Mgr partners with Substrate consumer-wiring work-side as #85/#86 carriers land.
 
-## §3. Phase 1 substrate canvases (substrate-canvas-author asks)
+## §3. Phase 1 substrate carrier landings (per locked design)
 
-**Critical**: gates #85 + #86 are substrate-shape introductions — they introduce new carriers in `dsl/std/`. Per `feedback_audit_adjacent_authority_first` + `feedback_grep_substrate_before_naming_ratification`, substrate-shape introductions need **substrate canvases authored before worker briefs** so Director can ratify carrier shape + naming.
+**Authority correction 2026-05-09 (codex BLOCKING on PR #2361 sha `c6c3fb96`)**: gates #85 + #86 substrate carriers are **already canonically defined** in [`docs/design-tests-as-data-completeness.md`](../design-tests-as-data-completeness.md) §2.1 + §2.2. Per design-doc preamble: "All §8 design questions resolved in-doc per `feedback_design_before_implement` — **no Director ratification required before lane dispatch** (only standard cascade gates: R2-Evaluator landed; existing TestClaim infrastructure from DB-15 R2)." Single canonical authority per INVARIANTS P2.
 
-### §3.1 #85 ForAll/Exists quantifier substrate canvas
+Prior framing of §3.1 / §3.2 as "substrate canvas needed; Director ratification needed before brief authoring" was a duplicate-authority anti-pattern (codex BLOCKING'd correctly). Reframed below to cite locked design + scope to lane-dispatch worker briefs only.
 
-**Substrate canvas needed** (Substrate Mgr authors):
-- Carrier shape: how does ForAll<P, T> / Exists<P, T> embed into Node/Conj/Disj/Cardinality/Bit per `feedback_compiler_is_dag_processor`?
-- Predicate body type: closed-DSL term (decidable per `feedback_decidability_invariant`) or runtime evaluation against ProgramGenerator?
-- Naming: `ForAllPrograms<C>`, `ForAllInhabitants<T>`, `Exists<P>` — grep `dsl/std/` first
-- Adjacency: existing `BinaryDimensionReportEquals` (Pattern-A) family is the precedent; quantifier substrate generalizes per-(algebra, inhabitant) iteration to "for all P matching predicate"
-- Pass-condition wiring: how does `every_rust_test_ports_to_dag_or_generated` count quantifier-driven tests?
+### §3.1 #85 `Quantifier` + `QuantifiedTestClaim` carriers (per design §2.2)
 
-**Director ratification needed before brief authoring** (substrate-canvas-tier).
+**Locked carrier shape** (per `docs/design-tests-as-data-completeness.md` §2.2): `Quantifier` is a closed two-variant sum (`ForAll | Exists`) — exhausting structurally meaningful quantifications over a `ProgramGenerator`'s output. `QuantifiedTestClaim { generator: ProgramGenerator, quantifier: Quantifier, ... }` lives **alongside** `TestClaim` (not as replacement) — covers the property-based axis where the existing `TestClaim` covers single-source enumerated tests.
 
-### §3.2 #86 ProgramGenerator carrier canvas
+**Substrate landing** (Substrate Mgr authoring under standing authority): extend `src/v3/std/verification.dag` to add `Quantifier` + `QuantifiedTestClaim` per design §2.2 spec. **No Director ratification needed** (locked design); standard cascade gates only (R2-Evaluator landed; existing DB-15 TestClaim infrastructure).
 
-**Substrate canvas needed** (Substrate Mgr authors):
-- Carrier shape: ProgramGenerator<C> as `.dag` data — what does it produce? Concrete `Dag` instances? `Node` trees? Constrained by what predicate?
-- Composition with #85 quantifier: ForAllPrograms<P, ProgramGenerator<C>> means "for all programs from generator G matching predicate P"
-- Examples / fixtures: representative test cases the generator must cover (e.g., 2+ algebraic constructs per #1.6 demonstration discipline minimum bar)
-- Naming: `ProgramGenerator<C>`, `ProgramShapeFamily<S>`, `TestProgramSeed` — grep `dsl/std/`
-- Adjacency: existing fixture patterns in `tests/fixtures/`; do those become structured `.dag` data via this carrier?
+### §3.2 #86 `ProgramGenerator` carrier (per design §2.1)
 
-**Director ratification needed before brief authoring** (substrate-canvas-tier).
+**Locked carrier shape** (per `docs/design-tests-as-data-completeness.md` §2.1): `ProgramGenerator` is a structural reference to a generator declaration — **not** a roster of "shape kinds" (which would replicate the closed-roster failure flagged by `lens-library-design.md` §1.5). The generator body is itself a `.dag` declaration producing program shapes; `ProgramGenerator` references it structurally per design §2.1 (Rust signature in design doc).
+
+**Substrate landing** (Substrate Mgr authoring under standing authority): extend `src/v3/std/verification.dag` to add `ProgramGenerator` carrier per design §2.1 spec. Composition with §3.1 #85: `QuantifiedTestClaim.generator` field references `ProgramGenerator`. **No Director ratification needed** (locked design); standard cascade gates only.
 
 ## §4. Phase 2 brief authoring scope (#87)
 
-**Verification Mgr authors worker brief** (PM-authorable now; substrate canvases for #85/#86 not blocking):
+**Verification Mgr authors worker brief** (PM-authorable now; #85/#86 carrier landings per locked design not blocking):
 
 - Scope: cementing-test discipline pattern application to existing hand-Rust cementing tests
 - First migration target: smallest hand-Rust cementing test (e.g., `cementing/cementing_lens_registry_dispatch_test.rs`) — proof-of-concept migration
@@ -131,13 +123,13 @@ Each class is a parallel-dispatchable worker batch.
 
 ## §6. Velocity projection
 
-**Phase 1 (parallel)**: 1-2 weeks per substrate canvas + carrier authoring (Substrate Mgr can run #85/#86 parallel with worker pairs)
+**Phase 1 (parallel)**: 1-2 weeks for #85/#86 carrier landings per locked design `docs/design-tests-as-data-completeness.md` §2.1 + §2.2 (Substrate Mgr can run #85/#86 parallel with worker pairs; no canvas-tier ratification — design-doc resolves shape).
 **Phase 2**: 1-2 weeks for #87 discipline pattern + first migration receipt
 **Phase 3**: 2-4 weeks for bulk-port (parallel per-class workers; staffing-not-a-concern)
 
 **Total Cluster M close**: **4-8 weeks** from Phase 1 dispatch start. Fits in 8-12 week R3 window if dispatch starts immediately.
 
-**Risk**: substrate canvases for #85/#86 may surface design questions that need Director ratification (not just Mgr-tier disposition). Each canvas-tier ratification adds 1-3 days to Phase 1 critical path. Account for 2-3 ratification cycles in worst case.
+**Risk**: locked design `docs/design-tests-as-data-completeness.md` §2.1 + §2.2 already resolves carrier shape; risk of unexpected design questions surfacing during landing is bounded. STOP-and-PING via Substrate Mgr inbox if migration shape surprises arise (per `feedback_construction_over_ratchets`).
 
 ## §7. Cross-Mgr coordination requirements
 
