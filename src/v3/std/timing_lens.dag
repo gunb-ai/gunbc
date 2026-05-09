@@ -13,18 +13,20 @@ module v3.std.timing_lens
 
 import std.list { List, is_empty }
 import std.nat { Nat }
-import std.types { Bool, ContentHash, FilePath, WorkflowProducerId, WorkflowObserverId, WorkflowProverId, WorkflowRunId }
+import std.types {
+  Bool,
+  ContentHash,
+  FilePath,
+  SourceSpan,
+  WorkflowProducerId,
+  WorkflowObserverId,
+  WorkflowProverId,
+  WorkflowRunId
+}
 import std.substrate { Dag, Behavior, LoopBound, NodeId }
-import v3.std.substrate { SourceSpan }
 import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.workflows { behavior_spine }
-
-// Placeholder `SourceSpan` for non-`Observed` diagnostics when `behavior_spine(d)`
-// is empty (no `Behavior` span to borrow). Declared as `data` so the record
-// literal is type-directed like other registry witnesses (DB-11).
-data timing_lens_empty_spine_diagnostic_span: SourceSpan =
-  { file: "src/v3/std/timing_lens.dag", start: 0, end: 0 }
 
 // PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — nominal SI-nanosecond coordinate for
 // durations and POSIX-epoch instants at this substrate layer. **Magnitude**
