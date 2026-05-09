@@ -113,7 +113,7 @@ fn workflow_observation_anchor_shape_locked() {
             "observer_id".to_string(),
             "producer_id".to_string(),
             "prover_id".to_string(),
-            "subject_stable_id".to_string(),
+            "subject_node".to_string(),
             "workflow_run_id".to_string(),
         ],
         "WorkflowObservationAnchor field set drifted"
@@ -141,6 +141,22 @@ fn nanoseconds_count_field_is_nat() {
     assert_eq!(
         count_ty, nat,
         "`Nanoseconds.count` must refine to `Nat`, matching `PerfBaselineMeasurement` ns fields in substrate"
+    );
+}
+
+/// P2 / gate #55 inv.1: subject key must be structural (`NodeId`), not free-form
+/// `String` (span/path blobs must not type-check as the stable subject slot).
+#[test]
+fn workflow_observation_anchor_subject_node_is_node_id() {
+    let dag = generated_full_bootstrap_dag();
+    let node_id = dag
+        .declaration_by_name("NodeId")
+        .expect("`NodeId` missing from full bootstrap (substrate_minimal authority)")
+        .id;
+    let ty = conj_field_ty(&dag, "WorkflowObservationAnchor", "subject_node");
+    assert_eq!(
+        ty, node_id,
+        "`WorkflowObservationAnchor.subject_node` must be `NodeId` (structural subject key), not `String`"
     );
 }
 

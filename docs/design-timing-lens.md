@@ -45,7 +45,7 @@ Scaffold functions in `timing_lens.dag` (`timing_measurement_lens_combine`, `tim
 
 `WorkflowObservationAnchor` factors reusable **external** workflow facts (timing today; logs, coverage, artifacts, failures in follow-on work) away from pure program text. The Substrate Mgr stance (gunbc#1130) requires these six invariants:
 
-1. **Stable subject identity** — attachment is keyed by a stable subject identifier (`subject_stable_id`), not by a source span or other editor-volatile coordinate.
+1. **Stable subject identity** — attachment is keyed by a structural substrate handle (`subject_node: NodeId` — the same opaque node-table identity used in `Dag.nodes` / `behavior_spine` witness lists), not by free-form path text or other editor-volatile coordinates. **P2:** span strings and path blobs are not representable in this field type.
 2. **Observed-artifact identity** — the external payload is bound via an explicit digest (`artifact_digest`) so “what was read” is objective, not inferred.
 3. **Producer / observer / prover separation** — three roles (`producer_id`, `observer_id`, `prover_id`) are recorded explicitly so provenance does not collapse into a single anonymous string.
 4. **Attachment time and run context** — `attached_at_ns: Nanoseconds` plus `workflow_run_id` tie the fact to a concrete run; `Nanoseconds` is the same nominal coordinate used for durations (SI-nanosecond magnitude as `Nat`; signed-epoch / range refinements deferred per §1.1).

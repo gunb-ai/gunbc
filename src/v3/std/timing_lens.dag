@@ -14,7 +14,7 @@ module v3.std.timing_lens
 import std.list { List, is_empty }
 import std.nat { Nat }
 import std.types { Bool }
-import std.substrate { Dag, Behavior, LoopBound }
+import std.substrate { Dag, Behavior, LoopBound, NodeId }
 import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.workflows { behavior_spine }
@@ -66,11 +66,15 @@ type TimingMeasurement
 // sourced outside the `.dag` program text (CI logs, artifacts, receipts).
 // Six invariants are documented in `docs/design-timing-lens.md` §2; this
 // record carries the structural coordinates those invariants reference.
+// Gate #55 invariant 1 (stable subject identity): `subject_node` is the
+// substrate `NodeId` table key (`Dag.nodes` / `behavior_spine` witness order),
+// not free-form path or source-span text — P2 Boundary Discipline / illegal-states
+// hygiene (stringly span coordinates cannot inhabit this field).
 // Declared before `TimingObservationEntry` so each observation row embeds the
 // same anchor authority as its measurement (Boundary Discipline: one product
 // fact, no join drift between payload and provenance).
 type WorkflowObservationAnchor {
-  subject_stable_id: String
+  subject_node: NodeId
   artifact_digest: String
   producer_id: String
   observer_id: String
