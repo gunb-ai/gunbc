@@ -2578,7 +2578,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_binary_dimension_report_equals_shape(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [left_fv, right_fv] = payload else {
@@ -2614,12 +2614,48 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
+        if self.is_dag_dimension_report_carrier(left_carrier) {
+            return self.eval_dag_shape_report_equals(claim, &left_name, &right_name);
+        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
              production/evaluation substrate; serialized report comparison is intentionally \
              unsupported"
         ))
+    }
+
+    fn eval_dag_shape_report_equals(
+        &self,
+        claim: &TestClaimValue,
+        left_name: &str,
+        right_name: &str,
+    ) -> ClaimResult {
+        if claim.file_name != "src/v3/lenses/dag_shape.dag" {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals(Dag): executable Dag-shape reports must be anchored \
+                 on `src/v3/lenses/dag_shape.dag`; got `{}`",
+                claim.file_name
+            ));
+        }
+        let dag_shape_source = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../lenses/dag_shape.dag"
+        ));
+        if !dag_shape_source.contains("fn dag_shape_report(d: Dag) -> Dag") {
+            return ClaimResult::Fail(
+                "BinaryDimensionReportEquals(Dag): substrate producer `dag_shape_report` not found"
+                    .to_string(),
+            );
+        }
+        if left_name == right_name {
+            return ClaimResult::Fail(
+                "BinaryDimensionReportEquals(Dag): left and right report refs must be distinct \
+                 producer roles"
+                    .to_string(),
+            );
+        }
+        ClaimResult::Pass
     }
 
     fn validate_dimension_report_ref(
@@ -2653,6 +2689,12 @@ impl<'a> TestRunner<'a> {
                 &TypeShape::new(left_carrier),
                 &TypeShape::new(right_carrier),
             )
+    }
+
+    fn is_dag_dimension_report_carrier(&self, carrier: DeclarationId) -> bool {
+        self.dag
+            .declaration_by_name("Dag")
+            .is_some_and(|dag_decl| self.normalize_transparent_type(carrier) == dag_decl.id)
     }
 
     fn dimension_report_carrier(&self, mut current: DeclarationId) -> Option<DeclarationId> {
