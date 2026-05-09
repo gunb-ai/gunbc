@@ -576,6 +576,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (E6-G1.a static representative) per Director ratification cascade 2026-05-06/07.
     "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs",
     "src/v3/compiler/tests/integration/tc3_strong_normalization_deferred_test.rs",
+    // TC3 strict-fire — §1.8 gate #13 (`tc3_pattern_a_second_mover_executable`); strong-
+    // normalization / Pattern-A second-mover `BinaryDimensionReportEquals` pairing per
+    // `r3-v-pattern-a-tc3-v1-worker.md` (two-stage gate; PASSING gated on T-FixedPoint stage (b)).
+    "src/v3/compiler/tests/integration/tc3_strong_normalization_strict_fire_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
