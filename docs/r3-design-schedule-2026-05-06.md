@@ -1,6 +1,6 @@
 # R3 Design Schedule — 2026-05-06
 
-**Status**: live PM-tier dispatch matrix per Brian directive 2026-05-06 (chat): *"can we schedule all the design now?"*
+**Status**: PM-tier dispatch matrix per Brian directive 2026-05-06 ("can we schedule all the design now?"). **AMENDED 2026-05-09**: T-LBP scope updated per Director carve-promotion-IN-R3 ratification at gunbc#846 #issuecomment-4412330468 + (a) at #issuecomment-4412380947 — gates #81/#82 (parallelism + effect_enum behavioral-complete) reclassified R4-CARVED (C1)/(C2) → **R3-LOAD-BEARING within Cluster F (T-LP-Retirement)** per `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md`. Prior C1/C2/C3 carves DISSOLVED. Substrate Mgr S2 canvas decision matrix below preserved as historical record of the option-(a)/(b)/(c) deliberation; option-(b) was ratified 2026-05-06 then AMENDED 2026-05-09 (carve-promotion DISSOLVES option-(b) carve-narrowing).
 
 **Authority hierarchy**:
 - [`docs/r3-structure.md`](r3-structure.md) — architectural archive (lane defs / 95-gate §"Acceptance" / Mgr structure)
@@ -42,11 +42,11 @@
 **Cascade impact** (per ratification):
 - §1.8 gate #79 (`complexity_lens_behaviorally_complete`) — IN R3
 - §1.8 gate #80 (`cost_lens_behaviorally_complete`) — IN R3
-- §1.8 gate #81 (`parallelism_lens_behaviorally_complete`) — R4-CARVED (C1)
-- §1.8 gate #82 (`effect_enumeration_lens_behaviorally_complete`) — R4-CARVED (C2)
-- §1.8 gate #83 (`lens_capability_register_zero_proxy_zero_stub`) — NARROWED scope IN R3 (C3): in-R3 lenses only
+- §1.8 gate #81 (`parallelism_lens_behaviorally_complete`) — was R4-CARVED (C1); **AMENDED 2026-05-09 carve-promoted-IN-R3 within Cluster F sub-phase F-α** (Director ratification at gunbc#846 #issuecomment-4412330468; prior C1 status DISSOLVED)
+- §1.8 gate #82 (`effect_enumeration_lens_behaviorally_complete`) — was R4-CARVED (C2); **AMENDED 2026-05-09 carve-promoted-IN-R3 within Cluster F sub-phases F-β.1/F-β.2** (Director ratification at gunbc#846 #issuecomment-4412380947; prior C2 status DISSOLVED)
+- §1.8 gate #83 (`lens_capability_register_zero_proxy_zero_stub`) — was NARROWED scope IN R3 (C3); **AMENDED 2026-05-09 full scope IN R3** (carve-promotion DISSOLVES C3 narrowing — register fires for all 4 in-R3 lenses)
 - §1.8 gate #61 (Class 2 `substrate_gap_function_valued_data_closed`) — chain-break dissolved (Q-Class-2-Chain-Break option (a) RATIFIED separately): RED → DECLARED YELLOW; single-prereq-blocked on T-E-P P1 + E6-G0d (E6-G0d landed at #1813)
-- T-LAS gate `opt_in_iteration_parallelism_via_lens_application_demonstrated` — carves alongside C1 parallelism lens
+- T-LAS gate `opt_in_iteration_parallelism_via_lens_application_demonstrated` — was carved alongside C1 parallelism lens; **AMENDED 2026-05-09 carve-promoted-IN-R3 within Cluster F sub-phase F-γ.1** (DISSOLVED)
 - T-LSA stays in R3 (timing-lens via T-WAD; not T-LBP scope)
 - T-WAD stays in R3 (timing-lens carrier separate from T-LBP)
 
@@ -521,7 +521,7 @@ No §6 items currently Director-blocked; §7 CP items stay out-of-lane unless th
 
 ### CP1 — Q-LBP-R3-Closeability scope-calibration (Brian/Director)
 
-**Scope**: T-Lens-Behavioral-Parity scope decision (a accept / b reframe to 1-2 lenses for R3 / c carve to R4 with substrate-gap routing).
+**Scope**: T-Lens-Behavioral-Parity scope decision (a accept / b reframe to 1-2 lenses for R3 / c carve to R4 with substrate-gap routing). (Original decision-matrix preserved for traceability; Director ratified option (b) 2026-05-06 then AMENDED 2026-05-09 carve-promoted-IN-R3 — all 4 lenses now R3-load-bearing within Cluster F.)
 
 **Dispatch trigger**: post-Substrate S2 (LBP scope-calibration canvas).
 **Closure predicate**: cascades to Q-Class-2-Chain-Break + Class 2 closure path + critical-path timeline (Research PM R-2 Q-Timeline-Risk-Alternates).
