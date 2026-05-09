@@ -103,7 +103,7 @@ Grep + analysis of `src/v3/lenses/` instances:
 - **emission_provenance.dag**: STATUS at HEAD = `STRUCTURALLY TERMINAL; LENS-INSTANCE FIXTURE-BOUND; BEHAVIORALLY DEFERRED`. `read` body is a fail-closed `Empty` stub until producer wiring lands (per file's status header). Producer-side instrumentation hooks at `emit/rust_target.rs::render_named_template` would record target-keyed `*SyntaxBinding` / `*OpsBinding` provenance entries that the lens framework's `Empty`/`Concat` framework then consumes. **Whether this constitutes target-context need is currently UNGROUNDED** — emission_provenance at HEAD doesn't read target-realization data inside the lens fold; the producer-side records target-specific entries which the lens consumes via existing framework. Re-evaluate at producer-wiring landing time. NOT a confirmed N=2 candidate; flagged speculative pending behavioral-completion grep.
 - **idempotency.dag**: structural; no target need
 - **named_function_count.dag**: structural; no target need
-- **parallelism.dag**: R4-carved; structural at HEAD
+- **parallelism.dag**: R3-load-bearing within Cluster F sub-phase F-α post-carve-promotion 2026-05-09 (Director ratification at gunbc#846 c#4412330468; prior R4-carved status DISSOLVED); structural at HEAD
 - **provenance.dag**: structural; no target need
 - **structural_resolution.dag**: structural; no target need
 - **unused_parameters.dag**: structural; no target need

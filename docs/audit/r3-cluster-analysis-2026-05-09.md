@@ -4,12 +4,21 @@
 **Cadence**: working artifact for Mon 2026-05-11 PM dep-graph audit walk (per [`r3-program-plan.md`](../r3-program-plan.md) §9.1)
 **Authority scope**: PM-tier audit. Methodology section is durable; snapshot section is point-in-time. Mgrs own §1.8 Status updates.
 
+## ⚠️ AMENDED 2026-05-09 — supersession note (post-carve-promotion)
+
+This audit was authored at sha `~87291782c` (2026-05-09 ~03:25Z), **before** Director carve-promotion-IN-R3 ratification at gunbc#846 #issuecomment-4412330468 (later same day). The "94 R3-load-bearing / #81/#82/#95 R4-carved" framing throughout this doc is **superseded** by the current ledger reading **96 R3-load-bearing** post-carve-promotion (prior R4 carves C1/C2/C3 DISSOLVED; #81/#82/#95 reclassified R3-load-bearing within Cluster F per [`r3-cluster-f-sequencing-plan-2026-05-09.md`](r3-cluster-f-sequencing-plan-2026-05-09.md)).
+
+**Current canonical authority for gate count + classification**: [`r3-program-plan.md`](../r3-program-plan.md) §1.5 (97 enumerated → 96 R3-load-bearing; only #11 canvas-deferred per Director (a)-disposition 2026-05-09).
+
+The cluster-decomposition methodology + 15-cluster shape continue to apply; #81/#82/#95 are now within Cluster F (T-LP-Retirement) per the carve-promotion. Sections referencing "94" / "R4-carved" should be read as historical pre-promotion snapshot; consult §1.5 r3-program-plan.md for current state.
+
 ## §0. Authority + parent docs
 
-This is a derivative analysis. Parent authorities:
-- [`r3-program-plan.md`](../r3-program-plan.md) §1.8 — canonical gate ledger (97 total, 94 R3-load-bearing, #81/#82/#95 R4-carved, #96 added 2026-05-08, #97 added 2026-05-08)
+This is a derivative analysis. Parent authorities (current state — post-carve-promotion):
+- [`r3-program-plan.md`](../r3-program-plan.md) §1.5 — canonical gate count: 97 enumerated → 96 R3-load-bearing (post-Director carve-promotion-IN-R3 2026-05-09 c#4412330468; only #11 canvas-deferred). #81/#82/#95 are R3-load-bearing within Cluster F (prior R4-carved status DISSOLVED). #96 added 2026-05-08 (Q-ValueBody-Isomorphism); #97 added 2026-05-08 (Q-V2-Retirement-Boundary-Matrix).
 - [`r3-program-plan.md`](../r3-program-plan.md) §6 — Dependency DAG forward-looking
 - [`r3-structure.md`](../r3-structure.md) §"Dependency DAG" — canonical illustrative DAG
+- [`r3-cluster-f-sequencing-plan-2026-05-09.md`](r3-cluster-f-sequencing-plan-2026-05-09.md) — Cluster F sub-phase F-α (#81 walker port) + F-β.1/F-β.2 (#82 migration) + F-γ.1 (#95 demo) + F-γ.2 (#83 register full-scope)
 
 Does NOT restate gate Pass-conditions or DAG shape. Cite parent for those.
 
