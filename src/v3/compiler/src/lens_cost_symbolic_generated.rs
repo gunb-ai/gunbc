@@ -2,6 +2,19 @@
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
 #[derive(Clone, Debug)]
+pub enum CostBasisKind {
+    PerWrite,
+    PerCall,
+    PeakMemory,
+}
+#[derive(Clone, Debug)]
+pub struct CostBasisDeclaration {
+    pub subject: SectionRef,
+    pub kind: CostBasisKind,
+    pub cost: SymbolicCost,
+    pub span: SourceSpan,
+}
+#[derive(Clone, Debug)]
 pub struct SymbolicCostEntry {
     pub port: PortId,
     pub cost: Lookup<SymbolicCost>,
@@ -75,7 +88,7 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
         },
         Behavior::Transform(t) => SymbolicCostEntry {
             port: (t).result_port(),
-            cost: transform_cost(p1, &((t).inputs)),
+            cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
         },
         Behavior::Branch(b) => SymbolicCostEntry {
             port: (b).result_port(),
@@ -170,6 +183,40 @@ pub fn dominant(p0: SymbolicCost, p1: SymbolicCost) -> SymbolicCost {
             __list
         }),
     )
+}
+pub fn transform_cost_for_target(
+    p0: &[SymbolicCostEntry],
+    p1: &TransformTarget,
+    p2: &[PortId],
+) -> Lookup<SymbolicCost> {
+    match p1 {
+        TransformTarget::Callable(_) => transform_cost(p0, p2),
+        TransformTarget::FieldProject {
+            field_label: _,
+            field_child: _,
+        } => transform_cost(p0, p2),
+        TransformTarget::Operator(op) => match op {
+            OperatorKind::Arithmetic(arith) => match arith {
+                ArithmeticOp::Div => match p2 {
+                    [] => Lookup::Miss,
+                    [__list_head, __list_tail @ ..] => combine_sequential(
+                        &(transform_cost(p0, p2)),
+                        &(Lookup::Hit(SymbolicCost::LogCost {
+                            _0: SizeVariable {
+                                source_port: *__list_head,
+                                display_name: None,
+                            },
+                        })),
+                    ),
+                },
+                ArithmeticOp::Add => transform_cost(p0, p2),
+                ArithmeticOp::Sub => transform_cost(p0, p2),
+                ArithmeticOp::Mul => transform_cost(p0, p2),
+            },
+            OperatorKind::Comparison(_) => transform_cost(p0, p2),
+            OperatorKind::Logical(_) => transform_cost(p0, p2),
+        },
+    }
 }
 pub fn transform_cost(p0: &[SymbolicCostEntry], p1: &[PortId]) -> Lookup<SymbolicCost> {
     combine_sequential(
