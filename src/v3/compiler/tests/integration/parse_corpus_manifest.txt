@@ -61,7 +61,7 @@ src/v3/std/services.dag	8	5791	840c901943fce7bf
 src/v3/std/substrate.dag	66	144850	d8b8657f20edc1a5
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	25	45796	572819e153cb8b5b
-src/v3/std/timing_lens.dag	20	111644	aa05f8aa39bc8c57
+src/v3/std/timing_lens.dag	20	124032	37f63c22369119c8
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
 src/v3/std/verification.dag	31	71113	fbcf52754767da98
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6
