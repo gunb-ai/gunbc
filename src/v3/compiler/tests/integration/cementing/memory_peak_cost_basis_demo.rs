@@ -50,6 +50,7 @@ fn memory_peak_cost_basis_demo_function_models_branch_peak_exceeding_linear_budg
             .copied()
             .expect("model function should expose one SizeVariable-bearing parameter port");
 
+        // `display_name: None` = `String?` absent (`src/v3/std/algebra.dag` — `SizeVariable`).
         let n = SizeVariable {
             source_port: param,
             display_name: None,

@@ -48,6 +48,8 @@ mod tests {
     use crate::dag::{max_path, DegreeAtLeastTwo, PortId, SizeVariable};
 
     fn var(p: PortId) -> SizeVariable {
+        // Mirrors `unnamed_size_variable` / absent `display_name`; substrate lists BOTH fields at
+        // `src/v3/std/algebra.dag` (`type SizeVariable { source_port display_name?: String }`).
         SizeVariable {
             source_port: p,
             display_name: None,
