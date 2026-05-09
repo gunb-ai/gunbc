@@ -100,6 +100,32 @@ fn timing_observation_entry_shape_locked() {
     );
 }
 
+/// P2 single-authority (openai-pro / PR #2360): field *names* are not enough —
+/// `anchor` × `measurement` must be the structural product that prevents
+/// provenance/payload drift (`TimingObservationEntry` in `timing_lens.dag`).
+#[test]
+fn timing_observation_entry_field_types_locked() {
+    let dag = generated_full_bootstrap_dag();
+    let anchor = dag
+        .declaration_by_name("WorkflowObservationAnchor")
+        .expect("`WorkflowObservationAnchor` missing from full bootstrap")
+        .id;
+    let measurement = dag
+        .declaration_by_name("TimingMeasurement")
+        .expect("`TimingMeasurement` missing from full bootstrap")
+        .id;
+    assert_eq!(
+        conj_field_ty(&dag, "TimingObservationEntry", "anchor"),
+        anchor,
+        "`TimingObservationEntry.anchor` must be `WorkflowObservationAnchor`"
+    );
+    assert_eq!(
+        conj_field_ty(&dag, "TimingObservationEntry", "measurement"),
+        measurement,
+        "`TimingObservationEntry.measurement` must be `TimingMeasurement`"
+    );
+}
+
 #[test]
 fn workflow_observation_anchor_shape_locked() {
     let dag = generated_full_bootstrap_dag();
@@ -224,6 +250,21 @@ fn timing_budget_shape_locked() {
     let expected: HashSet<&str> = ["max"].into_iter().collect();
     let actual: HashSet<&str> = labels.iter().map(String::as_str).collect();
     assert_eq!(actual, expected, "TimingBudget field set drifted");
+}
+
+/// P2 / M9: budget ceiling uses the same `Nanoseconds` nominal as timing reports.
+#[test]
+fn timing_budget_max_field_is_nanoseconds() {
+    let dag = generated_full_bootstrap_dag();
+    let nanoseconds = dag
+        .declaration_by_name("Nanoseconds")
+        .expect("`Nanoseconds` missing from full bootstrap")
+        .id;
+    let ty = conj_field_ty(&dag, "TimingBudget", "max");
+    assert_eq!(
+        ty, nanoseconds,
+        "`TimingBudget.max` must be `Nanoseconds` (aligned timing magnitude carrier)"
+    );
 }
 
 /// openai-pro / PR #2360: sequential and branch lens hooks must share one join
