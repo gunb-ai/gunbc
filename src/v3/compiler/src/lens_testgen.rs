@@ -437,7 +437,7 @@ impl<'a> TestgenLens<'a> {
             vec![
                 FieldValue::Literal(LiteralBits::String(bind_name.to_string())),
                 self.sum_variant("ComparisonOp", comparator, Vec::new()),
-                FieldValue::Literal(LiteralBits::Int(bound as i64)),
+                FieldValue::Literal(LiteralBits::Int((bound as i64).to_string())),
             ],
         )
     }

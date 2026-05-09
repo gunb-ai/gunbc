@@ -14,7 +14,7 @@
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, Dag, LiteralBits, LoopBound, PortId, PortState, TransformTarget,
+    AtomPayload, Behavior, Dag, literal_bits_int, LiteralBits, LoopBound, PortId, PortState, TransformTarget,
     TypeConnective,
 };
 use v3_compiler::types::TypeShape;
@@ -94,8 +94,8 @@ fn let_binding_lowers_to_a_typed_add() {
         .node(dag.port(add.inputs[1]).produced_by.expect("rhs producer"))
         .as_value()
         .expect("rhs should be a Value");
-    assert_eq!(lhs.data, LiteralBits::Int(1));
-    assert_eq!(rhs.data, LiteralBits::Int(2));
+    assert_eq!(lhs.data, literal_bits_int(1));
+    assert_eq!(rhs.data, literal_bits_int(2));
     assert_eq!(
         dag.port(bind.value).value_type(),
         Some(&primitive_shape(&dag, "Int"))

@@ -256,7 +256,7 @@ fn require_int(
         .iter()
         .find(|(label, _)| label == name)
         .and_then(|(_, value)| match value {
-            FieldValue::Literal(LiteralBits::Int(n)) => Some(*n),
+            FieldValue::Literal(LiteralBits::Int(s)) => s.parse::<i64>().ok(),
             _ => None,
         })
         .ok_or(VerifierParseError::MalformedSpec {

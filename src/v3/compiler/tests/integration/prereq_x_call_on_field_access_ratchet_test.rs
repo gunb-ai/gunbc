@@ -20,7 +20,7 @@
 //!   blocked at parse time.
 
 use crate::common::{cached_compile_any, cached_compile_to_dag};
-use v3_compiler::dag::{Behavior, TransformTarget};
+use v3_compiler::dag::{literal_bits_int, Behavior, TransformTarget};
 use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::{parse_for_test, tokenize_for_test};
 
@@ -245,7 +245,7 @@ fn invoke(x: Int) -> Int = wrap.f(x)
     let x_port = bind.params[0];
 
     let caller_frame =
-        EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(21)))])
+        EvalFrame::from_bindings([(x_port, Value::LiteralValue(literal_bits_int(21)))])
             .expect("caller frame");
     let mut state = EvalStateStack::with_root_frame(caller_frame);
     let strategy = EvalStrategy::ApplicativeOrder {
@@ -257,7 +257,7 @@ fn invoke(x: Int) -> Int = wrap.f(x)
 
     assert_eq!(
         value,
-        Value::LiteralValue(LiteralBits::Int(42)),
+        Value::LiteralValue(literal_bits_int(42)),
         "wrap.f(21) should resolve to double(21) = 42 via TransformTarget::Callable execution"
     );
 }

@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use v3_compiler::dag::{
-    Behavior, CardinalityBound, FieldValue, LiteralBits, PortState, TypeConnective, ValueBody,
+    Behavior, CardinalityBound, FieldValue, literal_bits_int, LiteralBits, PortState, TypeConnective, ValueBody,
 };
 use v3_compiler::emit_rust;
 use v3_compiler::{compile_to_dag, integer_literal_routing_witness, CompileError};
@@ -65,7 +65,7 @@ fn assert_data_value_scalar_typed_u8(
         .declaration_by_name(name)
         .unwrap_or_else(|| panic!("{context}: no declaration named `{name}`"));
     assert!(
-        matches!(&decl.value_body, Some(ValueBody::Scalar(LiteralBits::Int(n))) if *n == literal),
+        matches!(&decl.value_body, Some(ValueBody::Scalar(LiteralBits::Int(n))) if n.parse::<i64>().ok() == Some(literal)),
         "{context}: {name} value should be int literal {literal}, got {:?}",
         decl.value_body
     );
@@ -108,7 +108,7 @@ fn assert_int_value_port_resolves_to_uint8_in_file(
         .iter()
         .find_map(|node| match node {
             Behavior::Value(v)
-                if v.data == LiteralBits::Int(literal)
+                if v.data == literal_bits_int(literal)
                     && span_file.is_none_or(|f| v.span.file == f) =>
             {
                 Some(v)
@@ -196,7 +196,7 @@ fn unconstrained_int_literal_still_defaults_to_int64() {
         .nodes()
         .iter()
         .find_map(|node| match node {
-            v3_compiler::dag::Behavior::Value(value) if value.data == LiteralBits::Int(5) => {
+            v3_compiler::dag::Behavior::Value(value) if value.data == literal_bits_int(5) => {
                 Some(value)
             }
             _ => None,
@@ -282,7 +282,7 @@ fn let_annotated_uint8_literal_resolves_to_narrow_type() {
         .iter()
         .find_map(|node| match node {
             v3_compiler::dag::Behavior::Value(v)
-                if v.data == LiteralBits::Int(5) && v.span.file == "let_u8_narrow.v3" =>
+                if v.data == literal_bits_int(5) && v.span.file == "let_u8_narrow.v3" =>
             {
                 Some(v)
             }
@@ -338,7 +338,7 @@ fn call_site_uint8_literal_narrows() {
         .nodes()
         .iter()
         .find_map(|node| match node {
-            v3_compiler::dag::Behavior::Value(v) if v.data == LiteralBits::Int(7) => Some(v),
+            v3_compiler::dag::Behavior::Value(v) if v.data == literal_bits_int(7) => Some(v),
             _ => None,
         })
         .expect("call literal 7");

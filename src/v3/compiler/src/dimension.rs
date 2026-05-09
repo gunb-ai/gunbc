@@ -261,7 +261,7 @@ pub fn analyze_complexity(dag: &Dag, workflow_root: NodeId) -> DimensionReport<S
 #[cfg(test)]
 mod analyze_complexity_tests {
     use super::*;
-    use crate::dag::{Dag, LiteralBits, TransformTarget};
+    use crate::dag::{literal_bits_int, Dag, LiteralBits, TransformTarget};
     use crate::operators::{ArithmeticOp, OperatorKind};
 
     fn span() -> SourceSpan {
@@ -270,8 +270,8 @@ mod analyze_complexity_tests {
 
     fn int_add_dag() -> (Dag, NodeId) {
         let mut dag = Dag::new();
-        let lhs = dag.push_value(LiteralBits::Int(1), span());
-        let rhs = dag.push_value(LiteralBits::Int(2), span());
+        let lhs = dag.push_value(literal_bits_int(1), span());
+        let rhs = dag.push_value(literal_bits_int(2), span());
         let add_out = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
             vec![lhs, rhs],
@@ -348,7 +348,7 @@ mod analyze_complexity_tests {
     fn analyze_complexity_fails_closed_with_typed_diagnostic_on_missing_cost() {
         let mut dag = Dag::new();
         let int_shape = dag.int_shape().expect("bootstrap Int");
-        let lhs = dag.push_value(LiteralBits::Int(1), span());
+        let lhs = dag.push_value(literal_bits_int(1), span());
         let ghost_input = dag.alloc_port_with_shape(int_shape);
         let bad_add = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
@@ -391,7 +391,7 @@ mod analyze_complexity_tests {
     fn analyze_complexity_fail_arm_has_no_composed_field() {
         let mut dag = Dag::new();
         let int_shape = dag.int_shape().expect("bootstrap Int");
-        let lhs = dag.push_value(LiteralBits::Int(1), span());
+        let lhs = dag.push_value(literal_bits_int(1), span());
         let ghost_input = dag.alloc_port_with_shape(int_shape);
         let bad_add = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
@@ -425,7 +425,7 @@ mod analyze_complexity_tests {
     fn analyze_complexity_violation_entries_are_typed_diagnostic_enums() {
         let mut dag = Dag::new();
         let int_shape = dag.int_shape().expect("bootstrap Int");
-        let lhs = dag.push_value(LiteralBits::Int(1), span());
+        let lhs = dag.push_value(literal_bits_int(1), span());
         let ghost_input = dag.alloc_port_with_shape(int_shape);
         let bad_add = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
@@ -467,7 +467,7 @@ mod fail_closed_tests {
         let mut dag = Dag::new();
         let span = SourceSpan::new("dimension_fail_closed_test", 0, 0);
         let int_shape = dag.int_shape().expect("bootstrap Int");
-        let lhs = dag.push_value(LiteralBits::Int(1), span.clone());
+        let lhs = dag.push_value(literal_bits_int(1), span.clone());
         let ghost_input = dag.alloc_port_with_shape(int_shape);
         let bad_add = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
@@ -510,8 +510,8 @@ mod fail_closed_tests {
     fn transform_workflow_root_still_backward_reaches_operand_ports() {
         let mut dag = Dag::new();
         let span = SourceSpan::new("transform_root_reach_test", 0, 0);
-        let lhs = dag.push_value(LiteralBits::Int(1), span.clone());
-        let rhs = dag.push_value(LiteralBits::Int(2), span.clone());
+        let lhs = dag.push_value(literal_bits_int(1), span.clone());
+        let rhs = dag.push_value(literal_bits_int(2), span.clone());
         let add_out = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
             vec![lhs, rhs],

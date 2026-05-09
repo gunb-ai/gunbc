@@ -3466,7 +3466,7 @@ fn algebra_field_for_operator(
 mod tests {
     use super::*;
     use crate::compile_to_dag;
-    use crate::dag::{BindEmitParticipation, BranchEmitParticipation, TransformTarget};
+    use crate::dag::{literal_bits_int, BindEmitParticipation, BranchEmitParticipation, TransformTarget};
     use crate::diagnostics::SourceSpan;
 
     // DELETED: go_gc_targets_skip_rendering_model_loading
@@ -3702,8 +3702,8 @@ mod tests {
     fn behavior_result_port_returns_the_behavior_output_port() {
         let mut dag = Dag::new();
         let file = "emit_port_liveness_test.v3";
-        let left = dag.push_value(LiteralBits::Int(1), SourceSpan::new(file, 0, 1));
-        let right = dag.push_value(LiteralBits::Int(2), SourceSpan::new(file, 0, 1));
+        let left = dag.push_value(literal_bits_int(1), SourceSpan::new(file, 0, 1));
+        let right = dag.push_value(literal_bits_int(2), SourceSpan::new(file, 0, 1));
         let sum = dag.push_transform(
             TransformTarget::Operator(crate::dag::OperatorKind::Arithmetic(
                 crate::dag::ArithmeticOp::Add,
@@ -3893,8 +3893,8 @@ mod tests {
     fn port_is_consumed_from_reaches_operand_ports_from_add_output() {
         let mut dag = Dag::new();
         let file = "emit_port_liveness_test.v3";
-        let left = dag.push_value(LiteralBits::Int(1), SourceSpan::new(file, 0, 1));
-        let right = dag.push_value(LiteralBits::Int(2), SourceSpan::new(file, 0, 1));
+        let left = dag.push_value(literal_bits_int(1), SourceSpan::new(file, 0, 1));
+        let right = dag.push_value(literal_bits_int(2), SourceSpan::new(file, 0, 1));
         let sum = dag.push_transform(
             TransformTarget::Operator(crate::dag::OperatorKind::Arithmetic(
                 crate::dag::ArithmeticOp::Add,
@@ -3910,8 +3910,8 @@ mod tests {
     fn port_is_consumed_from_is_false_for_unrelated_leaf_port() {
         let mut dag = Dag::new();
         let file = "emit_port_liveness_test.v3";
-        let left = dag.push_value(LiteralBits::Int(1), SourceSpan::new(file, 0, 1));
-        let right = dag.push_value(LiteralBits::Int(2), SourceSpan::new(file, 0, 1));
+        let left = dag.push_value(literal_bits_int(1), SourceSpan::new(file, 0, 1));
+        let right = dag.push_value(literal_bits_int(2), SourceSpan::new(file, 0, 1));
         let sum = dag.push_transform(
             TransformTarget::Operator(crate::dag::OperatorKind::Arithmetic(
                 crate::dag::ArithmeticOp::Add,
@@ -3928,14 +3928,14 @@ mod tests {
     fn port_is_consumed_from_reaches_loop_body_result_from_loop_output() {
         let mut dag = Dag::new();
         let file = "emit_port_liveness_test.v3";
-        let source = dag.push_value(LiteralBits::Int(0), SourceSpan::new(file, 0, 1));
-        let init = dag.push_value(LiteralBits::Int(0), SourceSpan::new(file, 0, 1));
-        let body_out = dag.push_value(LiteralBits::Int(99), SourceSpan::new(file, 0, 1));
+        let source = dag.push_value(literal_bits_int(0), SourceSpan::new(file, 0, 1));
+        let init = dag.push_value(literal_bits_int(0), SourceSpan::new(file, 0, 1));
+        let body_out = dag.push_value(literal_bits_int(99), SourceSpan::new(file, 0, 1));
         let body_node = dag
             .port(body_out)
             .produced_by
             .expect("body value output must have a producer node");
-        let count = dag.push_value(LiteralBits::Int(3), SourceSpan::new(file, 0, 1));
+        let count = dag.push_value(literal_bits_int(3), SourceSpan::new(file, 0, 1));
         let loop_out = dag.push_loop(
             source,
             init,

@@ -9743,7 +9743,7 @@ mod tests {
                 assert_eq!(
                     name,
                     positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
-                        -1
+                        "-1"
                     )
                 );
             })
@@ -9971,7 +9971,7 @@ mod tests {
             span: span.clone(),
         };
         let body = SurfaceExpr::Literal {
-            value: SurfaceLiteral::Int(1),
+            value: SurfaceLiteral::Int("1".into()),
             span: span.clone(),
         };
         let module = SurfaceModule {

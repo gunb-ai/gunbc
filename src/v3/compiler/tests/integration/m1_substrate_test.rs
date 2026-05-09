@@ -1,7 +1,7 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, PortState,
-    TransformTarget, TypeConnective,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, PortState, TransformTarget,
+    TypeConnective,
 };
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
@@ -684,7 +684,7 @@ data test_local_item: LocalMeta = { target_name: \"Int\", cost: 1 }
     assert_eq!(fields[1].0, "cost");
     match &fields[1].1 {
         v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(n)) => {
-            assert_eq!(*n, 1)
+            assert_eq!(n, "1")
         }
         other => panic!("expected Literal(Int) for cost, got {other:?}"),
     }
@@ -924,7 +924,7 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
     assert_eq!(fields[4].0, "cost");
     assert!(matches!(
         &fields[4].1,
-        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1))
+        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(s)) if s == "1"
     ));
 }
 
@@ -2219,7 +2219,7 @@ fn top_level_list_data_body_lowers_to_value_body_list() {
         .iter()
         .map(|element| match element {
             v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(value)) => {
-                *value
+                value.parse::<i64>().expect("fixture list element Int decimal")
             }
             other => panic!("expected literal int list element, got {other:?}"),
         })

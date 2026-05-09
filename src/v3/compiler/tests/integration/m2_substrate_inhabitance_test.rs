@@ -8,7 +8,7 @@ use v3_compiler::dag::{
     positive_amount_from_i64, promote_to_strict, size_bound_param,
     sub_value_relation_to_call_pattern, tree_size_bound, type_iteration_dimension, AlgebraProfile,
     ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue,
-    Interval, IntervalWidth, IterationDimension, IterationPrimitive, LiteralBits, LoweringTarget,
+    Interval, IntervalWidth, IterationDimension, IterationPrimitive, literal_bits_int, LiteralBits, LoweringTarget,
     PositiveDescentAmount, PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound,
     SubValueRelation, TypeConnective, ValueBody,
 };
@@ -2332,7 +2332,7 @@ fn sample_value_body_instances_covering_all_rust_variants() -> Vec<ValueBody> {
     vec![
         ValueBody::Unparsed(span),
         ValueBody::Structural { fields: Vec::new() },
-        ValueBody::Scalar(LiteralBits::Int(0)),
+        ValueBody::Scalar(literal_bits_int(0)),
         ValueBody::List(Vec::new()),
         ValueBody::Map(FieldMap::from_entries(Vec::new()).expect("empty FieldMap")),
     ]
@@ -2504,7 +2504,7 @@ type Holder {\n\
 data bad: Holder = { w: UnitCount { units: -1 } }\n";
             let dag = semantic_dag_for(source, "positive_interval_unit_count_negative.v3");
             let expected =
-                positive_interval_width_unit_count_requires_nonnegative_units_literal_message(-1);
+                positive_interval_width_unit_count_requires_nonnegative_units_literal_message("-1");
             let hit = dag
                 .diagnostics()
                 .iter()
@@ -3068,7 +3068,7 @@ let note = \"ok\"\n";
                     assert!(matches!(
                         &arms[1].body,
                         parse_surface::SurfaceExpr::Literal {
-                            value: parse_surface::SurfaceLiteral::Int(0),
+                            value: parse_surface::SurfaceLiteral::Int("0".into()),
                             ..
                         }
                     ));

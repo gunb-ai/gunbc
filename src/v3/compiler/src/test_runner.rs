@@ -3304,7 +3304,7 @@ impl<'a> TestRunner<'a> {
             Ok(count) => count,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        if count <= *bound {
+        if count <= bound {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
