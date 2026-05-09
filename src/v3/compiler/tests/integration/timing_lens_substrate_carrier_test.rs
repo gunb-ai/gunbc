@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use v3_compiler::dag::{Dag, TypeConnective};
+use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -26,6 +26,22 @@ fn disj_variant_labels(dag: &Dag, name: &str) -> Vec<String> {
     match &decl.connective {
         TypeConnective::Disj { variants } => variants.iter().map(|v| v.label.clone()).collect(),
         other => panic!("`{name}` is not a Disj: {other:?}"),
+    }
+}
+
+fn conj_field_ty(dag: &Dag, name: &str, field: &str) -> DeclarationId {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
+    match &decl.connective {
+        TypeConnective::Conj { children } => {
+            children
+                .iter()
+                .find(|f| f.label == field)
+                .unwrap_or_else(|| panic!("`{name}` missing `{field}` field"))
+                .ty
+        }
+        other => panic!("`{name}` is not a Conj: {other:?}"),
     }
 }
 
@@ -111,6 +127,21 @@ fn nanoseconds_shape_locked() {
     let expected: HashSet<&str> = ["count"].into_iter().collect();
     let actual: HashSet<&str> = labels.iter().map(String::as_str).collect();
     assert_eq!(actual, expected, "Nanoseconds field set drifted");
+}
+
+/// P2 / M9: timing magnitudes must not use bare `Int` (negative / unitless-by-construction).
+#[test]
+fn nanoseconds_count_field_is_nat() {
+    let dag = generated_full_bootstrap_dag();
+    let nat = dag
+        .declaration_by_name("Nat")
+        .expect("`Nat` missing from full bootstrap (std.nat authority)")
+        .id;
+    let count_ty = conj_field_ty(&dag, "Nanoseconds", "count");
+    assert_eq!(
+        count_ty, nat,
+        "`Nanoseconds.count` must refine to `Nat`, matching `PerfBaselineMeasurement` ns fields in substrate"
+    );
 }
 
 #[test]

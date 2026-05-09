@@ -12,16 +12,18 @@
 module v3.std.timing_lens
 
 import std.list { List }
+import std.nat { Nat }
 import std.substrate { Dag, Behavior, LoopBound }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 
 // PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — nominal SI-nanosecond coordinate for
-// durations and POSIX-epoch instants at this substrate layer. Non-negative /
-// range refinement is deferred per Q-Unit-4 option (c) (same posture as
-// `Measure<Time, S>` in `dsl/std/measure.dag`); dissolution ties to Grounding
-// emission once timing facts lower with checked bounds.
+// durations and POSIX-epoch instants at this substrate layer. **Magnitude**
+// uses `Nat` (non-negative; same counting authority as `PerfBaselineMeasurement`
+// `median_ns` / `p99_delta_ns` in `v3.std.substrate`). Per-field upper bounds,
+// signed pre-epoch instants, and `Measure<Time, S>` grounding remain deferred
+// per Q-Unit-4 option (c) / `dsl/std/measure.dag` posture.
 type Nanoseconds {
-  count: Int
+  count: Nat
 }
 
 // PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — `TimingMeasurement` (T-WAD Slice 2 / §1.8 gate #54):
