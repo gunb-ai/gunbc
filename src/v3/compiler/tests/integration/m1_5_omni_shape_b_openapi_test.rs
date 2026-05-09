@@ -215,6 +215,8 @@ fn openapi_yaml_routes(yaml: &str) -> BTreeSet<RestRoute> {
 fn markdown_documentation_routes(markdown: &str) -> BTreeSet<RestRoute> {
     markdown
         .lines()
+        // The separator row is filtered here; the header row is skipped below
+        // after splitting so malformed data rows still surface through shape.
         .filter(|line| line.starts_with("| ") && !line.starts_with("| ---"))
         .filter_map(|line| {
             let cells: Vec<_> = line

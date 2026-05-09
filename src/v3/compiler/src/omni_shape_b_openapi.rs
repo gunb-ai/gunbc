@@ -233,7 +233,7 @@ pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenAp
         out.push_str("| ");
         out.push_str(&markdown_table_cell(&route.method));
         out.push_str(" | `");
-        out.push_str(&markdown_code(&route.path));
+        out.push_str(&markdown_code_table_cell(&route.path));
         out.push_str("` | ");
         if route.path_parameters.is_empty() {
             out.push_str("_none_");
@@ -243,7 +243,7 @@ pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenAp
                     out.push_str(", ");
                 }
                 out.push('`');
-                out.push_str(&markdown_code(parameter));
+                out.push_str(&markdown_code_table_cell(parameter));
                 out.push('`');
             }
         }
@@ -478,6 +478,10 @@ fn markdown_code(value: &str) -> String {
     value.replace('`', "\\`")
 }
 
+fn markdown_code_table_cell(value: &str) -> String {
+    markdown_table_cell(&markdown_code(value))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -579,5 +583,10 @@ data service_operations: List<DemoOperation> = [
             yaml,
             "        - name: \"id:\\nrequired: false\"\n          in: path\n          required: true\n          schema:\n            type: string\n"
         );
+    }
+
+    #[test]
+    fn markdown_code_cells_escape_table_delimiters() {
+        assert_eq!(markdown_code_table_cell("a|b`c\\d"), "a\\|b\\\\`c\\\\d");
     }
 }
