@@ -24,17 +24,21 @@ The existing `r3-v-tests-as-data-v1-worker.md` is cited as substrate-of-truth fo
 
 ## §2. Dispatch trigger
 
-Verification Mgr dispatches #87 discipline-authoring **on Phase 1 partial-land** — i.e., once at least one of #85/#86 substrate canvases has Director ratification on carrier shape (does NOT require both #85 and #86 carriers to fully land; Director-ratified shape questions are sufficient to begin discipline-pattern authoring).
+**Authority correction 2026-05-09 (codex BLOCKING #4 on PR #2362 sha `60279789`)**: prior trigger said \"once at least one of #85/#86 substrate canvases has Director ratification on carrier shape\" — duplicate-authority anti-pattern (locked design §1: \"no Director ratification required before lane dispatch\") + wrong dependency direction (cementing is orthogonal to property-based ProgramGenerator/Quantifier per BLOCKING #3).
 
-Pattern precedent: discipline patterns can be authored against substrate-shape ratifications before substrate-implementation lands; the discipline pattern *consumes* the carrier shape, not its implementation.
+**Corrected trigger**: Verification Mgr dispatches #87 discipline-authoring **independently of #85/#86 dispatch**. #87 cementing uses existing DB-15 `TestClaim` infrastructure + `DifferentialEquals` / `LensOutputEquals` predicate variants (per locked design §C5) — these are 🟢 TERMINAL TestPredicate variants per design §1, available on main today. No #85/#86 dependency at the predicate level.
+
+**Phase 1 → #87 coupling at the wrapper level only**: after #85 lands `SuiteClaim`, existing `TestSuite.claims: List<TestClaim>` sites migrate to `TestSuite.claims: List<SuiteClaim>` with claims wrapped in `Enumerated(...)` (per design §6 line 344). Cementing TestClaims are part of this mechanical wrap migration — but the wrap is backward-compatible at the predicate level. #87 discipline pattern can be authored + first migration receipt can land **before** Phase 1 carriers; the wrap migration is a follow-up step that does not change the discipline pattern.
 
 ## §3. Authoring scope
 
-Per `r3-v-tests-as-data-v1-worker.md` substrate + Cluster M sequencing plan §4:
+Per locked design `docs/design-tests-as-data-completeness.md` §C5 (Cementing v2 oracle) + §1 Authority discipline + existing `r3-v-tests-as-data-v1-worker.md` substrate-of-truth:
 
-- **Discipline pattern**: how every `.dag` lens has at least one cementing test in `.dag` form using #85 `Quantifier` + `QuantifiedTestClaim` carriers (per locked design §2.2) + #86 `ProgramGenerator` carrier (per locked design §2.1)
-- **First migration target**: smallest hand-Rust cementing test (e.g., `tests/integration/cementing/cementing_lens_registry_dispatch_test.rs`) — proof-of-concept migration from hand-Rust `#[test] fn test_X` with v2-oracle assert → `.dag` `TestClaim` with **same-source v2-vs-v3 comparison** via `DifferentialEquals` or `LensOutputEquals` predicate (per locked design `docs/design-tests-as-data-completeness.md` §C5 row, §"C5: Cementing (v2 oracle)" — "v2 oracle and v3 lens produce equal output on source S"). `BinaryDimensionReportEquals` is for Pattern-A DimensionReport comparisons (TC1/TC2/TC3 family), NOT for cementing — different predicate axis.
-- **Receipt**: state-check gate fires when audit confirms 100% lens coverage in cementing-test form using the locked-design predicates
+- **Discipline pattern**: every `.dag` lens with a real v2 counterpart has at least one cementing test in `.dag` form, asserting v2-vs-v3 equality on the same source. Built on existing DB-15 `TestClaim` infrastructure with predicate variants `DifferentialEquals` (preferred per design §C5) or `LensOutputEquals` (alternate per design §C5). No #85/#86 carrier dependency — these are existing 🟢 TERMINAL predicates available today.
+- **First migration target**: smallest hand-Rust cementing test (e.g., `tests/integration/cementing/cementing_lens_registry_dispatch_test.rs`) — proof-of-concept migration from hand-Rust `#[test] fn test_X` with v2-oracle assert → `.dag` `TestClaim` with `DifferentialEquals` or `LensOutputEquals` predicate. Same-source v2-vs-v3 comparison axis per design §C5: \"v2 oracle and v3 lens produce equal output on source S\".
+- **Predicate axis distinction**: `BinaryDimensionReportEquals` is for Pattern-A DimensionReport comparisons (TC1/TC2/TC3 family) — different axis. `DifferentialEquals`/`LensOutputEquals` is the cementing axis per §C5.
+- **Property-based axis distinction**: `ProgramGenerator`/`Quantifier`/`QuantifiedTestClaim` (Phase 1 #85/#86) is for property-based \"every program in family X satisfies P\" claims — orthogonal to per-lens cementing. ProgramGenerator ranges over `List<ProgramShape>` (program family axis), NOT over LensRegistry rows.
+- **Receipt**: state-check gate fires when audit confirms 100% lens coverage in cementing-test form using `DifferentialEquals` or `LensOutputEquals` predicates.
 
 ## §4. Receipt
 
