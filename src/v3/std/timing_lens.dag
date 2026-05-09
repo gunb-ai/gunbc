@@ -212,8 +212,7 @@ fn timing_lens_degenerate_empty_dag_span() -> SourceSpan =
 // With a non-empty spine, attach the first node's reflected `span`; when the
 // spine is empty, attach the first declaration's substrate `span` (still a
 // real `SourceSpan` witness). The inner `Empty` arm covers the degenerate
-// no-declaration DAG case; it reuses the module `FilePath` witness plus a
-// zero-width range on this file (type-directed `std.types::SourceSpan`).
+// no-declaration DAG case; see `timing_lens_degenerate_empty_dag_span`.
 fn timing_lens_validate_non_observed(d: Dag, text: String) -> OptionalDiagnostic =
   match behavior_spine(d) {
     Empty =>
@@ -226,11 +225,7 @@ fn timing_lens_validate_non_observed(d: Dag, text: String) -> OptionalDiagnostic
           SomeDiagnostic {
             value: timing_lens_scaffold_non_evidence_diagnostic(
               text,
-              {
-                file: timing_lens_module_file_for_diagnostics
-                start: 0
-                end: 0
-              }
+              timing_lens_degenerate_empty_dag_span()
             )
           }
       }
