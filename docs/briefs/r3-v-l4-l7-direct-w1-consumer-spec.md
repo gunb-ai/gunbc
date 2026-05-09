@@ -1,43 +1,50 @@
 # R3 Lane 1 W1 Consumer-Side Implementation Spec
 
-**Status:** PROPOSAL - research-only consumer-side implementation worker brief
-spec. This note pre-authors the Lane 1 slice-1 dispatch shape against the
-landed W1 producer contract docs. It does not authorize substrate edits, new
-`TestPredicate` variants, runner changes, fixture rewrites, or implementation
-commits.
+**Status:** PROPOSAL — consumer-side shape + **live-state anchor** for Lane 1 L4 W1.
+**Live-state refresh (2026-05-09):** Rust/Int W1 `DifferentialEquals(rust_emit_output,
+dag_eval_output, ProgramOutputBind)` is **landed** in `src/v3/compiler/src/test_runner.rs`
+(`eval_differential_equals`, `w1_rust_emit_output_int`, `w1_dag_eval_output_int`) with
+integration receipts in `r3_verification_l4_l7_l5_skeleton_test.rs`. This brief still does
+not authorize ad-hoc substrate or predicate variants beyond the locked W1 contract.
 
 **Parent lane:** [`r3-v-l4-l7-direct-worker.md`](r3-v-l4-l7-direct-worker.md)
 and the Lane 1 readiness re-audit in
 [`r3-v-l4-l7-direct-readiness-reaudit-post-e5.md`](r3-v-l4-l7-direct-readiness-reaudit-post-e5.md).
 
 **W1 contract authority:** [`r3-pr-e8-w1-output-producer-contract-blocker.md`](r3-pr-e8-w1-output-producer-contract-blocker.md)
-from PR #1485. PR #1485 landed the producer contract docs only; W1 runner
-implementation is still R2-Evaluator territory.
+from PR #1485. **Implementation authority:** `src/v3/compiler/src/test_runner.rs` — W1 producer
+identity dispatch for exactly `rust_emit_output` / `dag_eval_output`, Int stdout carve-out on the
+Rust side, `evaluate_body` on the eval side (`w1_dag_eval_output_int`), fail-closed unsupported
+pairings (`eval_differential_equals`).
 
 ## Current Live State
 
-The Lane 1 L4 skeleton fixture is already present at
-`src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag`. It
-authors `l4_emit_eval_match` (§1.8 gate #9 canonical `TestClaim.name`) with
-`DifferentialEquals(rust_emit_output, dag_eval_output, ProgramOutputBind {
-output_ref: l4_out })`. The fixture still defines both producers as
-`miss_int_lookup()` placeholders, and its header states the row intentionally
-returns `NotYetImplemented` until the `(rust_emit_output, dag_eval_output)`
-runner wiring lands. The runner still accepts only the historical Lane-E cost
-lineage pair; any other pairing, including W1, remains deferred.
+The Lane 1 L4 fixture lives at
+`src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag`. It authors
+`l4_emit_eval_match` (§1.8 gate #9 canonical `TestClaim.name`) with
+`DifferentialEquals(rust_emit_output, dag_eval_output, ProgramOutputBind { output_ref: … })`.
 
-The body evaluator entry exists: `src/v3/compiler/src/lib.rs:547-553` exposes
-`pub fn evaluate_body(...) -> Result<Value, EvalError>`. That closes the old
-"no evaluator entry point" blocker, but it does not by itself make
-`dag_eval_output` a producer. W1 must still connect the `ProgramOutputBind` row
-to the eager evaluator path.
+The `.dag` module still declares `rust_emit_output` / `dag_eval_output` as `miss_int_lookup()`
+**stubs** — by design per #1485 / fixture header: those bodies are not interpreted; the
+**runner** supplies both sides. **`NotYetImplemented` does not apply** to this W1 row: the harness
+compiles the fixture and asserts `ClaimResult::Pass` for the three certification seeds (see
+`r3_verification_l4_l7_l5_skeleton_test.rs`). Pairings outside the W1 contract (e.g. mixed lineage
+controls in `r3_verification_l4_emit_eval_mixed_lineage.dag`) remain explicitly deferred with typed
+NYI / fail-closed outcomes per `test_runner.rs`.
+
+**Historical Lane-E cost lineage** (`v3_program_cost` / `v2_oracle_cost`) remains a separate
+`DifferentialEquals` pairing in the same runner; it does not gate W1.
+
+**Evaluator entry:** `pub fn evaluate_body(...) -> Result<Value, EvalError>` in
+`src/v3/compiler/src/lib.rs` is on the path `w1_dag_eval_output_int` uses for `dag_eval_output`.
 
 ## W1 Contract Summary
 
 The W1 contract names two acceptable producer-identity routes: transitional
 DeclarationRef-name dispatch for exactly `rust_emit_output` /
-`dag_eval_output`, or a durable P1 producer role / marker surface. Lane 1 slice
-1 should consume whichever W1 implementation actually lands. It must not
+`dag_eval_output`, or a durable P1 producer role / marker surface. **Slice-1 on
+main uses the transitional name-keyed route** in `test_runner.rs`; migrating to
+markers is dissolution work, not a consumer rewrite of this fixture shape. It must not
 introduce a new predicate, producer enum, or fixture-local authority. The
 existing `DifferentialEquals` + `ProgramOutputBind` shape remains the consumer
 surface.
@@ -50,10 +57,10 @@ unsupported value shapes, failed Rust execution, stdout parse failures,
 evaluator errors, and value mismatches must all fail closed with typed
 `ClaimResult` outcomes.
 
-## Post-W1 Implementation Worker Brief
+## Slice-1 landed targets (authoritative for continuing work)
 
-When W1 implementation lands, dispatch the Lane 1 slice-1 worker with this
-concrete target:
+The following are **already satisfied** on main for Rust / Int W1 slice-1; use them as the
+checklist for corpus expansion and multi-target follow-ons (do not re-litigate wiring):
 
 - **Fixture:** `src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag`.
 - **Suite:** `r3_verification_l4_l7_direct_suite` (L4 certification seeds; L7 merges under same suite name at lane close).
@@ -81,36 +88,34 @@ fallback to success, stdout-byte comparison, or fixture-local lookup behavior.
 
 ## Test Infrastructure
 
-Use the merged skeleton harness pattern:
-`src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs`
-already compiles the L4 fixture through `OnceLock`-backed `cached_compile` and
-asserts `ClaimResult` by variant shape. The implementation worker should reuse
-that amortization pattern and avoid pinning diagnostic prose. Once W1 is live,
-the L4 test should switch from `ClaimResult::NotYetImplemented(_)` to the
-appropriate executable result for the skeleton claim, with any negative-path
-tests asserting structured result categories rather than raw message substrings.
+Harness: `src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs` —
+`OnceLock`-backed `cached_compile`, per-claim and suite runs. **W1 slice-1 expects `Pass`** for
+`l4_emit_eval_match`, `r3_verification_l4_emit_eval_false_branch`, and
+`r3_verification_l4_emit_eval_nested_branch` under `r3_verification_l4_l7_direct_suite`. Future
+negative-path tests should assert structured `ClaimResult` categories without brittle message
+substring coupling.
 
-## Re-Engagement Trigger
+## Re-Engagement / expansion triggers
 
-Do not dispatch the implementation worker from this document alone. Re-engage
-only when W1 lands on main and then verify, in that landed tree, that:
+W1 **Rust/Int slice-1 wiring is landed** — do not re-dispatch a “wait for W1” worker for that
+surface. Next Verification-owned triggers:
 
-1. `eval_differential_equals` accepts `(rust_emit_output, dag_eval_output)`
-   without hitting the legacy cost-only `NotYetImplemented` branch.
-2. `dag_eval_output` calls the real eager evaluator path instead of fixture
-   `miss_int_lookup()` behavior.
-3. The no-memo eager carve-out is explicitly recorded, or memo identity carriers
-   have landed.
-4. `rust_emit_output` has a declared producer identity and observation-channel
-   rule matching the W1 contract.
+1. **§Acceptance `l4_emit_eval_match`:** grow the certification corpus until `r3-structure.md`
+   §Acceptance coverage matches `docs/r3-program-plan.md` §1.7 corpus-quantified **PASSING** rule
+   (ledger authority stays single: §1.8 row + structure §Acceptance).
+2. **Additional targets / value kinds:** Python, Go, or non-Int observation domains — require W1
+   contract amendments + runner work; until then stay within the landed Int carve-out.
+3. **Durable producer markers:** if DeclarationRef-name dispatch is retired, update this brief’s
+   contract summary to the substrate marker authority without splitting runner facts across docs.
 
-If any item fails, keep Lane 1 slice 1 in standby and route the gap back to
-R2-Evaluator / W1 ownership. Verification owns the consuming fixture and
-coverage requirement; it must not patch around missing producer authority.
+If a regression shows `ClaimResult::NotYetImplemented` on the **canonical W1 triple** above,
+route to R2-Evaluator / runner ownership — that is a live bug, not a spec standby state.
 
 ## Non-Claims
 
-- This spec does not claim W1 implementation is landed.
+- This spec does not claim **§Acceptance closure** for `l4_emit_eval_match` (full certification
+  corpus per `r3-structure.md` — see `docs/r3-program-plan.md` §1.8 #9 / §1.7).
+- This spec does not claim W1 beyond the **Rust / Int stdout** slice-1 carve-out.
 - This spec does not close `l4_emit_eval_match`.
 - This spec does not authorize a new substrate role, observation carrier, or
   `TestPredicate` variant.
