@@ -72,12 +72,28 @@ Author `WorkflowObservationAnchor` with timing-shaped fields directly (e.g., `su
 
 ### Option (b) — Generic from authoring; timing is first instantiation
 
-Author `WorkflowObservationAnchor<Subject, Source>` (or `ExternalDataAnchor<Subject, Source>` directly) parametrically; timing is `WorkflowObservationAnchor<BehaviorId, TimingPayload>` instantiation, where `TimingPayload` is the observed-value payload (e.g., `{ nanoseconds: Int }`) **without** subject identity baked in. Subject identity is owned solely by the anchor's `Subject` parameter (P2 single-authority discipline) — observation payloads carry observed values, not subject facts.
+Author parametrically with the six invariant fields as concrete fields on the carrier and `Subject` + `Source` as type parameters for the variable identity / payload parts:
 
-- **Pro**: gate #55 closure predicate ("`WorkflowObservationAnchor` factored separately as reusable external-data attachment primitive") is naturally satisfied; second-consumer promotion is zero-substrate-edit.
-- **Con**: novel-substrate authoring at first consumer; per `feedback_strict_mirror_vs_novel_substrate_fact` this needs canvas justification (which this canvas provides).
+```
+type WorkflowObservationAnchor<Subject, Source> {
+  subject:               Subject              // invariant 1: stable subject identity (NOT span)
+  artifact_digest:       ContentDigest        // invariant 2: observed-artifact identity/digest
+  producer_id:           ProducerIdentity     // invariant 3a: producer identity
+  observer_id:           ObserverIdentity     // invariant 3b: observer identity
+  prover_id:             ProverIdentity       // invariant 3c: prover identity
+  attached_at:           Timestamp            // invariant 4a: attachment timestamp
+  workflow_run_id:       RunId                // invariant 4b: run id
+  observation_outcome:   ObservationOutcome<Source>  // invariant 5: report state (Observed/Missing/Ambiguous/Stale)
+  // invariant 6 (fail-closed) lives at the LensEnforcement.violates layer, not here
+}
+```
 
-**Recommended (Mgr-tier preliminary)**: **(b)** — gate #55 acceptance language ("factored separately as reusable") points to (b); the six invariants are intrinsically anchor-generic; second-consumer scenario is named (ctrl#369 `ProofReceipt`); zero-substrate-edit promotion is materially better than rename-on-second-consumer.
+Timing instantiation: `WorkflowObservationAnchor<BehaviorId, TimingPayload>` with `TimingPayload = { nanoseconds: Int }`. Subject identity owned solely by the anchor's `subject` field (P2 single-authority); observation payloads carry observed values only, not subject facts. **All six gate #55 invariants are concrete fields on the anchor — facts flow forward to a single carrier per P2 boundary discipline.**
+
+- **Pro**: gate #55 closure predicate ("`WorkflowObservationAnchor` factored separately as reusable external-data attachment primitive") is satisfied; second-consumer promotion (ProofReceipt per ctrl#369) is zero-substrate-edit (rebind type parameters); six invariants are explicitly carried on the anchor (not abstracted away).
+- **Con**: novel-substrate authoring at first consumer; per `feedback_strict_mirror_vs_novel_substrate_fact` this needs canvas justification (which this canvas provides). `ProducerIdentity` / `ObserverIdentity` / `ProverIdentity` / `ContentDigest` / `RunId` types may need substrate sub-carriers if not already declared (worker grep at dispatch).
+
+**Recommended (Mgr-tier — corrected per PR #2333 inline review)**: **(b)** with explicit six-invariant field shape (per worker's flat (a) carrier-fact carriage discipline); type parameters are `Subject` + `Source` for the variable parts only. Worker tidy-raven-610 PR #2360 flat shape (`subject_stable_id` / `artifact_digest` / `producer_id` / `observer_id` / `prover_id` / `attached_at_epoch_ns` / `workflow_run_id`) is **already gate-#55-compliant** at the field level — only missing type parameters for `Subject` + `Source` to satisfy the second-consumer-promotion zero-edit goal. Convergence path: worker's flat shape + add `<Subject, Source>` parameters = (b)-revised; minimal rework.
 
 ## Question 3 (Q-WAD-S2-Output) — Output projection shape
 
