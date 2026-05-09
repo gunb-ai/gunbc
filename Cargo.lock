@@ -1032,6 +1032,8 @@ dependencies = [
  "criterion",
  "libc",
  "num-bigint",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
