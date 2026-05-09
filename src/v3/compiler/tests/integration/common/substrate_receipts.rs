@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 
 use v3_compiler::dag::{
-    ArrowBody, Behavior, BindNode, Dag, DeclarationId, Field, PortState, TemplateArgument,
-    TransformNode, TransformTarget, TypeConnective,
+    Behavior, BindNode, Dag, DeclarationId, Field, PortState, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective,
 };
 
 pub fn find_named(dag: &Dag, name: &str) -> DeclarationId {
@@ -103,50 +103,107 @@ pub fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a BindNode {
         .unwrap_or_else(|| panic!("Bind({name}) not found"))
 }
 
-/// Receipt: the fixed-width `Int64` row instantiates to `OrderedRing`; `.add` is binary
-/// `(T,T)->T` with `NoBody`, and template substitution lines operands up with `Word64`.
-///
-/// **T-Numeric-Construction Slice 3 pivot.** Pre-Slice-3 this receipt walked the default
-/// `Int` alias (which used to be `Int = Int64`). Slice 3 pivots the default alias to the
-/// construction-chain shape `Int = AbelianGroup<GroupCompletion<Nat>>` (per
-/// `docs/audit/t-numeric-construction-group-completion-6q.md`); the fixed-width
-/// `Int64 = OrderedRing<Word64>` row stays intact at `dsl/std/integer.dag`. The
-/// `OrderedRing<Word64>` chain is now reachable through the `Int64` name directly,
-/// and that's what this receipt continues to pin. The default `Int` alias has its
-/// own ratchet (`int_default_alias_resolves_to_abelian_group_over_group_completion_of_nat`).
-pub fn assert_bootstrap_int_ordered_ring_add_arrow(dag: &Dag) {
+/// Receipt: `Int64` is a width refinement `Compose<Int, MachineWidth<Word64>>` (R3 gate #19),
+/// not parallel `OrderedRing<Word64>` substrate. Abstract `Int` is
+/// `AbelianGroup<GroupCompletion<Nat>>` (Slice 3); fixed-width names compose it with
+/// the machine-width axis.
+pub fn assert_bootstrap_int64_compose_int_machine_width(dag: &Dag) {
     let int64_id = find_named(dag, "Int64");
+    let compose_id = find_named(dag, "Compose");
+    let int_id = find_named(dag, "Int");
+    let machine_width_id = find_named(dag, "MachineWidth");
     let word64_id = find_named(dag, "Word64");
-    let ordered_ring_id = find_named(dag, "OrderedRing");
 
-    let mut subst = HashMap::new();
-    let algebra_id = walk_instantiation_chain(dag, int64_id, &mut subst);
+    let connective = &dag.declaration(int64_id).connective;
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = connective
+    else {
+        panic!("Int64 must be a Compose instantiation, got {connective:?}");
+    };
+    assert_eq!(*template, compose_id);
     assert_eq!(
-        algebra_id, ordered_ring_id,
-        "Int64 fixed-width row must still terminate at OrderedRing (legacy storage chain stays intact in Slice 3)"
+        arguments.len(),
+        2,
+        "Compose<Int, MachineWidth<…>> takes two arguments"
     );
 
-    let ordered_ring_fields = match &dag.declaration(ordered_ring_id).connective {
-        TypeConnective::Conj { children } => children,
-        other => panic!("OrderedRing should be a Conj, got {other:?}"),
-    };
-    let add_field = field(ordered_ring_fields, "add");
-    let (inputs, output, body) = match &dag.declaration(add_field.ty).connective {
-        TypeConnective::Arrow {
-            inputs,
-            output,
-            body,
-        } => (inputs, output, body),
-        other => panic!("OrderedRing.add should be an Arrow, got {other:?}"),
-    };
+    let mut saw_int = false;
+    let mut saw_mw_word64 = false;
+    for arg in arguments {
+        if arg.value == int_id {
+            saw_int = true;
+            continue;
+        }
+        if let TypeConnective::Instantiation {
+            template: mw_template,
+            arguments: mw_args,
+        } = &dag.declaration(arg.value).connective
+        {
+            if *mw_template == machine_width_id
+                && mw_args.len() == 1
+                && mw_args[0].value == word64_id
+            {
+                saw_mw_word64 = true;
+            }
+        }
+    }
     assert!(
-        matches!(body, ArrowBody::NoBody),
-        "bootstrap algebra arrows must stay NoBody so Pending remains an R13 leak signal"
+        saw_int,
+        "Int64 Compose must instantiate abstract Int (construction-chain carrier)"
     );
-    assert_eq!(inputs.len(), 2, "OrderedRing.add should stay binary");
+    assert!(
+        saw_mw_word64,
+        "Int64 Compose must include MachineWidth<Word64>"
+    );
+}
 
-    let substitute = |id: DeclarationId| -> DeclarationId { *subst.get(&id).unwrap_or(&id) };
-    assert_eq!(substitute(inputs[0]), word64_id);
-    assert_eq!(substitute(inputs[1]), word64_id);
-    assert_eq!(substitute(*output), word64_id);
+/// Receipt: `Float64` refines opaque `Ieee754Float` with `MachineWidth<Word64>` (R3 gate #19).
+pub fn assert_bootstrap_float64_compose_ieee_machine_width(dag: &Dag) {
+    let float64_id = find_named(dag, "Float64");
+    let compose_id = find_named(dag, "Compose");
+    let ieee_id = find_named(dag, "Ieee754Float");
+    let machine_width_id = find_named(dag, "MachineWidth");
+    let word64_id = find_named(dag, "Word64");
+
+    let connective = &dag.declaration(float64_id).connective;
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = connective
+    else {
+        panic!("Float64 must be a Compose instantiation, got {connective:?}");
+    };
+    assert_eq!(*template, compose_id);
+    assert_eq!(arguments.len(), 2);
+
+    let mut saw_ieee = false;
+    let mut saw_mw_word64 = false;
+    for arg in arguments {
+        if arg.value == ieee_id {
+            saw_ieee = true;
+            continue;
+        }
+        if let TypeConnective::Instantiation {
+            template: mw_template,
+            arguments: mw_args,
+        } = &dag.declaration(arg.value).connective
+        {
+            if *mw_template == machine_width_id
+                && mw_args.len() == 1
+                && mw_args[0].value == word64_id
+            {
+                saw_mw_word64 = true;
+            }
+        }
+    }
+    assert!(
+        saw_ieee,
+        "Float64 Compose must instantiate Ieee754Float axis"
+    );
+    assert!(
+        saw_mw_word64,
+        "Float64 Compose must include MachineWidth<Word64>"
+    );
 }
