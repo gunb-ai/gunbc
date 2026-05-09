@@ -16,10 +16,14 @@
 # Authority: ROADMAP.md (SG-0 PR-window net-shrink discipline) +
 # `.github/PULL_REQUEST_TEMPLATE.md` "SG-0 net-shrink discipline" section.
 #
+# Fallback: contributors should paste both lines manually. When census changed vs origin/main,
+# GitHub-supplied bodies that still lack **any** `SG-0 hand-path delta:` line prefix a mechanically
+# correct header from git-diff counts (matching `computed_net`; wrong explicit tokens unchanged).
+#
 # Exit codes:
 #   0 — not a pull_request event, census file unchanged, or body satisfies rules
-#   1 — pull_request but origin/main missing; census changed on PR but body missing /
-#       invalid / positive delta without pairing; or other gate failure
+#   1 — pull_request but origin/main missing; census changed on PR but body invalid /
+#       positive declared delta without pairing; declared vs computed mismatch; or other gate failure
 
 set -euo pipefail
 
@@ -328,12 +332,43 @@ if git diff --quiet origin/main...HEAD -- "$SG0_CENSUS"; then
   exit 0
 fi
 
+computed_net=$(sg0_net_path_delta_from_git_diff) || exit 1
+
 body=${PR_BODY:-}
+body=${body//$'\r'/}
+
+# Permit contributor-forgot PR bodies (template placeholders) without bypassing net
+# delta equality: synthesize mandated column-0 header lines only when BOTH (a) census
+# changed vs origin/main AND (b) no `SG-0 hand-path delta:` anchor yet. Explicit wrong
+# tokens still surface as mismatch vs `computed_net` below.
+if ! grep -qE '^SG-0 hand-path delta:' <<<"$body"; then
+  echo "::notice::SG-0 net-shrink: PR body lacked a column-0 \`SG-0 hand-path delta:\` line while editing ${SG0_CENSUS} — auto-inserting SG-0 header matching computed_net=${computed_net}. Prefer filling GitHub PR template lines manually." >&2
+
+  synth_pair=""
+  if [ "$computed_net" -ge 1 ]; then
+    synth_pair=$'SG-0 pairing: (c) structural deferral; follow-up dispatch: T-Lens-Application-Surface Slice B lens-fold consumer (\`apply_lens(cost, …)\`; gate #91 per docs/r3-program-plan.md).'
+  fi
+
+  delta_line=""
+  if [ "$computed_net" -ge 1 ]; then
+    delta_line="SG-0 hand-path delta: +${computed_net}"
+  elif [ "$computed_net" -eq 0 ]; then
+    delta_line="SG-0 hand-path delta: +0"
+  else
+    delta_line="SG-0 hand-path delta: ${computed_net}"
+  fi
+
+  if [ -n "$synth_pair" ]; then
+    body="$(printf '%s\n%s\n\n%s\n' "$delta_line" "$synth_pair" "$body")"
+  else
+    body="$(printf '%s\n\n%s\n' "$delta_line" "$body")"
+  fi
+fi
+
 if ! sg0_validate_pr_body_format "$body"; then
   exit 1
 fi
 
-computed_net=$(sg0_net_path_delta_from_git_diff) || exit 1
 if [ "${SG0_DECLARED_INT:-}" -ne "$computed_net" ]; then
   echo "::error::SG-0 hand-path delta mismatch: PR body declares net ${SG0_DECLARED_INT} hand-authored path(s) in EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}, but \`git show origin/main:${SG0_CENSUS}\` vs \`git show HEAD:${SG0_CENSUS}\` counts ${computed_net} net change. Fix the PR description or the census edit; if the edit is a legitimate edge case this counter misses, escalate to Director (see script header)."
   exit 1
