@@ -4,10 +4,9 @@
 // Authority: `docs/design-timing-lens.md` + `docs/r3-structure.md` T-WAD row.
 //
 // 🟡 SCAFFOLD. External CI / runner timing facts are not yet reflected into
-// `timing_lens_read`; the uniform `Inhabits(Unobserved)` witness is an honest
-// fail-open substrate receipt until observation wiring lands (`Unobserved` ≡
-// external "missing timing" state; label avoids `Missing` name collision). Loop iteration
-// scaling against `LoopBound` measure ports is likewise deferred:
+// `timing_lens_read`; the uniform unobserved witness is an honest fail-open
+// substrate receipt until observation wiring lands. Loop iteration scaling
+// against `LoopBound` measure ports is likewise deferred:
 // `timing_measurement_iterate` is identity on `body` pending measure lowering.
 
 module v3.std.timing_lens
@@ -16,9 +15,24 @@ import std.list { List }
 import std.substrate { Dag, Behavior, LoopBound }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 
-// Terminal vocabulary for timing-lens outputs (report-not-scalar discipline).
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — nominal SI-nanosecond coordinate for
+// durations and POSIX-epoch instants at this substrate layer. Non-negative /
+// range refinement is deferred per Q-Unit-4 option (c) (same posture as
+// `Measure<Time, S>` in `dsl/std/measure.dag`); dissolution ties to Grounding
+// emission once timing facts lower with checked bounds.
+type Nanoseconds {
+  count: Int
+}
+
+// PRACTICE 4 — four-pattern dissolution (report-state coproduct):
+//   1. Fact placement — PASS: each variant names one external observation fact.
+//   2. Variant-is-data — PASS: `Observed` carries `Nanoseconds`; others unit facts.
+//   3. Algebraic form — PASS: closed sum over report outcomes (no stringly state).
+//   4. Dimensional — N/A at this layer (time magnitude is tagged via `Nanoseconds`).
+// `Unobserved` labels the gate's "missing evidence" state without using the bare
+// identifier `Missing` (resolves ambiguously in witness expression sites).
 type TimingMeasurement
-  = Observed { nanoseconds: Int }
+  = Observed { duration: Nanoseconds }
   | Unobserved
   | Ambiguous
   | Stale
@@ -43,15 +57,18 @@ type WorkflowObservationAnchor {
   producer_id: String
   observer_id: String
   prover_id: String
-  attached_at_epoch_ns: Int
+  attached_at_ns: Nanoseconds
   workflow_run_id: String
 }
 
 // Budget carrier paired with timing enforcement (`LensEnforcement` / demo
 // lanes consume this shape; substrate lands the fact here).
 type TimingBudget {
-  max_nanoseconds: Int
+  max: Nanoseconds
 }
+
+fn timing_measurement_unobserved() -> TimingMeasurement =
+  Unobserved
 
 // Sequential monoid operation for `Lens<TimingMeasurement>.sequential`:
 // sums observed nanoseconds; error states dominate; `Unobserved` is strict.
@@ -64,19 +81,23 @@ fn timing_sequential_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMea
         Unobserved => Unobserved
         Stale => Stale
         Ambiguous => Ambiguous
-        Observed { nanoseconds: _ } => Ambiguous
+        Observed { duration: _ } => Ambiguous
       }
-    Observed { nanoseconds: ax } =>
+    Observed { duration: ax } =>
       match b {
         Unobserved => Unobserved
         Stale => Stale
         Ambiguous => Ambiguous
-        Observed { nanoseconds: bx } => Observed { nanoseconds: ax + bx }
+        Observed { duration: bx } =>
+          Observed { duration: { count: ax.count + bx.count } }
       }
   }
 
+fn nanoseconds_zero() -> Nanoseconds =
+  { count: 0 }
+
 fn timing_sequential_identity() -> TimingMeasurement =
-  Observed { nanoseconds: 0 }
+  Observed { duration: nanoseconds_zero() }
 
 // Branch composition (`Lens<TimingMeasurement>.branch`): parallel wall-clock
 // uses max on `Observed`; fault states use the same dominance as sequential.
@@ -89,15 +110,17 @@ fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasure
         Unobserved => Unobserved
         Stale => Stale
         Ambiguous => Ambiguous
-        Observed { nanoseconds: _ } => Ambiguous
+        Observed { duration: _ } => Ambiguous
       }
-    Observed { nanoseconds: ax } =>
+    Observed { duration: ax } =>
       match b {
         Unobserved => Unobserved
         Stale => Stale
         Ambiguous => Ambiguous
-        Observed { nanoseconds: bx } =>
-          Observed { nanoseconds: if ax > bx then ax else bx }
+        Observed { duration: bx } =>
+          Observed {
+            duration: if ax.count > bx.count then ax else bx,
+          }
       }
   }
 
@@ -107,7 +130,7 @@ fn timing_measurement_iterate(body: TimingMeasurement, bound: LoopBound) -> Timi
   body
 
 fn timing_lens_read(d: Dag, b: Behavior) -> Witness<TimingMeasurement> =
-  Inhabits(Unobserved)
+  Inhabits(timing_measurement_unobserved())
 
 fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnostic =
   NoDiagnostic

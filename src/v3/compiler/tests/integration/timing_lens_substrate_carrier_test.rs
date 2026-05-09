@@ -77,7 +77,7 @@ fn workflow_observation_anchor_shape_locked() {
         labels,
         vec![
             "artifact_digest".to_string(),
-            "attached_at_epoch_ns".to_string(),
+            "attached_at_ns".to_string(),
             "observer_id".to_string(),
             "producer_id".to_string(),
             "prover_id".to_string(),
@@ -89,12 +89,23 @@ fn workflow_observation_anchor_shape_locked() {
 }
 
 #[test]
+fn nanoseconds_shape_locked() {
+    let dag = generated_full_bootstrap_dag();
+    let labels: HashSet<String> = conj_field_labels(&dag, "Nanoseconds")
+        .into_iter()
+        .collect();
+    let expected: HashSet<&str> = ["count"].into_iter().collect();
+    let actual: HashSet<&str> = labels.iter().map(String::as_str).collect();
+    assert_eq!(actual, expected, "Nanoseconds field set drifted");
+}
+
+#[test]
 fn timing_budget_shape_locked() {
     let dag = generated_full_bootstrap_dag();
     let labels: HashSet<String> = conj_field_labels(&dag, "TimingBudget")
         .into_iter()
         .collect();
-    let expected: HashSet<&str> = ["max_nanoseconds"].into_iter().collect();
+    let expected: HashSet<&str> = ["max"].into_iter().collect();
     let actual: HashSet<&str> = labels.iter().map(String::as_str).collect();
     assert_eq!(actual, expected, "TimingBudget field set drifted");
 }
