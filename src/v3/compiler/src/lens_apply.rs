@@ -1006,7 +1006,7 @@ pub fn int_identity_witness_holds(
     samples: &[i64],
     candidates: &[i64],
 ) -> Result<bool, LensApplyError> {
-    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+    let int = |n: i64| FieldValue::Literal(literal_bits_int(n));
     let mut matching = 0_i32;
     for &e in candidates {
         let ev = int(e);
