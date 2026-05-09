@@ -113,6 +113,7 @@ import v3.std.substrate_minimal { DeclarationId }
 type CostBasisKind
   = PerWrite
   | PerCall
+  // 🟡 SCAFFOLD (#1954): `PeakMemory` — not a live terminal; see ledger §5 / block comment above (P5).
   | PeakMemory
 
 // **Rust consumer (gate #93 / P2):** `v3_compiler::try_build_per_write_log_cost_basis_declaration`
