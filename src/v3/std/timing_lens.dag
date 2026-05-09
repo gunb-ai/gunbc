@@ -13,6 +13,7 @@ module v3.std.timing_lens
 
 import std.list { List, is_empty }
 import std.nat { Nat }
+import std.types { Bool }
 import std.substrate { Dag, Behavior, LoopBound }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.workflows { behavior_spine }
@@ -36,6 +37,14 @@ type Nanoseconds {
 //   2. Variant-is-data — PASS: `Observed` carries `Nanoseconds`; others unit facts.
 //   3. Algebraic form — PASS: closed sum over report outcomes (no stringly state).
 //   4. Dimensional — N/A at this layer (time magnitude is tagged via `Nanoseconds`).
+//
+// **Report-state join (scaffold, one authority):** `timing_measurement_lens_combine`
+// below defines precedence for composing two `TimingMeasurement` values until
+// evidence-bearing runners supply richer algebra. **`Unobserved` is strict on
+// both operands** (never silenced by `Stale` / `Ambiguous` / `Observed`).
+// Among non-`Unobserved` faults, `Stale` dominates `Ambiguous` on the left when
+// pairing with `Observed` (see `Stale` / `Ambiguous` arms); `Observed`×`Observed`
+// uses `sequential` sum vs `branch` max only in that combine helper.
 type TimingMeasurement
   = Observed { duration: Nanoseconds }
   | Unobserved
@@ -78,10 +87,13 @@ type TimingBudget {
 fn timing_measurement_unobserved() -> TimingMeasurement =
   Unobserved
 
-// Sequential monoid operation for `Lens<TimingMeasurement>.sequential`:
-// sums observed nanoseconds; fault states dominate; `Unobserved` is strict on
-// **both** operands (missing evidence must not be silenced by `Stale` / etc.).
-fn timing_sequential_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
+// Single declared join for `Lens<TimingMeasurement>` composition hooks.
+// `sequential`: `Observed`×`Observed` sums nanoseconds; else `branch` takes max.
+fn timing_measurement_lens_combine(
+  a: TimingMeasurement,
+  b: TimingMeasurement,
+  sequential: Bool,
+) -> TimingMeasurement =
   match a {
     Unobserved => Unobserved
     Stale =>
@@ -104,9 +116,18 @@ fn timing_sequential_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMea
         Stale => Stale
         Ambiguous => Ambiguous
         Observed { duration: bx } =>
-          Observed { duration: { count: ax.count + bx.count } }
+          if sequential then
+            Observed { duration: { count: ax.count + bx.count } }
+          else
+            Observed {
+              duration: if ax.count > bx.count then ax else bx,
+            }
       }
   }
+
+// Sequential monoid operation for `Lens<TimingMeasurement>.sequential`.
+fn timing_sequential_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
+  timing_measurement_lens_combine(a, b, true)
 
 fn nanoseconds_zero() -> Nanoseconds =
   { count: 0 }
@@ -114,37 +135,9 @@ fn nanoseconds_zero() -> Nanoseconds =
 fn timing_sequential_identity() -> TimingMeasurement =
   Observed { duration: nanoseconds_zero() }
 
-// Branch composition (`Lens<TimingMeasurement>.branch`): parallel wall-clock
-// uses max on `Observed`; fault states use the same dominance as sequential
-// (including strict `Unobserved` on both sides).
+// Branch composition (`Lens<TimingMeasurement>.branch`).
 fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
-  match a {
-    Unobserved => Unobserved
-    Stale =>
-      match b {
-        Unobserved => Unobserved
-        Stale => Stale
-        Ambiguous => Stale
-        Observed { duration: _ } => Stale
-      }
-    Ambiguous =>
-      match b {
-        Unobserved => Unobserved
-        Stale => Stale
-        Ambiguous => Ambiguous
-        Observed { duration: _ } => Ambiguous
-      }
-    Observed { duration: ax } =>
-      match b {
-        Unobserved => Unobserved
-        Stale => Stale
-        Ambiguous => Ambiguous
-        Observed { duration: bx } =>
-          Observed {
-            duration: if ax.count > bx.count then ax else bx,
-          }
-      }
-  }
+  timing_measurement_lens_combine(a, b, false)
 
 // Bounded iteration witness hook — identity until `LoopBound` measure ports
 // lower into compositional timing algebra (deferred; see module banner).
