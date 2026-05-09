@@ -3022,10 +3022,7 @@ impl<'a> TestRunner<'a> {
                 "variant_fields only yields MalformedPayload (got UnsupportedLaw({law_label:?}))"
             ),
         };
-        if law_label != "Associativity"
-            && law_label != "Commutativity"
-            && law_label != "Identity"
-        {
+        if law_label != "Associativity" && law_label != "Commutativity" && law_label != "Identity" {
             return ClaimResult::NotYetImplemented(format!(
                 "AlgebraicLaw::{law_label} is not wired in the Rust runner; Distributivity must \
                  route through INVARIANTS P1 as an AlgebraicLawKind substrate enum extension"

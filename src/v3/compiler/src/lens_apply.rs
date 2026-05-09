@@ -952,9 +952,7 @@ pub const COMMUTATIVITY_WITNESS_PAIRS: &[(i64, i64)] = &[
 /// Samples for `AlgebraicLaw(Identity, …)` operational checks: **every** value must appear in at
 /// least one [`COMMUTATIVITY_WITNESS_PAIRS`] coordinate so identity witnessing stays materially
 /// aligned with the commutativity witness authority (still not a substrate law proof).
-pub const IDENTITY_WITNESS_SAMPLES: &[i64] = &[
-    -4, -3, -1, 0, 1, 2, 3, 5, 7, 10, 99, 100, 200,
-];
+pub const IDENTITY_WITNESS_SAMPLES: &[i64] = &[-4, -3, -1, 0, 1, 2, 3, 5, 7, 10, 99, 100, 200];
 
 /// Candidate identity elements searched left-to-right; exactly one must satisfy
 /// `e ⊕ a = a` and `a ⊕ e = a` for every sample in [`IDENTITY_WITNESS_SAMPLES`]. Multiple matches
