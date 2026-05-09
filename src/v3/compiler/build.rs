@@ -362,8 +362,8 @@ fn main() {
     // Tell Cargo to re-run the script if any staged std/spec/compiler file
     // changes. Without this, adding a new file wouldn't trigger a
     // rebuild and bootstrap would silently miss it.
-    println!("cargo:rerun-if-changed={}", std_dir.display());
     println!("cargo:rerun-if-changed={}", spec_dir.display());
+    println!("cargo:rerun-if-changed={}", std_dir.display());
     println!("cargo:rerun-if-changed={}", compiler_dir.display());
     println!("cargo:rerun-if-changed={}", extdeps_dir.display());
     println!("cargo:rerun-if-changed={}", gunbc_dir.display());
@@ -496,7 +496,7 @@ fn main() {
         "src/v3/compiler/src/dag_value_body_generated.rs",
         "src/v3/compiler/src/diagnostics_generated.rs",
         "src/v3/compiler/src/infer_helpers_generated.rs",
-        "src/v3/compiler/src/lens_cost_generated.rs",
+        "src/v3/compiler/src/complexity_lens_generated.rs",
         "src/v3/compiler/src/lens_cost_symbolic_generated.rs",
         "src/v3/compiler/src/lens_cost_target_realization_generated.rs",
         "src/v3/compiler/src/lens_effect_enumeration_generated.rs",

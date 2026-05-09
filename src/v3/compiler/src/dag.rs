@@ -3042,6 +3042,13 @@ impl Dag {
         id.raw() >= self.declaration_append_begin_after_bootstrap
     }
 
+    /// After embedding additional non-user fixtures (e.g. `complexity.dag` for T-LAS),
+    /// re-stamp the append boundary so those declarations are treated like bootstrap for
+    /// strict identifier / scaffold sweeps.
+    pub(crate) fn seal_prepended_authority_fixture_range(&mut self) {
+        self.stamp_declaration_append_begin_after_bootstrap();
+    }
+
     fn stamp_declaration_append_begin_after_bootstrap(&mut self) {
         self.declaration_append_begin_after_bootstrap = self.next_declaration_id;
     }
