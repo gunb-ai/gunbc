@@ -17,21 +17,21 @@
 // INVARIANTS P2 (codex BLOCKING surfaced post-merge at PR #2194
 // #issuecomment-4404079935).
 //
-// **Out of scope** (later sub-slices): full realization-row walking via
-// `d.declarations` fold + `meta_tag`-filtering + `ValueBody.Structural.fields`
-// extraction → folds into a Slice 1a.2 once the realization-row walking
-// expressivity is grep-confirmed against existing `.dag` precedents
-// (\`structural_resolution.dag:50,93\` is the closest precedent for
-// `d.declarations` fold). The composition of abstract `SymbolicCost`
-// shape × per-target realization-cost remains the ε-ratified target.
+// **Slice 1a.2 (Rust-side row walker)**: `v3_compiler::realization_cost`
+// filters realization rows by `meta_tag`, requires structural
+// `ValueBody.Structural.fields`, matches the active `language`, and extracts
+// each row's `target` / `op` key plus `cost: Int` into `RealizationCostTable`.
+// This stays Rust-side per ε ratification; the composition of abstract
+// `SymbolicCost` shape × per-target realization-cost remains the next slice.
 //
 // **ε factoring** (per `docs/proposals/q-cost-composition-layering-canvas.md`):
 //   - Layer 1 (target-agnostic abstract shape): `SymbolicCost` algebra at
 //     `src/v3/std/algebra.dag:181-188`; produced by `cost.dag`.
 //   - Layer 2 (language-agnostic per-primitive realization-cost facts):
 //     `data X: TypeRealization = { ..., cost: Int }` rows in `spec/{lang}.dag`.
-//   - Layer 3 (per-target concrete-cost composition): this lane (Slices
-//     1a.1 → 1a.2 → 1a.3) at `.dag`-tier.
+//   - Layer 3 (per-target concrete-cost composition): split lane. Slice 1a.1
+//     keeps `.dag`-tier meta-type resolver evidence here; Slice 1a.2 is the
+//     Rust-side row walker named above; Slice 1a.3+ owns follow-on composition.
 
 module lenses.cost_target_realization
 
