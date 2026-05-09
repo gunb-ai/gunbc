@@ -480,6 +480,10 @@ fn complexity_lens_iterate_op(body: ComplexitySummary, bound: LoopBound) -> Comp
       )
   }
 
+// `c.asymptotic_class` must **cover** `classify_symbolic_cost(c.work)` in the
+// `algebra.dag` order (ClassConstant ≤ … ≤ ClassUnknown): upper-bound field
+// dominates actual work class. Under-reported labels (e.g. ClassLog + linear work)
+// fail `asymptotic_dominates(stored, classified)` — `asymptotic_dominates(ClassLog, ClassLinear)` is False.
 fn complexity_summary_work_class_consistent(c: ComplexitySummary) -> Bool =
   asymptotic_dominates(c.asymptotic_class, classify_symbolic_cost(c.work))
 
