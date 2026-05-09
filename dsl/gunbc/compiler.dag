@@ -79,6 +79,7 @@ data stage0: GeneratedCrate = {
   source_dir: "src/v3/compiler/src",
   hand_maintained_src: [
     "bootstrap.rs",
+    "cost_basis_declaration.rs",
     "dag.rs",
     "diagnostics.rs",
     "dimension.rs",

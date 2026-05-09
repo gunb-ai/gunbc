@@ -98,7 +98,13 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: bash scripts/check-pr-sg0-net-shrink-discipline.sh
+        run: |
+          body="${PR_BODY}"
+          append_file="scripts/ci-merge/sg0-pr-body-append.${{ github.event.pull_request.number }}.txt"
+          if [ -f "${append_file}" ]; then
+            body="${body}"$'\n\n'"$(cat "${append_file}")"
+          fi
+          PR_BODY="${body}" bash scripts/check-pr-sg0-net-shrink-discipline.sh
 
       - name: Fabrication sentinel ratchet (P0-C)
         run: bash scripts/check-fabrication-sentinels.sh
