@@ -4,16 +4,18 @@
 //!
 //! V1 first slice per Pattern-A / E6-G1.a (Q-PAFS Path A ACCEPTED 2026-05-06; Q-Reification
 //! Option A ratified 2026-05-07 in PR #2096; Substrate Gate A merged 2026-05-07 in PR #2079).
-//! Cross-Mgr split per Evaluator E3.c (gunbc#1970): Verification authors the .dag-side η-pair +
-//! lens consumer envelope; Evaluator wires lens-fold-over-`Dag` substrate-fact projection.
+//! Cross-Mgr split: Verification authors the .dag-side η-pair + lens consumer envelope; Evaluator
+//! wires the non-vacuous lens-fold-over-`Dag` substrate-fact projection. Tracking correction
+//! 2026-05-09: E3.c (gunbc#1970) closed superseded-by-deferral; the remaining producer path is
+//! tracked at E4/G1.b (gunbc#1972), currently HELD-CANVAS-DEFERRED past R3.
 //!
 //! Today's runner returns `NotYetImplemented` with the canonical "structural shape is valid"
 //! reason (`eval_binary_dimension_report_equals_shape` in `src/v3/compiler/src/test_runner.rs`).
 //! Per Director (C-modified) ratification at gunbc#828 2026-05-07: §1.8 gate #11 status STAYS
 //! DECLARED on this scaffold landing; the NotYetImplemented sentinel is fail-closed-by-
-//! construction (any actual implementation that runs WILL fail this assertion when E3.c lands,
-//! forcing fixture upgrade). Status flips DECLARED → CONSUMER_LANDED → PASSING in one move on
-//! Evaluator E3.c (gunbc#1970) merge + assertion upgrade.
+//! construction (any actual implementation that runs WILL fail this assertion when the producer
+//! path lands, forcing fixture upgrade). Status flips DECLARED -> CONSUMER_LANDED -> PASSING in
+//! one move on producer landing + assertion upgrade.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -27,6 +29,12 @@ const SUITE_NAME: &str = "tc1_substrate_lens_eta_equivalence_strict_fire_suite";
 
 #[test]
 fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape() {
+    run_on_larger_stack(|| {
+        tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape_inner()
+    });
+}
+
+fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape_inner() {
     let dag = match compile_to_dag(FIXTURE_SOURCE, FIXTURE_PATH) {
         Ok(dag) => {
             assert!(
@@ -49,9 +57,10 @@ fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape(
         results[0].claim_name, "tc1_eta_equivalence_executable",
         "claim name must be the §1.8 #11 canonical gate name"
     );
-    // Today: shape-valid NotYetImplemented (runner waits on Evaluator E3.c / gunbc#1970).
-    // When E3.c lands, this assertion flips from NotYetImplemented to Pass — that is the
-    // §1.8 #11 CONSUMER_LANDED → PASSING transition without further fixture edits.
+    // Today: shape-valid NotYetImplemented (runner waits on the Evaluator producer path;
+    // #1970 closed superseded-by-deferral, remaining path tracked at #1972).
+    // When that path lands, this assertion flips from NotYetImplemented to Pass — that is the
+    // §1.8 #11 CONSUMER_LANDED -> PASSING transition without further fixture edits.
     assert!(
         matches!(
             &results[0].result,
@@ -62,6 +71,18 @@ fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape(
         "expected BinaryDimensionReportEquals shape-valid NotYetImplemented, got {:?}",
         results[0].result
     );
+}
+
+fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
+where
+    T: Send + 'static,
+{
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(f)
+        .expect("spawn larger-stack TC1 strict-fire integration thread")
+        .join()
+        .expect("larger-stack TC1 strict-fire integration thread panicked")
 }
 
 // INVARIANTS P1 / P5 — checkable receipt: this integration crate must not build if the cited
