@@ -1,4 +1,4 @@
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{catch_unwind, panic_any, AssertUnwindSafe};
 use std::sync::OnceLock;
 
 use v3_compiler::dag::{
@@ -368,9 +368,12 @@ fn predicate_holds(
                 Err(AlgebraicLawProgramError::UnsupportedLaw { .. }) => {
                     runner_deferred_panic("AlgebraicLaw")
                 }
-                Err(AlgebraicLawProgramError::MalformedPayload(message)) => panic!(
-                    "m1_5 testgen harness: AlgebraicLaw payload malformed — do not treat as ordinary false: {message}"
-                ),
+                Err(AlgebraicLawProgramError::MalformedPayload(message)) => {
+                    // Fail-closed: malformed AlgebraicLaw payloads must not be coerced to `false`
+                    // (ordinary “predicate does not hold”). Preserve the typed error for tests via
+                    // `panic_any` (TESTING.md: avoid substring-matching `panic!` format strings).
+                    panic_any(AlgebraicLawProgramError::MalformedPayload(message));
+                }
             }
         }
         "ExecuteCommand" => {
@@ -923,10 +926,20 @@ fn extension_predicates_reach_interpreter_boundary() {
         "AlgebraicLaw",
         identity_payload.clone(),
     );
-    let message = catch_predicate_holds_panic_message(&dag, positive_source, file, &law);
+    let harness = catch_unwind(AssertUnwindSafe(|| {
+        predicate_holds(&dag, positive_source, file, &law)
+    }));
     assert!(
-        message.contains("AlgebraicLaw payload malformed"),
-        "unexpected panic for AlgebraicLaw Identity on marker: {message}"
+        harness.is_err(),
+        "expected harness panic on AlgebraicLaw MalformedPayload (must not coerce to false)"
+    );
+    let payload = harness.unwrap_err();
+    assert!(
+        payload
+            .downcast_ref::<AlgebraicLawProgramError>()
+            .is_some_and(|e| matches!(e, AlgebraicLawProgramError::MalformedPayload(_))),
+        "expected AlgebraicLawProgramError::MalformedPayload via panic_any, got {:?}",
+        payload.downcast_ref::<String>()
     );
 
     let behavioral = sum_variant(
