@@ -6539,6 +6539,26 @@ fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
         "AnthropicStopReason must not become an internally tagged object; attrs: {:?}",
         stop_attrs
     );
+
+    let response_role_attrs =
+        attrs_immediately_above_enum(&content, "pub enum AnthropicMessages200Role");
+    assert!(
+        response_role_attrs.contains(&"#[serde(rename_all = \"snake_case\")]"),
+        "expected AnthropicMessages200Role to serialize as the Anthropic wire string; attrs: {:?}",
+        response_role_attrs
+    );
+    assert!(
+        !response_role_attrs
+            .iter()
+            .any(|attr| attr.contains("tag =")),
+        "AnthropicMessages200Role must remain a string enum, not a tagged object; attrs: {:?}",
+        response_role_attrs
+    );
+    let response_role_block = enum_block(&content, "pub enum AnthropicMessages200Role");
+    assert!(
+        response_role_block.contains("Assistant,"),
+        "expected AnthropicMessages200Role singleton Assistant variant; got:\n{response_role_block}"
+    );
 }
 
 #[test]
@@ -7012,6 +7032,50 @@ fn anthropic_messages_request_body_json_matches_messages_wire_tags() {
     assert_eq!(
         body["messages"][1]["content"][1]["type"], "tool_use",
         "AssistantToolUseBlock must serialize as Anthropic type=tool_use"
+    );
+}
+
+#[test]
+fn anthropic_messages_200_role_json_matches_messages_wire_tag() {
+    #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+    #[serde(rename_all = "snake_case")]
+    enum AnthropicMessages200Role {
+        Assistant,
+    }
+
+    #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+    struct AnthropicMessages200Body {
+        id: String,
+        #[serde(rename = "type")]
+        response_type: String,
+        role: AnthropicMessages200Role,
+        content: Vec<Value>,
+        model: String,
+        stop_reason: String,
+        stop_sequence: Option<String>,
+        usage: Value,
+    }
+
+    let wire = serde_json::json!({
+        "id": "msg_mock123",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "text", "text": "hello" }],
+        "model": "claude-sonnet-4-6-20250929",
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "usage": { "input_tokens": 25, "output_tokens": 10 }
+    });
+
+    let body: AnthropicMessages200Body =
+        serde_json::from_value(wire).expect("deserialize Anthropic Messages 200 body");
+    assert_eq!(body.role, AnthropicMessages200Role::Assistant);
+
+    let encoded = serde_json::to_value(&body).expect("serialize Anthropic Messages 200 body");
+    assert_eq!(
+        encoded.get("role").and_then(Value::as_str),
+        Some("assistant"),
+        "Anthropic Messages 200 role must serialize to the wire-required unit enum string"
     );
 }
 

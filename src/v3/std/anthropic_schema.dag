@@ -156,6 +156,14 @@ type AnthropicMessages200Usage {
   service_tier:                String?
 }
 
+// 🟢 TERMINAL provider-domain singleton for the Anthropic Messages 200 response
+// role slot. The v2 source still carries the response role as raw `String`;
+// this v3 typed-wire mirror closes gate #30 by keeping the slot typed while
+// natural snake-case enum serialization maps `Assistant` to the required wire
+// string `"assistant"`.
+type AnthropicMessages200Role
+  = Assistant
+
 // 🟢 TERMINAL response envelope mirroring `AnthropicMessages200Body`
 // (`dsl/extdeps/llm/anthropic.dag:135-144`). Field set matches the
 // Anthropic Messages 200 response per the v2 authority comment;
@@ -164,7 +172,7 @@ type AnthropicMessages200Usage {
 type AnthropicMessages200Body {
   id:            String
   type:          String
-  role:          String
+  role:          AnthropicMessages200Role
   content:       List<AnthropicMessages200ContentBlock>
   model:         String
   stop_reason:   AnthropicStopReason
