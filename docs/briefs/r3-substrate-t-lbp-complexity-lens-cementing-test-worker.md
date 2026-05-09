@@ -1,5 +1,5 @@
 ---
-status: complete (closure receipt; implementation landed in #2271, verified by warm-stag-135 on 2026-05-09)
+status: complete for closure-receipt scope (implementation landed in #2271, focused tests verified by warm-stag-135 on 2026-05-09)
 authority parent: R3 Substrate Manager (#1739)
 ratification: T-LBP narrowed to complexity + cost lenses only per Q-Lens-Behavioral-Parity-R3-Closeability option (b) RATIFIED at gunbc#828 #issuecomment-4385329180 (zesty-bear-812, 2026-05-06)
 roadmap row: §1.8 ledger row #79 (`complexity_lens_behaviorally_complete`) + §1.8 row #87 (`lens_cementing_test_discipline_complete`) + §1.8 row #166 (T-LBP `lens_behavioral_parity_demonstration`)
@@ -63,6 +63,14 @@ Warm-stag-135 re-verified the focused closure tests via BuildBuddy on
   passed 2/2.
 - `cargo test -p v3-compiler --test integration cementing_lens_registry_dispatch_test -- --nocapture`
   passed 14/14.
+
+This closure receipt is intentionally narrower than the original
+dispatch packet below. It records that the already-landed #2271
+artifacts satisfy the complexity-lens cementing presence and focused
+behavioral pins now required by `TESTING.md` Band-C. It does **not**
+claim that warm-stag-135 re-ran the original full-workspace acceptance
+suite, performed an external snapshot mutation test, or added new
+code beyond the existing #2271 implementation.
 
 ## Precondition gates
 
@@ -155,28 +163,33 @@ Phase ordering (PR-internal):
 5. §1.8 ledger row updates (#79 cementing-test bullet; #87 first-lens
    entry)
 
-## Acceptance
+## Acceptance accounting
 
-- Cementing test landed in `tests/` (or canonical equivalent) consuming
-  frozen v2-oracle snapshot for ≥1 representative `.dag` source
-- Test verifies behavioral parity across all complexity-lens output
-  facets per row #79: work/span split + asymptotic class +
-  per-Behavior CostExpr
-- Mutation-test verification: injected divergence in snapshot causes
-  test failure (fail-closed path verified)
-- Both fail-closed paths verified: missing snapshot → error (not
-  skip); missing Lens<Complexity> → error (not skip)
-- §1.8 row #79 cementing-test bullet flips DECLARED → satisfied
-- §1.8 row #87 first lens entry recorded (cost lens follows in
-  companion brief; #87 GREEN gates on both)
-- `cargo test --workspace --exclude v2-compiler-tests` green (3
-  pre-existing v2-compiler --lib failures verified unrelated)
-- `cargo test -p v2-compiler-tests` green; strict-compile diagnostic
-  ratchet at 0
-- `cargo clippy --all-targets -- -D warnings` clean
-- `cargo fmt --all --check` clean
-- Citation discipline per `docs/briefs/brief-authoring-checklist.md`
-- 5-question authority audit in PR body
+The original acceptance list was authored before the #2271 landing and
+before the in-tree Band-C discipline in `TESTING.md` settled on
+register-driven cementing modules for v2-complete claims. Current
+accounting is:
+
+- **Satisfied by #2271:** `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs`
+  landed and is wired through `tests/integration.rs`.
+- **Satisfied by #2271:** the test pins the published
+  `ComplexitySummary` carrier on same-source fixtures: work, span,
+  asymptotic class, and certainty.
+- **Satisfied by #2271:** `cementing_lens_registry_dispatch_test.rs`
+  requires the `docs/v3-lens-capability-register.md` + `regen.dag`
+  v2-complete slice to name the complexity cementing module and its
+  `tests/integration.rs` path, fail-closed on missing wiring.
+- **Verified by warm-stag-135 on 2026-05-09:** the focused complexity
+  cementing module passed 2/2 via BuildBuddy.
+- **Verified by warm-stag-135 on 2026-05-09:** the Band-C dispatch
+  ratchet passed 14/14 via BuildBuddy.
+- **Verified by warm-stag-135 in this PR:** `git diff --check` passed
+  for this doc-only closure diff.
+- **Not claimed by this closure PR:** external frozen-snapshot file
+  mutation testing, full-workspace `cargo test`, `v2-compiler-tests`,
+  and full clippy. Those checks exceed the scope of this receipt-only
+  PR and remain CI / lane-close concerns, not evidence introduced by
+  this document update.
 
 ## STOP-AND-ESCALATE
 
