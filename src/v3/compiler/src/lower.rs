@@ -51,6 +51,32 @@ use crate::types::TypeShape;
 type CallableScope = HashMap<String, DeclarationId>;
 const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
 
+/// Behavioral complexity lens + T-LAS carriers (`complexity_enforceable`, …). Kept **out**
+/// of the embedded `Dag::new` snapshot so rust emit tests are not forced to realize
+/// every `Lookup<ComplexitySummary>` edge; [`lower`] prepends this module before user
+/// lowering (`compile_to_dag`, gate #92).
+const COMPLEXITY_LENS_AUTHORITY_DAG: &str = include_str!("../../lenses/complexity.dag");
+const COMPLEXITY_LENS_AUTHORITY_FILE: &str = "src/v3/lenses/complexity.dag";
+
+fn append_complexity_lens_authority(dag: &mut Dag) {
+    let tokens = crate::tokenize::tokenize(
+        COMPLEXITY_LENS_AUTHORITY_DAG,
+        COMPLEXITY_LENS_AUTHORITY_FILE,
+    )
+    .unwrap_or_else(|diag| {
+        panic!(
+            "complexity lens authority must tokenize ({COMPLEXITY_LENS_AUTHORITY_FILE}): {diag:?}"
+        )
+    });
+    let module =
+        crate::parse::parse(&tokens, COMPLEXITY_LENS_AUTHORITY_FILE).unwrap_or_else(|diag| {
+            panic!(
+                "complexity lens authority must parse ({COMPLEXITY_LENS_AUTHORITY_FILE}): {diag:?}"
+            )
+        });
+    lower_into(dag, &module);
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct RecursiveEdge {
     caller: DeclarationId,
@@ -149,6 +175,19 @@ struct LambdaLoweringContext<'a> {
 pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
     let user_start = dag.declarations().len();
+    lower_into(&mut dag, module);
+    finalize_strict_user_lower_range(&mut dag, user_start);
+    dag
+}
+
+/// Prepends `src/v3/lenses/complexity.dag` before lowering `module` (gate #92 T-LAS). Kept out of
+/// [`Dag::new`] and [`lower`] so emit tests that call [`crate::compile_to_dag`] on small programs
+/// without a `lenses.complexity` import do not load `Lookup<ComplexitySummary>` into the graph.
+pub(crate) fn lower_prepending_complexity_lens_authority(module: &SurfaceModule) -> Dag {
+    let mut dag = Dag::new();
+    append_complexity_lens_authority(&mut dag);
+    dag.seal_prepended_authority_fixture_range();
+    let user_start = dag.post_bootstrap_declaration_append_begin() as usize;
     lower_into(&mut dag, module);
     finalize_strict_user_lower_range(&mut dag, user_start);
     dag
@@ -4416,6 +4455,34 @@ fn lower_structural_field_value(
                             ),
                             span: span.clone(),
                         fixes: Vec::new(),
+                        },
+                    );
+                    return None;
+                }
+            }
+            return Some(crate::dag::FieldValue::Reference(decl_id));
+        }
+    }
+
+    // `v3.std.substrate_minimal::DeclarationId` — nominal carrier for "any
+    // declaration at the DAG level" (e.g. `SectionRef.DeclarationScope.declaration`).
+    // Unlike `DeclarationRef` (spec refinement), this is the substrate row type;
+    // references may point at functions (`Arrow`), types, or `data` carriers.
+    if let Some(marker_id) = dag.declaration_by_name("DeclarationId").map(|d| d.id) {
+        if declaration_ref_types_equivalent_with_subst(dag, marker_id, expected_type, subst, 0) {
+            let decl_id = resolve_field_value_as_declaration_ref(expr, symbols, dag)?;
+            if let Some(cat) = category {
+                if let Err(reason) =
+                    validate_realization_field_target(dag, cat, field_label, decl_id)
+                {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{field_label}` does not satisfy the {cat:?} realization constraint: {reason}"
+                            ),
+                            span: span.clone(),
+                            fixes: Vec::new(),
                         },
                     );
                     return None;

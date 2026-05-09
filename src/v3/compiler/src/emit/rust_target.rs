@@ -4701,6 +4701,25 @@ impl<'a> Ctx<'a> {
         // there. Until variant payload positionality is DAG-carried, keep narrow.
         if children.len() == 1
             && children[0].label == "_0"
+            && enum_name == "Witness"
+            && variant_name == "Inhabits"
+        {
+            let value = self.elide_explicit_borrow(&self.render_input_use(
+                InputConsumer::Transform(consumer),
+                InputSlot::Positional(0),
+                locals,
+            )?);
+            // `render_input_use` may already clone when moving out of a match arm
+            // binding; avoid `((x).clone()).clone()` noise (and clone side effects).
+            let payload = if value.contains(".clone()") {
+                value
+            } else {
+                format!("({value}).clone()")
+            };
+            return Ok(Some(format!("{qualified_name}({payload})")));
+        }
+        if children.len() == 1
+            && children[0].label == "_0"
             && enum_name == "Lookup"
             && variant_name == "Hit"
         {

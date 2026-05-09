@@ -503,3 +503,103 @@ pub fn meet_pair(p0: &Certainty, p1: Certainty) -> Certainty {
         Certainty::Conservative => Certainty::Conservative,
     }
 }
+pub fn complexity_enforcement_project(p0: &ComplexitySummary) -> AsymptoticClass {
+    ((p0).asymptotic_class).clone()
+}
+pub fn complexity_enforcement_violates(p0: &AsymptoticClass, p1: &AsymptoticClass) -> bool {
+    if asymptotic_dominates(p1, p0) {
+        if asymptotic_dominates(p0, p1) {
+            (0 == 1)
+        } else {
+            (0 == 0)
+        }
+    } else {
+        (0 == 1)
+    }
+}
+pub fn witness_from_complexity_lookup(
+    p0: &Lookup<ComplexitySummary>,
+    p1: Behavior,
+) -> Witness<ComplexitySummary> {
+    match p0 {
+        Lookup::Hit(summary) => Witness::Inhabits((summary).clone()),
+        Lookup::Miss => Witness::Violates {
+            reason: String::from(
+                "complexity_of: missing ComplexitySummary for behavior result port",
+            ),
+            at: (p1).clone(),
+        },
+    }
+}
+pub fn complexity_lens_read(p0: &Dag, p1: Behavior) -> Witness<ComplexitySummary> {
+    witness_from_complexity_lookup(
+        &(complexity_of(p0, &(behavior_result_port(&p1)))),
+        (p1).clone(),
+    )
+}
+pub fn complexity_lens_sequential_op(
+    p0: &ComplexitySummary,
+    p1: &ComplexitySummary,
+) -> ComplexitySummary {
+    compose_summary_sequential(p0, p1)
+}
+pub fn complexity_lens_branch_op(
+    p0: &ComplexitySummary,
+    p1: &ComplexitySummary,
+) -> ComplexitySummary {
+    compose_summary_branch_pair(p0, p1)
+}
+pub fn complexity_lens_iterate_op(p0: &ComplexitySummary, p1: &LoopBound) -> ComplexitySummary {
+    match p1 {
+        LoopBound::Cardinality { count: payload } => compose_summary_iterate(
+            &(summary_from_costs(
+                SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: *payload,
+                        display_name: None,
+                    },
+                },
+                SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: *payload,
+                        display_name: None,
+                    },
+                },
+                Certainty::Proven,
+                Certainty::Proven,
+            )),
+            p0,
+        ),
+        LoopBound::Descent {
+            cluster: __payload_cluster,
+            measure: __payload_measure,
+        } => compose_summary_iterate(
+            &(summary_from_costs(
+                SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: *__payload_measure,
+                        display_name: None,
+                    },
+                },
+                SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: *__payload_measure,
+                        display_name: None,
+                    },
+                },
+                Certainty::Proven,
+                Certainty::Proven,
+            )),
+            p0,
+        ),
+    }
+}
+pub fn complexity_summary_work_class_consistent(p0: &ComplexitySummary) -> bool {
+    asymptotic_dominates(
+        &((p0).asymptotic_class),
+        &(classify_symbolic_cost(&((p0).work))),
+    )
+}
+pub fn complexity_lens_validate(p0: &Dag, p1: &ComplexitySummary) -> OptionalDiagnostic {
+    OptionalDiagnostic::NoDiagnostic
+}
