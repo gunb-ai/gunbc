@@ -21,6 +21,7 @@ pub fn asymptotic_dominates(a: &AsymptoticClass, b: &AsymptoticClass) -> bool {
             | ClassLog
             | ClassConstant => true,
         },
+        // Poly–poly: compare `degree` via `positive_descent_count` (matches `algebra.dag`).
         ClassPolynomial { degree: da } => match b {
             ClassUnknown | ClassExponential => false,
             ClassPolynomial { degree: db } => {
