@@ -37,9 +37,13 @@ Per [`ROADMAP.md`](../../ROADMAP.md):177 the SG-0 PR-window discipline allows th
 - **(b)** Director-budget citation (issue/comment URL)
 - **(c)** structural deferral with named follow-up dispatch
 
-**Option (c) is the dominant path.** Every test entry in `EXPECTED_HAND_AUTHORED_TEST` has a header-comment naming a "dissolution trigger" — but the trigger fires **structurally** when a downstream capability lands, not via per-PR retirement. The result: each new gate or feature can land with hand-Rust acceptance + a deferred-dissolution comment, growing the census.
+**Option (c) is the dominant path.** **About 32 of 103 test entries** in `EXPECTED_HAND_AUTHORED_TEST` have an explicit header-comment naming a "dissolution trigger" (revised 2026-05-09 per codex BLOCKING — prior audit overclaimed "every entry"); the remaining ~71 entries lack inline dissolution-trigger comments. Where present, the trigger fires **structurally** when a downstream capability lands, not via per-PR retirement. The result: each new gate or feature can land with hand-Rust acceptance + a deferred-dissolution comment, growing the census.
 
-This is by design (the cascade-promotion 2026-04-25 shape). What it requires: **the named dissolution triggers actually fire**.
+The **~71 entries without explicit comments are potentially untracked hand-Rust debt**: they may have *implicit* dissolution paths (e.g., m1/m2 boundary tests dissolve via T-V2-Retirement + Tests-As-Data; sg* tests dissolve via Tests-As-Data; common/ helpers dissolve when their downstream test consumers retire) but lack the per-entry header comment that the SG-0 PR-window option-(c) discipline assumes. **This is itself an audit finding** (added 2026-05-09 per codex BLOCKING — INVARIANTS P1/P5): the option-(c) discipline assumes per-entry dissolution-trigger documentation; entries lacking that documentation operate as untracked deferral.
+
+PM follow-up (Task 13 effectively): per-entry audit of the ~71 commentless entries to either (a) classify each under an existing cluster's bulk-dissolution event or (b) flag as untracked debt requiring fresh substrate authoring or comment-attribution PR.
+
+This is by design for the entries WITH triggers (the cascade-promotion 2026-04-25 shape). What it requires: **the named dissolution triggers actually fire**, AND **commentless entries get classified or comment-attributed**.
 
 ---
 
