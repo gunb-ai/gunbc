@@ -3923,8 +3923,23 @@ fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
     );
 }
 
+// Test-harness containment: this carrier-shape ratchet loads the full generated
+// bootstrap DAG, which can overflow the default harness stack in CI. Dissolution
+// trigger: remove or centralize this wrapper once full-bootstrap shape tests run
+// on the default stack.
+const FULL_BOOTSTRAP_SHAPE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
+
 #[test]
 fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape() {
+    std::thread::Builder::new()
+        .stack_size(FULL_BOOTSTRAP_SHAPE_TEST_STACK_BYTES)
+        .spawn(pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape_impl)
+        .expect("spawn larger-stack PR-A.3 carrier test thread")
+        .join()
+        .expect("larger-stack PR-A.3 carrier test thread panicked");
+}
+
+fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape_impl() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
     let eval_state_key_id = find_named(&dag, "EvalStateKey");
@@ -3958,7 +3973,7 @@ fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape() {
     assert_eq!(
         strategy_variants.len(),
         1,
-        "PR-A.3 eager baseline must not introduce fake strategy variants"
+        "TC2 input-order expansion must stay under the single applicative strategy variant"
     );
     assert_eq!(strategy_variants[0].label, "ApplicativeOrder");
     assert_eq!(
@@ -3975,20 +3990,27 @@ fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape() {
     );
     let input_order_variants = match &input_order.connective {
         TypeConnective::Disj { variants } => variants,
-        other => panic!("InputEvaluationOrder must lower as a one-variant Disj, got {other:?}"),
+        other => panic!("InputEvaluationOrder must lower as a two-variant Disj, got {other:?}"),
     };
     assert_eq!(
         input_order_variants.len(),
-        1,
-        "PR-A.3 eager baseline must not introduce fake input-order variants"
+        2,
+        "TC2 requires exactly the two executable eager input orders"
     );
     assert_eq!(input_order_variants[0].label, "LeftFirst");
-    match &dag.declaration(input_order_variants[0].ty).connective {
-        TypeConnective::Conj { children } => assert!(
-            children.is_empty(),
-            "LeftFirst is a bare nullary variant and must carry no payload fields"
-        ),
-        other => panic!("LeftFirst payload must lower as empty Conj, got {other:?}"),
+    assert_eq!(input_order_variants[1].label, "RightFirst");
+    for variant in input_order_variants {
+        match &dag.declaration(variant.ty).connective {
+            TypeConnective::Conj { children } => assert!(
+                children.is_empty(),
+                "{} is a bare nullary variant and must carry no payload fields",
+                variant.label
+            ),
+            other => panic!(
+                "{} payload must lower as empty Conj, got {other:?}",
+                variant.label
+            ),
+        }
     }
 
     let memo_key = dag
