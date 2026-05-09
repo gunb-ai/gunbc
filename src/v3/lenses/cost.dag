@@ -64,6 +64,25 @@ import std.algebra {
   hit_symbolic_cost_lookup
 }
 import v3.std.lookup { Lookup }
+import v3.std.substrate { SourceSpan }
+import v3.std.substrate_minimal { DeclarationId }
+
+// Cost-lens-owned user cost basis (T-User-Authored-Cost-Basis-Discipline audit:
+// `docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`).
+// Split from `EnforcedApplication` / `apply_lens` config: the latter owns enforcement
+// mode + declared budget; these carriers attach evidence consumed when composing
+// per-target costs (§4.2 PerWrite CRDT, §4.3 memory peak).
+type CostBasisKind
+  = PerWrite
+  | PerCall
+  | PeakMemory
+
+type CostBasisDeclaration {
+  subject: DeclarationId
+  kind: CostBasisKind
+  cost: SymbolicCost
+  span: SourceSpan
+}
 
 type SymbolicCostEntry {
   port: PortId
