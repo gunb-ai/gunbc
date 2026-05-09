@@ -19,7 +19,14 @@ Per Director's three outcomes:
 | **C2** effect_enumeration lens behaviorally complete | **#82** | **MIXED** — 4a/4b/4d bounded (consumer migration + cleanup); 4c (caller-side effect-set pinning carrier) is **NEW P1 substrate-fact-introduction** not landed at HEAD | **Director disposition needed**: (a) full carve-promotion (4c lands in R3 as new substrate intro per "staffing not concern") OR (b) (γ) `.dag`-stub-form for #82 declarations (NYI bodies until 4c lands; substantive R4 work) |
 | **C3** opt-in iteration parallelism via lens application demonstrated | **#95** | **substrate-ready conditional on C1** — `lens_application.dag` exists; cascade-gated on parallelism lens BEHAVIORALLY COMPLETE | **Full carve-promotion to R3** — lands when C1 lands |
 
-**Net**: 2 of 3 carves are substrate-ready for full promotion (C1 + C3); 1 has a specific substrate-cliff (C2 4c) requiring Director disposition.
+**Net**: 2 of 3 carves are substrate-ready for full promotion (C1 + C3); 1 has a specific substrate-cliff (C2 4c).
+
+**Decision-state scope clarification (added 2026-05-09 per openai-pro REQUEST_CHANGES)**:
+
+- **(α) carve-promotion-IN-R3 thesis is RATIFIED** at gunbc#846 c#4412330468 — broad framework: R4 carves C1/C2/C3 dissolve; gates #81/#82/#95 are R3-load-bearing. This is settled.
+- **C2 #82 sub-disposition (a) vs (γ-stub) is OPEN** — a finer-grain decision *within* the ratified (α) framework. Whether to author 4c P1 substrate-fact-introduction in R3 (path (a)) or land #82 as `.dag`-stub-form with NYI bodies (path (γ)) is the open Director disposition. Both paths satisfy operator's strict-zero hand-Rust framing; they differ on whether #82's behavioral completion happens in R3 (path (a)) or is deferred to R4 with R3-stub-form retirement of the hand-Rust file (path (γ)).
+
+The two scopes do not contradict; (α) is ratified at thesis level, (a) vs (γ) is the open sub-decision under (α). The "Recommendation" column for C2 lists both (a) and (γ) as options for Director ratification at the sub-disposition level.
 
 ---
 
@@ -84,13 +91,26 @@ Bulk-dissolution event: ~3 entries collapse from `EXPECTED_HAND_AUTHORED_NON_TES
 
 ### §2.3 Substrate-cliff specifics
 
-4c is the cliff. Per `INVARIANTS.md` P1 procedure, substrate-fact-introduction requires:
-1. Confirmed bridge consumer (need real downstream consumer, not speculative)
-2. Carrier shape ratification
+4c is the cliff. **Two distinct gating layers** (corrected 2026-05-09 per openai-pro REQUEST_CHANGES on PR #2363 sha `c3a4b110` — prior framing folded both into one "P1 procedure" label):
+
+**Layer 1 — `INVARIANTS.md` P1 substrate-fact-introduction modeling checks (per [`INVARIANTS.md`](../../INVARIANTS.md):94-129)**:
+
+1. **DAG-ancestor check** ([`INVARIANTS.md`](../../INVARIANTS.md):100-108): does an ancestor type already exist? Caller-side effect-set pinning — attaches via inhabitance to existing `EffectShape` / `OperationEffect` parents, or stands as new substrate primitive? Not run at HEAD.
+2. **Coproduct-vs-coordinate check** ([`INVARIANTS.md`](../../INVARIANTS.md):109-119): if proposing `EffectSet = A | B | C` shape, are these alternatives (one-at-a-time) or coordinates (all-at-once record)?
+3. **Primitive-vs-lens-extensible check** ([`INVARIANTS.md`](../../INVARIANTS.md):120-128): substrate primitive (sibling to existing primitives) or lens-extensible label?
+
+These three modeling checks **must surface in the canvas authoring before carrier shape is ratified**. Without running them, carve-promotion authorizes a substrate addition without proving it's the right substrate fact.
+
+**Layer 2 — Dispatch / process gates (separate from P1 modeling checks)**:
+
+1. Confirmed bridge consumer (downstream consumer demand surfaces)
+2. Carrier shape ratification (post-Layer-1 modeling checks)
 3. Worker brief authoring
 4. Substrate-introduction PR
 
-This is **substantive substrate authoring**, not port-and-rewire. Operator's "staffing not concern" directive permits this scope, but it expands R3 substrate intro work.
+Layer 1 is the P1 modeling discipline; Layer 2 is dispatch/process discipline. Both are required.
+
+This is **substantive substrate authoring**, not port-and-rewire. Operator's "staffing not concern" directive permits this scope, but it expands R3 substrate intro work — and the canvas must run the P1 Layer 1 checks before recommending a carrier shape.
 
 ### §2.4 Recommendation — Director disposition needed
 
