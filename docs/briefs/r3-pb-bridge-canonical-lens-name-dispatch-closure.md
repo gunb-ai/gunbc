@@ -1,5 +1,5 @@
 ---
-status: PROPOSAL
+status: CONSUMED
 owning_manager: Pure Bootstrap Manager (R2 → R3 continuation)
 lane: T-Bridge-Retirement — distributed bridge #3 (`bridge_canonical_lens_name_dispatch_retired`)
 authored: 2026-05-06 (neat-bear-351 — PB Mgr cycle #1861 / next-tier queue)
@@ -7,7 +7,7 @@ authored: 2026-05-06 (neat-bear-351 — PB Mgr cycle #1861 / next-tier queue)
 
 # R3 PB — canonical lens-name dispatch closure — worker brief
 
-**Status:** PROPOSAL — **pre-authored closure brief** (dispatch-gated). Aligns with [`docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`](r2-pb-canonical-lens-bridge-disposition.md): partial retirement + ratchet already landed; **full** `bridge_canonical_lens_name_dispatch_retired` remains **open** until substrate-level unblockers fire.
+**Status:** CONSUMED by R3 gate #33. `test_runner.rs` no longer carries the canonical lens byte constants, lens-name dispatch arms, or generic lens-name lookups named below; `canonical_lens_bridge_ratchet_test.rs` pins them at zero and the bridge ledger residual row is `Retired`.
 
 **Owning manager:** Pure Bootstrap Manager (R3 continuation per [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-Bridge-Retirement distribution map).
 

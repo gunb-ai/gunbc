@@ -1,6 +1,8 @@
-# R2 PB — Canonical lens-name dispatch bridge: disposition (partial retirement + structural blocker)
+# R2 PB — Canonical lens-name dispatch bridge: disposition (superseded blocker)
 
 **Status:** disposition artifact. Authored 2026-04-29 by PB Manager continuation per dispatch on inbox #1149 ("PB-owned bridge retirement slice — canonical lens-name dispatch / fixture-name routing").
+
+**Superseded live state:** R3 gate #33 retired the residual runner bridge. `src/v3/compiler/src/test_runner.rs` no longer carries the `R1_CANONICAL_*_LENS` byte constants, `lens_decl.name.as_deref() == Some(...)` dispatch arms, or generic `lens_decl.name.as_deref()` lookups. `src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs` now pins all three categories at zero, and `src/v3/std/bridge_ledger.dag` marks `bridge_canonical_lens_name_patching_residual` as `Retired`. The remainder of this file is the historical blocker disposition that the closure consumed.
 
 **Gate:** `bridge_canonical_lens_name_dispatch_retired` (R3 T-Bridge-Retirement, distributed bridge #3, PB-owned per [`r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) §"Owns (R3 continuation)" + [`docs/r3-structure.md`](../r3-structure.md) T-Bridge-Retirement distribution map).
 

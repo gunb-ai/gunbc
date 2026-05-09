@@ -1,16 +1,13 @@
-//! Ratchet for the canonical lens-name dispatch bridge in `test_runner.rs`.
+//! Zero-residual ratchet for the retired canonical lens-name dispatch bridge in `test_runner.rs`.
 //!
-//! Pins the current bridge surface so any growth fails CI, and any reduction
-//! can lower the pin in the same PR. Per `feedback_ratchet_only_down`: never
+//! Pins the retired bridge surface at zero. Per `feedback_ratchet_only_down`: never
 //! raise these constants.
 //!
 //! The bridge is described in `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`
 //! (gate `bridge_canonical_lens_name_dispatch_retired`, R3 T-Bridge-Retirement
-//! distributed bridge #3). Full retirement is gated on PB-Runtime
-//! interpreter-as-data OR a typed lens-registry carrier substrate-introduction;
-//! both are outside this PR's scope.
+//! distributed bridge #3).
 //!
-//! Three categories are pinned:
+//! Three categories are forbidden:
 //!   A. `include_str!("…/lenses/<name>.dag")` calls.
 //!   B. `lens_decl.name.as_deref() == Some("<name>")` string-name dispatch arms.
 //!   C. Generic `lens_decl.name.as_deref()` name-keyed lookups (ones not
@@ -288,9 +285,9 @@ fn count_lens_name_lookups(src: &str) -> usize {
         .count()
 }
 
-const EXPECTED_INCLUDE_STR_LENS_BYTES: usize = 2;
-const EXPECTED_NAME_EQ_DISPATCH_ARMS: usize = 2;
-const EXPECTED_GENERIC_NAME_LOOKUPS: usize = 2;
+const EXPECTED_INCLUDE_STR_LENS_BYTES: usize = 0;
+const EXPECTED_NAME_EQ_DISPATCH_ARMS: usize = 0;
+const EXPECTED_GENERIC_NAME_LOOKUPS: usize = 0;
 
 #[test]
 fn canonical_lens_include_str_bridges_pinned() {
@@ -300,8 +297,7 @@ fn canonical_lens_include_str_bridges_pinned() {
         n, EXPECTED_INCLUDE_STR_LENS_BYTES,
         "test_runner.rs canonical-lens `include_str!` count drifted: \
          expected {EXPECTED_INCLUDE_STR_LENS_BYTES}, found {n}. \
-         If this is a *reduction* (bridge retired), lower the constant in \
-         this file in the same PR. If this is *growth*, that is forbidden \
+         Growth is forbidden \
          per the disposition in \
          docs/briefs/r2-pb-canonical-lens-bridge-disposition.md — split \
          a structural lens-registry carrier brief instead of adding another \
@@ -317,8 +313,7 @@ fn canonical_lens_name_dispatch_arms_pinned() {
         n, EXPECTED_NAME_EQ_DISPATCH_ARMS,
         "test_runner.rs `lens_decl.name.as_deref() == Some(\"…\")` arm \
          count drifted: expected {EXPECTED_NAME_EQ_DISPATCH_ARMS}, found \
-         {n}. If this is a *reduction*, lower the constant. If this is \
-         *growth*, that is forbidden per the disposition — name-keyed \
+         {n}. Growth is forbidden per the disposition — name-keyed \
          dispatch on lens identity must be retired via PB-Runtime \
          interpreter-as-data or a typed lens-registry carrier, not \
          extended."
@@ -333,8 +328,8 @@ fn canonical_lens_generic_name_lookups_pinned() {
         n, EXPECTED_GENERIC_NAME_LOOKUPS,
         "test_runner.rs generic `lens_decl.name.as_deref()` name-keyed \
          lookup count drifted: expected {EXPECTED_GENERIC_NAME_LOOKUPS}, \
-         found {n}. Same rule as the equality-arm ratchet: ratchet only \
-         down."
+         found {n}. Same rule as the equality-arm ratchet: keep the retired \
+         surface at zero."
     );
 }
 

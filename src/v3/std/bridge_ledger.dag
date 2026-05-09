@@ -44,11 +44,11 @@ import v3.spec.v3_l1 { DeclarationRef }
 //     Retired. Narrow PR #1183 slice: lens dispatch routes via
 //     `DeclarationRef`/typed identity; ratcheted by
 //     `canonical_lens_bridge_ratchet_test.rs`.
-//   - `bridge_canonical_lens_name_patching_residual` — Open. Broader
-//     exact-string canonical-lens-name class remains live in
-//     `test_runner.rs` (`include_str!`, name arms, and generic
-//     name-keyed lookups); full retirement waits for PB-Runtime
-//     interpreter-as-data or a typed lens-registry carrier.
+//   - `bridge_canonical_lens_name_patching_residual` — Retired. Broader
+//     exact-string canonical-lens-name class no longer lives in
+//     `test_runner.rs`: `LensOutputEquals` dispatches through typed
+//     input carriers and the `lens_ref` `DeclarationRef`, with the
+//     zero-residual ratchet below guarding the retired surface.
 //   - `bridge_include_str_side_channels_retired` — Open. Per
 //     `r3-structure.md:82`: "Open disposition (`pipeline_authority`,
 //     PR #1171, 2026-04-29): `compile` remains `ArrowBody::Unparsed`,
@@ -142,8 +142,8 @@ data bridge_ledger: List<BridgeLedgerRow> = [
   {
     name:      "bridge_canonical_lens_name_patching_residual",
     owner:     "PB-Runtime",
-    status:    Open,
-    authority: "docs/briefs/r2-pb-canonical-lens-bridge-disposition.md"
+    status:    Retired,
+    authority: "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs"
   },
   {
     name:      "bridge_include_str_side_channels_retired",

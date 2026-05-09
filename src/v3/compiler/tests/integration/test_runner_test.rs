@@ -877,25 +877,6 @@ data suite: TestSuite = {
 }
 
 #[test]
-fn r1_canonical_complexity_lens_bytes_declare_complexity_of() {
-    let bytes = v3_compiler::test_runner::R1_CANONICAL_COMPLEXITY_LENS;
-    // Post-PR #2271 widening: `cost_of` (int-depth adapter) renamed/widened
-    // to `complexity_of` returning `Lookup<ComplexitySummary>` per
-    // `docs/v3-lens-capability-register.md` complexity.dag row promotion.
-    // The legacy `cost_of` Rust adapter still exists per the register row,
-    // but the canonical lens-bytes (`.dag` source) now declare
-    // `complexity_of` directly.
-    assert!(
-        bytes.contains("fn complexity_of"),
-        "canonical lens should declare complexity_of"
-    );
-    assert!(
-        bytes.contains("fn compute_summaries") && bytes.contains("fn seed_bind_params"),
-        "canonical `complexity.dag` bytes should include the forward-fold spine, not just the `complexity_of` signature"
-    );
-}
-
-#[test]
 fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
