@@ -63,10 +63,10 @@ The 94 R3-load-bearing gates resolve into 15 clusters by **close-shape** (the st
 | K | T-Tier3-Dissolution | #1-#4 + demo #65 | PB | mirror-batch deletion-receipt PR + demo | 2-3 |
 | L | T-Free-Consequences-Demonstration | #43-#52 | Verification | 10 representative-program demos; topical bundling | 4-6 |
 | M | T-Tests-As-Data-Completeness | #84 #85 #86 #87 | Verification | substrate carriers (#85/#86) + state-checks (#84/#87) | 2-3 |
-| N | substrate-gap-class | #60-#64 | cross-lane | **closes BY CONSTRUCTION** as constituent lanes close | 0 |
+| N | substrate-gap-class | #60-#64 | cross-lane | each gate has its own conjunctive Pass condition per [`r3-program-plan.md`](../r3-program-plan.md) §1.4 line 70: **(a)** representative gap-test executes through v3 cleanly per per-class Pass condition AND **(b)** systematic enumeration of class-bridges shows count=0. Per-class authoring scope (gap-test + enumeration) lives in §4.1–§4.5; this audit defers there. | 5-10 |
 | O | Pattern E ratchets / standing | #36 #75 #87 | distributed | aggregated into J / Debt-Paydown / M | (in others) |
 
-**Cluster sizing**: A-D = 9-13 PRs serialized critical chain; E-O = 21-31 PRs parallel. **Total: ~30-45 consumer-PRs to close R3** (excludes bug-fix, follow-up, ledger refresh).
+**Cluster sizing**: A-D = 9-13 PRs serialized critical chain; E-O = 26-41 PRs parallel. **Total: ~35-54 consumer-PRs to close R3** (excludes bug-fix, follow-up, ledger refresh).
 
 ---
 
@@ -78,6 +78,7 @@ The 94 R3-load-bearing gates resolve into 15 clusters by **close-shape** (the st
 A (1-2) → B (2-3) → C (2) → D (3-4)         = 8-11 PRs
 F (1-2) → E (1-2)                            = 2-4 PRs (parallel to A→D)
 M (2-3) parallels with B prerequisite        = 2-3 PRs
+N (5-10) cross-lane substrate-gap-class      = 5-10 PRs (per §1.4 conjunctive Pass per class)
 ```
 
 ### Sequencing-critical: Cluster B oracle freeze
@@ -90,7 +91,7 @@ Cementing tests for #79 / #80 / #83 require **frozen v2-oracle snapshot captured
 
 ### Velocity vs schedule
 
-Observed velocity: ~30 PRs in 3 days (10/day). Structural R3-close-PR work (~30-45 PRs) **fits in 3-5 days of execution time**. The 8-12 week window is dominated by:
+Observed velocity: ~30 PRs in 3 days (10/day). Structural R3-close-PR work (~35-54 PRs) **fits in 4-6 days of execution time**. The 8-12 week window is dominated by:
 
 - Substrate Mgr self-throttle on velocity-vs-grep-floor (deliberate; protects against carrier reshape thrash)
 - Director ratification cycle latency (canvas-tier dispositions)
@@ -150,9 +151,9 @@ The **§1 promotion candidates table** is point-in-time (HEAD `87291782c` at aud
 
 ### Velocity sanity
 
-Compare observed PR-merge rate vs estimated 30-45 close-PRs:
-- 10 PRs/day observed → 3-5 days execution
-- Multiplier from substrate-discipline / Director-ratification / CI-cycle = ~10-15x
+Compare observed PR-merge rate vs estimated 35-54 close-PRs:
+- 10 PRs/day observed → 4-6 days execution
+- Multiplier from substrate-discipline / Director-ratification / CI-cycle = ~10-14x
 - **8-12 week window is substrate-discipline-bound** not throughput-bound
 
 If velocity drops below ~5 PRs/day for >5 days, surface to Director as cycle-latency signal.
