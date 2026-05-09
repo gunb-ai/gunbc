@@ -49,7 +49,9 @@ This is by design for the entries WITH triggers (the cascade-promotion 2026-04-2
 
 ## §2. Root-cause partition — what dissolves each class
 
-Reading the per-entry "Dissolution trigger" / "Dissolves when..." comments in `sg0_census_test.rs`, the 149 entries cluster into a small number of trigger classes:
+**Methodology scope (added 2026-05-09 per codex BLOCKING)**: this partition is a **cluster-level** estimation, NOT a per-entry mechanical audit. The trigger-class counts below are derived from (a) inspection of header comments where present (~32 of 103 test entries per §1) + (b) inferred classification of commentless entries based on filename pattern (e.g., `m1_*` boundary tests → T-V2-Retirement + Tests-As-Data; `sg*_test.rs` → Tests-As-Data infrastructure). **Per-entry verification is Task 13 follow-up** (UNACCOUNTED entries grep). The cluster-level partition supports the §3 velocity-math finding (bulk-events-required) without requiring per-entry attribution; both §1 + §3 conclusions are reproducible at cluster-level.
+
+Reading the per-entry "Dissolution trigger" / "Dissolves when..." comments in `sg0_census_test.rs` (where present) + inferred classifications (commentless entries), the 150 entries cluster into a small number of trigger classes:
 
 ### §2.1 Test entries (101 entries, gate #84) — dissolution triggers
 
@@ -214,17 +216,19 @@ The growth-trajectory finding in §0 supersedes any earlier cluster-analysis cla
 
 This audit + 2 parallel Director-tier audits (gunbc#828 sweep 2026-05-09 via Director-spawned Explore agents, surfacing 6 additional drift items at gunbc#846 #issuecomment-4412017502) converge on a meta-finding: **R3 program-plan claims drift in the same direction — running ahead of HEAD reality**.
 
-Specific instances surfaced across the 3 audits:
+Specific instances surfaced across the 3 audits — each grounded against a landed authority (verified column added 2026-05-09 per codex BLOCKING):
 
-1. **§1.8 status drift** (this audit §1) — 9 gates likely promotable to CONSUMER_LANDED but ledger Status column not refreshed
-2. **SG-0 trajectory drift** (this audit §0) — census growing despite "ratchet to zero" framing in T-PB-A/T-PB-B
-3. **TC1 #11 plan-language drift** (Director ask 6) — row #11 claimed "flips PASSING on E3.c merge" but ratified disposition is "stays DECLARED through R3 (canvas-tier #1972 deferred post-R3)"
-4. **10 demonstration gates runtime-path drift** (Director ask 7) — gates #65-#74 all DECLARED with no runtime path; some need R4-carve OR honest sub-status amendment
-5. **Substrate-gap-class #61 enumeration drift** (Director ask 8) — §1.4 conjunctive closure ("gap-test executes AND bridge count=0"); §2.4 only resolved execution path, not enumeration
-6. **Gate-count canonicalization drift** (Director ask 9) — `97 enumerated / 94 load-bearing` math has +/- 1 ambiguity in plan text
-7. **Gate #95 carve-doc cross-ref drift** (Director ask 10) — `r3-structure.md` cites C1 carve but `r4-carve-out-routing.md` doesn't enumerate #95 explicitly
-8. **§10.3 ratification ledger publication drift** (Director ask 11) — single-authority §10.3 cited from ROADMAP / r3-structure without inline disposition; P2 boundary-discipline drift
-9. **R4-carve hand-Rust drift** (PM ask 2026-05-09 at #828 #issuecomment-4412052024) — R4-carved C1/C2 lens implementations (`workflow_parallelism.rs` + likely effect-enum walker) stay hand-Rust at R3 close, contradicting THESIS.md:298 "0 hand-maintained" thesis
+| # | Drift instance | Source | Verification (landed authority) |
+|---|---|---|---|
+| 1 | **§1.8 status drift** — 9 gates likely promotable to CONSUMER_LANDED but ledger Status not refreshed | this audit §1 | grep-verified against `docs/r3-program-plan.md` §1.8 + recent merged PRs (#2251 / #2208 / #2271 / #2147 / #2190 / #2160 / #2288 / #2281) |
+| 2 | **SG-0 trajectory drift** — census growing despite ratchet-to-zero framing | this audit §0 | grep-verified against `src/v3/compiler/tests/integration/sg0_census_test.rs` history (HEAD~500 → HEAD count progression) |
+| 3 | **TC1 #11 plan-language drift** — claimed "flips PASSING on E3.c merge" vs ratified "DECLARED through R3" | Director ask 6 (#issuecomment-4412017502) | grep-verified against `docs/r3-program-plan.md` §1.8 row #11 + Director (a)-disposition `473b99fb...`; addressed in PR #2361 sha 6efde884c |
+| 4 | **10 demonstration gates runtime-path drift** — #65-#74 DECLARED with no runtime path | Director ask 7 | grep-verified against §1.8 ledger rows #65-#74 (all DECLARED at HEAD); per-gate dissolution-trigger audit deferred to Ask 7 follow-up |
+| 5 | **Substrate-gap-class #61 enumeration drift** — §1.4 conjunctive close vs §2.4 one-sided resolution | Director ask 8 | grep-verified against `docs/r3-program-plan.md` §1.4 line 70 + §2.4 |
+| 6 | **Gate-count canonicalization drift** — 97/94/93 ambiguity | Director ask 9 | grep-verified against `docs/r3-program-plan.md` §1.5; addressed in PR #2361 sha 2e782f219 (now 97/96 forward-looking framing) |
+| 7 | **Gate #95 carve-doc cross-ref drift** — `r3-structure.md` cites C1; `r4-carve-out-routing.md` doesn't enumerate #95 | Director ask 10 | grep-verified against `docs/r3-structure.md`:38/146 + `docs/r4-carve-out-routing.md`; dissolved entirely by Task 12 PR #2364 (carves dissolve) |
+| 8 | **§10.3 ratification ledger publication drift** — Q-items cited without inline disposition | Director ask 11 | grep-verified against `docs/r3-program-plan.md` §10.3 + ROADMAP/r3-structure citations; deferred to Ask 11 follow-up (housekeeping) |
+| 9 | **R4-carve hand-Rust drift** — `workflow_parallelism.rs` + effect_enum walker stay hand-Rust per C1/C2 | PM ask 2026-05-09 at #828 #issuecomment-4412052024 | grep-verified against `src/v3/compiler/src/workflow_parallelism.rs` + design doc; resolved by Director (a) ratification at #issuecomment-4412330468 + Task 12 PR #2364 |
 
 ### Pattern shape
 
