@@ -48,7 +48,7 @@ fn bootstrap_int64_compose_int_machine_width_per_gate_19() {
 }
 
 #[test]
-fn bootstrap_float64_compose_ieee_machine_width_per_gate_19() {
+fn bootstrap_float64_aliases_real64_machine_width_construction() {
     let dag = Dag::new();
     assert_bootstrap_real64_compose_real_machine_width(&dag);
     assert_bootstrap_float64_aliases_real64(&dag);
