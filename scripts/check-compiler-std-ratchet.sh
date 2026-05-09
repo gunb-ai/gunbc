@@ -35,6 +35,8 @@ POSITIVE_ROWS=(
   "src/v3/lenses/complexity.dag:ComplexitySummary"
   "src/v3/lenses/complexity.dag:ComplexityEntry"
   "src/v3/lenses/complexity.dag:DominanceOutcome"
+  "src/v3/lenses/cost.dag:CostBasisKind"
+  "src/v3/lenses/cost.dag:CostBasisDeclaration"
   "src/v3/lenses/cost.dag:SymbolicCostEntry"
   "src/v3/lenses/effect_enumeration.dag:StructuralEffectShape"
   "src/v3/lenses/effect_enumeration.dag:EffectFact"
