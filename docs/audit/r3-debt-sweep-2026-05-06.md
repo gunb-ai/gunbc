@@ -38,13 +38,44 @@ Column rules (load-bearing):
 
 Bridges that exist because a substrate carrier or grammar surface isn't yet modeled. Wait for parser/grammar surface, function-valued data, file-ingestion, workflow/scheduling, reflection-closure.
 
-[Mgr canvas populates rows]
+Initial population 2026-05-09 per Brian-directive lane scope expansion (PM dispatch at gunbc#846 → gentle-newt-665 organize cycle):
+
+| Bridge | Class | File / location | Dissolution trigger | R3-close eligibility | Source PR | Owner Mgr |
+|---|---|---|---|---|---|---|
+| `parse_parser_body.txt` 1350-LOC recursive-descent algorithm | A | `src/v3/compiler/parse_parser_body.txt` | SG-2b proper `parse.dag` ownership lands | YELLOW | #589 | Substrate |
+| `Bool` inhabits `BooleanAlgebra<Bool>` not wired (Class 5 Gap 1) | A | `dsl/std/bool.dag` + lower.rs | 1e-2b lane Path A landing | YELLOW | pre-R3 | Substrate |
+| `data` body shape boundary (Class 5 Gap 3 — ValueBody extension) | A | `lower.rs:3514-3604` + emit.rs ValueBody::Structural | ValueBody substrate extension lane | YELLOW | pre-R3 | Substrate |
+| Function-valued data not first-class (Class 2 Gap) | A | `dsl/std/algebra.dag:168-181` Semiring<SymbolicCost> deferred witness | T-E-P-Producer-Broadening Phase 1 / S10 | DECLARED §1.8 #61 | pre-R3 | Substrate |
+| File-ingestion substrate gap (`.dag` consumes external files w/o include_str) | A | T-Workflow-As-Data lane | §1.8 #62 substrate_gap_file_ingestion_closed | DECLARED | pre-R3 | Substrate |
+| Workflow/scheduling substrate gap (CI workflow as `.dag` data) | A | T-Workflow-As-Data + T-Lens-Self-Application | §1.8 #63 substrate_gap_workflow_scheduling_closed | DECLARED | pre-R3 | Substrate |
+| Reflection-closure substrate gap (`lens_apply.rs` reflection via PB-Runtime) | A | T-LensProducer-Retirement | §1.8 #64 substrate_gap_reflection_closure_closed | DECLARED | pre-R3 | PB |
+| Parser/grammar substrate gap (typed numerics + algebra-machine-constraint) | A | `src/v3/spec/rust.dag` + numeric carriers | §1.8 #60 substrate_gap_parser_grammar_closed (Int<64>/Real<64>/Nat<8> evidence) | DECLARED | pre-R3 | Substrate |
+| `IntLit` host-narrowed at tokenizer boundary; `i64::MIN` unrepresentable | A | `src/v3/std/tokenize.dag:30` IntLit(Int) | unbounded-magnitude IntLit at concept layer; reconciliation-narrows | YELLOW | pre-R3 | Substrate |
+| Domain refinements regressed pending Q-Regex-Primitive | A | `dsl/std/types.dag` CommitSha/Sha256/Email/Url/SemVer/Timestamp/MimeType | regex/content predicate grounding | YELLOW | pre-R3 | Substrate |
+| `KNOWN_PREDICATES` Rust-side semantic authority (string carrier names) | A | `lower.rs` KNOWN_PREDICATES | substrate-reflection / `.dag` predicate declarations | YELLOW | abf5f24d | Substrate |
+| Constructor ambient prefix scan in lower.rs | A | `lower.rs` payload-lookup | `TransformTarget::Callable` outer-type metadata | YELLOW | pre-R3 | Substrate |
+| PathCall resolution source-order fragile | A | PathCall lowering tests | order-independent ValueBody population OR explicit declaration-order semantics | YELLOW | pre-R3 | Substrate |
+| `MethodContract.size_effect` substrate-shape | A | `dsl/std/method_contract.dag` | typed size-effect carrier | YELLOW | pre-R3 | Substrate |
+| `MethodContract.cost_shape` substrate-shape | A | `dsl/std/method_contract.dag` | typed cost-shape carrier (post-T-CostLens) | YELLOW | pre-R3 | Substrate |
+| `MethodContract.callback_element_position` substrate-shape | A | `dsl/std/method_contract.dag` | typed callback-position carrier | YELLOW | pre-R3 | Substrate |
+| Character-level under-consumption in tokenize + syntax | A | tokenize.dag + syntax authorities | character-class substrate refinement | YELLOW | #693 | Substrate |
+| Unit-mismatch enforcement for phantom Unit/Currency typed wrappers | A | typed value wrappers | phantom-parameter unit-discipline carrier | YELLOW | pre-R3 | Substrate |
+| `Secret<T>` nominal-wrapper graduation | A | nominal-opacity carriers | Secret PR A continuation per #900 | YELLOW | #900 | Substrate |
 
 ### Class B — Pattern-A NYI predicates (~7 expected)
 
 Test predicates declared but `NotYetImplemented`-shaped runtime: TC1, TC2, TC3, free-consequences, RustDagIsomorphism, BridgeLedgerZero, SymbolicCostExprEquals.
 
-[Mgr canvas populates rows; some entries pre-named per Director framework]
+| Bridge | Class | File / location | Dissolution trigger | R3-close eligibility | Source PR | Owner Mgr |
+|---|---|---|---|---|---|---|
+| TC1 η-equivalence executable (#11) | B | `r3-program-plan.md:212` §1.8 #11 | Evaluator E3.c #1970 merge → DECLARED→PASSING | DECLARED (HOLD branch B) | #2184 | Verification |
+| TC2 Church-Rosser executable (#12) | B | §1.8 #12 | second strategy/input order + strategy-keyed report | DECLARED | pre-R3 | Verification |
+| TC3 Pattern-A second-mover executable (#13) | B | §1.8 #13 | Descent execution proof (E5) + eval-step producer | DECLARED | pre-R3 | Verification |
+| RustDagIsomorphism executable (#14) | B | §1.8 #14 | shape-report producers | DECLARED | pre-R3 | Verification |
+| BridgeLedgerZero ratchet ledger-count (#36) | B | §1.8 #36 | unified ledger reports 0 | DECLARED | pre-R3 | Debt-Paydown |
+| SymbolicCostExprEquals executable (#40) | B | §1.8 #40 + test_runner.rs | cost-lens consumer per ε path | DECLARED | pre-R3 | Verification |
+| Free-Consequences demonstrations (#43-#52, 10 gates) | B | §1.8 #43-#52 | bind-independence/dependence parallelism + auto-memoization demos | DECLARED | pre-R3 | Verification |
+| `resolve_producer_opt` typed return (P3 fail-closed violation) | B | brief: `r3-bug-resolve-producer-opt-typed-return-worker.md` | dispatch worker; typed Result<Producer, Reason> | YELLOW | #2373 brief | Verification |
 
 ### Class C — Pattern-C typed-carrier + Rust-mirror (~6+ expected)
 
