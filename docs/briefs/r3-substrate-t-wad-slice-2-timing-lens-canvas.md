@@ -29,18 +29,18 @@ Slice 2 of T-Workflow-As-Data (per `r3-substrate-t-workflow-as-data-slice-1-work
 
 Worker dispatch is in flight (tidy-raven-610 spawned 2026-05-09); canvas surfaces the shape decisions so worker can grep against locked authority rather than re-derive.
 
-## Carrier inventory (binding per #1955 brief + r3-structure.md:168-169)
+## Carrier inventory (binding per #1955 brief + r3-structure.md:168-169 + Director ratification at #828 c#4412301889)
 
-**Naming canonicalization** (per PR #2333 inline review at canvas (b526a26f finding 2)): post-Q-WAD-S2-Anchor revision, `TimingMeasurement` is overloaded across three roles (observation record, outcome, payload). Canonical post-fix decomposition:
-- **`TimingPayload`** = the observed-value-only data (`{ nanoseconds: Int }` for timing). Used as `Source` in `WorkflowObservationAnchor<Subject, Source>` instantiation. Does NOT carry identity/attestation/report-state.
-- **`WorkflowObservationAnchor<BehaviorId, TimingPayload>`** = the single observation record carrying identity + attestation + observation_outcome (5 anchor-resident invariants).
-- **`ObservationOutcome<TimingPayload>`** = the report state (Observed/Missing/Ambiguous/Stale), wrapping `TimingPayload` only in the Observed variant.
-- **`TimingObservationSet`** = collection of `WorkflowObservationAnchor<BehaviorId, TimingPayload>` over a workflow run; the data the lens folds over.
-- **`TimingBudget`** = declared budget for `Enforce`-mode lens application (parallel to `AsymptoticClass`, `SymbolicCost`).
+**Director ratified worker tidy-raven-610's shape as-shipped on PR #2360** (re-ratification at #828 c#4412301889) — reversing this canvas's prior (b)/(b)/(a) preliminary recommendations on Q1/Q2/Q3. Final ratified carrier shape:
 
-Use `TimingPayload` (not `TimingMeasurement`) in every outcome / payload reference. Earlier canvas references to `TimingMeasurement` as the unified observation/outcome type are deprecated by the Q-WAD-S2-Anchor split.
+- **`TimingMeasurement = Observed { nanoseconds: Int } | Missing | Ambiguous | Stale`** — fused carrier-as-report-state. Per Director's reasoning (`feedback_no_rejected_patterns` + `feedback_state_space_vs_behavioral_invariants`): the carrier admits exactly the legal states; folding the 4 variants into the carrier dissolves the artificial separation between "value carrier" and "outcome projection." Owns invariant 5 (report state) as variant-level structure.
+- **`WorkflowObservationAnchor`** — timing-specific concrete-field carrier (Q-WAD-S2-Anchor (a) ratified, NOT generic parametric (b)): `subject_stable_id` + `artifact_digest` + `producer_id` + `observer_id` + `prover_id` + `attached_at_epoch_ns` + `workflow_run_id`. Owns invariants 1-4 (subject identity / artifact digest / producer-observer-prover identity / attachment timestamp + run id). Promotion-to-generic on second-consumer (ProofReceipt per ctrl#369) landing is bounded refactor (rename + add `<Subject, Source>` parameters); per `feedback_strict_mirror_vs_novel_substrate_fact` defer-shape pattern is correct here.
+- **`TimingObservationSet`** — collection-typed carrier; aggregation surface separate from per-observation `Lens<TimingMeasurement>`.
+- **`TimingBudget`** — declared budget for `Enforce`-mode lens application (parallel to `AsymptoticClass`, `SymbolicCost`).
 
-Lens declaration per Q-WAD-S2-LensC (b) Director ratification: `Lens<TimingObservationSet>`.
+Lens declaration per Q-WAD-S2-LensC ratification: `Lens<TimingMeasurement>` (per-observation; aggregation handled by `TimingObservationSet` separately).
+
+**Invariant 6 (fail-closed) carriage**: structurally NOT on either anchor or `TimingMeasurement`; lives at `LensEnforcement.violates` layer. Worker scope (gate #55a) lands invariants 1-5 on anchor + TimingMeasurement; **gate #55b** (LensEnforcement substrate-extension for fail-closed-correct enforcement on non-Observed variants) is separate Substrate-Mgr-scope dispatch (see Gate #55 closure-predicate split section below). The `LensEnforcement<Output, Budget>.violates: fn(Budget, Budget) -> Bool` signature per `src/v3/std/lens_application.dag:99-101` cannot pattern-match `TimingMeasurement` variants; substrate-extension is required for fail-closed-correct observation-driven lens classes (timing first; ProofReceipt second).
 
 ## Question 1 (Q-WAD-S2-LensC) — `Lens<C>` instantiation: per-measurement vs per-set
 
