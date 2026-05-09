@@ -40,8 +40,11 @@ ANTI_PATTERNS=(
 )
 
 # Permitted-context markers: lines containing any of these are allowed to cite the
-# anti-pattern (historical/dissolved record, or supersession annotation).
+# anti-pattern (historical/dissolved record, OR supersession annotation, OR
+# legitimate post-2026-05-09 carve channel via Class P / past-R3 / R4+ partition
+# per Debt-Paydown lane scope expansion at PR #2436 + Class P populated at PR #2437).
 PERMITTED_MARKERS=(
+  # Historical / dissolved record markers (pre-2026-05-09 R4-carved framings)
   'DISSOLVED'
   'dissolved'
   'AMENDED 2026-05-09'
@@ -60,6 +63,17 @@ PERMITTED_MARKERS=(
   'pre-promotion'
   'pre-carve-promotion'
   'pre-2026-05-09'
+  # Post-2026-05-09 legitimate carve channel — Class P / past-R3 routing per
+  # Debt-Paydown lane scope expansion (PR #2436 + Class P populated PR #2437).
+  # Going forward, R4+ work should route through Class P, not direct C1/C2/C3 carves.
+  'Class P'
+  'class P'
+  'past-R3'
+  'past R3'
+  'R3 close cycle exit'
+  'R4\+ via Class P'
+  'Debt-Paydown'
+  'debt-paydown'
 )
 
 # Canonical authority files: anti-patterns inside these files are allowed
@@ -165,6 +179,15 @@ run_self_test() {
     echo "self-test: ✓ AMENDED 2026-05-09 marker recognized"
   else
     echo "self-test: ✗ AMENDED marker NOT recognized: $amended_line"
+    fail=1
+  fi
+
+  # Self-test: Class P (post-2026-05-09 legitimate carve channel) should pass
+  local class_p_line='novel-substrate-introduction explicitly carved to R4+ via Class P partition (Debt-Paydown PR #2437)'
+  if line_has_permitted_marker "$class_p_line"; then
+    echo "self-test: ✓ Class P legitimate-carve channel recognized"
+  else
+    echo "self-test: ✗ Class P marker NOT recognized: $class_p_line"
     fail=1
   fi
 
