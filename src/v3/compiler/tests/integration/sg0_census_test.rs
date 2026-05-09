@@ -334,6 +334,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // COMPLETE promotion against frozen v2-oracle values. Dissolves when `.dag`
     // TestClaims can execute the same complexity summary assertions directly.
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
+    // R3 T-Lens-Behavioral-Parity: v3-side cementing receipt for the cost lens
+    // `analyze_symbolic_cost_dimension` entrypoint. This is not the Band-C
+    // frozen-v2-oracle closure; dissolves with the same `.dag` TestClaim path.
+    "src/v3/compiler/tests/integration/cementing/cost_lens_behavioral_completion.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
