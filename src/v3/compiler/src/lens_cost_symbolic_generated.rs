@@ -198,7 +198,7 @@ pub fn transform_cost_for_target(
         TransformTarget::Operator(op) => match op {
             OperatorKind::Arithmetic(arith) => match arith {
                 ArithmeticOp::Div => match p2 {
-                    [] => transform_cost(p0, p2),
+                    [] => Lookup::Miss,
                     [__list_head, __list_tail @ ..] => combine_sequential(
                         &(transform_cost(p0, p2)),
                         &(Lookup::Hit(SymbolicCost::LogCost {

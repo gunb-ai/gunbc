@@ -329,7 +329,9 @@ fn transform_cost_for_target(
                     transform_cost(acc, inputs),
                     hit_symbolic_cost_lookup(LogCost(unnamed_size_variable(payload.head)))
                   )
-                Empty => transform_cost(acc, inputs)
+                // No dividend port list — malformed `Operator(Arithmetic(Div))`; fail closed
+                // (not `transform_cost`, which would pretend a well-formed zero-ary divide).
+                Empty => miss_symbolic_cost_lookup()
               }
             Add => transform_cost(acc, inputs)
             Sub => transform_cost(acc, inputs)

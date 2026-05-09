@@ -14,8 +14,10 @@
 //!
 //! **What we pin instead:** (1) **`try_build_per_write_log_cost_basis_declaration`** — single-authority
 //! materialization of **`CostBasisDeclaration`** from the lowered **`Dag`** (subject `DeclarationId`,
-//! `PerWrite`, **`LogCost(merge_replicas_port)`**, bind **`span`**). The `.dag` carrier remains the
-//! type definitions in `lenses.cost` (`lens_cost_symbolic_generated.rs`). (2) **Full symbolic-cost lens table**
+//! `PerWrite`, **`LogCost(merge_replicas_port)`**, bind **`span`**) **after** verifying that port
+//! appears in **`LogCost` in [`compute_symbolic_costs`]** (fail-closed vs fabricated basis).
+//! The `.dag` carrier remains the type definitions in `lenses.cost` (`lens_cost_symbolic_generated.rs`).
+//! (2) **Full symbolic-cost lens table**
 //! ([`compute_symbolic_costs`]): some port still **`Hit`s `LogCost(merge_replicas_port)`**
 //! from divide lowering inside `crdt_merge_step` — the per-write O(log replicas)
 //! factor **survives in lens output** even though dimension `composed` at the
@@ -37,6 +39,7 @@ use v3_compiler::lens_cost_symbolic::{
     compute_symbolic_costs, CostBasisDeclaration, CostBasisKind,
 };
 use v3_compiler::try_build_per_write_log_cost_basis_declaration;
+use v3_compiler::CostBasisDeclarationBuildError;
 use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport};
 
 use crate::common::cached_compile_to_dag;
@@ -55,6 +58,20 @@ fn crdt_merge_step(replicas: Int) -> Int =
     Ok { value: x } => x
     Err { value: _ } => 0
   }
+
+fn my_crdt_field(num_writes: Int, replicas: Int) -> Int =
+  if num_writes == 0 then 0
+  else crdt_merge_step(replicas) + my_crdt_field(num_writes - 1, replicas)
+
+let _: Int = my_crdt_field(1, 2)
+";
+
+/// Same workflow shape, but merge step is **`replicas` only** (no `Operator(Div)` → no `LogCost`
+/// on the param port). **`try_build_per_write_log_cost_basis_declaration`** must **fail closed**.
+const MY_CRDT_FIELD_NO_DIV_MERGE: &str = "\
+import std.error_primitives { DivError, Result }
+
+fn crdt_merge_step(replicas: Int) -> Int = replicas
 
 fn my_crdt_field(num_writes: Int, replicas: Int) -> Int =
   if num_writes == 0 then 0
@@ -232,6 +249,26 @@ fn crdt_cost_basis_demonstrated_unknown_ceiling_covers_composed_workflow() {
             dominates(&loose, &composed),
             "an honest upper-bound budget should dominate (soundly majorize) the composed cost; \
              composed={composed:?}"
+        );
+    });
+}
+
+#[test]
+fn crdt_cost_basis_builder_fails_closed_when_merge_step_has_no_log_cost_witness() {
+    run_with_symbolic_cost_stack(|| {
+        let dag = cached_compile_to_dag(MY_CRDT_FIELD_NO_DIV_MERGE, "t_las_crdt_no_div_merge.v3");
+        let err = try_build_per_write_log_cost_basis_declaration(
+            &dag,
+            "my_crdt_field",
+            "crdt_merge_step",
+        )
+        .expect_err("merge step without Div must not fabricate Log basis");
+        assert!(
+            matches!(
+                err,
+                CostBasisDeclarationBuildError::MergeStepLacksLogCostWitness { .. }
+            ),
+            "expected MergeStepLacksLogCostWitness, got {err:?}"
         );
     });
 }

@@ -503,6 +503,16 @@ fn symbolic_cost_operator_div_preserves_operand_costs_beside_log_surcharge() {
                 mentions_log(&cost_cheap),
                 "CRDT-style divide on param-ish ports must retain Log(dividend) in the lens carrier; got {cost_cheap:?}"
             );
+
+            let out_empty = transform_cost_for_target(
+                &[],
+                &TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                &[],
+            );
+            assert!(
+                matches!(out_empty, Lookup::Miss),
+                "Div with zero operands must Miss (fail closed), got {out_empty:?}"
+            );
         })
         .expect("spawn stack-bumped thread for symbolic-cost lens recursion")
         .join()

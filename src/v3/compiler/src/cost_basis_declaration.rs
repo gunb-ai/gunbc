@@ -9,9 +9,10 @@
 use std::fmt;
 
 use crate::dag::{
-    ArrowBody, Behavior, BindNode, Dag, DeclarationId, SizeVariable, SymbolicCost, TypeConnective,
+    ArrowBody, Behavior, BindNode, Dag, DeclarationId, Lookup, PortId, SizeVariable, SymbolicCost,
+    TypeConnective,
 };
-use crate::lens_cost_symbolic::{CostBasisDeclaration, CostBasisKind};
+use crate::lens_cost_symbolic::{compute_symbolic_costs, CostBasisDeclaration, CostBasisKind};
 
 /// [`try_build_per_write_log_cost_basis_declaration`] stops on missing DAG facts instead of
 /// panicking (fail-closed consumer boundary; codex gate on PR #2299).
@@ -35,6 +36,12 @@ pub enum CostBasisDeclarationBuildError {
     /// the authoritative body [`BindNode`] for `span` / structural parity with `subject`.
     WorkflowBodyNotUserDefinedBind {
         name: String,
+    },
+    /// `compute_symbolic_costs` has no `Hit(LogCost)` row keyed to the merge step’s first
+    /// parameter port — cannot fabricate a per-write log basis without lens evidence of a
+    /// divide on that port (P2 / fail-closed).
+    MergeStepLacksLogCostWitness {
+        merge_step_fn_bind_name: String,
     },
 }
 
@@ -60,6 +67,12 @@ impl fmt::Display for CostBasisDeclarationBuildError {
             CostBasisDeclarationBuildError::WorkflowBodyNotUserDefinedBind { name } => write!(
                 f,
                 "declaration `{name}` body is not ArrowBody::UserDefined(BindNodeId); cannot resolve authoritative workflow bind"
+            ),
+            CostBasisDeclarationBuildError::MergeStepLacksLogCostWitness {
+                merge_step_fn_bind_name,
+            } => write!(
+                f,
+                "`{merge_step_fn_bind_name}` first param port has no LogCost witness in `compute_symbolic_costs` (expected divide-on-dividend lowering)"
             ),
         }
     }
@@ -116,11 +129,18 @@ fn user_defined_arrow_body_bind<'a>(
     Ok((bind, subject))
 }
 
-/// Builds a **PerWrite** basis declaration: **§4.2** `O(log replicas)` as [`SymbolicCost::LogCost`]
-/// on the **first parameter port** of `merge_step_fn_bind_name` (dividend port for `replicas / k`
-/// inside `crdt_merge_step` today), with **`subject`** the [`DeclarationId`](crate::dag::DeclarationId) of
-/// `workflow_declaration_name` and **`span`** from that declaration’s **authoritative**
-/// `ArrowBody::UserDefined` body bind (not a parallel `BindNode.name` scan — P2 single authority).
+fn symbolic_table_includes_log_on_port(dag: &Dag, port: PortId) -> bool {
+    compute_symbolic_costs(dag).iter().any(|e| {
+        matches!(
+            &e.cost,
+            Lookup::Hit(SymbolicCost::LogCost { _0: sv }) if sv.source_port == port
+        )
+    })
+}
+
+/// **`LogCost` witness:** returns [`MergeStepLacksLogCostWitness`] unless
+/// [`compute_symbolic_costs`] already **`Hit`s `LogCost(merge_param_port)`** (divide-on-dividend
+/// lowering); does not fabricate basis without lens table evidence.
 pub fn try_build_per_write_log_cost_basis_declaration(
     dag: &Dag,
     workflow_declaration_name: &str,
@@ -133,6 +153,13 @@ pub fn try_build_per_write_log_cost_basis_declaration(
             merge_step_fn_bind_name: merge_step_fn_bind_name.to_string(),
         }
     })?;
+    if !symbolic_table_includes_log_on_port(dag, merge_replicas_port) {
+        return Err(
+            CostBasisDeclarationBuildError::MergeStepLacksLogCostWitness {
+                merge_step_fn_bind_name: merge_step_fn_bind_name.to_string(),
+            },
+        );
+    }
     Ok(CostBasisDeclaration {
         subject,
         kind: CostBasisKind::PerWrite,
