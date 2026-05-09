@@ -8,8 +8,7 @@ use v3_compiler::Diagnostic;
 
 use crate::common::substrate_receipts::{
     assert_bootstrap_float64_compose_ieee_machine_width,
-    assert_bootstrap_int64_compose_int_machine_width,
-    bind_named, bind_value_type_decl,
+    assert_bootstrap_int64_compose_int_machine_width, bind_named, bind_value_type_decl,
     callable_instantiation_arguments, field, find_named, transforms_in_source_file,
 };
 use crate::common::{cached_compile_any, cached_compile_to_dag};
