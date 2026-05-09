@@ -42,7 +42,7 @@ pub struct Lens<T> {
 #[derive(Clone)]
 pub struct LensEnforcement<Output, Budget> {
     pub project: Rc<dyn Fn(Output) -> Budget>,
-    pub violates: Rc<dyn Fn(Budget, Budget) -> bool>,
+    pub violates: Rc<dyn Fn(Output, Budget, Budget) -> bool>,
 }
 
 /// Mirrors `EnforceableLens<Output, Budget>` in `v3.std.lens_application`.

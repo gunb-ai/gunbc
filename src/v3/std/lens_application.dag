@@ -97,7 +97,27 @@ type DiagnosticSeverity = Error
 //                  field makes it substrate authority.
 type LensEnforcement<Output, Budget> {
   project: fn(Output) -> Budget
-  violates: fn(Budget, Budget) -> Bool
+  // **violates** signature includes Output for fail-closed pattern-match
+  // discipline on observation-driven lens classes (T-Workflow-As-Data
+  // Slice 2 timing-lens et seq.). Per Director ratification at
+  // gunb-ai/gunbc#828 c#4413284764 (Q-WAD-S2-Output (a)(ii)
+  // full-signature extension): for non-Result lens Output (complexity,
+  // cost), the Output arg is semantically inert and bodies pattern-match
+  // through to the existing Budget×Budget comparison; for observation-
+  // driven Output (timing's `TimingMeasurement = Observed | Missing |
+  // Ambiguous | Stale`), bodies pattern-match Output variants returning
+  // true on non-Observed for fail-closed enforcement WITHOUT Budget
+  // fabrication at the projection boundary (preserves typed report-state
+  // failure evidence per INVARIANTS P3 / C-8).
+  //
+  // Earlier signature `fn(Budget, Budget) -> Bool` could not generically
+  // express fail-closed-on-non-Observed without erasing typed evidence
+  // into a fabricated Budget value. Per `feedback_strict_mirror_vs_novel_substrate_fact`
+  // minimum-novel-substrate: signature change at the substrate layer
+  // (one signature update + mechanical body updates) is materially
+  // smaller than per-call Budget-fabrication wrapping at the projection
+  // layer.
+  violates: fn(Output, Budget, Budget) -> Bool
 }
 
 // 🟢 TERMINAL at the per-lens canonical-pairing scope. Bundles a lens

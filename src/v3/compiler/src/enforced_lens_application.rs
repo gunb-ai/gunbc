@@ -139,8 +139,8 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         }
         .unwrap_or_else(|| decl.span.clone());
 
-        let observed = match complexity_of(dag, &port) {
-            Lookup::Hit(s) => complexity_enforcement_project(&s),
+        let summary = match complexity_of(dag, &port) {
+            Lookup::Hit(s) => s,
             Lookup::Miss => {
                 violations.push(Diagnostic::ParseError {
                     message: "lens enforcement: complexity lens returned Miss for section — \
@@ -152,7 +152,8 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
                 continue;
             }
         };
-        if !complexity_enforcement_violates(&budget_class, &observed) {
+        let observed = complexity_enforcement_project(&summary);
+        if !complexity_enforcement_violates(&summary, &budget_class, &observed) {
             continue;
         }
         violations.push(Diagnostic::ParseError {
