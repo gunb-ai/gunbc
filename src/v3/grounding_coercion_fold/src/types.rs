@@ -7,9 +7,18 @@ use v3_grounding_lifetime::BindingId;
 
 /// How the fold obtains LanguageSpec / target-primitive substrate facts.
 ///
-/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — `Undeclared` remains the
-/// fail-closed production default; `DeclaredIntegerIntents` is the executable LanguageSpec
-/// projection path for integer inhabitance rows.
+/// **Scratch path retired (#1980):** integer rows are selected only through
+/// `DeclaredIntegerIntents` over `TargetIntegerTypeInhabitance` facts — transitional
+/// `ScratchIntExamples` is removed.
+///
+/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW (residual scope)** — gated items below
+/// are explicit until program-bound + lifecycle wiring fully owns the LanguageSpec boundary:
+///
+/// - **`Undeclared`**: fail-closed placeholder until a substrate-backed reader lands here (#1133 /
+///   lifetime facts #1286).
+/// - **`DeclaredIntegerIntents` + `IntegerTargetIntent`**: executable projection, but
+///   `IntegerBoundProjection` remains a lane-local mirror of program bounds until lowering can
+///   pass declared `BoundDeclaration` directly (#1133 / #1286).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum LanguageSpecProjection {
     #[default]
@@ -38,8 +47,24 @@ pub struct IntegerTargetIntent {
     pub bound: IntegerBoundProjection,
 }
 
-/// Selected integer target: structural identity from a declared inhabitance row.
+/// Selected integer target: identity from a `TargetIntegerTypeInhabitance` row after the fold’s
+/// fail-closed `TypeRealization` meta gate on `type_realization`.
+///
+/// **API contract:** downstream code must not fabricate this carrier — obtain values only from
+/// [`fold_program_to_target`](crate::fold::fold_program_to_target). The field is private so random
+/// `DeclarationId` values cannot be mistaken for validated substrate proof outside this crate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SelectedTargetInhabitance {
-    pub type_realization: DeclarationId,
+    type_realization: DeclarationId,
+}
+
+impl SelectedTargetInhabitance {
+    #[must_use]
+    pub fn type_realization(self) -> DeclarationId {
+        self.type_realization
+    }
+
+    pub(crate) fn from_validated_type_realization(type_realization: DeclarationId) -> Self {
+        Self { type_realization }
+    }
 }

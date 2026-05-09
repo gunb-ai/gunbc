@@ -185,8 +185,7 @@ mod tests {
     use v3_compiler::dag::{Interval, IntervalWidth, PositiveIntervalWidth};
     use v3_compiler::generated_full_bootstrap_dag;
     use v3_grounding_coercion_fold::{
-        fold_program_to_target, IntegerBoundProjection, IntegerTargetIntent,
-        LanguageSpecProjection, SelectedTargetInhabitance,
+        fold_program_to_target, IntegerBoundProjection, IntegerTargetIntent, LanguageSpecProjection,
     };
     use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 
@@ -271,10 +270,8 @@ mod tests {
 
             let got = fold_program_to_target(&dag, &lifetime, &projection).expect("projection");
             assert_eq!(
-                got.get(&BindingId(11)),
-                Some(&SelectedTargetInhabitance {
-                    type_realization: declaration_id_by_name(&dag, "rust_u32"),
-                })
+                got.get(&BindingId(11)).map(|s| s.type_realization()),
+                Some(declaration_id_by_name(&dag, "rust_u32")),
             );
         });
     }

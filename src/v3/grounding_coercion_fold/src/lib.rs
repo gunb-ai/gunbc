@@ -137,10 +137,9 @@ mod tests {
             let got = fold_program_to_target(&dag, &lifetime, &spec).expect("ok");
             assert_eq!(got.len(), 1);
             assert_eq!(
-                got.get(&v3_grounding_lifetime::BindingId(7)),
-                Some(&SelectedTargetInhabitance {
-                    type_realization: rust_u32
-                })
+                got.get(&v3_grounding_lifetime::BindingId(7))
+                    .map(|s| s.type_realization()),
+                Some(rust_u32)
             );
         });
     }
@@ -167,10 +166,9 @@ mod tests {
             )]));
             let got = fold_program_to_target(&dag, &lifetime, &spec).expect("ok");
             assert_eq!(
-                got.get(&v3_grounding_lifetime::BindingId(0)),
-                Some(&SelectedTargetInhabitance {
-                    type_realization: rust_u32
-                })
+                got.get(&v3_grounding_lifetime::BindingId(0))
+                    .map(|s| s.type_realization()),
+                Some(rust_u32)
             );
         });
     }
@@ -216,10 +214,9 @@ mod tests {
             )]));
             let got = fold_program_to_target(&dag, &lifetime, &spec).expect("ok");
             assert_eq!(
-                got.get(&v3_grounding_lifetime::BindingId(0)),
-                Some(&SelectedTargetInhabitance {
-                    type_realization: rust_i32
-                })
+                got.get(&v3_grounding_lifetime::BindingId(0))
+                    .map(|s| s.type_realization()),
+                Some(rust_i32)
             );
         });
     }
@@ -241,10 +238,9 @@ mod tests {
             )]));
             let got = fold_program_to_target(&dag, &lifetime, &spec).expect("ok");
             assert_eq!(
-                got.get(&v3_grounding_lifetime::BindingId(0)),
-                Some(&SelectedTargetInhabitance {
-                    type_realization: python_int
-                })
+                got.get(&v3_grounding_lifetime::BindingId(0))
+                    .map(|s| s.type_realization()),
+                Some(python_int)
             );
         });
     }
@@ -266,10 +262,9 @@ mod tests {
             )]));
             let got = fold_program_to_target(&dag, &lifetime, &spec).expect("ok");
             assert_eq!(
-                got.get(&v3_grounding_lifetime::BindingId(0)),
-                Some(&SelectedTargetInhabitance {
-                    type_realization: go_int32
-                })
+                got.get(&v3_grounding_lifetime::BindingId(0))
+                    .map(|s| s.type_realization()),
+                Some(go_int32)
             );
         });
     }

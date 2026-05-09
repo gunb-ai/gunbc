@@ -388,9 +388,9 @@ fn select_declared_inhabitance(
 
     validate_type_realization_reference(dag, selected.type_realization)?;
 
-    Ok(SelectedTargetInhabitance {
-        type_realization: selected.type_realization,
-    })
+    Ok(SelectedTargetInhabitance::from_validated_type_realization(
+        selected.type_realization,
+    ))
 }
 
 fn program_integer_intent_from_projection(
