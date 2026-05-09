@@ -896,12 +896,10 @@ fn extension_predicates_reach_interpreter_boundary() {
     );
     assert_runner_deferred_panics(&dag, positive_source, file, &diff, "DifferentialEquals");
 
-    // `AlgebraicLaw::Identity` shares the bounded Int witness path with Associativity /
-    // Commutativity in `eval_algebraic_law_for_claim_program`. This bootstrap expectation DAG does not
-    // embed `ValueBehavior` as a binary Int lens in `inner`, so the helper returns `Ok(false)`
-    // (missing lens decl). `Commutativity` is covered by TestRunner's focused PR-B.3 tests because
-    // this bootstrap-only expectation DAG has no fixture-local lens declaration for the public
-    // helper to resolve.
+    // `AlgebraicLaw::Identity` is wired for binary `Int` lenses. `ValueBehavior` is the L1
+    // behavior marker (`type ValueBehavior {}`), not `Int × Int → Int`, so bounded witness
+    // application fails closed as `MalformedPayload` — not missing-decl `Ok(false)` (bootstrap
+    // `program_dag` always carries the marker declaration).
     let inner = match cached_compile_outcome(positive_source, file) {
         CachedCompileOutcome::Clean(program_dag) => program_dag,
         other => panic!(
@@ -912,9 +910,12 @@ fn extension_predicates_reach_interpreter_boundary() {
         sum_variant(&dag, "AlgebraicLawKind", "Identity", Vec::new()),
         declaration_ref_field(&dag, "ValueBehavior"),
     ];
-    assert_eq!(
-        eval_algebraic_law_for_claim_program(&dag, &inner, &identity_payload),
-        Ok(false)
+    assert!(
+        matches!(
+            eval_algebraic_law_for_claim_program(&dag, &inner, &identity_payload),
+            Err(AlgebraicLawProgramError::MalformedPayload(_))
+        ),
+        "Identity witness on ValueBehavior marker should be MalformedPayload (non-applicable lens target)"
     );
     let law = sum_variant(
         &dag,
@@ -922,9 +923,10 @@ fn extension_predicates_reach_interpreter_boundary() {
         "AlgebraicLaw",
         identity_payload.clone(),
     );
+    let message = catch_predicate_holds_panic_message(&dag, positive_source, file, &law);
     assert!(
-        !predicate_holds(&dag, positive_source, file, &law),
-        "AlgebraicLaw Identity without resolvable lens in inner program should evaluate false"
+        message.contains("AlgebraicLaw payload malformed"),
+        "unexpected panic for AlgebraicLaw Identity on marker: {message}"
     );
 
     let behavioral = sum_variant(
