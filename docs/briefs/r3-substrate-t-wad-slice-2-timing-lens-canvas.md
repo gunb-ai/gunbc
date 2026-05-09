@@ -28,11 +28,11 @@ After 6+ Director ratification iterations 2026-05-09, the locked substrate-shape
 | **Q-WAD-S2-Anchor** | (a) timing-specific concrete fields on `WorkflowObservationAnchor` (NOT (b) generic parametric) — 4 invariants on anchor (subject_stable_id / artifact_digest / producer-observer-prover / attached_at + run_id); promotion to ProofReceipt-second-consumer is bounded refactor | #828 c#4412301889 + c#4413322671 |
 | **Q-WAD-S2-Output** | folded carrier `TimingMeasurement = Observed { nanoseconds: Int } \| Missing \| Ambiguous \| Stale` (NOT separate-projection sum, NOT Result-typed). Carrier IS the report-state. Invariant 5 lives on TimingMeasurement variants. | #828 c#4412301889 + c#4413322671 (A-modified) |
 | **Q-WAD-S2-Placement** | `src/v3/std/timing_lens.dag` per `src/v3/std/lens.dag:17-21` v3-only-carriers convention (NOT `dsl/std/`) | #828 c#4413159089 |
-| **Q3 sub-disposition (LensEnforcement extension)** | (a)(ii) full-signature change: `violates: fn(Output, Budget, Budget) -> Bool` (NOT (a)(i) Budget fabrication; NOT (a)(iii) auto-violate-bit). `violates` body pattern-matches Output variants for fail-closed without Budget fabrication. | #828 c#4413284764 |
+| **Q3 sub-disposition (LensEnforcement extension)** | **(a)(iii)-β-simplified-with-(β)-bespoke**: `project: fn(Output) -> ProjectionResult<Budget>` where `ProjectionResult<Budget> = ProjectedBudget { value: Budget } \| ProjectionFailed { failure: ProjectionFailure }` (bespoke sum, NOT DSL stdlib `Result`). `violates` signature unchanged. (NOTE: prior (a)(ii) at c#4413284764 was reversed → (a)(iii)-β at c#4413567822 → (a)(iii)-β-simplified-with-(β)-bespoke at c#4413663658.) | #828 c#4413663658 |
 
 **Gate #55 split**:
-- **#55a** — worker scope: anchor invariants 1-4 + carrier landing (PR #2360 folded-carrier ships as-is per (A)-modified disposition).
-- **#55b** — Substrate Mgr scope: (a)(ii) `LensEnforcement` extension PR (signature change cascading T-LBP/T-CostLens/T-LAS impls + timing-lens fail-closed body). #55a + #55b co-close in the (a)(ii) PR per #828 c#4413322671.
+- **#55a** — worker scope: anchor invariants 1-4 + carrier landing (PR #2360 folded-carrier MERGED 2026-05-09).
+- **#55b** — Substrate Mgr scope: **(a)(iii)-β-simplified-with-(β)-bespoke** `LensEnforcement` extension PR (PR #2400 in flight; ProjectionResult<Budget> + project Result-typed signature; lens-rust-emit MissingTypeRealization gating per #828 c#4413692695 → Path 1 canvas-tier scope assessment ratified at c#4413702193). #55a + #55b co-close once PR #2400 lands (post lens-rust-emit canvas resolution).
 
 **Sections below are RETAINED for the design-question history + reasoning trail** (Mgr-tier preliminary recommendations + reviewer-corrections + Director ratification iterations). Worker brief authoring should consume the table above as the binding shape; the per-question Pro/Con sections show how the shape was reached, not what to author.
 
