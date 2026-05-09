@@ -18,8 +18,8 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    sequential, Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, SymbolicCost,
-    ValueBody,
+    literal_decimal_i64, sequential, Behavior, Dag, Declaration, DeclarationId, FieldValue,
+    LiteralBits, SymbolicCost, ValueBody,
 };
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
@@ -63,7 +63,9 @@ fn realization_row_cost_int(decl: &Declaration) -> i64 {
             let FieldValue::Literal(LiteralBits::Int(n)) = value else {
                 panic!("`cost` must be Int literal, got {value:?}");
             };
-            return *n;
+            return literal_decimal_i64(n.as_str()).unwrap_or_else(|| {
+                panic!("`cost` Int literal must be signed decimal i64, got {n:?}");
+            });
         }
     }
     panic!("no `cost` field on realization row {:?}", decl.name);
