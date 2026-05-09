@@ -34,10 +34,10 @@
 // (producer wiring, richer size variables, behavioral tests) — not missing
 // E-I vocabulary or a ported `MethodSemantics` carrier. E-M closed method
 // carrier parity by structural subsumption through `TransformTarget` and
-// typed declaration/effect metadata. Integration module `cost_lens_behavioral_completion`
-// pins the generated `symbolic_cost_of` consumer on `compile_to_dag` fixtures (consumer wiring
-// receipt). Band-C escalation into `CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` stays gated on
-// clearing the `cost.dag` **PROXY** row per register Discipline (v2 subsumption + N/A drops column).
+// typed declaration/effect metadata. Integration module `cost_lens_symbolic_consumer_test`
+// pins the generated `symbolic_cost_of` consumer on `compile_to_dag` fixtures. Band-C
+// cementing (`integration/cementing/`, v2 oracle / reviewed projection) stays gated on
+// clearing the `cost.dag` **PROXY** row per register Discipline.
 //
 // Shared carrier: `v3.std.lookup.Lookup` (compiler-std consolidation;
 // see docs/thesis/compiler-std-consolidation.md). The prior lens-local
