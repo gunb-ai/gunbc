@@ -74,7 +74,7 @@ include!("diagnostics_generated.rs");
 /// against `Nat`'s decimal range facts.
 #[doc(hidden)]
 pub fn positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
-    units: i64,
+    units: &str,
 ) -> String {
     format!("PositiveIntervalWidth.UnitCount requires nonnegative `units` literal; got {units}")
 }
