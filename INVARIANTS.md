@@ -38,8 +38,8 @@ The integer chain in `dsl/std/{bit,integer,algebra}.dag` illustrates what a full
 - **`Byte` = `{ bits: List<Bit> }`**, **`Word64` = `{ bytes: List<Byte> }`** — records with declared cardinality intent. Grounds in byte-addressable machine-word standards (IEEE / ISO).
 - **`OrderedRing<T>`** (from `std.algebra`) — algebra structure carrying `add`, `negate`, `mul`, and a total order. Grounds in ring theory (centuries of mathematical consensus).
 - **`Semiring<T>`** — OrderedRing minus `negate`. Grounds in semiring theory (same lineage, explicit weakening).
-- **`Int64` = `OrderedRing<Word64>`** — the language-level signed 64-bit integer. Carrier is `Word64`; operations come from the `OrderedRing` algebra witness. Signedness is not a tag but a *structural consequence* of inhabiting `OrderedRing` vs `Semiring` (additive inverses exist / don't exist).
-- **`Int = Int64`** — default alias.
+- **`Int`** (`dsl/std/integer.dag`) — abstract signed integers as `AbelianGroup<GroupCompletion<Nat>>` (construction-chain layer; not a fixed bit-width alias).
+- **`Int64`** — `Compose<Int, MachineWidth<Word64>>`: width refinement of abstract `Int` over the machine-width axis (same pattern for `Int8`…`Int128`; unsigned rows use `Compose<UInt, MachineWidth<…>>` with `UInt = Nat`). Grounding maps each composition to the corresponding Rust primitive (`i64`, …); operator dispatch consumes abstract algebra facts, not a parallel `OrderedRing<Word*>` substrate per width class (R3 §1.8 gate #19 `numeric_aliases_align_to_refinements`).
 
 Downstream consumers (lens queries, algebra-driven operator dispatch, cost algebra) read these declared structural facts. Operator symbols come from the algebra's field declarations, not a per-target string table. Sign semantics come from the witness, not a flag. The chain is *verifiable against consensus at every step*; that is what "grounded in a declared source" means concretely.
 

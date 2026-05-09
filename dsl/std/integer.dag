@@ -23,18 +23,12 @@
 // which is honest by construction (every element of the group-completion
 // carrier has an additive inverse).
 //
-// The fixed-width rows (`Int8`..`Int128`, `UInt8`..`UInt128`) stay on
-// `OrderedRing<Word*>` / `Semiring<Word*>`; only this default alias moves.
-// Slice §6 (cascade) migrates downstream consumers off `OrderedRing<Word64>`
-// for the abstract `Int` algebra. Until then, code that explicitly names
-// `Int8`/`Int64`/etc. continues to inhabit `OrderedRing<Word*>`.
-//
-// LEGACY MODELING NOTE (Int8..Int128 storage rows): A value of type Int8
-// is NOT an OrderedRing record. Int8 is a CARRIER (Byte) with EVIDENCE
-// that it inhabits OrderedRing. The algebra record is the witness — it
-// tells the compiler what operations are valid on Int8 values. Values are
-// Byte; operations come from the ring structure. The fixed-width rows
-// stay shape-conflated until v3 supports trait/witness syntax separation.
+// Fixed-width rows (`Int8`..`Int128`, `UInt8`..`UInt128`) are **width
+// refinements** of the abstract carriers `Int` / `UInt` via
+// `Compose<Algebra, MachineWidth<Word*>>` (R3 §1.8 gate #19
+// `numeric_aliases_align_to_refinements` — not parallel `OrderedRing<Word*>`
+// / `Semiring<Word*>` substrate). Grounding still maps each pair to the same
+// Rust `i*` / `u*` primitives as before.
 //
 // Signed/unsigned distinction comes from the algebra (legacy fixed-width rows):
 //   OrderedRing has negate (signed arithmetic — additive inverse)
@@ -42,39 +36,31 @@
 
 module std.integer
 
-import std.algebra { OrderedRing, Semiring, AbelianGroup, GroupCompletion }
+import std.algebra { AbelianGroup, GroupCompletion }
 import std.bit { Byte, Word16, Word32, Word64, Word128 }
 import std.nat { Nat }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 
-// Signed integers: ordered rings (add + negate + mul + compare)
-type Int8 = OrderedRing<Byte>
-type Int16 = OrderedRing<Word16>
-type Int32 = OrderedRing<Word32>
-type Int64 = OrderedRing<Word64>
-type Int128 = OrderedRing<Word128>
+// Signed integers: abstract `Int` × machine width (refinement-shaped Compose).
+type Int8 = Compose<Int, MachineWidth<Byte>>
+type Int16 = Compose<Int, MachineWidth<Word16>>
+type Int32 = Compose<Int, MachineWidth<Word32>>
+type Int64 = Compose<Int, MachineWidth<Word64>>
+type Int128 = Compose<Int, MachineWidth<Word128>>
 
-// Unsigned integers: semirings (add + mul, no negate)
-type UInt8 = Semiring<Byte>
-type UInt16 = Semiring<Word16>
-type UInt32 = Semiring<Word32>
-type UInt64 = Semiring<Word64>
-type UInt128 = Semiring<Word128>
+// Unsigned integers: abstract `UInt` (= Nat) × machine width.
+type UInt8 = Compose<UInt, MachineWidth<Byte>>
+type UInt16 = Compose<UInt, MachineWidth<Word16>>
+type UInt32 = Compose<UInt, MachineWidth<Word32>>
+type UInt64 = Compose<UInt, MachineWidth<Word64>>
+type UInt128 = Compose<UInt, MachineWidth<Word128>>
 
 // S9 Phase-1 step 3 emission entries — parametric `Compose<Algebra, MachineConstraint>`
 // instantiations per Q-MachineConstraint sub-decision 2 RATIFIED at gunbc#828
 // #issuecomment-4385530115 (NOT AlgebraMachineProduct table rows).
 //
-// Authoring posture (additive, not migrating): legacy `Int32..Int128` /
-// `UInt32..UInt128` storage rows above stay on `OrderedRing<Word*>` /
-// `Semiring<Word*>` to preserve P2 facts-flow-forward for downstream Rust-
-// side mirrors (`src/v3/grounding_pilot/src/lib.rs` `dag_type_facts` +
-// `bootstrap_generated.rs` snapshot). These NEW `IntW*` / `UIntW*` aliases
-// land the parametric Compose form alongside; Grounding G2 (#1745) consumer
-// wiring + per-pair lowering rules + emitted-Rust-primitive verification
-// follow in a separate PR per bundled-scope discipline (Director gunbc#1739
-// #issuecomment-4392225548). When G2 + downstream Rust mirrors migrate,
-// legacy fixed-width storage rows can dissolve into these Compose entries.
+// Historical `IntW*` / `UIntW*` spellings — aliases of the canonical fixed-width
+// rows above (same Compose shapes; gate #19 aligned names are `Int32` / …).
 //
 // Slot-1 spelling = fully-applied algebraic-concept name (`Int` =
 // `AbelianGroup<GroupCompletion<Nat>>` per #1466 Q6 audit; `UInt` = `Nat`
@@ -90,12 +76,12 @@ type UInt128 = Semiring<Word128>
 // below in this module).
 // Tightens to `MachineWidth<32>` / `MachineWidth<64>` / `MachineWidth<128>`
 // literal-Nat spelling when #2156 lands; named dissolution trigger.
-type IntW32  = Compose<Int,  MachineWidth<Word32>>
-type IntW64  = Compose<Int,  MachineWidth<Word64>>
-type IntW128 = Compose<Int,  MachineWidth<Word128>>
-type UIntW32  = Compose<UInt, MachineWidth<Word32>>
-type UIntW64  = Compose<UInt, MachineWidth<Word64>>
-type UIntW128 = Compose<UInt, MachineWidth<Word128>>
+type IntW32  = Int32
+type IntW64  = Int64
+type IntW128 = Int128
+type UIntW32  = UInt32
+type UIntW64  = UInt64
+type UIntW128 = UInt128
 
 // Default aliases.
 //
@@ -110,10 +96,8 @@ type UIntW128 = Compose<UInt, MachineWidth<Word128>>
 // `docs/audit/t-numeric-construction-group-completion-6q.md`; the compact
 // alternative `type Int = GroupCompletion<Nat>` was explicitly rejected.
 //
-// The fixed-width storage rows above (`Int8`..`Int128`) stay on
-// `OrderedRing<Word*>`; only this default alias is the construction-chain
-// layer-3 carrier. Slice §6 (cascade) migrates downstream consumers off
-// `OrderedRing<Word*>` for the abstract `Int` algebra path.
+// Fixed-width `Int8`..`Int128` names refine this abstract `Int` via Compose
+// (see above); only this declaration is the unconstrained abstract carrier.
 //
 // `UInt` is the abstract unsigned-integer algebra. Per the design-doc
 // authority `UInt IS Nat`, the faithful pivot is the direct alias —
@@ -135,15 +119,7 @@ type UIntW128 = Compose<UInt, MachineWidth<Word128>>
 // new operations beyond what Nat already carries, so no new carrier
 // or projection is needed — the alias IS the algebra.)
 //
-// The fixed-width storage rows above (`UInt8`..`UInt128`) stay on
-// `Semiring<Word*>`; only this default alias is the construction-chain
-// abstract carrier. Slice §6 (cascade) migrates downstream consumers
-// off `Semiring<Word*>` for the abstract `UInt` algebra path. Concrete
-// emission entries (parametric `Compose<Algebra, MachineConstraint>`
-// per Q-MachineConstraint-Carrier sub-decision 2; e.g.,
-// `UInt<32> ≡ Compose<CommutativeSemiring, MachineWidth<32>>` →
-// Rust `u32`) gate on S3 `MachineConstraint<C>` landing per S9 brief
-// STOP-AND-ESCALATE.
+// Fixed-width `UInt8`..`UInt128` refine this carrier via Compose (see above).
 type Int = AbelianGroup<GroupCompletion<Nat>>
 type UInt = Nat
 
