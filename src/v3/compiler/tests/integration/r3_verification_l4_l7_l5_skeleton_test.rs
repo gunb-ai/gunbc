@@ -4,12 +4,13 @@
 //! `TestClaim.name`) + suite `r3_verification_l4_l7_direct_suite` exercise the wired W1
 //! `DifferentialEquals(rust_emit_output, dag_eval_output)` path on **certification seeds only**
 //! (`docs/r3-program-plan.md` §1.7 corpus-quantified rule — ledger **PASSING** awaits full corpus).
-//! Plus a mixed-lineage `NotYetImplemented` control. Lane 1 L7 now exercises the wired
-//! `Associativity`, `Commutativity`, and `Identity` operational witnesses (bounded Int tables).
-//! The L7 matrix suite locks claims whose **Int lens semantics match the tagged obligation**
-//! (e.g. multiplicative `Identity` uses `*`); lattice / Boolean / free-monoid identity placeholders
-//! stay **out** of that suite until faithful carriers exist (`dsl/std/algebra.dag`, INVARIANTS §P1 /
-//! MODELING M9). Lane 2 / L5 rows remain intentionally deferred where noted.
+//! Plus a mixed-lineage `NotYetImplemented` control. Lane 1 L7 exercises bounded `Associativity`,
+//! `Commutativity`, and `Identity` operational witnesses on **honest additive vs multiplicative `Int`
+//! lenses** (`+` vs `*`). The L7 matrix suite locks claims whose **Int lens semantics match the
+//! tagged obligation** (e.g. multiplicative `Identity` uses `*`); lattice / Boolean / free-monoid
+//! obligations and lattice meet/join law tags stay **out** of the passing matrix until faithful
+//! carriers exist (`dsl/std/algebra.dag`, INVARIANTS §P1 / MODELING M9); see fixture **Receipt limits**
+//! — this is not ROADMAP exhaustive L7 closure. Lane 2 / L5 rows remain intentionally deferred where noted.
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
 use std::sync::OnceLock;
@@ -44,9 +45,8 @@ const L7_CLAIM: &str = "r3_verification_l7_algebraic_laws_skeleton";
 const L7_SEMIGROUP_ASSOCIATIVITY_CLAIM: &str = "r3_l7_semigroup_associativity";
 const L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM: &str = "r3_l7_commutative_monoid_commutativity";
 const L7_MATRIX_SUITE: &str = "r3_verification_l7_algebra_matrix_suite";
-/// Claims wired into [`L7_MATRIX_SUITE`] — multiplicative identity rows use `*` in the fixture;
-/// bounded-lattice / Boolean / free-monoid identity placeholders are intentionally omitted (fixture
-/// retains declarations for later inhabitants).
+/// Claims wired into [`L7_MATRIX_SUITE`] — honest **additive vs multiplicative Int** slices only
+/// (`+` vs `*`); no lattice / monoid inhabitant rows (see fixture receipt limits).
 const L7_MATRIX_PASS_CLAIMS: &[&str] = &[
     "r3_l7_semigroup_associativity",
     "r3_l7_monoid_identity",
@@ -59,8 +59,6 @@ const L7_MATRIX_PASS_CLAIMS: &[&str] = &[
     "r3_l7_ring_mul_identity",
     "r3_l7_ordered_ring_add_commutativity",
     "r3_l7_ordered_ring_mul_identity",
-    "r3_l7_lattice_meet_associativity",
-    "r3_l7_lattice_join_commutativity",
 ];
 
 const L5_FIXTURE: &str = include_str!("../fixtures/r3_verification_l5_corpus.dag");
@@ -258,6 +256,7 @@ fn r3_verification_l7_algebraic_law_identity_skeleton_passes_bounded_witness() {
     });
 }
 
+/// Bounded-runner receipt for [`L7_MATRIX_SUITE`] only — **not** exhaustive `l7_algebraic_laws_witnessed` / ROADMAP coverage.
 #[test]
 fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
     let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);

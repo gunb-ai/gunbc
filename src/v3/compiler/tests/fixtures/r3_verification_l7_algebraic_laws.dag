@@ -9,6 +9,14 @@
 // and order laws are theory in `dsl/std/algebra.dag` but **not**
 // `AlgebraicLawKind` variants. They are substrate-introduction candidates via
 // INVARIANTS §P1, not fixture-local encodings.
+//
+// **Receipt limits:** `AlgebraicLaw` payload is only `AlgebraicLawKind` + `lens_ref` — there is no
+// declared identity-element / operation-class substrate edge distinguishing add-zero vs mul-one vs
+// lattice units vs free-monoid empty (codex review / PR #2394). Additive vs multiplicative identity
+// is expressed **only** by wiring distinct binary `Int` lenses (`+` vs `*`). Passing-matrix rows
+// below intentionally exclude obligations whose tags imply non-`Int` inhabitants or non-additive /
+// non-multiplicative operations until faithful witnesses exist. This fixture does **not** claim
+// ROADMAP / gate `l7_algebraic_laws_witnessed` exhaustive per-(algebra, inhabitant, law) closure.
 
 module std.r3_verification_l7_algebraic_laws
 
@@ -41,12 +49,11 @@ data r3_verification_l7_algebraic_laws_skeleton: TestClaim = {
   requires: []
 }
 
-// Matrix suite rows are ordinary `AlgebraicLaw` consumers on **Int-shaped** lenses only for the
-// obligations included below: multiplicative `Identity` rows use `*` (semiring/ring mul unit), not
-// `+`. Bounded-lattice / Boolean-algebra / free-monoid **identity** obligations are **not** in the
-// passing matrix — `Int` `+` would falsely certify inhabitants grounded in `dsl/std/algebra.dag`
-// without faithful carriers (INVARIANTS §P1 / MODELING M9). Meet/join associativity/commutativity
-// rows remain additive Int **scaffolding** until lattice inhabitants land (distinct follow-on).
+// Passing-matrix rows: binary `Int` lenses whose **operation matches the tagged additive vs
+// multiplicative obligation** (`+` for additive monoid/group/semiring-add laws; `*` for mul
+// `Identity`). Lattice meet/join **associativity/commutativity** tags are **not** green-lit here on
+// `Int` `+` (that would read as lattice laws without meet/join carriers). Bounded-lattice /
+// Boolean-algebra / free-monoid identity placeholders likewise stay **out** of the passing matrix.
 data r3_l7_semigroup_associativity: TestClaim = {
   name: "r3_l7_semigroup_associativity",
   source: "fn r3_l7_semigroup_associativity_op(a: Int, b: Int) -> Int = a + b\n",
@@ -135,6 +142,7 @@ data r3_l7_ordered_ring_mul_identity: TestClaim = {
   requires: []
 }
 
+// Lattice tags — retained until faithful meet/join inhabitants exist; **not** in the passing matrix on `Int` `+`.
 data r3_l7_lattice_meet_associativity: TestClaim = {
   name: "r3_l7_lattice_meet_associativity",
   source: "fn r3_l7_lattice_meet_associativity_op(a: Int, b: Int) -> Int = a + b\n",
@@ -197,8 +205,6 @@ data r3_verification_l7_algebra_matrix_suite: TestSuite = {
     r3_l7_ring_add_commutativity,
     r3_l7_ring_mul_identity,
     r3_l7_ordered_ring_add_commutativity,
-    r3_l7_ordered_ring_mul_identity,
-    r3_l7_lattice_meet_associativity,
-    r3_l7_lattice_join_commutativity
+    r3_l7_ordered_ring_mul_identity
   ]
 }
