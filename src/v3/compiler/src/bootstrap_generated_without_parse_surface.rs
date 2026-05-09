@@ -5321,35 +5321,35 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(2282)),
             inputs: vec![],
             output: PortId(533),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2226, 2233),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2331, 2341),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(415),
             target: TransformTarget::Callable(DeclarationId(2284)),
             inputs: vec![],
             output: PortId(534),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2247, 2252),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2355, 2360),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(416),
             target: TransformTarget::Callable(DeclarationId(2282)),
             inputs: vec![],
             output: PortId(535),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2305, 2312),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2416, 2426),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(417),
             target: TransformTarget::Callable(DeclarationId(2284)),
             inputs: vec![],
             output: PortId(536),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2330, 2335),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2444, 2449),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(418),
             target: TransformTarget::Callable(DeclarationId(2283)),
             inputs: vec![],
             output: PortId(537),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2357, 2366),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2471, 2480),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(419),
@@ -5359,14 +5359,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(538)],
             output: PortId(539),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2386, 2400),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2500, 2514),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(420),
             target: TransformTarget::Callable(DeclarationId(2283)),
             inputs: vec![],
             output: PortId(540),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2406, 2415),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2520, 2529),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(421),
@@ -5376,8 +5376,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     body: NodeId(416),
                     output: PortId(535),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "Missing".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2294, 2301),
+                        name: "Unobserved".to_string(),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2402, 2412),
                     },
                     binding: None,
                 },
@@ -5386,7 +5386,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(536),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2321, 2326),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2435, 2440),
                     },
                     binding: None,
                 },
@@ -5395,7 +5395,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(537),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2344, 2353),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2458, 2467),
                     },
                     binding: None,
                 },
@@ -5404,7 +5404,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(540),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2375, 2402),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2489, 2516),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -5413,7 +5413,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(541),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2276, 2423),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2384, 2537),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -5424,28 +5424,28 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(542)],
             output: PortId(543),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2439, 2454),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2553, 2568),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(423),
             target: TransformTarget::Callable(DeclarationId(2282)),
             inputs: vec![],
             output: PortId(544),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2495, 2502),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2612, 2622),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(424),
             target: TransformTarget::Callable(DeclarationId(2284)),
             inputs: vec![],
             output: PortId(545),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2520, 2525),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2640, 2645),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(425),
             target: TransformTarget::Callable(DeclarationId(2283)),
             inputs: vec![],
             output: PortId(546),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2547, 2556),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2667, 2676),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(426),
@@ -5455,21 +5455,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(547)],
             output: PortId(548),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2576, 2591),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2696, 2711),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(427),
             target: TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
             inputs: vec![PortId(543), PortId(548)],
             output: PortId(549),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2621, 2628),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2741, 2748),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(428),
             target: TransformTarget::Callable(DeclarationId(2281)),
             inputs: vec![PortId(549)],
             output: PortId(550),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2597, 2630),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2717, 2750),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(429),
@@ -5479,8 +5479,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     body: NodeId(423),
                     output: PortId(544),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "Missing".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2484, 2491),
+                        name: "Unobserved".to_string(),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2598, 2608),
                     },
                     binding: None,
                 },
@@ -5489,7 +5489,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(545),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2511, 2516),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2631, 2636),
                     },
                     binding: None,
                 },
@@ -5498,7 +5498,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(546),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2534, 2543),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2654, 2663),
                     },
                     binding: None,
                 },
@@ -5507,7 +5507,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(550),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2565, 2593),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2685, 2713),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "bx".to_string(),
@@ -5516,7 +5516,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(551),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2466, 2638),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2580, 2758),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -5527,8 +5527,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     body: NodeId(414),
                     output: PortId(533),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "Missing".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2215, 2222),
+                        name: "Unobserved".to_string(),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2317, 2327),
                     },
                     binding: None,
                 },
@@ -5537,7 +5537,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(534),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2238, 2243),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2346, 2351),
                     },
                     binding: None,
                 },
@@ -5546,7 +5546,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(541),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2257, 2266),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2365, 2374),
                     },
                     binding: None,
                 },
@@ -5555,7 +5555,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(551),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2428, 2456),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2542, 2570),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "ax".to_string(),
@@ -5564,7 +5564,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(552),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2201, 2642),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2303, 2762),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -5572,7 +5572,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "timing_sequential_op".to_string(),
             value: PortId(552),
             params: vec![PortId(531), PortId(532)],
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2201, 2642),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2303, 2762),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -5580,7 +5580,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             id: NodeId(432),
             data: LiteralBits::Int(0),
             output: PortId(553),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2725, 2726),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2845, 2846),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -5588,14 +5588,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(2281)),
             inputs: vec![PortId(553)],
             output: PortId(554),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2701, 2728),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2821, 2848),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(434),
             name: "timing_sequential_identity".to_string(),
             value: PortId(554),
             params: vec![],
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2701, 2728),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2821, 2848),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -5604,35 +5604,35 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(2282)),
             inputs: vec![],
             output: PortId(557),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3000, 3007),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3123, 3133),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(436),
             target: TransformTarget::Callable(DeclarationId(2284)),
             inputs: vec![],
             output: PortId(558),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3021, 3026),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3147, 3152),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(437),
             target: TransformTarget::Callable(DeclarationId(2282)),
             inputs: vec![],
             output: PortId(559),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3079, 3086),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3208, 3218),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(438),
             target: TransformTarget::Callable(DeclarationId(2284)),
             inputs: vec![],
             output: PortId(560),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3104, 3109),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3236, 3241),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(439),
             target: TransformTarget::Callable(DeclarationId(2283)),
             inputs: vec![],
             output: PortId(561),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3131, 3140),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3263, 3272),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(440),
@@ -5642,14 +5642,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(562)],
             output: PortId(563),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3160, 3174),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3292, 3306),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(441),
             target: TransformTarget::Callable(DeclarationId(2283)),
             inputs: vec![],
             output: PortId(564),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3180, 3189),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3312, 3321),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(442),
@@ -5659,8 +5659,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     body: NodeId(437),
                     output: PortId(559),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "Missing".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3068, 3075),
+                        name: "Unobserved".to_string(),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3194, 3204),
                     },
                     binding: None,
                 },
@@ -5669,7 +5669,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(560),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3095, 3100),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3227, 3232),
                     },
                     binding: None,
                 },
@@ -5678,7 +5678,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(561),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3118, 3127),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3250, 3259),
                     },
                     binding: None,
                 },
@@ -5687,7 +5687,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(564),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3149, 3176),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3281, 3308),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -5696,7 +5696,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(565),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3050, 3197),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3176, 3329),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -5707,28 +5707,28 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(566)],
             output: PortId(567),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3213, 3228),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3345, 3360),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(444),
             target: TransformTarget::Callable(DeclarationId(2282)),
             inputs: vec![],
             output: PortId(568),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3269, 3276),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3404, 3414),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(445),
             target: TransformTarget::Callable(DeclarationId(2284)),
             inputs: vec![],
             output: PortId(569),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3294, 3299),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3432, 3437),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(446),
             target: TransformTarget::Callable(DeclarationId(2283)),
             inputs: vec![],
             output: PortId(570),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3321, 3330),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3459, 3468),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(447),
@@ -5738,14 +5738,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(571)],
             output: PortId(572),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3350, 3365),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3488, 3503),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(448),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)),
             inputs: vec![PortId(567), PortId(572)],
             output: PortId(573),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3408, 3415),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3546, 3553),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(449),
@@ -5756,7 +5756,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(567),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3421, 3423),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3559, 3561),
                     },
                     binding: None,
                 },
@@ -5765,13 +5765,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(572),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3429, 3431),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3567, 3569),
                     },
                     binding: None,
                 },
             ],
             output: PortId(574),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3405, 3431),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3543, 3569),
             emit_participation: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -5779,7 +5779,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(2281)),
             inputs: vec![PortId(574)],
             output: PortId(575),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3381, 3433),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3519, 3571),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(451),
@@ -5789,8 +5789,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     body: NodeId(444),
                     output: PortId(568),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "Missing".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3258, 3265),
+                        name: "Unobserved".to_string(),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3390, 3400),
                     },
                     binding: None,
                 },
@@ -5799,7 +5799,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(569),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3285, 3290),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3423, 3428),
                     },
                     binding: None,
                 },
@@ -5808,7 +5808,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(570),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3308, 3317),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3446, 3455),
                     },
                     binding: None,
                 },
@@ -5817,7 +5817,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(575),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3339, 3367),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3477, 3505),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "bx".to_string(),
@@ -5826,7 +5826,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(576),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3240, 3441),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3372, 3579),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -5837,8 +5837,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     body: NodeId(435),
                     output: PortId(557),
                     pattern: BranchPattern::UnresolvedVariant {
-                        name: "Missing".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 2989, 2996),
+                        name: "Unobserved".to_string(),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3109, 3119),
                     },
                     binding: None,
                 },
@@ -5847,7 +5847,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(558),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Stale".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3012, 3017),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3138, 3143),
                     },
                     binding: None,
                 },
@@ -5856,7 +5856,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(565),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Ambiguous".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3031, 3040),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3157, 3166),
                     },
                     binding: None,
                 },
@@ -5865,7 +5865,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(576),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Observed".to_string(),
-                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3202, 3230),
+                        span: SourceSpan::new("src/v3/std/timing_lens.dag", 3334, 3362),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "ax".to_string(),
@@ -5874,7 +5874,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(577),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2975, 3445),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3095, 3583),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -5882,7 +5882,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "timing_branch_op".to_string(),
             value: PortId(577),
             params: vec![PortId(555), PortId(556)],
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2975, 3445),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3095, 3583),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -5891,7 +5891,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "timing_measurement_iterate".to_string(),
             value: PortId(578),
             params: vec![PortId(578), PortId(579)],
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3698, 3702),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3836, 3840),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -5900,14 +5900,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(2286)),
             inputs: vec![PortId(582)],
             output: PortId(583),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3779, 3796),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3917, 3937),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(456),
             name: "timing_lens_read".to_string(),
             value: PortId(583),
             params: vec![PortId(580), PortId(581)],
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3779, 3796),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3917, 3937),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -5916,14 +5916,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(2116)),
             inputs: vec![],
             output: PortId(586),
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3885, 3897),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 4026, 4038),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(458),
             name: "timing_lens_validate".to_string(),
             value: PortId(586),
             params: vec![PortId(584), PortId(585)],
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3885, 3897),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 4026, 4038),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -35092,7 +35092,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         ty: DeclarationId(2281),
                     },
                     Field {
-                        label: "Missing".to_string(),
+                        label: "Unobserved".to_string(),
                         ty: DeclarationId(2282),
                     },
                     Field {
@@ -35113,7 +35113,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 927, 1019),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1023, 1118),
         });
         declarations.push(Declaration {
             id: DeclarationId(1134),
@@ -35132,7 +35132,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1098, 1172),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1197, 1271),
         });
         declarations.push(Declaration {
             id: DeclarationId(1135),
@@ -35157,7 +35157,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1174, 1266),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1273, 1365),
         });
         declarations.push(Declaration {
             id: DeclarationId(1136),
@@ -35202,7 +35202,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1571, 1777),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1670, 1876),
         });
         declarations.push(Declaration {
             id: DeclarationId(1137),
@@ -35221,7 +35221,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1915, 1959),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2014, 2058),
         });
         declarations.push(Declaration {
             id: DeclarationId(1138),
@@ -35239,7 +35239,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2108, 2642),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2210, 2762),
         });
         declarations.push(Declaration {
             id: DeclarationId(1139),
@@ -35257,7 +35257,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2644, 2728),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2764, 2848),
         });
         declarations.push(Declaration {
             id: DeclarationId(1140),
@@ -35275,7 +35275,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 2886, 3445),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3006, 3583),
         });
         declarations.push(Declaration {
             id: DeclarationId(1141),
@@ -35293,7 +35293,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3600, 3702),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3738, 3840),
         });
         declarations.push(Declaration {
             id: DeclarationId(1142),
@@ -35311,7 +35311,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3704, 3796),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3842, 3937),
         });
         declarations.push(Declaration {
             id: DeclarationId(1143),
@@ -35329,7 +35329,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3798, 3897),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3939, 4038),
         });
         declarations.push(Declaration {
             id: DeclarationId(1144),
@@ -67602,7 +67602,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3748, 3774),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3886, 3912),
         });
         declarations.push(Declaration {
             id: DeclarationId(2281),
@@ -67621,7 +67621,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 954, 983),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1050, 1079),
         });
         declarations.push(Declaration {
             id: DeclarationId(2282),
@@ -67635,7 +67635,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 988, 995),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1084, 1094),
         });
         declarations.push(Declaration {
             id: DeclarationId(2283),
@@ -67649,7 +67649,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1000, 1009),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1099, 1108),
         });
         declarations.push(Declaration {
             id: DeclarationId(2284),
@@ -67663,7 +67663,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1014, 1019),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1113, 1118),
         });
         declarations.push(Declaration {
             id: DeclarationId(2285),
@@ -67683,7 +67683,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1142, 1170),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 1241, 1269),
         });
         declarations.push(Declaration {
             id: DeclarationId(2286),
@@ -67703,7 +67703,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3748, 3774),
+            span: SourceSpan::new("src/v3/std/timing_lens.dag", 3886, 3912),
         });
         declarations.push(Declaration {
             id: DeclarationId(2287),
@@ -75388,10 +75388,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_diagnostics() -> DiagnosticTab
         table.insert(
             PortId(582),
             Diagnostic::ResolveError {
-                name: "Missing".to_string(),
-                span: SourceSpan::new("src/v3/std/timing_lens.dag", 3788, 3795),
+                name: "Unobserved".to_string(),
+                span: SourceSpan::new("src/v3/std/timing_lens.dag", 3926, 3936),
                 fixes: vec![],
             },
+            DiagnosticAttribution::Unattributed,
         );
         table
     }

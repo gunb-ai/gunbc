@@ -19,7 +19,7 @@ import v3.std.dimensions { Witness, OptionalDiagnostic }
 // Terminal vocabulary for timing-lens outputs (report-not-scalar discipline).
 type TimingMeasurement
   = Observed { nanoseconds: Int }
-  | Missing
+  | Unobserved
   | Ambiguous
   | Stale
 
@@ -54,21 +54,21 @@ type TimingBudget {
 }
 
 // Sequential monoid operation for `Lens<TimingMeasurement>.sequential`:
-// sums observed nanoseconds; error states dominate; `Missing` is strict.
+// sums observed nanoseconds; error states dominate; `Unobserved` is strict.
 fn timing_sequential_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
   match a {
-    Missing => Missing
+    Unobserved => Unobserved
     Stale => Stale
     Ambiguous =>
       match b {
-        Missing => Missing
+        Unobserved => Unobserved
         Stale => Stale
         Ambiguous => Ambiguous
         Observed { nanoseconds: _ } => Ambiguous
       }
     Observed { nanoseconds: ax } =>
       match b {
-        Missing => Missing
+        Unobserved => Unobserved
         Stale => Stale
         Ambiguous => Ambiguous
         Observed { nanoseconds: bx } => Observed { nanoseconds: ax + bx }
@@ -82,18 +82,18 @@ fn timing_sequential_identity() -> TimingMeasurement =
 // uses max on `Observed`; fault states use the same dominance as sequential.
 fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
   match a {
-    Missing => Missing
+    Unobserved => Unobserved
     Stale => Stale
     Ambiguous =>
       match b {
-        Missing => Missing
+        Unobserved => Unobserved
         Stale => Stale
         Ambiguous => Ambiguous
         Observed { nanoseconds: _ } => Ambiguous
       }
     Observed { nanoseconds: ax } =>
       match b {
-        Missing => Missing
+        Unobserved => Unobserved
         Stale => Stale
         Ambiguous => Ambiguous
         Observed { nanoseconds: bx } =>
@@ -107,7 +107,7 @@ fn timing_measurement_iterate(body: TimingMeasurement, bound: LoopBound) -> Timi
   body
 
 fn timing_lens_read(d: Dag, b: Behavior) -> Witness<TimingMeasurement> =
-  Inhabits(Missing)
+  Inhabits(Unobserved)
 
 fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnostic =
   NoDiagnostic

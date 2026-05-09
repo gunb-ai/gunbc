@@ -35,7 +35,7 @@ fn timing_measurement_variants_locked() {
     let variants: HashSet<String> = disj_variant_labels(&dag, "TimingMeasurement")
         .into_iter()
         .collect();
-    let expected: HashSet<&str> = ["Observed", "Missing", "Ambiguous", "Stale"]
+    let expected: HashSet<&str> = ["Observed", "Unobserved", "Ambiguous", "Stale"]
         .into_iter()
         .collect();
     let actual: HashSet<&str> = variants.iter().map(String::as_str).collect();

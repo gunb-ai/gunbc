@@ -11,7 +11,7 @@ use crate::dag::{
     PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody,
     ValueNode,
 };
-use crate::diagnostics::{BootstrapAuthorityKey, Diagnostic, DiagnosticAttribution};
+use crate::diagnostics::{Diagnostic, DiagnosticAttribution};
 
 pub fn render_bootstrap_generated_rs(
     dag: &Dag,
