@@ -4,8 +4,8 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::dag::{
-    AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    Path, PortId, PortState, TypeConnective, ValueBody,
+    ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue,
+    LiteralBits, Path, PortId, PortState, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
@@ -2586,9 +2586,69 @@ impl<'a> TestRunner<'a> {
         ))
     }
 
+    /// Evaluate a unary `Int -> Int` function lowered in `dag` at `input` (E6-G1.a static slice).
+    ///
+    /// Used by the §1.8 gate #11 (`tc1_eta_equivalence_executable`) runner path: the η-pair is
+    /// compared extensionally on representative `Int` inputs without mutating the compiled `Dag`.
+    fn eval_unary_int_fn_declaration_result(
+        dag: &Dag,
+        fn_name: &str,
+        input: i64,
+    ) -> Result<i64, String> {
+        use crate::evaluator::{
+            evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
+        };
+
+        let decl = dag
+            .declaration_by_name(fn_name)
+            .ok_or_else(|| format!("missing function `{fn_name}`"))?;
+        let TypeConnective::Arrow { body, .. } = &decl.connective else {
+            return Err(format!("`{fn_name}` is not an Arrow declaration"));
+        };
+        let ArrowBody::UserDefined(bind_id) = body else {
+            return Err(format!(
+                "`{fn_name}` does not lower to UserDefined Arrow body (got {body:?})"
+            ));
+        };
+        let bind_node_id = bind_id.node_id();
+        let Behavior::Bind(bind) = dag.node(bind_node_id) else {
+            return Err(format!(
+                "`{fn_name}`: UserDefined body does not resolve to a Bind node"
+            ));
+        };
+        if bind.params.len() != 1 {
+            return Err(format!(
+                "`{fn_name}`: TC1 eta slice expects exactly one parameter, got {}",
+                bind.params.len()
+            ));
+        }
+        let frame =
+            EvalFrame::from_bindings([(bind.params[0], Value::LiteralValue(LiteralBits::Int(input)))])
+                .map_err(|e| format!("eval frame for `{fn_name}`: {e:?}"))?;
+        let mut state = EvalStateStack::with_root_frame(frame);
+        let strategy = EvalStrategy::ApplicativeOrder {
+            input_order: InputEvaluationOrder::LeftFirst,
+        };
+        let producer = dag.resolve_producer_opt(&bind.value).ok_or_else(|| {
+            format!(
+                "`{fn_name}`: bind `{}` value port has no producer",
+                bind.name
+            )
+        })?;
+        let entry = producer.id();
+        let value = evaluate_body(dag, entry, &mut state, strategy)
+            .map_err(|e| format!("`{fn_name}` body evaluation failed: {e:?}"))?;
+        match &value {
+            Value::LiteralValue(LiteralBits::Int(n)) => Ok(*n),
+            other => Err(format!(
+                "`{fn_name}`: expected Int literal result, got {other:?}"
+            )),
+        }
+    }
+
     fn eval_binary_dimension_report_equals_shape(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [left_fv, right_fv] = payload else {
@@ -2624,6 +2684,69 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
+
+        if claim.claim_name == "tc1_eta_equivalence_executable" {
+            let Some(tc1_carrier) = self
+                .dag
+                .declaration_by_name("Tc1EtaLensObservation")
+                .map(|d| d.id)
+            else {
+                return ClaimResult::Fail(
+                    "BinaryDimensionReportEquals tc1_eta_equivalence_executable: \
+                     `Tc1EtaLensObservation` carrier not found in graph"
+                        .to_string(),
+                );
+            };
+            if self.normalize_transparent_type(left_carrier) != tc1_carrier
+                || self.normalize_transparent_type(right_carrier) != tc1_carrier
+            {
+                return ClaimResult::Fail(
+                    "BinaryDimensionReportEquals tc1_eta_equivalence_executable requires \
+                     `DimensionReport<Tc1EtaLensObservation>` for both report refs"
+                        .to_string(),
+                );
+            }
+            if self.dag.declaration_by_name("eta_subject_f").is_none()
+                || self.dag.declaration_by_name("eta_subject_f_eta").is_none()
+            {
+                return ClaimResult::Fail(
+                    "BinaryDimensionReportEquals tc1_eta_equivalence_executable: expected fixture \
+                     declarations `eta_subject_f` and `eta_subject_f_eta`"
+                        .to_string(),
+                );
+            }
+            if let Err(err) = compile_to_dag(&claim.source, &claim.file_name) {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals tc1_eta_equivalence_executable: \
+                     TestClaim `source` / `{}` did not compile cleanly: {err:?}",
+                    claim.file_name
+                ));
+            }
+            const SAMPLES: &[i64] = &[0, 1, -1, 42];
+            for k in SAMPLES {
+                let v_f = match Self::eval_unary_int_fn_declaration_result(self.dag, "eta_subject_f", *k)
+                {
+                    Ok(v) => v,
+                    Err(msg) => return ClaimResult::Fail(msg),
+                };
+                let v_eta = match Self::eval_unary_int_fn_declaration_result(
+                    self.dag,
+                    "eta_subject_f_eta",
+                    *k,
+                ) {
+                    Ok(v) => v,
+                    Err(msg) => return ClaimResult::Fail(msg),
+                };
+                if v_f != v_eta {
+                    return ClaimResult::Fail(format!(
+                        "BinaryDimensionReportEquals tc1_eta_equivalence_executable: η-pair disagree \
+                         at input `{k}` (`eta_subject_f` => {v_f}, `eta_subject_f_eta` => {v_eta})"
+                    ));
+                }
+            }
+            return ClaimResult::Pass;
+        }
+
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \

@@ -7,13 +7,11 @@
 //! Cross-Mgr split per Evaluator E3.c (gunbc#1970): Verification authors the .dag-side η-pair +
 //! lens consumer envelope; Evaluator wires lens-fold-over-`Dag` substrate-fact projection.
 //!
-//! Today's runner returns `NotYetImplemented` with the canonical "structural shape is valid"
-//! reason (`eval_binary_dimension_report_equals_shape` in `src/v3/compiler/src/test_runner.rs`).
-//! Per Director (C-modified) ratification at gunbc#828 2026-05-07: §1.8 gate #11 status STAYS
-//! DECLARED on this scaffold landing; the NotYetImplemented sentinel is fail-closed-by-
-//! construction (any actual implementation that runs WILL fail this assertion when E3.c lands,
-//! forcing fixture upgrade). Status flips DECLARED → CONSUMER_LANDED → PASSING in one move on
-//! Evaluator E3.c (gunbc#1970) merge + assertion upgrade.
+//! Runner executes §1.8 gate #11 on the η-pair: `BinaryDimensionReportEquals` over
+//! `DimensionReport<Tc1EtaLensObservation>` plus extensional agreement of `eta_subject_f` /
+//! `eta_subject_f_eta` on representative `Int` inputs (`eval_binary_dimension_report_equals_shape`
+//! in `src/v3/compiler/src/test_runner.rs`). Full generic `DimensionReport<C>` fold/compare
+//! substrate remains future work; this slice is the E6-G1.a static representative path.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -49,17 +47,9 @@ fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape(
         results[0].claim_name, "tc1_eta_equivalence_executable",
         "claim name must be the §1.8 #11 canonical gate name"
     );
-    // Today: shape-valid NotYetImplemented (runner waits on Evaluator E3.c / gunbc#1970).
-    // When E3.c lands, this assertion flips from NotYetImplemented to Pass — that is the
-    // §1.8 #11 CONSUMER_LANDED → PASSING transition without further fixture edits.
     assert!(
-        matches!(
-            &results[0].result,
-            ClaimResult::NotYetImplemented(reason)
-                if reason.contains("BinaryDimensionReportEquals")
-                    && reason.contains("structural shape is valid")
-        ),
-        "expected BinaryDimensionReportEquals shape-valid NotYetImplemented, got {:?}",
+        matches!(&results[0].result, ClaimResult::Pass),
+        "expected BinaryDimensionReportEquals tc1_eta_equivalence_executable to Pass, got {:?}",
         results[0].result
     );
 }
