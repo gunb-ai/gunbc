@@ -186,14 +186,9 @@ type Bytes
 
 // --- Char type (structural primitive) ----------------------------------
 // Unicode scalar value (U+0000 to U+10FFFF, excluding surrogates).
-// Structural definition per structural-primitives-codegen.md:
-//   Char = Brand("Char", Int)
-// String decomposes to List<Char> via the chars() builtin.
-//   [Char] = {n in Z | 0 <= n <= 1114111}
-//
-// v2-compatible alias. The `where` constraints (brand, range) are future
-// work — the v2 parser does not support field-level where syntax yet.
-type Char = Int
+// R3 gate #20 (`numeric_inherited_bake_ins_dissolved`): refinement over
+// abstract `Int` — not a parallel fixed-width integer row.
+type Char = Int where range(min: 0, max: 1114111), brand("Char")
 
 // --- Container types (parameterized) -----------------------------------
 // Each container inhabits a specific algebraic structure from which its
@@ -302,15 +297,8 @@ type SourceSpan {
 type Timestamp    = String
 type EpochMs       = Int where range(min: 0)
 type Duration      = Int where range(min: 0)
-// Milliseconds/Seconds: brand half dropped pending per-leaf refinement
-// representation. Restore `, brand("Milliseconds")` /  `, brand("Seconds")`
-// once mixed-clause body-synthesis can preserve each fact (today's Mixed
-// path fail-closes when synthesizable + placeholder leaves combine; brand
-// body synthesis is held at placeholder so Milliseconds/Seconds combined
-// with range-body-synthesized triggers Mixed). Range half kept (now
-// body-synthesized to `subject >= 0`).
-type Milliseconds  = Int where range(min: 0)
-type Seconds       = Int where range(min: 0)
+type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
+type Seconds       = Int where range(min: 0), brand("Seconds")
 
 // --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
 // Addresses deficit D15 from domain-modeling-comprehensive.md S9.

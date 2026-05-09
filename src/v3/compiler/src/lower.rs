@@ -992,17 +992,16 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
 ///
 /// Pending substrate — STOP-AND-ESCALATE candidates per S9 Slice 2.5 brief
 /// (returns `None` — falls through to placeholder for now):
-/// - `non_empty` / `brand`: synthesizing real Bool bodies for these
-///   predicates triggers a *discharge cascade* — `scalar_literal_requires_refinement_discharge`
-///   treats any non-placeholder refinement as needing static discharge,
-///   and the existing infrastructure cannot yet evaluate `subject != ""`
-///   (non_empty) or `true` (brand) against scalar data literals like
-///   `name: "lower_helpers"`. Result: bootstrap regen emits 18+ spurious
+/// - `non_empty`: synthesizing a real Bool body triggers a *discharge cascade*
+///   — `scalar_literal_requires_refinement_discharge` treats any non-placeholder
+///   refinement as needing static discharge, and the existing infrastructure
+///   cannot yet evaluate `subject != ""` against scalar data literals like
+///   `name: "lower_helpers"`. Result: bootstrap regen emits spurious
 ///   "scalar literal does not satisfy `where` refinement" diagnostics for
-///   data declarations whose fields are typed as branded/non-empty
-///   carriers (e.g. `LensRegistryEntry.name: NonEmptyStr`). Surfacing as
-///   STOP per brief — the lowerer-side discharge mechanism is the
-///   substrate-fact-introduction needed before these synthesize.
+///   data declarations whose fields are typed as non-empty carriers (e.g.
+///   `LensRegistryEntry.name: NonEmptyStr`). Surfacing as STOP per brief —
+///   the lowerer-side discharge mechanism is the substrate-fact-introduction
+///   needed before `non_empty` synthesizes.
 /// - `pattern` / `format` / `content`: regex-primitive substrate-fact-introduction
 ///   (Q-Regex-Primitive) has not landed.
 fn synthesize_predicate_body(
@@ -1026,20 +1025,14 @@ fn synthesize_predicate_body(
             args: vec![subject_var(), int_literal(0)],
             span,
         }),
-        // `brand` body synthesis is structurally available (`subject ==
-        // subject` reflexive Comparison(Eq) — references subject so the
-        // unused-parameter lens doesn't flag it; semantically `true` for
-        // every carrier value), but is held at placeholder for this slice
-        // because the existing `dsl/std/types.dag` declarations
-        //   `Milliseconds = Int where range(min: 0), brand("Milliseconds")`
-        //   `Seconds      = Int where range(min: 0), brand("Seconds")`
-        // would mix synthesizable `brand` with placeholder-only `range`,
-        // tripping the openai-pro REQUEST_CHANGES `Mixed`-fail-closed path
-        // (gunbc PR #1846 `79c4da09` finding). brand body synthesis
-        // re-enables when either (a) per-leaf refinement representation
-        // lands so mixed clauses preserve each fact, or (b) range body
-        // synthesis lands and the And combination is uniformly
-        // synthesizable.
+        // Reflexive equality — semantically true for every refined value;
+        // structurally ties the body to `bind_name` for discharge hygiene.
+        // Composes with synthesizable `range` (R3 gate #20 — temporal brands).
+        "brand" => Some(SurfaceExpr::Operator {
+            op: OperatorKind::Comparison(ComparisonOp::Eq),
+            args: vec![subject_var(), subject_var()],
+            span,
+        }),
         // range body synthesis enabled. Note: synthesizing `subject >= min`
         // / `subject <= max` for the existing `dsl/std/types.dag`
         // Int-where-range declarations (RetryCount, HttpStatus, Port,
@@ -1530,11 +1523,11 @@ fn lower_parameter_refinements_phase(
 /// - **Registered + valid carrier + valid arg shape**: if
 ///   [`registered_predicate_synthesized_body`] returns `Some`, the predicate
 ///   lowers to a real `Bool` body via
-///   [`build_refinement_predicate_declaration`] (currently `gt_zero`).
+///   [`build_refinement_predicate_declaration`] (`gt_zero`, `range`, `brand`).
 ///   Otherwise it gets a `Conj`-shaped placeholder via
 ///   [`alloc_registered_refinement_placeholder`] (P3 facts-flow-forward —
 ///   alias still carries a named refinement; body synthesis is the named
-///   follow-on rung; currently `range` / `non_empty` / `brand`).
+///   follow-on rung; currently `non_empty` remains placeholder-only).
 /// - **Registered but malformed** (carrier-incompatible, arg-shape mismatch,
 ///   duplicate field, bare-with-empty-call): fail-closed via
 ///   `Diagnostic::ResolveError`, no refinement allocated.
@@ -1629,9 +1622,8 @@ fn lower_type_alias_refinements_phase(
                 // can be synthesized from existing substrate primitives,
                 // lower a real `Bool`-returning predicate body via
                 // `build_refinement_predicate_declaration` rather than
-                // allocating a `Conj`-shaped placeholder. Currently
-                // synthesizable: `gt_zero`. Pending substrate: the others
-                // (see `synthesize_predicate_body` doc-comment).
+                // allocating a `Conj`-shaped placeholder. Synthesizable today:
+                // `gt_zero`, `range`, `brand` (see `synthesize_predicate_body`).
                 match registered_predicate_synthesized_body(predicate, name, &carrier_chain) {
                     BodySynthOutcome::AllSynthesized(synthesized) => {
                         let pred_decl_id = build_refinement_predicate_declaration(

@@ -1060,18 +1060,17 @@ fn test_registered_predicate_placeholder_works_outside_types_dag() {
 
 /// S9 Slice 2.5 Path (a) cement (openai-pro REQUEST_CHANGES at gunbc PR
 /// #1846 `79c4da09`): a mixed `where`-clause that combines a body-synthesized
-/// predicate (`gt_zero`) with a placeholder-only predicate (`range`)
+/// predicate (`brand`) with a placeholder-only predicate (`non_empty`)
 /// fails-closed via `Diagnostic::ResolveError` rather than collapsing both
-/// into a single placeholder (which would silently lose the gt_zero
+/// into a single placeholder (which would silently lose the synthesized
 /// enforcement). Per-leaf refinement representation is the named follow-on
 /// that would let mixed clauses lower without fail-closed.
 #[test]
 fn test_mixed_synthesizable_and_placeholder_predicates_fails_closed() {
     let f = "dsl/std/integer.dag";
-    // Use `gt_zero` (synthesized) + `brand` (placeholder) — both registered
-    // and both allowed over Nat per `KNOWN_PREDICATES`, but brand is held at
-    // placeholder pending per-leaf refinement representation.
-    let dag = cached_compile_any("type M = Nat where gt_zero, brand(\"X\")", f);
+    // `brand` synthesizes (reflexive Eq); `non_empty` remains placeholder-only
+    // on `String` until discharge lands — Mixed fail-closed must persist.
+    let dag = cached_compile_any("type M = String where brand(\"X\"), non_empty", f);
     assert!(
         !dag.diagnostics().is_empty(),
         "mixed synthesizable + placeholder predicate clause must surface a \
@@ -1095,19 +1094,23 @@ fn test_mixed_synthesizable_and_placeholder_predicates_fails_closed() {
 ///
 /// Pre-fix bug: `leaf_predicate_name(arg)` returned `None` for an
 /// `Operator(And)` arg (it's not a leaf), so a clause like
-/// `gt_zero, gt_zero, brand` parsing as `(gt_zero, gt_zero), brand` would
-/// record only `brand` as a leaf name — outer aggregation would see an
+/// `brand("A"), brand("B"), non_empty` parsing as `(brand("A"), brand("B")), non_empty` would
+/// record only `non_empty` as a leaf name — outer aggregation would see an
 /// empty `synthesized_names` vector and classify the whole clause as
-/// `AllPlaceholder` instead of `Mixed`. The nested gt_zero-derived facts
+/// `AllPlaceholder` instead of `Mixed`. The nested brand-derived facts
 /// would silently collapse into a single placeholder.
 ///
 /// Fix: `collect_leaf_predicate_names` recurses through `And` subtrees so
 /// every leaf name reaches the outer aggregator. This test cements the
-/// fail-closed Mixed diagnostic.
+/// fail-closed Mixed diagnostic with **nested** `And` grouping (two
+/// synthesized `brand` leaves under an inner conjunction).
 #[test]
 fn test_nested_and_with_placeholder_leaf_fails_closed() {
     let f = "dsl/std/integer.dag";
-    let dag = cached_compile_any("type N = Nat where gt_zero, gt_zero, brand(\"X\")", f);
+    let dag = cached_compile_any(
+        "type N = String where brand(\"A\"), brand(\"B\"), non_empty",
+        f,
+    );
     assert!(
         !dag.diagnostics().is_empty(),
         "nested-And clause with synthesized + placeholder leaves must \
@@ -1125,18 +1128,14 @@ fn test_nested_and_with_placeholder_leaf_fails_closed() {
     }
 }
 
-/// S9 Slice 2.5 Path (a) cement: `brand("X")` body synthesis is
-/// structurally available (reflexive `subject == subject`) but held at
-/// placeholder for this slice — re-enabling triggers the openai-pro
-/// REQUEST_CHANGES mixed-fail-closed path on the existing
-/// `Milliseconds = Int where range(min: 0), brand(...)` and
-/// `Seconds = Int where range(min: 0), brand(...)` declarations (range
-/// is placeholder-only; brand body would be synthesizable). Brand
-/// re-enables when per-leaf refinement representation lands or when
-/// range body synthesis lands. Test cements that brand currently
-/// takes a placeholder.
+/// R3 gate #20 / S9 Path (a): `brand("X")` lowers to a **real** refinement
+/// body (reflexive `subject == subject`), not a placeholder — enabling
+/// composition with synthesizable `range` on `Milliseconds` / `Seconds`.
 #[test]
-fn test_brand_takes_placeholder_pending_mixed_clause_fix() {
+fn test_brand_lowers_to_real_refinement_body_not_placeholder() {
+    use v3_compiler::dag::{ArrowBody, Behavior, TransformTarget, TypeConnective};
+    use v3_compiler::operators::{ComparisonOp, OperatorKind};
+
     let f = "dsl/std/integer.dag";
     let dag = cached_compile_to_dag("type B = Int where brand(\"B\")", f);
     let decl = dag
@@ -1145,16 +1144,39 @@ fn test_brand_takes_placeholder_pending_mixed_clause_fix() {
     let pred_id = decl
         .refinement
         .expect("`brand` refinement must produce a `Declaration::refinement`");
-    let label = dag
-        .declaration(pred_id)
-        .name
-        .as_deref()
-        .expect("placeholder should carry a diagnostic name");
-    assert!(
-        label.contains("predicate not lowered"),
-        "`brand` currently takes a placeholder pending mixed-clause fix; \
-         got label {label:?}"
-    );
+    let pred = dag.declaration(pred_id);
+    if let Some(label) = pred.name.as_deref() {
+        assert!(
+            !label.contains("predicate not lowered"),
+            "`brand` must lower to a real refinement body, not placeholder; \
+             got label {label:?}"
+        );
+    }
+    let TypeConnective::Arrow { body, .. } = &pred.connective else {
+        panic!(
+            "`brand` refinement should be `Arrow`-shaped; got connective={:?}",
+            pred.connective
+        );
+    };
+    let ArrowBody::UserDefined(bind_node_id) = body else {
+        panic!("`brand` Arrow body should be `UserDefined`; got {body:?}");
+    };
+    let bind = bind_node_id
+        .bind_opt(&dag)
+        .expect("Bind node id should resolve to a `Behavior::Bind`");
+    let value_port = bind.value;
+    let producer = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            Behavior::Transform(t) if t.output == value_port => Some(t),
+            _ => None,
+        })
+        .expect("`brand` body should be produced by a Transform node");
+    match &producer.target {
+        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => {}
+        other => panic!("`brand` body should be `Comparison(Eq)`; got {other:?}"),
+    }
 }
 
 /// S9 Slice 2.5 Path (a) Rung 3 cement: `gt_zero` body synthesis produces a

@@ -39,6 +39,17 @@ fn find_named(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
         .id
 }
 
+/// `declaration_by_name` biases `src/v3/` over `dsl/` during duplicate-name
+/// migration; gate #20 nominals (`Seconds`, …) also exist as phantom units in
+/// `dimensions.dag` — pin the `dsl/std/types.dag` substrate authority.
+fn find_named_std_types_dag(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
+    dag.declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some(name) && d.span.file == "dsl/std/types.dag")
+        .unwrap_or_else(|| panic!("declaration `{name}` not found in dsl/std/types.dag"))
+        .id
+}
+
 fn structural_reference_field(
     decl: &v3_compiler::dag::Declaration,
     label: &str,
@@ -4620,5 +4631,42 @@ fn int_default_alias_resolves_to_abelian_group_over_group_completion_of_nat() {
         other => panic!(
             "Int's AbelianGroup carrier must be a GroupCompletion instantiation; got {other:?}"
         ),
+    }
+}
+
+/// R3 gate #20 (`numeric_inherited_bake_ins_dissolved`): Unicode scalar and
+/// temporal integer nominals structurally refine abstract `Int` — not a
+/// parallel fixed-width `Int64` / `OrderedRing<Word64>` defining carrier.
+#[test]
+fn numeric_inherited_bake_ins_dissolved_int_inherited_aliases_use_abstract_int() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+    let int_id = find_named(&dag, "Int");
+
+    for name in [
+        "Char",
+        "EpochMs",
+        "Duration",
+        "Milliseconds",
+        "Seconds",
+    ] {
+        let decl_id = find_named(&dag, name);
+        let decl = dag.declaration(decl_id);
+        let base = match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(b)) => *b,
+            other => panic!(
+                "{name}: expected `Instantiation` or `ResolvedByStructure` \
+                 alias/template over Int; got {other:?}"
+            ),
+        };
+        assert_eq!(
+            base, int_id,
+            "{name} must consume abstract `Int` per gate #20 (resolved base decl {:?})",
+            dag.declaration(base).name
+        );
+        assert!(
+            decl.refinement.is_some(),
+            "{name}: expected lowered `where` refinement (dissolution receipt)"
+        );
     }
 }

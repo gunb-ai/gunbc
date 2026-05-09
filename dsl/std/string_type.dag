@@ -16,5 +16,5 @@ import std.types { Char }
 type String = FreeMonoid<Char>
 
 // Char is declared in std/types.dag as:
-//   type Char = Int where brand("Char"), range(min: 0, max: 1114111)
+//   type Char = Int where range(min: 0, max: 1114111), brand("Char")
 // Single authority — not redeclared here.
