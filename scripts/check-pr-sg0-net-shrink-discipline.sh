@@ -123,10 +123,26 @@ sg0_validate_pr_body_format() {
       # Tightened 2026-05-09 per codex BLOCKING on PR #2361 sha b925b174:
       # cited brief paths must exist in the checkout — string-pattern match alone is escapable.
       # Issue refs / URLs are external; not file-checkable here. Brief paths get file existence verification.
+      #
+      # Tightened further 2026-05-09 per codex BLOCKING on PR #2361 sha 296f72fa8 (line 119):
+      # path must be canonical (no `..` segments that escape `docs/briefs/`); existence check alone
+      # is insufficient — `docs/briefs/../foo.md` would resolve to `docs/foo.md` which could exist
+      # as a non-brief file. Reject path-traversal tokens; verify resolved file is under docs/briefs/.
       cited_brief_paths=$(grep -oE 'docs/briefs/[[:alnum:]_./-]+\.md' <<<"$pairing_flat" || true)
       if [ -n "$cited_brief_paths" ]; then
         while IFS= read -r p; do
           [ -z "$p" ] && continue
+          # Reject path-traversal tokens: any `..` segment escapes docs/briefs/ scope.
+          if grep -qE '(^|/)\.\.(/|$)' <<<"$p"; then
+            echo "::error::SG-0 pairing (c) cited brief path '$p' contains `..` path-traversal segment; brief paths must be canonical under docs/briefs/. Tightened 2026-05-09 per codex BLOCKING."
+            return 1
+          fi
+          # Reject paths not actually under docs/briefs/ (defense-in-depth — prefix already enforced
+          # by capture pattern, but explicit canonical-prefix check guards against future regex relaxation).
+          if [[ "$p" != docs/briefs/* ]]; then
+            echo "::error::SG-0 pairing (c) cited brief path '$p' is not under docs/briefs/; must be a queued brief in the canonical briefs directory."
+            return 1
+          fi
           if [ ! -f "$ROOT/$p" ]; then
             echo "::error::SG-0 pairing (c) cited brief path '$p' does not exist in the checkout. Either author the brief in this PR, fix the path, or use an issue ref instead. Tightened 2026-05-09 per codex BLOCKING."
             return 1
@@ -323,6 +339,7 @@ self_test() {
   run_case "(c) pairing with full GitHub issue URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via https://github.com/gunb-ai/gunbc/issues/1234' pass
   run_case "(c) without dispatch evidence (tightened 2026-05-09)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch: vague-lane-name' fail
   run_case "(c) cited brief path that does not exist (tightened 2026-05-09 codex BLOCKING)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/r3-nonexistent-brief-2026.md' fail
+  run_case "(c) cited brief path with path-traversal (.. segment)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/../r3-program-plan.md' fail
   run_case "missing delta line" $'Summary only\nSG-0 pairing: (a) x' fail
   run_case "malformed negative delta token" $'SG-0 hand-path delta: -not-a-number' fail
   run_case "bare (b) without URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)' fail
