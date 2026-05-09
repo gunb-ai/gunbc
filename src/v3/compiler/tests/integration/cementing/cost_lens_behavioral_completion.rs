@@ -101,7 +101,7 @@ fn literal_bind_cements_symbolic_cost_dimension_constant() {
 fn recursive_countdown_cements_dimension_linear_cost_and_sizevar_identity() {
     run_with_cost_lens_stack(|| {
         let dag = compile_to_dag(
-            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
+            "fn countdown(n: Int) -> Int =\n  if n <= 0 then 0 else countdown(n - 1)",
             "cement_cost_countdown.v3",
         )
         .expect("recursive countdown fixture compiles");
