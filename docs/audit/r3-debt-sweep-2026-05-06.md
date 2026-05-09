@@ -170,7 +170,7 @@ Smaller scope bridges: F10 install_hint, ad-hoc fold sentinels, etc.
 | Lens fold execution: undeclared fallback structure + file-path semantics | G | `src/v3/compiler/src/lens_apply.rs:105-148,22-39,372-383` | structural R1-certified fold shape carrier | YELLOW | NOVEL 2026-04-25 | Substrate |
 | `PartitionResult` bypassed by anonymous return type | G | gpt-5-5-pro Finding 4 | typed return restoration | YELLOW | PR #2358 | Substrate |
 | 4 TODO/FIXME markers in `src/v3/` non-test | G | `grep -rn 'TODO\|FIXME\|XXX' src/v3/` | per-marker dissolution | YELLOW | pre-R3 | Substrate |
-| 113 SG-0 census untracked entries (no dissolution-trigger comments) | G | `sg0_census_test.rs` (159 entries; 113 untagged) | per-entry §1.8 gate-id linkage script + Class A-G classification | YELLOW | PR #2358 §1 | Debt-Paydown |
+| SG-0 census untagged entries (no dissolution-trigger comments) | G | `sg0_census_test.rs`; live counts in `docs/audit/sg0-census-classification-2026-05-09.md` §Summary | per-entry §1.8 gate-id linkage + Class A-G ratification (script: `scripts/classify-sg0-census.py`) | YELLOW | PR #2358 §1 | Debt-Paydown |
 | Hand-Rust acceptance growing faster than `.dag` TestClaim migration | G | per-test SG-0 ratchet | net-zero/net-shrink discipline; per-PR pairing | YELLOW | pre-R3 | PB+Debt-Paydown |
 | Reflection completeness over-trusted (not closed mechanical theorem) | G | reflection-completeness claim | mechanical theorem or ratchet | YELLOW | pre-R3 | Substrate |
 
