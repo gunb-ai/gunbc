@@ -3348,7 +3348,7 @@ pub mod lens_cost {
         // Regen can emit a redundant paren around some `Hit(...)` payload
         // subexpressions (`Hit((1 + n))` vs `Hit(1 + n)`) — relax until emission
         // drops one stable layer of grouping.
-        use crate::complexity_lattice::asymptotic_dominates;
+        use crate::complexity_lattice::complexity_enforcement_budget_dominates as asymptotic_dominates;
         use crate::dag::*;
         use crate::diagnostics::*;
         use crate::lens_t_las_carrier::{

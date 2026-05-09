@@ -421,14 +421,15 @@ fn complexity_enforcement_project(summary: ComplexitySummary) -> AsymptoticClass
 // stays valid Rust `bool` (Classical `True`/`False` lowers poorly for `-> Bool` targets).
 //
 // **Executable parity (P2 / T-LAS):** this lowers to `complexity_lens_generated` calling
-// `v3_compiler::complexity_lattice::asymptotic_dominates`, which matches the staged
+// `v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates` (imported as
+// `asymptotic_dominates` inside the generated module), which matches the staged
 // `.dag` relation on every tier **and** refines `ClassPolynomial`×`ClassPolynomial` to
 // compare Peano degrees (k1 ≥ k2). `algebra.dag` remains tier-coarse for poly–poly in
 // `meet`/`join`/`asymptotic_dominates` until bootstrap lowering accepts the same-degree
 // story structurally in substrate (dissolution: algebra `ClassPolynomial` match payloads
 // + Peano compare without host/Rust-only split — program-plan gate #92 / ROADMAP).
-// **Budget enforcement** must follow the generated lattice bridge (single consumer:
-// `enforced_lens_application`).
+// **Budget enforcement** must follow this named bridge (single consumer:
+// `enforced_lens_application`); do not conflate it with substrate `meet`/`join` alone.
 fn complexity_enforcement_violates(declared: AsymptoticClass, observed: AsymptoticClass) -> Bool =
   if asymptotic_dominates(observed, declared) then
     if asymptotic_dominates(declared, observed) then 0 == 1 else 0 == 0

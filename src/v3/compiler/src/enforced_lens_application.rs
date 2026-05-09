@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 
 use crate::dag::{
-    ArrowBody, AsymptoticClass, Dag, DeclarationId, FieldValue, LiteralBits, Lookup, PortId,
-    PositiveDescentAmount, TypeConnective, ValueBody,
+    positive_descent_count, ArrowBody, AsymptoticClass, Dag, DeclarationId, FieldValue,
+    LiteralBits, Lookup, PortId, PositiveDescentAmount, TypeConnective, ValueBody,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost::{
@@ -124,7 +124,9 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
             field_value_asymptotic_class(dag, asymptotic_disj, positive_descent_disj, budget_val)
         else {
             violations.push(Diagnostic::ParseError {
-                message: "lens enforcement: could not read complexity budget `AsymptoticClass`"
+                message: "lens enforcement: could not read complexity budget `AsymptoticClass` \
+                          (ill-formed `ClassPolynomial` budgets must use Peano `degree` ≥ 3; \
+                          use `ClassLinear` / `ClassQuadratic` for sub-cubic tiers)"
                     .to_string(),
                 span: decl.span.clone(),
                 fixes: Vec::new(),
@@ -311,6 +313,12 @@ fn field_value_asymptotic_class(
         "ClassPolynomial" => {
             let pda = pda_disj?;
             let degree = decode_positive_descent_amount(dag, pda, payload)?;
+            // `AsymptoticClass::ClassPolynomial` in `algebra.dag` is k ≥ 3; Peano
+            // counts 1–2 are `ClassLinear` / `ClassQuadratic` territory — reject as
+            // an invalid budget shape (fail closed; openai-pro / P1).
+            if positive_descent_count(&degree) < 3 {
+                return None;
+            }
             Some(AsymptoticClass::ClassPolynomial { degree })
         }
         _ => None,
@@ -364,5 +372,29 @@ fn decode_positive_descent_variant(
             })
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod polynomial_budget_class_policy_tests {
+    use crate::dag::{positive_amount_from_i64, positive_descent_count, PositiveDescentAmount};
+
+    fn polynomial_budget_peano_is_admissible(degree: &PositiveDescentAmount) -> bool {
+        positive_descent_count(degree) >= 3
+    }
+
+    #[test]
+    fn class_polynomial_enforcement_budget_rejects_sub_cubic_peano_degrees() {
+        assert_eq!(positive_descent_count(&PositiveDescentAmount::OneStep), 1);
+        assert!(!polynomial_budget_peano_is_admissible(
+            &PositiveDescentAmount::OneStep
+        ));
+        let deg2 = PositiveDescentAmount::AdditionalStep {
+            previous: Box::new(PositiveDescentAmount::OneStep),
+        };
+        assert_eq!(positive_descent_count(&deg2), 2);
+        assert!(!polynomial_budget_peano_is_admissible(&deg2));
+        let deg3 = positive_amount_from_i64(3).expect("synthetic degree 3");
+        assert!(polynomial_budget_peano_is_admissible(&deg3));
     }
 }

@@ -409,9 +409,11 @@ fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
 //
 // `asymptotic_dominates(ClassPolynomial, ClassPolynomial)` stays tier-coarse at the
 // `.dag` lattice tier (any polynomial class dominates any other at this carrier
-// layer). **Polynomial degree** is enforced for T-LAS complexity budgets in the
-// executable bridge `v3_compiler::complexity_lattice::asymptotic_dominates`, which
-// matches `dominates(PolynomialCost, PolynomialCost)` (k1 >= k2) from this module.
+// layer). **Polynomial degree** for **T-LAS `EnforcedApplication` budgets** is compared
+// only in `v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates`
+// (Rust emission wires generated `complexity_enforcement_violates` through that named
+// bridge, not an unqualified alias of this `.dag` `fn`). Same ordering as
+// `dominates(PolynomialCost, PolynomialCost)` (k1 >= k2) for degree-ready carriers.
 // Dissolution: lift the same Peano compare into this `asymptotic_dominates` match
 // once variant payload patterns lower cleanly in bootstrap (tracked with gate #92).
 type AsymptoticClass inhabits BoundedLattice<AsymptoticClass>

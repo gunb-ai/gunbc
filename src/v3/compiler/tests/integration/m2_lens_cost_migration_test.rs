@@ -85,7 +85,7 @@ fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     let wrapped = format!(
         "#[allow(warnings, clippy::all)] \
          mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; \
-         use v3_compiler::complexity_lattice::asymptotic_dominates; \
+         use v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates as asymptotic_dominates; \
          use v3_compiler::Witness; \
          use v3_compiler::lens_t_las_carrier::{{EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic}}; \
          {module_source} }} \
@@ -155,7 +155,8 @@ fn complexity_dag_compiles_cleanly() {
 /// **monoid/branch/iterate** to the same `compose_*` spine as `compute_summaries`
 /// (see `complexity.dag`). **Enforcement** (`project` / `violates`) stays substrate
 /// authority; execution is via `complexity_lens_generated` +
-/// `v3_compiler::complexity_lattice::asymptotic_dominates`.
+/// `v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates` (aliased
+/// as `asymptotic_dominates` inside the emitted module).
 #[test]
 fn complexity_lens_migration_stop_surface_ratchet() {
     let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
