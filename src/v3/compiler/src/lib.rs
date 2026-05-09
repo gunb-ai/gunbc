@@ -3356,7 +3356,7 @@ pub mod lens_cost {
         };
         use crate::Witness;
 
-        include!("lens_cost_generated.rs");
+        include!("complexity_lens_generated.rs");
     }
 
     pub use generated::{

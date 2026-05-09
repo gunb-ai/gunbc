@@ -5,7 +5,7 @@
 //! `complexity_enforceable`, infer checks the named section using the **same**
 //! `LensEnforcement` projection + violation relation as `complexity.dag`
 //! (`complexity_enforcement_project` / `complexity_enforcement_violates`, surfaced
-//! through `lens_cost_generated`) and attaches a compile diagnostic on violation.
+//! through `complexity_lens_generated`) and attaches a compile diagnostic on violation.
 
 use std::collections::HashMap;
 

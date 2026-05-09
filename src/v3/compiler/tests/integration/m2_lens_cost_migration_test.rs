@@ -52,7 +52,7 @@ fn emit_lens_module() -> String {
 }
 
 fn checked_in_generated_module() -> &'static str {
-    include_str!("../../src/lens_cost_generated.rs")
+    include_str!("../../src/complexity_lens_generated.rs")
 }
 
 fn format_rust_source(source: &str) -> String {
@@ -153,7 +153,7 @@ fn complexity_dag_compiles_cleanly() {
 ///
 /// Gate #92 lands nominal `data complexity_lens` as a **T-LAS substrate stub**
 /// (read/validate remain stubs). **Enforcement** (`project` / `violates`) is
-/// authoritative in `complexity.dag` and executed via `lens_cost_generated` +
+/// authoritative in `complexity.dag` and executed via `complexity_lens_generated` +
 /// `v3_compiler::complexity_lattice::asymptotic_dominates` — not a divergent
 /// host-only lattice.
 #[test]
@@ -182,7 +182,7 @@ fn complexity_generated_module_matches_checked_in_snapshot() {
     assert_eq!(
         fresh.trim(),
         checked_in_generated_module().trim(),
-        "checked-in generated module is stale; regenerate lens_cost_generated.rs from complexity.dag"
+        "checked-in generated module is stale; regenerate complexity_lens_generated.rs from complexity.dag"
     );
 }
 

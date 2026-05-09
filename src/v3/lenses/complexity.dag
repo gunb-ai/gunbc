@@ -401,7 +401,7 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
 // **LensEnforcement authority:** `project` / `violates` below are the substrate
 // source of truth for budget comparison. The compiler consumer
 // (`enforced_lens_application`) calls the same behavior via
-// `lens_cost_generated` (emit of these fns) — not a parallel lattice.
+// `complexity_lens_generated` (emit of these fns) — not a parallel lattice.
 
 fn complexity_enforcement_project(summary: ComplexitySummary) -> AsymptoticClass =
   summary.asymptotic_class

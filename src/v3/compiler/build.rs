@@ -495,7 +495,7 @@ fn main() {
         "src/v3/compiler/src/dag_value_body_generated.rs",
         "src/v3/compiler/src/diagnostics_generated.rs",
         "src/v3/compiler/src/infer_helpers_generated.rs",
-        "src/v3/compiler/src/lens_cost_generated.rs",
+        "src/v3/compiler/src/complexity_lens_generated.rs",
         "src/v3/compiler/src/lens_cost_symbolic_generated.rs",
         "src/v3/compiler/src/lens_cost_target_realization_generated.rs",
         "src/v3/compiler/src/lens_effect_enumeration_generated.rs",
