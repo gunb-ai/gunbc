@@ -22,11 +22,11 @@ fn r3_l7_commutative_monoid_commutativity_op(a: Int, b: Int) -> Int = a + b
 fn r3_l7_group_identity_op(a: Int, b: Int) -> Int = a + b
 fn r3_l7_abelian_group_commutativity_op(a: Int, b: Int) -> Int = a + b
 fn r3_l7_semiring_add_commutativity_op(a: Int, b: Int) -> Int = a + b
-fn r3_l7_semiring_mul_identity_op(a: Int, b: Int) -> Int = a + b
+fn r3_l7_semiring_mul_identity_op(a: Int, b: Int) -> Int = a * b
 fn r3_l7_ring_add_commutativity_op(a: Int, b: Int) -> Int = a + b
-fn r3_l7_ring_mul_identity_op(a: Int, b: Int) -> Int = a + b
+fn r3_l7_ring_mul_identity_op(a: Int, b: Int) -> Int = a * b
 fn r3_l7_ordered_ring_add_commutativity_op(a: Int, b: Int) -> Int = a + b
-fn r3_l7_ordered_ring_mul_identity_op(a: Int, b: Int) -> Int = a + b
+fn r3_l7_ordered_ring_mul_identity_op(a: Int, b: Int) -> Int = a * b
 fn r3_l7_lattice_meet_associativity_op(a: Int, b: Int) -> Int = a + b
 fn r3_l7_lattice_join_commutativity_op(a: Int, b: Int) -> Int = a + b
 fn r3_l7_bounded_lattice_meet_identity_op(a: Int, b: Int) -> Int = a + b
@@ -41,9 +41,12 @@ data r3_verification_l7_algebraic_laws_skeleton: TestClaim = {
   requires: []
 }
 
-// Matrix rows are intentionally ordinary `AlgebraicLaw` consumers. They do not
-// claim full algebra closure: the runner's current witness paths use bounded Int samples for
-// `Associativity`, `Commutativity`, and `Identity` (unique candidate search).
+// Matrix suite rows are ordinary `AlgebraicLaw` consumers on **Int-shaped** lenses only for the
+// obligations included below: multiplicative `Identity` rows use `*` (semiring/ring mul unit), not
+// `+`. Bounded-lattice / Boolean-algebra / free-monoid **identity** obligations are **not** in the
+// passing matrix — `Int` `+` would falsely certify inhabitants grounded in `dsl/std/algebra.dag`
+// without faithful carriers (INVARIANTS §P1 / MODELING M9). Meet/join associativity/commutativity
+// rows remain additive Int **scaffolding** until lattice inhabitants land (distinct follow-on).
 data r3_l7_semigroup_associativity: TestClaim = {
   name: "r3_l7_semigroup_associativity",
   source: "fn r3_l7_semigroup_associativity_op(a: Int, b: Int) -> Int = a + b\n",
@@ -94,7 +97,7 @@ data r3_l7_semiring_add_commutativity: TestClaim = {
 
 data r3_l7_semiring_mul_identity: TestClaim = {
   name: "r3_l7_semiring_mul_identity",
-  source: "fn r3_l7_semiring_mul_identity_op(a: Int, b: Int) -> Int = a + b\n",
+  source: "fn r3_l7_semiring_mul_identity_op(a: Int, b: Int) -> Int = a * b\n",
   file_name: "r3_l7_semiring_mul_identity.v3",
   predicate: AlgebraicLaw(Identity, r3_l7_semiring_mul_identity_op),
   requires: []
@@ -110,7 +113,7 @@ data r3_l7_ring_add_commutativity: TestClaim = {
 
 data r3_l7_ring_mul_identity: TestClaim = {
   name: "r3_l7_ring_mul_identity",
-  source: "fn r3_l7_ring_mul_identity_op(a: Int, b: Int) -> Int = a + b\n",
+  source: "fn r3_l7_ring_mul_identity_op(a: Int, b: Int) -> Int = a * b\n",
   file_name: "r3_l7_ring_mul_identity.v3",
   predicate: AlgebraicLaw(Identity, r3_l7_ring_mul_identity_op),
   requires: []
@@ -126,7 +129,7 @@ data r3_l7_ordered_ring_add_commutativity: TestClaim = {
 
 data r3_l7_ordered_ring_mul_identity: TestClaim = {
   name: "r3_l7_ordered_ring_mul_identity",
-  source: "fn r3_l7_ordered_ring_mul_identity_op(a: Int, b: Int) -> Int = a + b\n",
+  source: "fn r3_l7_ordered_ring_mul_identity_op(a: Int, b: Int) -> Int = a * b\n",
   file_name: "r3_l7_ordered_ring_mul_identity.v3",
   predicate: AlgebraicLaw(Identity, r3_l7_ordered_ring_mul_identity_op),
   requires: []
@@ -148,6 +151,7 @@ data r3_l7_lattice_join_commutativity: TestClaim = {
   requires: []
 }
 
+// Retained for future faithful lattice / monoid inhabitants — **not** in the passing matrix (see suite comment above).
 data r3_l7_bounded_lattice_meet_identity: TestClaim = {
   name: "r3_l7_bounded_lattice_meet_identity",
   source: "fn r3_l7_bounded_lattice_meet_identity_op(a: Int, b: Int) -> Int = a + b\n",
@@ -195,9 +199,6 @@ data r3_verification_l7_algebra_matrix_suite: TestSuite = {
     r3_l7_ordered_ring_add_commutativity,
     r3_l7_ordered_ring_mul_identity,
     r3_l7_lattice_meet_associativity,
-    r3_l7_lattice_join_commutativity,
-    r3_l7_bounded_lattice_meet_identity,
-    r3_l7_boolean_algebra_join_identity,
-    r3_l7_free_monoid_identity
+    r3_l7_lattice_join_commutativity
   ]
 }

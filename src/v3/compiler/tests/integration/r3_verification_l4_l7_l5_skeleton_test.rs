@@ -6,7 +6,10 @@
 //! (`docs/r3-program-plan.md` §1.7 corpus-quantified rule — ledger **PASSING** awaits full corpus).
 //! Plus a mixed-lineage `NotYetImplemented` control. Lane 1 L7 now exercises the wired
 //! `Associativity`, `Commutativity`, and `Identity` operational witnesses (bounded Int tables).
-//! Lane 2 / L5 rows remain intentionally deferred where noted.
+//! The L7 matrix suite locks claims whose **Int lens semantics match the tagged obligation**
+//! (e.g. multiplicative `Identity` uses `*`); lattice / Boolean / free-monoid identity placeholders
+//! stay **out** of that suite until faithful carriers exist (`dsl/std/algebra.dag`, INVARIANTS §P1 /
+//! MODELING M9). Lane 2 / L5 rows remain intentionally deferred where noted.
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
 use std::sync::OnceLock;
@@ -41,7 +44,24 @@ const L7_CLAIM: &str = "r3_verification_l7_algebraic_laws_skeleton";
 const L7_SEMIGROUP_ASSOCIATIVITY_CLAIM: &str = "r3_l7_semigroup_associativity";
 const L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM: &str = "r3_l7_commutative_monoid_commutativity";
 const L7_MATRIX_SUITE: &str = "r3_verification_l7_algebra_matrix_suite";
-const L7_MATRIX_CLAIM_COUNT: usize = 16;
+/// Claims wired into [`L7_MATRIX_SUITE`] — multiplicative identity rows use `*` in the fixture;
+/// bounded-lattice / Boolean / free-monoid identity placeholders are intentionally omitted (fixture
+/// retains declarations for later inhabitants).
+const L7_MATRIX_PASS_CLAIMS: &[&str] = &[
+    "r3_l7_semigroup_associativity",
+    "r3_l7_monoid_identity",
+    "r3_l7_commutative_monoid_commutativity",
+    "r3_l7_group_identity",
+    "r3_l7_abelian_group_commutativity",
+    "r3_l7_semiring_add_commutativity",
+    "r3_l7_semiring_mul_identity",
+    "r3_l7_ring_add_commutativity",
+    "r3_l7_ring_mul_identity",
+    "r3_l7_ordered_ring_add_commutativity",
+    "r3_l7_ordered_ring_mul_identity",
+    "r3_l7_lattice_meet_associativity",
+    "r3_l7_lattice_join_commutativity",
+];
 
 const L5_FIXTURE: &str = include_str!("../fixtures/r3_verification_l5_corpus.dag");
 const L5_FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag";
@@ -242,14 +262,25 @@ fn r3_verification_l7_algebraic_law_identity_skeleton_passes_bounded_witness() {
 fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
     let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
     let results = TestRunner::new(dag).run_suite(L7_MATRIX_SUITE);
-    assert_eq!(results.len(), L7_MATRIX_CLAIM_COUNT);
-
-    for result in &results {
+    assert_eq!(
+        results.len(),
+        L7_MATRIX_PASS_CLAIMS.len(),
+        "`{L7_MATRIX_SUITE}` claim count drift — update `L7_MATRIX_PASS_CLAIMS` (fixture is authority)"
+    );
+    for &expected_name in L7_MATRIX_PASS_CLAIMS {
+        let matches: Vec<_> = results
+            .iter()
+            .filter(|r| r.claim_name == expected_name)
+            .collect();
+        assert_eq!(
+            matches.len(),
+            1,
+            "expected exactly one suite result for `{expected_name}`, got {matches:?}"
+        );
         assert!(
-            matches!(result.result, ClaimResult::Pass),
-            "{} should exercise the wired AlgebraicLaw witness path; got {:?}",
-            result.claim_name,
-            result.result
+            matches!(matches[0].result, ClaimResult::Pass),
+            "`{expected_name}` should Pass with algebra-faithful Int lens wiring; got {:?}",
+            matches[0].result
         );
     }
 }
