@@ -98,33 +98,6 @@ type DiagnosticSeverity = Error
 type LensEnforcement<Output, Budget> {
   project: fn(Output) -> Budget
   violates: fn(Budget, Budget) -> Bool
-
-  // **Auto-violate dispatch bit** for observation-driven lens classes
-  // (T-Workflow-As-Data Slice 2 timing-lens et seq.). When the lens
-  // Output is Result-typed (e.g., `Result<Observed, ObservationFailure>`
-  // for timing), structural-static lenses set this **false** (default)
-  // and observation-driven lenses set this **true**. Runtime
-  // interpretation: if `auto_violate_on_left` is true and the Output
-  // value matches the Result-Left case (observation failure /
-  // non-Observed report state), the enforcement violates **without**
-  // calling `project`/`violates` — preserving the typed failure
-  // evidence (Missing / Ambiguous / Stale / Unobserved) per INVARIANTS
-  // P3 / C-8 fail-closed discipline rather than fabricating a Budget
-  // value at the projection boundary. For Result-Right (observed value
-  // present), the existing `project` + `violates` path runs unchanged.
-  //
-  // Existing T-LBP / T-CostLens / T-LAS instances default this to
-  // **false**; their Output types are not Result-shaped and the bit
-  // is inert. Backward-compatible additive substrate per
-  // `feedback_strict_mirror_vs_novel_substrate_fact`
-  // minimum-novel-substrate discipline.
-  //
-  // **Authority**: Director ratification at gunb-ai/gunbc#828
-  // c#4412884371 (Q-WAD-S2-Output (a)(iii)) + re-confirmation at
-  // c#4413159089. Canvas: `docs/briefs/r3-substrate-t-wad-slice-2-timing-lens-canvas.md`
-  // §"Question 3 (Q-WAD-S2-Output)" + Gate #55 closure-predicate
-  // split (#55a anchor + #55b LensEnforcement substrate-extension).
-  auto_violate_on_left: Bool
 }
 
 // 🟢 TERMINAL at the per-lens canonical-pairing scope. Bundles a lens

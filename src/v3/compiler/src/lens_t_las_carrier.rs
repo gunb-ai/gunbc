@@ -43,7 +43,6 @@ pub struct Lens<T> {
 pub struct LensEnforcement<Output, Budget> {
     pub project: Rc<dyn Fn(Output) -> Budget>,
     pub violates: Rc<dyn Fn(Budget, Budget) -> bool>,
-    pub auto_violate_on_left: bool,
 }
 
 /// Mirrors `EnforceableLens<Output, Budget>` in `v3.std.lens_application`.
