@@ -203,6 +203,8 @@ mod sg7_prep_variant_payload_freshness_test;
 mod shape_a_target_source_filtering_authority_test;
 #[path = "integration/t_impossiblebugs_unenumerated_effects_test.rs"]
 mod t_impossiblebugs_unenumerated_effects_test;
+#[path = "integration/t_las_crdt_cost_basis_demo_test.rs"]
+mod t_las_crdt_cost_basis_demo_test;
 #[path = "integration/t_pb_b_1_dag_runner_test.rs"]
 mod t_pb_b_1_dag_runner_test;
 #[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]
