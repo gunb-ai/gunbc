@@ -697,7 +697,7 @@ import std.verification {
   TestClaim,
   TestSuite
 }
-import std.algebra { ConstantCost, SymbolicCost }
+import std.algebra { SymbolicCost }
 
 data expected_lit_cost: SymbolicCost = ConstantCost(0)
 

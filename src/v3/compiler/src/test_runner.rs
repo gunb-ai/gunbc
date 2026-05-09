@@ -4410,7 +4410,9 @@ fn single_payload(payload: &[FieldValue]) -> Result<&FieldValue, String> {
 
 fn one_int_payload(payload: &[FieldValue]) -> Result<i64, String> {
     match single_payload(payload)? {
-        FieldValue::Literal(LiteralBits::Int(n)) => Ok(*n),
+        FieldValue::Literal(LiteralBits::Int(s)) => s.parse::<i64>().map_err(|_| {
+            "SymbolicCostExprEquals: Int literal payload is not a valid i64".to_string()
+        }),
         other => Err(format!(
             "SymbolicCostExprEquals: expected Int literal payload, got {:?}",
             other
@@ -6066,7 +6068,7 @@ mod symbolic_cost_expr_equals_decoder_tests {
     fn constant_cost_fv(dag: &Dag, n: i64) -> FieldValue {
         FieldValue::Variant {
             constructor: symbolic_cost_variant_constructor(dag, "ConstantCost"),
-            payload: vec![FieldValue::Literal(LiteralBits::Int(n))],
+            payload: vec![FieldValue::Literal(LiteralBits::Int(n.to_string()))],
         }
     }
 
@@ -6175,7 +6177,7 @@ mod symbolic_cost_expr_equals_decoder_tests {
             "display_name".to_string(),
             FieldValue::Variant {
                 constructor: symbolic_cost_variant_constructor(&dag, "ConstantCost"),
-                payload: vec![FieldValue::Literal(LiteralBits::Int(1))],
+                payload: vec![FieldValue::Literal(LiteralBits::Int("1".to_string()))],
             },
         )];
         assert!(optional_string_field_for_record(&dag, &fields, "display_name").is_err());

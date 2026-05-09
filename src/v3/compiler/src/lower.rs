@@ -2498,6 +2498,8 @@ fn collect_symbols(
         }
     }
 
+    seed_symbolic_cost_variant_constructors_for_symbols(dag, &mut symbols);
+
     let mut is_first = vec![true; items.len()];
     for (idx, item) in items.iter().enumerate() {
         // Extract the surface-level name and type parameter list.
@@ -2611,6 +2613,30 @@ fn collect_symbols(
         }
     }
     (symbols, is_first)
+}
+
+/// Seeds [`SymbolicCost`] coproduct variant **carrier** ids under their surface labels (`ConstantCost`,
+/// `LinearCost`, …). Those carriers are anonymous declarations in the substrate (`name: None`), so
+/// they never appear in the first-pass name seed — yet call sites spell variant constructors by
+/// name. Without this hook, [`try_lower_symbolic_cost_constant_cost_data`] cannot match the
+/// `symbols` map (Practice 5 / duplicate authority at data-body edges).
+///
+/// `HashMap::entry` via `or_insert` preserves an explicit same-spelling binding when one already
+/// exists (user decl or higher-ranked bootstrap duplicate).
+fn seed_symbolic_cost_variant_constructors_for_symbols(
+    dag: &Dag,
+    symbols: &mut HashMap<String, DeclarationId>,
+) {
+    let Some(sym_decl) = dag.declaration_by_name("SymbolicCost") else {
+        return;
+    };
+    let decl = dag.declaration(sym_decl.id);
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        return;
+    };
+    for v in variants {
+        symbols.entry(v.label.clone()).or_insert(v.ty);
+    }
 }
 
 fn placeholder_connective(name: &str) -> TypeConnective {
@@ -3834,7 +3860,7 @@ fn try_lower_symbolic_cost_constant_cost_data(
         return None;
     }
     let SurfaceExpr::Literal {
-        value: SurfaceLiteral::Int(n),
+        value: SurfaceLiteral::Int(s),
         ..
     } = &args[0]
     else {
@@ -3846,7 +3872,7 @@ fn try_lower_symbolic_cost_constant_cost_data(
             "_".to_string(),
             crate::dag::FieldValue::Variant {
                 constructor,
-                payload: vec![crate::dag::FieldValue::Literal(LiteralBits::Int(*n))],
+                payload: vec![crate::dag::FieldValue::Literal(LiteralBits::Int(s.clone()))],
             },
         )],
     })
