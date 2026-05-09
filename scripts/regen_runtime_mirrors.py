@@ -379,7 +379,17 @@ where
         SymbolicCost::ConstantCost { .. } => AsymptoticClass::ClassConstant,
         SymbolicCost::LinearCost { .. } => AsymptoticClass::ClassLinear,
         SymbolicCost::LogCost { .. } => AsymptoticClass::ClassLog,
-        SymbolicCost::PolynomialCost { .. } => AsymptoticClass::ClassQuadratic,
+        SymbolicCost::PolynomialCost { degree, .. } => {
+            let raw = degree.raw();
+            if raw == 2 {
+                AsymptoticClass::ClassQuadratic
+            } else {
+                match positive_amount_from_i64(raw) {
+                    Some(pos) => AsymptoticClass::ClassPolynomial { degree: pos },
+                    None => AsymptoticClass::ClassUnknown,
+                }
+            }
+        }
         SymbolicCost::ProductCost { .. }
         | SymbolicCost::SumCost { .. }
         | SymbolicCost::UnknownCost { .. } => AsymptoticClass::ClassUnknown,

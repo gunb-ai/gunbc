@@ -10,7 +10,8 @@ import v3.std.substrate { Dag, NodeId }
 import std.termination {
   DescentEvidence, DescentUnknown, Strict, NonIncreasing,
   PositiveDescentAmount, OneStep, AdditionalStep,
-  ProportionalDivisor, DivideByTwo, StrictlyLarger
+  ProportionalDivisor, DivideByTwo, StrictlyLarger,
+  positive_descent_count
 }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
@@ -39,13 +40,6 @@ type SizeBound
 
 fn tree_size_bound(param: String) -> SizeBound {
   TreeSize { param: param }
-}
-
-fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
-  match steps {
-    OneStep => 1
-    AdditionalStep { previous: p } => 1 + positive_descent_count(steps: p)
-  }
 }
 
 // 🟡 MIXED coproduct — exhaustive call-shape classifier for `lower_call_pattern`. Dissolution:
@@ -170,7 +164,7 @@ fn forever_iteration_bound() -> Int { 9223372036854775807 }
 fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
     ExplicitCountZero => Some { value: 0 }
-    ExplicitCountPositive { steps: s } => Some { value: positive_descent_count(steps: s) }
+    ExplicitCountPositive { steps: s } => Some { value: positive_descent_count(s) }
     Forever                    => Some { value: forever_iteration_bound() }
     _                          => none
   }

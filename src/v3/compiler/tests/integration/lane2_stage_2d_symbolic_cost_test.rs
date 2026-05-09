@@ -13,10 +13,13 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use v3_compiler::compile_to_dag;
+use v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates;
 use v3_compiler::dag::{
-    dominates, iterate, max_path, normalize, sequential, ArithmeticOp, Behavior, Dag,
-    DegreeAtLeastTwo, Lookup, NonSingletonList, OperatorKind, PortId, SizeVariable, SymbolicCost,
-    TransformTarget, TypeConnective,
+    classify_symbolic_cost, dominates, iterate, max_path, normalize, positive_descent_count,
+    sequential, ArithmeticOp, AsymptoticClass, Behavior, Dag, DegreeAtLeastTwo, Lookup,
+    NonSingletonList, OperatorKind, PortId, SizeVariable, SymbolicCost, TransformTarget,
+    TypeConnective,
 };
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{
@@ -854,6 +857,66 @@ fn format_rust_source(source: &str) -> String {
         "rustfmt failed on emitted lens module"
     );
     String::from_utf8(output.stdout).expect("rustfmt output should be utf-8")
+}
+
+/// PM dispatch stern-ram-58 / PR #2367: `classify_symbolic_cost` must preserve
+/// `PolynomialCost` degree into `ClassQuadratic` (k=2) vs `ClassPolynomial` (k≥3),
+/// aligned with `complexity_enforcement_budget_dominates` for T-LAS budgets.
+#[test]
+fn classify_symbolic_cost_polynomial_degree_orders_like_enforcement_lattice() {
+    let dag = compile_to_dag("fn f(n: Int) -> Int = n", "poly_class_gate.v3").expect("fixture");
+
+    let param = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "f")
+        .expect("bind f")
+        .params
+        .first()
+        .copied()
+        .expect("param port");
+
+    let v = SizeVariable {
+        source_port: param,
+        display_name: None,
+    };
+
+    let p2 = SymbolicCost::PolynomialCost {
+        var: v.clone(),
+        degree: DegreeAtLeastTwo::TWO,
+    };
+    let p3 = SymbolicCost::PolynomialCost {
+        var: v.clone(),
+        degree: DegreeAtLeastTwo::new(3).expect("degree 3"),
+    };
+    let p5 = SymbolicCost::PolynomialCost {
+        var: v,
+        degree: DegreeAtLeastTwo::new(5).expect("degree 5"),
+    };
+
+    let c2 = classify_symbolic_cost(&p2);
+    let c3 = classify_symbolic_cost(&p3);
+    let c5 = classify_symbolic_cost(&p5);
+
+    assert!(matches!(c2, AsymptoticClass::ClassQuadratic));
+    match &c3 {
+        AsymptoticClass::ClassPolynomial { degree } => {
+            assert_eq!(positive_descent_count(degree), 3);
+        }
+        other => panic!("expected ClassPolynomial for n^3, got {other:?}"),
+    }
+    match &c5 {
+        AsymptoticClass::ClassPolynomial { degree } => {
+            assert_eq!(positive_descent_count(degree), 5);
+        }
+        other => panic!("expected ClassPolynomial for n^5, got {other:?}"),
+    }
+
+    assert!(complexity_enforcement_budget_dominates(&c5, &c3));
+    assert!(!complexity_enforcement_budget_dominates(&c3, &c5));
+    assert!(complexity_enforcement_budget_dominates(&c3, &c2));
+    assert!(!complexity_enforcement_budget_dominates(&c2, &c3));
 }
 
 // Cold-init path for the `cost.dag` OnceLock cache key. Sibling
