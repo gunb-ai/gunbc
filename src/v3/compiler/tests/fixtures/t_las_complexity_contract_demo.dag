@@ -1,0 +1,23 @@
+// Gate #92 witness: `complexity_of` + `EnforcedApplication` enforcement consumer.
+//
+// Today’s symbolic folder labels many user `fold` bodies as `ClassConstant`
+// (composition gap — see `lens_cost` / `transform_summary`). Recursive
+// lowering produces a nontrivial `SymbolicCost` product classified as
+// `ClassUnknown`, which still **strictly exceeds** a `ClassLog` budget under
+// the asymptotic lattice used in `enforced_lens_application`.
+module user.t_las_complexity_contract_demo
+
+import lenses.complexity { ComplexitySummary, complexity_enforceable }
+import std.algebra { AsymptoticClass }
+import v3.std.lens_application { EnforcedApplication, DeclarationScope }
+
+fn contract_violation_witness(n: Int) -> Int =
+  if n == 0 then 0 else contract_violation_witness(n - 1)
+
+data witness_log_cap: EnforcedApplication<ComplexitySummary, AsymptoticClass> = {
+  enforceable_lens: complexity_enforceable
+  section: DeclarationScope { declaration: contract_violation_witness }
+  budget: ClassLog
+  diagnostic_severity: Error
+  span: { file: "t_las_complexity_contract_demo.dag", start: 0, end: 800 }
+}

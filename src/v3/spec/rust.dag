@@ -92,9 +92,12 @@ import v3.std.clean_emission {
   CorrectionStyle, PostEmitVerifier,
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
-import std.algebra { BooleanAlgebra }
+import std.algebra { BooleanAlgebra, Monoid }
 import std.integer { Int, UInt8, Int32, UInt32, Int128, UInt128, IntPlatform, UIntPlatform }
 import v3.std.lookup { Lookup }
+import v3.std.dimensions { Witness }
+import v3.std.lens { Lens }
+import v3.std.lens_application { LensEnforcement, EnforceableLens }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
   VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMapEntry, SurfaceMatchArm,
@@ -1295,6 +1298,41 @@ data rust_lookup_instantiation: TypeInstantiationRealization = {
   language: rust_language
   target: Lookup
   carrier: "Lookup<{element}>"
+  cost: 1
+}
+
+data rust_witness_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: Witness
+  carrier: "Witness<{element}>"
+  cost: 1
+}
+
+data rust_lens_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: Lens
+  carrier: "Lens<{element}>"
+  cost: 1
+}
+
+data rust_monoid_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: Monoid
+  carrier: "Monoid<{element}>"
+  cost: 1
+}
+
+data rust_lens_enforcement_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: LensEnforcement
+  carrier: "LensEnforcement<{key}, {value}>"
+  cost: 1
+}
+
+data rust_enforceable_lens_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: EnforceableLens
+  carrier: "EnforceableLens<{key}, {value}>"
   cost: 1
 }
 
