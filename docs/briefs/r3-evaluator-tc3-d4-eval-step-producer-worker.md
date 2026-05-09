@@ -74,17 +74,49 @@ Dispatch fires when items 1, 2, 4, 6 are satisfied AND item 5 has Director-ratif
 | 6. **TC3 D4 worker dispatch (this brief)** | Evaluator Mgr | HARD-GATED on steps 1, 2, 3, 4, 5 per §2 hard preconditions |
 | 7. V-side runner auto-upgrade (PR #2435 sentinel removal) | V-Mgr (#2075) | post step 6 |
 
-## 6 Open canvas-shape question (item-5 ratification surface)
+## 6 Item-5 ratification — (γ) bounded representative harness RATIFIED
 
-Per conformance audit §"Strict-Fire Preconditions" item 5: universal-fragment coverage shape ratification — three shapes nominated:
+Per Director (γ) RATIFICATION at gunbc#828 c#4413725564: TC3 D4 baseline emits a single-representative `DimensionReport<Dag>` mirroring G1.a static-representative pattern (Q-PAFS Path A ACCEPTED 2026-05-06; PR #1824 merge record). Strict-mirror discipline preserves Pattern-A architectural consistency across TC1/TC2/TC3.
 
-(α) Structural induction over `Behavior` × `LoopBound`.
-(β) Generated exhaustive producer over a typed fragment carrier.
-(γ) Bounded representative harness (Director-ratified specific representative + scope statement).
+Director delegated specific-representative selection + scope statement to Mgr-tier canvas authoring (this section), with Director ratification at canvas-surface time per `feedback_substrate_shape_belongs_in_mgr_canvas`.
 
-Shape ratification gates **what this brief's Producer A baseline emits**: under (α), the baseline is a structural-induction certificate; under (β), an exhaustive enumeration witness; under (γ), a single-representative report on the ratified subject.
+### Canvas grep — candidate subject programs at HEAD
 
-**Disposition request**: surfacing to Director at #828 (separate post) for ratification. Worker dispatch HOLDS until disposition lands. Per `feedback_canvas_two_axis_verification.md`: shape question requires both substrate-precedent grep AND consumer-side grep (this brief's §3 implementation guidance grounds the consumer-side commitment; substrate-precedent for (α)/(β)/(γ) needs Substrate Mgr canvas authoring).
+Constraint: the representative must (i) be small + Director-visible; (ii) exercise non-trivial bounded-step termination semantics so Producer B has substantive bounded-forward-execution evidence to fold; (iii) mirror G1.a's single-static-top-level-subject pattern; (iv) avoid `LoopBound::Descent` content if possible (descent contract on main but adds an extra coupling axis — Cardinality is sufficient and simpler).
+
+Candidates considered:
+
+| Candidate | Locus | Fit |
+| --- | --- | --- |
+| Reuse TC1 η-pair `eta_subject_f` / `eta_subject_f_eta` from `tc1_substrate_lens_eta_equivalence_strict_fire.dag` | existing fixture | **Reject** — η-pair has no bounded loop / step structure; Producer B has nothing substantive to fold (`x + 1` is trivial) |
+| Existing `tc3_strong_normalization_deferred.dag` subject body | existing fixture | **Reject** — fixture's `source: ""` is structural-claim convention; no subject program declared |
+| Author fresh `tc3_strong_normalization_strict_fire.dag` (mirrors TC1 `_deferred` / `_strict_fire` pair pattern) with smallest bounded-loop subject | new fixture (parallel to TC1 strict-fire fixture pattern) | **Recommended** — mirrors TC1 V1 strict-fire fixture authoring precedent; Director-visible; minimal scope |
+| Reuse existing `r3_pb_runtime_evaluator_corpus_seeds.dag` or other corpus-seeded program | existing fixture | **Reject** — corpus-seeded programs are not Director-visible bounded-representative; scope statement would be larger than (γ) intent |
+
+### Specific-representative recommendation (Mgr canvas-tier — surfacing for Director ratification)
+
+**Author fresh `src/v3/compiler/tests/fixtures/tc3_strong_normalization_strict_fire.dag`** mirroring TC1 V1 strict-fire fixture pattern. Subject body proposal: smallest non-trivial `LoopBound::Cardinality`-bounded computation — e.g. a bounded fold over a 3-element literal list summing to a known constant. Concrete shape (illustrative; final wording is canvas-tier):
+
+```
+fn tc3_subject_bounded_sum() -> Int =
+  fold([1, 2, 3], 0, lambda acc x. acc + x)   // bounded by Cardinality(3); converges to 6
+```
+
+Producer A (baseline `tc3_evaluation_step_baseline_dimension_report`): walks the subject structurally; emits `DimensionOk` if the bounded-step semantics composition holds (reuses G1.a `Witness<C>` / `OptionalDiagnostic` envelope).
+
+Producer B (compare `tc3_evaluation_step_compare_dimension_report`): bounded forward execution evidence over the same subject — folds the literal list cardinality into a `Witness<Dag>` partition; emits `DimensionOk` when bounded-step convergence agrees with baseline structural shape.
+
+Both reports use `Dag` as carrier per Q-Reification Option A.
+
+### Scope statement (per Director "scope-statement to your canvas-tier authoring")
+
+This representative is the **single canonical TC3 second-mover bounded-representative for R3 close**. Universal-fragment coverage is **deferred-not-blocked** to a post-R3 cycle (where (α)/(β) novel-substrate-introduction can be canvas-authored separately). Per `feedback_pattern_a_scaffold_sentinel_per_instance_ratification`: per-instance ratification preserved — gate #13 PASSING is reactive-not-predetermined on this representative + producer surface landing + B5 + G1.a in R3 window.
+
+The representative is **not** a coverage proof; it is a strict-fire witness for second-mover disposition under (γ). Mirror to G1.a TC1 V1 strict-fire fixture authority shape.
+
+### Director ratification ask
+
+Surfacing for Director ratification at #828 (separate post) the specific-representative selection + scope statement above. If Director ratifies, this brief is the dispatch-ready spec for the worker once §5 dispatch-table preconditions land. If Director nominates a different representative, this section is amended; brief's §1 scope + §3 implementation guidance unchanged (representative is parametric to the producer surfaces).
 
 ## 7 Discipline notes (worker-tier)
 
