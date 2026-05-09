@@ -18,7 +18,7 @@ implementation is still R2-Evaluator territory.
 
 The Lane 1 L4 skeleton fixture is already present at
 `src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag`. It
-authors `r3_verification_l4_emit_eval_match_skeleton` with
+authors `l4_emit_eval_match` (§1.8 gate #9 canonical `TestClaim.name`) with
 `DifferentialEquals(rust_emit_output, dag_eval_output, ProgramOutputBind {
 output_ref: l4_out })`. The fixture still defines both producers as
 `miss_int_lookup()` placeholders, and its header states the row intentionally
@@ -56,8 +56,8 @@ When W1 implementation lands, dispatch the Lane 1 slice-1 worker with this
 concrete target:
 
 - **Fixture:** `src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag`.
-- **Suite:** `r3_verification_l4_emit_eval_skeleton_suite`.
-- **Claim:** `r3_verification_l4_emit_eval_match_skeleton`.
+- **Suite:** `r3_verification_l4_l7_direct_suite` (L4 certification seeds; L7 merges under same suite name at lane close).
+- **Claim:** `l4_emit_eval_match`.
 - **Predicate row:** keep
   `DifferentialEquals(rust_emit_output, dag_eval_output, ProgramOutputBind { output_ref: l4_out })`.
 - **Program shape:** keep the existing minimal branch + fold source in
