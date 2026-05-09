@@ -119,19 +119,43 @@ The PR #2300 cluster analysis classified Cluster M (T-Tests-As-Data-Completeness
 
 **New dependency picture (replaces PR #2300 §2 Cluster M row)**:
 
+The dependency structure has **two distinct edge-classes** that operate on different axes; conflating them was the error in PR #2300 §2 and an early draft of this section (caught by codex review on PR #2358). Both views are below; the second is the "M → B → E sequencing-critical" referenced in §5 Risk 4 and PR #2300 §4 Risk 2.
+
+**View 1 — Substrate-flow critical path** (lane-input dependencies):
+
 ```
 A T-E-P-Producer-Broadening
-  ↓
-B T-Lens-Behavioral-Parity (complexity + cost narrowing per option-b)
-  ↓
-M T-Tests-As-Data-Completeness  ← critical-path: testgen capability + program-generator + cementing-test discipline
-  ↓
-gate #84 fires + ~80-90 test entries dissolve
-  ↓
-gate #8 dependency on PB-Runtime + T-V2 + T-Tier3 (parallel cluster events)
-  ↓
-gates #8 + #84 BOTH GREEN  =  PB-0 closure  =  R3 close minimum bar
+   │
+   ├─→ B T-Lens-Behavioral-Parity (B consumes A's descent evidence + producer broadening)
+   │
+   └─→ M T-Tests-As-Data-Completeness (M's substrate carriers #85/#86 consume A; M does NOT depend on B)
+
+A → {B, M} (parallel post-A; B and M have no mutual substrate dep)
 ```
+
+**View 2 — PB-0 closure flow** (what each gate needs to honestly fire):
+
+```
+M T-Tests-As-Data-Completeness COMPLETE  (gates #85/#86/#87 substrate-landed)
+   │
+   └─→ B's cementing tests can migrate from hand-Rust to `.dag` form
+        (current cementing tests live at `tests/integration/cementing/*.rs`)
+        │
+        └─→ B-cementing-test-capture-in-`.dag`-form COMPLETE (gate #79/#80 PB-0-honest closure)
+             │
+             └─→ E T-V2-Retirement (gate #42) — v2 oracle frozen via `.dag` cementing receipts
+```
+
+**View 2 is the "M → B → E sequencing-critical" referenced in §5 Risk 4 + PR #2300 §4 Risk 2.** It is **not** a substrate-flow contradiction with View 1; it is a *closure-honesty* sequencing — without M, B's cementing tests stay hand-Rust; without B-cementing-in-`.dag`, oracle freeze cannot be honest after v2 retires.
+
+**Net authoritative picture under INVARIANTS P2/P5**:
+- **Substrate flow**: A → {B, M} (B and M parallel-from-A; one canonical edge per lane-input dependency)
+- **PB-0 closure**: M → (B-PB-0-honest) → E (sequencing-critical for cementing-capture-before-v2-retires; one canonical edge per closure-readiness dependency)
+- The two edge-classes describe different relations (substrate-availability vs PB-0-honest-closure-readiness); both are simultaneously true for distinct nodes-pair purposes
+- Gate #84 (~80-90 test entries dissolve) requires M COMPLETE per View 1
+- Gate #79/#80 PB-0-honest closure requires View 1 (A → B substrate) AND View 2 (M before B-cementing-`.dag`-migration)
+- Gate #8 (non-test → 0) dependency: PB-Runtime + T-V2 + T-Tier3 (parallel cluster events; orthogonal to M/B closure flow)
+- gates #8 + #84 BOTH GREEN = PB-0 closure = R3 close minimum bar
 
 ---
 
