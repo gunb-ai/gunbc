@@ -161,27 +161,43 @@ fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasure
 fn timing_lens_empty_corrections() -> List<Correction> =
   Empty
 
-data timing_lens_scaffold_diagnostic_span: SourceSpan =
-  SourceSpan { file: "src/v3/std/timing_lens.dag", start: 0, end: 0 }
+// Reads the reflected `span` on a `Behavior` (same partition as
+// `v3.lenses.infer_helpers.behavior_span`; kept here so `v3.std.timing_lens`
+// does not depend on `v3.lenses.*`).
+fn timing_lens_behavior_span(b: Behavior) -> SourceSpan =
+  match b {
+    Value(v) => v.span
+    Transform(t) => t.span
+    Branch(br) => br.span
+    Loop(l) => l.span
+    Bind(bind) => bind.span
+  }
 
 // Placeholder `Diagnostic` for scaffold validate: non-`Observed` carriers are
 // not admissible as validated evidence until runner-backed observation wiring
 // lands (`ResolveError` is the closest Layer-1 kind for “evidence not resolved”).
-fn timing_lens_scaffold_non_evidence_diagnostic(text: String) -> Diagnostic =
+fn timing_lens_scaffold_non_evidence_diagnostic(text: String, at: SourceSpan) -> Diagnostic =
   {
     kind: CompilerKind(ResolveError)
-    span: timing_lens_scaffold_diagnostic_span
+    span: at
     message: text
     fixes: timing_lens_empty_corrections()
   }
 
 // Threads `d` through `behavior_spine` so `lenses.unused_parameters` stays
-// clean; both branches agree until real DAG-backed validation exists.
+// clean. Uses the first spine node's substrate `span` so `SourceSpan.file`
+// carries a checked `FilePath` (DB-11); empty `d.nodes` has no witness site.
 fn timing_lens_validate_non_observed(d: Dag, text: String) -> OptionalDiagnostic =
-  if is_empty(behavior_spine(d)) then
-    SomeDiagnostic { value: timing_lens_scaffold_non_evidence_diagnostic(text) }
-  else
-    SomeDiagnostic { value: timing_lens_scaffold_non_evidence_diagnostic(text) }
+  match behavior_spine(d) {
+    Empty => NoDiagnostic
+    Cons(payload) =>
+      SomeDiagnostic {
+        value: timing_lens_scaffold_non_evidence_diagnostic(
+          text,
+          timing_lens_behavior_span(payload.head)
+        )
+      }
+  }
 
 // Bounded iteration witness hook — until `LoopBound` measure ports lower into
 // compositional timing algebra, **`Observed` × any bound must not return the
