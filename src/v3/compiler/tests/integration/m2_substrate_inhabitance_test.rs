@@ -3475,7 +3475,8 @@ fn approximate_field_axes_live_in_v3_std_authority() {
 /// (`SpecialValues` + `ApproximateField<F>` slice). Pins `base: Field<F>` with `F`
 /// as the carrier parameter matching `dsl/std/algebra.dag`'s `Field<T>`.
 ///
-/// **Does not** assert `Real = …` — see `docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`.
+/// For `Real`, see `real_default_alias_resolves_to_approximate_field_over_field_of_fractions_of_int`
+/// (Option A spelling per `docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`).
 #[test]
 fn approximate_field_carrier_record_shape_ratchets() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
@@ -4348,6 +4349,106 @@ fn rational_default_alias_resolves_to_field_over_field_of_fractions_of_int() {
             }
             other => panic!(
                 "Rational's Field carrier must be a FieldOfFractions instantiation; got {other:?}"
+            ),
+        }
+    });
+}
+
+/// R3 gate #17 (`numeric_abstract_carriers_landed`) — `Real` abstract carrier per
+/// `docs/r3-structure.md` + STOP Option A:
+/// `Real = ApproximateField<FieldOfFractions<Int>>` in `dsl/std/float.dag`.
+#[test]
+fn real_default_alias_resolves_to_approximate_field_over_field_of_fractions_of_int() {
+    with_full_bootstrap_stack(|| {
+        let dag = v3_compiler::generated_full_bootstrap_dag();
+
+        let real = dag
+            .declaration_by_name("Real")
+            .expect("`Real` abstract carrier missing from full bootstrap (R3 gate #17)");
+        assert_eq!(
+            real.span.file, "dsl/std/float.dag",
+            "Real must live in dsl/std/float.dag (single authority)"
+        );
+
+        let approx = dag
+            .declaration_by_name("ApproximateField")
+            .expect("`ApproximateField` must be present");
+        let fof = dag
+            .declaration_by_name("FieldOfFractions")
+            .expect("`FieldOfFractions` carrier must be present");
+        let int_decl = dag
+            .declaration_by_name("Int")
+            .expect("`Int` must be present for FieldOfFractions<Int>");
+
+        let mut current = real;
+        let mut hops: usize = 0;
+        let connective = loop {
+            match &current.connective {
+                TypeConnective::Atom(AtomPayload::ResolvedByName(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => {
+                    assert!(hops < 8, "Real alias chain too deep (cycle?)");
+                    hops += 1;
+                    current = dag.declaration(*next);
+                }
+                other => break other,
+            }
+        };
+
+        let (template_id, arguments) = match connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => (*template, arguments),
+            other => panic!("Real must lower to an ApproximateField instantiation; got {other:?}"),
+        };
+
+        assert_eq!(
+            arguments.len(),
+            1,
+            "`Real` must instantiate `ApproximateField` with exactly one carrier argument \
+             (`FieldOfFractions<Int>` per STOP Option A)"
+        );
+
+        let mut resolved_template = template_id;
+        while let TypeConnective::Atom(atom) = &dag.declaration(resolved_template).connective {
+            match atom {
+                AtomPayload::ResolvedByName(next) => resolved_template = *next,
+                AtomPayload::ResolvedByStructure(next) => resolved_template = *next,
+                _ => break,
+            }
+        }
+
+        assert_eq!(
+            resolved_template, approx.id,
+            "Real must instantiate imported `ApproximateField<F>` (resolve import stubs)"
+        );
+
+        let carrier_id = arguments[0].value;
+        let carrier_decl = dag.declaration(carrier_id);
+        match &carrier_decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                assert_eq!(
+                    *template,
+                    fof.id,
+                    "Real's type argument must be `FieldOfFractions<Int>` — not `Rational` \
+                     (`Rational` names `Field<FieldOfFractions<Int>>`, a witness type)"
+                );
+                assert_eq!(
+                    arguments.len(),
+                    1,
+                    "FieldOfFractions<R> takes exactly one integral-domain parameter"
+                );
+                assert_eq!(
+                    arguments[0].value,
+                    int_decl.id,
+                    "Real approximates ℚ as field of fractions of ℤ — parameter must be `Int`"
+                );
+            }
+            other => panic!(
+                "Real's ApproximateField carrier argument must be a FieldOfFractions instantiation; got {other:?}"
             ),
         }
     });
