@@ -23,9 +23,10 @@
 // 2026-05-07: §1.8 gate #11 status STAYS DECLARED on this scaffold landing — the
 // NotYetImplemented sentinel is fail-closed-by-construction (an actual implementation that runs
 // WILL fail the assertion when the non-vacuous Evaluator producer path lands, forcing fixture
-// upgrade). Status flips DECLARED -> CONSUMER_LANDED -> PASSING in one move at that point.
-// Tracking correction 2026-05-09: E3.c (gunbc#1970) closed superseded-by-deferral; the producer
-// path is now blocked on E4/G1.b (gunbc#1972), currently HELD-CANVAS-DEFERRED past R3.
+// upgrade). Director (a)-disposition 2026-05-09: E3.c (gunbc#1970) closed
+// superseded-by-deferral; the producer path is now blocked on E4/G1.b (gunbc#1972), currently
+// HELD-CANVAS-DEFERRED past R3. R3 keeps the sentinel as Pattern A second-mover audit evidence;
+// strict-fire CONSUMER_LANDED/PASSING moves to a fresh post-R3 issue after #1972.
 //
 // Hard bars (E6-G1.a Option 3 caveat #1853): no `lens_apply` / `eval_substrate_reify` /
 // `reflect_behavior` imports. Carrier shape is the ratified Q-Reification Option A `Dag`-as-
@@ -64,7 +65,7 @@ type tc1_subject_eta_expanded_report = DimensionReport<Tc1EtaLensObservation>
 // source-visible η-pair witness — the runtime fold-application is Evaluator-side authority.
 data tc1_eta_equivalence_executable_claim: TestClaim = {
   name: "tc1_eta_equivalence_executable",
-  source: "// TC1 V1 strict-fire — eta-equivalent .dag programs declared in fixture module;\n// runtime lens-fold-over-Dag gated on the Evaluator producer path (gunbc#1972 after #1970 deferral).\nlet _: Int = 0\n",
+  source: "// TC1 V1 scaffold-with-sentinel — eta-equivalent .dag programs declared in fixture module;\n// strict-fire evaluation deferred to post-R3 Evaluator producer path (gunbc#1972 after #1970 deferral).\nlet _: Int = 0\n",
   file_name: "tc1_eta_equivalence_executable.v3",
   predicate: BinaryDimensionReportEquals(
     tc1_subject_f_report,
