@@ -53,7 +53,7 @@ pub mod realization_cost {
 
     use std::collections::HashMap;
 
-    use crate::dag::{Dag, DeclarationId, FieldValue, LiteralBits, ValueBody};
+    use crate::dag::{literal_decimal_i64, Dag, DeclarationId, FieldValue, LiteralBits, ValueBody};
 
     /// 🟢 GREEN (terminal): closed mirror of the six `*Realization`
     /// meta-types in `src/v3/std/emit_model.dag`; each variant selects a
@@ -333,8 +333,16 @@ pub mod realization_cost {
         declaration: DeclarationId,
     ) -> Result<RealizationCostAmount, RealizationCostError> {
         match require_field(fields, label, declaration)? {
-            FieldValue::Literal(LiteralBits::Int(value)) => {
-                RealizationCostAmount::new(*value).map_err(|cost| {
+            FieldValue::Literal(LiteralBits::Int(s)) => {
+                let Some(parsed) = literal_decimal_i64(s.as_str()) else {
+                    return Err(RealizationCostError::MalformedRealization {
+                        declaration,
+                        detail: format!(
+                            "realization data item field `{label}` must be a signed decimal i64; got `{s}`"
+                        ),
+                    });
+                };
+                RealizationCostAmount::new(parsed).map_err(|cost| {
                     RealizationCostError::NegativeRealizationCost { declaration, cost }
                 })
             }
@@ -411,7 +419,7 @@ pub mod realization_cost {
                 .iter_mut()
                 .find_map(|(label, field_value)| (label == field_name).then_some(field_value))
                 .unwrap_or_else(|| panic!("missing field `{field_name}`"));
-            *field = FieldValue::Literal(LiteralBits::Int(value));
+            *field = FieldValue::Literal(LiteralBits::Int(value.to_string()));
         }
     }
 }
