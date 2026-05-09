@@ -2,8 +2,9 @@
 //!
 //! R3 Lane 1 + Lane 2 + L5 harness receipts: §1.8 gate **#9** `l4_emit_eval_match` (canonical
 //! `TestClaim.name`) + suite `r3_verification_l4_l7_direct_suite` exercise the wired W1
-//! `DifferentialEquals(rust_emit_output, dag_eval_output)` path (plus a mixed-lineage
-//! `NotYetImplemented` control), and Lane 1 L7 now exercises the wired `Associativity`
+//! `DifferentialEquals(rust_emit_output, dag_eval_output)` path on **certification seeds only**
+//! (`docs/r3-program-plan.md` §1.7 corpus-quantified rule — ledger **PASSING** awaits full corpus).
+//! Plus a mixed-lineage `NotYetImplemented` control. Lane 1 L7 now exercises the wired `Associativity`
 //! and `Commutativity` operational witnesses. Lane 2 / L5 rows remain intentionally deferred
 //! where noted.
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
