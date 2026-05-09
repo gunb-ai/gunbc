@@ -7,26 +7,23 @@ use v3_grounding_lifetime::BindingId;
 
 /// How the fold obtains LanguageSpec / target-primitive substrate facts.
 ///
-/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — `Undeclared` remains the
-/// fail-closed production default; `DeclaredIntegerIntents` is the executable LanguageSpec
-/// projection path for integer inhabitance rows; `ScratchIntExamples` is retained as a
-/// compatibility checkpoint until callers migrate (#1133 / #1286).
+/// **Scratch path retired (#1980):** integer rows are selected only through
+/// `DeclaredIntegerIntents` over `TargetIntegerTypeInhabitance` facts — transitional
+/// `ScratchIntExamples` is removed.
 ///
-/// **`Undeclared`** — production entry stays fail-closed until a real projection lands
-/// (substrate / #1286 / manager #1133).
+/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW (residual scope)** — gated items below
+/// are explicit until program-bound + lifecycle wiring fully owns the LanguageSpec boundary:
 ///
-/// **`ScratchIntExamples`** — **checkpoint only**: drives [`docs/design-emission-model.md`](../../../../docs/design-emission-model.md)
-/// Int-family examples. Still reads the bootstrap `Dag` once to count
-/// `TargetIntegerTypeInhabitance` declarations (`emit_model.dag`, **INVARIANTS.md E-6**
-/// same-PR witness). Examples 2 and 8 consume declared integer-row payloads, but the
-/// enum remains a scratch driver until real program-bound and algebra-intent extraction
-/// can replace it with a declared projection.
+/// - **`Undeclared`**: fail-closed placeholder until a substrate-backed reader lands here (#1133 /
+///   lifetime facts #1286).
+/// - **`DeclaredIntegerIntents` + `IntegerTargetIntent`**: executable projection, but
+///   `IntegerBoundProjection` remains a lane-local mirror of program bounds until lowering can
+///   pass declared `BoundDeclaration` directly (#1133 / #1286).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum LanguageSpecProjection {
     #[default]
     Undeclared,
     DeclaredIntegerIntents(BTreeMap<BindingId, IntegerTargetIntent>),
-    ScratchIntExamples(IntScratchExample),
 }
 
 /// Program-side integer bound projected into the fold.
@@ -50,41 +47,27 @@ pub struct IntegerTargetIntent {
     pub bound: IntegerBoundProjection,
 }
 
-/// Scratch selector aligned to design-emission-model §Worked examples (Int only).
+/// Selected integer target: identity from **`selected_target_after_row_type_realization_gate`**
+/// (`fold.rs`) after substrate **`TypeRealization`** inspection (meta-tag + **`language`** /
+/// **`target`** vs row **`language`** / **`kernel_integer`**).
 ///
-/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — bounded to Int-family examples;
-/// superseded when a declared projection generalizes Int examples (#1133 / #1286).
+/// **API contract:** downstream code must not fabricate this carrier — obtain values only from
+/// [`fold_program_to_target`](crate::fold::fold_program_to_target). The field is private so random
+/// `DeclarationId` values cannot be mistaken for validated substrate proof outside this crate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IntScratchExample {
-    /// Example 1 — `data x: Int = 0` → `EmissionDiagnostic::UnderRefined`.
-    DesignDocExample1UnrefinedInt,
-    /// Example 2 — `data count: Int(0..2^32) = 100` → unique Rust `u32`.
-    DesignDocExample2BoundedU32,
-    /// Example 5 — `Int(0..2^32)` without algebra annotation → algebra under-refined.
-    DesignDocExample5AmbiguousAlgebra,
-    /// Example 6 — `Int(0..2^65)` exceeds the Rust Int128 family.
-    DesignDocExample6NoInhabitant,
-    /// Example 8 — Rust target for `Int(-2^31..2^31)`.
-    ///
-    /// Kept as three flat variants rather than adding a scratch target coproduct: this matches
-    /// the existing per-example driver shape and keeps the transitional selector simple until
-    /// the declared LanguageSpec projection replaces it.
-    DesignDocExample8Rust,
-    /// Example 8 — Python target for `Int(-2^31..2^31)`.
-    DesignDocExample8Python,
-    /// Example 8 — Go target for `Int(-2^31..2^31)`.
-    DesignDocExample8Go,
+pub struct SelectedTargetInhabitance {
+    type_realization: DeclarationId,
 }
 
-/// Unique target inhabitance for a binding (scratch Int example surface only).
-///
-/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — lane-local output mirror for
-/// hardcoded scratch examples. It retires with `ScratchIntExamples` when the declared
-/// LanguageSpec projection can compute target inhabitance structurally.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TargetInhabitance {
-    RustU32,
-    RustI32,
-    PythonInt,
-    GoInt32,
+impl SelectedTargetInhabitance {
+    #[must_use]
+    pub fn type_realization(self) -> DeclarationId {
+        self.type_realization
+    }
+
+    /// Crate-local mint after **`fold::selected_target_after_row_type_realization_gate`** passes —
+    /// not a standalone proof primitive.
+    pub(crate) fn from_validated_type_realization(type_realization: DeclarationId) -> Self {
+        Self { type_realization }
+    }
 }
