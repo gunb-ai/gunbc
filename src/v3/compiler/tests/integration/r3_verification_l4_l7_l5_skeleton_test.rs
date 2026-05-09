@@ -241,6 +241,8 @@ fn r3_verification_l7_commutative_monoid_commutativity_passes_wired_commutativit
     });
 }
 
+/// Skeleton suite only (one `AlgebraicLaw::Identity` row on `Int` `+`); matrix receipt is
+/// [`r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts`].
 #[test]
 fn r3_verification_l7_algebraic_law_identity_skeleton_passes_bounded_witness() {
     run_on_larger_stack(|| {
@@ -260,6 +262,30 @@ fn r3_verification_l7_algebraic_law_identity_skeleton_passes_bounded_witness() {
 #[test]
 fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
     let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
+    // Algebra-faithful Int lenses: additive obligations use `+`; multiplicative `Identity` uses `*`.
+    // `L7_MATRIX_PASS_CLAIMS` is allowlisted — lattice / Boolean / free-monoid placeholders stay out
+    // of `L7_MATRIX_SUITE` (fixture authority); this blocks regressions that Pass the wrong op.
+    for &expected_name in L7_MATRIX_PASS_CLAIMS {
+        let claim_decl = dag.declaration_by_name(expected_name).unwrap_or_else(|| {
+            panic!("missing `{expected_name}` in {L7_FIXTURE_PATH}");
+        });
+        let claim = TestClaimValue::from_declaration(claim_decl).unwrap_or_else(|reason| {
+            panic!("`{expected_name}` should lower to a structural TestClaim: {reason}");
+        });
+        if expected_name.ends_with("_mul_identity") {
+            assert!(
+                claim.source.contains("a * b"),
+                "`{expected_name}`: multiplicative Identity matrix row must embed an `Int` `*` lens body (`a * b`); got {:?}",
+                claim.source
+            );
+        } else {
+            assert!(
+                claim.source.contains("a + b"),
+                "`{expected_name}`: additive matrix row must embed an `Int` `+` lens body (`a + b`); got {:?}",
+                claim.source
+            );
+        }
+    }
     let results = TestRunner::new(dag).run_suite(L7_MATRIX_SUITE);
     assert_eq!(
         results.len(),

@@ -957,8 +957,15 @@ pub const IDENTITY_WITNESS_SAMPLES: &[i64] = &[-4, -3, -1, 0, 1, 2, 3, 5, 7, 10,
 /// Candidate identity elements searched left-to-right; exactly one must satisfy
 /// `e ⊕ a = a` and `a ⊕ e = a` for every sample in [`IDENTITY_WITNESS_SAMPLES`]. Multiple matches
 /// fail closed (`Ok(false)`) so incidental finite-table coincidences cannot certify an ambiguous op.
+///
+/// **High-end redundancy:** keep **at least two** entries **strictly greater** than
+/// `max(IDENTITY_WITNESS_SAMPLES)` (currently `200`). With only one such candidate, a binary `Int`
+/// lens behaving like `min` can satisfy the finite witness with a unique “top-like” constant even
+/// though `Int` has no lattice top (INVARIANTS P1/P3; codex PR #2394). Several candidates also sit
+/// below `min(samples)` so `max`-like ops typically hit the same multiplicity fail-closure.
 pub const IDENTITY_WITNESS_CANDIDATES: &[i64] = &[
-    -300, -200, -100, -99, -10, -7, -5, -4, -3, -2, -1, 0, 1, 2, 3, 5, 7, 10, 99, 100, 200, 300,
+    -300, -200, -100, -99, -10, -7, -5, -4, -3, -2, -1, 0, 1, 2, 3, 5, 7, 10, 99, 100, 200, 250,
+    300, 400,
 ];
 
 /// Evaluate `(a ⊕ b) ⊕ c` vs `a ⊕ (b ⊕ c)` for a binary `Int` lens using [`apply_lens_declaration`].
@@ -1061,6 +1068,32 @@ mod tests {
     }
 
     #[test]
+    fn identity_witness_candidate_table_has_redundant_high_and_low_extents() {
+        let sample_min = *IDENTITY_WITNESS_SAMPLES.iter().min().unwrap();
+        let sample_max = *IDENTITY_WITNESS_SAMPLES.iter().max().unwrap();
+        let highs: Vec<i64> = IDENTITY_WITNESS_CANDIDATES
+            .iter()
+            .copied()
+            .filter(|&c| c > sample_max)
+            .collect();
+        let lows: Vec<i64> = IDENTITY_WITNESS_CANDIDATES
+            .iter()
+            .copied()
+            .filter(|&c| c < sample_min)
+            .collect();
+        assert!(
+            highs.len() >= 2,
+            "need ≥2 candidates strictly above sample max ({sample_max}) so min-like lenses cannot \
+             mint a unique false identity; got {highs:?}"
+        );
+        assert!(
+            lows.len() >= 2,
+            "need ≥2 candidates strictly below sample min ({sample_min}) for symmetric fail-closure \
+             skew; got {lows:?}"
+        );
+    }
+
+    #[test]
     fn int_add_lens_associativity_sample() {
         let src = r#"module w
 fn lens_composition_op(a: Int, b: Int) -> Int = a + b
@@ -1109,6 +1142,25 @@ fn lens_mul_op(a: Int, b: Int) -> Int = a * b
             )
             .expect("identity witness"),
             "Int `*` lens identity must be uniquely 1 on the bounded witness tables"
+        );
+    }
+
+    #[test]
+    fn int_min_lens_identity_witness_fails_closed_on_ambiguous_top_candidates() {
+        let src = r#"module w
+fn lens_min_op(a: Int, b: Int) -> Int = if a < b then a else b
+"#;
+        let dag = compile_to_dag(src, "id_min.v3").expect("compiles");
+        let id = dag.declaration_by_name("lens_min_op").unwrap().id;
+        assert!(
+            !super::int_identity_witness_holds(
+                &dag,
+                id,
+                IDENTITY_WITNESS_SAMPLES,
+                IDENTITY_WITNESS_CANDIDATES
+            )
+            .expect("identity witness"),
+            "binary Int min has no identity on bounded samples; bounded witness must fail closed"
         );
     }
 
