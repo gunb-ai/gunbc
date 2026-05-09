@@ -507,18 +507,24 @@ pub mod evaluator {
         strategy: &EvalStrategy,
     ) -> Result<usize, EvalError> {
         match eval_port(dag, count, state, strategy)? {
-            Value::LiteralValue(LiteralBits::Int(n)) if n >= 0 => {
+            Value::LiteralValue(LiteralBits::Int(s)) => {
+                let n: i128 = s.parse().map_err(|_| EvalError::LoopCardinalityNonInteger {
+                    node,
+                    count,
+                })?;
+                if n < 0 {
+                    return Err(EvalError::LoopCardinalityNegative {
+                        node,
+                        count,
+                        value: (n.clamp(i64::MIN as i128, i64::MAX as i128) as i64),
+                    });
+                }
                 usize::try_from(n).map_err(|_| EvalError::LoopCardinalityTooLarge {
                     node,
                     count,
-                    value: n,
+                    value: (n.clamp(i64::MIN as i128, i64::MAX as i128) as i64),
                 })
             }
-            Value::LiteralValue(LiteralBits::Int(n)) => Err(EvalError::LoopCardinalityNegative {
-                node,
-                count,
-                value: n,
-            }),
             _ => Err(EvalError::LoopCardinalityNonInteger { node, count }),
         }
     }
@@ -600,7 +606,7 @@ pub mod evaluator {
                     });
                 }
                 let n = apply_arithmetic_int_ring_only(*op, a, b)?;
-                Ok(Value::LiteralValue(LiteralBits::Int(n)))
+                Ok(Value::LiteralValue(LiteralBits::Int(n.to_string())))
             }
             TransformTarget::Operator(OperatorKind::Comparison(op)) => {
                 if operands.len() != 2 {
@@ -613,14 +619,22 @@ pub mod evaluator {
                     (
                         Value::LiteralValue(LiteralBits::Int(a)),
                         Value::LiteralValue(LiteralBits::Int(b)),
-                    ) => match op {
-                        ComparisonOp::Eq => a == b,
-                        ComparisonOp::Ne => a != b,
-                        ComparisonOp::Lt => a < b,
-                        ComparisonOp::Le => a <= b,
-                        ComparisonOp::Gt => a > b,
-                        ComparisonOp::Ge => a >= b,
-                    },
+                    ) => {
+                        let ai = BigInt::from_str(a).map_err(|_| EvalError::BadTransformOperands {
+                            reason: "expected Int literal",
+                        })?;
+                        let bi = BigInt::from_str(b).map_err(|_| EvalError::BadTransformOperands {
+                            reason: "expected Int literal",
+                        })?;
+                        match op {
+                            ComparisonOp::Eq => ai == bi,
+                            ComparisonOp::Ne => ai != bi,
+                            ComparisonOp::Lt => ai < bi,
+                            ComparisonOp::Le => ai <= bi,
+                            ComparisonOp::Gt => ai > bi,
+                            ComparisonOp::Ge => ai >= bi,
+                        }
+                    }
                     (
                         Value::LiteralValue(LiteralBits::Bool(a)),
                         Value::LiteralValue(LiteralBits::Bool(b)),
@@ -794,7 +808,11 @@ pub mod evaluator {
 
     fn expect_int_literal(value: &Value) -> Result<i64, EvalError> {
         match value {
-            Value::LiteralValue(LiteralBits::Int(n)) => Ok(*n),
+            Value::LiteralValue(LiteralBits::Int(s)) => s.parse::<i64>().map_err(|_| {
+                EvalError::BadTransformOperands {
+                    reason: "expected Int literal in i64 range",
+                }
+            }),
             _ => Err(EvalError::BadTransformOperands {
                 reason: "expected Int literal",
             }),
@@ -934,10 +952,10 @@ pub mod evaluator {
         };
         use crate::compile_to_dag;
         use crate::dag::{
-            ArithmeticOp, ArrowBody, Behavior, BranchPattern, Cluster, ComparisonOp, Dag,
-            DeclarationId, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, MemberDescent,
-            NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId,
-            TransformTarget, TypeConnective,
+            literal_bits_int, ArithmeticOp, ArrowBody, Behavior, BranchPattern, Cluster,
+            ComparisonOp, Dag, DeclarationId, IntraClusterCall, LiteralBits, LogicalOp, LoopBound,
+            MemberDescent, NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path,
+            PayloadBinding, PortId, TransformTarget, TypeConnective,
         };
         use crate::diagnostics::SourceSpan;
 

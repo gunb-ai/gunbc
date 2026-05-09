@@ -2,11 +2,14 @@
 //! over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
 
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
+
+use num_bigint::BigInt;
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, Dag, Declaration,
-    DeclarationId, FieldValue, LiteralBits, OperatorKind, PortId, TransformNode, TransformTarget,
-    TypeConnective, ValueBody,
+    literal_bits_int, ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, Dag,
+    Declaration, DeclarationId, FieldValue, LiteralBits, OperatorKind, PortId, TransformNode,
+    TransformTarget, TypeConnective, ValueBody,
 };
 use crate::infer_helpers::resolve_template_argument_value;
 
@@ -506,7 +509,7 @@ impl<'a> EvalCtx<'a> {
                 let a = int_from_value(&self.eval_port(t.inputs[0])?)?;
                 let b = int_from_value(&self.eval_port(t.inputs[1])?)?;
                 let n = apply_arithmetic_int(*op, a, b)?;
-                Ok(FieldValue::Literal(LiteralBits::Int(n)))
+                Ok(FieldValue::Literal(LiteralBits::Int(n.to_string())))
             }
             TransformTarget::Operator(OperatorKind::Comparison(op)) => {
                 if t.inputs.len() != 2 {
@@ -521,14 +524,22 @@ impl<'a> EvalCtx<'a> {
                     (
                         FieldValue::Literal(LiteralBits::Int(a)),
                         FieldValue::Literal(LiteralBits::Int(b)),
-                    ) => match op {
-                        crate::dag::ComparisonOp::Eq => a == b,
-                        crate::dag::ComparisonOp::Ne => a != b,
-                        crate::dag::ComparisonOp::Lt => a < b,
-                        crate::dag::ComparisonOp::Le => a <= b,
-                        crate::dag::ComparisonOp::Gt => a > b,
-                        crate::dag::ComparisonOp::Ge => a >= b,
-                    },
+                    ) => {
+                        let ai = BigInt::from_str(a).map_err(|_| {
+                            LensApplyError::TypeMismatch("expected decimal Int literal")
+                        })?;
+                        let bi = BigInt::from_str(b).map_err(|_| {
+                            LensApplyError::TypeMismatch("expected decimal Int literal")
+                        })?;
+                        match op {
+                            crate::dag::ComparisonOp::Eq => ai == bi,
+                            crate::dag::ComparisonOp::Ne => ai != bi,
+                            crate::dag::ComparisonOp::Lt => ai < bi,
+                            crate::dag::ComparisonOp::Le => ai <= bi,
+                            crate::dag::ComparisonOp::Gt => ai > bi,
+                            crate::dag::ComparisonOp::Ge => ai >= bi,
+                        }
+                    }
                     (
                         FieldValue::Literal(LiteralBits::String(a)),
                         FieldValue::Literal(LiteralBits::String(b)),
@@ -734,7 +745,9 @@ impl<'a> EvalCtx<'a> {
 
 fn int_from_value(v: &FieldValue) -> Result<i64, LensApplyError> {
     match v {
-        FieldValue::Literal(LiteralBits::Int(n)) => Ok(*n),
+        FieldValue::Literal(LiteralBits::Int(s)) => s.parse::<i64>().map_err(|_| {
+            LensApplyError::TypeMismatch("expected Int literal in i64 range")
+        }),
         _ => Err(LensApplyError::TypeMismatch("expected Int literal")),
     }
 }
@@ -944,7 +957,7 @@ pub fn int_associativity_holds(
     b: i64,
     c: i64,
 ) -> Result<bool, LensApplyError> {
-    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+    let int = |n: i64| FieldValue::Literal(literal_bits_int(n));
     let left_ab = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), int(b)])?;
     let left = apply_lens_declaration(program_dag, lens_decl_id, &[left_ab, int(c)])?;
     let right_bc = apply_lens_declaration(program_dag, lens_decl_id, &[int(b), int(c)])?;
@@ -985,7 +998,7 @@ mod tests {
         let input = reflect_program_dag_nodes_in_file(&prog, "lens_apply_prog.v3", &lens_dag)
             .expect("reflect");
         let out = apply_lens_declaration(&lens_dag, lens_id, &[input]).expect("apply");
-        assert_eq!(out, FieldValue::Literal(LiteralBits::Int(1)));
+        assert_eq!(out, FieldValue::Literal(literal_bits_int(1)));
     }
 
     #[test]
@@ -1013,8 +1026,8 @@ fn f(a: Int, b: Int) -> Int = a + b
             &dag,
             id,
             &[
-                FieldValue::Literal(LiteralBits::Int(i64::MAX)),
-                FieldValue::Literal(LiteralBits::Int(1)),
+                FieldValue::Literal(literal_bits_int(i64::MAX)),
+                FieldValue::Literal(literal_bits_int(1)),
             ],
         )
         .expect_err("overflow must not yield a wrapped Int");
@@ -1039,7 +1052,7 @@ fn sum(xs: List<Int>) -> Int =
         let sum_id = dag.declaration_by_name("sum").expect("sum").id;
         let empty = empty_substrate_list_value(&dag).expect("empty list");
         let out = apply_lens_declaration(&dag, sum_id, &[empty]).expect("fold empty");
-        assert_eq!(out, FieldValue::Literal(LiteralBits::Int(99)));
+        assert_eq!(out, FieldValue::Literal(literal_bits_int(99)));
     }
 
     #[test]
@@ -1148,7 +1161,7 @@ fn p(b: Bool) -> Int = match b { True => 1, False => 0 }
         let id = dag.declaration_by_name("p").unwrap().id;
         let out = apply_lens_declaration(&dag, id, &[FieldValue::Literal(LiteralBits::Bool(true))])
             .expect("apply");
-        assert_eq!(out, FieldValue::Literal(LiteralBits::Int(1)));
+        assert_eq!(out, FieldValue::Literal(literal_bits_int(1)));
     }
 
     #[test]
@@ -1168,7 +1181,7 @@ fn run_even(n: Int) -> Bool = even(n)
         );
         let run_even = dag.declaration_by_name("run_even").expect("run_even").id;
         let err =
-            apply_lens_declaration(&dag, run_even, &[FieldValue::Literal(LiteralBits::Int(1))])
+            apply_lens_declaration(&dag, run_even, &[FieldValue::Literal(literal_bits_int(1))])
                 .expect_err("loop interpretation is unimplemented");
         assert!(
             matches!(err, LensApplyError::UnimplementedLoopBound),
@@ -1183,7 +1196,7 @@ fn f(a: Int, b: Int) -> Int = a + b
 "#;
         let dag = compile_to_dag(src, "arity.v3").expect("compiles");
         let id = dag.declaration_by_name("f").unwrap().id;
-        let err = apply_lens_declaration(&dag, id, &[FieldValue::Literal(LiteralBits::Int(1))])
+        let err = apply_lens_declaration(&dag, id, &[FieldValue::Literal(literal_bits_int(1))])
             .expect_err("wrong arity");
         assert!(
             matches!(
@@ -1211,7 +1224,7 @@ fn sum(xs: List<Int>) -> Int =
         let dag = compile_to_dag(src, "eligible_fold.v3").expect("compiles");
         let sum_id = dag.declaration_by_name("sum").expect("sum").id;
         let (empty_id, cons_id) = super::v3_list_empty_cons_ids(&dag).expect("list ids");
-        let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+        let int = |n: i64| FieldValue::Literal(literal_bits_int(n));
         let mut list = FieldValue::Variant {
             constructor: empty_id,
             payload: vec![],
@@ -1246,7 +1259,7 @@ fn sum(xs: List<Int>) -> Int =
         let empty = empty_substrate_list_value(&dag).expect("empty list");
         let one = FieldValue::Variant {
             constructor: cons_id,
-            payload: vec![FieldValue::Literal(LiteralBits::Int(1)), empty],
+            payload: vec![FieldValue::Literal(literal_bits_int(1)), empty],
         };
         let err = apply_lens_declaration(&dag, sum_id, &[one]).expect_err("ineligible step body");
         assert!(
@@ -1262,7 +1275,7 @@ fn p(b: Bool) -> Int = match b { True => 1, False => 0 }
 "#;
         let dag = compile_to_dag(src, "branch_miss.v3").expect("compiles");
         let id = dag.declaration_by_name("p").unwrap().id;
-        let err = apply_lens_declaration(&dag, id, &[FieldValue::Literal(LiteralBits::Int(42))])
+        let err = apply_lens_declaration(&dag, id, &[FieldValue::Literal(literal_bits_int(42))])
             .expect_err("Int is not True/False");
         assert!(matches!(err, LensApplyError::BranchMiss), "{err:?}");
     }
@@ -1333,15 +1346,15 @@ mod substrate_reflection {
     }
 
     fn port_fv(p: PortId) -> FieldValue {
-        FieldValue::Literal(LiteralBits::Int(i64::from(p.raw())))
+        FieldValue::Literal(LiteralBits::Int(i64::from(p.raw()).to_string()))
     }
 
     fn node_fv(n: NodeId) -> FieldValue {
-        FieldValue::Literal(LiteralBits::Int(i64::from(n.raw())))
+        FieldValue::Literal(LiteralBits::Int(i64::from(n.raw()).to_string()))
     }
 
     fn cluster_fv(c: ClusterId) -> FieldValue {
-        FieldValue::Literal(LiteralBits::Int(i64::from(c.raw())))
+        FieldValue::Literal(LiteralBits::Int(i64::from(c.raw()).to_string()))
     }
 
     fn reflect_source_span(span: &SourceSpan) -> FieldValue {
@@ -1354,11 +1367,11 @@ mod substrate_reflection {
             ),
             (
                 "start".to_string(),
-                FieldValue::Literal(LiteralBits::Int(i64::from(span.byte_start))),
+                FieldValue::Literal(LiteralBits::Int(i64::from(span.byte_start).to_string())),
             ),
             (
                 "end".to_string(),
-                FieldValue::Literal(LiteralBits::Int(i64::from(span.byte_end))),
+                FieldValue::Literal(LiteralBits::Int(i64::from(span.byte_end).to_string())),
             ),
         ])
     }
@@ -2573,11 +2586,11 @@ mod substrate_reflection {
             assert_record_matches_named_substrate_conj(&dag, span_rec, "SourceSpan");
             assert_eq!(
                 record_get(span_rec, "start"),
-                &FieldValue::Literal(LiteralBits::Int(i64::from(v.span.byte_start)))
+                &FieldValue::Literal(LiteralBits::Int(i64::from(v.span.byte_start).to_string()))
             );
             assert_eq!(
                 record_get(span_rec, "end"),
-                &FieldValue::Literal(LiteralBits::Int(i64::from(v.span.byte_end)))
+                &FieldValue::Literal(LiteralBits::Int(i64::from(v.span.byte_end).to_string()))
             );
         }
 
