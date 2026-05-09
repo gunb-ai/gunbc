@@ -29,8 +29,9 @@
 //     `src/v3/std/algebra.dag:181-188`; produced by `cost.dag`.
 //   - Layer 2 (language-agnostic per-primitive realization-cost facts):
 //     `data X: TypeRealization = { ..., cost: Int }` rows in `spec/{lang}.dag`.
-//   - Layer 3 (per-target concrete-cost composition): this lane (Slices
-//     1a.1 → 1a.2 → 1a.3) at `.dag`-tier.
+//   - Layer 3 (per-target concrete-cost composition): split lane. Slice 1a.1
+//     keeps `.dag`-tier meta-type resolver evidence here; Slice 1a.2 is the
+//     Rust-side row walker named above; Slice 1a.3+ owns follow-on composition.
 
 module lenses.cost_target_realization
 
