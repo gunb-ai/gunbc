@@ -153,12 +153,12 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
             }
         };
         let observed = match complexity_enforcement_project(&summary) {
-            Ok(b) => b,
-            Err(_) => {
-                // Per (a)(iii)-β-simplified fail-closed: project Result-Err
-                // counts as violation without invoking violates. Complexity is
-                // structural-static so this branch is unreachable in practice;
-                // shape is uniform with observation-driven lens callsites.
+            crate::lens_t_las_carrier::ProjectionResult::ProjectedBudget { value } => value,
+            crate::lens_t_las_carrier::ProjectionResult::ProjectionFailed { failure: _ } => {
+                // Per (a)(iii)-β-simplified-with-(β)-bespoke fail-closed: project
+                // ProjectionFailed counts as violation without invoking violates.
+                // Complexity is structural-static so this branch is unreachable in
+                // practice; shape is uniform with observation-driven lens callsites.
                 violations.push(Diagnostic::ParseError {
                     message: "lens enforcement: complexity projection failed — \
                               fail-closed violation"

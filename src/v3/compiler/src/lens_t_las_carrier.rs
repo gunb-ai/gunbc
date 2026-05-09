@@ -46,10 +46,17 @@ pub enum ProjectionFailure {
     StaleObservation,
 }
 
+/// Mirrors `ProjectionResult<Budget>` bespoke sum-type in `v3.std.lens_application`.
+#[derive(Clone, Debug)]
+pub enum ProjectionResult<Budget> {
+    ProjectedBudget { value: Budget },
+    ProjectionFailed { failure: ProjectionFailure },
+}
+
 /// Mirrors `LensEnforcement<Output, Budget>` in `v3.std.lens_application`.
 #[derive(Clone)]
 pub struct LensEnforcement<Output, Budget> {
-    pub project: Rc<dyn Fn(Output) -> Result<Budget, ProjectionFailure>>,
+    pub project: Rc<dyn Fn(Output) -> ProjectionResult<Budget>>,
     pub violates: Rc<dyn Fn(Budget, Budget) -> bool>,
 }
 

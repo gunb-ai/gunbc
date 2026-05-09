@@ -3353,7 +3353,9 @@ pub mod lens_cost {
         use crate::diagnostics::*;
         use crate::lens_t_las_carrier::{
             EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic, ProjectionFailure,
+            ProjectionResult,
         };
+        use crate::lens_t_las_carrier::ProjectionResult::{ProjectedBudget, ProjectionFailed};
         use crate::Witness;
 
         include!("complexity_lens_generated.rs");
