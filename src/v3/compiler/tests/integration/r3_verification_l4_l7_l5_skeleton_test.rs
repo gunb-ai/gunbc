@@ -1,8 +1,10 @@
 //! **Layer:** integration
 //!
-//! R3 Lane 1 + Lane 2 + L5 harness receipts: Lane 1 L4 now exercises the wired W1
-//! `DifferentialEquals(rust_emit_output, dag_eval_output)` path (plus a mixed-lineage
-//! `NotYetImplemented` control), and Lane 1 L7 now exercises the wired `Associativity`
+//! R3 Lane 1 + Lane 2 + L5 harness receipts: §1.8 gate **#9** `l4_emit_eval_match` (canonical
+//! `TestClaim.name`) + suite `r3_verification_l4_l7_direct_suite` exercise the wired W1
+//! `DifferentialEquals(rust_emit_output, dag_eval_output)` path on **certification seeds only**
+//! (`docs/r3-program-plan.md` §1.7 corpus-quantified rule — ledger **PASSING** awaits full corpus).
+//! Plus a mixed-lineage `NotYetImplemented` control. Lane 1 L7 now exercises the wired `Associativity`
 //! and `Commutativity` operational witnesses. Lane 2 / L5 rows remain intentionally deferred
 //! where noted.
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
@@ -19,8 +21,8 @@ use crate::common::run_on_larger_stack;
 const L4_FIXTURE: &str = include_str!("../fixtures/r3_verification_l4_emit_eval_match.dag");
 const L4_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag";
-const L4_SUITE: &str = "r3_verification_l4_emit_eval_skeleton_suite";
-const L4_CLAIM: &str = "r3_verification_l4_emit_eval_match_skeleton";
+const L4_SUITE: &str = "r3_verification_l4_l7_direct_suite";
+const L4_CLAIM: &str = "l4_emit_eval_match";
 const L4_FALSE_CLAIM: &str = "r3_verification_l4_emit_eval_false_branch";
 const L4_NESTED_CLAIM: &str = "r3_verification_l4_emit_eval_nested_branch";
 
@@ -93,7 +95,7 @@ fn l4_run_named_claim(claim_name: &'static str) -> ClaimEvaluation {
 }
 
 #[test]
-fn r3_verification_l4_emit_eval_match_skeleton_passes_w1_emit_vs_eval() {
+fn l4_emit_eval_match_passes_w1_emit_vs_eval() {
     let evaluation = l4_run_named_claim(L4_CLAIM);
     assert_eq!(evaluation.claim_name, L4_CLAIM);
     assert!(
@@ -128,7 +130,7 @@ fn r3_verification_l4_emit_eval_nested_branch_passes_w1_emit_vs_eval() {
 /// Suite-wide shape: exactly three named W1 claims, each passing (complements per-claim
 /// `run_claim` tests without pinning suite result order).
 #[test]
-fn r3_verification_l4_emit_eval_skeleton_suite_lists_three_named_claims() {
+fn r3_verification_l4_l7_direct_suite_lists_three_l4_certification_seed_claims() {
     run_on_larger_stack(|| {
         let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
         let results = TestRunner::new(dag).run_suite(L4_SUITE);
