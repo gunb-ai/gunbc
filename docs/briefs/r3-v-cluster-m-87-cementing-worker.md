@@ -19,13 +19,13 @@
 **Gate #87** `lens_cementing_test_discipline_complete`. Author the **discipline pattern** (`.dag` cementing-test shape), land the **first migration receipt** (smallest hand-Rust cementing test → `.dag` `TestClaim`), and prepare the **dispatch ratchet successor** that replaces `cementing_lens_registry_dispatch_test.rs`.
 
 **Out of scope (STOP+PING)**:
-- Inventing new `TestPredicate` variants — use existing `DifferentialEquals` (v2-counterpart lenses) / `LensOutputEquals` (v3-native lenses); both are 🟢 TERMINAL per locked design §1.
+- Inventing new `TestPredicate` variants — use existing `DifferentialEquals` (v2-counterpart lenses) / `LensOutputEquals` (v3-native lenses). Both are **🟡 Scaffold** per locked design §1 + `src/v3/std/verification.dag:175,184` inline annotations (named dissolution triggers: collapse with paired variants once substrate facets land). Per design §1 ("Rust-test migration may target either TERMINAL or 🟡 Scaffold variants; ports landing on a 🟡 Scaffold are inherently scoped by that variant's named dissolution trigger"), Scaffold-status is the correct migration substrate today; the cementing port forwards to the dissolved replacement when the trigger fires.
 - Migrating cementing tests for lenses still at PROXY/STUB/PARTIAL in the lens-capability register — that's T-Lens-Behavioral-Parity scope; cementing-symmetry rule lands per-lens in same PR as the COMPLETE flip.
 - Bulk-porting all cementing tests in this slice — that's Phase 3 #84 coordinator scope; this brief lands the **pattern + first receipt**, Phase 3 dispatches the bulk.
 
 ## §1. Dispatch trigger
 
-**Independent of Cluster M Phase 1** (#85/#86 substrate canvases). Per Phase 2 dispatch overlay §2 authority correction (codex BLOCKING #4 on PR #2362 sha 60279789): cementing axis is orthogonal to property-based ProgramGenerator/Quantifier axis. Existing DB-15 `TestClaim` infrastructure + 🟢 TERMINAL `DifferentialEquals`/`LensOutputEquals` predicates suffice.
+**Independent of Cluster M Phase 1** (#85/#86 substrate canvases). Per Phase 2 dispatch overlay §2 authority correction (codex BLOCKING #4 on PR #2362 sha 60279789): cementing axis is orthogonal to property-based ProgramGenerator/Quantifier axis. Existing DB-15 `TestClaim` infrastructure + 🟡 Scaffold `DifferentialEquals`/`LensOutputEquals` predicates suffice (Scaffold per design §1 / verification.dag inline; targeting them is correct per design §1's explicit "Rust-test migration may target either TERMINAL or 🟡 Scaffold variants").
 
 Phase 1 → Phase 2 coupling is **wrapper-level only**: when #85 `SuiteClaim` lands, existing `TestSuite.claims: List<TestClaim>` sites mechanically migrate to wrap claims in `Enumerated(...)`. Cementing TestClaims participate in that wrap migration as a follow-on; the pattern does not change.
 
@@ -35,7 +35,7 @@ Each `BEHAVIORALLY COMPLETE` lens in [`docs/v3-lens-capability-register.md`](../
 
 **Predicate selection axis**:
 - **Real v2 counterpart** (register row names a non-`N/A` v2 lens): `DifferentialEquals { subject_ref: <v3_lens>, oracle_ref: <v2_lens>, input_ref: <fixture> }`.
-- **v3-native** (`provenance`, `unused_parameters`, `variant_payload`, `structural_resolution`, `idempotency`, `named_function_count`, etc.): `LensOutputEquals { subject_ref: <v3_lens>, expected_output_ref: <expected_carrier_decl>, input_ref: <fixture> }`.
+- **v3-native** (`provenance`, `unused_parameters`, `variant_payload`, `structural_resolution`, `idempotency`, `named_function_count`, etc.): `LensOutputEquals { lens_ref: <v3_lens>, input_ref: <fixture>, expected_ref: <expected_carrier_decl> }` (per `src/v3/std/verification.dag:179-183`).
 
 **Predicate axis distinctions** (do not mix):
 - `BinaryDimensionReportEquals` is for Pattern-A DimensionReport comparisons (TC1/TC2/TC3 family) — different axis.
