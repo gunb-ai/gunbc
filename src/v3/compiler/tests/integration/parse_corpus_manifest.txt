@@ -25,7 +25,7 @@ src/v3/spec/go.dag	131	1170580	2ddf8468392612ee
 src/v3/spec/python.dag	93	602105	4ec88ac58c60fe63
 src/v3/spec/rust.dag	181	1384808	3b5879ad21dd72ba
 src/v3/spec/v3_l1.dag	8	2246	57294d687b4753f4
-src/v3/std/algebra.dag	56	448245	7ce9a380d26f1ed3
+src/v3/std/algebra.dag	55	445255	9fe90dec9bc5a51f
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
 src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	13	69184	3115dc7ce99d10ff
@@ -34,7 +34,7 @@ src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
 src/v3/std/bootstrap_authority.dag	4	70609	e228bb8bb2449ece
 src/v3/std/bridge_ledger.dag	7	31662	ec3b4ea8c0455eb7
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
-src/v3/std/computation.dag	20	39025	b0f1580c4f7bfadd
+src/v3/std/computation.dag	19	37870	25c5a33ef4d8735a
 src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
 src/v3/std/coproduct_projection.dag	7	7380	afb0d131b9ff2fa4
 src/v3/std/cross_target_coverage.dag	10	373515	814a9a617f609ad3
@@ -45,7 +45,7 @@ src/v3/std/emission_provenance.dag	6	4966	ac93c5c74cb4f9f9
 src/v3/std/emit_model.dag	44	83040	affde4f732f411ec
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	16839	22cffc76152e82dd
 src/v3/std/go_method_template_contracts.dag	14	133273	43ccd439b5e388ea
-src/v3/std/induction.dag	62	116143	4cb9b51af2e9ca44
+src/v3/std/induction.dag	62	116143	59adc6ec51b803ff
 src/v3/std/integer_diagnostic_order.dag	6	8124	5d7b31594a5b3d5c
 src/v3/std/lens.dag	6	9852	28d5539a5b28716e
 src/v3/std/lens_application.dag	10	15962	5aa2ac2fadfba5bc
@@ -60,7 +60,7 @@ src/v3/std/rust_method_template_contracts.dag	9	109835	378c75ae8055bf97
 src/v3/std/services.dag	8	5791	840c901943fce7bf
 src/v3/std/substrate.dag	66	144850	d8b8657f20edc1a5
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
-src/v3/std/termination.dag	25	45796	572819e153cb8b5b
+src/v3/std/termination.dag	26	47001	93f2a888194f9e4f
 src/v3/std/timing_lens.dag	29	150030	0cd241572634bc8e
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
 src/v3/std/verification.dag	31	71113	fbcf52754767da98
