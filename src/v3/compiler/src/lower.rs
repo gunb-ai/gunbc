@@ -1038,8 +1038,12 @@ fn synthesize_predicate_body(
             let SurfaceExpr::Record { fields, .. } = args.first()? else {
                 return None;
             };
-            let mut min_value: Option<i64> = None;
-            let mut max_value: Option<i64> = None;
+            let int_literal_decimal = |decimal: String| SurfaceExpr::Literal {
+                value: SurfaceLiteral::Int(decimal),
+                span: span.clone(),
+            };
+            let mut min_value: Option<String> = None;
+            let mut max_value: Option<String> = None;
             for field in fields {
                 let SurfaceExpr::Literal {
                     value: SurfaceLiteral::Int(n),
@@ -1048,12 +1052,15 @@ fn synthesize_predicate_body(
                 else {
                     return None;
                 };
-                let Ok(parsed) = i64::from_str(n.as_str()) else {
+                // Reject ill-formed decimals; accept any magnitude that parses as `BigInt` so
+                // `range` synthesis cannot silently fall back to placeholders merely because the
+                // bound exceeds host `i64` (R3 full-magnitude Int literal carrier).
+                if BigInt::from_str(n.as_str()).is_err() {
                     return None;
-                };
+                }
                 match field.name.as_str() {
-                    "min" => min_value = Some(parsed),
-                    "max" => max_value = Some(parsed),
+                    "min" => min_value = Some(n.clone()),
+                    "max" => max_value = Some(n.clone()),
                     _ => return None,
                 }
             }
@@ -1061,14 +1068,14 @@ fn synthesize_predicate_body(
             if let Some(m) = min_value {
                 clauses.push(SurfaceExpr::Operator {
                     op: OperatorKind::Comparison(ComparisonOp::Ge),
-                    args: vec![subject_var(), int_literal(m)],
+                    args: vec![subject_var(), int_literal_decimal(m)],
                     span: span.clone(),
                 });
             }
             if let Some(m) = max_value {
                 clauses.push(SurfaceExpr::Operator {
                     op: OperatorKind::Comparison(ComparisonOp::Le),
-                    args: vec![subject_var(), int_literal(m)],
+                    args: vec![subject_var(), int_literal_decimal(m)],
                     span: span.clone(),
                 });
             }

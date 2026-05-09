@@ -1858,8 +1858,8 @@ pub mod evaluator {
         #[test]
         fn transform_right_first_evaluates_inputs_without_reordering_operands() {
             let mut dag = Dag::new();
-            let lhs = dag.push_value(LiteralBits::Int(10), span());
-            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let lhs = dag.push_value(literal_bits_int(10), span());
+            let rhs = dag.push_value(literal_bits_int(3), span());
             let output = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
                 vec![lhs, rhs],
@@ -1871,7 +1871,7 @@ pub mod evaluator {
 
             let value = eval_node(&dag, entry, &mut state, &strategy).expect("right-first sub");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(7)));
         }
 
         #[test]
