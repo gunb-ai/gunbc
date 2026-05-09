@@ -701,7 +701,7 @@ fn render_diagnostics(dag: &Dag) -> String {
             "        table.insert({}, {}, {});",
             render_port_id(port),
             render_diagnostic(diagnostic),
-            render_diagnostic_attribution(attribution)
+            render_diagnostic_attribution(attribution),
         );
     }
     out.push_str("        table }\n");
