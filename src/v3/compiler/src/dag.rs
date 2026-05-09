@@ -173,6 +173,16 @@ impl DeclarationId {
     }
 }
 
+#[cfg(feature = "declaration-id-raw-test-witness")]
+impl DeclarationId {
+    /// Builds an opaque id without validating substrate indexing — **dependent test witness only**
+    /// (feature **`declaration-id-raw-test-witness`**; row-count gates that never read ids).
+    #[doc(hidden)]
+    pub const fn declaration_id_raw_for_testing(raw: u32) -> Self {
+        Self(raw)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ClusterId(u32);
 
