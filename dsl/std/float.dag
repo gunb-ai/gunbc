@@ -4,11 +4,22 @@
 // algebra axis (`Ieee754Float`) composed with `MachineWidth<Word*>` (R3 §1.8
 // gate #19 `numeric_aliases_align_to_refinements`). IEEE 754 rounding still
 // breaks pure field laws — approximate semantics remain Grounding's concern.
+//
+// T-Numeric-Construction / R3 gate #17 — abstract `Real` (construction-chain
+// layer 5). Spelling per
+// `docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`
+// Option A: `ApproximateField<Rational>` collides with landed
+// `Rational = Field<FieldOfFractions<Int>>` (witness vs carrier). The `F` slot
+// binds the fraction **carrier** `FieldOfFractions<Int>` so `base: Field<F>`
+// matches `Rational`'s exact-field witness.
 
 module std.float
 
+import std.algebra { Field, FieldOfFractions }
 import std.bit { Word32, Word64 }
+import std.integer { Int }
 import std.machine_constraints { Compose, MachineWidth }
+import v3.std.approximate_field { ApproximateField }
 
 // Opaque substrate carrier for the IEEE-754 approximate-float algebra axis
 // (width-independent at this layer; specialization via Compose).
@@ -19,3 +30,8 @@ type Float64 = Compose<Ieee754Float, MachineWidth<Word64>>
 
 // Default alias
 type Float = Float64
+
+// Abstract reals: approximate field over the exact rational **carrier**
+// `FieldOfFractions<Int>` (see `dsl/std/rational.dag` for `Rational =
+// Field<FieldOfFractions<Int>>`).
+type Real = ApproximateField<FieldOfFractions<Int>>
