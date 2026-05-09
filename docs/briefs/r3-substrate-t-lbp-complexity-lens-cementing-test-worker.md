@@ -1,5 +1,5 @@
 ---
-status: draft (worker brief; queued — gates on T-LBP complexity-lens substrate landing + frozen v2-oracle snapshot capture)
+status: complete (closure receipt; implementation landed in #2271, verified by warm-stag-135 on 2026-05-09)
 authority parent: R3 Substrate Manager (#1739)
 ratification: T-LBP narrowed to complexity + cost lenses only per Q-Lens-Behavioral-Parity-R3-Closeability option (b) RATIFIED at gunbc#828 #issuecomment-4385329180 (zesty-bear-812, 2026-05-06)
 roadmap row: §1.8 ledger row #79 (`complexity_lens_behaviorally_complete`) + §1.8 row #87 (`lens_cementing_test_discipline_complete`) + §1.8 row #166 (T-LBP `lens_behavioral_parity_demonstration`)
@@ -12,7 +12,7 @@ authority docs:
 gates:
   - §1.8 row #79 (`complexity_lens_behaviorally_complete`) — cementing test bullet
   - §1.8 row #87 (`lens_cementing_test_discipline_complete`) — first lens entry
-worker pin: TBD (queued post-T-LBP complexity-lens substrate landing)
+worker pin: warm-stag-135
 ---
 
 # R3 Substrate T-LBP — `Lens<Complexity>` cementing-test worker brief
@@ -34,9 +34,39 @@ This brief lands the cementing-test infrastructure for the complexity
 lens specifically (cost lens follows in companion brief —
 `r3-substrate-t-lbp-cost-lens-cementing-test-worker.md` Tier-1 5/5).
 
+## Completion receipt
+
+The preconditions cleared at `5a13ed800` after #2271 landed the
+behaviorally complete complexity lens substrate and same-PR Band-C
+cementing module:
+
+- `src/v3/lenses/complexity.dag` is `STRUCTURALLY TERMINAL` /
+  `BEHAVIORALLY COMPLETE`.
+- `src/v3/compiler/src/lens_cost_generated.rs` exposes
+  `ComplexitySummary` through `complexity_of`.
+- `docs/v3-lens-capability-register.md` marks `complexity.dag`
+  `COMPLETE` with the `src/v2/complexity.dag` counterpart and names
+  `complexity_lens_behavioral_completion` as the frozen-oracle
+  cementing dispatch.
+- `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs`
+  cements the published carrier on same-source fixtures for constant
+  literal and recursive countdown cases: work, span, asymptotic class,
+  and certainty.
+- `src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs`
+  ratchets the register + `regen.dag` v2-complete slice so the
+  cementing module and `tests/integration.rs` wiring cannot drift.
+
+Warm-stag-135 re-verified the focused closure tests via BuildBuddy on
+2026-05-09:
+
+- `cargo test -p v3-compiler --test integration complexity_lens_behavioral_completion -- --nocapture`
+  passed 2/2.
+- `cargo test -p v3-compiler --test integration cementing_lens_registry_dispatch_test -- --nocapture`
+  passed 14/14.
+
 ## Precondition gates
 
-Brief dispatches when **all** of the following land:
+Brief dispatched after **all** of the following landed:
 
 1. **`Lens<Complexity>` instance landed** in `src/v3/std/` (or canonical
    substrate location). Per row #79: requires symbolic CostExpr +
