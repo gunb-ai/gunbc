@@ -123,10 +123,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             const MAX_SIGNED_ABS: u128 = 1u128 << 127;
             if magnitude > MAX_SIGNED_ABS {
                 return Err(Diagnostic::TokenizerError {
-                    message: format!(
-                        "integer literal out of range for signed decimal literal: `-{}` (|m| > 2^127)",
-                        literal
-                    ),
+                    message: format!("integer literal out of range for signed decimal literal: `-{}` (|m| > 2^127)", literal),
                     span: SourceSpan::new(file, start as u32, end as u32),
                     fixes: Vec::new(),
                 });
@@ -134,7 +131,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             let value = if magnitude == 0 {
                 "0".to_string()
             } else {
-                format!("-{magnitude}")
+                format!("-{}", magnitude)
             };
             tokens.push(Token {
                 kind: TokenKind::IntLit(value),

@@ -2802,9 +2802,18 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             inhabits: None,
             value_body: Some(ValueBody::Map(
                 FieldMap::from_entries(vec![
-                    ("List".to_string(), FieldValue::Literal(LiteralBits::Int("1".to_string()))),
-                    ("Set".to_string(), FieldValue::Literal(LiteralBits::Int("1".to_string()))),
-                    ("Map".to_string(), FieldValue::Literal(LiteralBits::Int("2".to_string()))),
+                    (
+                        "List".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
+                    (
+                        "Set".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
+                    (
+                        "Map".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("2".to_string())),
+                    ),
                 ])
                 .expect("ValueBody::Map"),
             )),

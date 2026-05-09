@@ -365,18 +365,30 @@ fn emit_let_uint8_uses_narrow_rust_type() {
 }
 
 #[test]
-fn uint64_upper_half_literals_are_tracked_carrier_limitation() {
-    let err = compile_to_dag(
+fn uint64_upper_half_literal_tokenizes_and_narrows() {
+    // R3 gate #22: `IntLit` carries full decimal magnitude (`String`), so literals
+    // above `i64::MAX` remain representable and can narrow to `UInt64` when in range.
+    let dag = compile_to_dag(
         "data x: UInt64 = 9223372036854775808",
         "uint64_upper_half_literal.v3",
     )
-    .expect_err("u64 upper-half literals remain blocked by the i64 source literal carrier");
+    .expect("2^63 must compile for UInt64 under full-magnitude literal carrier");
+    let decl = dag.declaration_by_name("x").expect("data `x` declaration");
+    let ty = decl
+        .meta_tag
+        .expect("scalar data item should carry meta_tag to its type decl");
+    assert_eq!(
+        dag.declaration(ty).name.as_deref(),
+        Some("UInt64"),
+        "literal should narrow to UInt64"
+    );
     assert!(
         matches!(
-            err,
-            CompileError::Tokenize(v3_compiler::diagnostics::Diagnostic::TokenizerError { .. })
+            &decl.value_body,
+            Some(ValueBody::Scalar(LiteralBits::Int(s))) if s == "9223372036854775808"
         ),
-        "expected tokenizer boundary before range reconciliation, got {err:?}"
+        "expected preserved decimal magnitude on declaration, got {:?}",
+        decl.value_body
     );
 }
 
