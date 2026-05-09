@@ -1,11 +1,12 @@
 //! **Layer:** integration
 //!
-//! Band-C cementing for `src/v3/lenses/cost.dag`.
+//! V3-side cementing for `src/v3/lenses/cost.dag`.
 //!
 //! The cost-lens behavioral-completion gate is currently cemented through the
 //! Rust-dispatched `analyze_symbolic_cost_dimension` entrypoint. That is the
 //! interim authority for `Dimension<SymbolicCost>` until class-5 data record
 //! bodies can express the dimension declaration directly in `std/dimensions.dag`.
+//! This is not the full Band-C frozen-v2-oracle parity closure.
 
 use v3_compiler::dag::{Behavior, BindNode, NodeId, PortId, SymbolicCost};
 use v3_compiler::{analyze_symbolic_cost_dimension, compile_to_dag, DimensionReport, Witness};
@@ -84,7 +85,8 @@ fn literal_bind_cements_symbolic_cost_dimension_constant() {
 
         assert!(
             matches!(composed, SymbolicCost::ConstantCost { _0: 0 }),
-            "literal cost should match the frozen v2 oracle's constant source cost, got {composed:?}"
+            "literal cost should preserve the v3 symbolic-cost dimension's constant source cost, \
+             got {composed:?}"
         );
         assert!(
             witnesses
@@ -120,8 +122,8 @@ fn recursive_countdown_cements_dimension_linear_cost_and_sizevar_identity() {
         );
         assert!(
             matches!(composed, SymbolicCost::LinearCost { .. }),
-            "recursive countdown should normalize iterate(O(n), O(1)) to the frozen v2 oracle's \
-             linear bound, got {composed:?}"
+            "recursive countdown should normalize iterate(O(n), O(1)) to a linear bound, \
+             got {composed:?}"
         );
         assert!(
             witnesses.iter().any(|w| {
