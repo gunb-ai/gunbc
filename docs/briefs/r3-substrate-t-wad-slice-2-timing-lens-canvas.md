@@ -31,13 +31,16 @@ Worker dispatch is in flight (tidy-raven-610 spawned 2026-05-09); canvas surface
 
 ## Carrier inventory (binding per #1955 brief + r3-structure.md:168-169)
 
-Four substrate carriers gate-named:
-1. **`TimingMeasurement`** — single observation: subject identity + observed timing payload + observer attestation.
-2. **`TimingObservationSet`** — collection of `TimingMeasurement` over a workflow run; the data the lens folds over.
-3. **`WorkflowObservationAnchor`** — generic external-data attachment carrier (factored separately; six invariants below).
-4. **`TimingBudget`** — declared budget for `Enforce`-mode lens application (parallel to `AsymptoticClass` in complexity, `SymbolicCost` in cost).
+**Naming canonicalization** (per PR #2333 inline review at canvas (b526a26f finding 2)): post-Q-WAD-S2-Anchor revision, `TimingMeasurement` is overloaded across three roles (observation record, outcome, payload). Canonical post-fix decomposition:
+- **`TimingPayload`** = the observed-value-only data (`{ nanoseconds: Int }` for timing). Used as `Source` in `WorkflowObservationAnchor<Subject, Source>` instantiation. Does NOT carry identity/attestation/report-state.
+- **`WorkflowObservationAnchor<BehaviorId, TimingPayload>`** = the single observation record carrying identity + attestation + observation_outcome (5 anchor-resident invariants).
+- **`ObservationOutcome<TimingPayload>`** = the report state (Observed/Missing/Ambiguous/Stale), wrapping `TimingPayload` only in the Observed variant.
+- **`TimingObservationSet`** = collection of `WorkflowObservationAnchor<BehaviorId, TimingPayload>` over a workflow run; the data the lens folds over.
+- **`TimingBudget`** = declared budget for `Enforce`-mode lens application (parallel to `AsymptoticClass`, `SymbolicCost`).
 
-Lens declaration: `Lens<TimingMeasurement>` (or `Lens<TimingObservationSet>` if `C` is the fold-input collection — Question 1 below).
+Use `TimingPayload` (not `TimingMeasurement`) in every outcome / payload reference. Earlier canvas references to `TimingMeasurement` as the unified observation/outcome type are deprecated by the Q-WAD-S2-Anchor split.
+
+Lens declaration per Q-WAD-S2-LensC (b) Director ratification: `Lens<TimingObservationSet>`.
 
 ## Question 1 (Q-WAD-S2-LensC) — `Lens<C>` instantiation: per-measurement vs per-set
 
@@ -171,7 +174,16 @@ Per r3-structure.md:169 (verbatim, for worker brief reference):
 3. **Producer/observer/prover identity** — three roles distinguishable; producer = workflow runner, observer = measurement-capture process, prover = signature/attestation source.
 4. **Attachment timestamp + run id** — both fields required; run id provides workflow-scope, timestamp provides ordering.
 5. **Stale/ambiguous/missing/observed report states** — per Q-WAD-S2-Output (a) above; flat sum.
-6. **Fail-closed enforcement on non-observed/non-valid states** — `LensEnforcement.violates = Output != Observed` per `feedback_fail_closed_discipline` + INVARIANTS C-8.
+6. **Fail-closed enforcement on non-observed/non-valid states** — does NOT live on the anchor; lives at the `LensEnforcement` layer per Q-WAD-S2-Output (a)(ii) signature-extension or (a)(iii) auto-violate-bit substrate-extension. Per `feedback_fail_closed_discipline` + INVARIANTS C-8.
+
+## Gate #55 closure-predicate split
+
+Per PR #2333 inline review at canvas (b526a26f finding 1): gate #55 mixes anchor-fact-carriage with fail-closed semantics. Split:
+
+- **Gate #55a** (anchor-fact-carriage): `WorkflowObservationAnchor<Subject, Source>` declared with all 5 anchor-resident invariants (1-5) as concrete fields, including `observation_outcome: ObservationOutcome<Source>` carrying invariant 5 report state. Closes when carrier lands per Q-WAD-S2-Anchor (b) generic-from-authoring shape.
+- **Gate #55b** (fail-closed enforcement): `LensEnforcement` substrate-extension landed per Q-WAD-S2-Output (a)(ii) or (a)(iii) Director disposition; non-Observed `ObservationOutcome` variants reaching the enforcement layer trigger violate without Budget fabrication. Closes when substrate-extension lands across all lens consumers (T-LBP / T-CostLens / T-LAS — cascading scope).
+
+Both gates required for full §1.8 row #55 `shared_external_attachment_pattern_documented` CONSUMER_LANDED. Worker (#2359) lands #55a; #55b is canvas-tier substrate work (separate dispatch, scope: `LensEnforcement` substrate extension, owner: Substrate Mgr per ratification).
 
 ## Acceptance gates (worker dispatch — same-canvas)
 
