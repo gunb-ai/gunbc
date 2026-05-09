@@ -26,7 +26,7 @@ PB does **not** own and **must not** edit:
 
 - The `BinShim` carrier-type shape (additional fields, signature refinement of `entry: () -> std.process.ProcessExit`, etc.) — that's Substrate Manager territory per §5.4 boundary; generalized carrier-shape evolution escalates via [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) substrate-fact-introduction procedure.
 - The PB-Runtime interpreter-as-data implementation (Item 4 / sub-gates i + ii — `lens_apply.rs` and `lens_testgen.rs` retirement). Those are separate and gated separately.
-- The §7.3 `CensusListConstant` / filter-predicate substrate question (see §"Substrate gap" below).
+- The §7.3 `CensusListConstant` / filter-predicate substrate **shape question** (Substrate Mgr disposition territory). Per the 2026-05-09 ratification at #2068 [c#4411574142](https://github.com/gunb-ai/gunbc/issues/2068#issuecomment-4411574142), the Substrate Mgr authorized PB-lane authoring of the four strict-mirror artifacts enumerated in §"Substrate landings (locked shape)" (mirror of the existing `LensProducerFilesSubsetPredicate` precedent — no novel substrate fact). PB lane MUST NOT introduce a *novel* substrate shape; it MAY land the strict-mirror declarations as part of the retirement work.
 
 ## First slice — `regen_lens.rs`
 
@@ -152,7 +152,7 @@ This lane explicitly does NOT cover:
 - **`lens_apply.rs` / `lens_testgen.rs` retirement** — Item 4 sub-gates i + ii. Different runtime substrate (PB-Runtime interpreter-as-data); this lane consumes Item 4 but does not implement it.
 - **PB-Runtime interpreter-as-data implementation** — Item 4. This lane assumes Item 4 has landed.
 - **Substrate-owned `BinShim` carrier-shape edits** — additional fields, refining `entry: () -> std.process.ProcessExit` beyond the locked signature, etc. Escalate to Substrate Manager via [P1](../../INVARIANTS.md#p1-modeling-faithfulness) if the retirement work surfaces a real shape gap.
-- **§7.3 `CensusListConstant` / filter-predicate substrate authoring** — Substrate Manager territory per [P1](../../INVARIANTS.md#p1-modeling-faithfulness) disposition. This lane consumes whatever Substrate authors; it does not pre-empt the choice.
+- **§7.3 `CensusListConstant` / filter-predicate substrate *shape* authoring** — Substrate Manager territory per [P1](../../INVARIANTS.md#p1-modeling-faithfulness) disposition. **As of 2026-05-09 (#2068 c#4411574142) the disposition is RATIFIED** as a strict-mirror of `LensProducerFilesSubsetPredicate`; PB lane authoring of the four enumerated mirror artifacts is authorized per §"Substrate landings (locked shape)". PB lane MUST NOT introduce *novel* shape (extra fields on `CensusSubsetCount`, alternative coproducts, etc.) — that escalates back to Substrate Mgr.
 
 ## Dispatch preconditions
 
