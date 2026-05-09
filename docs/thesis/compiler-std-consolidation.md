@@ -141,7 +141,7 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"` after the tokenizer 
 | `src/v3/compiler/pipeline.dag` | 3 | positive-def |
 | `src/v3/compiler/regen.dag` | 1 | positive-def |
 | `src/v3/lenses/complexity.dag` | 4 | 4 positive-def (`Certainty`, `ComplexitySummary`, `ComplexityEntry`, `DominanceOutcome`); return surface is imported `v3.std.lookup::Lookup` (not a lens-local `type` decl) |
-| `src/v3/lenses/cost.dag` | 1 | 1 positive-def (`SymbolicCostEntry`); return surface is imported `v3.std.lookup::Lookup<SymbolicCost>` (not a lens-local `type` decl) |
+| `src/v3/lenses/cost.dag` | 3 | 3 positive-def (`CostBasisKind`, `CostBasisDeclaration`, `SymbolicCostEntry`); return surface is imported `v3.std.lookup::Lookup<SymbolicCost>` (not a lens-local `type` decl) |
 | `src/v3/lenses/idempotency.dag` | 0 | — |
 | `src/v3/lenses/infer_helpers.dag` | 4 | 3 in-ratchet (`TemplateArgumentsMatch`, `TemplateArgumentCursor`, `NormalizedInstantiationArgs` — workaround-shaped coproduct scaffolds with named dissolution triggers) + 1 positive-def (`TemplateArgumentBinding = Conflict \| NoOp \| Append \| ReplaceAt` — semantic carrier); template-argument presence uses imported `Lookup<DeclarationId>` |
 | `src/v3/lenses/lower_helpers.dag` | 0 | — |
