@@ -46,6 +46,16 @@ type Nanoseconds {
 // Among non-`Unobserved` faults, `Stale` dominates `Ambiguous` on the left when
 // pairing with `Observed` (see `Stale` / `Ambiguous` arms); `Observed`×`Observed`
 // uses `sequential` sum vs `branch` max only in that combine helper.
+//
+// 🟢 GREEN (terminal) — `TimingMeasurement` coproduct: variants exhaust externally
+// attested timing **report** states at the workflow-observation boundary (gate #54;
+// shared-attachment pattern gate #55). `Observed` carries `Nanoseconds` (`Nat`
+// magnitude); `Unobserved`, `Ambiguous`, `Stale` are unit observation outcomes (no
+// `Missing` label — witness/bootstrap collision class). No finer observation-row
+// type replaces this sum here; run/digest coordinates live on
+// `WorkflowObservationAnchor` inside `TimingObservationEntry`. P5 / INVARIANTS
+// Progress Is Dissolution + `docs/modeling-discipline.md` coproduct dissolution
+// checkpoint (classification comment discipline ~L131–L134).
 type TimingMeasurement
   = Observed { duration: Nanoseconds }
   | Unobserved
