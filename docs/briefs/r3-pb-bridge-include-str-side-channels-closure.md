@@ -44,7 +44,7 @@ Per [`docs/design-emission-model.md`](../design-emission-model.md) ~944:
 2. **Stage-order / compile-body facts** required by pipeline authority consumers are obtainable from **structured Dag data** (existing `PipelineStageBinding` discipline **and/or** a **derived lowered compile-body witness** once authored — substrate/evaluator coordination).
 3. **Ratchet test**: a CI assertion scoped to `pipeline_authority.rs` / BR-20 source-text reconciliation that rejects reintroduction of the forbidden source channel, for example:
     ```
-    grep -E 'include_str!\s*\([^)]*pipeline\.dag|read_to_string\([^)]*pipeline\.dag' src/v3/compiler/src/pipeline_authority.rs
+    grep -E 'include_str!\s*\([^)]*pipeline\.dag|read_to_string\s*\(' src/v3/compiler/src/pipeline_authority.rs
     ```
     returns **zero matches** at HEAD post-retirement. This is intentionally **not** a repository-wide ban on hermetic fixture bytes; Appendix A of the family audit keeps `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs` outside row-3 bridge debt unless that fixture channel becomes duplicated production authority.
 
