@@ -45,6 +45,22 @@ fn timing_measurement_variants_locked() {
     );
 }
 
+/// P3 / bootstrap-cleanliness receipt: a `Missing` **variant label** on this
+/// coproduct collides with other std `Missing`-shaped names and has produced
+/// `ResolveError` at `Inhabits(Missing)` witness sites. The substrate uses
+/// `Unobserved` instead (see `timing_lens.dag` banner + PR #2360 discussion).
+#[test]
+fn timing_measurement_excludes_missing_variant_label() {
+    let dag = generated_full_bootstrap_dag();
+    let variants: HashSet<String> = disj_variant_labels(&dag, "TimingMeasurement")
+        .into_iter()
+        .collect();
+    assert!(
+        !variants.contains("Missing"),
+        "`TimingMeasurement` must not declare a `Missing` variant label (witness/bootstrap collision); got {variants:?}"
+    );
+}
+
 #[test]
 fn timing_observation_set_shape_locked() {
     let dag = generated_full_bootstrap_dag();
