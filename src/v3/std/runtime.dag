@@ -98,17 +98,17 @@ type EvalStateKey {
   state: EvalStateStack
 }
 
-// 🟢 TERMINAL at PR-A.3 eager-baseline scope. The evaluator's first executable
-// strategy is applicative/eager evaluation, and this carrier intentionally has
-// exactly one inhabitant until a later slice lands another executable strategy
-// with its evaluation rule, memo-key inclusion, and TC2 obligation. Do not add
-// `NormalOrder`, `RightFirst`, or parallel evaluation variants as placeholders.
+// 🟢 TERMINAL at PR-A.3 / TC2 input-order scope. The evaluator's executable
+// strategy remains applicative/eager evaluation; TC2 adds the second executable
+// input order under that same eager skeleton. `RightFirst` is not normal-order:
+// it changes n-ary Transform input evaluation scheduling while preserving the
+// positional operand list consumed by the transform target.
 type EvalStrategy = ApplicativeOrder { input_order: InputEvaluationOrder }
 
-// 🟢 TERMINAL at PR-A.3 eager-baseline scope. `LeftFirst` is the only input
-// order consumed by the initial evaluator strategy. Additional order variants
-// are semantic expansions and must land with executable evaluator behavior.
-type InputEvaluationOrder = LeftFirst
+// 🟢 TERMINAL at PR-A.3 / TC2 input-order scope. These two closed inhabitants
+// are both consumed by the evaluator and therefore can key TC2 strategy-paired
+// report producers without using string labels.
+type InputEvaluationOrder = LeftFirst | RightFirst
 
 // 🟢 TERMINAL at PR-A.3 memo-key scope. This declares the key shape for any
 // later evaluator memo table without implementing caching behavior. `state_key`
