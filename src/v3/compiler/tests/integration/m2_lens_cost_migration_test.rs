@@ -52,7 +52,7 @@ fn emit_lens_module() -> String {
 }
 
 fn checked_in_generated_module() -> &'static str {
-    include_str!("../../src/lens_cost_generated.rs")
+    include_str!("../../src/complexity_lens_generated.rs")
 }
 
 fn format_rust_source(source: &str) -> String {
@@ -84,7 +84,11 @@ fn format_rust_source(source: &str) -> String {
 fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     let wrapped = format!(
         "#[allow(warnings, clippy::all)] \
-         mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
+         mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; \
+         use v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates as asymptotic_dominates; \
+         use v3_compiler::Witness; \
+         use v3_compiler::lens_t_las_carrier::{{EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic}}; \
+         {module_source} }} \
          fn main() {{ \
            let mut __args = std::env::args(); __args.next(); \
            let program_source = __args.next().expect(\"program_source arg\"); \
@@ -145,15 +149,69 @@ fn complexity_dag_compiles_cleanly() {
 }
 
 /// Inbox #1130 / #1139 — STOP ratchet: production `complexity.dag` must not ship
-/// `data complexity_lens` or iterate-shaped names; no L-8-violating emitted
-/// primitive helpers (see file header comment on `Lens<Int>` migration receipt).
+/// iterate-shaped migration names; no L-8-violating emitted primitive helpers.
+///
+/// Gate #92 — `data complexity_lens` must wire **read** to `complexity_of` and
+/// **monoid/branch/iterate** to the same `compose_*` spine as `compute_summaries`
+/// (see `complexity.dag`). **Enforcement** (`project` / `violates`) stays substrate
+/// authority; execution is via `complexity_lens_generated` +
+/// `v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates` (aliased
+/// as `asymptotic_dominates` inside the emitted module).
 #[test]
 fn complexity_lens_migration_stop_surface_ratchet() {
     let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
         .expect("complexity.dag should compile cleanly");
     assert!(
-        dag.declaration_by_name("complexity_lens").is_none(),
-        "`data complexity_lens` must not ship until Witness/read + class-5 `data` validation are honest"
+        dag.declaration_by_name("complexity_lens_read_stub")
+            .is_none(),
+        "`complexity_lens_read_stub` retired: read must delegate to `complexity_of`"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_lens_monoid_op_stub")
+            .is_none(),
+        "`complexity_lens_monoid_op_stub` retired: monoid op must be \
+         `complexity_lens_sequential_op` / `compose_summary_sequential` so \
+         `op(a, identity) == a` (std.algebra monoid witness)"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_lens_sequential_op")
+            .is_some(),
+        "expected `complexity_lens_sequential_op` as Lens monoid op (compose spine)"
+    );
+    for retired_stub in [
+        "complexity_lens_branch_stub",
+        "complexity_lens_iterate_stub",
+        "complexity_lens_validate_stub",
+    ] {
+        assert!(
+            dag.declaration_by_name(retired_stub).is_none(),
+            "`{retired_stub}` retired: branch/iterate/validate must delegate to \
+             compose_summary_branch_pair / compose_summary_iterate / documented \
+             validate hook (gate #92 T-LAS Lens authority)"
+        );
+    }
+    assert!(
+        dag.declaration_by_name("complexity_lens_branch_op")
+            .is_some(),
+        "expected `complexity_lens_branch_op` (compose_summary_branch_pair spine)"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_lens_iterate_op")
+            .is_some(),
+        "expected `complexity_lens_iterate_op` (compose_summary_iterate + LoopBound)"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_lens_read").is_some(),
+        "expected `complexity_lens_read` (authoritative read spine)"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_lens_validate").is_some(),
+        "expected `complexity_lens_validate` (aggregate hook; see substrate limitation notes in complexity.dag)"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_summary_work_class_consistent")
+            .is_some(),
+        "expected `complexity_summary_work_class_consistent` export for fold consumers"
     );
     assert!(
         dag.declaration_by_name("complexity_iterate").is_none(),
@@ -177,7 +235,7 @@ fn complexity_generated_module_matches_checked_in_snapshot() {
     assert_eq!(
         fresh.trim(),
         checked_in_generated_module().trim(),
-        "checked-in generated module is stale; regenerate lens_cost_generated.rs from complexity.dag"
+        "checked-in generated module is stale; regenerate complexity_lens_generated.rs from complexity.dag"
     );
 }
 
