@@ -53,7 +53,7 @@ pub mod realization_cost {
 
     use std::collections::HashMap;
 
-    use crate::dag::{Dag, DeclarationId, FieldValue, LiteralBits, ValueBody};
+    use crate::dag::{literal_decimal_i64, Dag, DeclarationId, FieldValue, LiteralBits, ValueBody};
 
     /// 🟢 GREEN (terminal): closed mirror of the six `*Realization`
     /// meta-types in `src/v3/std/emit_model.dag`; each variant selects a
@@ -333,8 +333,16 @@ pub mod realization_cost {
         declaration: DeclarationId,
     ) -> Result<RealizationCostAmount, RealizationCostError> {
         match require_field(fields, label, declaration)? {
-            FieldValue::Literal(LiteralBits::Int(value)) => {
-                RealizationCostAmount::new(*value).map_err(|cost| {
+            FieldValue::Literal(LiteralBits::Int(s)) => {
+                let Some(parsed) = literal_decimal_i64(s.as_str()) else {
+                    return Err(RealizationCostError::MalformedRealization {
+                        declaration,
+                        detail: format!(
+                            "realization data item field `{label}` must be a signed decimal i64; got `{s}`"
+                        ),
+                    });
+                };
+                RealizationCostAmount::new(parsed).map_err(|cost| {
                     RealizationCostError::NegativeRealizationCost { declaration, cost }
                 })
             }
@@ -411,7 +419,7 @@ pub mod realization_cost {
                 .iter_mut()
                 .find_map(|(label, field_value)| (label == field_name).then_some(field_value))
                 .unwrap_or_else(|| panic!("missing field `{field_name}`"));
-            *field = FieldValue::Literal(LiteralBits::Int(value));
+            *field = FieldValue::Literal(LiteralBits::Int(value.to_string()));
         }
     }
 }
@@ -432,6 +440,9 @@ pub mod evaluator {
     //! substrate-backed calls instead of becoming a parallel evaluator runtime.
 
     use std::collections::HashMap;
+    use std::str::FromStr;
+
+    use num_bigint::BigInt;
 
     use crate::dag::{
         ArithmeticOp, ArrowBody, Behavior, BranchNode, BranchPattern, ClusterId, ComparisonOp, Dag,
@@ -875,18 +886,23 @@ pub mod evaluator {
         strategy: &EvalStrategy,
     ) -> Result<usize, EvalError> {
         match eval_port(dag, count, state, strategy)? {
-            Value::LiteralValue(LiteralBits::Int(n)) if n >= 0 => {
+            Value::LiteralValue(LiteralBits::Int(s)) => {
+                let n: i128 = s
+                    .parse()
+                    .map_err(|_| EvalError::LoopCardinalityNonInteger { node, count })?;
+                if n < 0 {
+                    return Err(EvalError::LoopCardinalityNegative {
+                        node,
+                        count,
+                        value: (n.clamp(i64::MIN as i128, i64::MAX as i128) as i64),
+                    });
+                }
                 usize::try_from(n).map_err(|_| EvalError::LoopCardinalityTooLarge {
                     node,
                     count,
-                    value: n,
+                    value: (n.clamp(i64::MIN as i128, i64::MAX as i128) as i64),
                 })
             }
-            Value::LiteralValue(LiteralBits::Int(n)) => Err(EvalError::LoopCardinalityNegative {
-                node,
-                count,
-                value: n,
-            }),
             _ => Err(EvalError::LoopCardinalityNonInteger { node, count }),
         }
     }
@@ -965,7 +981,7 @@ pub mod evaluator {
                     });
                 }
                 let n = apply_arithmetic_int_ring_only(*op, a, b)?;
-                Ok(Value::LiteralValue(LiteralBits::Int(n)))
+                Ok(Value::LiteralValue(LiteralBits::Int(n.to_string())))
             }
             TransformTarget::Operator(OperatorKind::Comparison(op)) => {
                 if operands.len() != 2 {
@@ -978,14 +994,24 @@ pub mod evaluator {
                     (
                         Value::LiteralValue(LiteralBits::Int(a)),
                         Value::LiteralValue(LiteralBits::Int(b)),
-                    ) => match op {
-                        ComparisonOp::Eq => a == b,
-                        ComparisonOp::Ne => a != b,
-                        ComparisonOp::Lt => a < b,
-                        ComparisonOp::Le => a <= b,
-                        ComparisonOp::Gt => a > b,
-                        ComparisonOp::Ge => a >= b,
-                    },
+                    ) => {
+                        let ai =
+                            BigInt::from_str(a).map_err(|_| EvalError::BadTransformOperands {
+                                reason: "expected Int literal",
+                            })?;
+                        let bi =
+                            BigInt::from_str(b).map_err(|_| EvalError::BadTransformOperands {
+                                reason: "expected Int literal",
+                            })?;
+                        match op {
+                            ComparisonOp::Eq => ai == bi,
+                            ComparisonOp::Ne => ai != bi,
+                            ComparisonOp::Lt => ai < bi,
+                            ComparisonOp::Le => ai <= bi,
+                            ComparisonOp::Gt => ai > bi,
+                            ComparisonOp::Ge => ai >= bi,
+                        }
+                    }
                     (
                         Value::LiteralValue(LiteralBits::Bool(a)),
                         Value::LiteralValue(LiteralBits::Bool(b)),
@@ -1186,7 +1212,12 @@ pub mod evaluator {
 
     fn expect_int_literal(value: &Value) -> Result<i64, EvalError> {
         match value {
-            Value::LiteralValue(LiteralBits::Int(n)) => Ok(*n),
+            Value::LiteralValue(LiteralBits::Int(s)) => {
+                s.parse::<i64>()
+                    .map_err(|_| EvalError::BadTransformOperands {
+                        reason: "expected Int literal in i64 range",
+                    })
+            }
             _ => Err(EvalError::BadTransformOperands {
                 reason: "expected Int literal",
             }),
@@ -1326,10 +1357,10 @@ pub mod evaluator {
         };
         use crate::compile_to_dag;
         use crate::dag::{
-            ArithmeticOp, ArrowBody, Behavior, BranchPattern, Cluster, ComparisonOp, Dag,
-            DeclarationId, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, MemberDescent,
-            NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId,
-            TransformTarget, TypeConnective,
+            literal_bits_int, ArithmeticOp, ArrowBody, Behavior, BranchPattern, Cluster,
+            ComparisonOp, Dag, DeclarationId, IntraClusterCall, LiteralBits, LogicalOp, LoopBound,
+            MemberDescent, NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path,
+            PayloadBinding, PortId, TransformTarget, TypeConnective,
         };
         use crate::diagnostics::SourceSpan;
 
@@ -1340,7 +1371,7 @@ pub mod evaluator {
         fn ports(count: usize) -> Vec<PortId> {
             let mut dag = Dag::new();
             (0..count)
-                .map(|i| dag.push_value(LiteralBits::Int(i as i64), span()))
+                .map(|i| dag.push_value(literal_bits_int(i as i64), span()))
                 .collect()
         }
 
@@ -1351,8 +1382,8 @@ pub mod evaluator {
         fn descent_loop_fixture(body_value: i64) -> (Dag, crate::dag::LoopNode) {
             let mut dag = Dag::new();
             let source = dag.alloc_port(None);
-            let init = dag.push_value(LiteralBits::Int(0), span());
-            let body_output = dag.push_value(LiteralBits::Int(body_value), span());
+            let init = dag.push_value(literal_bits_int(0), span());
+            let body_output = dag.push_value(literal_bits_int(body_value), span());
             let body = node_for_port(&dag, body_output);
             let bind = dag.push_bind("descent_member", init, vec![source, init], span());
             let param0 = dag.param_of(bind, 0).expect("param 0");
@@ -1484,7 +1515,7 @@ pub mod evaluator {
             };
             let x_port = bind.params[0];
             let frame =
-                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(42)))])
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(literal_bits_int(42)))])
                     .expect("frame");
             let mut state = EvalStateStack::with_root_frame(frame);
             let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
@@ -1497,7 +1528,7 @@ pub mod evaluator {
             };
             assert_eq!(fields.len(), 1);
             assert_eq!(fields[0].label, "value");
-            assert_eq!(fields[0].value, Value::LiteralValue(LiteralBits::Int(42)));
+            assert_eq!(fields[0].value, Value::LiteralValue(literal_bits_int(42)));
         }
 
         #[test]
@@ -1516,11 +1547,11 @@ pub mod evaluator {
                 vec![
                     NamedField {
                         label: "a".to_string(),
-                        value: Value::LiteralValue(LiteralBits::Int(5)),
+                        value: Value::LiteralValue(literal_bits_int(5)),
                     },
                     NamedField {
                         label: "b".to_string(),
-                        value: Value::LiteralValue(LiteralBits::Int(7)),
+                        value: Value::LiteralValue(literal_bits_int(7)),
                     },
                 ]
             );
@@ -1539,7 +1570,7 @@ pub mod evaluator {
             };
             let x_port = bind.params[0];
             let frame =
-                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(99)))])
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(literal_bits_int(99)))])
                     .expect("frame");
             let mut state = EvalStateStack::with_root_frame(frame);
             let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
@@ -1552,7 +1583,7 @@ pub mod evaluator {
             );
             assert_eq!(
                 *payload,
-                Value::LiteralValue(LiteralBits::Int(99)),
+                Value::LiteralValue(literal_bits_int(99)),
                 "positional `Some(T)` payload must be Direct-shaped (infer `PayloadBindingResolution::Direct`), not RecordValue(_0)"
             );
         }
@@ -1569,11 +1600,11 @@ pub mod evaluator {
             };
             let x_port = bind.params[0];
             let frame =
-                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(5)))])
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(literal_bits_int(5)))])
                     .expect("frame");
             let mut state = EvalStateStack::with_root_frame(frame);
             let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(6)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(6)));
         }
 
         #[test]
@@ -1592,7 +1623,7 @@ pub mod evaluator {
                 vec![
                     NamedField {
                         label: "first".to_string(),
-                        value: Value::LiteralValue(LiteralBits::Int(3)),
+                        value: Value::LiteralValue(literal_bits_int(3)),
                     },
                     NamedField {
                         label: "second".to_string(),
@@ -1633,11 +1664,11 @@ pub mod evaluator {
             };
             let x_port = bind.params[0];
             let frame =
-                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(11)))])
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(literal_bits_int(11)))])
                     .expect("frame");
             let mut state = EvalStateStack::with_root_frame(frame);
             let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(11)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(11)));
         }
 
         #[test]
@@ -1676,7 +1707,7 @@ pub mod evaluator {
         #[test]
         fn eval_port_prefers_dag_producer_over_frame_binding() {
             let mut dag = Dag::new();
-            let port = dag.push_value(LiteralBits::Int(1), span());
+            let port = dag.push_value(literal_bits_int(1), span());
             let frame = EvalFrame::from_bindings([(
                 port,
                 Value::LiteralValue(LiteralBits::String("shadow".to_string())),
@@ -1687,7 +1718,7 @@ pub mod evaluator {
 
             let value = eval_port(&dag, port, &mut state, &strategy).expect("producer wins");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(1)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(1)));
         }
 
         #[test]
@@ -1730,7 +1761,7 @@ pub mod evaluator {
         #[test]
         fn eval_port_reports_unbound_port_when_no_frame_or_producer_resolves() {
             let mut source = Dag::new();
-            let stale_port = source.push_value(LiteralBits::Int(1), span());
+            let stale_port = source.push_value(literal_bits_int(1), span());
             let empty = Dag::new();
             let mut state = empty_state();
             let strategy = eager_strategy();
@@ -1744,7 +1775,7 @@ pub mod evaluator {
         #[test]
         fn eval_port_rejects_frame_binding_for_port_absent_from_dag() {
             let mut source = Dag::new();
-            let stale_port = source.push_value(LiteralBits::Int(1), span());
+            let stale_port = source.push_value(literal_bits_int(1), span());
             let empty = Dag::new();
             let frame = EvalFrame::from_bindings([(
                 stale_port,
@@ -1763,20 +1794,20 @@ pub mod evaluator {
         #[test]
         fn evaluate_body_delegates_to_eval_node_shell() {
             let mut dag = Dag::new();
-            let output = dag.push_value(LiteralBits::Int(8), span());
+            let output = dag.push_value(literal_bits_int(8), span());
             let entry = node_for_port(&dag, output);
             let mut state = empty_state();
 
             let value =
                 evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("value evaluates");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(8)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(8)));
         }
 
         #[test]
         fn missing_entry_node_fails_closed() {
             let mut source = Dag::new();
-            let output = source.push_value(LiteralBits::Int(1), span());
+            let output = source.push_value(literal_bits_int(1), span());
             let stale_entry = node_for_port(&source, output);
             let empty = Dag::new();
             let mut state = empty_state();
@@ -1790,8 +1821,8 @@ pub mod evaluator {
         #[test]
         fn transform_arithmetic_add_evaluates() {
             let mut dag = Dag::new();
-            let lhs = dag.push_value(LiteralBits::Int(1), span());
-            let rhs = dag.push_value(LiteralBits::Int(2), span());
+            let lhs = dag.push_value(literal_bits_int(1), span());
+            let rhs = dag.push_value(literal_bits_int(2), span());
             let output = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![lhs, rhs],
@@ -1803,14 +1834,14 @@ pub mod evaluator {
 
             let value = eval_node(&dag, entry, &mut state, &strategy).expect("transform evaluates");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(3)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(3)));
         }
 
         #[test]
         fn transform_arithmetic_sub_evaluates() {
             let mut dag = Dag::new();
-            let lhs = dag.push_value(LiteralBits::Int(10), span());
-            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let lhs = dag.push_value(literal_bits_int(10), span());
+            let rhs = dag.push_value(literal_bits_int(3), span());
             let output = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
                 vec![lhs, rhs],
@@ -1821,14 +1852,14 @@ pub mod evaluator {
 
             let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("sub");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(7)));
         }
 
         #[test]
         fn transform_right_first_evaluates_inputs_without_reordering_operands() {
             let mut dag = Dag::new();
-            let lhs = dag.push_value(LiteralBits::Int(10), span());
-            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let lhs = dag.push_value(literal_bits_int(10), span());
+            let rhs = dag.push_value(literal_bits_int(3), span());
             let output = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
                 vec![lhs, rhs],
@@ -1840,7 +1871,7 @@ pub mod evaluator {
 
             let value = eval_node(&dag, entry, &mut state, &strategy).expect("right-first sub");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(7)));
         }
 
         #[test]
@@ -1874,8 +1905,8 @@ pub mod evaluator {
         #[test]
         fn transform_arithmetic_checked_overflow_fails_closed() {
             let mut dag = Dag::new();
-            let lhs = dag.push_value(LiteralBits::Int(i64::MAX), span());
-            let rhs = dag.push_value(LiteralBits::Int(1), span());
+            let lhs = dag.push_value(literal_bits_int(i64::MAX), span());
+            let rhs = dag.push_value(literal_bits_int(1), span());
             let output = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![lhs, rhs],
@@ -1925,9 +1956,9 @@ pub mod evaluator {
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
             // Bodies are `Behavior::Value` nodes (E1-supported); Bind /
             // Transform bodies wait on E3 / E6.
-            let some_arm_output = dag.push_value(LiteralBits::Int(7), span());
+            let some_arm_output = dag.push_value(literal_bits_int(7), span());
             let some_arm_body = node_for_port(&dag, some_arm_output);
-            let other_arm_output = dag.push_value(LiteralBits::Int(13), span());
+            let other_arm_output = dag.push_value(literal_bits_int(13), span());
             let other_arm_body = node_for_port(&dag, other_arm_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -1958,7 +1989,7 @@ pub mod evaluator {
 
             let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(7)));
         }
 
         // E4 Bool alignment: Bool literal scrutinees are reified through
@@ -1974,9 +2005,9 @@ pub mod evaluator {
                 .bool_runtime_variant_id(false)
                 .expect("Bool.False variant id");
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
-            let true_output = dag.push_value(LiteralBits::Int(1), span());
+            let true_output = dag.push_value(literal_bits_int(1), span());
             let true_body = node_for_port(&dag, true_output);
-            let false_output = dag.push_value(LiteralBits::Int(0), span());
+            let false_output = dag.push_value(literal_bits_int(0), span());
             let false_body = node_for_port(&dag, false_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -2007,7 +2038,7 @@ pub mod evaluator {
 
             let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(1)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(1)));
             assert_eq!(state.frames_outer_to_inner().len(), 1);
         }
 
@@ -2021,9 +2052,9 @@ pub mod evaluator {
                 .bool_runtime_variant_id(false)
                 .expect("Bool.False variant id");
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
-            let true_output = dag.push_value(LiteralBits::Int(11), span());
+            let true_output = dag.push_value(literal_bits_int(11), span());
             let true_body = node_for_port(&dag, true_output);
-            let false_output = dag.push_value(LiteralBits::Int(22), span());
+            let false_output = dag.push_value(literal_bits_int(22), span());
             let false_body = node_for_port(&dag, false_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -2054,7 +2085,7 @@ pub mod evaluator {
 
             let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(11)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(11)));
             assert_eq!(state.frames_outer_to_inner().len(), 1);
         }
 
@@ -2068,9 +2099,9 @@ pub mod evaluator {
                 .bool_runtime_variant_id(false)
                 .expect("Bool.False variant id");
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
-            let true_output = dag.push_value(LiteralBits::Int(1), span());
+            let true_output = dag.push_value(literal_bits_int(1), span());
             let true_body = node_for_port(&dag, true_output);
-            let false_output = dag.push_value(LiteralBits::Int(0), span());
+            let false_output = dag.push_value(literal_bits_int(0), span());
             let false_body = node_for_port(&dag, false_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -2101,7 +2132,7 @@ pub mod evaluator {
 
             let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(0)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(0)));
             assert_eq!(state.frames_outer_to_inner().len(), 1);
         }
 
@@ -2118,7 +2149,7 @@ pub mod evaluator {
             dag.declaration_mut(bool_decl).name = Some("TruthValue".to_string());
 
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
-            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_output = dag.push_value(literal_bits_int(1), span());
             let arm_body = node_for_port(&dag, arm_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -2163,7 +2194,7 @@ pub mod evaluator {
             // dispatched through `eval_node` after the frame push and
             // payload bind. Bodies that consume the payload via
             // `eval_port` wait on E3 / E6 supporting Bind / Transform.
-            let arm_output = dag.push_value(LiteralBits::Int(0), span());
+            let arm_output = dag.push_value(literal_bits_int(0), span());
             let arm_body = node_for_port(&dag, arm_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -2196,7 +2227,7 @@ pub mod evaluator {
             // post-evaluation frame discipline below. (Body return value
             // is the literal, confirming `eval_node` dispatched into the
             // path body.)
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(0)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(0)));
             // After branch evaluation, the pushed frame is popped; only
             // the original root frame remains, which never bound the
             // payload port. Per Facts-Flow-Forward, the payload binding
@@ -2216,7 +2247,7 @@ pub mod evaluator {
             let mut dag = Dag::std_fixture_bootstrap_snapshot();
             let some_tag = declaration_id_by_name(&dag, "Bool");
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
-            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_output = dag.push_value(literal_bits_int(1), span());
             let arm_body = node_for_port(&dag, arm_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -2261,7 +2292,7 @@ pub mod evaluator {
             let mut dag = Dag::std_fixture_bootstrap_snapshot();
             let some_tag = declaration_id_by_name(&dag, "Bool");
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
-            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_output = dag.push_value(literal_bits_int(1), span());
             let arm_body = node_for_port(&dag, arm_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -2275,7 +2306,7 @@ pub mod evaluator {
             );
             let entry = node_for_port(&dag, output);
             let frame =
-                EvalFrame::from_bindings([(scrutinee, Value::LiteralValue(LiteralBits::Int(42)))])
+                EvalFrame::from_bindings([(scrutinee, Value::LiteralValue(literal_bits_int(42)))])
                     .expect("frame");
             let mut state = EvalStateStack::with_root_frame(frame);
             let strategy = eager_strategy();
@@ -2295,7 +2326,7 @@ pub mod evaluator {
             let path_tag = declaration_id_by_name(&dag, "Bool");
             let scrutinee_tag = declaration_id_by_name(&dag, "Int");
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
-            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_output = dag.push_value(literal_bits_int(1), span());
             let arm_body = node_for_port(&dag, arm_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -2338,7 +2369,7 @@ pub mod evaluator {
             let mut dag = Dag::std_fixture_bootstrap_snapshot();
             let some_tag = declaration_id_by_name(&dag, "Bool");
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
-            let arm_output = dag.push_value(LiteralBits::Int(99), span());
+            let arm_output = dag.push_value(literal_bits_int(99), span());
             let arm_body = node_for_port(&dag, arm_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -2361,7 +2392,7 @@ pub mod evaluator {
 
             let value = evaluate_body(&dag, entry, &mut state, strategy).expect("branch evaluates");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(99)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(99)));
         }
 
         // E4 / Facts-Flow-Forward: the arm value is the value at
@@ -2381,9 +2412,9 @@ pub mod evaluator {
             let payload_port = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
             // Body returns a sentinel literal; if the evaluator wrongly
             // returned this directly, the test would fail.
-            let body_output = dag.push_value(LiteralBits::Int(0xdead), span());
+            let body_output = dag.push_value(literal_bits_int(0xdead), span());
             let arm_body = node_for_port(&dag, body_output);
-            let payload_value = Value::LiteralValue(LiteralBits::Int(7));
+            let payload_value = Value::LiteralValue(literal_bits_int(7));
             let output = dag.push_branch(
                 scrutinee,
                 vec![Path {
@@ -2453,7 +2484,7 @@ pub mod evaluator {
                 span: span(),
                 emit_participation: None,
             }));
-            let payload_value = Value::LiteralValue(LiteralBits::Int(42));
+            let payload_value = Value::LiteralValue(literal_bits_int(42));
             let frame =
                 EvalFrame::from_bindings([(scrutinee, variant(some_tag, payload_value.clone()))])
                     .expect("frame");
@@ -2480,9 +2511,9 @@ pub mod evaluator {
             let mut dag = Dag::std_fixture_bootstrap_snapshot();
             let matching_tag = declaration_id_by_name(&dag, "Bool");
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
-            let early_output = dag.push_value(LiteralBits::Int(7), span());
+            let early_output = dag.push_value(literal_bits_int(7), span());
             let early_body = node_for_port(&dag, early_output);
-            let late_output = dag.push_value(LiteralBits::Int(13), span());
+            let late_output = dag.push_value(literal_bits_int(13), span());
             let late_body = node_for_port(&dag, late_output);
             let output = dag.push_branch(
                 scrutinee,
@@ -2534,9 +2565,9 @@ pub mod evaluator {
         fn eval_loop_zero_iterations_returns_init_without_body_eval() {
             let mut dag = Dag::new();
             let source = dag.alloc_port(None);
-            let init = dag.push_value(LiteralBits::Int(9), span());
-            let zero = dag.push_value(LiteralBits::Int(0), span());
-            let one = dag.push_value(LiteralBits::Int(1), span());
+            let init = dag.push_value(literal_bits_int(9), span());
+            let zero = dag.push_value(literal_bits_int(0), span());
+            let one = dag.push_value(literal_bits_int(1), span());
             let bad_body_output = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
                 vec![source, one],
@@ -2558,7 +2589,7 @@ pub mod evaluator {
 
             assert_eq!(
                 value,
-                Value::LiteralValue(LiteralBits::Int(9)),
+                Value::LiteralValue(literal_bits_int(9)),
                 "zero iterations must not evaluate the unsupported body"
             );
             assert_eq!(state.frames_outer_to_inner().len(), 1);
@@ -2568,9 +2599,9 @@ pub mod evaluator {
         fn eval_loop_cardinality_threads_accumulator_through_body() {
             let mut dag = Dag::new();
             let source = dag.alloc_port(None);
-            let init = dag.push_value(LiteralBits::Int(0), span());
-            let count = dag.push_value(LiteralBits::Int(3), span());
-            let one = dag.push_value(LiteralBits::Int(1), span());
+            let init = dag.push_value(literal_bits_int(0), span());
+            let count = dag.push_value(literal_bits_int(3), span());
+            let one = dag.push_value(literal_bits_int(1), span());
             let body_output = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![source, one],
@@ -2585,7 +2616,7 @@ pub mod evaluator {
             let value =
                 eval_node(&dag, entry, &mut state, &eager_strategy()).expect("loop evaluates");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(3)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(3)));
             assert_eq!(state.frames_outer_to_inner().len(), 1);
             assert_eq!(
                 state.lookup(source),
@@ -2598,9 +2629,9 @@ pub mod evaluator {
         fn eval_loop_cardinality_missing_count_fails_closed() {
             let mut dag = Dag::new();
             let source = dag.alloc_port(None);
-            let init = dag.push_value(LiteralBits::Int(0), span());
+            let init = dag.push_value(literal_bits_int(0), span());
             let missing_count = dag.alloc_port(None);
-            let body_output = dag.push_value(LiteralBits::Int(1), span());
+            let body_output = dag.push_value(literal_bits_int(1), span());
             let body = node_for_port(&dag, body_output);
             let output = dag.push_loop(
                 source,
@@ -2630,9 +2661,9 @@ pub mod evaluator {
         fn eval_loop_cardinality_non_integer_count_fails_closed() {
             let mut dag = Dag::new();
             let source = dag.alloc_port(None);
-            let init = dag.push_value(LiteralBits::Int(0), span());
+            let init = dag.push_value(literal_bits_int(0), span());
             let count = dag.push_value(LiteralBits::String("three".to_string()), span());
-            let body_output = dag.push_value(LiteralBits::Int(1), span());
+            let body_output = dag.push_value(literal_bits_int(1), span());
             let body = node_for_port(&dag, body_output);
             let output =
                 dag.push_loop(source, init, body, LoopBound::Cardinality { count }, span());
@@ -2653,9 +2684,9 @@ pub mod evaluator {
         fn eval_loop_cardinality_negative_count_fails_closed() {
             let mut dag = Dag::new();
             let source = dag.alloc_port(None);
-            let init = dag.push_value(LiteralBits::Int(0), span());
-            let count = dag.push_value(LiteralBits::Int(-1), span());
-            let body_output = dag.push_value(LiteralBits::Int(1), span());
+            let init = dag.push_value(literal_bits_int(0), span());
+            let count = dag.push_value(literal_bits_int(-1), span());
+            let body_output = dag.push_value(literal_bits_int(1), span());
             let body = node_for_port(&dag, body_output);
             let output =
                 dag.push_loop(source, init, body, LoopBound::Cardinality { count }, span());
@@ -2681,10 +2712,10 @@ pub mod evaluator {
         fn eval_loop_cardinality_count_too_large_for_usize_fails_closed() {
             let mut dag = Dag::new();
             let source = dag.alloc_port(None);
-            let init = dag.push_value(LiteralBits::Int(0), span());
+            let init = dag.push_value(literal_bits_int(0), span());
             let too_large = i64::from(u32::MAX) + 1;
-            let count = dag.push_value(LiteralBits::Int(too_large), span());
-            let body_output = dag.push_value(LiteralBits::Int(1), span());
+            let count = dag.push_value(literal_bits_int(too_large), span());
+            let body_output = dag.push_value(literal_bits_int(1), span());
             let body = node_for_port(&dag, body_output);
             let output =
                 dag.push_loop(source, init, body, LoopBound::Cardinality { count }, span());
@@ -2736,7 +2767,7 @@ pub mod evaluator {
             )
             .expect("strict descent proof discharges loop bound");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(7)));
             assert_eq!(state.frames_outer_to_inner().len(), 1);
             assert_eq!(
                 state.lookup(measure),
@@ -2883,9 +2914,9 @@ pub mod evaluator {
         fn eval_loop_restores_stack_after_body_diagnostic() {
             let mut dag = Dag::new();
             let source = dag.alloc_port(None);
-            let init = dag.push_value(LiteralBits::Int(0), span());
-            let count = dag.push_value(LiteralBits::Int(1), span());
-            let one = dag.push_value(LiteralBits::Int(1), span());
+            let init = dag.push_value(literal_bits_int(0), span());
+            let count = dag.push_value(literal_bits_int(1), span());
+            let one = dag.push_value(literal_bits_int(1), span());
             let bad_body_output = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
                 vec![source, one],
@@ -2924,8 +2955,8 @@ pub mod evaluator {
         #[test]
         fn transform_arithmetic_div_unsupported_until_result_carrier_eval_lands() {
             let mut dag = Dag::new();
-            let lhs = dag.push_value(LiteralBits::Int(8), span());
-            let rhs = dag.push_value(LiteralBits::Int(2), span());
+            let lhs = dag.push_value(literal_bits_int(8), span());
+            let rhs = dag.push_value(literal_bits_int(2), span());
             let output = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
                 vec![lhs, rhs],
@@ -2947,8 +2978,8 @@ pub mod evaluator {
         #[test]
         fn transform_comparison_int_evaluates() {
             let mut dag = Dag::new();
-            let lhs = dag.push_value(LiteralBits::Int(2), span());
-            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let lhs = dag.push_value(literal_bits_int(2), span());
+            let rhs = dag.push_value(literal_bits_int(3), span());
             let output = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)),
                 vec![lhs, rhs],
@@ -3007,7 +3038,7 @@ pub mod evaluator {
             // fail closed with a typed BadTransformOperands rather than
             // returning an unrelated value.
             let mut dag = Dag::new();
-            let v = dag.push_value(LiteralBits::Int(1), span());
+            let v = dag.push_value(literal_bits_int(1), span());
             let output = dag.push_transform(
                 TransformTarget::FieldProject {
                     field_label: "x".to_string(),
@@ -3071,7 +3102,7 @@ pub mod evaluator {
         fn eval_bind_copies_callable_param_into_fresh_frame_for_body() {
             let mut dag = Dag::new();
             let param = dag.alloc_port(None);
-            let one = dag.push_value(LiteralBits::Int(1), span());
+            let one = dag.push_value(literal_bits_int(1), span());
             let body = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![param, one],
@@ -3079,18 +3110,18 @@ pub mod evaluator {
             );
             let entry = dag.push_bind("increment", body, vec![param], span());
             let caller =
-                EvalFrame::from_bindings([(param, Value::LiteralValue(LiteralBits::Int(41)))])
+                EvalFrame::from_bindings([(param, Value::LiteralValue(literal_bits_int(41)))])
                     .expect("caller frame");
             let mut state = EvalStateStack::with_root_frame(caller);
 
             let out = eval_node(&dag, entry, &mut state, &eager_strategy())
                 .expect("callable bind evaluates");
 
-            assert_eq!(out, Value::LiteralValue(LiteralBits::Int(42)));
+            assert_eq!(out, Value::LiteralValue(literal_bits_int(42)));
             assert_eq!(state.frames_outer_to_inner().len(), 1);
             assert_eq!(
                 state.lookup(param),
-                Ok(&Value::LiteralValue(LiteralBits::Int(41))),
+                Ok(&Value::LiteralValue(literal_bits_int(41))),
                 "caller binding remains in the outer frame"
             );
         }
@@ -3122,7 +3153,7 @@ pub mod evaluator {
             let param = dag.alloc_port(None);
             let entry = dag.push_bind("dup", param, vec![param, param], span());
             let caller =
-                EvalFrame::from_bindings([(param, Value::LiteralValue(LiteralBits::Int(1)))])
+                EvalFrame::from_bindings([(param, Value::LiteralValue(literal_bits_int(1)))])
                     .expect("caller frame");
             let mut state = EvalStateStack::with_root_frame(caller);
 
@@ -3184,11 +3215,11 @@ pub mod evaluator {
             let carrier_value = Value::RecordValue(vec![
                 crate::evaluator::NamedField {
                     label: "x".to_string(),
-                    value: Value::LiteralValue(LiteralBits::Int(7)),
+                    value: Value::LiteralValue(literal_bits_int(7)),
                 },
                 crate::evaluator::NamedField {
                     label: "y".to_string(),
-                    value: Value::LiteralValue(LiteralBits::Int(11)),
+                    value: Value::LiteralValue(literal_bits_int(11)),
                 },
             ]);
             let frame =
@@ -3206,7 +3237,7 @@ pub mod evaluator {
 
             let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("y projects");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(11)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(11)));
         }
 
         #[test]
@@ -3215,7 +3246,7 @@ pub mod evaluator {
             let carrier_port = dag.alloc_port(None);
             let carrier_value = Value::RecordValue(vec![crate::evaluator::NamedField {
                 label: "only".to_string(),
-                value: Value::LiteralValue(LiteralBits::Int(1)),
+                value: Value::LiteralValue(literal_bits_int(1)),
             }]);
             let frame =
                 EvalFrame::from_bindings([(carrier_port, carrier_value)]).expect("caller frame");
@@ -3263,7 +3294,7 @@ pub mod evaluator {
             );
             let bind_node = dag.push_bind("user_callable", two_n, vec![param], span());
             let callee_decl = alloc_arrow_decl_with_bind(&mut dag, bind_node, /* arity */ 1);
-            let twenty_one = dag.push_value(LiteralBits::Int(21), span());
+            let twenty_one = dag.push_value(literal_bits_int(21), span());
             let call_output = dag.push_transform(
                 TransformTarget::Callable(callee_decl),
                 vec![twenty_one],
@@ -3275,7 +3306,7 @@ pub mod evaluator {
             let value =
                 eval_node(&dag, entry, &mut state, &eager_strategy()).expect("user callable");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(42)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(42)));
             assert_eq!(state.frames_outer_to_inner().len(), 1, "frame popped");
         }
 
@@ -3296,8 +3327,8 @@ pub mod evaluator {
             );
             let bind_node = dag.push_bind("sub", body, vec![a, b], span());
             let callee_decl = alloc_arrow_decl_with_bind(&mut dag, bind_node, /* arity */ 2);
-            let ten = dag.push_value(LiteralBits::Int(10), span());
-            let three = dag.push_value(LiteralBits::Int(3), span());
+            let ten = dag.push_value(literal_bits_int(10), span());
+            let three = dag.push_value(literal_bits_int(3), span());
             let call_output = dag.push_transform(
                 TransformTarget::Callable(callee_decl),
                 vec![ten, three],
@@ -3308,7 +3339,7 @@ pub mod evaluator {
 
             let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("sub");
 
-            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+            assert_eq!(value, Value::LiteralValue(literal_bits_int(7)));
         }
 
         #[test]
@@ -3332,7 +3363,7 @@ pub mod evaluator {
         fn eval_bind_restores_stack_after_body_diagnostic() {
             let mut dag = Dag::new();
             let param = dag.alloc_port(None);
-            let one = dag.push_value(LiteralBits::Int(1), span());
+            let one = dag.push_value(literal_bits_int(1), span());
             let bad_body = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
                 vec![param, one],
@@ -3340,7 +3371,7 @@ pub mod evaluator {
             );
             let entry = dag.push_bind("bad", bad_body, vec![param], span());
             let caller =
-                EvalFrame::from_bindings([(param, Value::LiteralValue(LiteralBits::Int(8)))])
+                EvalFrame::from_bindings([(param, Value::LiteralValue(literal_bits_int(8)))])
                     .expect("caller frame");
             let mut state = EvalStateStack::with_root_frame(caller);
 
@@ -3356,7 +3387,7 @@ pub mod evaluator {
             assert_eq!(state.frames_outer_to_inner().len(), 1);
             assert_eq!(
                 state.lookup(param),
-                Ok(&Value::LiteralValue(LiteralBits::Int(8)))
+                Ok(&Value::LiteralValue(literal_bits_int(8)))
             );
         }
 
@@ -3522,7 +3553,7 @@ pub mod lens_unused_parameters {
     mod tests {
         use super::{UnusedParametersConfig, UnusedParametersLens};
         use crate::dag::{
-            BranchPattern, Dag, LiteralBits, LoopBound, Path, PortId, TransformTarget,
+            literal_bits_int, BranchPattern, Dag, LoopBound, Path, PortId, TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
         use crate::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
@@ -3545,7 +3576,7 @@ pub mod lens_unused_parameters {
         }
 
         fn int_value(dag: &mut Dag, value: i64) -> PortId {
-            dag.push_value(LiteralBits::Int(value), span())
+            dag.push_value(literal_bits_int(value), span())
         }
 
         fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
@@ -3981,8 +4012,8 @@ pub mod lens_cost {
     mod tests {
         use super::{cost_of, CostLookup};
         use crate::dag::{
-            ArithmeticOp, BranchPattern, Dag, LiteralBits, LoopBound, OperatorKind, Path, PortId,
-            TransformTarget,
+            literal_bits_int, ArithmeticOp, BranchPattern, Dag, LiteralBits, LoopBound,
+            OperatorKind, Path, PortId, TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
 
@@ -4002,7 +4033,7 @@ pub mod lens_cost {
         }
 
         fn int_value(dag: &mut Dag, value: i64) -> PortId {
-            dag.push_value(LiteralBits::Int(value), span())
+            dag.push_value(literal_bits_int(value), span())
         }
 
         fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
@@ -4028,15 +4059,15 @@ pub mod lens_cost {
         #[test]
         fn value_port_has_zero_cost() {
             let mut dag = Dag::new();
-            let port = dag.push_value(LiteralBits::Int(7), span());
+            let port = dag.push_value(literal_bits_int(7), span());
             assert_cost(&dag, port, 0);
         }
 
         #[test]
         fn transform_adds_one_to_sum_of_input_costs() {
             let mut dag = Dag::new();
-            let a = dag.push_value(LiteralBits::Int(1), span());
-            let b = dag.push_value(LiteralBits::Int(2), span());
+            let a = dag.push_value(literal_bits_int(1), span());
+            let b = dag.push_value(literal_bits_int(2), span());
             let sum = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![a, b],
@@ -4049,9 +4080,9 @@ pub mod lens_cost {
         fn chained_transforms_accumulate_through_input_edges() {
             // (1 + 2) + 3: outer transform = 1 + (inner=1) + (literal=0) = 2.
             let mut dag = Dag::new();
-            let a = dag.push_value(LiteralBits::Int(1), span());
-            let b = dag.push_value(LiteralBits::Int(2), span());
-            let c = dag.push_value(LiteralBits::Int(3), span());
+            let a = dag.push_value(literal_bits_int(1), span());
+            let b = dag.push_value(literal_bits_int(2), span());
+            let c = dag.push_value(literal_bits_int(3), span());
             let inner = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![a, b],
@@ -4111,9 +4142,9 @@ pub mod lens_cost {
         #[test]
         fn loop_cost_is_one_plus_source_plus_init() {
             let mut dag = Dag::new();
-            let source = dag.push_value(LiteralBits::Int(4), span());
-            let init = dag.push_value(LiteralBits::Int(0), span());
-            let body_output = dag.push_value(LiteralBits::Int(0), span());
+            let source = dag.push_value(literal_bits_int(4), span());
+            let init = dag.push_value(literal_bits_int(0), span());
+            let body_output = dag.push_value(literal_bits_int(0), span());
             let body = dag.push_bind("loop_body", body_output, Vec::new(), span());
             let loop_port = dag.push_loop(
                 source,
@@ -4129,8 +4160,8 @@ pub mod lens_cost {
         fn bind_cost_tracks_body_value_cost() {
             // let x = 1 + 2: bind.value is the Add transform (cost 1).
             let mut dag = Dag::new();
-            let a = dag.push_value(LiteralBits::Int(1), span());
-            let b = dag.push_value(LiteralBits::Int(2), span());
+            let a = dag.push_value(literal_bits_int(1), span());
+            let b = dag.push_value(literal_bits_int(2), span());
             let body = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![a, b],
@@ -4268,8 +4299,8 @@ pub mod lens_provenance {
     mod tests {
         use super::{origin_of, Origin};
         use crate::dag::{
-            ArithmeticOp, BranchPattern, Dag, LiteralBits, LoopBound, OperatorKind, Path,
-            TransformTarget,
+            literal_bits_int, ArithmeticOp, BranchPattern, Dag, LiteralBits, LoopBound,
+            OperatorKind, Path, TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
 
@@ -4300,15 +4331,15 @@ pub mod lens_provenance {
         #[test]
         fn value_port_reports_source_origin() {
             let mut dag = Dag::new();
-            let port = dag.push_value(LiteralBits::Int(1), span());
+            let port = dag.push_value(literal_bits_int(1), span());
             assert_eq!(label(&origin_of(&dag, &port)), "Source");
         }
 
         #[test]
         fn transform_port_reports_computed_origin() {
             let mut dag = Dag::new();
-            let a = dag.push_value(LiteralBits::Int(1), span());
-            let b = dag.push_value(LiteralBits::Int(2), span());
+            let a = dag.push_value(literal_bits_int(1), span());
+            let b = dag.push_value(literal_bits_int(2), span());
             let sum = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![a, b],
@@ -4321,7 +4352,7 @@ pub mod lens_provenance {
         fn branch_port_reports_selected_origin() {
             let mut dag = Dag::new();
             let cond = dag.push_value(LiteralBits::Bool(true), span());
-            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_output = dag.push_value(literal_bits_int(1), span());
             let arm_body = dag.push_bind("arm", arm_output, Vec::new(), span());
             let branch = dag.push_branch(
                 cond,
@@ -4342,9 +4373,9 @@ pub mod lens_provenance {
         #[test]
         fn loop_port_reports_accumulated_origin() {
             let mut dag = Dag::new();
-            let source = dag.push_value(LiteralBits::Int(4), span());
-            let init = dag.push_value(LiteralBits::Int(0), span());
-            let body_output = dag.push_value(LiteralBits::Int(0), span());
+            let source = dag.push_value(literal_bits_int(4), span());
+            let init = dag.push_value(literal_bits_int(0), span());
+            let body_output = dag.push_value(literal_bits_int(0), span());
             let body = dag.push_bind("loop_body", body_output, Vec::new(), span());
             let loop_port = dag.push_loop(
                 source,
@@ -4363,8 +4394,8 @@ pub mod lens_provenance {
             // and reports Computed. A Bind's own output is only reached
             // when something references the Bind node directly.
             let mut dag = Dag::new();
-            let a = dag.push_value(LiteralBits::Int(1), span());
-            let b = dag.push_value(LiteralBits::Int(2), span());
+            let a = dag.push_value(literal_bits_int(1), span());
+            let b = dag.push_value(literal_bits_int(2), span());
             let body = dag.push_transform(
                 TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![a, b],
@@ -4673,7 +4704,7 @@ pub(crate) mod lower_helpers {
         fn expr_span_matches_variant_span_field() {
             let span = SourceSpan::new("t.v3", 10, 20);
             let e = SurfaceExpr::Literal {
-                value: crate::parse_surface::SurfaceLiteral::Int(1),
+                value: crate::parse_surface::SurfaceLiteral::Int("1".into()),
                 span: span.clone(),
             };
             assert_eq!(expr_span(&e), span);
@@ -4689,7 +4720,7 @@ pub(crate) mod lower_helpers {
                     name: "x".into(),
                     type_ann: None,
                     expr: SurfaceExpr::Literal {
-                        value: crate::parse_surface::SurfaceLiteral::Int(1),
+                        value: crate::parse_surface::SurfaceLiteral::Int("1".into()),
                         span: expr_span_value.clone(),
                     },
                 }),
@@ -4705,7 +4736,7 @@ pub(crate) mod lower_helpers {
                         span: item_span_value.clone(),
                     },
                     body: SurfaceExpr::Literal {
-                        value: crate::parse_surface::SurfaceLiteral::Int(1),
+                        value: crate::parse_surface::SurfaceLiteral::Int("1".into()),
                         span: expr_span_value,
                     },
                     span: item_span_value.clone(),
@@ -5297,7 +5328,7 @@ mod signed_decimal_int_literal_tests {
         let tokens =
             tokenize("-2147483648", "signed_decimal_int_literal_tests.v3").expect("tokenize");
         assert!(
-            matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::IntLit(n)) if *n == -2147483648),
+            matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::IntLit(n)) if n == "-2147483648"),
             "expected `-2147483648` as one token; got {:?}",
             tokens.first().map(|t| &t.kind)
         );
@@ -5313,7 +5344,7 @@ mod signed_decimal_int_literal_tests {
         let tokens =
             tokenize("-9223372036854775808", "signed_decimal_i64_min.v3").expect("tokenize");
         assert!(
-            matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::IntLit(n)) if *n == i64::MIN),
+            matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::IntLit(n)) if n == "-9223372036854775808"),
             "expected i64::MIN as one token; got {:?}",
             tokens.first().map(|t| &t.kind)
         );
@@ -5328,9 +5359,9 @@ mod signed_decimal_int_literal_tests {
     fn infix_minus_without_whitespace_stays_binary_minus() {
         let tokens = tokenize("1-1", "infix_minus.v3").expect("tokenize");
         assert!(tokens.len() >= 4, "expected literal, minus, literal, EOF");
-        assert!(matches!(&tokens[0].kind, TokenKind::IntLit(1)));
+        assert!(matches!(&tokens[0].kind, TokenKind::IntLit(s) if s == "1"));
         assert!(matches!(&tokens[1].kind, TokenKind::Minus));
-        assert!(matches!(&tokens[2].kind, TokenKind::IntLit(1)));
+        assert!(matches!(&tokens[2].kind, TokenKind::IntLit(s) if s == "1"));
         assert!(matches!(&tokens[3].kind, TokenKind::Eof));
     }
 
@@ -5343,7 +5374,7 @@ mod signed_decimal_int_literal_tests {
             TokenKind::Ident(x) if x == "x"
         ));
         assert!(matches!(&tokens[1].kind, TokenKind::Minus));
-        assert!(matches!(&tokens[2].kind, TokenKind::IntLit(1)));
+        assert!(matches!(&tokens[2].kind, TokenKind::IntLit(s) if s == "1"));
         assert!(matches!(&tokens[3].kind, TokenKind::Eof));
     }
 
@@ -5352,7 +5383,7 @@ mod signed_decimal_int_literal_tests {
         let tokens = tokenize("=-42", "eq_unary.v3").expect("tokenize");
         assert!(tokens.len() >= 3, "expected Eq, signed literal, EOF");
         assert!(matches!(&tokens[0].kind, TokenKind::Eq));
-        assert!(matches!(&tokens[1].kind, TokenKind::IntLit(-42)));
+        assert!(matches!(&tokens[1].kind, TokenKind::IntLit(s) if s == "-42"));
         assert!(matches!(&tokens[2].kind, TokenKind::Eof));
     }
 }

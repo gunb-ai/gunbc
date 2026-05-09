@@ -2144,13 +2144,19 @@ fn parse_callable_parameter(
             declaration,
             detail: "CallableParameter is missing required `slot` field",
         })?;
-    let FieldValue::Literal(LiteralBits::Int(slot_int)) = slot else {
+    let FieldValue::Literal(LiteralBits::Int(slot_str)) = slot else {
         return Err(EmitError::MalformedRealization {
             declaration,
             detail: "CallableParameter.slot must be an Int literal",
         });
     };
-    if *slot_int < 0 {
+    let Some(slot_int) = crate::dag::literal_decimal_i64(slot_str.as_str()) else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter.slot must be a decimal Int literal",
+        });
+    };
+    if slot_int < 0 {
         return Err(EmitError::MalformedRealization {
             declaration,
             detail: "CallableParameter.slot must be non-negative",
@@ -2165,7 +2171,7 @@ fn parse_callable_parameter(
             detail: "CallableParameter is missing required `disposition` field",
         })?;
     let disposition = parse_parameter_disposition(dag, disposition_value, declaration)?;
-    Ok((*slot_int as usize, disposition))
+    Ok((slot_int as usize, disposition))
 }
 
 fn parse_parameter_disposition(
@@ -5828,7 +5834,7 @@ fn rust_string_literal_body(s: &str) -> String {
 
 fn render_value(v: &ValueNode, literals: &LiteralSyntaxBinding) -> String {
     match &v.data {
-        LiteralBits::Int(n) => n.to_string(),
+        LiteralBits::Int(decimal) => decimal.clone(),
         LiteralBits::Bool(true) => literals.true_keyword.clone(),
         LiteralBits::Bool(false) => literals.false_keyword.clone(),
         LiteralBits::String(s) => format!(
@@ -6421,7 +6427,7 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
             FieldValue::Record(vec![
                 (
                     "slot".to_string(),
-                    FieldValue::Literal(LiteralBits::Int(slot)),
+                    FieldValue::Literal(LiteralBits::Int(slot.to_string())),
                 ),
                 (
                     "disposition".to_string(),

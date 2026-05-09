@@ -34,7 +34,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         let mut nodes = Vec::with_capacity(33);
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(0),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(1),
             span: SourceSpan::new("dsl/std/integer.dag", 9551, 9558),
             lane2_workflow: None,
@@ -57,7 +57,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(3),
-            data: LiteralBits::Int(1),
+            data: LiteralBits::Int("1".to_string()),
             output: PortId(4),
             span: SourceSpan::new("dsl/std/types.dag", 10886, 10907),
             lane2_workflow: None,
@@ -71,7 +71,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(5),
-            data: LiteralBits::Int(5),
+            data: LiteralBits::Int("5".to_string()),
             output: PortId(6),
             span: SourceSpan::new("dsl/std/types.dag", 10886, 10907),
             lane2_workflow: None,
@@ -101,7 +101,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(9),
-            data: LiteralBits::Int(100),
+            data: LiteralBits::Int("100".to_string()),
             output: PortId(10),
             span: SourceSpan::new("dsl/std/types.dag", 10938, 10963),
             lane2_workflow: None,
@@ -115,7 +115,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(11),
-            data: LiteralBits::Int(599),
+            data: LiteralBits::Int("599".to_string()),
             output: PortId(12),
             span: SourceSpan::new("dsl/std/types.dag", 10938, 10963),
             lane2_workflow: None,
@@ -145,7 +145,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(15),
-            data: LiteralBits::Int(1),
+            data: LiteralBits::Int("1".to_string()),
             output: PortId(16),
             span: SourceSpan::new("dsl/std/types.dag", 11094, 11119),
             lane2_workflow: None,
@@ -159,7 +159,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(17),
-            data: LiteralBits::Int(65535),
+            data: LiteralBits::Int("65535".to_string()),
             output: PortId(18),
             span: SourceSpan::new("dsl/std/types.dag", 11094, 11119),
             lane2_workflow: None,
@@ -189,7 +189,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(21),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(22),
             span: SourceSpan::new("dsl/std/types.dag", 13381, 13394),
             lane2_workflow: None,
@@ -212,7 +212,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(24),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(25),
             span: SourceSpan::new("dsl/std/types.dag", 13426, 13439),
             lane2_workflow: None,
@@ -235,7 +235,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(27),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(28),
             span: SourceSpan::new("dsl/std/types.dag", 13952, 13965),
             lane2_workflow: None,
@@ -258,7 +258,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(30),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(31),
             span: SourceSpan::new("dsl/std/types.dag", 13997, 14010),
             lane2_workflow: None,
@@ -3076,9 +3076,18 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             inhabits: None,
             value_body: Some(ValueBody::Map(
                 FieldMap::from_entries(vec![
-                    ("List".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
-                    ("Set".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
-                    ("Map".to_string(), FieldValue::Literal(LiteralBits::Int(2))),
+                    (
+                        "List".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
+                    (
+                        "Set".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
+                    (
+                        "Map".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("2".to_string())),
+                    ),
                 ])
                 .expect("ValueBody::Map"),
             )),
@@ -5808,11 +5817,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(768)),
+                        FieldValue::Literal(LiteralBits::Int("768".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(879)),
+                        FieldValue::Literal(LiteralBits::Int("879".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -5831,11 +5840,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(6832)),
+                        FieldValue::Literal(LiteralBits::Int("6832".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(6911)),
+                        FieldValue::Literal(LiteralBits::Int("6911".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -5854,11 +5863,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(7616)),
+                        FieldValue::Literal(LiteralBits::Int("7616".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(7679)),
+                        FieldValue::Literal(LiteralBits::Int("7679".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -5877,11 +5886,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(8400)),
+                        FieldValue::Literal(LiteralBits::Int("8400".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(8447)),
+                        FieldValue::Literal(LiteralBits::Int("8447".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -5898,11 +5907,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65024)),
+                        FieldValue::Literal(LiteralBits::Int("65024".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65039)),
+                        FieldValue::Literal(LiteralBits::Int("65039".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -5921,11 +5930,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65056)),
+                        FieldValue::Literal(LiteralBits::Int("65056".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65071)),
+                        FieldValue::Literal(LiteralBits::Int("65071".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -5956,10 +5965,10 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
-                FieldValue::Literal(LiteralBits::Int(8203)),
-                FieldValue::Literal(LiteralBits::Int(8204)),
-                FieldValue::Literal(LiteralBits::Int(8205)),
-                FieldValue::Literal(LiteralBits::Int(65279)),
+                FieldValue::Literal(LiteralBits::Int("8203".to_string())),
+                FieldValue::Literal(LiteralBits::Int("8204".to_string())),
+                FieldValue::Literal(LiteralBits::Int("8205".to_string())),
+                FieldValue::Literal(LiteralBits::Int("65279".to_string())),
             ])),
             refinement: None,
             nominal_opacity: None,
@@ -5988,11 +5997,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(4352)),
+                        FieldValue::Literal(LiteralBits::Int("4352".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(4447)),
+                        FieldValue::Literal(LiteralBits::Int("4447".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6011,11 +6020,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(11904)),
+                        FieldValue::Literal(LiteralBits::Int("11904".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(12350)),
+                        FieldValue::Literal(LiteralBits::Int("12350".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6034,11 +6043,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(12353)),
+                        FieldValue::Literal(LiteralBits::Int("12353".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(13247)),
+                        FieldValue::Literal(LiteralBits::Int("13247".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6055,11 +6064,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(13312)),
+                        FieldValue::Literal(LiteralBits::Int("13312".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(19903)),
+                        FieldValue::Literal(LiteralBits::Int("19903".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6078,11 +6087,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(19968)),
+                        FieldValue::Literal(LiteralBits::Int("19968".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(40959)),
+                        FieldValue::Literal(LiteralBits::Int("40959".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6101,11 +6110,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(40960)),
+                        FieldValue::Literal(LiteralBits::Int("40960".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(42191)),
+                        FieldValue::Literal(LiteralBits::Int("42191".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6122,11 +6131,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(44032)),
+                        FieldValue::Literal(LiteralBits::Int("44032".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(55215)),
+                        FieldValue::Literal(LiteralBits::Int("55215".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6145,11 +6154,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(63744)),
+                        FieldValue::Literal(LiteralBits::Int("63744".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(64255)),
+                        FieldValue::Literal(LiteralBits::Int("64255".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6168,11 +6177,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65072)),
+                        FieldValue::Literal(LiteralBits::Int("65072".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65135)),
+                        FieldValue::Literal(LiteralBits::Int("65135".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6189,11 +6198,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65281)),
+                        FieldValue::Literal(LiteralBits::Int("65281".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65376)),
+                        FieldValue::Literal(LiteralBits::Int("65376".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6210,11 +6219,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65504)),
+                        FieldValue::Literal(LiteralBits::Int("65504".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65510)),
+                        FieldValue::Literal(LiteralBits::Int("65510".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6231,11 +6240,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(131072)),
+                        FieldValue::Literal(LiteralBits::Int("131072".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(196607)),
+                        FieldValue::Literal(LiteralBits::Int("196607".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6252,11 +6261,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(196608)),
+                        FieldValue::Literal(LiteralBits::Int("196608".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(262143)),
+                        FieldValue::Literal(LiteralBits::Int("262143".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6275,11 +6284,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(9728)),
+                        FieldValue::Literal(LiteralBits::Int("9728".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(10175)),
+                        FieldValue::Literal(LiteralBits::Int("10175".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6298,11 +6307,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(127744)),
+                        FieldValue::Literal(LiteralBits::Int("127744".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(129535)),
+                        FieldValue::Literal(LiteralBits::Int("129535".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -6319,11 +6328,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(129536)),
+                        FieldValue::Literal(LiteralBits::Int("129536".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(131071)),
+                        FieldValue::Literal(LiteralBits::Int("131071".to_string())),
                     ),
                     (
                         "default_width".to_string(),

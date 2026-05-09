@@ -34,7 +34,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         let mut nodes = Vec::with_capacity(597);
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(0),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(1),
             span: SourceSpan::new("dsl/std/integer.dag", 9551, 9558),
             lane2_workflow: None,
@@ -57,7 +57,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(3),
-            data: LiteralBits::Int(1),
+            data: LiteralBits::Int("1".to_string()),
             output: PortId(4),
             span: SourceSpan::new("dsl/std/types.dag", 10886, 10907),
             lane2_workflow: None,
@@ -71,7 +71,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(5),
-            data: LiteralBits::Int(5),
+            data: LiteralBits::Int("5".to_string()),
             output: PortId(6),
             span: SourceSpan::new("dsl/std/types.dag", 10886, 10907),
             lane2_workflow: None,
@@ -101,7 +101,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(9),
-            data: LiteralBits::Int(100),
+            data: LiteralBits::Int("100".to_string()),
             output: PortId(10),
             span: SourceSpan::new("dsl/std/types.dag", 10938, 10963),
             lane2_workflow: None,
@@ -115,7 +115,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(11),
-            data: LiteralBits::Int(599),
+            data: LiteralBits::Int("599".to_string()),
             output: PortId(12),
             span: SourceSpan::new("dsl/std/types.dag", 10938, 10963),
             lane2_workflow: None,
@@ -145,7 +145,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(15),
-            data: LiteralBits::Int(1),
+            data: LiteralBits::Int("1".to_string()),
             output: PortId(16),
             span: SourceSpan::new("dsl/std/types.dag", 11094, 11119),
             lane2_workflow: None,
@@ -159,7 +159,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(17),
-            data: LiteralBits::Int(65535),
+            data: LiteralBits::Int("65535".to_string()),
             output: PortId(18),
             span: SourceSpan::new("dsl/std/types.dag", 11094, 11119),
             lane2_workflow: None,
@@ -189,7 +189,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(21),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(22),
             span: SourceSpan::new("dsl/std/types.dag", 13381, 13394),
             lane2_workflow: None,
@@ -212,7 +212,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(24),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(25),
             span: SourceSpan::new("dsl/std/types.dag", 13426, 13439),
             lane2_workflow: None,
@@ -235,7 +235,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(27),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(28),
             span: SourceSpan::new("dsl/std/types.dag", 13952, 13965),
             lane2_workflow: None,
@@ -258,7 +258,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(30),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(31),
             span: SourceSpan::new("dsl/std/types.dag", 13997, 14010),
             lane2_workflow: None,
@@ -287,7 +287,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(34)],
             output: PortId(35),
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17729, 17734),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18045, 18050),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(34),
@@ -297,7 +297,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(36)],
             output: PortId(37),
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17767, 17774),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18083, 18090),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(35),
@@ -308,7 +308,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(35),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cardinality".to_string(),
-                        span: SourceSpan::new("src/v3/std/substrate.dag", 17697, 17717),
+                        span: SourceSpan::new("src/v3/std/substrate.dag", 18013, 18033),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -320,7 +320,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(37),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Descent".to_string(),
-                        span: SourceSpan::new("src/v3/std/substrate.dag", 17739, 17755),
+                        span: SourceSpan::new("src/v3/std/substrate.dag", 18055, 18071),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -329,7 +329,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(38),
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17679, 17778),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17995, 18094),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -337,7 +337,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "loop_bound_measure".to_string(),
             value: PortId(38),
             params: vec![PortId(33)],
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17679, 17778),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17995, 18094),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -508,7 +508,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(55),
-            data: LiteralBits::Int(2),
+            data: LiteralBits::Int("2".to_string()),
             output: PortId(63),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11941, 11942),
             lane2_workflow: None,
@@ -532,7 +532,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(58),
-            data: LiteralBits::Int(1),
+            data: LiteralBits::Int("1".to_string()),
             output: PortId(67),
             span: SourceSpan::new("src/v3/std/algebra.dag", 12006, 12007),
             lane2_workflow: None,
@@ -754,7 +754,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(79),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(92),
             span: SourceSpan::new("src/v3/std/algebra.dag", 14227, 14228),
             lane2_workflow: None,
@@ -3184,7 +3184,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(243),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(307),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23136, 23137),
             lane2_workflow: None,
@@ -3494,7 +3494,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(271),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(338),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23885, 23886),
             lane2_workflow: None,
@@ -3652,7 +3652,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(281),
-            data: LiteralBits::Int(1),
+            data: LiteralBits::Int("1".to_string()),
             output: PortId(355),
             span: SourceSpan::new("src/v3/std/algebra.dag", 24140, 24141),
             lane2_workflow: None,
@@ -3810,7 +3810,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(291),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(371),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25193, 25194),
             lane2_workflow: None,
@@ -3954,7 +3954,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(303),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(385),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25464, 25465),
             lane2_workflow: None,
@@ -4101,7 +4101,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(315),
-            data: LiteralBits::Int(1),
+            data: LiteralBits::Int("1".to_string()),
             output: PortId(399),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25930, 25931),
             lane2_workflow: None,
@@ -5020,7 +5020,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(390),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(502),
             span: SourceSpan::new("src/v3/std/induction.dag", 29112, 29113),
             lane2_workflow: None,
@@ -5861,7 +5861,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(457),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(579),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7610, 7611),
             lane2_workflow: None,
@@ -6118,14 +6118,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(481),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(607),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9165, 9166),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(482),
-            data: LiteralBits::Int(0),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(608),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9176, 9177),
             lane2_workflow: None,
@@ -10384,9 +10384,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Map(
                 FieldMap::from_entries(vec![
-                    ("List".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
-                    ("Set".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
-                    ("Map".to_string(), FieldValue::Literal(LiteralBits::Int(2))),
+                    (
+                        "List".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
+                    (
+                        "Set".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
+                    (
+                        "Map".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("2".to_string())),
+                    ),
                 ])
                 .expect("ValueBody::Map"),
             )),
@@ -13116,11 +13125,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(768)),
+                        FieldValue::Literal(LiteralBits::Int("768".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(879)),
+                        FieldValue::Literal(LiteralBits::Int("879".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13139,11 +13148,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(6832)),
+                        FieldValue::Literal(LiteralBits::Int("6832".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(6911)),
+                        FieldValue::Literal(LiteralBits::Int("6911".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13162,11 +13171,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(7616)),
+                        FieldValue::Literal(LiteralBits::Int("7616".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(7679)),
+                        FieldValue::Literal(LiteralBits::Int("7679".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13185,11 +13194,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(8400)),
+                        FieldValue::Literal(LiteralBits::Int("8400".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(8447)),
+                        FieldValue::Literal(LiteralBits::Int("8447".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13206,11 +13215,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65024)),
+                        FieldValue::Literal(LiteralBits::Int("65024".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65039)),
+                        FieldValue::Literal(LiteralBits::Int("65039".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13229,11 +13238,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65056)),
+                        FieldValue::Literal(LiteralBits::Int("65056".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65071)),
+                        FieldValue::Literal(LiteralBits::Int("65071".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13264,10 +13273,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
-                FieldValue::Literal(LiteralBits::Int(8203)),
-                FieldValue::Literal(LiteralBits::Int(8204)),
-                FieldValue::Literal(LiteralBits::Int(8205)),
-                FieldValue::Literal(LiteralBits::Int(65279)),
+                FieldValue::Literal(LiteralBits::Int("8203".to_string())),
+                FieldValue::Literal(LiteralBits::Int("8204".to_string())),
+                FieldValue::Literal(LiteralBits::Int("8205".to_string())),
+                FieldValue::Literal(LiteralBits::Int("65279".to_string())),
             ])),
             refinement: None,
             nominal_opacity: None,
@@ -13296,11 +13305,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(4352)),
+                        FieldValue::Literal(LiteralBits::Int("4352".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(4447)),
+                        FieldValue::Literal(LiteralBits::Int("4447".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13319,11 +13328,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(11904)),
+                        FieldValue::Literal(LiteralBits::Int("11904".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(12350)),
+                        FieldValue::Literal(LiteralBits::Int("12350".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13342,11 +13351,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(12353)),
+                        FieldValue::Literal(LiteralBits::Int("12353".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(13247)),
+                        FieldValue::Literal(LiteralBits::Int("13247".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13363,11 +13372,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(13312)),
+                        FieldValue::Literal(LiteralBits::Int("13312".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(19903)),
+                        FieldValue::Literal(LiteralBits::Int("19903".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13386,11 +13395,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(19968)),
+                        FieldValue::Literal(LiteralBits::Int("19968".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(40959)),
+                        FieldValue::Literal(LiteralBits::Int("40959".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13409,11 +13418,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(40960)),
+                        FieldValue::Literal(LiteralBits::Int("40960".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(42191)),
+                        FieldValue::Literal(LiteralBits::Int("42191".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13430,11 +13439,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(44032)),
+                        FieldValue::Literal(LiteralBits::Int("44032".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(55215)),
+                        FieldValue::Literal(LiteralBits::Int("55215".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13453,11 +13462,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(63744)),
+                        FieldValue::Literal(LiteralBits::Int("63744".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(64255)),
+                        FieldValue::Literal(LiteralBits::Int("64255".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13476,11 +13485,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65072)),
+                        FieldValue::Literal(LiteralBits::Int("65072".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65135)),
+                        FieldValue::Literal(LiteralBits::Int("65135".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13497,11 +13506,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65281)),
+                        FieldValue::Literal(LiteralBits::Int("65281".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65376)),
+                        FieldValue::Literal(LiteralBits::Int("65376".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13518,11 +13527,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65504)),
+                        FieldValue::Literal(LiteralBits::Int("65504".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(65510)),
+                        FieldValue::Literal(LiteralBits::Int("65510".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13539,11 +13548,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(131072)),
+                        FieldValue::Literal(LiteralBits::Int("131072".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(196607)),
+                        FieldValue::Literal(LiteralBits::Int("196607".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13560,11 +13569,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(196608)),
+                        FieldValue::Literal(LiteralBits::Int("196608".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(262143)),
+                        FieldValue::Literal(LiteralBits::Int("262143".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13583,11 +13592,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(9728)),
+                        FieldValue::Literal(LiteralBits::Int("9728".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(10175)),
+                        FieldValue::Literal(LiteralBits::Int("10175".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13606,11 +13615,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(127744)),
+                        FieldValue::Literal(LiteralBits::Int("127744".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(129535)),
+                        FieldValue::Literal(LiteralBits::Int("129535".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -13627,11 +13636,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     ),
                     (
                         "start".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(129536)),
+                        FieldValue::Literal(LiteralBits::Int("129536".to_string())),
                     ),
                     (
                         "end_inclusive".to_string(),
-                        FieldValue::Literal(LiteralBits::Int(131071)),
+                        FieldValue::Literal(LiteralBits::Int("131071".to_string())),
                     ),
                     (
                         "default_width".to_string(),
@@ -23262,7 +23271,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 770, 842),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 1083, 1158),
         });
         declarations.push(Declaration {
             id: DeclarationId(762),
@@ -23299,7 +23308,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 2954, 3123),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 3270, 3439),
         });
         declarations.push(Declaration {
             id: DeclarationId(763),
@@ -23328,7 +23337,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 3716, 5397),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 4032, 5713),
         });
         declarations.push(Declaration {
             id: DeclarationId(764),
@@ -23353,7 +23362,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5399, 5472),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5715, 5788),
         });
         declarations.push(Declaration {
             id: DeclarationId(765),
@@ -23378,7 +23387,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5763, 5848),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6079, 6164),
         });
         declarations.push(Declaration {
             id: DeclarationId(766),
@@ -23392,7 +23401,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5763, 5848),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6079, 6164),
         });
         declarations.push(Declaration {
             id: DeclarationId(767),
@@ -23412,7 +23421,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5998, 6030),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6314, 6346),
         });
         declarations.push(Declaration {
             id: DeclarationId(768),
@@ -23437,7 +23446,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6386, 6460),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6702, 6776),
         });
         declarations.push(Declaration {
             id: DeclarationId(769),
@@ -23466,7 +23475,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6685, 6749),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7001, 7065),
         });
         declarations.push(Declaration {
             id: DeclarationId(770),
@@ -23491,7 +23500,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6751, 6805),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7067, 7121),
         });
         declarations.push(Declaration {
             id: DeclarationId(771),
@@ -23516,7 +23525,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6807, 6882),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7123, 7198),
         });
         declarations.push(Declaration {
             id: DeclarationId(772),
@@ -23541,7 +23550,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6884, 6939),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7200, 7255),
         });
         declarations.push(Declaration {
             id: DeclarationId(773),
@@ -23582,7 +23591,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7156, 7392),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7472, 7708),
         });
         declarations.push(Declaration {
             id: DeclarationId(774),
@@ -23619,7 +23628,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 8986, 9191),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9302, 9507),
         });
         declarations.push(Declaration {
             id: DeclarationId(775),
@@ -23638,7 +23647,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10095, 10129),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 10411, 10445),
         });
         declarations.push(Declaration {
             id: DeclarationId(776),
@@ -23675,7 +23684,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10426, 10555),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 10742, 10871),
         });
         declarations.push(Declaration {
             id: DeclarationId(777),
@@ -23716,7 +23725,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10760, 11160),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11076, 11476),
         });
         declarations.push(Declaration {
             id: DeclarationId(778),
@@ -23773,7 +23782,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11162, 11456),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11478, 11772),
         });
         declarations.push(Declaration {
             id: DeclarationId(779),
@@ -23798,7 +23807,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11929, 12006),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12245, 12322),
         });
         declarations.push(Declaration {
             id: DeclarationId(780),
@@ -23817,7 +23826,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12513, 12579),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12829, 12895),
         });
         declarations.push(Declaration {
             id: DeclarationId(781),
@@ -23850,7 +23859,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12836, 12885),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13152, 13201),
         });
         declarations.push(Declaration {
             id: DeclarationId(782),
@@ -23891,7 +23900,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12987, 13046),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13303, 13362),
         });
         declarations.push(Declaration {
             id: DeclarationId(783),
@@ -23916,7 +23925,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13501, 13570),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13817, 13886),
         });
         declarations.push(Declaration {
             id: DeclarationId(784),
@@ -23941,7 +23950,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13804, 13833),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14120, 14149),
         });
         declarations.push(Declaration {
             id: DeclarationId(785),
@@ -23970,7 +23979,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14047, 14145),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14363, 14461),
         });
         declarations.push(Declaration {
             id: DeclarationId(786),
@@ -23999,7 +24008,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14307, 14467),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14623, 14783),
         });
         declarations.push(Declaration {
             id: DeclarationId(787),
@@ -24024,7 +24033,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14569, 14679),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14885, 14995),
         });
         declarations.push(Declaration {
             id: DeclarationId(788),
@@ -24049,7 +24058,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14681, 14750),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14997, 15066),
         });
         declarations.push(Declaration {
             id: DeclarationId(789),
@@ -24082,7 +24091,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14752, 14860),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15068, 15176),
         });
         declarations.push(Declaration {
             id: DeclarationId(790),
@@ -24107,7 +24116,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15459, 15505),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15775, 15821),
         });
         declarations.push(Declaration {
             id: DeclarationId(791),
@@ -24126,7 +24135,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16017, 16053),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16333, 16369),
         });
         declarations.push(Declaration {
             id: DeclarationId(792),
@@ -24145,7 +24154,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16670, 16711),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16986, 17027),
         });
         declarations.push(Declaration {
             id: DeclarationId(793),
@@ -24159,7 +24168,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16670, 16711),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16986, 17027),
         });
         declarations.push(Declaration {
             id: DeclarationId(794),
@@ -24178,7 +24187,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16713, 16753),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17029, 17069),
         });
         declarations.push(Declaration {
             id: DeclarationId(795),
@@ -24197,7 +24206,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16755, 16806),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17071, 17122),
         });
         declarations.push(Declaration {
             id: DeclarationId(796),
@@ -24222,7 +24231,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16808, 16921),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17124, 17237),
         });
         declarations.push(Declaration {
             id: DeclarationId(797),
@@ -24247,7 +24256,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17523, 17623),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17839, 17939),
         });
         declarations.push(Declaration {
             id: DeclarationId(798),
@@ -24265,7 +24274,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17625, 17778),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17941, 18094),
         });
         declarations.push(Declaration {
             id: DeclarationId(799),
@@ -24302,7 +24311,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17780, 17909),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18096, 18225),
         });
         declarations.push(Declaration {
             id: DeclarationId(800),
@@ -24339,7 +24348,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17911, 18036),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18227, 18352),
         });
         declarations.push(Declaration {
             id: DeclarationId(801),
@@ -24358,7 +24367,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18201, 18243),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18517, 18559),
         });
         declarations.push(Declaration {
             id: DeclarationId(802),
@@ -24399,7 +24408,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18245, 18407),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18561, 18723),
         });
         declarations.push(Declaration {
             id: DeclarationId(803),
@@ -24444,7 +24453,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18409, 18546),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18725, 18862),
         });
         declarations.push(Declaration {
             id: DeclarationId(804),
@@ -24463,7 +24472,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18788, 18831),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19104, 19147),
         });
         declarations.push(Declaration {
             id: DeclarationId(805),
@@ -24508,7 +24517,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18833, 19021),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19149, 19337),
         });
         declarations.push(Declaration {
             id: DeclarationId(806),
@@ -24545,7 +24554,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19093, 19217),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19409, 19533),
         });
         declarations.push(Declaration {
             id: DeclarationId(807),
@@ -24578,7 +24587,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19219, 19338),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19535, 19654),
         });
         declarations.push(Declaration {
             id: DeclarationId(808),
@@ -24597,7 +24606,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 20690, 20745),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 21006, 21061),
         });
         declarations.push(Declaration {
             id: DeclarationId(809),
@@ -24626,7 +24635,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21512, 21629),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 21828, 21945),
         });
         declarations.push(Declaration {
             id: DeclarationId(810),
@@ -24636,8 +24645,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1737),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    21671,
-                    21686,
+                    21987,
+                    22002,
                 )),
             },
             type_params: vec![],
@@ -24648,7 +24657,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21631, 21686),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 21947, 22002),
         });
         declarations.push(Declaration {
             id: DeclarationId(811),
@@ -24658,8 +24667,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1738),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    21729,
-                    21744,
+                    22045,
+                    22060,
                 )),
             },
             type_params: vec![],
@@ -24670,7 +24679,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21688, 21744),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22004, 22060),
         });
         declarations.push(Declaration {
             id: DeclarationId(812),
@@ -24680,8 +24689,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1739),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    21804,
-                    21831,
+                    22120,
+                    22147,
                 )),
             },
             type_params: vec![],
@@ -24692,7 +24701,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21746, 21831),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22062, 22147),
         });
         declarations.push(Declaration {
             id: DeclarationId(813),
@@ -24702,8 +24711,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1740),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    22193,
-                    22221,
+                    22509,
+                    22537,
                 )),
             },
             type_params: vec![],
@@ -24714,7 +24723,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22129, 22221),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22445, 22537),
         });
         declarations.push(Declaration {
             id: DeclarationId(814),
@@ -24724,8 +24733,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1741),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    23068,
-                    23098,
+                    23384,
+                    23414,
                 )),
             },
             type_params: vec![],
@@ -24736,7 +24745,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 23007, 23098),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 23323, 23414),
         });
         declarations.push(Declaration {
             id: DeclarationId(815),
@@ -24746,8 +24755,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1742),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    23394,
-                    23429,
+                    23710,
+                    23745,
                 )),
             },
             type_params: vec![],
@@ -24758,7 +24767,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 23334, 23429),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 23650, 23745),
         });
         declarations.push(Declaration {
             id: DeclarationId(816),
@@ -24787,7 +24796,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 25397, 25507),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 25713, 25823),
         });
         declarations.push(Declaration {
             id: DeclarationId(817),
@@ -24797,8 +24806,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(816),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    27013,
-                    27042,
+                    27329,
+                    27358,
                 )),
             },
             type_params: vec![],
@@ -24809,7 +24818,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 26967, 27042),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 27283, 27358),
         });
         declarations.push(Declaration {
             id: DeclarationId(818),
@@ -24819,8 +24828,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1743),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    27399,
-                    27409,
+                    27715,
+                    27725,
                 )),
             },
             type_params: vec![],
@@ -24831,7 +24840,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 27342, 27409),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 27658, 27725),
         });
         declarations.push(Declaration {
             id: DeclarationId(819),
@@ -24841,8 +24850,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1744),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    27484,
-                    27497,
+                    27800,
+                    27813,
                 )),
             },
             type_params: vec![],
@@ -24853,7 +24862,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 27411, 27497),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 27727, 27813),
         });
         declarations.push(Declaration {
             id: DeclarationId(820),
@@ -37413,7 +37422,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 627, 1137),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 627, 1220),
         });
         declarations.push(Declaration {
             id: DeclarationId(1191),
@@ -37438,7 +37447,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1272, 1323),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1355, 1406),
         });
         declarations.push(Declaration {
             id: DeclarationId(1192),
@@ -37507,7 +37516,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1682, 1848),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1765, 1931),
         });
         declarations.push(Declaration {
             id: DeclarationId(1193),
@@ -37636,7 +37645,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2264, 2570),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2347, 2653),
         });
         declarations.push(Declaration {
             id: DeclarationId(1194),
@@ -37661,7 +37670,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2780, 2844),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2863, 2927),
         });
         declarations.push(Declaration {
             id: DeclarationId(1195),
@@ -37686,7 +37695,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 3231, 3297),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 3314, 3380),
         });
         declarations.push(Declaration {
             id: DeclarationId(1196),
@@ -38543,7 +38552,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -38581,7 +38593,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -38621,13 +38636,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             payload: vec![FieldValue::Variant {
                                 constructor: DeclarationId(1762),
                                 payload: vec![
-                                    FieldValue::Literal(LiteralBits::Int(-2147483648)),
+                                    FieldValue::Literal(LiteralBits::Int(
+                                        "-2147483648".to_string(),
+                                    )),
                                     FieldValue::Variant {
                                         constructor: DeclarationId(1761),
                                         payload: vec![FieldValue::Variant {
                                             constructor: DeclarationId(1759),
                                             payload: vec![FieldValue::Literal(LiteralBits::Int(
-                                                4294967295,
+                                                "4294967295".to_string(),
                                             ))],
                                         }],
                                     },
@@ -38719,7 +38736,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -38757,7 +38777,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -38795,7 +38818,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -38833,7 +38859,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -38871,7 +38900,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -38909,7 +38941,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -38968,7 +39003,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39006,7 +39044,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39107,7 +39148,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39206,7 +39250,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39244,7 +39291,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39282,7 +39332,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39320,7 +39373,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39358,7 +39414,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39398,7 +39457,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39436,7 +39498,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39516,7 +39581,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39598,7 +39666,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39680,7 +39751,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39741,7 +39815,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39821,7 +39898,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -39901,7 +39981,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40000,7 +40083,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40080,7 +40166,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40139,7 +40228,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40198,7 +40290,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40257,7 +40352,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40339,7 +40437,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40377,7 +40478,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40415,7 +40519,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40453,7 +40560,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40491,7 +40601,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40737,7 +40850,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40775,7 +40891,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40813,7 +40932,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40851,7 +40973,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40889,7 +41014,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40927,7 +41055,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -40965,7 +41096,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -41049,7 +41183,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -41169,7 +41306,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -41207,7 +41347,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -41327,7 +41470,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -41466,7 +41612,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -41626,7 +41775,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -41803,7 +41955,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -41963,7 +42118,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42001,7 +42159,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42123,7 +42284,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42451,7 +42615,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} + {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42485,7 +42652,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} - {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42519,7 +42689,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} * {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42555,7 +42728,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "v3intdiv({lhs}, {rhs})".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42589,7 +42765,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42623,7 +42802,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42657,7 +42839,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42691,7 +42876,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42725,7 +42913,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} != {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42759,7 +42950,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} != {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42793,7 +42987,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} != {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42827,7 +43024,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} != {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42861,7 +43061,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} < {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42895,7 +43098,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} <= {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42929,7 +43135,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} > {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42963,7 +43172,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} >= {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -42997,7 +43209,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} && {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43031,7 +43246,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} || {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43066,7 +43284,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "var {name} {type} = {value}".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43101,7 +43322,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "if {cond} { {then} } else { {else} }".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43136,7 +43360,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "func main() {\n{body}\nfmt.Println({final})\n}".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43173,7 +43400,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         },
                     ),
                     ("parameters".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43212,7 +43442,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     (
                         "parameters".to_string(),
                         FieldValue::List(vec![FieldValue::Record(vec![
-                            ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                            (
+                                "slot".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            ),
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
@@ -43222,7 +43455,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43262,7 +43498,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43272,7 +43511,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43283,7 +43525,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43323,7 +43568,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43333,7 +43581,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43344,7 +43595,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43383,7 +43637,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     (
                         "parameters".to_string(),
                         FieldValue::List(vec![FieldValue::Record(vec![
-                            ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                            (
+                                "slot".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            ),
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
@@ -43393,7 +43650,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43426,7 +43686,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("[]{element}".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43461,7 +43724,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "v3Result[{key}, {value}]".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43494,7 +43760,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("map[{key}]{value}".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43533,7 +43802,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     (
                         "parameters".to_string(),
                         FieldValue::List(vec![FieldValue::Record(vec![
-                            ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                            (
+                                "slot".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            ),
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
@@ -43543,7 +43815,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43583,7 +43858,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43593,7 +43871,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43603,7 +43884,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(2))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("2".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43614,7 +43898,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43654,7 +43941,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43664,7 +43954,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43675,7 +43968,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43715,7 +44011,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43725,7 +44024,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43736,7 +44038,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43776,7 +44081,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43786,7 +44094,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -43797,7 +44108,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -43861,7 +44175,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "tail_expr".to_string(),
                         FieldValue::Literal(LiteralBits::String("{list}[1:]".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -44543,7 +44860,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                             (
                                 "expected_exit_code".to_string(),
-                                FieldValue::Literal(LiteralBits::Int(0)),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
                             ),
                             (
                                 "output_policy".to_string(),
@@ -45249,7 +45566,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45289,13 +45609,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             payload: vec![FieldValue::Variant {
                                 constructor: DeclarationId(1762),
                                 payload: vec![
-                                    FieldValue::Literal(LiteralBits::Int(-2147483648)),
+                                    FieldValue::Literal(LiteralBits::Int(
+                                        "-2147483648".to_string(),
+                                    )),
                                     FieldValue::Variant {
                                         constructor: DeclarationId(1761),
                                         payload: vec![FieldValue::Variant {
                                             constructor: DeclarationId(1759),
                                             payload: vec![FieldValue::Literal(LiteralBits::Int(
-                                                4294967295,
+                                                "4294967295".to_string(),
                                             ))],
                                         }],
                                     },
@@ -45390,7 +45712,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45428,7 +45753,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45466,7 +45794,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45504,7 +45835,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45542,7 +45876,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45580,7 +45917,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45618,7 +45958,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45656,7 +45999,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45694,7 +46040,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45732,7 +46081,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45770,7 +46122,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45808,7 +46163,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45846,7 +46204,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45884,7 +46245,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45922,7 +46286,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -45960,7 +46327,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46288,7 +46658,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} + {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46322,7 +46695,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} - {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46356,7 +46732,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} * {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46392,7 +46771,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "(__v3_idiv({lhs}, {rhs}))".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46426,7 +46808,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46460,7 +46845,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46494,7 +46882,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46528,7 +46919,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46562,7 +46956,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} != {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46596,7 +46993,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} < {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46630,7 +47030,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} <= {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46664,7 +47067,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} > {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46698,7 +47104,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} >= {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46732,7 +47141,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} and {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46766,7 +47178,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} or {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46803,7 +47218,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         },
                     ),
                     ("parameters".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46842,7 +47260,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     (
                         "parameters".to_string(),
                         FieldValue::List(vec![FieldValue::Record(vec![
-                            ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                            (
+                                "slot".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            ),
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
@@ -46852,7 +47273,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46892,7 +47316,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -46902,7 +47329,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -46913,7 +47343,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -46953,7 +47386,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -46963,7 +47399,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -46974,7 +47413,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47013,7 +47455,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     (
                         "parameters".to_string(),
                         FieldValue::List(vec![FieldValue::Record(vec![
-                            ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                            (
+                                "slot".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            ),
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
@@ -47023,7 +47468,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47062,7 +47510,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     (
                         "parameters".to_string(),
                         FieldValue::List(vec![FieldValue::Record(vec![
-                            ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                            (
+                                "slot".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            ),
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
@@ -47072,7 +47523,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47112,7 +47566,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -47122,7 +47579,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -47132,7 +47592,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(2))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("2".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -47143,7 +47606,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47183,7 +47649,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -47193,7 +47662,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -47204,7 +47676,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47244,7 +47719,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -47254,7 +47732,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -47265,7 +47746,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47305,7 +47789,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -47315,7 +47802,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -47326,7 +47816,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47359,14 +47852,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("list[{element}]".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
             nominal_opacity: None,
             span: SourceSpan::new("src/v3/spec/python.dag", 18262, 18410),
         });
-        declarations.push(Declaration { id: DeclarationId(1424), name: Some("python_result_instantiation".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(998), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(998)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("language".to_string(), FieldValue::Reference(DeclarationId(1361))), ("target".to_string(), FieldValue::Reference(DeclarationId(11))), ("carrier".to_string(), FieldValue::Literal(LiteralBits::String("typing.Union[typing.Tuple[typing.Literal['Ok'], {key}], typing.Tuple[typing.Literal['Err'], {value}]]".to_string()))), ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1)))] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/spec/python.dag", 18526, 18764) });
+        declarations.push(Declaration { id: DeclarationId(1424), name: Some("python_result_instantiation".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(998), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(998)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("language".to_string(), FieldValue::Reference(DeclarationId(1361))), ("target".to_string(), FieldValue::Reference(DeclarationId(11))), ("carrier".to_string(), FieldValue::Literal(LiteralBits::String("typing.Union[typing.Tuple[typing.Literal['Ok'], {key}], typing.Tuple[typing.Literal['Err'], {value}]]".to_string()))), ("cost".to_string(), FieldValue::Literal(LiteralBits::Int("1".to_string())))] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/spec/python.dag", 18526, 18764) });
         declarations.push(Declaration {
             id: DeclarationId(1425),
             name: Some("python_non_empty_list_instantiation".to_string()),
@@ -47395,7 +47891,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "NonEmptyList[{element}]".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47430,7 +47929,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "NonSingletonList[{element}]".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47494,7 +47996,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "tail_expr".to_string(),
                         FieldValue::Literal(LiteralBits::String("{list}[1:]".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47626,7 +48131,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                             (
                                 "expected_exit_code".to_string(),
-                                FieldValue::Literal(LiteralBits::Int(0)),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
                             ),
                             (
                                 "output_policy".to_string(),
@@ -47787,7 +48292,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47825,7 +48333,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47863,7 +48374,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47901,7 +48415,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47939,7 +48456,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -47977,7 +48497,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48015,7 +48538,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48053,7 +48579,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48093,13 +48622,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             payload: vec![FieldValue::Variant {
                                 constructor: DeclarationId(1762),
                                 payload: vec![
-                                    FieldValue::Literal(LiteralBits::Int(0)),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
                                     FieldValue::Variant {
                                         constructor: DeclarationId(1761),
                                         payload: vec![FieldValue::Variant {
                                             constructor: DeclarationId(1759),
                                             payload: vec![FieldValue::Literal(LiteralBits::Int(
-                                                4294967295,
+                                                "4294967295".to_string(),
                                             ))],
                                         }],
                                     },
@@ -48150,13 +48679,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             payload: vec![FieldValue::Variant {
                                 constructor: DeclarationId(1762),
                                 payload: vec![
-                                    FieldValue::Literal(LiteralBits::Int(-2147483648)),
+                                    FieldValue::Literal(LiteralBits::Int(
+                                        "-2147483648".to_string(),
+                                    )),
                                     FieldValue::Variant {
                                         constructor: DeclarationId(1761),
                                         payload: vec![FieldValue::Variant {
                                             constructor: DeclarationId(1759),
                                             payload: vec![FieldValue::Literal(LiteralBits::Int(
-                                                4294967295,
+                                                "4294967295".to_string(),
                                             ))],
                                         }],
                                     },
@@ -48463,7 +48994,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48501,7 +49035,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48539,7 +49076,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48577,7 +49117,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48615,7 +49158,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48653,7 +49199,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48712,7 +49261,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48750,7 +49302,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48851,7 +49406,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48950,7 +49508,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -48988,7 +49549,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49026,7 +49590,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49064,7 +49631,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49102,7 +49672,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49142,7 +49715,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49180,7 +49756,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49260,7 +49839,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49342,7 +49924,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49424,7 +50009,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49485,7 +50073,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49567,7 +50158,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49647,7 +50241,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49746,7 +50343,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49805,7 +50405,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49885,7 +50488,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -49944,7 +50550,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50003,7 +50612,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50062,7 +50674,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50144,7 +50759,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50182,7 +50800,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50220,7 +50841,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50258,7 +50882,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50296,7 +50923,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50542,7 +51172,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50580,7 +51213,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50618,7 +51254,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50656,7 +51295,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50694,7 +51336,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50732,7 +51377,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50770,7 +51418,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50854,7 +51505,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -50974,7 +51628,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -51012,7 +51669,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -51153,7 +51813,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -51292,7 +51955,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -51452,7 +52118,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -51629,7 +52298,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -51810,7 +52482,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -51848,7 +52523,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -51970,7 +52648,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52298,7 +52979,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} + {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52332,7 +53016,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} - {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52366,7 +53053,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} * {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52402,7 +53092,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "(__v3_int_div({lhs}, {rhs}))".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52436,7 +53129,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52470,7 +53166,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52504,7 +53203,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52538,7 +53240,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52572,7 +53277,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} == {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52606,7 +53314,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} != {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52640,7 +53351,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} != {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52674,7 +53388,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} != {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52708,7 +53425,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} != {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52742,7 +53462,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} < {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52776,7 +53499,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} <= {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52810,7 +53536,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} > {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52844,7 +53573,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} >= {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52878,7 +53610,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} && {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52912,7 +53647,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("({lhs} || {rhs})".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52947,7 +53685,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "let {name}: {type} = {value};".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -52982,7 +53723,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "if {cond} { {then} } else { {else} }".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53018,7 +53762,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 .to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53055,7 +53802,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         },
                     ),
                     ("parameters".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53094,7 +53844,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     (
                         "parameters".to_string(),
                         FieldValue::List(vec![FieldValue::Record(vec![
-                            ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                            (
+                                "slot".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            ),
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
@@ -53104,7 +53857,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53144,7 +53900,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53154,7 +53913,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53165,7 +53927,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53205,7 +53970,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53215,7 +53983,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53226,7 +53997,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53265,7 +54039,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     (
                         "parameters".to_string(),
                         FieldValue::List(vec![FieldValue::Record(vec![
-                            ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                            (
+                                "slot".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            ),
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
@@ -53275,7 +54052,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53308,7 +54088,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("Vec<{element}>".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53343,7 +54126,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "::core::result::Result<{key}, {value}>".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53376,7 +54162,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("Lookup<{element}>".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53409,7 +54198,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("Witness<{element}>".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53442,7 +54234,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("Lens<{element}>".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53475,7 +54270,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "carrier".to_string(),
                         FieldValue::Literal(LiteralBits::String("Monoid<{element}>".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53510,7 +54308,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "LensEnforcement<{key}, {value}>".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53545,7 +54346,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "EnforceableLens<{key}, {value}>".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53580,7 +54384,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             "HashMap<{key}, {value}>".to_string(),
                         )),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53619,7 +54426,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     (
                         "parameters".to_string(),
                         FieldValue::List(vec![FieldValue::Record(vec![
-                            ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                            (
+                                "slot".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            ),
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
@@ -53629,7 +54439,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                         ])]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53669,7 +54482,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53679,7 +54495,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53689,7 +54508,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(2))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("2".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53700,7 +54522,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53740,7 +54565,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53750,7 +54578,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53761,7 +54592,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53801,7 +54635,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53811,7 +54648,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53822,7 +54662,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53862,7 +54705,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "parameters".to_string(),
                         FieldValue::List(vec![
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(0))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53872,7 +54718,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                                 ),
                             ]),
                             FieldValue::Record(vec![
-                                ("slot".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                                (
+                                    "slot".to_string(),
+                                    FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                                ),
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
@@ -53883,7 +54732,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ]),
                         ]),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -53949,7 +54801,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         "tail_expr".to_string(),
                         FieldValue::Literal(LiteralBits::String("{tail}".to_string())),
                     ),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -54865,7 +55720,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             ),
                             (
                                 "expected_exit_code".to_string(),
-                                FieldValue::Literal(LiteralBits::Int(0)),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
                             ),
                             (
                                 "output_policy".to_string(),
@@ -55221,7 +56076,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Literal(LiteralBits::Bool(false)),
                     ),
                     ("fields".to_string(), FieldValue::List(vec![])),
-                    ("cost".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                    (
+                        "cost".to_string(),
+                        FieldValue::Literal(LiteralBits::Int("1".to_string())),
+                    ),
                 ],
             }),
             refinement: None,
@@ -58770,7 +59628,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21662, 21670),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 21978, 21986),
         });
         declarations.push(Declaration {
             id: DeclarationId(1738),
@@ -58789,7 +59647,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21719, 21728),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22035, 22044),
         });
         declarations.push(Declaration {
             id: DeclarationId(1739),
@@ -58808,7 +59666,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21794, 21803),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22110, 22119),
         });
         declarations.push(Declaration {
             id: DeclarationId(1740),
@@ -58827,7 +59685,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22180, 22192),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22496, 22508),
         });
         declarations.push(Declaration {
             id: DeclarationId(1741),
@@ -58846,7 +59704,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 23055, 23067),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 23371, 23383),
         });
         declarations.push(Declaration {
             id: DeclarationId(1742),
@@ -58865,7 +59723,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 23378, 23393),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 23694, 23709),
         });
         declarations.push(Declaration {
             id: DeclarationId(1743),
@@ -58885,7 +59743,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 27377, 27398),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 27693, 27714),
         });
         declarations.push(Declaration {
             id: DeclarationId(1744),
@@ -58905,7 +59763,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 27462, 27483),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 27778, 27799),
         });
         declarations.push(Declaration {
             id: DeclarationId(1745),
@@ -58979,7 +59837,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
-                    ty: DeclarationId(93),
+                    ty: DeclarationId(228),
                 }],
             },
             type_params: vec![],
@@ -58990,7 +59848,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 791, 802),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 1104, 1118),
         });
         declarations.push(Declaration {
             id: DeclarationId(1750),
@@ -59009,7 +59867,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 807, 820),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 1123, 1136),
         });
         declarations.push(Declaration {
             id: DeclarationId(1751),
@@ -59028,7 +59886,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 825, 842),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 1141, 1158),
         });
         declarations.push(Declaration {
             id: DeclarationId(1752),
@@ -59047,7 +59905,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 2975, 2995),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 3291, 3311),
         });
         declarations.push(Declaration {
             id: DeclarationId(1753),
@@ -59066,7 +59924,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 3000, 3028),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 3316, 3344),
         });
         declarations.push(Declaration {
             id: DeclarationId(1754),
@@ -59085,7 +59943,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 3033, 3067),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 3349, 3383),
         });
         declarations.push(Declaration {
             id: DeclarationId(1755),
@@ -59104,7 +59962,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 3072, 3101),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 3388, 3417),
         });
         declarations.push(Declaration {
             id: DeclarationId(1756),
@@ -59123,7 +59981,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 3106, 3123),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 3422, 3439),
         });
         declarations.push(Declaration {
             id: DeclarationId(1757),
@@ -59137,7 +59995,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 3747, 3754),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 4063, 4070),
         });
         declarations.push(Declaration {
             id: DeclarationId(1758),
@@ -59156,7 +60014,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 3759, 3809),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 4075, 4125),
         });
         declarations.push(Declaration {
             id: DeclarationId(1759),
@@ -59175,7 +60033,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5373, 5397),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5689, 5713),
         });
         declarations.push(Declaration {
             id: DeclarationId(1760),
@@ -59189,7 +60047,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5422, 5431),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5738, 5747),
         });
         declarations.push(Declaration {
             id: DeclarationId(1761),
@@ -59208,7 +60066,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5436, 5472),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5752, 5788),
         });
         declarations.push(Declaration {
             id: DeclarationId(1762),
@@ -59233,7 +60091,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5784, 5834),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6100, 6150),
         });
         declarations.push(Declaration {
             id: DeclarationId(1763),
@@ -59247,7 +60105,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5839, 5848),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6155, 6164),
         });
         declarations.push(Declaration {
             id: DeclarationId(1764),
@@ -59267,7 +60125,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6424, 6437),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6740, 6753),
         });
         declarations.push(Declaration {
             id: DeclarationId(1765),
@@ -59286,7 +60144,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6412, 6438),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6728, 6754),
         });
         declarations.push(Declaration {
             id: DeclarationId(1766),
@@ -59300,7 +60158,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6443, 6460),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6759, 6776),
         });
         declarations.push(Declaration {
             id: DeclarationId(1767),
@@ -59319,7 +60177,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6711, 6721),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7027, 7037),
         });
         declarations.push(Declaration {
             id: DeclarationId(1768),
@@ -59333,7 +60191,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6726, 6735),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7042, 7051),
         });
         declarations.push(Declaration {
             id: DeclarationId(1769),
@@ -59347,7 +60205,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6740, 6749),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7056, 7065),
         });
         declarations.push(Declaration {
             id: DeclarationId(1770),
@@ -59366,7 +60224,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7176, 7196),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7492, 7512),
         });
         declarations.push(Declaration {
             id: DeclarationId(1771),
@@ -59385,7 +60243,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7201, 7225),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7517, 7541),
         });
         declarations.push(Declaration {
             id: DeclarationId(1772),
@@ -59405,7 +60263,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7237, 7253),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7553, 7569),
         });
         declarations.push(Declaration {
             id: DeclarationId(1773),
@@ -59424,7 +60282,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7230, 7254),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7546, 7570),
         });
         declarations.push(Declaration {
             id: DeclarationId(1774),
@@ -59444,7 +60302,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7264, 7280),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7580, 7596),
         });
         declarations.push(Declaration {
             id: DeclarationId(1775),
@@ -59463,7 +60321,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7259, 7281),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7575, 7597),
         });
         declarations.push(Declaration {
             id: DeclarationId(1776),
@@ -59483,7 +60341,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7290, 7306),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7606, 7622),
         });
         declarations.push(Declaration {
             id: DeclarationId(1777),
@@ -59502,7 +60360,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7286, 7307),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7602, 7623),
         });
         declarations.push(Declaration {
             id: DeclarationId(1778),
@@ -59522,7 +60380,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7370, 7386),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7686, 7702),
         });
         declarations.push(Declaration {
             id: DeclarationId(1779),
@@ -59547,7 +60405,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7312, 7392),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7628, 7708),
         });
         declarations.push(Declaration {
             id: DeclarationId(1780),
@@ -59566,7 +60424,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9005, 9034),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9321, 9350),
         });
         declarations.push(Declaration {
             id: DeclarationId(1781),
@@ -59586,7 +60444,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9069, 9085),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9385, 9401),
         });
         declarations.push(Declaration {
             id: DeclarationId(1782),
@@ -59605,7 +60463,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9039, 9087),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9355, 9403),
         });
         declarations.push(Declaration {
             id: DeclarationId(1783),
@@ -59624,7 +60482,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9092, 9120),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9408, 9436),
         });
         declarations.push(Declaration {
             id: DeclarationId(1784),
@@ -59644,7 +60502,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9139, 9155),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9455, 9471),
         });
         declarations.push(Declaration {
             id: DeclarationId(1785),
@@ -59663,7 +60521,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9125, 9156),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9441, 9472),
         });
         declarations.push(Declaration {
             id: DeclarationId(1786),
@@ -59683,7 +60541,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9174, 9190),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9490, 9506),
         });
         declarations.push(Declaration {
             id: DeclarationId(1787),
@@ -59702,7 +60560,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9161, 9191),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9477, 9507),
         });
         declarations.push(Declaration {
             id: DeclarationId(1788),
@@ -59721,7 +60579,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10445, 10468),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 10761, 10784),
         });
         declarations.push(Declaration {
             id: DeclarationId(1789),
@@ -59740,7 +60598,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10473, 10507),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 10789, 10823),
         });
         declarations.push(Declaration {
             id: DeclarationId(1790),
@@ -59754,7 +60612,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10512, 10519),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 10828, 10835),
         });
         declarations.push(Declaration {
             id: DeclarationId(1791),
@@ -59768,7 +60626,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10524, 10530),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 10840, 10846),
         });
         declarations.push(Declaration {
             id: DeclarationId(1792),
@@ -59787,7 +60645,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10535, 10555),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 10851, 10871),
         });
         declarations.push(Declaration {
             id: DeclarationId(1793),
@@ -59806,7 +60664,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10784, 10801),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11100, 11117),
         });
         declarations.push(Declaration {
             id: DeclarationId(1794),
@@ -59826,7 +60684,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10823, 10838),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11139, 11154),
         });
         declarations.push(Declaration {
             id: DeclarationId(1795),
@@ -59845,7 +60703,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10806, 10840),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11122, 11156),
         });
         declarations.push(Declaration {
             id: DeclarationId(1796),
@@ -59865,7 +60723,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10862, 10877),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11178, 11193),
         });
         declarations.push(Declaration {
             id: DeclarationId(1797),
@@ -59884,7 +60742,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10845, 10879),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11161, 11195),
         });
         declarations.push(Declaration {
             id: DeclarationId(1798),
@@ -59904,7 +60762,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10906, 10925),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11222, 11241),
         });
         declarations.push(Declaration {
             id: DeclarationId(1799),
@@ -59933,7 +60791,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10884, 10981),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11200, 11297),
         });
         declarations.push(Declaration {
             id: DeclarationId(1800),
@@ -59958,7 +60816,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10986, 11064),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11302, 11380),
         });
         declarations.push(Declaration {
             id: DeclarationId(1801),
@@ -59978,7 +60836,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11132, 11154),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11448, 11470),
         });
         declarations.push(Declaration {
             id: DeclarationId(1802),
@@ -60003,7 +60861,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11069, 11160),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11385, 11476),
         });
         declarations.push(Declaration {
             id: DeclarationId(1803),
@@ -60022,7 +60880,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11209, 11216),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11525, 11532),
         });
         declarations.push(Declaration {
             id: DeclarationId(1804),
@@ -60042,7 +60900,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11261, 11280),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11577, 11596),
         });
         declarations.push(Declaration {
             id: DeclarationId(1805),
@@ -60062,7 +60920,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11299, 11321),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11615, 11637),
         });
         declarations.push(Declaration {
             id: DeclarationId(1806),
@@ -60081,7 +60939,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11334, 11348),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11650, 11664),
         });
         declarations.push(Declaration {
             id: DeclarationId(1807),
@@ -60100,7 +60958,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11361, 11375),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11677, 11691),
         });
         declarations.push(Declaration {
             id: DeclarationId(1808),
@@ -60119,7 +60977,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11390, 11400),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11706, 11716),
         });
         declarations.push(Declaration {
             id: DeclarationId(1809),
@@ -60138,7 +60996,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11420, 11435),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11736, 11751),
         });
         declarations.push(Declaration {
             id: DeclarationId(1810),
@@ -60158,7 +61016,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12558, 12577),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12874, 12893),
         });
         declarations.push(Declaration {
             id: DeclarationId(1811),
@@ -60172,7 +61030,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12858, 12861),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13174, 13177),
         });
         declarations.push(Declaration {
             id: DeclarationId(1812),
@@ -60186,7 +61044,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12866, 12869),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13182, 13185),
         });
         declarations.push(Declaration {
             id: DeclarationId(1813),
@@ -60200,7 +61058,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12874, 12877),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13190, 13193),
         });
         declarations.push(Declaration {
             id: DeclarationId(1814),
@@ -60214,7 +61072,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12882, 12885),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13198, 13201),
         });
         declarations.push(Declaration {
             id: DeclarationId(1815),
@@ -60228,7 +61086,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13009, 13011),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13325, 13327),
         });
         declarations.push(Declaration {
             id: DeclarationId(1816),
@@ -60242,7 +61100,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13016, 13018),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13332, 13334),
         });
         declarations.push(Declaration {
             id: DeclarationId(1817),
@@ -60256,7 +61114,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13023, 13025),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13339, 13341),
         });
         declarations.push(Declaration {
             id: DeclarationId(1818),
@@ -60270,7 +61128,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13030, 13032),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13346, 13348),
         });
         declarations.push(Declaration {
             id: DeclarationId(1819),
@@ -60284,7 +61142,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13037, 13039),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13353, 13355),
         });
         declarations.push(Declaration {
             id: DeclarationId(1820),
@@ -60298,7 +61156,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13044, 13046),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13360, 13362),
         });
         declarations.push(Declaration {
             id: DeclarationId(1821),
@@ -60312,7 +61170,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13823, 13826),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14139, 14142),
         });
         declarations.push(Declaration {
             id: DeclarationId(1822),
@@ -60326,7 +61184,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13831, 13833),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14147, 14149),
         });
         declarations.push(Declaration {
             id: DeclarationId(1823),
@@ -60345,7 +61203,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14069, 14093),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14385, 14409),
         });
         declarations.push(Declaration {
             id: DeclarationId(1824),
@@ -60364,7 +61222,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14098, 14122),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14414, 14438),
         });
         declarations.push(Declaration {
             id: DeclarationId(1825),
@@ -60383,7 +61241,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14127, 14145),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14443, 14461),
         });
         declarations.push(Declaration {
             id: DeclarationId(1826),
@@ -60402,7 +61260,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14332, 14355),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14648, 14671),
         });
         declarations.push(Declaration {
             id: DeclarationId(1827),
@@ -60421,7 +61279,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14420, 14434),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14736, 14750),
         });
         declarations.push(Declaration {
             id: DeclarationId(1828),
@@ -60446,7 +61304,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14360, 14440),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14676, 14756),
         });
         declarations.push(Declaration {
             id: DeclarationId(1829),
@@ -60465,7 +61323,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14445, 14467),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14761, 14783),
         });
         declarations.push(Declaration {
             id: DeclarationId(1830),
@@ -60490,7 +61348,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14592, 14644),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14908, 14960),
         });
         declarations.push(Declaration {
             id: DeclarationId(1831),
@@ -60509,7 +61367,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14649, 14679),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14965, 14995),
         });
         declarations.push(Declaration {
             id: DeclarationId(1832),
@@ -60528,7 +61386,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14843, 14858),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15159, 15174),
         });
         declarations.push(Declaration {
             id: DeclarationId(1833),
@@ -60548,7 +61406,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16834, 16865),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17150, 17181),
         });
         declarations.push(Declaration {
             id: DeclarationId(1834),
@@ -60568,7 +61426,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16889, 16919),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17205, 17235),
         });
         declarations.push(Declaration {
             id: DeclarationId(1835),
@@ -60587,7 +61445,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17542, 17571),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17858, 17887),
         });
         declarations.push(Declaration {
             id: DeclarationId(1836),
@@ -60612,7 +61470,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17576, 17623),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17892, 17939),
         });
         declarations.push(Declaration {
             id: DeclarationId(1837),
@@ -60631,7 +61489,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17892, 17907),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18208, 18223),
         });
         declarations.push(Declaration {
             id: DeclarationId(1838),
@@ -60651,7 +61509,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17981, 17993),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18297, 18309),
         });
         declarations.push(Declaration {
             id: DeclarationId(1839),
@@ -60665,7 +61523,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18234, 18243),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18550, 18559),
         });
         declarations.push(Declaration {
             id: DeclarationId(1840),
@@ -60685,7 +61543,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18301, 18317),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18617, 18633),
         });
         declarations.push(Declaration {
             id: DeclarationId(1841),
@@ -60704,7 +61562,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18381, 18405),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18697, 18721),
         });
         declarations.push(Declaration {
             id: DeclarationId(1842),
@@ -60718,7 +61576,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18819, 18831),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19135, 19147),
         });
         declarations.push(Declaration {
             id: DeclarationId(1843),
@@ -60738,7 +61596,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18909, 18921),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19225, 19237),
         });
         declarations.push(Declaration {
             id: DeclarationId(1844),
@@ -60757,7 +61615,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18959, 18974),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19275, 19290),
         });
         declarations.push(Declaration {
             id: DeclarationId(1845),
@@ -60776,7 +61634,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18997, 19019),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19313, 19335),
         });
         declarations.push(Declaration {
             id: DeclarationId(1846),
@@ -60795,7 +61653,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19111, 19127),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19427, 19443),
         });
         declarations.push(Declaration {
             id: DeclarationId(1847),
@@ -60814,7 +61672,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19132, 19156),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19448, 19472),
         });
         declarations.push(Declaration {
             id: DeclarationId(1848),
@@ -60833,7 +61691,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19161, 19179),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19477, 19495),
         });
         declarations.push(Declaration {
             id: DeclarationId(1849),
@@ -60852,7 +61710,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19184, 19198),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19500, 19514),
         });
         declarations.push(Declaration {
             id: DeclarationId(1850),
@@ -60871,7 +61729,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19203, 19217),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19519, 19533),
         });
         declarations.push(Declaration {
             id: DeclarationId(1851),
@@ -60891,7 +61749,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19246, 19263),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19562, 19579),
         });
         declarations.push(Declaration {
             id: DeclarationId(1852),
@@ -60911,7 +61769,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19273, 19287),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19589, 19603),
         });
         declarations.push(Declaration {
             id: DeclarationId(1853),
@@ -60931,7 +61789,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19297, 19310),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19613, 19626),
         });
         declarations.push(Declaration {
             id: DeclarationId(1854),
@@ -60951,7 +61809,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19323, 19336),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19639, 19652),
         });
         declarations.push(Declaration {
             id: DeclarationId(1855),
@@ -60970,7 +61828,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 25419, 25437),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 25735, 25753),
         });
         declarations.push(Declaration {
             id: DeclarationId(1856),
@@ -60984,7 +61842,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 25442, 25448),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 25758, 25764),
         });
         declarations.push(Declaration {
             id: DeclarationId(1857),
@@ -61004,7 +61862,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 25481, 25505),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 25797, 25821),
         });
         declarations.push(Declaration {
             id: DeclarationId(1858),
@@ -61023,7 +61881,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 25453, 25507),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 25769, 25823),
         });
         declarations.push(Declaration {
             id: DeclarationId(1859),
@@ -69908,7 +70766,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
-                    ty: DeclarationId(93),
+                    ty: DeclarationId(228),
                 }],
             },
             type_params: vec![],
@@ -69919,7 +70777,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 809, 820),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 889, 903),
         });
         declarations.push(Declaration {
             id: DeclarationId(2346),
@@ -69938,7 +70796,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 825, 842),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 908, 925),
         });
         declarations.push(Declaration {
             id: DeclarationId(2347),
@@ -69952,7 +70810,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 847, 849),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 930, 932),
         });
         declarations.push(Declaration {
             id: DeclarationId(2348),
@@ -69966,7 +70824,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 854, 858),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 937, 941),
         });
         declarations.push(Declaration {
             id: DeclarationId(2349),
@@ -69980,7 +70838,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 863, 868),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 946, 951),
         });
         declarations.push(Declaration {
             id: DeclarationId(2350),
@@ -69994,7 +70852,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 873, 875),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 956, 958),
         });
         declarations.push(Declaration {
             id: DeclarationId(2351),
@@ -70008,7 +70866,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 880, 882),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 963, 965),
         });
         declarations.push(Declaration {
             id: DeclarationId(2352),
@@ -70022,7 +70880,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 887, 889),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 970, 972),
         });
         declarations.push(Declaration {
             id: DeclarationId(2353),
@@ -70036,7 +70894,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 894, 896),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 977, 979),
         });
         declarations.push(Declaration {
             id: DeclarationId(2354),
@@ -70050,7 +70908,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 901, 905),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 984, 988),
         });
         declarations.push(Declaration {
             id: DeclarationId(2355),
@@ -70064,7 +70922,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 910, 915),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 993, 998),
         });
         declarations.push(Declaration {
             id: DeclarationId(2356),
@@ -70078,7 +70936,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 920, 924),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1003, 1007),
         });
         declarations.push(Declaration {
             id: DeclarationId(2357),
@@ -70092,7 +70950,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 929, 934),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1012, 1017),
         });
         declarations.push(Declaration {
             id: DeclarationId(2358),
@@ -70106,7 +70964,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 939, 945),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1022, 1028),
         });
         declarations.push(Declaration {
             id: DeclarationId(2359),
@@ -70120,7 +70978,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 950, 958),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1033, 1041),
         });
         declarations.push(Declaration {
             id: DeclarationId(2360),
@@ -70134,7 +70992,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 963, 968),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1046, 1051),
         });
         declarations.push(Declaration {
             id: DeclarationId(2361),
@@ -70148,7 +71006,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 973, 978),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1056, 1061),
         });
         declarations.push(Declaration {
             id: DeclarationId(2362),
@@ -70162,7 +71020,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 983, 991),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1066, 1074),
         });
         declarations.push(Declaration {
             id: DeclarationId(2363),
@@ -70176,7 +71034,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 996, 1005),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1079, 1088),
         });
         declarations.push(Declaration {
             id: DeclarationId(2364),
@@ -70190,7 +71048,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1010, 1013),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1093, 1096),
         });
         declarations.push(Declaration {
             id: DeclarationId(2365),
@@ -70204,7 +71062,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1018, 1024),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1101, 1107),
         });
         declarations.push(Declaration {
             id: DeclarationId(2366),
@@ -70218,7 +71076,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1029, 1035),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1112, 1118),
         });
         declarations.push(Declaration {
             id: DeclarationId(2367),
@@ -70232,7 +71090,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1040, 1046),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1123, 1129),
         });
         declarations.push(Declaration {
             id: DeclarationId(2368),
@@ -70246,7 +71104,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1051, 1057),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1134, 1140),
         });
         declarations.push(Declaration {
             id: DeclarationId(2369),
@@ -70260,7 +71118,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1062, 1070),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1145, 1153),
         });
         declarations.push(Declaration {
             id: DeclarationId(2370),
@@ -70274,7 +71132,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1075, 1083),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1158, 1166),
         });
         declarations.push(Declaration {
             id: DeclarationId(2371),
@@ -70288,7 +71146,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1088, 1093),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1171, 1176),
         });
         declarations.push(Declaration {
             id: DeclarationId(2372),
@@ -70302,7 +71160,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1098, 1107),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1181, 1190),
         });
         declarations.push(Declaration {
             id: DeclarationId(2373),
@@ -70316,7 +71174,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1112, 1116),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1195, 1199),
         });
         declarations.push(Declaration {
             id: DeclarationId(2374),
@@ -70330,7 +71188,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1121, 1129),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1204, 1212),
         });
         declarations.push(Declaration {
             id: DeclarationId(2375),
@@ -70344,7 +71202,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1134, 1137),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1217, 1220),
         });
         declarations.push(Declaration {
             id: DeclarationId(2376),
@@ -70358,7 +71216,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1708, 1713),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1791, 1796),
         });
         declarations.push(Declaration {
             id: DeclarationId(2377),
@@ -70372,7 +71230,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1718, 1722),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1801, 1805),
         });
         declarations.push(Declaration {
             id: DeclarationId(2378),
@@ -70386,7 +71244,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1727, 1733),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1810, 1816),
         });
         declarations.push(Declaration {
             id: DeclarationId(2379),
@@ -70400,7 +71258,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1738, 1744),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1821, 1827),
         });
         declarations.push(Declaration {
             id: DeclarationId(2380),
@@ -70414,7 +71272,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1749, 1753),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1832, 1836),
         });
         declarations.push(Declaration {
             id: DeclarationId(2381),
@@ -70428,7 +71286,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1758, 1764),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1841, 1847),
         });
         declarations.push(Declaration {
             id: DeclarationId(2382),
@@ -70442,7 +71300,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1769, 1777),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1852, 1860),
         });
         declarations.push(Declaration {
             id: DeclarationId(2383),
@@ -70456,7 +71314,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1782, 1790),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1865, 1873),
         });
         declarations.push(Declaration {
             id: DeclarationId(2384),
@@ -70470,7 +71328,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1795, 1802),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1878, 1885),
         });
         declarations.push(Declaration {
             id: DeclarationId(2385),
@@ -70484,7 +71342,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1807, 1813),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1890, 1896),
         });
         declarations.push(Declaration {
             id: DeclarationId(2386),
@@ -70498,7 +71356,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1818, 1825),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1901, 1908),
         });
         declarations.push(Declaration {
             id: DeclarationId(2387),
@@ -70512,7 +71370,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1830, 1836),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1913, 1919),
         });
         declarations.push(Declaration {
             id: DeclarationId(2388),
@@ -70526,7 +71384,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 1841, 1848),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 1924, 1931),
         });
         declarations.push(Declaration {
             id: DeclarationId(2389),
@@ -70540,7 +71398,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2288, 2290),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2371, 2373),
         });
         declarations.push(Declaration {
             id: DeclarationId(2390),
@@ -70554,7 +71412,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2295, 2299),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2378, 2382),
         });
         declarations.push(Declaration {
             id: DeclarationId(2391),
@@ -70568,7 +71426,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2304, 2309),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2387, 2392),
         });
         declarations.push(Declaration {
             id: DeclarationId(2392),
@@ -70582,7 +71440,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2314, 2316),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2397, 2399),
         });
         declarations.push(Declaration {
             id: DeclarationId(2393),
@@ -70596,7 +71454,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2321, 2323),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2404, 2406),
         });
         declarations.push(Declaration {
             id: DeclarationId(2394),
@@ -70610,7 +71468,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2328, 2330),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2411, 2413),
         });
         declarations.push(Declaration {
             id: DeclarationId(2395),
@@ -70624,7 +71482,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2335, 2337),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2418, 2420),
         });
         declarations.push(Declaration {
             id: DeclarationId(2396),
@@ -70638,7 +71496,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2342, 2346),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2425, 2429),
         });
         declarations.push(Declaration {
             id: DeclarationId(2397),
@@ -70652,7 +71510,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2351, 2356),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2434, 2439),
         });
         declarations.push(Declaration {
             id: DeclarationId(2398),
@@ -70666,7 +71524,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2361, 2365),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2444, 2448),
         });
         declarations.push(Declaration {
             id: DeclarationId(2399),
@@ -70680,7 +71538,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2370, 2375),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2453, 2458),
         });
         declarations.push(Declaration {
             id: DeclarationId(2400),
@@ -70694,7 +71552,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2380, 2386),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2463, 2469),
         });
         declarations.push(Declaration {
             id: DeclarationId(2401),
@@ -70708,7 +71566,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2391, 2399),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2474, 2482),
         });
         declarations.push(Declaration {
             id: DeclarationId(2402),
@@ -70722,7 +71580,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2404, 2409),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2487, 2492),
         });
         declarations.push(Declaration {
             id: DeclarationId(2403),
@@ -70736,7 +71594,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2414, 2419),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2497, 2502),
         });
         declarations.push(Declaration {
             id: DeclarationId(2404),
@@ -70750,7 +71608,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2424, 2432),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2507, 2515),
         });
         declarations.push(Declaration {
             id: DeclarationId(2405),
@@ -70764,7 +71622,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2437, 2446),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2520, 2529),
         });
         declarations.push(Declaration {
             id: DeclarationId(2406),
@@ -70778,7 +71636,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2451, 2454),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2534, 2537),
         });
         declarations.push(Declaration {
             id: DeclarationId(2407),
@@ -70792,7 +71650,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2459, 2465),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2542, 2548),
         });
         declarations.push(Declaration {
             id: DeclarationId(2408),
@@ -70806,7 +71664,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2470, 2476),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2553, 2559),
         });
         declarations.push(Declaration {
             id: DeclarationId(2409),
@@ -70820,7 +71678,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2481, 2487),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2564, 2570),
         });
         declarations.push(Declaration {
             id: DeclarationId(2410),
@@ -70834,7 +71692,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2492, 2498),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2575, 2581),
         });
         declarations.push(Declaration {
             id: DeclarationId(2411),
@@ -70848,7 +71706,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2503, 2511),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2586, 2594),
         });
         declarations.push(Declaration {
             id: DeclarationId(2412),
@@ -70862,7 +71720,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2516, 2524),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2599, 2607),
         });
         declarations.push(Declaration {
             id: DeclarationId(2413),
@@ -70876,7 +71734,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2529, 2534),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2612, 2617),
         });
         declarations.push(Declaration {
             id: DeclarationId(2414),
@@ -70890,7 +71748,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2539, 2548),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2622, 2631),
         });
         declarations.push(Declaration {
             id: DeclarationId(2415),
@@ -70904,7 +71762,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2553, 2557),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2636, 2640),
         });
         declarations.push(Declaration {
             id: DeclarationId(2416),
@@ -70918,7 +71776,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/tokenize.dag", 2562, 2570),
+            span: SourceSpan::new("src/v3/std/tokenize.dag", 2645, 2653),
         });
         declarations.push(Declaration {
             id: DeclarationId(2417),

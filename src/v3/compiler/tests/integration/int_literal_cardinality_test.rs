@@ -3,7 +3,8 @@
 use std::collections::HashSet;
 
 use v3_compiler::dag::{
-    Behavior, CardinalityBound, FieldValue, LiteralBits, PortState, TypeConnective, ValueBody,
+    literal_bits_int, Behavior, CardinalityBound, FieldValue, LiteralBits, PortState,
+    TypeConnective, ValueBody,
 };
 use v3_compiler::emit_rust;
 use v3_compiler::{compile_to_dag, integer_literal_routing_witness, CompileError};
@@ -65,7 +66,7 @@ fn assert_data_value_scalar_typed_u8(
         .declaration_by_name(name)
         .unwrap_or_else(|| panic!("{context}: no declaration named `{name}`"));
     assert!(
-        matches!(&decl.value_body, Some(ValueBody::Scalar(LiteralBits::Int(n))) if *n == literal),
+        matches!(&decl.value_body, Some(ValueBody::Scalar(LiteralBits::Int(n))) if n.parse::<i64>().ok() == Some(literal)),
         "{context}: {name} value should be int literal {literal}, got {:?}",
         decl.value_body
     );
@@ -108,7 +109,7 @@ fn assert_int_value_port_resolves_to_uint8_in_file(
         .iter()
         .find_map(|node| match node {
             Behavior::Value(v)
-                if v.data == LiteralBits::Int(literal)
+                if v.data == literal_bits_int(literal)
                     && span_file.is_none_or(|f| v.span.file == f) =>
             {
                 Some(v)
@@ -196,7 +197,7 @@ fn unconstrained_int_literal_still_defaults_to_int64() {
         .nodes()
         .iter()
         .find_map(|node| match node {
-            v3_compiler::dag::Behavior::Value(value) if value.data == LiteralBits::Int(5) => {
+            v3_compiler::dag::Behavior::Value(value) if value.data == literal_bits_int(5) => {
                 Some(value)
             }
             _ => None,
@@ -282,7 +283,7 @@ fn let_annotated_uint8_literal_resolves_to_narrow_type() {
         .iter()
         .find_map(|node| match node {
             v3_compiler::dag::Behavior::Value(v)
-                if v.data == LiteralBits::Int(5) && v.span.file == "let_u8_narrow.v3" =>
+                if v.data == literal_bits_int(5) && v.span.file == "let_u8_narrow.v3" =>
             {
                 Some(v)
             }
@@ -338,7 +339,7 @@ fn call_site_uint8_literal_narrows() {
         .nodes()
         .iter()
         .find_map(|node| match node {
-            v3_compiler::dag::Behavior::Value(v) if v.data == LiteralBits::Int(7) => Some(v),
+            v3_compiler::dag::Behavior::Value(v) if v.data == literal_bits_int(7) => Some(v),
             _ => None,
         })
         .expect("call literal 7");
@@ -364,18 +365,30 @@ fn emit_let_uint8_uses_narrow_rust_type() {
 }
 
 #[test]
-fn uint64_upper_half_literals_are_tracked_carrier_limitation() {
-    let err = compile_to_dag(
+fn uint64_upper_half_literal_tokenizes_and_narrows() {
+    // R3 gate #22: `IntLit` carries full decimal magnitude (`String`), so literals
+    // above `i64::MAX` remain representable and can narrow to `UInt64` when in range.
+    let dag = compile_to_dag(
         "data x: UInt64 = 9223372036854775808",
         "uint64_upper_half_literal.v3",
     )
-    .expect_err("u64 upper-half literals remain blocked by the i64 source literal carrier");
+    .expect("2^63 must compile for UInt64 under full-magnitude literal carrier");
+    let decl = dag.declaration_by_name("x").expect("data `x` declaration");
+    let ty = decl
+        .meta_tag
+        .expect("scalar data item should carry meta_tag to its type decl");
+    assert_eq!(
+        dag.declaration(ty).name.as_deref(),
+        Some("UInt64"),
+        "literal should narrow to UInt64"
+    );
     assert!(
         matches!(
-            err,
-            CompileError::Tokenize(v3_compiler::diagnostics::Diagnostic::TokenizerError { .. })
+            &decl.value_body,
+            Some(ValueBody::Scalar(LiteralBits::Int(s))) if s == "9223372036854775808"
         ),
-        "expected tokenizer boundary before range reconciliation, got {err:?}"
+        "expected preserved decimal magnitude on declaration, got {:?}",
+        decl.value_body
     );
 }
 
@@ -421,12 +434,14 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
 /// fixed-width integer refinement with a source-representable out-of-range
 /// literal must route through the same structural range facts and produce the
 /// same typed [`MagnitudeOutOfRange`](v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange)
-/// diagnostic. Upper-half `UInt64` / `UInt128` and full `Int128` overflow
-/// source literals remain blocked by the current i64 source literal carrier,
-/// which is covered separately by `uint64_upper_half_literals_are_tracked_carrier_limitation`.
-/// `UInt128` is still included for its source-representable lower-bound
-/// overflow (`-1`). Alias coverage is representative rather than exhaustive
-/// so this receipt stays under the CI per-test wall-clock ratchet.
+/// diagnostic. **UInt64** literals above `i64::MAX` that still fit in `u64`
+/// are accepted under the decimal-string literal carrier (R3 gate #22;
+/// see `uint64_upper_half_literal_tokenizes_and_narrows`). **UInt128** /
+/// full **Int128** overflow cases that remain outside the representable
+/// surface continue to use the same magnitude / range machinery. `UInt128`
+/// is still included here for its source-representable lower-bound overflow
+/// (`-1`). Alias coverage is representative rather than exhaustive so this
+/// receipt stays under the CI per-test wall-clock ratchet.
 #[test]
 fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
     let cases = [
