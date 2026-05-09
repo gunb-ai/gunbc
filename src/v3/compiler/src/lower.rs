@@ -756,10 +756,10 @@ const KNOWN_PREDICATES: &[PredicateSpec] = &[
         allowed_carriers: &["Nat", "Int"],
         arg_shape: PredicateArgShape::Bare,
     },
-    /// Unicode scalar value over `Int`: U+0000..U+D7FF ∪ U+E000..U+10FFFF
-    /// (excludes surrogate pair code units U+D800..U+DFFF). Single-interval
-    /// `range(max: 0x10FFFF)` is intentionally **not** used — it admits
-    /// surrogates and contradicts `String = FreeMonoid<Char>` modeling.
+    // Unicode scalar value over `Int`: U+0000..U+D7FF ∪ U+E000..U+10FFFF
+    // (excludes surrogate pair code units U+D800..U+DFFF). Single-interval
+    // `range(max: 0x10FFFF)` is intentionally **not** used — it admits
+    // surrogates and contradicts `String = FreeMonoid<Char>` modeling.
     PredicateSpec {
         name: "unicode_scalar",
         allowed_carriers: &["Int"],
@@ -994,6 +994,9 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
 /// - **`gt_zero`**: subject `> 0`. Equivalent for both `Nat` and `Int`
 ///   carriers (Nat's structural lower bound is 0; gt_zero is "above
 ///   structural bound").
+/// - **`unicode_scalar`**: `(0 <= subject <= 0xD7FF) || (0xE000 <= subject <= 0x10FFFF)`.
+/// - **`brand`**: reflexive subject `Eq` plus reflexive string `Eq` on the label
+///   literal (nominal disjointness under structural discharge).
 /// - **`range`**: subject `>= min` / `<= max` / both, depending on which
 ///   record fields are present. Numeric primitives in scope; arg-shape
 ///   validation already guaranteed Int-literal field values when reaching
@@ -1013,6 +1016,22 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
 ///   needed before `non_empty` synthesizes.
 /// - `pattern` / `format` / `content`: regex-primitive substrate-fact-introduction
 ///   (Q-Regex-Primitive) has not landed.
+fn brand_predicate_label(predicate: &SurfaceExpr) -> Option<String> {
+    match predicate {
+        SurfaceExpr::Call { args, .. } | SurfaceExpr::PathCall { args, .. } => {
+            let first = args.first()?;
+            match first {
+                SurfaceExpr::Literal {
+                    value: SurfaceLiteral::String(s),
+                    ..
+                } => Some(s.clone()),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 fn synthesize_predicate_body(
     spec: &PredicateSpec,
     predicate: &SurfaceExpr,
@@ -1034,14 +1053,72 @@ fn synthesize_predicate_body(
             args: vec![subject_var(), int_literal(0)],
             span,
         }),
-        // Reflexive equality — semantically true for every refined value;
-        // structurally ties the body to `bind_name` for discharge hygiene.
-        // Composes with synthesizable `range` (R3 gate #20 — temporal brands).
-        "brand" => Some(SurfaceExpr::Operator {
-            op: OperatorKind::Comparison(ComparisonOp::Eq),
-            args: vec![subject_var(), subject_var()],
-            span,
-        }),
+        "unicode_scalar" => {
+            const MAX_BMP_NON_SURROGATE: i64 = 0xD7FF;
+            const MIN_POST_SURROGATE: i64 = 0xE000;
+            const MAX_UNICODE_SCALAR: i64 = 0x10_FFFF;
+            let low_ok = SurfaceExpr::Operator {
+                op: OperatorKind::Logical(LogicalOp::And),
+                args: vec![
+                    SurfaceExpr::Operator {
+                        op: OperatorKind::Comparison(ComparisonOp::Ge),
+                        args: vec![subject_var(), int_literal(0)],
+                        span: span.clone(),
+                    },
+                    SurfaceExpr::Operator {
+                        op: OperatorKind::Comparison(ComparisonOp::Le),
+                        args: vec![subject_var(), int_literal(MAX_BMP_NON_SURROGATE)],
+                        span: span.clone(),
+                    },
+                ],
+                span: span.clone(),
+            };
+            let high_ok = SurfaceExpr::Operator {
+                op: OperatorKind::Logical(LogicalOp::And),
+                args: vec![
+                    SurfaceExpr::Operator {
+                        op: OperatorKind::Comparison(ComparisonOp::Ge),
+                        args: vec![subject_var(), int_literal(MIN_POST_SURROGATE)],
+                        span: span.clone(),
+                    },
+                    SurfaceExpr::Operator {
+                        op: OperatorKind::Comparison(ComparisonOp::Le),
+                        args: vec![subject_var(), int_literal(MAX_UNICODE_SCALAR)],
+                        span: span.clone(),
+                    },
+                ],
+                span: span.clone(),
+            };
+            Some(SurfaceExpr::Operator {
+                op: OperatorKind::Logical(LogicalOp::Or),
+                args: vec![low_ok, high_ok],
+                span,
+            })
+        }
+        "brand" => {
+            let label = brand_predicate_label(predicate)?;
+            let brand_lit = SurfaceExpr::Literal {
+                value: SurfaceLiteral::String(label),
+                span: span.clone(),
+            };
+            let tag_check = SurfaceExpr::Operator {
+                op: OperatorKind::Comparison(ComparisonOp::Eq),
+                args: vec![brand_lit.clone(), brand_lit],
+                span: span.clone(),
+            };
+            Some(SurfaceExpr::Operator {
+                op: OperatorKind::Logical(LogicalOp::And),
+                args: vec![
+                    SurfaceExpr::Operator {
+                        op: OperatorKind::Comparison(ComparisonOp::Eq),
+                        args: vec![subject_var(), subject_var()],
+                        span: span.clone(),
+                    },
+                    tag_check,
+                ],
+                span,
+            })
+        }
         // range body synthesis enabled. Note: synthesizing `subject >= min`
         // / `subject <= max` for the existing `dsl/std/types.dag`
         // Int-where-range declarations (RetryCount, HttpStatus, Port,
@@ -1532,7 +1609,8 @@ fn lower_parameter_refinements_phase(
 /// - **Registered + valid carrier + valid arg shape**: if
 ///   [`registered_predicate_synthesized_body`] returns `Some`, the predicate
 ///   lowers to a real `Bool` body via
-///   [`build_refinement_predicate_declaration`] (`gt_zero`, `range`, `brand`).
+///   [`build_refinement_predicate_declaration`] (`gt_zero`, `unicode_scalar`,
+///   `range`, `brand`).
 ///   Otherwise it gets a `Conj`-shaped placeholder via
 ///   [`alloc_registered_refinement_placeholder`] (P3 facts-flow-forward —
 ///   alias still carries a named refinement; body synthesis is the named
@@ -1632,7 +1710,7 @@ fn lower_type_alias_refinements_phase(
                 // lower a real `Bool`-returning predicate body via
                 // `build_refinement_predicate_declaration` rather than
                 // allocating a `Conj`-shaped placeholder. Synthesizable today:
-                // `gt_zero`, `range`, `brand` (see `synthesize_predicate_body`).
+                // `gt_zero`, `unicode_scalar`, `range`, `brand` (see `synthesize_predicate_body`).
                 match registered_predicate_synthesized_body(predicate, name, &carrier_chain) {
                     BodySynthOutcome::AllSynthesized(synthesized) => {
                         let pred_decl_id = build_refinement_predicate_declaration(

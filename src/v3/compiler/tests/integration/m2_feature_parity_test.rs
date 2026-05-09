@@ -1129,12 +1129,13 @@ fn test_nested_and_with_placeholder_leaf_fails_closed() {
 }
 
 /// R3 gate #20 / S9 Path (a): `brand("X")` lowers to a **real** refinement
-/// body (reflexive `subject == subject`), not a placeholder — enabling
-/// composition with synthesizable `range` on `Milliseconds` / `Seconds`.
+/// body (`subject == subject` ∧ tag literal reflexive `Eq`) — not a placeholder
+/// — so nominal labels participate in structural discharge and compose with
+/// synthesizable `range` on `Milliseconds` / `Seconds`.
 #[test]
 fn test_brand_lowers_to_real_refinement_body_not_placeholder() {
     use v3_compiler::dag::{ArrowBody, Behavior, TransformTarget, TypeConnective};
-    use v3_compiler::operators::{ComparisonOp, OperatorKind};
+    use v3_compiler::operators::{ComparisonOp, LogicalOp, OperatorKind};
 
     let f = "dsl/std/integer.dag";
     let dag = cached_compile_to_dag("type B = Int where brand(\"B\")", f);
@@ -1174,8 +1175,27 @@ fn test_brand_lowers_to_real_refinement_body_not_placeholder() {
         })
         .expect("`brand` body should be produced by a Transform node");
     match &producer.target {
-        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => {}
-        other => panic!("`brand` body should be `Comparison(Eq)`; got {other:?}"),
+        TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)) => {}
+        other => panic!("`brand` root should be logical And; got {other:?}"),
+    }
+    assert_eq!(
+        producer.inputs.len(),
+        2,
+        "`brand` body should join subject reflex + tag reflex"
+    );
+    for &inp in &producer.inputs {
+        let conj = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Transform(t) if t.output == inp => Some(t),
+                _ => None,
+            })
+            .expect("conjunct producer");
+        match &conj.target {
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => {}
+            other => panic!("each `brand` conjunct should be Comparison(Eq); got {other:?}"),
+        }
     }
 }
 
