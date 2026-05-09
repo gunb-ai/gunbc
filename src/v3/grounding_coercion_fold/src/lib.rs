@@ -39,6 +39,11 @@ pub use types::{
 
 #[cfg(test)]
 mod tests {
+    // Design-emission-model Examples 1 (`UnderRefined` / bound) and 5 (`UnderRefined` / algebra) were
+    // scratch-simulated only. `DeclaredIntegerIntents` always carries explicit `IntegerTargetIntent`
+    // bound + algebra ids, so those axis receipts wait on program-side projection (#1133 / #1286).
+    // Post-G3 `rg` over `*.rs` under `src/v3` shows no `ScratchIntExamples` consumers.
+
     use std::collections::BTreeMap;
 
     use v3_compiler::dag::{Interval, IntervalWidth, PositiveIntervalWidth};
