@@ -4,7 +4,8 @@
 // the FreeMonoid structure. The compiler sees String as a monoid and
 // derives sequence operations from the algebra.
 //
-// Char is a Unicode scalar value (integer in range 0..1114111).
+// Char is a Unicode scalar value: registered `unicode_scalar` predicate over
+// abstract `Int` (excludes surrogate code points) plus `brand("Char")`.
 
 module std.string_type
 
@@ -16,5 +17,5 @@ import std.types { Char }
 type String = FreeMonoid<Char>
 
 // Char is declared in std/types.dag as:
-//   type Char = Int where range(min: 0, max: 1114111), brand("Char")
+//   type Char = Int where unicode_scalar, brand("Char")
 // Single authority — not redeclared here.

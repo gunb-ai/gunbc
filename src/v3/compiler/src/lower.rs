@@ -756,6 +756,15 @@ const KNOWN_PREDICATES: &[PredicateSpec] = &[
         allowed_carriers: &["Nat", "Int"],
         arg_shape: PredicateArgShape::Bare,
     },
+    /// Unicode scalar value over `Int`: U+0000..U+D7FF ∪ U+E000..U+10FFFF
+    /// (excludes surrogate pair code units U+D800..U+DFFF). Single-interval
+    /// `range(max: 0x10FFFF)` is intentionally **not** used — it admits
+    /// surrogates and contradicts `String = FreeMonoid<Char>` modeling.
+    PredicateSpec {
+        name: "unicode_scalar",
+        allowed_carriers: &["Int"],
+        arg_shape: PredicateArgShape::Bare,
+    },
 ];
 
 fn predicate_spec(name: &str) -> Option<&'static PredicateSpec> {

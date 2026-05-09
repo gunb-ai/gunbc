@@ -185,10 +185,12 @@ type Bytes
 // will be rewritten as algebra.dag compositions in Part B.
 
 // --- Char type (structural primitive) ----------------------------------
-// Unicode scalar value (U+0000 to U+10FFFF, excluding surrogates).
+// Unicode scalar value (U+0000 to U+10FFFF, excluding U+D800..U+DFFF).
+// `unicode_scalar` registry predicate (lowered in `lower.rs`) — not a single
+// `range(max: 1114111)` interval (that would admit surrogates).
 // R3 gate #20 (`numeric_inherited_bake_ins_dissolved`): refinement over
 // abstract `Int` — not a parallel fixed-width integer row.
-type Char = Int where range(min: 0, max: 1114111), brand("Char")
+type Char = Int where unicode_scalar, brand("Char")
 
 // --- Container types (parameterized) -----------------------------------
 // Each container inhabits a specific algebraic structure from which its
