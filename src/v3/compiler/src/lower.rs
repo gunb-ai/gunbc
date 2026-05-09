@@ -3643,6 +3643,7 @@ fn lower_data_item(
                     args.as_slice(),
                     ty_decl_id,
                     dag,
+                    symbols.get(target).copied(),
                 ),
             }
         }
@@ -3796,13 +3797,24 @@ fn symbolic_cost_variant_constructor_id(dag: &Dag, variant_label: &str) -> Optio
 /// (`symbolic_cost_expr_equals_executable`) could not close on shape-only — this path is an explicit
 /// narrow **class-5 gap #3** lowering slice until general `SymbolicCost` data literals lower
 /// structurally without ad hoc Rust (same gap named in `lower_data_item` / DOWNSTREAM_REQUIREMENTS).
+///
+/// **Authority (INVARIANTS §P5 / modeling Practice 5):** like [`dsl_std_render_repeat_string_decl_id`]
+/// for `repeat_string`, only the **bootstrap** `SymbolicCost::ConstantCost` variant constructor is
+/// eligible — compare the resolved callee [`DeclarationId`] to [`symbolic_cost_variant_constructor_id`],
+/// not only the surface spelling `ConstantCost` (local shadowing must not reinterpret as std arm).
 fn try_lower_symbolic_cost_constant_cost_data(
     target: &str,
     args: &[SurfaceExpr],
     ty_decl_id: DeclarationId,
     dag: &Dag,
+    resolved_call_target: Option<DeclarationId>,
 ) -> Option<crate::dag::ValueBody> {
     if target != "ConstantCost" || args.len() != 1 {
+        return None;
+    }
+    let canonical_constant_cost = symbolic_cost_variant_constructor_id(dag, "ConstantCost")?;
+    let resolved = resolved_call_target?;
+    if resolved != canonical_constant_cost {
         return None;
     }
     if !type_decl_is_symbolic_cost(dag, ty_decl_id) {
@@ -3815,7 +3827,7 @@ fn try_lower_symbolic_cost_constant_cost_data(
     else {
         return None;
     };
-    let constructor = symbolic_cost_variant_constructor_id(dag, "ConstantCost")?;
+    let constructor = canonical_constant_cost;
     Some(crate::dag::ValueBody::Structural {
         fields: vec![(
             "_".to_string(),

@@ -4416,16 +4416,20 @@ fn optional_string_field_for_record(
             constructor,
             payload,
         } => {
-            // Prefer payload shape (facts-forward): optional absent/present encodings differ by
-            // arity/kind before consulting constructor spelling — avoids fragile string suffix
-            // matching on substrate variant names.
-            match classify_optional_string_payload(payload) {
-                Ok(out) => Ok(out),
-                Err(()) => {
-                    let ctor_name = dag.declaration(*constructor).name.as_deref().unwrap_or("");
-                    if ctor_name == "None" {
-                        return Ok(None);
+            let ctor_name = dag.declaration(*constructor).name.as_deref().unwrap_or("");
+            match payload.as_slice() {
+                [] => {
+                    if is_display_name_optional_absent_constructor(dag, *constructor) {
+                        Ok(None)
+                    } else {
+                        Err(format!(
+                            "SymbolicCostExprEquals: optional string field `{key}`: zero-payload variant \
+                             is not the canonical absent optional encoding (constructor={ctor_name:?})"
+                        ))
                     }
+                }
+                [FieldValue::Literal(LiteralBits::String(s))] => Ok(Some(s.clone())),
+                _ => {
                     if ctor_name == "Some" {
                         let inner = single_payload(payload)?;
                         match inner {
@@ -4452,13 +4456,55 @@ fn optional_string_field_for_record(
     }
 }
 
-/// Structural classification for optional `String`/`String?`-like payloads before name fallback.
-fn classify_optional_string_payload(payload: &[FieldValue]) -> Result<Option<String>, ()> {
-    match payload {
-        [] => Ok(None),
-        [FieldValue::Literal(LiteralBits::String(s))] => Ok(Some(s.clone())),
-        _ => Err(()),
+/// Peel transparent wrappers so [`size_variable_display_name_optional_none_constructor_id`] reaches
+/// the underlying optional coproduct when present (Practice 1 / fail-closed decode).
+fn peel_layer_for_optional_display_name_field_type(
+    mut ty: DeclarationId,
+    dag: &Dag,
+) -> DeclarationId {
+    for _ in 0..32 {
+        let decl = dag.declaration(ty);
+        match &decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => {
+                ty = *template;
+            }
+            TypeConnective::Atom(
+                AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+            ) => {
+                ty = *next;
+            }
+            _ => break,
+        }
     }
+    ty
+}
+
+/// Optional-`None` constructor id for `SizeVariable.display_name` when the substrate models `String?`
+/// as an explicit coproduct (algebra.dag `display_name: String?`).
+fn size_variable_display_name_optional_none_constructor_id(dag: &Dag) -> Option<DeclarationId> {
+    let sv = dag.declaration_by_name("SizeVariable")?;
+    let TypeConnective::Conj { children } = &sv.connective else {
+        return None;
+    };
+    let display_ty = children.iter().find(|f| f.label == "display_name")?.ty;
+    let ty = peel_layer_for_optional_display_name_field_type(display_ty, dag);
+    let decl = dag.declaration(ty);
+    match &decl.connective {
+        TypeConnective::Disj { variants } => {
+            variants.iter().find(|v| v.label == "None").map(|v| v.ty)
+        }
+        _ => None,
+    }
+}
+
+fn is_display_name_optional_absent_constructor(dag: &Dag, ctor: DeclarationId) -> bool {
+    if dag.declaration(ctor).name.as_deref() == Some("None") {
+        return true;
+    }
+    size_variable_display_name_optional_none_constructor_id(dag) == Some(ctor)
 }
 
 fn degree_raw_from_degree_at_least_two_field_value(
@@ -5954,17 +6000,69 @@ mod symbolic_cost_expr_equals_decoder_tests {
     }
 
     #[test]
-    fn classify_optional_string_payload_empty_or_string_literal() {
-        assert!(matches!(classify_optional_string_payload(&[]), Ok(None)));
+    fn optional_display_name_rejects_zero_payload_unless_absent_ctor() {
+        let dag = generated_full_bootstrap_dag();
+        let wrong_ctor = symbolic_cost_variant_constructor(&dag, "ConstantCost");
+        let fields = vec![(
+            "display_name".to_string(),
+            FieldValue::Variant {
+                constructor: wrong_ctor,
+                payload: vec![],
+            },
+        )];
+        assert!(
+            optional_string_field_for_record(&dag, &fields, "display_name").is_err(),
+            "zero payload must not decode as absent unless ctor is optional None"
+        );
+    }
+
+    #[test]
+    fn optional_display_name_accepts_zero_payload_for_canonical_none_ctor_when_present() {
+        let dag = generated_full_bootstrap_dag();
+        let Some(none_ctor) = super::size_variable_display_name_optional_none_constructor_id(&dag)
+        else {
+            // `String?` may lower only via cardinality + absent field — nothing to assert here.
+            return;
+        };
+        let fields = vec![(
+            "display_name".to_string(),
+            FieldValue::Variant {
+                constructor: none_ctor,
+                payload: vec![],
+            },
+        )];
         assert_eq!(
-            classify_optional_string_payload(&[FieldValue::Literal(LiteralBits::String(
-                "x".to_string()
-            ))])
-            .unwrap(),
+            optional_string_field_for_record(&dag, &fields, "display_name").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn optional_display_name_accepts_string_literal_payload() {
+        let dag = generated_full_bootstrap_dag();
+        let fields = vec![(
+            "display_name".to_string(),
+            FieldValue::Variant {
+                constructor: symbolic_cost_variant_constructor(&dag, "ConstantCost"),
+                payload: vec![FieldValue::Literal(LiteralBits::String("x".to_string()))],
+            },
+        )];
+        assert_eq!(
+            optional_string_field_for_record(&dag, &fields, "display_name").unwrap(),
             Some("x".to_string())
         );
-        assert!(
-            classify_optional_string_payload(&[FieldValue::Literal(LiteralBits::Int(1))]).is_err()
-        );
+    }
+
+    #[test]
+    fn optional_display_name_rejects_non_string_literal_singleton_payload() {
+        let dag = generated_full_bootstrap_dag();
+        let fields = vec![(
+            "display_name".to_string(),
+            FieldValue::Variant {
+                constructor: symbolic_cost_variant_constructor(&dag, "ConstantCost"),
+                payload: vec![FieldValue::Literal(LiteralBits::Int(1))],
+            },
+        )];
+        assert!(optional_string_field_for_record(&dag, &fields, "display_name").is_err());
     }
 }
