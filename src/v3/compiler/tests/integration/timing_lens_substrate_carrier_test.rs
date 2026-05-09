@@ -91,9 +91,7 @@ fn workflow_observation_anchor_shape_locked() {
 #[test]
 fn nanoseconds_shape_locked() {
     let dag = generated_full_bootstrap_dag();
-    let labels: HashSet<String> = conj_field_labels(&dag, "Nanoseconds")
-        .into_iter()
-        .collect();
+    let labels: HashSet<String> = conj_field_labels(&dag, "Nanoseconds").into_iter().collect();
     let expected: HashSet<&str> = ["count"].into_iter().collect();
     let actual: HashSet<&str> = labels.iter().map(String::as_str).collect();
     assert_eq!(actual, expected, "Nanoseconds field set drifted");
