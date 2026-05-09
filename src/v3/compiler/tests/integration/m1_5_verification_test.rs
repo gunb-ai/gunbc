@@ -480,9 +480,22 @@ const TC2_EVALUATION_ORDER_FIXTURE: &str =
     include_str!("../fixtures/tc2_evaluation_order_independence_deferred.dag");
 const TC2_EVALUATION_ORDER_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag";
+// Test-harness containment: this fixture compiles enough bootstrap/runtime surface to
+// overflow the default harness stack in CI. Dissolution trigger: remove or centralize
+// this wrapper once the TC2 fixture runs on the default stack.
+const TC2_FIXTURE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
 
 #[test]
 fn tc2_evaluation_order_independence_suite_passes() {
+    std::thread::Builder::new()
+        .stack_size(TC2_FIXTURE_TEST_STACK_BYTES)
+        .spawn(tc2_evaluation_order_independence_suite_passes_impl)
+        .expect("spawn larger-stack TC2 fixture test thread")
+        .join()
+        .expect("larger-stack TC2 fixture test thread panicked");
+}
+
+fn tc2_evaluation_order_independence_suite_passes_impl() {
     let dag = match compile_to_dag(TC2_EVALUATION_ORDER_FIXTURE, TC2_EVALUATION_ORDER_FIXTURE_PATH)
     {
         Ok(dag) => {
@@ -643,23 +656,35 @@ fn r3_bridge_retirement_ledger_zero_open_row_count_ratchet() {
 }
 
 #[test]
-fn rust_dag_isomorphism_consumer_reaches_binary_report_shape_gate() {
-    let results = TestRunner::new(rust_dag_isomorphism_dag())
-        .run_suite("rust_dag_isomorphism_consumer_suite");
-    assert_eq!(results.len(), 1);
-    assert!(
-        matches!(
-            &results[0].result,
-            ClaimResult::NotYetImplemented(reason)
-                if reason.contains("BinaryDimensionReportEquals")
-                    && reason.contains("structural shape is valid")
-                    && reason.contains("RustEnumExtractionDagShapeReport")
-                    && reason.contains("DagReflectionDagShapeReport")
-        ),
-        "expected RustDagIsomorphism consumer to reach the current \
-         BinaryDimensionReportEquals shape-valid path; got {:?}",
-        results[0].result
-    );
+fn rust_dag_isomorphism_executable_passes_dag_shape_report_gate() {
+    // P5 per-PR receipt for this expanded hand-Rust test harness: explicit deferral to
+    // ROADMAP.md "Course correction #1" / table row 1 ("One BinaryDimensionReportEquals
+    // path executes"). This test must continue to stop at the shape-valid NYI boundary
+    // until the generated DimensionReport/DagShapeReport path replaces the Rust harness.
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            let results = TestRunner::new(rust_dag_isomorphism_dag())
+                .run_suite("rust_dag_isomorphism_consumer_suite");
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].claim_name, "rust_dag_isomorphism_executable");
+            assert!(
+                matches!(
+                    &results[0].result,
+                    ClaimResult::NotYetImplemented(reason)
+                        if reason.contains("BinaryDimensionReportEquals")
+                            && reason.contains("structural shape is valid")
+                            && reason.contains("RustEnumExtractionDagShapeReport")
+                            && reason.contains("DagReflectionDagShapeReport")
+                ),
+                "expected RustDagIsomorphism executable to stop at the \
+                 BinaryDimensionReportEquals shape-valid boundary; got {:?}",
+                results[0].result
+            );
+        })
+        .expect("spawn rust_dag_isomorphism stack")
+        .join()
+        .expect("rust_dag_isomorphism gate thread");
 }
 
 /// R3 gate #40 (`symbolic_cost_expr_equals_executable`): `SymbolicCostExprEquals` applies the

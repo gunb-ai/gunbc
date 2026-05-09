@@ -3,12 +3,12 @@ use std::collections::{HashMap, HashSet};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
-    join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
+    join_evidence, literal_bits_int, lower_call_pattern, map_evidence_merge_at, merge_evidence,
     optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
     positive_amount_from_i64, promote_to_strict, size_bound_param,
     sub_value_relation_to_call_pattern, tree_size_bound, type_iteration_dimension, AlgebraProfile,
     ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue,
-    Interval, IntervalWidth, IterationDimension, IterationPrimitive, LiteralBits, LoweringTarget,
+    Interval, IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget,
     PositiveDescentAmount, PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound,
     SubValueRelation, TypeConnective, ValueBody,
 };
@@ -2332,7 +2332,7 @@ fn sample_value_body_instances_covering_all_rust_variants() -> Vec<ValueBody> {
     vec![
         ValueBody::Unparsed(span),
         ValueBody::Structural { fields: Vec::new() },
-        ValueBody::Scalar(LiteralBits::Int(0)),
+        ValueBody::Scalar(literal_bits_int(0)),
         ValueBody::List(Vec::new()),
         ValueBody::Map(FieldMap::from_entries(Vec::new()).expect("empty FieldMap")),
     ]
@@ -2504,7 +2504,7 @@ type Holder {\n\
 data bad: Holder = { w: UnitCount { units: -1 } }\n";
             let dag = semantic_dag_for(source, "positive_interval_unit_count_negative.v3");
             let expected =
-                positive_interval_width_unit_count_requires_nonnegative_units_literal_message(-1);
+                positive_interval_width_unit_count_requires_nonnegative_units_literal_message("-1");
             let hit = dag
                 .diagnostics()
                 .iter()
@@ -3067,10 +3067,8 @@ let note = \"ok\"\n";
                     ));
                     assert!(matches!(
                         &arms[1].body,
-                        parse_surface::SurfaceExpr::Literal {
-                            value: parse_surface::SurfaceLiteral::Int(0),
-                            ..
-                        }
+                        parse_surface::SurfaceExpr::Literal { value, .. }
+                            if matches!(value, parse_surface::SurfaceLiteral::Int(s) if s == "0")
                     ));
                 }
                 other => panic!("expected reflected match expr, got {other:?}"),
@@ -3922,8 +3920,23 @@ fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
     );
 }
 
+// Test-harness containment: this carrier-shape ratchet loads the full generated
+// bootstrap DAG, which can overflow the default harness stack in CI. Dissolution
+// trigger: remove or centralize this wrapper once full-bootstrap shape tests run
+// on the default stack.
+const FULL_BOOTSTRAP_SHAPE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
+
 #[test]
 fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape() {
+    std::thread::Builder::new()
+        .stack_size(FULL_BOOTSTRAP_SHAPE_TEST_STACK_BYTES)
+        .spawn(pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape_impl)
+        .expect("spawn larger-stack PR-A.3 carrier test thread")
+        .join()
+        .expect("larger-stack PR-A.3 carrier test thread panicked");
+}
+
+fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape_impl() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
     let eval_state_key_id = find_named(&dag, "EvalStateKey");
@@ -3957,7 +3970,7 @@ fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape() {
     assert_eq!(
         strategy_variants.len(),
         1,
-        "PR-A.3 eager baseline must not introduce fake strategy variants"
+        "TC2 input-order expansion must stay under the single applicative strategy variant"
     );
     assert_eq!(strategy_variants[0].label, "ApplicativeOrder");
     assert_eq!(
@@ -3974,20 +3987,27 @@ fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape() {
     );
     let input_order_variants = match &input_order.connective {
         TypeConnective::Disj { variants } => variants,
-        other => panic!("InputEvaluationOrder must lower as a one-variant Disj, got {other:?}"),
+        other => panic!("InputEvaluationOrder must lower as a two-variant Disj, got {other:?}"),
     };
     assert_eq!(
         input_order_variants.len(),
-        1,
-        "PR-A.3 eager baseline must not introduce fake input-order variants"
+        2,
+        "TC2 requires exactly the two executable eager input orders"
     );
     assert_eq!(input_order_variants[0].label, "LeftFirst");
-    match &dag.declaration(input_order_variants[0].ty).connective {
-        TypeConnective::Conj { children } => assert!(
-            children.is_empty(),
-            "LeftFirst is a bare nullary variant and must carry no payload fields"
-        ),
-        other => panic!("LeftFirst payload must lower as empty Conj, got {other:?}"),
+    assert_eq!(input_order_variants[1].label, "RightFirst");
+    for variant in input_order_variants {
+        match &dag.declaration(variant.ty).connective {
+            TypeConnective::Conj { children } => assert!(
+                children.is_empty(),
+                "{} is a bare nullary variant and must carry no payload fields",
+                variant.label
+            ),
+            other => panic!(
+                "{} payload must lower as empty Conj, got {other:?}",
+                variant.label
+            ),
+        }
     }
 
     let memo_key = dag

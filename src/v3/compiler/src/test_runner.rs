@@ -553,7 +553,12 @@ fn w1_dag_eval_output_int(program_dag: &Dag, output_bind: &BindNode) -> Result<i
             )
         })?;
     match &value {
-        crate::evaluator::Value::LiteralValue(LiteralBits::Int(n)) => Ok(*n),
+        crate::evaluator::Value::LiteralValue(LiteralBits::Int(s)) => s.parse::<i64>().map_err(|_| {
+            format!(
+                "W1 dag_eval_output: Int literal is not a valid i64 decimal string for bind `{}`",
+                output_bind.name
+            )
+        }),
         other => Err(format!(
             "W1 dag_eval_output: only `Value::LiteralValue(Int)` is supported for slice-1 Int parity \
              (transitional debt; dissolution: substrate `ValueKind` widening + observation normalization): {other:?}"
@@ -691,7 +696,7 @@ fn int_commutativity_holds_all_pairs(
     lens_decl_id: DeclarationId,
     pairs: &[(i64, i64)],
 ) -> Result<bool, crate::lens_apply::LensApplyError> {
-    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n.to_string()));
     for &(a, b) in pairs {
         let left = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), int(b)])?;
         let right = apply_lens_declaration(program_dag, lens_decl_id, &[int(b), int(a)])?;
@@ -716,7 +721,7 @@ pub fn parse_execute_command_fields(payload: &[FieldValue]) -> Option<(String, V
                 .iter()
                 .find(|(label, _)| label == "expect_exit_code")
                 .and_then(|(_, value)| match value {
-                    FieldValue::Literal(LiteralBits::Int(n)) => Some(*n),
+                    FieldValue::Literal(LiteralBits::Int(s)) => s.parse::<i64>().ok(),
                     _ => None,
                 })?;
             let args = fields
@@ -730,10 +735,11 @@ pub fn parse_execute_command_fields(payload: &[FieldValue]) -> Option<(String, V
                 return None;
             };
             let argv = list_string_literal_values(args)?;
-            let FieldValue::Literal(LiteralBits::Int(expect_exit_code)) = code else {
+            let FieldValue::Literal(LiteralBits::Int(expect_s)) = code else {
                 return None;
             };
-            Some((command.clone(), argv, *expect_exit_code))
+            let expect_exit_code = expect_s.parse::<i64>().ok()?;
+            Some((command.clone(), argv, expect_exit_code))
         }
         _ => None,
     }
@@ -2354,7 +2360,14 @@ impl<'a> TestRunner<'a> {
             // M1(2.8): `Lookup<Int>` is not yet structurally authorable in `data` bodies for this
             // fixture module — compare the lens `Hit(n)` against a scalar `Int` witness.
             let expected_int = match expected_decl.value_body.as_ref() {
-                Some(ValueBody::Scalar(LiteralBits::Int(i))) => *i,
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(cost_of): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
                 _ => {
                     return ClaimResult::Fail(format!(
                         "LensOutputEquals(cost_of): expected_ref `{expected_name}` must be `data …: Int = <literal>` (M1(2.8); `Lookup<Int>` data literals are deferred)"
@@ -3129,11 +3142,16 @@ impl<'a> TestRunner<'a> {
     }
 
     fn eval_cost_bounded(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
-        let [FieldValue::Literal(LiteralBits::String(bind_name)), comparator, FieldValue::Literal(LiteralBits::Int(bound))] =
+        let [FieldValue::Literal(LiteralBits::String(bind_name)), comparator, FieldValue::Literal(LiteralBits::Int(bound_s))] =
             payload
         else {
             return ClaimResult::Fail(
                 "CostBounded payload should be (String, ComparisonOp, Int)".to_string(),
+            );
+        };
+        let Ok(bound) = bound_s.parse::<i64>() else {
+            return ClaimResult::Fail(
+                "CostBounded: bound must be a valid decimal i64 literal".to_string(),
             );
         };
         let dag = match compile_to_dag(&claim.source, &claim.file_name) {
@@ -3158,10 +3176,12 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        if self.compare_cost(comparator, actual, *bound) {
+        if self.compare_cost(comparator, actual, bound) {
             ClaimResult::Pass
         } else {
-            ClaimResult::Fail(format!("cost {actual} did not satisfy bound {bound}"))
+            ClaimResult::Fail(format!(
+                "cost {actual} did not satisfy bound {bound} (predicate literal `{bound_s}`)"
+            ))
         }
     }
 
@@ -3195,21 +3215,23 @@ impl<'a> TestRunner<'a> {
             Ok(id) => id,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        let comparator_label = match self.variant_value(comparator) {
-            Some((label, payload)) if payload.is_empty() => label,
-            _ => {
-                return ClaimResult::Fail(
-                    "PerfWithinBaseline `comparator`: expected unit PerfBudgetComparisonOp variant; \
-                     got non-variant or non-empty payload"
-                        .to_string(),
-                );
-            }
+        // Enforce the Director-locked "within baseline" semantics (`r3-structure.md`
+        // §225): budget is `median ≤ 2× baseline` AND `p99 ≤ 5× baseline`.
+        // `std.verification` exposes a closed budget comparator instead of the
+        // general `ComparisonOp` coproduct so inverted comparisons cannot be
+        // authored into this gate.
+        let Some(comparator_label) = perf_budget_comparator_label(self.dag, comparator) else {
+            return ClaimResult::Fail(
+                "PerfWithinBaseline `comparator`: expected unit PerfBudgetComparisonOp variant; \
+                 got non-PerfBudgetComparisonOp variant, non-variant, or non-empty payload"
+                    .to_string(),
+            );
         };
-        if !is_perf_budget_at_most(&comparator_label) {
+        if !is_perf_budget_comparator_at_most(&comparator_label) {
             return ClaimResult::Fail(format!(
                 "PerfWithinBaseline `comparator`: only `AtMostBudget` matches the Director-locked \
                  §225 budget semantics (median ≤ 2× baseline median, absolute p99 ≤ 5× baseline absolute p99); \
-                 `{comparator_label}` is not a supported perf-budget comparator"
+                 `{comparator_label}` would invert or skew the gate"
             ));
         }
         let subject = match self.perf_baseline_measurement(subject_id, "subject") {
@@ -3270,7 +3292,12 @@ impl<'a> TestRunner<'a> {
             _ => return Err(PerfMeasurementResolveError::WrongConnective),
         };
         let median_ns = match field(fields, "median_ns") {
-            Some(FieldValue::Literal(LiteralBits::Int(v))) => *v,
+            Some(FieldValue::Literal(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => {
+                    return Err(PerfMeasurementResolveError::WrongFieldKind { field: "median_ns" });
+                }
+            },
             Some(_) => {
                 return Err(PerfMeasurementResolveError::WrongFieldKind { field: "median_ns" });
             }
@@ -3279,7 +3306,14 @@ impl<'a> TestRunner<'a> {
             }
         };
         let p99_delta_ns = match field(fields, "p99_delta_ns") {
-            Some(FieldValue::Literal(LiteralBits::Int(v))) => *v,
+            Some(FieldValue::Literal(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                Ok(v) => v,
+                Err(_) => {
+                    return Err(PerfMeasurementResolveError::WrongFieldKind {
+                        field: "p99_delta_ns",
+                    });
+                }
+            },
             Some(_) => {
                 return Err(PerfMeasurementResolveError::WrongFieldKind {
                     field: "p99_delta_ns",
@@ -3312,11 +3346,16 @@ impl<'a> TestRunner<'a> {
         _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [authority, list_constant, FieldValue::Literal(LiteralBits::Int(bound))] = payload
+        let [authority, list_constant, FieldValue::Literal(LiteralBits::Int(bound_s))] = payload
         else {
             return ClaimResult::Fail(
                 "CensusBoundCheck payload should be (DeclarationRef, CensusListConstant, Int)"
                     .to_string(),
+            );
+        };
+        let Ok(bound) = bound_s.parse::<i64>() else {
+            return ClaimResult::Fail(
+                "CensusBoundCheck: bound must be a valid decimal i64 literal".to_string(),
             );
         };
         if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
@@ -3330,7 +3369,7 @@ impl<'a> TestRunner<'a> {
             Ok(count) => count,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        if count <= *bound {
+        if count <= bound {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
@@ -4774,6 +4813,27 @@ fn variant_label(dag: &Dag, variant_id: DeclarationId) -> Option<String> {
         })
 }
 
+fn perf_budget_comparator_label(dag: &Dag, value: &FieldValue) -> Option<String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return None;
+    };
+    if !payload.is_empty() {
+        return None;
+    }
+    let comparator_decl = dag.declaration_by_name("PerfBudgetComparisonOp")?;
+    let TypeConnective::Disj { variants } = &comparator_decl.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|variant| variant.ty == *constructor)
+        .map(|variant| variant.label.clone())
+}
+
 fn algebraic_law_payload_fields(
     payload: &[FieldValue],
 ) -> Result<(&FieldValue, &FieldValue), AlgebraicLawProgramError> {
@@ -5757,7 +5817,7 @@ mod perf_within_baseline_tests {
     //!    fail-closed semantics.
 
     use super::compute_perf_budget_bounds;
-    use super::is_perf_budget_at_most;
+    use super::is_perf_budget_comparator_at_most;
     use super::PerfBudgetOverflow;
     use super::PerfMeasurement;
     use super::PerfMeasurementResolveError;
@@ -5892,40 +5952,95 @@ mod perf_within_baseline_tests {
         );
     }
 
-    /// `PerfWithinBaseline.comparator` is `PerfBudgetComparisonOp` from
-    /// `src/v3/std/verification.dag` (not `ComparisonOp` from `substrate.dag`).
-    /// Drift gate: every bootstrap-declared variant is classified by
-    /// [`is_perf_budget_at_most`]; only `AtMostBudget` is accepted today.
+    /// The Director-locked §225 budget semantics are `median ≤ 2× baseline`
+    /// AND `p99 ≤ 5× baseline`. The substrate `PerfBudgetComparisonOp`
+    /// carries a closed budget comparator so inverted general comparisons
+    /// cannot be authored into the gate. This test reads its variant set
+    /// from the generated full bootstrap DAG consumed by the runner (not a
+    /// hardcoded list) and asserts the runtime guard classifies every variant:
+    /// `AtMostBudget` alone passes, every other variant fails-closed.
     #[test]
-    fn runtime_classifies_every_perf_budget_comparison_op_variant() {
+    fn runtime_classifies_every_perf_budget_comparison_op_variant_at_most_only() {
         use crate::dag::TypeConnective;
-        let dag = crate::generated_full_bootstrap_dag();
-        let comparison_op = dag
-            .declaration_by_name("PerfBudgetComparisonOp")
-            .expect("PerfBudgetComparisonOp must exist in bootstrap (src/v3/std/verification.dag)");
-        let TypeConnective::Disj { variants } = &comparison_op.connective else {
+
+        let dag = std::thread::Builder::new()
+            .name("perf_budget_comparator_bootstrap_dag".to_string())
+            // The generated full bootstrap DAG overflows the default libtest
+            // thread stack on this path; keep the structural drift check.
+            .stack_size(8 * 1024 * 1024)
+            .spawn(crate::generated_full_bootstrap_dag)
+            .expect("spawn generated_full_bootstrap_dag helper")
+            .join()
+            .expect("generated_full_bootstrap_dag helper panicked");
+        let perf_budget_comparison_op = dag.declaration_by_name("PerfBudgetComparisonOp").expect(
+            "PerfBudgetComparisonOp must exist in generated bootstrap DAG \
+                 (src/v3/std/verification.dag)",
+        );
+        let TypeConnective::Disj { variants } = &perf_budget_comparison_op.connective else {
             panic!("PerfBudgetComparisonOp must be a coproduct (Disj)");
         };
         let mut variant_labels: Vec<&str> = variants.iter().map(|v| v.label.as_str()).collect();
         variant_labels.sort();
         assert!(
             variant_labels.contains(&"AtMostBudget"),
-            "verification.dag PerfBudgetComparisonOp must include AtMostBudget; got {variant_labels:?}"
+            "PerfBudgetComparisonOp must include `AtMostBudget` for §225 semantics; got {variant_labels:?}"
         );
+        // Drift gate: every substrate-declared variant must be explicitly
+        // classified by the runtime guard. The guard's classification is a
+        // single rule — `label == \"AtMostBudget\"` — so the assertion below mirrors it.
+        // If substrate adds a variant, `is_perf_budget_comparator_at_most`
+        // continues to return `false` for it (correctly fail-closed under the
+        // current locked semantics) and this test continues to pass without
+        // edits — the new variant is structurally rejected by the same guard,
+        // matching the §225 lock.
         for label in &variant_labels {
-            let accepted = is_perf_budget_at_most(label);
+            let accepted = is_perf_budget_comparator_at_most(label);
             assert_eq!(
                 accepted,
                 *label == "AtMostBudget",
-                "PerfBudgetComparisonOp variant `{label}`: runtime guard disagrees with locked semantics",
+                "PerfBudgetComparisonOp variant `{label}`: runtime guard classification disagrees \
+                 with §225 lock (only `AtMostBudget` may be accepted)",
             );
         }
     }
+
+    #[test]
+    fn perf_budget_comparator_rejects_general_comparison_op_constructor() {
+        use crate::dag::{FieldValue, TypeConnective};
+
+        let dag = std::thread::Builder::new()
+            .name("perf_budget_comparator_wrong_disj_bootstrap_dag".to_string())
+            // The generated full bootstrap DAG overflows the default libtest
+            // thread stack on this path; keep the structural boundary check.
+            .stack_size(8 * 1024 * 1024)
+            .spawn(crate::generated_full_bootstrap_dag)
+            .expect("spawn generated_full_bootstrap_dag helper")
+            .join()
+            .expect("generated_full_bootstrap_dag helper panicked");
+        let comparison_op = dag
+            .declaration_by_name("ComparisonOp")
+            .expect("ComparisonOp must exist in generated bootstrap DAG");
+        let TypeConnective::Disj { variants } = &comparison_op.connective else {
+            panic!("ComparisonOp must be a coproduct (Disj)");
+        };
+        let general_comparator = FieldValue::Variant {
+            constructor: variants[0].ty,
+            payload: Vec::new(),
+        };
+        assert_eq!(
+            super::perf_budget_comparator_label(&dag, &general_comparator),
+            None,
+            "PerfWithinBaseline must reject unit variants from non-PerfBudgetComparisonOp coproducts"
+        );
+    }
 }
 
-/// `PerfWithinBaseline` accepts only `PerfBudgetComparisonOp::AtMostBudget`.
-#[inline]
-fn is_perf_budget_at_most(comparator_label: &str) -> bool {
+/// Single-rule classifier for the §225 `AtMostBudget` guard. The runtime
+/// path in [`TestRunner::eval_perf_within_baseline`] calls this helper
+/// (`comparator_label != "AtMostBudget"` → fail-closed). Lifted as a free function
+/// so unit tests can drive the same classifier against the substrate-
+/// declared `PerfBudgetComparisonOp` variant set without DAG fixtures.
+fn is_perf_budget_comparator_at_most(comparator_label: &str) -> bool {
     comparator_label == "AtMostBudget"
 }
 
