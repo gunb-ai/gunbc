@@ -154,3 +154,60 @@ fn timing_budget_shape_locked() {
     let actual: HashSet<&str> = labels.iter().map(String::as_str).collect();
     assert_eq!(actual, expected, "TimingBudget field set drifted");
 }
+
+/// openai-pro / PR #2360: sequential and branch lens hooks must share one join
+/// (`timing_measurement_lens_combine`); branch must not re-implement a stale
+/// short-circuit that makes `(Stale, Unobserved)` order-sensitive vs sequential.
+#[test]
+fn timing_lens_sequential_and_branch_delegate_to_shared_combine() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../std/timing_lens.dag");
+    let src = std::fs::read_to_string(&path).expect("read src/v3/std/timing_lens.dag");
+    let seq = src.find("fn timing_sequential_op").expect("timing_sequential_op");
+    let br = src.find("fn timing_branch_op").expect("timing_branch_op");
+    assert!(seq < br, "expected sequential_op before branch_op in source order");
+    let seq_window = &src[seq..(seq + 220).min(src.len())];
+    assert!(
+        seq_window.contains("timing_measurement_lens_combine(a, b, true)"),
+        "timing_sequential_op must delegate to timing_measurement_lens_combine(..., true); got: {seq_window:?}"
+    );
+    let br_window = &src[br..(br + 220).min(src.len())];
+    assert!(
+        br_window.contains("timing_measurement_lens_combine(a, b, false)"),
+        "timing_branch_op must delegate to timing_measurement_lens_combine(..., false); got: {br_window:?}"
+    );
+}
+
+/// openai-pro / PR #2360: `timing_lens_validate` must not all-pass non-`Observed`
+/// report states at the substrate hook (P3 / design §2.6).
+#[test]
+fn timing_lens_validate_surfaces_diagnostic_for_non_observed_states() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../std/timing_lens.dag");
+    let src = std::fs::read_to_string(&path).expect("read src/v3/std/timing_lens.dag");
+    let start = src
+        .find("fn timing_lens_validate(d: Dag, composed: TimingMeasurement)")
+        .expect("timing_lens_validate");
+    let end = src[start..]
+        .find("fn timing_measurement_iterate")
+        .map(|i| start + i)
+        .unwrap_or(src.len());
+    let body = &src[start..end];
+    assert!(
+        body.contains("Unobserved =>")
+            && body.contains("timing_lens_validate_non_observed")
+            && body.contains("Ambiguous =>")
+            && body.contains("Stale =>"),
+        "non-observed arms must delegate to timing_lens_validate_non_observed; got:\n{body}"
+    );
+    assert!(
+        body.contains("Observed { duration: _ } =>") && body.contains("NoDiagnostic"),
+        "Observed arm should retain NoDiagnostic at this scaffold; got:\n{body}"
+    );
+    let helper_start = src
+        .find("fn timing_lens_validate_non_observed(d: Dag, text: String)")
+        .expect("timing_lens_validate_non_observed");
+    let helper_window = &src[helper_start..(helper_start + 320).min(src.len())];
+    assert!(
+        helper_window.contains("SomeDiagnostic"),
+        "timing_lens_validate_non_observed must construct SomeDiagnostic; got: {helper_window:?}"
+    );
+}
