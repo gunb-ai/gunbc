@@ -25,7 +25,7 @@ src/v3/spec/go.dag	131	1170580	2ddf8468392612ee
 src/v3/spec/python.dag	93	602105	4ec88ac58c60fe63
 src/v3/spec/rust.dag	181	1384808	3b5879ad21dd72ba
 src/v3/spec/v3_l1.dag	8	2246	57294d687b4753f4
-src/v3/std/algebra.dag	55	441449	66121bf8f7321e62
+src/v3/std/algebra.dag	56	448245	7ce9a380d26f1ed3
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
 src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	13	69184	3115dc7ce99d10ff
