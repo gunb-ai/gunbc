@@ -132,9 +132,10 @@ Director's sequencing reasoning:
 | F-α | author worker brief; dispatch | (none) | (none) |
 | F-β.1 | author canvas (migration-shape ratification) | (none) | (none) |
 | F-β.2 | atomic-migration worker (port + rewire; same shape as F-α) | (none) | (none) |
-| F-γ | (#83 register) | (#95 demo) | (none) |
+| F-γ.1 | (none) | (#95 demo worker) | (none) |
+| F-γ.2 | (#83 register status update — small) | (none) | (none) |
 
-T-LAS Slice B landing is a separate T-Lens-Application-Surface lane work item (not a Cluster F sub-phase); its sequencing is tracked in T-LAS lane-Mgr scope (Substrate Mgr per `r3-structure.md` §"Lane structure"). F-γ cascade-gates on T-LAS Slice B landing as an external dependency.
+T-LAS Slice B landing is a separate T-Lens-Application-Surface lane work item (not a Cluster F sub-phase); its sequencing is tracked in T-LAS lane-Mgr scope (Substrate Mgr per `r3-structure.md` §"Lane structure"). F-γ.1 cascade-gates on T-LAS Slice B landing as an external dependency.
 
 ---
 
@@ -145,7 +146,8 @@ Per [`docs/audit/r3-pb0-velocity-walk-2026-05-09.md`](r3-pb0-velocity-walk-2026-
 **Cluster F bulk-dissolution events (carve-promotion contribution)**:
 - F-α: ~3 entries dissolve (workflow_parallelism.rs + supporting files)
 - F-β.2: ~3 entries dissolve (effect-enum walker hand-Rust; post-F-β.1 canvas ratification)
-- F-γ: ~2 entries dissolve (#95 demo wiring; varies by implementation shape)
+- F-γ.1: ~2 entries dissolve (#95 demo wiring; varies by implementation shape)
+- F-γ.2: 0 entries dissolve (#83 is a register-status update, not a hand-Rust retirement)
 
 Plus existing Cluster F scope (#5/#6/#7 LP-retirement + #71 self-host trampoline): ~14 entries dissolve.
 
@@ -165,7 +167,8 @@ Per Director's bulk-event sequencing in #issuecomment-4412008376 §C, refined by
 | **F-α (C1 walker port)** | **weeks 1-3** | parallel with Cluster M Phase 1 |
 | **F-β.1 (C2 migration-shape canvas)** | **weeks 1-2** | parallel with F-α (canvas-tier work; substrate-ready) |
 | **F-β.2 (C2 atomic-migration implementation)** | **weeks 2-4** | post-F-β.1 ratification |
-| **F-γ (#95 demo + #83 register)** | **weeks 4-7** | post-F-α + T-LAS Slice B |
+| **F-γ.1 (#95 demo)** | **weeks 4-6** | post-F-α + T-LAS Slice B |
+| **F-γ.2 (#83 register full-scope)** | **weeks 4-7** | post-all-4-lenses-BEHAVIORALLY-COMPLETE (F-α + F-β.2 + #79 + #80) |
 | Tail: per-file/small-class | weeks 6-8 | various |
 
 All phases bounded; staffing-not-a-concern directive applies. Fits 8-12 week R3 window.
@@ -181,7 +184,8 @@ Cluster F adds to the spawn queue (alongside Cluster M Phase 1 #85/#86 canvases)
 - **F-α worker** (C1 walker port; Substrate Mgr brief)
 - **F-β.1 canvas-author** (Substrate Mgr standing authority — no operator spawn needed; mgr-tier canvas-drafting)
 - **F-β.2 atomic-migration worker** (post-F-β.1 ratification; Substrate Mgr brief; same shape as F-α port + rewire)
-- **F-γ #95 demo worker** (Verification Mgr brief; post-F-α + Slice B)
+- **F-γ.1 #95 demo worker** (Verification Mgr brief; post-F-α + Slice B)
+- **F-γ.2 #83 register full-scope** (Substrate Mgr small-scope status update; post-all-4-lenses-BEHAVIORALLY-COMPLETE — no operator spawn needed)
 
 Operator authorizes spawns; Substrate/Verification Mgrs dispatch under standing authority.
 
@@ -193,9 +197,10 @@ After Task 12 carve-promotion amendment PR ratifies + merges:
 - [ ] Substrate Mgr dispatched on F-α (C1 walker port worker brief)
 - [ ] Substrate Mgr dispatched on F-β.1 (C2 migration-shape ratification canvas under standing authority)
 - [ ] F-β.1 canvas surfaces migration-shape questions → Director ratifies → F-β.2 worker brief + dispatch
-- [ ] F-α completion + T-LAS Slice B landing → Verification Mgr dispatches F-γ #95 worker
+- [ ] F-α completion + T-LAS Slice B landing → Verification Mgr dispatches F-γ.1 #95 worker
+- [ ] F-α (#81) + F-β.2 (#82) BEHAVIORALLY COMPLETE + existing #79/#80 → F-γ.2 #83 register full-scope status update
 - [ ] §1.8 ledger Status updated for #81/#82/#83/#95 as each gate transitions DECLARED → CONSUMER_LANDED → PASSING
-- [ ] `r4-carve-out-routing.md` C1/C2/C3 entries removed (in this Task 12 PR)
+- [ ] `r4-carve-out-routing.md` C1/C2/C3 entries amended to dissolved-status (in this Task 12 PR)
 
 ---
 
