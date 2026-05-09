@@ -1,9 +1,16 @@
 //! **Layer:** integration
 //!
-//! Gate **#93** `crdt_cost_basis_demonstrated` — CRDT per-write cost basis via the
-//! symbolic-cost dimension (`analyze_symbolic_cost_dimension`) + `dominates` as the
-//! stand-in for cost `LensEnforcement::violates` until `apply_lens(cost, …)` lowers
-//! through the compiler fold.
+//! **ROADMAP gate #93** (`crdt_cost_basis_demonstrated`) — **interim receipt** for the
+//! **symbolic-cost / carrier slice** at HEAD, not a claim that the full §4.2 pipeline is closed.
+//! Program text still targets **`apply_lens(cost, …)`** per the gate name; this test uses
+//! `analyze_symbolic_cost_dimension` + `dominates` only as **stand-ins** until that surface
+//! lowers through the compiler fold.
+//!
+//! **Explicitly out of scope until follow-on lands (same gate id tracks the debt):** authored
+//! `CostBasisDeclaration` **`data` rows** in `.dag` and **folding them into**
+//! [`compute_symbolic_costs`] so §4.2 basis rows become the single authority inside the **cost
+//! composition consumer**. Without that fold, the §4.2 fact **does not** yet flow forward into
+//! the full enforcement/composition story — so the prose here says **“receipt”**, not “end state.”
 //!
 //! **Normalized root cost:** `analyze_symbolic_cost_dimension` on `my_crdt_field`
 //! may algebra-normalize to **`LinearCost(num_writes)`** at the workflow root while
@@ -25,9 +32,9 @@
 //! `witnesses` may only show that summary. (3) **`!dominates(basis.cost, composed)`**
 //! — the per-write log budget is **not** a sound ceiling for the full workflow.
 //!
-//! Reading **`CostBasisDeclaration` rows from `.dag` / folding them into**
-//! **`compute_symbolic_costs`** remains follow-on; **`basis.cost`** still matches the
-//! **`LogCost(merge_replicas_port)`** rows `compute_symbolic_costs` assigns.
+//! **`basis.cost`** is aligned **only** with **lowered-DAG structure + `compute_symbolic_costs`**
+//! (via `try_build`’s Log witness check), not with **authored** `.dag` `data` rows as the fold’s
+//! input — that alignment is still **gate #93** debt.
 //!
 //! Fixture companion: `src/v3/compiler/tests/fixtures/t_las_crdt_cost_basis_demo.dag`.
 //! Design: `docs/design-lens-application-surface.md` §4.2 + cost-basis audit
@@ -148,7 +155,9 @@ fn crdt_field_dimension_and_basis() -> (v3_compiler::dag::Dag, SymbolicCost, Cos
     let root = find_bind(&dag, "my_crdt_field");
     let basis =
         try_build_per_write_log_cost_basis_declaration(&dag, "my_crdt_field", "crdt_merge_step")
-            .expect("fixture DAG has my_crdt_field + crdt_merge_step declarations with divide witness");
+            .expect(
+                "fixture DAG has my_crdt_field + crdt_merge_step declarations with divide witness",
+            );
     let composed = match analyze_symbolic_cost_dimension(&dag, root.id) {
         DimensionReport::DimensionOk { composed, .. } => composed,
         DimensionReport::DimensionFail { violations, .. } => {

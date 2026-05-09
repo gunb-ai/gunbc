@@ -1,6 +1,7 @@
 //! Materialize [`CostBasisDeclaration`](crate::lens_cost_symbolic::CostBasisDeclaration) from
 //! lowered [`Dag`](crate::dag::Dag) facts — interim **consumer boundary** for gate **#93**
-//! (`crdt_cost_basis_demonstrated`) and the user-authored cost-basis audit.
+//! (`crdt_cost_basis_demonstrated`) **substrate / symbolic-cost slice**; folding authored basis
+//! rows into [`compute_symbolic_costs`](crate::lens_cost_symbolic::compute_symbolic_costs) remains follow-on on the same gate.
 //!
 //! Persisted `.dag` `data` rows and folding declarations into [`compute_symbolic_costs`](crate::lens_cost_symbolic::compute_symbolic_costs) remain follow-on; embedders MUST NOT
 //! hand-assemble `CostBasisDeclaration` beside this helper when deriving the same evidence
