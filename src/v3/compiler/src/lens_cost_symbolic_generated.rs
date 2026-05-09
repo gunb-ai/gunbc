@@ -2,6 +2,19 @@
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
 #[derive(Clone, Debug)]
+pub enum CostBasisKind {
+    PerWrite,
+    PerCall,
+    PeakMemory,
+}
+#[derive(Clone, Debug)]
+pub struct CostBasisDeclaration {
+    pub subject: DeclarationId,
+    pub kind: CostBasisKind,
+    pub cost: SymbolicCost,
+    pub span: SourceSpan,
+}
+#[derive(Clone, Debug)]
 pub struct SymbolicCostEntry {
     pub port: PortId,
     pub cost: Lookup<SymbolicCost>,
