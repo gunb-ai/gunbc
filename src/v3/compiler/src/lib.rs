@@ -3360,10 +3360,54 @@ pub mod lens_cost {
     }
 
     pub use generated::{
-        complexity_enforcement_project, complexity_enforcement_violates, complexity_of, Certainty,
-        ComplexityEntry, ComplexitySummary, DominanceOutcome,
+        complexity_enforcement_project, complexity_enforcement_violates, complexity_of,
+        complexity_summary_work_class_consistent, Certainty, ComplexityEntry, ComplexitySummary,
+        DominanceOutcome,
     };
     pub type ComplexityLookup = crate::dag::Lookup<ComplexitySummary>;
+
+    #[cfg(test)]
+    mod complexity_summary_work_class_consistent_tests {
+        use super::{complexity_summary_work_class_consistent, Certainty, ComplexitySummary};
+        use crate::dag::{AsymptoticClass, PortId, SizeVariable, SymbolicCost};
+
+        #[test]
+        fn rejects_under_reported_asymptotic_class_class_log_vs_classified_linear_work() {
+            let summary = ComplexitySummary {
+                work: SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: PortId::test_raw(1),
+                        display_name: None,
+                    },
+                },
+                span: SymbolicCost::ConstantCost { _0: 0 },
+                asymptotic_class: AsymptoticClass::ClassLog,
+                work_certainty: Certainty::Proven,
+                span_certainty: Certainty::Proven,
+            };
+            assert!(
+                !complexity_summary_work_class_consistent(&summary),
+                "stored ClassLog must not cover classified ClassLinear work"
+            );
+        }
+
+        #[test]
+        fn accepts_stored_class_covering_classified_work_class_linear_covers_log_work() {
+            let summary = ComplexitySummary {
+                work: SymbolicCost::LogCost {
+                    _0: SizeVariable {
+                        source_port: PortId::test_raw(2),
+                        display_name: None,
+                    },
+                },
+                span: SymbolicCost::ConstantCost { _0: 0 },
+                asymptotic_class: AsymptoticClass::ClassLinear,
+                work_certainty: Certainty::Proven,
+                span_certainty: Certainty::Proven,
+            };
+            assert!(complexity_summary_work_class_consistent(&summary));
+        }
+    }
 
     /// Back-compat projection for pre-`ComplexitySummary` callers that still
     /// assert the old structural depth integer. This is not the behavioral
