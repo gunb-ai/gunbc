@@ -55,7 +55,7 @@ src/v3/std/methods.dag	3	1388	b61693641c32d74b
 src/v3/std/parse_surface.dag	18	103880	4a4cc6ff47624172
 src/v3/std/python_method_template_contracts.dag	14	165563	ced39dd0f40136ab
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
-src/v3/std/runtime.dag	15	18846	696e81e713cb8671
+src/v3/std/runtime.dag	15	19230	3e1bda4bee413db0
 src/v3/std/rust_method_template_contracts.dag	9	109835	378c75ae8055bf97
 src/v3/std/services.dag	8	5791	840c901943fce7bf
 src/v3/std/substrate.dag	66	144867	9504887c8d19b68c

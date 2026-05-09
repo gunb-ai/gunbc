@@ -1,6 +1,6 @@
-# R3 Debt Sweep — 2026-05-06
+# R3 Debt Sweep — 2026-05-06 (Phase 1 organize 2026-05-09)
 
-**Status:** **Framework draft** — Phase 1 of 3-phase sweep per Director dispatch at [gunbc#828 #issuecomment-4383739792](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4383739792). PM-authored §1 schema + §3 eligibility rubric + §4 anticipation discipline; awaiting Director ratification before Phase 2 (parallel Mgr canvas dispatch).
+**Status:** **Framework draft + initial Class A-G + new Class P populated 2026-05-09** — Phase 1 organize cycle completed by Debt-Paydown Mgr (gentle-newt-665) per PM dispatch at gunb-ai/gunbc#846 (Brian operator directive 2026-05-09 ~20:30Z; lane scope expanded to all v3 debt + active posture). Class A-G rows seeded from `docs/audit/v3-comprehensive-debt-audit-2026-05-09.md` 10-source inventory + ROADMAP `## Tracked debts` rows + §10.3 §1.8 ledger cross-references + 4 stranded bug-fix briefs (PR #2373) + 6 gpt-5-5-pro novel findings (PR #2358 §8). Class P NEW per Brian directive — past-R3 / R4+ ambition parking lot. Mgr re-organize cycle continues; row population is initial pass, not exhaustive.
 
 **Authority:** Brian-ratified scope at gunbc#828 (Director-relayed):
 1. **v2 retirement folded into R3** (was separate Pure-Bootstrap-Zero / T-PB-A + T-PB-B program)
@@ -38,43 +38,156 @@ Column rules (load-bearing):
 
 Bridges that exist because a substrate carrier or grammar surface isn't yet modeled. Wait for parser/grammar surface, function-valued data, file-ingestion, workflow/scheduling, reflection-closure.
 
-[Mgr canvas populates rows]
+Initial population 2026-05-09 per Brian-directive lane scope expansion (PM dispatch at gunbc#846 → gentle-newt-665 organize cycle):
+
+| Bridge | Class | File / location | Dissolution trigger | R3-close eligibility | Source PR | Owner Mgr |
+|---|---|---|---|---|---|---|
+| `parse_parser_body.txt` 1350-LOC recursive-descent algorithm | A | `src/v3/compiler/parse_parser_body.txt` | SG-2b proper `parse.dag` ownership lands | YELLOW | #589 | Substrate |
+| `Bool` inhabits `BooleanAlgebra<Bool>` not wired (Class 5 Gap 1) | A | `dsl/std/bool.dag` + lower.rs | 1e-2b lane Path A landing | YELLOW | pre-R3 | Substrate |
+| `data` body shape boundary (Class 5 Gap 3 — ValueBody extension) | A | `lower.rs:3514-3604` + emit.rs ValueBody::Structural | ValueBody substrate extension lane | YELLOW | pre-R3 | Substrate |
+| Function-valued data not first-class (Class 2 Gap) | A | `dsl/std/algebra.dag:168-181` Semiring<SymbolicCost> deferred witness | T-E-P-Producer-Broadening Phase 1 / S10 | DECLARED §1.8 #61 | pre-R3 | Substrate |
+| File-ingestion substrate gap (`.dag` consumes external files w/o include_str) | A | T-Workflow-As-Data lane | §1.8 #62 substrate_gap_file_ingestion_closed | DECLARED | pre-R3 | Substrate |
+| Workflow/scheduling substrate gap (CI workflow as `.dag` data) | A | T-Workflow-As-Data + T-Lens-Self-Application | §1.8 #63 substrate_gap_workflow_scheduling_closed | DECLARED | pre-R3 | Substrate |
+| Reflection-closure substrate gap (`lens_apply.rs` reflection via PB-Runtime) | A | T-LensProducer-Retirement | §1.8 #64 substrate_gap_reflection_closure_closed | DECLARED | pre-R3 | PB |
+| Parser/grammar substrate gap (typed numerics + algebra-machine-constraint) | A | `src/v3/spec/rust.dag` + numeric carriers | §1.8 #60 substrate_gap_parser_grammar_closed (Int<64>/Real<64>/Nat<8> evidence) | DECLARED | pre-R3 | Substrate |
+| `IntLit` host-narrowed at tokenizer boundary; `i64::MIN` unrepresentable | A | `src/v3/std/tokenize.dag:30` IntLit(Int) | unbounded-magnitude IntLit at concept layer; reconciliation-narrows | YELLOW | pre-R3 | Substrate |
+| Domain refinements regressed pending Q-Regex-Primitive | A | `dsl/std/types.dag` CommitSha/Sha256/Email/Url/SemVer/Timestamp/MimeType | regex/content predicate grounding | YELLOW | pre-R3 | Substrate |
+| `KNOWN_PREDICATES` Rust-side semantic authority (string carrier names) | A | `lower.rs` KNOWN_PREDICATES | substrate-reflection / `.dag` predicate declarations | YELLOW | abf5f24d | Substrate |
+| Constructor ambient prefix scan in lower.rs | A | `lower.rs` payload-lookup | `TransformTarget::Callable` outer-type metadata | YELLOW | pre-R3 | Substrate |
+| PathCall resolution source-order fragile | A | PathCall lowering tests | order-independent ValueBody population OR explicit declaration-order semantics | YELLOW | pre-R3 | Substrate |
+| `MethodContract.size_effect` substrate-shape | A | `dsl/std/method_contract.dag` | typed size-effect carrier | YELLOW | pre-R3 | Substrate |
+| `MethodContract.cost_shape` substrate-shape | A | `dsl/std/method_contract.dag` | typed cost-shape carrier (post-T-CostLens) | YELLOW | pre-R3 | Substrate |
+| `MethodContract.callback_element_position` substrate-shape | A | `dsl/std/method_contract.dag` | typed callback-position carrier | YELLOW | pre-R3 | Substrate |
+| Character-level under-consumption in tokenize + syntax | A | tokenize.dag + syntax authorities | character-class substrate refinement | YELLOW | #693 | Substrate |
+| Unit-mismatch enforcement for phantom Unit/Currency typed wrappers | A | typed value wrappers | phantom-parameter unit-discipline carrier | YELLOW | pre-R3 | Substrate |
+| `Secret<T>` nominal-wrapper graduation | A | nominal-opacity carriers | Secret PR A continuation per #900 | YELLOW | #900 | Substrate |
 
 ### Class B — Pattern-A NYI predicates (~7 expected)
 
 Test predicates declared but `NotYetImplemented`-shaped runtime: TC1, TC2, TC3, free-consequences, RustDagIsomorphism, BridgeLedgerZero, SymbolicCostExprEquals.
 
-[Mgr canvas populates rows; some entries pre-named per Director framework]
+| Bridge | Class | File / location | Dissolution trigger | R3-close eligibility | Source PR | Owner Mgr |
+|---|---|---|---|---|---|---|
+| TC1 η-equivalence executable (#11) | B | `r3-program-plan.md:212` §1.8 #11 | Evaluator E3.c #1970 merge → DECLARED→PASSING | DECLARED (HOLD branch B) | #2184 | Verification |
+| TC2 Church-Rosser executable (#12) | B | §1.8 #12 | second strategy/input order + strategy-keyed report | DECLARED | pre-R3 | Verification |
+| TC3 Pattern-A second-mover executable (#13) | B | §1.8 #13 | Descent execution proof (E5) + eval-step producer | DECLARED | pre-R3 | Verification |
+| RustDagIsomorphism executable (#14) | B | §1.8 #14 | shape-report producers | DECLARED | pre-R3 | Verification |
+| BridgeLedgerZero ratchet ledger-count (#36) | B | §1.8 #36 | unified ledger reports 0 | DECLARED | pre-R3 | Debt-Paydown |
+| SymbolicCostExprEquals executable (#40) | B | §1.8 #40 + test_runner.rs | cost-lens consumer per ε path | DECLARED | pre-R3 | Verification |
+| Free-Consequences demonstrations (#43-#52, 10 gates) | B | §1.8 #43-#52 | bind-independence/dependence parallelism + auto-memoization demos | DECLARED | pre-R3 | Verification |
+| `resolve_producer_opt` typed return (P3 fail-closed violation) | B | brief: `r3-bug-resolve-producer-opt-typed-return-worker.md` | dispatch worker; typed Result<Producer, Reason> | YELLOW | #2373 brief | Verification |
 
 ### Class C — Pattern-C typed-carrier + Rust-mirror (~6+ expected)
 
 Rust mirrors of `.dag` typed carriers that should dissolve when v3 evaluator authoritatively executes the .dag side: EmissionDiagnostic, Value, EvalStrategy, BridgeLedgerRef, target-primitive routing.
 
-[Mgr canvas populates rows]
+| Bridge | Class | File / location | Dissolution trigger | R3-close eligibility | Source PR | Owner Mgr |
+|---|---|---|---|---|---|---|
+| u128 grounding-pilot Rust mirror drift | C | `src/v3/grounding_pilot/src/lib.rs:6-8,256-265` ↔ `dsl/extdeps/languages/rust/primitives.dag:274-277` | dispatch worker brief; ratchet test or structural consumption | YELLOW | brief #2373 | Substrate |
+| FieldProject dual-authority (`field_label` ↔ `field_child` disagreement) | C | `dag.rs:1890-1892` + `infer.rs:4198-4208` | UnresolvedFieldProject/ResolvedFieldProject lifecycle split | YELLOW | brief #2373 | Substrate |
+| CallGraph forward-only authority (illegal-state-representable in product) | C | brief: `r3-bug-callgraph-forward-only-authority-worker.md` | dispatch worker | YELLOW | brief #2373 | Substrate |
+| `MissingEmissionPath` stringifies typed axes (connective/behavior/target as String) | C | gpt-5-5-pro Finding 1 | typed-carrier diagnostic boundary | YELLOW | PR #2358 | Substrate |
+| `ComposedEffect { idempotent, breaking_operation }` illegal product | C | gpt-5-5-pro Finding 5 | sum-typed effect-composition carrier | YELLOW | PR #2358 | Substrate |
+| `derive_op_effect(method_str, path_str)` string parser at structural boundary | C | gpt-5-5-pro Finding 6 | typed dispatch over Method × Path carriers | YELLOW | PR #2358 | Substrate |
+| `EmitModelVariants` manually-enumerated cache (label-string mirror) | C | `dag.rs` EmitModelVariants | generate from `emit_model.dag` OR exhaustiveness ratchet | YELLOW | pre-R3 | Substrate |
+| `EmissionDiagnostic` Rust mirror | C | `src/v3/compiler/src/diagnostics.rs` | v3 evaluator authoritative on diagnostic emission | YELLOW | pre-R3 | Substrate |
+| `Value` Rust mirror | C | `src/v3/compiler/src/value.rs` | v3 evaluator value-domain authority | YELLOW | pre-R3 | Substrate |
+| `EvalStrategy` Rust mirror | C | `src/v3/compiler/src/eval/` | strategy-keyed `.dag` authority | YELLOW | pre-R3 | Substrate |
+| Reflected witness carriers forgeable (ParamRef/TransformRef/ElementRef/BoolPortRef) | C | `src/v3/std/substrate.dag:337-374` + `effects.dag:447-530` | substrate-level proof-carrying handles or constructor parity | YELLOW | b09e0c8 | Substrate |
+| `ValueBody` Rust↔.dag mirror drift (no isomorphism gate; partially CLOSED via #2288) | C | gate #96 substrate_value_body_mirror_isomorphism | further Tier-3 retirement | CONSUMER_LANDED §1.8 #96 | #2288 | Substrate |
+| `FieldMap` duplicate-free invariant lost in `.dag` mirror | C | NOVEL row 2026-04-30 | duplicate-free typed carrier | YELLOW | pre-R3 | Substrate |
+| Operator inference `(T,T)→T` arrow fabrication on algebra-walk failure | C | gpt-5-5-pro NOVEL 2026-04-30 | fail-closed structural diagnostic | YELLOW | pre-R3 | Substrate |
+| Duplicate record-literal fields silently accepted | C | NOVEL highest-value 2026-04-30 | typed second-write fail-closed | YELLOW | pre-R3 | Substrate |
 
 ### Class D — Generated bridges with freshness gates (~3-5 expected)
 
 Generated artifacts that would be debt without freshness ratchets but are bounded scaffolds with explicit regeneration gates: `render_repeat_string_bootstrap.dag`, `generated_method_template_projection.rs`. **Not debt by intent**; freshness gate prevents drift. May still be GREEN at R3 close if R3-close includes v2 retirement (which it now does per Brian-ratified fold-in).
 
-[Mgr canvas populates rows]
+| Bridge | Class | File / location | Dissolution trigger | R3-close eligibility | Source PR | Owner Mgr |
+|---|---|---|---|---|---|---|
+| `render_repeat_string_bootstrap.dag` generated scaffold | D | `dsl/std/render_repeat_string_bootstrap.dag` | v2 retirement closes | GREEN | pre-R3 | Substrate |
+| `generated_method_template_projection.rs` | D | grounded mirror | v2 retirement closes | GREEN | pre-R3 | Grounding |
+| `slow-test-exemptions.txt` 41-row meta-ratchet | D | `scripts/slow-test-exemptions.txt` | per-exempt budget Phase 2 ratchet (#2322) | YELLOW | pre-R3 | Debt-Paydown |
+| Peano materialization cap `256` literal in 3 authorities | D | `dsl/std/termination.dag:238-243` + `src/v3/std/termination.dag:138-140` + `dag.rs:1022-1027` | generate Rust cap from `.dag` OR ratchet test | YELLOW | b09e0c8 | Substrate |
 
 ### Class E — v2 ↔ v3 transition bridges (~10+ expected; **now in R3 scope per fold-in**)
 
 Bridges that exist solely because v3 isn't yet authoritative for some surface that v2 still owns: `emit_model.dag` facade, method-template legacy adapters, v2 transport infrastructure. Per Brian's R3-fold-in ratification, these are R3-close eligible (GREEN if v2 retirement closes; previously would have been "post-R3 / Pure Bootstrap").
 
-[Mgr canvas populates rows]
+| Bridge | Class | File / location | Dissolution trigger | R3-close eligibility | Source PR | Owner Mgr |
+|---|---|---|---|---|---|---|
+| `emit_model.dag` facade duplicate authority | E | `dsl/v3/std/emit_model.dag` | T-V2-Retirement | YELLOW §1.8 #41/#42 | pre-R3 | PB |
+| Method-template legacy adapters | E | emit_model + lower bridge | T-V2-Retirement | YELLOW | pre-R3 | PB |
+| v2 transport infrastructure | E | `src/v2/transport/` | §1.8 #42 v2_directory_deleted | DECLARED | pre-R3 | PB |
+| v2 oracle test consumers | E | tests consuming `src/v2/` | §1.8 #41 v2_oracle_no_remaining_test_consumers | DECLARED | pre-R3 | PB |
+| `emit/rust_target.rs` v2-shape Class E (per PR #1804 §1.2) | E | grounded carrier | post-EmissionPathProjection / Anthropic post-projection-metadata | YELLOW | #1804 | Grounding |
+| `emit/python_target.rs` v2-shape Class E | E | grounded carrier | as above | YELLOW | #1804 | Grounding |
+| `collection_ops_method_contract.rs` v2-shape Class E | E | grounded carrier | as above | YELLOW | #1804 | Grounding |
+| Pipeline dual-authoring drift (post-#1171 source-text bridge retirement) | E | pipeline.dag + pipeline-rust mirror | full pipeline-as-data migration | YELLOW | post-#1171 | PB |
+| Method-template consumer migration over row population priority | E | method_template adapters | T-Tier3-Dissolution lane | YELLOW | pre-R3 | PB |
+| Tier3 termination mirror (gate #1) | E | §1.8 #1 | T-Tier3-Dissolution | DECLARED | pre-R3 | PB |
+| Tier3 computation mirror (gate #2) | E | §1.8 #2 | T-Tier3-Dissolution | DECLARED | pre-R3 | PB |
+| Tier3 induction mirror (gate #3) | E | §1.8 #3 | T-Tier3-Dissolution | DECLARED | pre-R3 | PB |
+| Tier3 effect-carrier mirror (gate #4) | E | §1.8 #4 | T-Tier3-Dissolution | DECLARED | pre-R3 | PB |
+| `lens_apply.rs` retired (gate #5) | E | §1.8 #5 | T-LensProducer-Retirement (PB-Runtime interpreter-as-data) | DECLARED | pre-R3 | PB |
+| `lens_testgen.rs` retired (gate #6) | E | §1.8 #6 | T-LensProducer-Retirement | DECLARED | pre-R3 | PB |
+| `regen_lens.rs` retired (gate #7) | E | §1.8 #7 | PB-1 bin-shim emit pattern | DECLARED | pre-R3 | PB |
+| SG-0 non-test zero (gate #8) | E | §1.8 #8 | EXPECTED_HAND_AUTHORED_NON_TEST count = 0 | DECLARED | pre-R3 | PB |
 
 ### Class F — Operator/algebra ontology duplication (~3 surfaces expected)
 
 Duplicate representations of operator/algebra concepts: OperatorSpec / OperatorKind / BinaryOpRow. Should consolidate to single ontology.
 
-[Mgr canvas populates rows]
+| Bridge | Class | File / location | Dissolution trigger | R3-close eligibility | Source PR | Owner Mgr |
+|---|---|---|---|---|---|---|
+| OperatorSpec / OperatorKind / BinaryOpRow triplicate | F | parse_tables.dag + lower + emitter operator surfaces | SG-2c proper `parse_tables.dag` decision; single ontology | YELLOW | pre-R3 | Substrate |
+| `algebra.dag` declaration-vs-template surface asymmetry | F | `dsl/std/algebra.dag` | rescoped per Lane G #654 investigation | YELLOW | #654 | Substrate |
+| `ShapeATarget = Rust \| Python \| Go` closed enum vs `LanguageSpec` data extensibility | F | gpt-5-5-pro Finding 2 | LanguageSpec consumption replacing closed enum | YELLOW | PR #2358 | Grounding |
+| `Map<String, Bool>` as set across graph/syntax/node files (`set_has` ignores stored bool) | F | gpt-5-5-pro Finding 3 | use declared `Set<A>` from std | YELLOW | PR #2358 | Substrate |
+| `StructuralEffectShape.combine_effects` bespoke local lattice merge | F | `src/v3/lenses/effect_enumeration.dag:50-54,175-207` | `BoundedLattice<StructuralEffectShape>` instance | YELLOW | b09e0c8 | Substrate |
+| Hand-rolled lattice instances (NEW class instance) | F | tracked at ROADMAP `:384` | typed `Lattice<T>` instances | YELLOW | pre-R3 | Substrate |
+| Anthropic schema mirror multiplication risk (provider/API class) | F | Anthropic schema + OpenAI ratchets + GitHub | typed-end-to-end serde alignment §1.8 #29/#30 | DECLARED | pre-R3 | Grounding |
+| `container_template_algebra_rows` string-table duplicate authority | F | `dsl/std/types.dag:133-146` + aliases `:211-213` | `.dag` alias reflection lands | YELLOW | #651 | Substrate |
 
 ### Class G — Local/small bridges (~5-10 expected)
 
 Smaller scope bridges: F10 install_hint, ad-hoc fold sentinels, etc.
 
-[Mgr canvas populates rows]
+| Bridge | Class | File / location | Dissolution trigger | R3-close eligibility | Source PR | Owner Mgr |
+|---|---|---|---|---|---|---|
+| `cross_target_coverage.dag` doc/code drift (RETIRED) | G | `src/v3/std/cross_target_coverage.dag` + sg0_census_test.rs comments | RETIRED via PR #2333 (2026-05-09) | RETIRED | #2333 | Substrate |
+| `Strict Forward Progress` subdoc ↔ heading drift | G | `docs/invariants/strict-forward-progress.md` | naming-design call + rename or split | YELLOW | pre-R3 | PM |
+| `IntegrationRsScan` raw/byte-string panic-loud mode | G | `src/v3/compiler/tests/integration/common/mod.rs` | widen scan for raw/byte strings or replace with structural reader | YELLOW | #1856 | PB |
+| Stale-receipt sweep in `docs/briefs/` (PARTIAL T-Receipts W1) | G | `docs/briefs/` broad sweep | post-W1-wave staleness sweep | YELLOW | T-Receipts W1 | Debt-Paydown |
+| `__EMIT_BUG_{0}__` target emit-spec sentinels (rescoped) | G | `src/v2/05_emit.dag:996,1046` | refactor to Diagnostic + halt; sentinels become unreachable | YELLOW | #657 | PB |
+| `extdeps/browser.dag` typed-carrier service-boundary collapse | G | `dsl/extdeps/browser.dag` | typed service-boundary carriers | YELLOW | pre-R3 | Substrate |
+| Filename / sentinel bridges in `test_runner.rs` | G | `test_runner.rs` (parallel test-predicate authority) | freeze new bespoke arms; convert ratchet to count-decreasing | YELLOW | pre-R3 | Evaluator+PB |
+| Lossy user-lens reflection vs full substrate (PARTIAL) | G | lens reflection paths | full-substrate reflection landing | YELLOW | pre-R3 | Substrate |
+| Duplicated declaration walkers + `SubstStack` between `lower.rs`/`infer.rs` | G | `lower.rs` + `infer.rs` | shared walker abstraction or substrate-driven dispatch | YELLOW | NOVEL | Substrate |
+| Closed-vocabulary consumer proof — C1 stop ratchet | G | meta-review follow-up | NOVEL row | YELLOW | pre-R3 | Substrate |
+| `go_method_template_contracts` live diagnostic mismatch | G | go_method_template_contracts | diagnostic alignment | YELLOW | pre-R3 | Grounding |
+| "diagnostics empty" acceptance gate missing for new bootstrap fixtures | G | bootstrap fixtures | gate addition | YELLOW | pre-R3 | Verification |
+| Lens fold execution: undeclared fallback structure + file-path semantics | G | `src/v3/compiler/src/lens_apply.rs:105-148,22-39,372-383` | structural R1-certified fold shape carrier | YELLOW | NOVEL 2026-04-25 | Substrate |
+| `PartitionResult` bypassed by anonymous return type | G | gpt-5-5-pro Finding 4 | typed return restoration | YELLOW | PR #2358 | Substrate |
+| 4 TODO/FIXME markers in `src/v3/` non-test | G | `grep -rn 'TODO\|FIXME\|XXX' src/v3/` | per-marker dissolution | YELLOW | pre-R3 | Substrate |
+| SG-0 census untagged entries (no dissolution-trigger comments) | G | `sg0_census_test.rs`; live counts in `docs/audit/sg0-census-classification-2026-05-09.md` §Summary | per-entry §1.8 gate-id linkage + Class A-G ratification (script: `scripts/classify-sg0-census.py`) | YELLOW | PR #2358 §1 | Debt-Paydown |
+| Hand-Rust acceptance growing faster than `.dag` TestClaim migration | G | per-test SG-0 ratchet | net-zero/net-shrink discipline; per-PR pairing | YELLOW | pre-R3 | PB+Debt-Paydown |
+| Reflection completeness over-trusted (not closed mechanical theorem) | G | reflection-completeness claim | mechanical theorem or ratchet | YELLOW | pre-R3 | Substrate |
+
+### Class P — Past-R3 debt (R4+ ambition; lane scope per Brian directive 2026-05-09)
+
+NEW class introduced 2026-05-09 per Brian operator directive: substrate-capability gaps that don't block R3 close but do block R4+ ambition. Inventory parking lot for forward debt-track without R3-blocking framing. Eligibility column = "P" (past-R3).
+
+| Bridge | Class | File / location | Dissolution trigger | R3-close eligibility | Source PR | Owner Mgr |
+|---|---|---|---|---|---|---|
+| C1 Parallelism lens (R4-carve) | P | `docs/r4-carve-out-routing.md` C1 | Stage 2e walker port substrate; R4 lane | P (R4) | r4-carve-out | Substrate |
+| C2 Effect-enumeration lens (R4-carve) | P | `r4-carve-out-routing.md` C2 | 4c carrier P1 substrate-fact-introduction | P (R4) | r4-carve-out | Substrate |
+| C3 Register zero-proxy/zero-stub broader (R4-carve) | P | `r4-carve-out-routing.md` C3 | post-Q-LBP narrowing; complexity+cost in R3 only | P (R4) | r4-carve-out | Verification |
+| C4/C5/C6 substrate-axis defers | P | `r4-carve-out-routing.md` C4-C6 | substrate-axis lane R4 prep | P (R4) | r4-carve-out | Substrate |
+| TC1 #11 canvas-deferred (post-R3 substrate) | P | TC1 generic G1.b / X1.b path B | post-R3 generic + eta relation | P (R4) | pre-R3 | Verification |
+| ProgramShape richer-shape variants | P | design §8.2 | post-R3 design call | P (R4) | pre-R3 | Substrate |
+| Tier 4 ("out of scope, declared") inclusion | P | `r3-program-plan.md` §10.3 Q-Tier4-Inclusion | Brian directive (HOLD pending) | P (R4) | ctrl#1608 §6d | PM |
+| Q-Class-6-Substrate-Extension-Lens (3 ctrl-side proposals) | P | §10.3 Q-Class-6 | Research PM sharper framing + Director ratification | P (R4-pending) | ctrl#370/#404/#405/#407/#408 | Research PM |
 
 ---
 
