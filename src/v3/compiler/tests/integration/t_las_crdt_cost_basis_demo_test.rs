@@ -64,15 +64,22 @@ fn find_bind<'a>(dag: &'a v3_compiler::dag::Dag, name: &str) -> &'a v3_compiler:
         .unwrap_or_else(|| panic!("bind `{name}` not found"))
 }
 
+/// `SizeVariable` substrate: `source_port` + `display_name: String?`
+/// (`src/v3/std/algebra.dag`). `None` is the ordinary unnamed witness, matching
+/// `lane2_stage_2d_symbolic_cost_test::size_var` / `unnamed_size_variable` in `.dag`.
+fn size_var(port: PortId) -> SizeVariable {
+    SizeVariable {
+        source_port: port,
+        display_name: None,
+    }
+}
+
 /// Declared per-op O(log replicas) budget from §4.2 (`O_log_replicas`), keyed to the
 /// `replicas` parameter port. The cost lens uses this same size variable for
 /// `ArithmeticDivideCall` on `replicas` inside `crdt_merge_step`.
 fn per_write_log_replicas_budget(replicas_port: PortId) -> SymbolicCost {
     SymbolicCost::LogCost {
-        _0: SizeVariable {
-            source_port: replicas_port,
-            display_name: None,
-        },
+        _0: size_var(replicas_port),
     }
 }
 
