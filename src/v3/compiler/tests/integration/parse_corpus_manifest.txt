@@ -15,7 +15,7 @@ dsl/std/types.dag	107	193393	4d42cf90e4d08732
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	43	92946	f6a6c0d08e3081bb
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
-src/v3/compiler/regen.dag	13	37988	27d7cc07da9fa722
+src/v3/compiler/regen.dag	13	37994	7f3a38d06dc1f6aa
 src/v3/compiler/tests/four_fixture_pressure/drop.v3	2	2517	00953bc6b6d8c811
 src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6755	00117f14eb43dd20
@@ -23,9 +23,9 @@ src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
 src/v3/compiler/tokenize.dag	30	64719	286ece4c5bb39038
 src/v3/spec/go.dag	131	1170580	2ddf8468392612ee
 src/v3/spec/python.dag	93	602105	4ec88ac58c60fe63
-src/v3/spec/rust.dag	173	1362962	64a65693efe959ef
+src/v3/spec/rust.dag	181	1384808	3b5879ad21dd72ba
 src/v3/spec/v3_l1.dag	8	2246	57294d687b4753f4
-src/v3/std/algebra.dag	55	441449	1883ff29ff2c041d
+src/v3/std/algebra.dag	55	441449	66121bf8f7321e62
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
 src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	13	69184	3115dc7ce99d10ff
@@ -50,7 +50,7 @@ src/v3/std/integer_diagnostic_order.dag	6	8124	5d7b31594a5b3d5c
 src/v3/std/lens.dag	6	9852	28d5539a5b28716e
 src/v3/std/lens_application.dag	10	15962	5aa2ac2fadfba5bc
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
-src/v3/std/lookup.dag	5	4734	f97d4e536b675b1b
+src/v3/std/lookup.dag	5	4734	133fcf2d6a90d4bc
 src/v3/std/methods.dag	3	1388	b61693641c32d74b
 src/v3/std/parse_surface.dag	18	103868	3700aaf74f96ac57
 src/v3/std/python_method_template_contracts.dag	14	165563	ced39dd0f40136ab
