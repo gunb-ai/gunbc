@@ -4416,29 +4416,48 @@ fn optional_string_field_for_record(
             constructor,
             payload,
         } => {
-            let name = dag.declaration(*constructor).name.as_deref().unwrap_or("");
-            if name == "None" || name.ends_with("None") {
-                return Ok(None);
-            }
-            if name == "Some" || name.ends_with("Some") {
-                let inner = single_payload(payload)?;
-                match inner {
-                    FieldValue::Literal(LiteralBits::String(s)) => Ok(Some(s.clone())),
-                    other => Err(format!(
-                        "SymbolicCostExprEquals: optional string Some(...) expected String, got {:?}",
-                        other
-                    )),
+            // Prefer payload shape (facts-forward): optional absent/present encodings differ by
+            // arity/kind before consulting constructor spelling — avoids fragile string suffix
+            // matching on substrate variant names.
+            match classify_optional_string_payload(payload) {
+                Ok(out) => Ok(out),
+                Err(()) => {
+                    let ctor_name = dag.declaration(*constructor).name.as_deref().unwrap_or("");
+                    if ctor_name == "None" {
+                        return Ok(None);
+                    }
+                    if ctor_name == "Some" {
+                        let inner = single_payload(payload)?;
+                        match inner {
+                            FieldValue::Literal(LiteralBits::String(s)) => Ok(Some(s.clone())),
+                            other => Err(format!(
+                                "SymbolicCostExprEquals: optional string Some(...) expected String, got {:?}",
+                                other
+                            )),
+                        }
+                    } else {
+                        Err(format!(
+                            "SymbolicCostExprEquals: optional string field `{key}`: unsupported optional \
+                             shape (constructor={ctor_name:?}, payload_len={})",
+                            payload.len()
+                        ))
+                    }
                 }
-            } else {
-                Err(format!(
-                    "SymbolicCostExprEquals: optional string field `{key}`: unsupported variant `{name}`"
-                ))
             }
         }
         other => Err(format!(
             "SymbolicCostExprEquals: optional string field `{key}`: unsupported shape {:?}",
             other
         )),
+    }
+}
+
+/// Structural classification for optional `String`/`String?`-like payloads before name fallback.
+fn classify_optional_string_payload(payload: &[FieldValue]) -> Result<Option<String>, ()> {
+    match payload {
+        [] => Ok(None),
+        [FieldValue::Literal(LiteralBits::String(s))] => Ok(Some(s.clone())),
+        _ => Err(()),
     }
 }
 
@@ -5862,4 +5881,90 @@ mod perf_within_baseline_tests {
 #[inline]
 fn is_perf_budget_at_most(comparator_label: &str) -> bool {
     comparator_label == "AtMostBudget"
+}
+
+#[cfg(test)]
+mod symbolic_cost_expr_equals_decoder_tests {
+    use super::*;
+    use crate::generated_full_bootstrap_dag;
+
+    fn symbolic_cost_variant_constructor(dag: &Dag, label: &str) -> DeclarationId {
+        let symbolic_cost = dag
+            .declaration_by_name("SymbolicCost")
+            .expect("SymbolicCost");
+        let TypeConnective::Disj { variants } = &symbolic_cost.connective else {
+            panic!("SymbolicCost not Disj");
+        };
+        variants
+            .iter()
+            .find(|v| v.label == label)
+            .unwrap_or_else(|| panic!("missing variant {label}"))
+            .ty
+    }
+
+    fn constant_cost_fv(dag: &Dag, n: i64) -> FieldValue {
+        FieldValue::Variant {
+            constructor: symbolic_cost_variant_constructor(dag, "ConstantCost"),
+            payload: vec![FieldValue::Literal(LiteralBits::Int(n))],
+        }
+    }
+
+    #[test]
+    fn pattern_decodes_sum_of_two_constants() {
+        let dag = generated_full_bootstrap_dag();
+        let nsl = FieldValue::Record(vec![
+            ("first".to_string(), constant_cost_fv(&dag, 1)),
+            ("second".to_string(), constant_cost_fv(&dag, 2)),
+            ("rest".to_string(), FieldValue::List(vec![])),
+        ]);
+        let sum = FieldValue::Variant {
+            constructor: symbolic_cost_variant_constructor(&dag, "SumCost"),
+            payload: vec![nsl],
+        };
+        let pat = field_value_to_symbolic_cost_eq_pattern(&dag, &sum).expect("sum decodes");
+        assert_eq!(
+            pat,
+            SymbolicCostEqPattern::Sum(vec![
+                SymbolicCostEqPattern::Constant(1),
+                SymbolicCostEqPattern::Constant(2),
+            ])
+        );
+    }
+
+    #[test]
+    fn pattern_decodes_product_of_two_constants() {
+        let dag = generated_full_bootstrap_dag();
+        let nsl = FieldValue::Record(vec![
+            ("first".to_string(), constant_cost_fv(&dag, 0)),
+            ("second".to_string(), constant_cost_fv(&dag, 1)),
+            ("rest".to_string(), FieldValue::List(vec![])),
+        ]);
+        let prod = FieldValue::Variant {
+            constructor: symbolic_cost_variant_constructor(&dag, "ProductCost"),
+            payload: vec![nsl],
+        };
+        let pat = field_value_to_symbolic_cost_eq_pattern(&dag, &prod).expect("product decodes");
+        assert_eq!(
+            pat,
+            SymbolicCostEqPattern::Product(vec![
+                SymbolicCostEqPattern::Constant(0),
+                SymbolicCostEqPattern::Constant(1),
+            ])
+        );
+    }
+
+    #[test]
+    fn classify_optional_string_payload_empty_or_string_literal() {
+        assert!(matches!(classify_optional_string_payload(&[]), Ok(None)));
+        assert_eq!(
+            classify_optional_string_payload(&[FieldValue::Literal(LiteralBits::String(
+                "x".to_string()
+            ))])
+            .unwrap(),
+            Some("x".to_string())
+        );
+        assert!(
+            classify_optional_string_payload(&[FieldValue::Literal(LiteralBits::Int(1))]).is_err()
+        );
+    }
 }

@@ -3791,7 +3791,11 @@ fn symbolic_cost_variant_constructor_id(dag: &Dag, variant_label: &str) -> Optio
         .map(|v| v.ty)
 }
 
-/// `data …: SymbolicCost = ConstantCost(<Int literal>)` — class-5 gap #3 narrow slice for R3 gate #40.
+/// `data …: SymbolicCost = ConstantCost(<Int literal>)` — **P5 receipt** (INVARIANTS §P5): dissolves
+/// the ROADMAP.md debt row that §SymbolicCostExprEquals stayed `NotYetImplemented` / gate `#40`
+/// (`symbolic_cost_expr_equals_executable`) could not close on shape-only — this path is an explicit
+/// narrow **class-5 gap #3** lowering slice until general `SymbolicCost` data literals lower
+/// structurally without ad hoc Rust (same gap named in `lower_data_item` / DOWNSTREAM_REQUIREMENTS).
 fn try_lower_symbolic_cost_constant_cost_data(
     target: &str,
     args: &[SurfaceExpr],
