@@ -80,7 +80,10 @@ import v3.std.substrate_minimal { DeclarationId }
 //
 // Coproduct dissolution (`docs/modeling-discipline.md` §4). `CostBasisKind` classifies
 // **which basis axis** cost evidence is keyed to (per write / per call / peak memory).
-// Classification: **🟢 TERMINAL (GREEN).** Four-pattern ledger — each pattern
+// **Mixed classification:** `PerWrite` and `PerCall` are **🟢 TERMINAL (GREEN)** evidence
+// labels at the lens boundary; `PeakMemory` is **🟡 SCAFFOLD** until the peak-memory
+// composition consumer + demo receipt land (ROADMAP / **#1954**, sibling to gate #93).
+// Four-pattern ledger (terminal pair) — each pattern
 // considered; none yields a cheaper substrate factoring without erasing audit vocabulary:
 //   1. Fact placement — Fails as full dissolution: `PerWrite`, `PerCall`, and
 //      `PeakMemory` are not redundant copies of the same fact at unrelated sites;
@@ -97,16 +100,25 @@ import v3.std.substrate_minimal { DeclarationId }
 //   4. Dimensional — Fails cleanly: peak-memory is not a product of the same axes as
 //      per-write vs per-call (time/invocation structure vs allocation bound); merging
 //      into one Cartesian record would conflate orthogonal enforcement stories.
+//   5. **PeakMemory consumer — 🟡 SCAFFOLD:** unlike `PerWrite` (gate **#93** /
+//      `try_build_per_write_log_cost_basis_declaration` + lens-table witnesses), there is
+//      **no** Rust-side materializer or `compute_symbolic_costs` fold branch keyed on
+//      `PeakMemory` yet. Authors may record the **label** for §4.3 / #1954 alignment; **P5:**
+//      do not treat `PeakMemory` `CostBasisDeclaration` as enforcement-complete substrate
+//      until **#1954** closes with a named consumer (same dissolution style as pre-`apply_lens`
+//      CRDT staging).
 //
-// **Named trigger:** none (terminal, not scaffold).
+// **Named dissolution trigger:** **#1954** (memory-peak cost-basis demo / composition consumer);
+// `PerWrite` / `PerCall` labels need no separate trigger beyond their gate receipts.
 type CostBasisKind
   = PerWrite
   | PerCall
   | PeakMemory
 
 // **Rust consumer (gate #93 / P2):** `v3_compiler::try_build_per_write_log_cost_basis_declaration`
-// materializes this record from post-lower `Dag` facts until class-5 bodies persist `data` rows
-// and the cost fold reads them into `compute_symbolic_costs`.
+// materializes **`PerWrite`** + `LogCost` evidence from post-lower `Dag` facts until class-5
+// bodies persist `data` rows and the cost fold reads them into `compute_symbolic_costs`.
+// **`PeakMemory`:** scaffold — consumer TBD per ledger §5 above (`#1954`).
 
 type CostBasisDeclaration {
   subject: DeclarationId
@@ -114,10 +126,6 @@ type CostBasisDeclaration {
   cost: SymbolicCost
   span: SourceSpan
 }
-
-// **Rust consumer (gate #93 / P2):** `v3_compiler::try_build_per_write_log_cost_basis_declaration`
-// materializes this record from post-lower `Dag` facts until class-5 bodies persist `data` rows
-// and the cost fold reads them into `compute_symbolic_costs`.
 
 type SymbolicCostEntry {
   port: PortId
