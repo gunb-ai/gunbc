@@ -13,6 +13,8 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{dominates, Behavior, SizeVariable, SymbolicCost};
 use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport};
 
+use crate::common::cached_compile_to_dag;
+
 const FIXTURE_DAG: &str = include_str!("../fixtures/t_las_crdt_cost_basis_demo.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/t_las_crdt_cost_basis_demo.dag";
 
@@ -33,6 +35,9 @@ fn my_crdt_field(num_writes: Int, replicas: Int) -> Int =
 
 let _: Int = my_crdt_field(1, 2)
 ";
+
+/// Shared `compile_to_dag` file label so `cached_compile_to_dag` hits one cell for all tests.
+const CRDT_FIELD_PROGRAM_FILE: &str = "t_las_crdt_cost_basis_demo.v3";
 
 fn run_with_symbolic_cost_stack(f: impl FnOnce() + Send + 'static) {
     std::thread::Builder::new()
@@ -64,6 +69,23 @@ fn per_write_log_replicas_budget(replicas_port: v3_compiler::dag::PortId) -> Sym
     }
 }
 
+fn crdt_field_dimension_ok() -> (v3_compiler::dag::Dag, SymbolicCost, SymbolicCost) {
+    let dag = cached_compile_to_dag(MY_CRDT_FIELD, CRDT_FIELD_PROGRAM_FILE);
+    let root = find_bind(&dag, "my_crdt_field");
+    let replicas_port = *root
+        .params
+        .get(1)
+        .expect("my_crdt_field should have replicas parameter port");
+    let per_op = per_write_log_replicas_budget(replicas_port);
+    let composed = match analyze_symbolic_cost_dimension(&dag, root.id) {
+        DimensionReport::DimensionOk { composed, .. } => composed,
+        DimensionReport::DimensionFail { violations, .. } => {
+            panic!("expected DimensionOk, got failures: {violations:?}")
+        }
+    };
+    (dag, composed, per_op)
+}
+
 #[test]
 fn crdt_cost_basis_fixture_dag_compiles_on_bootstrap() {
     run_with_symbolic_cost_stack(|| {
@@ -77,31 +99,22 @@ fn crdt_cost_basis_fixture_dag_compiles_on_bootstrap() {
 }
 
 #[test]
-fn crdt_cost_basis_demonstrated_per_write_composes_with_write_count() {
+fn crdt_cost_basis_demonstrated_composed_exceeds_per_op_log_budget() {
     run_with_symbolic_cost_stack(|| {
-        let dag = compile_to_dag(MY_CRDT_FIELD, "t_las_crdt_cost_basis_demo.v3")
-            .expect("program compiles");
-        assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
-
-        let root = find_bind(&dag, "my_crdt_field");
-        let replicas_port = *root
-            .params
-            .get(1)
-            .expect("my_crdt_field should have replicas parameter port");
-        let per_op = per_write_log_replicas_budget(replicas_port);
-        let composed = match analyze_symbolic_cost_dimension(&dag, root.id) {
-            DimensionReport::DimensionOk { composed, .. } => composed,
-            DimensionReport::DimensionFail { violations, .. } => {
-                panic!("expected DimensionOk, got failures: {violations:?}")
-            }
-        };
-
+        let (_dag, composed, per_op) = crdt_field_dimension_ok();
         assert!(
             dominates(&composed, &per_op),
             "composed workflow cost should **exceed** a per-op O(log replicas) budget \
              when num_writes is a size variable (N writes × per-write log); \
              composed={composed:?} per_op={per_op:?}"
         );
+    });
+}
+
+#[test]
+fn crdt_cost_basis_demonstrated_per_op_budget_is_not_sound_ceiling_for_composed_workflow() {
+    run_with_symbolic_cost_stack(|| {
+        let (_dag, composed, per_op) = crdt_field_dimension_ok();
         assert!(
             !dominates(&per_op, &composed),
             "per-op budget must not dominate full composed cost (otherwise enforcement could not fire); \
@@ -113,8 +126,7 @@ fn crdt_cost_basis_demonstrated_per_write_composes_with_write_count() {
 #[test]
 fn crdt_cost_basis_demonstrated_unknown_ceiling_covers_composed_workflow() {
     run_with_symbolic_cost_stack(|| {
-        let dag = compile_to_dag(MY_CRDT_FIELD, "t_las_crdt_cost_basis_ceiling.v3")
-            .expect("program compiles");
+        let dag = cached_compile_to_dag(MY_CRDT_FIELD, CRDT_FIELD_PROGRAM_FILE);
         let root = find_bind(&dag, "my_crdt_field");
         let composed = match analyze_symbolic_cost_dimension(&dag, root.id) {
             DimensionReport::DimensionOk { composed, .. } => composed,
