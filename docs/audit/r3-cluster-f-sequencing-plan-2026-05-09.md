@@ -17,8 +17,8 @@ Cluster F (T-LP-Retirement) framework absorbs C1/C2/C3 carve-promotion per Direc
 | Phase | Carve | Gate | Work | Substrate-readiness |
 |---|---|---|---|---|
 | **F-α** | C1 | #81 parallelism | walker port from `workflow_parallelism.rs` → `.dag`; rewire via `lane2_workflow_at` / `std.effects` | substrate-ready (M-sized port) |
-| **F-β.1** | C2 | #82 (canvas) | Substrate Mgr migration-shape canvas per design `design-effect-enumeration-resource-threading.md` §6.2 | bounded — no new substrate type needed (Operation carrier exists at services.dag:122) |
-| **F-β.2** | C2 | #82 (impl) | atomic migration: lens body changes only in kind-classification dispatch + 4a/4b/4d bounded port | post-canvas-ratification |
+| **F-β.1** | C2 | #82 (canvas) | Substrate Mgr authors `r3-substrate-effect-set-pinning-canvas-2026-05-09.md` per Director (a) ratification c#4412380947; canvas surfaces 4c shape question (P1 substrate-fact-introduction OR atomic migration over Operation carrier per design §6.2) | shape-question canvas; Director ratifies disposition |
+| **F-β.2** | C2 | #82 (impl) | implementation per F-β.1 ratified shape (atomic migration OR new substrate addition); 4a/4b/4d bounded migration | post-canvas-ratification |
 | **F-γ** | C3 | #95 demo + #83 register | opt-in iteration parallelism demo + register status update for all 4 lenses | cascade post-F-α + T-LAS Slice B |
 
 F-α + F-β.1 parallel-dispatchable. F-β.2 cascade-gates on F-β.1 ratification. F-γ cascade-gates on F-α completion + T-LAS Slice B landing.
@@ -39,35 +39,36 @@ F-α + F-β.1 parallel-dispatchable. F-β.2 cascade-gates on F-β.1 ratification
 - Gate #81 status: DECLARED → CONSUMER_LANDED → PASSING.
 - ~3 entries dissolve from SG-0 census.
 
-### §1.2 F-β.1 — C2 #82 migration-shape canvas
+### §1.2 F-β.1 — C2 #82 substrate canvas (4c shape)
 
 **Owner**: Substrate Mgr (warm-wolf-698 / gunbc#2068).
 
-**Scope (corrected per audit §2)**: migration-shape ratification per locked design [`docs/design-effect-enumeration-resource-threading.md`](../design-effect-enumeration-resource-threading.md) §3.2 + §6.2. **No new substrate-fact-introduction**:
+**Scope (per Director ratification at gunbc#846 c#4412380947)**: Substrate Mgr authors `r3-substrate-effect-set-pinning-canvas-2026-05-09.md` (or analogous path under Substrate Mgr discretion) under standing authority. Canvas surfaces 4c shape questions; Director ratifies.
 
-> Design §3.2: "The pinning *substrate carrier* already exists: `src/v3/std/services.dag::Operation`."
-> Design §6.2: "**Operation already exists.** ... No new substrate type."
+Per Director's (a) ratification framing: "C2 #82 effect_enumeration lens — full carve-promotion including 4c new P1 substrate. Substrate Mgr authors `r3-substrate-effect-set-pinning-canvas-2026-05-09.md` under standing authority; Director ratifies surfaced shape questions; worker dispatched against locked shapes."
 
-Canvas surfaces ratification questions for atomic-migration shape (not new carrier authoring):
-- Lens body change from signature/body shape inference → reading effect set from arrow signature directly
-- Dispatch on `callable_inhabits` lookup (per design §2.4(b))
-- Sequencing of 4a (resource-threading migration) / 4b (ambient metadata removal) / 4c (lens body kind-classification migration) / 4d (full OperationEffect retirement)
+**Substrate-shape questions for canvas to surface**:
 
-Director ratifies surfaced shape questions; F-β.2 implementation worker dispatches against locked shapes.
+1. **4c shape**: is this a new top-level substrate-fact-introduction (P1 procedure: DAG-ancestor / coproduct-vs-coordinate / primitive-vs-lens-extensible per `INVARIANTS.md`:94-129), or atomic migration over existing Operation carrier?
+2. **Locked-design citation**: [`docs/design-effect-enumeration-resource-threading.md`](../design-effect-enumeration-resource-threading.md) §3.2 + §6.2 says: "The pinning *substrate carrier* already exists at `services.dag::Operation`. No new top-level carrier required." Canvas should reconcile this design authority against Director's "4c new P1 substrate" framing. Likely outcome (PM read): canvas confirms atomic migration sufficient per design §6.2; alternatively surfaces case for additional substrate fact if locked design is incomplete or stale.
+3. **Sequencing of 4a (resource-threading migration) / 4b (ambient metadata removal) / 4c (caller-side pinning migration or new carrier) / 4d (full OperationEffect retirement)**.
 
 **Receipt**:
-- Canvas ratified by Director.
+- Canvas ratified by Director (with shape-question dispositions).
 - Sequencing for 4a/4b/4c/4d locked.
+- F-β.2 implementation worker dispatches against locked shapes.
 
-### §1.3 F-β.2 — C2 #82 atomic migration implementation
+### §1.3 F-β.2 — C2 #82 implementation
 
 **Owner**: Substrate Mgr worker (post-canvas-ratification dispatch).
 
-**Scope**: atomic migration per design §6.2 (single-PR shippable shape):
+**Scope** (post-F-β.1 canvas ratification): implementation per locked-shape disposition. Likely shape per design §6.2 atomic-migration framing (PM reading from locked design):
 - 4a: resource-threading migration (substrate exists; consumer migration only)
 - 4b: ambient metadata removal (cleanup)
-- 4c: lens body change to read effect set from arrow signature directly + dispatch on callable_inhabits
+- 4c: lens body change (kind-classification dispatch — read effect set from arrow signature directly + dispatch on callable_inhabits) OR new substrate-fact-introduction (per F-β.1 canvas ratification)
 - 4d: full OperationEffect retirement (depends on 4a-4c)
+
+Final 4c shape locked at F-β.1 canvas ratification. F-β.2 worker dispatches against ratified shape (atomic migration over existing Operation carrier OR new substrate addition, depending on canvas outcome).
 
 **Receipt**:
 - Effect-enumeration walker hand-Rust retires (drops from SG-0).
