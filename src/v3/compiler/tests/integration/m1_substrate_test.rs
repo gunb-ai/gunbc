@@ -7,7 +7,9 @@ use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind
 use v3_compiler::Diagnostic;
 
 use crate::common::substrate_receipts::{
-    assert_bootstrap_int_ordered_ring_add_arrow, bind_named, bind_value_type_decl,
+    assert_bootstrap_float64_compose_ieee_machine_width,
+    assert_bootstrap_int64_compose_int_machine_width,
+    bind_named, bind_value_type_decl,
     callable_instantiation_arguments, field, find_named, transforms_in_source_file,
 };
 use crate::common::{cached_compile_any, cached_compile_to_dag};
@@ -39,15 +41,15 @@ fn operator_helpers_round_trip_from_dag_authority() {
 }
 
 #[test]
-fn bootstrap_int64_add_walk_reaches_ordered_ring_add_nobody_arrow() {
-    // T-Numeric-Construction Slice 3: default `Int` alias pivoted to
-    // `AbelianGroup<GroupCompletion<Nat>>`; this ratchet now walks the
-    // fixed-width `Int64` row, which still terminates at
-    // `OrderedRing<Word64>` per `dsl/std/integer.dag`. The default `Int`
-    // alias is covered by
-    // `int_default_alias_resolves_to_abelian_group_over_group_completion_of_nat`
-    // in `m2_substrate_inhabitance_test.rs`.
-    assert_bootstrap_int_ordered_ring_add_arrow(&Dag::new());
+fn bootstrap_int64_compose_int_machine_width_per_gate_19() {
+    // R3 gate #19: fixed-width integers refine abstract `Int` via Compose × MachineWidth,
+    // not parallel OrderedRing<Word*> substrate.
+    assert_bootstrap_int64_compose_int_machine_width(&Dag::new());
+}
+
+#[test]
+fn bootstrap_float64_compose_ieee_machine_width_per_gate_19() {
+    assert_bootstrap_float64_compose_ieee_machine_width(&Dag::new());
 }
 
 #[test]
@@ -583,10 +585,10 @@ fn m17_r9_arithmetic_operator_walks_to_algebra_field() {
     // from the actual algebra field declaration in std/algebra.dag,
     // substituting the receiver type parameter to the source type.
     //
-    // For `let x = 1 + 2`, the walk path is:
-    //   Int (source) → Int64 → OrderedRing<Word64> (algebra Conj)
-    //   → "add" field → Arrow(T, T) -> T
-    //   → substitute T → Int → signature (Int, Int) -> Int
+    // For `let x = 1 + 2`, the walk path uses abstract `Int` algebra facts
+    // (width-specialized literals still resolve through the construction-chain
+    // carrier per `dsl/std/integer.dag`; gate #19 aligns fixed-width names as
+    // Compose<Int, MachineWidth<…>>, not parallel OrderedRing<Word*> substrate).
     //
     // If the walk is wrong or returns Word64 (the old failing
     // mode), the operator output port's type won't match the Int
