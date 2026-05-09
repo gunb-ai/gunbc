@@ -115,7 +115,7 @@ type CostBasisDeclaration {
   span: SourceSpan
 }
 
-// **Rust consumer (gate #93 / P2):** `v3_compiler::build_per_write_log_cost_basis_declaration`
+// **Rust consumer (gate #93 / P2):** `v3_compiler::try_build_per_write_log_cost_basis_declaration`
 // materializes this record from post-lower `Dag` facts until class-5 bodies persist `data` rows
 // and the cost fold reads them into `compute_symbolic_costs`.
 

@@ -12,7 +12,7 @@
 //! **any** `LogCost`, so `dominates(my_crdt_field_composed, LogCost(replicas))` is
 //! *vacuous* and is **not** asserted here.
 //!
-//! **What we pin instead:** (1) **`build_per_write_log_cost_basis_declaration`** — single-authority
+//! **What we pin instead:** (1) **`try_build_per_write_log_cost_basis_declaration`** — single-authority
 //! materialization of **`CostBasisDeclaration`** from the lowered **`Dag`** (subject `DeclarationId`,
 //! `PerWrite`, **`LogCost(merge_replicas_port)`**, bind **`span`**). The `.dag` carrier remains the
 //! type definitions in `lenses.cost` (`lens_cost_symbolic_generated.rs`). (2) **Full symbolic-cost lens table**
@@ -31,12 +31,12 @@
 //! Design: `docs/design-lens-application-surface.md` §4.2 + cost-basis audit
 //! `docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`.
 
-use v3_compiler::build_per_write_log_cost_basis_declaration;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{dominates, Behavior, Lookup, PortId, SizeVariable, SymbolicCost};
 use v3_compiler::lens_cost_symbolic::{
     compute_symbolic_costs, CostBasisDeclaration, CostBasisKind,
 };
+use v3_compiler::try_build_per_write_log_cost_basis_declaration;
 use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport};
 
 use crate::common::cached_compile_to_dag;
@@ -130,7 +130,8 @@ fn crdt_field_dimension_and_basis() -> (v3_compiler::dag::Dag, SymbolicCost, Cos
     let dag = cached_compile_to_dag(MY_CRDT_FIELD, CRDT_FIELD_PROGRAM_FILE);
     let root = find_bind(&dag, "my_crdt_field");
     let basis =
-        build_per_write_log_cost_basis_declaration(&dag, "my_crdt_field", "crdt_merge_step");
+        try_build_per_write_log_cost_basis_declaration(&dag, "my_crdt_field", "crdt_merge_step")
+            .expect("fixture DAG has my_crdt_field + crdt_merge_step with a replicas param");
     let composed = match analyze_symbolic_cost_dimension(&dag, root.id) {
         DimensionReport::DimensionOk { composed, .. } => composed,
         DimensionReport::DimensionFail { violations, .. } => {
