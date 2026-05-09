@@ -118,8 +118,13 @@ sg0_validate_pr_body_format() {
         echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
         return 1
       fi
-      if ! grep -qE '(gunbc#|gunb-ai/gunbc#)[0-9]+|docs/briefs/[[:alnum:]_./-]+\.md|https?://github\.com/[[:alnum:]_./-]+/issues/[0-9]+' <<<"$pairing_flat"; then
-        echo "::error::SG-0 pairing (c) must cite concrete dispatch evidence — a qualified tracker issue ref (gunbc#NNNN or gunb-ai/gunbc#NNNN), a full GitHub issue URL, OR a queued brief path (docs/briefs/*.md). Bare #NNNN refs (which could be gate numbers in prose) no longer accepted. Tightened 2026-05-09 per codex BLOCKING."
+      # Full-URL alternative tightened 2026-05-09 per openai-pro REQUEST_CHANGES:
+      # prior pattern `https?://github\.com/[[:alnum:]_./-]+/issues/[0-9]+` accepted ANY GitHub
+      # issue URL — unrelated repos (e.g. github.com/other/repo/issues/1234) could satisfy the
+      # SG-0 deferral gate. ROADMAP.md option (c) is "dispatch-tracker issue URL", which means
+      # the gunbc tracker. Tightened to gunb-ai/gunbc only.
+      if ! grep -qE '(gunbc#|gunb-ai/gunbc#)[0-9]+|docs/briefs/[[:alnum:]_./-]+\.md|https?://github\.com/gunb-ai/gunbc/issues/[0-9]+' <<<"$pairing_flat"; then
+        echo "::error::SG-0 pairing (c) must cite concrete dispatch evidence — a qualified tracker issue ref (gunbc#NNNN or gunb-ai/gunbc#NNNN), a gunb-ai/gunbc issue URL (https://github.com/gunb-ai/gunbc/issues/NNNN), OR a queued brief path (docs/briefs/*.md). Bare #NNNN refs + external-repo URLs (could be from any GitHub project) no longer accepted. Tightened 2026-05-09 per codex BLOCKING + openai-pro REQUEST_CHANGES."
         return 1
       fi
       # Tightened 2026-05-09 per codex BLOCKING on PR #2361 sha b925b174:
@@ -343,6 +348,7 @@ self_test() {
   run_case "(c) cited brief path that does not exist (tightened 2026-05-09 codex BLOCKING)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/r3-nonexistent-brief-2026.md' fail
   run_case "(c) cited brief path with path-traversal (.. segment)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/../r3-program-plan.md' fail
   run_case "(c) bare #NNNN gate-number-in-prose (tightened 2026-05-09 codex BLOCKING)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch for gate #84' fail
+  run_case "(c) external-repo GitHub issue URL (tightened 2026-05-09 openai-pro REQUEST_CHANGES — must be gunb-ai/gunbc tracker)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via https://github.com/other-org/other-repo/issues/1234' fail
   run_case "missing delta line" $'Summary only\nSG-0 pairing: (a) x' fail
   run_case "malformed negative delta token" $'SG-0 hand-path delta: -not-a-number' fail
   run_case "bare (b) without URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)' fail
