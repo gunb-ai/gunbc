@@ -3924,6 +3924,15 @@ fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
 
 #[test]
 fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape() {
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape_impl)
+        .expect("spawn larger-stack PR-A.3 carrier test thread")
+        .join()
+        .expect("larger-stack PR-A.3 carrier test thread panicked");
+}
+
+fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape_impl() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
     let eval_state_key_id = find_named(&dag, "EvalStateKey");

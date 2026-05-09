@@ -1476,8 +1476,7 @@ pub mod evaluator {
                 let mut state = empty_state();
                 let strategy = eager_right_first_strategy();
 
-                let value =
-                    eval_node(&dag, entry, &mut state, &strategy).expect("right-first sub");
+                let value = eval_node(&dag, entry, &mut state, &strategy).expect("right-first sub");
 
                 assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
             });

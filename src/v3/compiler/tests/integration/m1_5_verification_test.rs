@@ -483,6 +483,15 @@ const TC2_EVALUATION_ORDER_FIXTURE_PATH: &str =
 
 #[test]
 fn tc2_evaluation_order_independence_suite_passes() {
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(tc2_evaluation_order_independence_suite_passes_impl)
+        .expect("spawn larger-stack TC2 fixture test thread")
+        .join()
+        .expect("larger-stack TC2 fixture test thread panicked");
+}
+
+fn tc2_evaluation_order_independence_suite_passes_impl() {
     let dag = match compile_to_dag(TC2_EVALUATION_ORDER_FIXTURE, TC2_EVALUATION_ORDER_FIXTURE_PATH)
     {
         Ok(dag) => {
