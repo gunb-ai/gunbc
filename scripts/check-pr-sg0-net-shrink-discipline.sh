@@ -110,8 +110,10 @@ sg0_validate_pr_body_format() {
     elif grep -qE '^SG-0 pairing:[[:space:]]*\(c\)' <<<"$pairing_block"; then
       # Tightened 2026-05-09 per PB-0 velocity walk (PR #2358 / docs/audit/r3-pb0-velocity-walk-2026-05-09.md):
       # SG-0 census grew +30/9days because (c) deferrals were paper-trailed without dispatch enforcement.
-      # (c) now requires concrete dispatch evidence: an issue ref (gunbc#NNNN or #NNNN), a full GitHub
-      # issue URL, OR a brief path (docs/briefs/*.md). Generic "dispatch" word alone no longer satisfies.
+      # (c) now requires concrete dispatch evidence: a qualified tracker issue ref (gunbc#NNNN or
+      # gunb-ai/gunbc#NNNN), a full GitHub issue URL, OR a brief path (docs/briefs/*.md). Bare #NNNN
+      # refs (could be gate-numbers in prose) are NOT accepted — see regex below + codex BLOCKING fix.
+      # Generic "dispatch" word alone no longer satisfies.
       if ! grep -qiE '\(c\).*dispatch' <<<"$pairing_flat"; then
         echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
         return 1

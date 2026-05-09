@@ -6,7 +6,7 @@
 - [`docs/audit/r3-pb0-velocity-walk-2026-05-09.md`](r3-pb0-velocity-walk-2026-05-09.md) — load-bearing finding: Cluster M is critical-path for PB-0 closure
 - [`docs/audit/r3-cluster-analysis-2026-05-09.md`](r3-cluster-analysis-2026-05-09.md) — original 15-cluster decomposition (this plan corrects Cluster M classification)
 - [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.8 gates #84/#85/#86/#87
-- [`THESIS.md`](../../THESIS.md):298 + [`ROADMAP.md`](../../ROADMAP.md):88 (T-PB-B: zero Rust-authored tests)
+- [`THESIS.md`](../../THESIS.md) "Pure Bootstrap to Zero" framing ("0 hand-maintained") + [`ROADMAP.md`](../../ROADMAP.md) **T-PB-B** lane row (`pb_rust_tests_outside_residual_zero` predicate — "zero Rust-authored tests exist") (section anchors per `feedback_section_anchors_over_line_numbers` — line numbers drift)
 
 ---
 
