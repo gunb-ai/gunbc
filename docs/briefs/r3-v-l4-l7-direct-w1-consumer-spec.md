@@ -1,6 +1,7 @@
 # R3 Lane 1 W1 Consumer-Side Implementation Spec
 
-**Status:** PROPOSAL — consumer-side shape + **live-state anchor** for Lane 1 L4 W1.
+**Status:** **POST-W1 LIVE ANCHOR** (Rust / Int slice-1) — implementation record + expansion triggers for Lane 1 L4 W1. **Supersedes** the pre-2026-05-09 “await W1 landing” worker brief; that standby framing was **obsolete** once `test_runner.rs` wired `(rust_emit_output, dag_eval_output)` (see §Current Live State).
+
 **Live-state refresh (2026-05-09):** Rust/Int W1 `DifferentialEquals(rust_emit_output,
 dag_eval_output, ProgramOutputBind)` is **landed** in `src/v3/compiler/src/test_runner.rs`
 (`eval_differential_equals`, `w1_rust_emit_output_int`, `w1_dag_eval_output_int`) with
@@ -111,13 +112,15 @@ surface. Next Verification-owned triggers:
 If a regression shows `ClaimResult::NotYetImplemented` on the **canonical W1 triple** above,
 route to R2-Evaluator / runner ownership — that is a live bug, not a spec standby state.
 
-## Non-Claims
+## Non-Claims (§Acceptance / scope boundaries only)
 
-- This spec does not claim **§Acceptance closure** for `l4_emit_eval_match` (full certification
+These bound **what this anchor does not certify** — they do **not** retract the **landed** W1 slice-1 facts in §Current Live State above (P1).
+
+- This document does not claim **§Acceptance closure** for `l4_emit_eval_match` (full certification
   corpus per `r3-structure.md` — see `docs/r3-program-plan.md` §1.8 #9 / §1.7).
-- This spec does not claim W1 beyond the **Rust / Int stdout** slice-1 carve-out.
-- This spec does not close `l4_emit_eval_match`.
-- This spec does not authorize a new substrate role, observation carrier, or
+- This document does not claim W1 beyond the **Rust / Int stdout** slice-1 carve-out.
+- This document does not assert `l4_emit_eval_match` is **PASSING** on the §1.8 ledger (only **CONSUMER_LANDED** until corpus-complete).
+- This document does not authorize a new substrate role, observation carrier, or
   `TestPredicate` variant.
-- This spec does not widen W1 beyond the Rust single-target L4 slice-1 row.
-- This spec does not alter Lane 2 L5 or L7 algebraic-law dispatch.
+- This document does not widen W1 beyond the Rust single-target L4 slice-1 row.
+- This document does not alter Lane 2 L5 or L7 algebraic-law dispatch.
