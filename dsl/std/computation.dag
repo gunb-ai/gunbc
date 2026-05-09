@@ -101,7 +101,8 @@ import std.iteration { }
 import std.termination {
   DescentEvidence, DescentUnknown, RankingDimension,
   PositiveDescentAmount, OneStep, AdditionalStep,
-  ProportionalDivisor, DivideByTwo, StrictlyLarger
+  ProportionalDivisor, DivideByTwo, StrictlyLarger,
+  positive_descent_count
 }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
@@ -184,13 +185,6 @@ fn tree_size_bound(param: String) -> SizeBound {
 // std.termination (`PositiveDescentAmount`, `ProportionalDivisor`) so
 // non-positive skip amounts and invalid divide steps are not representable.
 // =========================================================================
-
-fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
-  match steps {
-    OneStep => 1
-    AdditionalStep { previous: p } => 1 + positive_descent_count(steps: p)
-  }
-}
 
 // 🟡 MIXED coproduct — exhaustive call-shape classifier feeding `lower_call_pattern`. Dissolution:
 // replace `String` accessor / witness / element slots with structural refs; Peano shrink payloads

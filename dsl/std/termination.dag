@@ -216,6 +216,17 @@ type PositiveDescentAmount
   = OneStep
   | AdditionalStep { previous: PositiveDescentAmount }
 
+// Peano depth as `Int` (Lane E-T / E-C). Declared in `std.termination` (not
+// `std.computation`) so downstream modules (e.g. staged `v3.std.algebra`) can
+// count Peano witnesses without importing `std.computation`, which would
+// create a bootstrap SCC with `std.algebra`.
+fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
+  match steps {
+    OneStep => 1
+    AdditionalStep { previous: p } => 1 + positive_descent_count(steps: p)
+  }
+}
+
 // 🟢 TERMINAL at descent-witness scope. Structural divisor ≥ 2 (Peano from
 // `DivideByTwo`); mirrors `std.computation` divide-call patterns without
 // importing `std.computation` (that module depends on this file).
