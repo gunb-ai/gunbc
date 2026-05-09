@@ -18,39 +18,39 @@
 | 2 | `src/v3/compiler/build.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 3 | `src/v3/compiler/src/bin/emit_method_template_projection.rs` | E | v2-retirement | ✓ |
 | 4 | `src/v3/compiler/src/bin/r1c_e_emit_gates.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 5 | `src/v3/compiler/src/bin/regen_bootstrap.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 6 | `src/v3/compiler/src/bin/regen_lens.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 7 | `src/v3/compiler/src/bin/regen_parse.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 8 | `src/v3/compiler/src/bin/regen_parse_tables.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 9 | `src/v3/compiler/src/bin/regen_tokenize.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 10 | `src/v3/compiler/src/bin/regen_v3.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
+| 5 | `src/v3/compiler/src/bin/regen_bootstrap.rs` | D | Generated bridge with freshness gate | — UNTAGGED |
+| 6 | `src/v3/compiler/src/bin/regen_lens.rs` | E | T-LensProducer-Retirement | — UNTAGGED |
+| 7 | `src/v3/compiler/src/bin/regen_parse.rs` | D | Generated bridge — bootstrap/regen binary (path) [UNTAGGED] | — UNTAGGED |
+| 8 | `src/v3/compiler/src/bin/regen_parse_tables.rs` | D | Generated bridge — bootstrap/regen binary (path) [UNTAGGED] | — UNTAGGED |
+| 9 | `src/v3/compiler/src/bin/regen_tokenize.rs` | D | Generated bridge — bootstrap/regen binary (path) [UNTAGGED] | — UNTAGGED |
+| 10 | `src/v3/compiler/src/bin/regen_v3.rs` | D | Generated bridge — bootstrap/regen binary (path) [UNTAGGED] | — UNTAGGED |
 | 11 | `src/v3/compiler/src/bin/self_host_fixed_point.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 12 | `src/v3/compiler/src/bootstrap.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 13 | `src/v3/compiler/src/bootstrap_regen_fresh.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 14 | `src/v3/compiler/src/complexity_lattice.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 15 | `src/v3/compiler/src/cost_basis_declaration.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 16 | `src/v3/compiler/src/dag.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 17 | `src/v3/compiler/src/dag/builder.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 18 | `src/v3/compiler/src/dag/cardinality_payload.rs` | G | Local/small bridge (default) | ✓ |
-| 19 | `src/v3/compiler/src/dag/effects.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 20 | `src/v3/compiler/src/dag/ports.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 21 | `src/v3/compiler/src/diagnostics.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 22 | `src/v3/compiler/src/dimension.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 23 | `src/v3/compiler/src/emit.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 24 | `src/v3/compiler/src/emit/collection_ops_method_contract.rs` | G | Local/small bridge (default) | ✓ |
-| 25 | `src/v3/compiler/src/emit/python_target.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 26 | `src/v3/compiler/src/emit/rust_target.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
+| 12 | `src/v3/compiler/src/bootstrap.rs` | D | Generated bridge with freshness gate | — UNTAGGED |
+| 13 | `src/v3/compiler/src/bootstrap_regen_fresh.rs` | D | Generated bridge with freshness gate | — UNTAGGED |
+| 14 | `src/v3/compiler/src/complexity_lattice.rs` | C | Compiler Rust mirror — algebra/typed-carrier (path) [UNTAGGED] | — UNTAGGED |
+| 15 | `src/v3/compiler/src/cost_basis_declaration.rs` | C | Compiler Rust mirror — algebra/typed-carrier (path) [UNTAGGED] | — UNTAGGED |
+| 16 | `src/v3/compiler/src/dag.rs` | C | Compiler Rust mirror of .dag substrate (path) [UNTAGGED] | — UNTAGGED |
+| 17 | `src/v3/compiler/src/dag/builder.rs` | C | Compiler Rust mirror of .dag substrate (path) [UNTAGGED] | — UNTAGGED |
+| 18 | `src/v3/compiler/src/dag/cardinality_payload.rs` | C | Compiler Rust mirror of .dag substrate (path) | ✓ |
+| 19 | `src/v3/compiler/src/dag/effects.rs` | C | Compiler Rust mirror of .dag substrate (path) [UNTAGGED] | — UNTAGGED |
+| 20 | `src/v3/compiler/src/dag/ports.rs` | C | Compiler Rust mirror of .dag substrate (path) [UNTAGGED] | — UNTAGGED |
+| 21 | `src/v3/compiler/src/diagnostics.rs` | C | Compiler Rust mirror of .dag substrate (path) [UNTAGGED] | — UNTAGGED |
+| 22 | `src/v3/compiler/src/dimension.rs` | C | Compiler Rust mirror — algebra/typed-carrier (path) [UNTAGGED] | — UNTAGGED |
+| 23 | `src/v3/compiler/src/emit.rs` | C | Compiler Rust mirror of .dag substrate (path) [UNTAGGED] | — UNTAGGED |
+| 24 | `src/v3/compiler/src/emit/collection_ops_method_contract.rs` | C | Compiler Rust mirror of .dag substrate (path) | ✓ |
+| 25 | `src/v3/compiler/src/emit/python_target.rs` | C | Compiler Rust mirror of .dag substrate (path) [UNTAGGED] | — UNTAGGED |
+| 26 | `src/v3/compiler/src/emit/rust_target.rs` | C | Compiler Rust mirror of .dag substrate (path) [UNTAGGED] | — UNTAGGED |
 | 27 | `src/v3/compiler/src/emit_rust.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 28 | `src/v3/compiler/src/emit_rust_bin_shim.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 29 | `src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs` | G | Local/small bridge (default) | ✓ |
 | 30 | `src/v3/compiler/src/enforced_lens_application.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 31 | `src/v3/compiler/src/infer.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
+| 31 | `src/v3/compiler/src/infer.rs` | C | Compiler Rust mirror of .dag substrate (path) [UNTAGGED] | — UNTAGGED |
 | 32 | `src/v3/compiler/src/int_literal_ranges.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 33 | `src/v3/compiler/src/lens_apply.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
+| 33 | `src/v3/compiler/src/lens_apply.rs` | E | T-LensProducer-Retirement | — UNTAGGED |
 | 34 | `src/v3/compiler/src/lens_t_las_carrier.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 35 | `src/v3/compiler/src/lens_testgen.rs` | E | T-LensProducer-Retirement | ✓ |
 | 36 | `src/v3/compiler/src/lib.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 37 | `src/v3/compiler/src/lower.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
+| 37 | `src/v3/compiler/src/lower.rs` | C | Compiler Rust mirror of .dag substrate (path) [UNTAGGED] | — UNTAGGED |
 | 38 | `src/v3/compiler/src/memory_peak_cost.rs` | G | Local/small bridge (default) | ✓ |
 | 39 | `src/v3/compiler/src/omni_shape_b_openapi.rs` | G | Local/small bridge (default) | ✓ |
 | 40 | `src/v3/compiler/src/pb_method_template_projection.rs` | E | v2-retirement | ✓ |
@@ -59,12 +59,12 @@
 | 43 | `src/v3/compiler/src/post_emit_verifier.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 44 | `src/v3/compiler/src/process_exit.rs` | G | Local/small bridge (default) | ✓ |
 | 45 | `src/v3/compiler/src/r1c_e_gates.rs` | G | Local/small bridge (default) | ✓ |
-| 46 | `src/v3/compiler/src/regen_bootstrap_emit.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
+| 46 | `src/v3/compiler/src/regen_bootstrap_emit.rs` | D | Generated bridge with freshness gate | — UNTAGGED |
 | 47 | `src/v3/compiler/src/regen_parse_emit.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 48 | `src/v3/compiler/src/regen_parse_tables_emit.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 49 | `src/v3/compiler/src/regen_tokenize.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 50 | `src/v3/compiler/src/self_host_receipt_p0.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 51 | `src/v3/compiler/src/test_runner.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
+| 51 | `src/v3/compiler/src/test_runner.rs` | A | Substrate-gap (parser/grammar/predicate) — path [UNTAGGED] | — UNTAGGED |
 | 52 | `src/v3/compiler/src/workflow_idempotency.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 53 | `src/v3/compiler/src/workflow_parallelism.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 
@@ -138,7 +138,7 @@
 | 64 | `…ompiler/tests/integration/method_template_contract_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 65 | `…ion/method_template_projection_emit_shim_coherence_test.rs` | G | Local/small bridge (default) | ✓ |
 | 66 | `…iler/tests/integration/p0_std_render_repeat_string_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 67 | `…iler/tests/integration/pb1_bootstrap_full_snapshot_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
+| 67 | `…iler/tests/integration/pb1_bootstrap_full_snapshot_test.rs` | D | Generated bridge with freshness gate | — UNTAGGED |
 | 68 | `…integration/pb_method_template_projection_dag_emit_test.rs` | G | Local/small bridge (default) | ✓ |
 | 69 | `…er/tests/integration/pb_method_template_projection_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 70 | `src/v3/compiler/tests/integration/pipe_desugar.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
@@ -170,7 +170,7 @@
 | 96 | `…ler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 97 | `…ration/tc1_substrate_lens_eta_equivalence_deferred_test.rs` | B | Pattern-A NYI | ✓ |
 | 98 | `…ion/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs` | B | Pattern-A NYI | ✓ |
-| 99 | `…ests/integration/tc3_strong_normalization_deferred_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
+| 99 | `…ests/integration/tc3_strong_normalization_deferred_test.rs` | B | Pattern-A NYI | — UNTAGGED |
 | 100 | `src/v3/compiler/tests/integration/test_runner_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 101 | `src/v3/compiler/tests/integration/thesis_parallelism_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 102 | `src/v3/compiler/tests/integration/thesis_validation_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
@@ -188,13 +188,13 @@
 
 ## Summary
 
-- **Class A**: 0 (0.0%)
-- **Class B**: 4 (2.5%)
-- **Class C**: 1 (0.6%)
-- **Class D**: 3 (1.9%)
-- **Class E**: 7 (4.4%)
+- **Class A**: 1 (0.6%)
+- **Class B**: 5 (3.1%)
+- **Class C**: 16 (10.1%)
+- **Class D**: 12 (7.5%)
+- **Class E**: 9 (5.7%)
 - **Class F**: 0 (0.0%)
-- **Class G**: 143 (89.9%)
+- **Class G**: 115 (72.3%)
 - **Class STRUCTURAL**: 1 (0.6%)
 - **Total entries**: 159
 - **Untagged (no preceding comment)**: 115 (72.3%)

@@ -50,12 +50,35 @@ CLASS_RULES = [
     (re.compile(r'bench|measurement|perf.*budget|Criterion harness|measur', re.I), 'STRUCTURAL', 'Measurement infrastructure (§3.A grandfathered)'),
 ]
 
+# Path-based fallback rules — fire only when comment-based rules miss + path matches.
+# Stronger signals than default-G; refines untagged entries via canonical compiler-Rust-mirror locations.
+PATH_RULES = [
+    (re.compile(r'src/v3/compiler/benches/|/bench[^/]*\.rs$', re.I), 'STRUCTURAL', 'Measurement infrastructure (path: bench)'),
+    (re.compile(r'src/v3/compiler/src/bin/regen_|src/v3/compiler/src/bootstrap', re.I), 'D', 'Generated bridge — bootstrap/regen binary (path)'),
+    (re.compile(r'src/v3/compiler/src/(dag|lower|infer|emit|value|diagnostics|eval)\.rs|src/v3/compiler/src/(emit|dag|eval)/', re.I), 'C', 'Compiler Rust mirror of .dag substrate (path)'),
+    (re.compile(r'src/v3/compiler/src/(parse|tokenize|test_runner)', re.I), 'A', 'Substrate-gap (parser/grammar/predicate) — path'),
+    (re.compile(r'src/v3/compiler/src/(complexity|cost|dimension|cardinality)', re.I), 'C', 'Compiler Rust mirror — algebra/typed-carrier (path)'),
+    (re.compile(r'src/v3/grounding_pilot/|src/v3/grounding_cross_target', re.I), 'C', 'Grounding-pilot / cross-target Rust mirror (path)'),
+    (re.compile(r'src/v3/lenses/', re.I), 'E', 'Lens producer (Class E v2↔v3 transition / T-LensProducer)'),
+    (re.compile(r'src/v3/spec/', re.I), 'C', 'Target spec Rust mirror (path)'),
+    (re.compile(r'src/v3/std/', re.I), 'C', 'std/ Rust mirror (path)'),
+]
+
 def classify(comment_block: str, path: str) -> tuple[str, str]:
+    # First pass: comment-based rules (highest signal)
+    for pattern, cls, label in CLASS_RULES:
+        if comment_block.strip() and pattern.search(comment_block):
+            return (cls, label)
+        if pattern.search(path):
+            return (cls, label)
+    # Second pass: path-based fallback rules
+    for pattern, cls, label in PATH_RULES:
+        if pattern.search(path):
+            tag = '' if comment_block.strip() else ' [UNTAGGED]'
+            return (cls, label + tag)
+    # Default
     if not comment_block.strip():
         return ('G', '(no comment — untagged; Mgr review needed)')
-    for pattern, cls, label in CLASS_RULES:
-        if pattern.search(comment_block) or pattern.search(path):
-            return (cls, label)
     return ('G', 'Local/small bridge (default)')
 
 def parse_entries(text: str) -> dict[str, list[tuple[str, str]]]:
