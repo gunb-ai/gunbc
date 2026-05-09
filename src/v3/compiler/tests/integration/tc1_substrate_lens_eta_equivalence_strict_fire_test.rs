@@ -21,6 +21,8 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
+use crate::common::run_on_larger_stack;
+
 const FIXTURE_SOURCE: &str =
     include_str!("../fixtures/tc1_substrate_lens_eta_equivalence_strict_fire.dag");
 const FIXTURE_PATH: &str =
@@ -71,19 +73,6 @@ fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape_
         "expected BinaryDimensionReportEquals shape-valid NotYetImplemented, got {:?}",
         results[0].result
     );
-}
-
-fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
-where
-    T: Send + 'static,
-{
-    // `compile_to_dag` for this fixture can overflow the default test-thread stack.
-    std::thread::Builder::new()
-        .stack_size(32 * 1024 * 1024)
-        .spawn(f)
-        .expect("spawn larger-stack TC1 strict-fire integration thread")
-        .join()
-        .expect("larger-stack TC1 strict-fire integration thread panicked")
 }
 
 // INVARIANTS P1 / P5 — checkable receipt: this integration crate must not build if the cited
