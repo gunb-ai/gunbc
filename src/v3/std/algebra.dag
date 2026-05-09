@@ -77,10 +77,7 @@ import std.algebra { Semiring, BoundedLattice }
 import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId, DeclarationId }
 import std.termination {
-  AdditionalStep,
-  OneStep,
-  PositiveDescentAmount,
-  positive_descent_count,
+  AdditionalStep, OneStep, PositiveDescentAmount, positive_descent_count
 }
 import v3.std.lookup { Lookup }
 
