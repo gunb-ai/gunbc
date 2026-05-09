@@ -31,15 +31,17 @@
 // for executable `Dimension<SymbolicCost>` records remains deferred on grammar
 // gaps (see the `Dimension<SymbolicCost>` discussion lower in this file). Lane E-C stages `CallPattern` /
 // `LoweringTarget` in `std.computation`; lane E-I stages `SubValueRelation`
-// and the `CostBound` algebra in `std.induction`. This lens still does not
-// thread per-call descent into `SymbolicCost`: the remaining gap is **E-P**
-// (producer wiring, richer size variables, behavioral tests) — not missing
-// E-I vocabulary or a ported `MethodSemantics` carrier. E-M closed method
-// carrier parity by structural subsumption through `TransformTarget` and
-// typed declaration/effect metadata. Integration module `cost_lens_symbolic_consumer_test`
-// pins the generated `symbolic_cost_of` consumer on `compile_to_dag` fixtures. Band-C
-// cementing (`integration/cementing/`, v2 oracle / reviewed projection) stays gated on
-// clearing the `cost.dag` **PROXY** row per register Discipline.
+// and the `CostBound` algebra in `std.induction`. Integer **`Div`** composes
+// operand costs (`transform_cost`) with **`LogCost(dividend_port)`** in
+// `transform_cost_for_target`; other primitives still use input-port sum only.
+// General per-call `CallPattern` descent remains **E-P** follow-on (producer wiring,
+// richer size variables, behavioral tests) — not missing E-I vocabulary or a ported
+// `MethodSemantics` carrier. E-M closed method carrier parity by structural subsumption
+// through `TransformTarget` and typed declaration/effect metadata. Integration module
+// `cost_lens_symbolic_consumer_test` pins the generated `symbolic_cost_of` consumer on
+// `compile_to_dag` fixtures. Band-C cementing (`integration/cementing/`, v2 oracle /
+// reviewed projection) stays gated on clearing the `cost.dag` **PROXY** row per register
+// Discipline.
 //
 // Shared carrier: `v3.std.lookup.Lookup` (compiler-std consolidation;
 // see docs/thesis/compiler-std-consolidation.md). The prior lens-local
@@ -51,7 +53,10 @@
 module lenses.cost
 
 import std.list { List, empty, fold, cons }
-import std.substrate { Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, node }
+import std.substrate {
+  Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, node,
+  TransformNode, TransformTarget, OperatorKind, ArithmeticOp
+}
 import std.algebra {
   MethodContract,
   CostShape,
@@ -72,10 +77,36 @@ import v3.std.substrate_minimal { DeclarationId }
 // Split from `EnforcedApplication` / `apply_lens` config: the latter owns enforcement
 // mode + declared budget; these carriers attach evidence consumed when composing
 // per-target costs (§4.2 PerWrite CRDT, §4.3 memory peak).
+//
+// Coproduct dissolution (`docs/modeling-discipline.md` §4). `CostBasisKind` classifies
+// **which basis axis** cost evidence is keyed to (per write / per call / peak memory).
+// Classification: **🟢 TERMINAL (GREEN).** Four-pattern ledger — each pattern
+// considered; none yields a cheaper substrate factoring without erasing audit vocabulary:
+//   1. Fact placement — Fails as full dissolution: `PerWrite`, `PerCall`, and
+//      `PeakMemory` are not redundant copies of the same fact at unrelated sites;
+//      they are distinct basis kinds authors attach to the same `CostBasisDeclaration`
+//      shell. Splitting into three unrelated carriers would triple `subject`/`cost`/`span`
+//      payloads and scatter the cost-lens-owned “basis” concept the audit locks.
+//   2. Variant-is-data — Rejected for modeling fidelity: the label space is closed
+//      (three variants), but collapsing to a bare tag on a generic record would drop
+//      the nominal tie to §4.2 / §4.3 / per-call surfaces in review and ROADMAP gates
+//      (`crdt_cost_basis_demonstrated`, memory-peak sibling) — the variants are the
+//      authored audit vocabulary, not an implementation detail.
+//   3. Algebraic form — Fails: basis kinds are not references into a single `std/`
+//      operator or algebra stem; they are evidence-class tags at the lens boundary.
+//   4. Dimensional — Fails cleanly: peak-memory is not a product of the same axes as
+//      per-write vs per-call (time/invocation structure vs allocation bound); merging
+//      into one Cartesian record would conflate orthogonal enforcement stories.
+//
+// **Named trigger:** none (terminal, not scaffold).
 type CostBasisKind
   = PerWrite
   | PerCall
   | PeakMemory
+
+// **Rust consumer (gate #93 / P2):** `v3_compiler::try_build_per_write_log_cost_basis_declaration`
+// materializes this record from post-lower `Dag` facts until class-5 bodies persist `data` rows
+// and the cost fold reads them into `compute_symbolic_costs`.
 
 type CostBasisDeclaration {
   subject: DeclarationId
@@ -147,7 +178,7 @@ fn entry_for(
     Value(v) =>
       { port: v.result_port, cost: hit_symbolic_cost_lookup(ConstantCost(0)) }
     Transform(t) =>
-      { port: t.result_port, cost: transform_cost(acc, t.inputs) }
+      { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
     Branch(b) =>
       { port: b.result_port, cost: branch_cost(acc, b.input, b.paths) }
     Loop(l) =>
@@ -259,6 +290,43 @@ fn combine_max(
 
 fn dominant(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   max_path(cons(a, cons(b, empty())))
+
+// Integer divide (E-P): preserve operand costs via `transform_cost(acc, inputs)` (Constant(1)
+// + per-input lookups), then **sequentially** charge **`LogCost(dividend_port)`** for the divide
+// itself (dividend is `Cons` head). Omitting `transform_cost` would under-approximate when
+// operands are expensive (PR #2299 / openai-pro).
+fn transform_cost_for_target(
+  acc: List<SymbolicCostEntry>,
+  target: TransformTarget,
+  inputs: List<PortId>
+) -> Lookup<SymbolicCost> =
+  match target {
+    Callable(_) => transform_cost(acc, inputs)
+    FieldProject { field_label: l, field_child: c } => transform_cost(acc, inputs)
+    Operator(op) =>
+      match op {
+        Arithmetic(arith) =>
+          match arith {
+            Div =>
+              match inputs {
+                // `inputs` is `Transform` operand port list in lowering order: **head = dividend**,
+                // tail = divisor(s). Matches checked-Int divide / `Operator(Arithmetic(Div))` wiring
+                // (same convention as `CallPattern::ArithmeticDivideCall` commentary above).
+                Cons(payload) =>
+                  combine_sequential(
+                    transform_cost(acc, inputs),
+                    hit_symbolic_cost_lookup(LogCost(unnamed_size_variable(payload.head)))
+                  )
+                Empty => transform_cost(acc, inputs)
+              }
+            Add => transform_cost(acc, inputs)
+            Sub => transform_cost(acc, inputs)
+            Mul => transform_cost(acc, inputs)
+          }
+        Comparison(_) => transform_cost(acc, inputs)
+        Logical(_) => transform_cost(acc, inputs)
+      }
+  }
 
 fn transform_cost(
   acc: List<SymbolicCostEntry>,

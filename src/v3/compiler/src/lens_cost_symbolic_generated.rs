@@ -88,7 +88,7 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
         },
         Behavior::Transform(t) => SymbolicCostEntry {
             port: (t).result_port(),
-            cost: transform_cost(p1, &((t).inputs)),
+            cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
         },
         Behavior::Branch(b) => SymbolicCostEntry {
             port: (b).result_port(),
@@ -183,6 +183,40 @@ pub fn dominant(p0: SymbolicCost, p1: SymbolicCost) -> SymbolicCost {
             __list
         }),
     )
+}
+pub fn transform_cost_for_target(
+    p0: &[SymbolicCostEntry],
+    p1: &TransformTarget,
+    p2: &[PortId],
+) -> Lookup<SymbolicCost> {
+    match p1 {
+        TransformTarget::Callable(_) => transform_cost(p0, p2),
+        TransformTarget::FieldProject {
+            field_label: _,
+            field_child: _,
+        } => transform_cost(p0, p2),
+        TransformTarget::Operator(op) => match op {
+            OperatorKind::Arithmetic(arith) => match arith {
+                ArithmeticOp::Div => match p2 {
+                    [] => transform_cost(p0, p2),
+                    [__list_head, __list_tail @ ..] => combine_sequential(
+                        &(Lookup::Hit(SymbolicCost::ConstantCost { _0: 1 })),
+                        &(Lookup::Hit(SymbolicCost::LogCost {
+                            _0: SizeVariable {
+                                source_port: *__list_head,
+                                display_name: None,
+                            },
+                        })),
+                    ),
+                },
+                ArithmeticOp::Add => transform_cost(p0, p2),
+                ArithmeticOp::Sub => transform_cost(p0, p2),
+                ArithmeticOp::Mul => transform_cost(p0, p2),
+            },
+            OperatorKind::Comparison(_) => transform_cost(p0, p2),
+            OperatorKind::Logical(_) => transform_cost(p0, p2),
+        },
+    }
 }
 pub fn transform_cost(p0: &[SymbolicCostEntry], p1: &[PortId]) -> Lookup<SymbolicCost> {
     combine_sequential(

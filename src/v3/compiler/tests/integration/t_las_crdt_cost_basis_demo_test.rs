@@ -14,26 +14,32 @@
 //!
 //! **What we pin instead:** (1) a concrete **`CostBasisDeclaration`** (carrier from
 //! `lenses.cost` / `lens_cost_symbolic_generated.rs`): `PerWrite` + **§4.2**
-//! `O_log_replicas` as `LogCost(replicas_port)` + `subject: DeclarationId` for the
-//! labeled `my_crdt_field` fn + source **`span`** from that bind — the cost-basis
+//! `O_log_replicas` as `LogCost(merge_replicas_port)` — the **`crdt_merge_step`**
+//! parameter port the divide lowers on (same logical replicas as the outer fn, but
+//! a **distinct** `PortId` from `my_crdt_field.replicas`) — plus `subject: DeclarationId`
+//! for the workflow entry `my_crdt_field` + source **`span`** from that bind.
 //! evidence the audit splits out from `apply_lens` configuration until the fold
-//! reads persisted declarations. (2) **`!dominates(basis.cost, composed)`** — the
-//! per-write log budget is **not** a sound ceiling for the full recursive workflow
-//! (this direction is non-vacuous: `LogCost` does not dominate unrelated
-//! `LinearCost`).
+//! reads persisted declarations. (2) **Full symbolic-cost lens table**
+//! ([`compute_symbolic_costs`]): some port still **`Hit`s `LogCost(merge_replicas_port)`**
+//! from divide lowering inside `crdt_merge_step` — the per-write O(log replicas)
+//! factor **survives in lens output** even though dimension `composed` at the
+//! recursive workflow root normalizes to `LinearCost(num_writes)` and dimension
+//! `witnesses` may only show that summary. (3) **`!dominates(basis.cost, composed)`**
+//! — the per-write log budget is **not** a sound ceiling for the full workflow.
 //!
-//! Reading **`CostBasisDeclaration` rows from `.dag` / wiring them into**
-//! **`compute_symbolic_costs`** remains follow-on substrate work; this module
-//! demonstrates the carrier shape and ties it to the same `SymbolicCost` lens
-//! algebra used by dimension analysis.
+//! Reading **`CostBasisDeclaration` rows from `.dag` / folding them into**
+//! **`compute_symbolic_costs`** remains follow-on; **`basis.cost`** matches the
+//! **`LogCost(merge_replicas_port)`** entries the cost lens already assigns on the DAG.
 //!
 //! Fixture companion: `src/v3/compiler/tests/fixtures/t_las_crdt_cost_basis_demo.dag`.
 //! Design: `docs/design-lens-application-surface.md` §4.2 + cost-basis audit
 //! `docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{dominates, Behavior, PortId, SizeVariable, SymbolicCost};
-use v3_compiler::lens_cost_symbolic::{CostBasisDeclaration, CostBasisKind};
+use v3_compiler::dag::{dominates, Behavior, Lookup, PortId, SizeVariable, SymbolicCost};
+use v3_compiler::lens_cost_symbolic::{
+    compute_symbolic_costs, CostBasisDeclaration, CostBasisKind,
+};
 use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport};
 
 use crate::common::cached_compile_to_dag;
@@ -41,8 +47,9 @@ use crate::common::cached_compile_to_dag;
 const FIXTURE_DAG: &str = include_str!("../fixtures/t_las_crdt_cost_basis_demo.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/t_las_crdt_cost_basis_demo.dag";
 
-/// Recursive “N writes” over a per-write step modeled as integer divide
-/// (`ArithmeticDivideCall` → `LogCost` in the cost lens; see `lens_cost_generated`).
+/// Recursive “N writes” over a per-write step modeled as integer divide; the
+/// symbolic-cost lens charges **`LogCost(dividend_port)`** on `TransformTarget::Operator(Div)`
+/// (`transform_cost_for_target` in `src/v3/lenses/cost.dag`).
 const MY_CRDT_FIELD: &str = "\
 import std.error_primitives { DivError, Result }
 
@@ -80,9 +87,9 @@ fn find_bind<'a>(dag: &'a v3_compiler::dag::Dag, name: &str) -> &'a v3_compiler:
         .unwrap_or_else(|| panic!("bind `{name}` not found"))
 }
 
-/// `SizeVariable` substrate: `source_port` + `display_name: String?`
-/// (`src/v3/std/algebra.dag`). `None` is the ordinary unnamed witness, matching
-/// `lane2_stage_2d_symbolic_cost_test::size_var` / `unnamed_size_variable` in `.dag`.
+/// `SizeVariable` per `algebra.dag` (`source_port`, `display_name: String?`); Rust
+/// [`PartialEq`](v3_compiler::dag::SizeVariable) ignores `display_name` and keys on
+/// `source_port` only (same as `size_variable_eq` in `.dag`).
 fn size_var(port: PortId) -> SizeVariable {
     SizeVariable {
         source_port: port,
@@ -90,23 +97,46 @@ fn size_var(port: PortId) -> SizeVariable {
     }
 }
 
+fn symbolic_cost_lens_table_includes_log_on_port(
+    dag: &v3_compiler::dag::Dag,
+    port: PortId,
+) -> bool {
+    compute_symbolic_costs(dag).iter().any(|e| {
+        matches!(
+            &e.cost,
+            Lookup::Hit(SymbolicCost::LogCost { _0: sv }) if sv.source_port == port
+        )
+    })
+}
+
+fn symbolic_cost_lens_table_includes_cost(
+    dag: &v3_compiler::dag::Dag,
+    want: &SymbolicCost,
+) -> bool {
+    compute_symbolic_costs(dag)
+        .iter()
+        .any(|e| matches!(&e.cost, Lookup::Hit(c) if c == want))
+}
+
 /// Declared per-op O(log replicas) budget from §4.2 (`O_log_replicas`), keyed to the
-/// `replicas` parameter port. The cost lens uses this same size variable for
-/// `ArithmeticDivideCall` on `replicas` inside `crdt_merge_step`.
-fn per_write_log_replicas_budget(replicas_port: PortId) -> SymbolicCost {
+/// **`crdt_merge_step` parameter port** that feeds `replicas / 2` (same logical field,
+/// distinct `PortId` from `my_crdt_field`'s `replicas` parameter). The cost lens keys
+/// `ArithmeticDivideCall` → `LogCost` off that inner port.
+fn per_write_log_replicas_budget(merge_replicas_port: PortId) -> SymbolicCost {
     SymbolicCost::LogCost {
-        _0: size_var(replicas_port),
+        _0: size_var(merge_replicas_port),
     }
 }
 
 fn crdt_field_dimension_and_basis() -> (v3_compiler::dag::Dag, SymbolicCost, CostBasisDeclaration) {
     let dag = cached_compile_to_dag(MY_CRDT_FIELD, CRDT_FIELD_PROGRAM_FILE);
     let root = find_bind(&dag, "my_crdt_field");
-    let replicas_port = *root
+    let merge = find_bind(&dag, "crdt_merge_step");
+    let merge_replicas_port = *merge
         .params
-        .get(1)
-        .expect("my_crdt_field should have replicas parameter port");
-    let per_op = per_write_log_replicas_budget(replicas_port);
+        .first()
+        .expect("crdt_merge_step should take replicas: Int");
+    let per_op = per_write_log_replicas_budget(merge_replicas_port);
     let subject = dag
         .declaration_by_name("my_crdt_field")
         .expect("named fn `my_crdt_field` should register a DeclarationId")
@@ -139,20 +169,55 @@ fn crdt_cost_basis_fixture_dag_compiles_on_bootstrap() {
 }
 
 #[test]
+fn crdt_cost_basis_demonstrated_log_replicas_in_symbolic_cost_lens_table() {
+    run_with_symbolic_cost_stack(|| {
+        let dag = cached_compile_to_dag(MY_CRDT_FIELD, CRDT_FIELD_PROGRAM_FILE);
+        let merge = find_bind(&dag, "crdt_merge_step");
+        let merge_replicas_port = *merge
+            .params
+            .first()
+            .expect("crdt_merge_step should take replicas: Int");
+        assert!(
+            symbolic_cost_lens_table_includes_log_on_port(&dag, merge_replicas_port),
+            "expected some `SymbolicCostEntry` Hit(LogCost(merge_replicas_port)) from divide in \
+             crdt_merge_step (per-write O(log replicas) survives in lens table)"
+        );
+    });
+}
+
+#[test]
+fn crdt_cost_basis_demonstrated_basis_cost_hits_symbolic_cost_lens_table() {
+    run_with_symbolic_cost_stack(|| {
+        let (dag, _composed, basis) = crdt_field_dimension_and_basis();
+        assert!(
+            symbolic_cost_lens_table_includes_cost(&dag, &basis.cost),
+            "CostBasisDeclaration.cost should match a Hit row in compute_symbolic_costs (fold \
+             consumption follow-on; today `basis.cost` **is** the same SymbolicCost the lens \
+             lowers for that port); basis.cost={:?}",
+            basis.cost
+        );
+    });
+}
+
+#[test]
 fn crdt_cost_basis_demonstrated_declaration_pins_subject_span_and_per_write_log_budget() {
     run_with_symbolic_cost_stack(|| {
         let (dag, _composed, basis) = crdt_field_dimension_and_basis();
         let root = find_bind(&dag, "my_crdt_field");
-        let replicas_port = *root
+        let merge = find_bind(&dag, "crdt_merge_step");
+        let merge_replicas_port = *merge
             .params
-            .get(1)
-            .expect("my_crdt_field should have replicas parameter port");
+            .first()
+            .expect("crdt_merge_step should take replicas: Int");
         let decl = dag
             .declaration_by_name("my_crdt_field")
             .expect("my_crdt_field declaration");
         assert_eq!(basis.subject, decl.id);
         assert!(matches!(basis.kind, CostBasisKind::PerWrite));
-        assert_eq!(basis.cost, per_write_log_replicas_budget(replicas_port));
+        assert_eq!(
+            basis.cost,
+            per_write_log_replicas_budget(merge_replicas_port)
+        );
         assert_eq!(basis.span, root.span);
     });
 }
