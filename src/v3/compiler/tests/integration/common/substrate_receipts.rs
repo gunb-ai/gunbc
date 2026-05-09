@@ -159,11 +159,11 @@ pub fn assert_bootstrap_int64_compose_int_machine_width(dag: &Dag) {
     );
 }
 
-/// Receipt: `Float64` refines opaque `Ieee754Float` with `MachineWidth<Word64>` (R3 gate #19).
-pub fn assert_bootstrap_float64_compose_ieee_machine_width(dag: &Dag) {
+/// Receipt: `Float64` refines `ApproximateField<Word64>` with `MachineWidth<Word64>` (R3 gate #19).
+pub fn assert_bootstrap_float64_compose_approx_field_machine_width(dag: &Dag) {
     let float64_id = find_named(dag, "Float64");
     let compose_id = find_named(dag, "Compose");
-    let ieee_id = find_named(dag, "Ieee754Float");
+    let approximate_field_id = find_named(dag, "ApproximateField");
     let machine_width_id = find_named(dag, "MachineWidth");
     let word64_id = find_named(dag, "Word64");
 
@@ -178,29 +178,32 @@ pub fn assert_bootstrap_float64_compose_ieee_machine_width(dag: &Dag) {
     assert_eq!(*template, compose_id);
     assert_eq!(arguments.len(), 2);
 
-    let mut saw_ieee = false;
+    let mut saw_approx_word64 = false;
     let mut saw_mw_word64 = false;
     for arg in arguments {
-        if arg.value == ieee_id {
-            saw_ieee = true;
-            continue;
-        }
         if let TypeConnective::Instantiation {
-            template: mw_template,
-            arguments: mw_args,
+            template: inner_template,
+            arguments: inner_args,
         } = &dag.declaration(arg.value).connective
         {
-            if *mw_template == machine_width_id
-                && mw_args.len() == 1
-                && mw_args[0].value == word64_id
+            if *inner_template == approximate_field_id
+                && inner_args.len() == 1
+                && inner_args[0].value == word64_id
+            {
+                saw_approx_word64 = true;
+                continue;
+            }
+            if *inner_template == machine_width_id
+                && inner_args.len() == 1
+                && inner_args[0].value == word64_id
             {
                 saw_mw_word64 = true;
             }
         }
     }
     assert!(
-        saw_ieee,
-        "Float64 Compose must instantiate Ieee754Float axis"
+        saw_approx_word64,
+        "Float64 Compose must instantiate ApproximateField<Word64> axis"
     );
     assert!(
         saw_mw_word64,

@@ -30,6 +30,7 @@ const MACHINE_CONSTRAINTS_DAG: &str = include_str!("../../../../dsl/std/machine_
 const NAT_DAG: &str = include_str!("../../../../dsl/std/nat.dag");
 const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
 const RATIONAL_DAG: &str = include_str!("../../../../dsl/std/rational.dag");
+const APPROXIMATE_FIELD_DAG: &str = include_str!("../../../v3/std/approximate_field.dag");
 const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
 const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
 const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
@@ -82,13 +83,22 @@ pub fn compile_std_bootstrap_dag() -> Dag {
 
 pub fn compile_full_bootstrap_dag_from_std_seed(std_seed: Dag) -> Dag {
     let mut dag = std_seed;
-    load_runtime_bootstrap_authorities(&mut dag, &[], &[]);
+    // `approximate_field.dag` is part of `std_fixtures()` so `dsl/std/float.dag` can
+    // import `ApproximateField`; skip the staged copy to avoid duplicate declarations.
+    load_runtime_bootstrap_authorities(&mut dag, &["src/v3/std/approximate_field.dag"], &[]);
     dag
 }
 
 pub fn compile_full_bootstrap_without_parse_surface_dag_from_std_seed(std_seed: Dag) -> Dag {
     let mut dag = std_seed;
-    load_runtime_bootstrap_authorities(&mut dag, &["src/v3/std/parse_surface.dag"], &[]);
+    load_runtime_bootstrap_authorities(
+        &mut dag,
+        &[
+            "src/v3/std/parse_surface.dag",
+            "src/v3/std/approximate_field.dag",
+        ],
+        &[],
+    );
     dag
 }
 
@@ -145,6 +155,7 @@ fn std_fixtures() -> &'static [(&'static str, &'static str)] {
         ("dsl/std/nat.dag", NAT_DAG),
         ("dsl/std/integer.dag", INTEGER_DAG),
         ("dsl/std/rational.dag", RATIONAL_DAG),
+        ("src/v3/std/approximate_field.dag", APPROXIMATE_FIELD_DAG),
         ("dsl/std/float.dag", FLOAT_DAG),
         ("dsl/std/types.dag", TYPES_DAG),
         ("dsl/std/string_type.dag", STRING_TYPE_DAG),

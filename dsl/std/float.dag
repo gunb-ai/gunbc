@@ -1,21 +1,18 @@
 // std/float.dag -- Floating-point types as algebraic compositions.
 //
-// Fixed-width floats are width refinements of a single approximate-float
-// algebra axis (`Ieee754Float`) composed with `MachineWidth<Word*>` (R3 §1.8
-// gate #19 `numeric_aliases_align_to_refinements`). IEEE 754 rounding still
-// breaks pure field laws — approximate semantics remain Grounding's concern.
+// Fixed-width floats are width refinements of `ApproximateField<Word*>` (see
+// `src/v3/std/approximate_field.dag`) composed with `MachineWidth<Word*>` (R3 §1.8
+// gate #19 `numeric_aliases_align_to_refinements`). Approximate field laws subsume
+// IEEE-style rounding / NaN policy axes — grounding remains target-specific.
 
 module std.float
 
 import std.bit { Word32, Word64 }
 import std.machine_constraints { Compose, MachineWidth }
+import v3.std.approximate_field { ApproximateField }
 
-// Opaque substrate carrier for the IEEE-754 approximate-float algebra axis
-// (width-independent at this layer; specialization via Compose).
-type Ieee754Float
-
-type Float32 = Compose<Ieee754Float, MachineWidth<Word32>>
-type Float64 = Compose<Ieee754Float, MachineWidth<Word64>>
+type Float32 = Compose<ApproximateField<Word32>, MachineWidth<Word32>>
+type Float64 = Compose<ApproximateField<Word64>, MachineWidth<Word64>>
 
 // Default alias
 type Float = Float64

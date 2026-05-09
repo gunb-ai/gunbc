@@ -4409,6 +4409,40 @@ fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<T
     Some(TypeShape::new(id))
 }
 
+/// When the LHS is `Compose<AlgebraAxis, MachineConstraint>` (numeric width
+/// refinements), operator dispatch must continue from the algebra axis (`Int`,
+/// `UInt`, `ApproximateField<F>`, …), not from the `Compose` template.
+fn peel_compose_algebra_axis(
+    dag: &Dag,
+    template: DeclarationId,
+    arguments: &[TemplateArgument],
+) -> Option<DeclarationId> {
+    let compose_id = dag.declaration_by_name("Compose")?.id;
+    if template != compose_id || arguments.len() != 2 {
+        return None;
+    }
+    let int_id = dag.declaration_by_name("Int").map(|d| d.id);
+    let uint_id = dag.declaration_by_name("UInt").map(|d| d.id);
+    let approx_id = dag.declaration_by_name("ApproximateField").map(|d| d.id);
+
+    for arg in arguments {
+        let v = arg.value;
+        if Some(v) == int_id || Some(v) == uint_id {
+            return Some(v);
+        }
+        if let Some(approx) = approx_id {
+            if let TypeConnective::Instantiation { template: t, .. } =
+                &dag.declaration(v).connective
+            {
+                if *t == approx {
+                    return Some(v);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn resolve_operator_arrow(
     dag: &mut Dag,
     op_kind: OperatorKind,
@@ -4433,7 +4467,7 @@ fn resolve_operator_arrow(
     // comment.
     let mut current = source_id;
     let mut saw_algebra_conj = false;
-    for _ in 0..WALK_DEPTH_LIMIT {
+    'walk: for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current).clone();
         match &decl.connective {
             TypeConnective::Conj { children } => {
@@ -4444,11 +4478,24 @@ fn resolve_operator_arrow(
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
                     return read_algebra_field(dag, &decl, field.ty, source_id, op_kind, &base_lhs);
                 }
+                // `ApproximateField<F>` exposes arithmetic through `base: Field<F>`.
+                if let Some(base_field) = children.iter().find(|f| f.label == "base") {
+                    current = base_field.ty;
+                    continue 'walk;
+                }
                 // Algebra doesn't declare this operator's field —
                 // fall back to the Rust-side scaffold bridge below.
                 break;
             }
-            TypeConnective::Instantiation { template, .. } => {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                if let Some(axis) = peel_compose_algebra_axis(dag, *template, arguments.as_slice())
+                {
+                    current = axis;
+                    continue 'walk;
+                }
                 current = *template;
             }
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
