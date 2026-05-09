@@ -171,7 +171,7 @@ Each class is a parallel-dispatchable worker batch.
 
 2. **Phase 3 bulk-port discipline**: is bulk-port a single Verification Mgr coordinator role (PM recommendation) or distributed per-lane (each lane Mgr migrates their own tests)? Both are viable; PM defaults to coordinator for cleaner sequencing tracking.
 
-3. **#84 closure criterion under Director-allocated exceptions**: Director Option 2 ratification (cross_target_coverage_carrier_test.rs etc. stays hand-Rust until testgen covers) — does Phase 3 close fold those into Director-allocated exceptions, or does testgen need to cover them too? Affects whether #84 can fire while exceptions persist.
+3. ~~**#84 closure criterion under Director-allocated exceptions**~~: **RESOLVED 2026-05-09** per codex BLOCKING on PR #2361 sha `b925b174` (addressed at sha `5631cac33`). Strict-zero close-condition adopted: Director Option 2 timed-carry tests (`cross_target_coverage_carrier_test.rs`, `method_template_contract_test.rs`, etc.) are **NOT** folded into close-condition; they remain blockers / non-close-risk until they migrate to testgen-coverage. R3-honest-close requires actual zero, not "zero except exceptions." See §1.3 + §5.1 for canonical close-condition language. This question is no longer open.
 
 ---
 
