@@ -1,14 +1,16 @@
 //! **Layer:** integration
 //!
 //! Brief #2219 receipt: one lowered endpoint-bearing fixture feeds the Shape B
-//! OpenAPI 3.1 YAML projection, the Shape B Markdown drift-lock projection, and
-//! the canonical route projection used as the interim backend exposure set. The
-//! cross-target equality test is interim until a cross-target TestPredicate
-//! variant exists.
+//! OpenAPI 3.1 YAML projection, the Shape B Markdown drift-lock projection, the
+//! canonical route projection used as the interim backend exposure set, and (for
+//! gate **`omni_layers_share_one_node_tree`**) Shape A Rust emission via
+//! **`emit_rust`**. The cross-target equality test is interim until a
+//! cross-target TestPredicate variant exists.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use v3_compiler::compile_to_dag;
+use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::omni_shape_b_openapi::{
     extract_rest_routes, project_markdown_documentation, project_openapi_yaml, RestRoute,
 };
@@ -16,9 +18,11 @@ use v3_compiler::omni_shape_b_openapi::{
 const OMNI_SERVICE_FIXTURE: &str = r#"
 module t.openapi_demo
 
-import std.types { GET, POST }
+import std.types { GET, POST, Int }
 import std.effects { PathTemplate, LiteralToken, ParamToken }
 import v3.std.services { RestEndpointBinding }
+
+let omni_emit_anchor: Int = 0
 
 type DemoOperation {
   endpoint: RestEndpointBinding
@@ -345,11 +349,13 @@ fn omni_layers_share_one_node_tree() {
     let _openapi = project_openapi_yaml(&dag).expect("Shape B OpenAPI projects from shared DAG");
     let _markdown =
         project_markdown_documentation(&dag).expect("Shape B Markdown projects from shared DAG");
+    let _rust = emit_rust(&dag).expect("Shape A Rust emit consumes shared DAG");
 
     assert_eq!(
         compile_count, 1,
-        "backend and Shape B projections must consume the same compile_to_dag \
-         result; recompiling per target would break the structural-fold receipt."
+        "Shape A + Shape B layers must consume the same compile_to_dag result \
+         (routes + OpenAPI + Markdown + emit_rust); recompiling per layer would \
+         break the structural-fold receipt."
     );
 }
 

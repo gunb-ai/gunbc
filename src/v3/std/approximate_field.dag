@@ -5,13 +5,11 @@
 //
 // Landed axes precursor (#1427): rounding / precision / special-value policy
 // terminals. **Carrier slice (this file):** `SpecialValues` + `ApproximateField<F>`
-// per 6Q §“Recommended substrate shape” — still **no** `Real` alias, Float
-// migration, target mirrors, or tolerance/equivalence behavior.
-//
-// **Real alias gate:** `docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`
-// — `Rational` (#1508) names `Field<FieldOfFractions<Int>>`, so `F` in
-// `ApproximateField<F>` / `base: Field<F>` cannot honestly be spelled `Rational`
-// without a design convention fix (carrier vs witness naming).
+// per 6Q §“Recommended substrate shape”. **`Real`** binds `F :=
+// FieldOfFractions<Int>` in `dsl/std/float.dag` per Option A in
+// `docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`.
+// Float migration, target mirrors, and tolerance/equivalence behavior remain
+// follow-on slices.
 
 module v3.std.approximate_field
 
