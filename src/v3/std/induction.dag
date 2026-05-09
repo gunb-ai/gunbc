@@ -76,7 +76,8 @@ import std.termination {
   proportional_divisor_to_int,
   positive_descent_amount_from_positive_int,
   proportional_divisor_from_int_at_least_two,
-  peano_literal_materialization_cap
+  peano_literal_materialization_cap,
+  positive_descent_count
 }
 import std.computation {
   CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
@@ -84,7 +85,7 @@ import std.computation {
   LoweringTarget, IterationPrimitive, Descend, Fold, Repeat,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CollectionSize, ArithmeticParam, Forever,
-  tree_size_bound, positive_descent_count
+  tree_size_bound
 }
 import std.algebra {
   SymbolicCost, ConstantCost, UnknownCost

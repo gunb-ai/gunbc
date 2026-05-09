@@ -76,7 +76,12 @@ module v3.std.algebra
 import std.algebra { Semiring, BoundedLattice }
 import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId, DeclarationId }
-import std.termination { AdditionalStep, OneStep, PositiveDescentAmount }
+import std.termination {
+  AdditionalStep,
+  OneStep,
+  PositiveDescentAmount,
+  positive_descent_count,
+}
 import v3.std.lookup { Lookup }
 
 // 🟡 SCAFFOLD coproduct. These are v2 per-method output-size effect facts
@@ -407,10 +412,10 @@ fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
 // ClassConstant <= ClassLog <= ClassLinear <= ClassLinearithmic <=
 // ClassQuadratic <= ClassPolynomial(k>=3) <= ClassExponential <= ClassUnknown.
 //
-// `asymptotic_dominates(ClassPolynomial { degree: da }, ClassPolynomial { degree: db })`
-// compares Peano degrees via a local `Int` depth counter (same order as
-// `std.computation::positive_descent_count`; defined in this module to avoid the
-// `std.computation` import cycle noted above).
+// `asymptotic_dominates(ClassPolynomial { degree: d_a }, ClassPolynomial { degree: d_b })`
+// compares Peano degrees via `std.termination::positive_descent_count` (same `Int`
+// depth as `std.computation::positive_descent_count`, now single-authority in
+// termination so this module does not import `std.computation`).
 // `v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates` stays aligned
 // with this `.dag` relation for every arm including poly×poly (single authority for gate #92).
 type AsymptoticClass inhabits BoundedLattice<AsymptoticClass>
@@ -422,15 +427,6 @@ type AsymptoticClass inhabits BoundedLattice<AsymptoticClass>
   | ClassPolynomial { degree: PositiveDescentAmount }
   | ClassExponential
   | ClassUnknown
-
-// Peano depth as `Int` (same arithmetic story as `std.computation::positive_descent_count`,
-// duplicated here so `v3.std.algebra` does not import `std.computation`, which would
-// create a bootstrap SCC with `std.algebra`).
-fn positive_descent_amount_to_int(steps: PositiveDescentAmount) -> Int =
-  match steps {
-    OneStep => 1
-    AdditionalStep { previous: p } => 1 + positive_descent_amount_to_int(steps: p)
-  }
 
 fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
   match a {
@@ -451,7 +447,7 @@ fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
         ClassUnknown => False
         ClassExponential => False
         ClassPolynomial { degree: d_b } =>
-          positive_descent_amount_to_int(steps: d_a) >= positive_descent_amount_to_int(steps: d_b)
+          positive_descent_count(steps: d_a) >= positive_descent_count(steps: d_b)
         ClassQuadratic => True
         ClassLinearithmic => True
         ClassLinear => True
