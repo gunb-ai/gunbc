@@ -50,7 +50,7 @@ impl<'a> GeneratedClaim<'a> {
 
     fn render_field_value(&self, value: &FieldValue) -> String {
         match value {
-            FieldValue::Literal(LiteralBits::Int(n)) => n.to_string(),
+            FieldValue::Literal(LiteralBits::Int(decimal)) => decimal.clone(),
             FieldValue::Literal(LiteralBits::Bool(b)) => b.to_string(),
             FieldValue::Literal(LiteralBits::String(s)) => quote_string(s),
             FieldValue::Reference(decl_id) => self

@@ -5834,7 +5834,7 @@ fn rust_string_literal_body(s: &str) -> String {
 
 fn render_value(v: &ValueNode, literals: &LiteralSyntaxBinding) -> String {
     match &v.data {
-        LiteralBits::Int(n) => n.to_string(),
+        LiteralBits::Int(decimal) => decimal.clone(),
         LiteralBits::Bool(true) => literals.true_keyword.clone(),
         LiteralBits::Bool(false) => literals.false_keyword.clone(),
         LiteralBits::String(s) => format!(
