@@ -408,6 +408,10 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
 //
 // **LensEnforcement authority:** `project` / `violates` remain substrate truth;
 // `enforced_lens_application` consumes the generated `complexity_enforcement_*` fns.
+//
+// **Read / monoid / branch / iterate:** wired to `complexity_of` + `compose_*` (same
+// fold as `compute_summaries`) — not a placeholder dissolution; the remaining lift is
+// `validate`→`SomeDiagnostic` (paragraph above).
 fn complexity_enforcement_project(summary: ComplexitySummary) -> AsymptoticClass =
   summary.asymptotic_class
 

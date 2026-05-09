@@ -177,6 +177,28 @@ fn complexity_lens_migration_stop_surface_ratchet() {
             .is_some(),
         "expected `complexity_lens_sequential_op` as Lens monoid op (compose spine)"
     );
+    for retired_stub in [
+        "complexity_lens_branch_stub",
+        "complexity_lens_iterate_stub",
+        "complexity_lens_validate_stub",
+    ] {
+        assert!(
+            dag.declaration_by_name(retired_stub).is_none(),
+            "`{retired_stub}` retired: branch/iterate/validate must delegate to \
+             compose_summary_branch_pair / compose_summary_iterate / documented \
+             validate hook (gate #92 T-LAS Lens authority)"
+        );
+    }
+    assert!(
+        dag.declaration_by_name("complexity_lens_branch_op")
+            .is_some(),
+        "expected `complexity_lens_branch_op` (compose_summary_branch_pair spine)"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_lens_iterate_op")
+            .is_some(),
+        "expected `complexity_lens_iterate_op` (compose_summary_iterate + LoopBound)"
+    );
     assert!(
         dag.declaration_by_name("complexity_lens_read").is_some(),
         "expected `complexity_lens_read` (authoritative read spine)"
