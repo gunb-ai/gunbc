@@ -1,0 +1,174 @@
+# R3 PB-0 Velocity Walk + SG-0 Census Trajectory — 2026-05-09
+
+**Author**: deep-wolf-155 (PM)
+**Authority scope**: PM-tier audit. Director-greenlit follow-up to PR #2300 cluster analysis (Director acknowledgment at `/Users/briansrls/.worktrees/gunbc/zesty-bear-812` thread; via PM relay 2026-05-09).
+**Parent docs**:
+- [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.8 gates **#8** + **#84** (Pure-Bootstrap-Zero closure gates)
+- [`THESIS.md`](../../THESIS.md):298 — "v3's trajectory is the Pure Bootstrap to Zero program (0 hand-maintained)"
+- [`ROADMAP.md`](../../ROADMAP.md):53 (T-PB-A non-test → 0) + :88 (T-PB-B test → 0)
+- [`docs/audit/r3-cluster-analysis-2026-05-09.md`](r3-cluster-analysis-2026-05-09.md) — prior cluster analysis (under-weighted #8/#84)
+
+---
+
+## §0. TL;DR — load-bearing finding
+
+**The SG-0 census is growing, not shrinking.** Over the last 9 days the ratchet went from 119 entries (2026-04-30) to **149 entries (2026-05-09)** — net **+30 entries**, **+3.3/day** average. R3 close requires this number to reach **0** (gate #8 non-test = 0 + gate #84 test = 0).
+
+| Date | non-test (#8 target=0) | test (#84 target=0) | total |
+|---|---|---|---|
+| 2026-04-30 (HEAD~500) | 38 | 81 | 119 |
+| 2026-05-02 (HEAD~300) | 40 | 87 | 127 |
+| 2026-05-06 (HEAD~150) | 46 | 89 | 135 |
+| 2026-05-07 (HEAD~50) | 47 | 95 | 142 |
+| **2026-05-09 (HEAD)** | **48** | **101** | **149** |
+
+**At current trajectory the gates never close.** The path to zero is structural — not per-file dissolution at observed velocity. It depends on **single bulk-dissolution events** firing.
+
+---
+
+## §1. Why the census grows despite SG-0 PR-window net-shrink discipline
+
+Per [`ROADMAP.md`](../../ROADMAP.md):177 the SG-0 PR-window discipline allows three pairings for `+N` deltas:
+- **(a)** same-PR retirements listing removed paths
+- **(b)** Director-budget citation (issue/comment URL)
+- **(c)** structural deferral with named follow-up dispatch
+
+**Option (c) is the dominant path.** Every test entry in `EXPECTED_HAND_AUTHORED_TEST` has a header-comment naming a "dissolution trigger" — but the trigger fires **structurally** when a downstream capability lands, not via per-PR retirement. The result: each new gate or feature can land with hand-Rust acceptance + a deferred-dissolution comment, growing the census.
+
+This is by design (the cascade-promotion 2026-04-25 shape). What it requires: **the named dissolution triggers actually fire**.
+
+---
+
+## §2. Root-cause partition — what dissolves each class
+
+Reading the per-entry "Dissolution trigger" / "Dissolves when..." comments in `sg0_census_test.rs`, the 149 entries cluster into a small number of trigger classes:
+
+### §2.1 Test entries (101 entries, gate #84) — dissolution triggers
+
+| Trigger class | Approx count | Dissolution event |
+|---|---|---|
+| **Testgen covers reflected-Dag structural assertions over std/ types** | ~25-30 | T-Tests-As-Data-Completeness Cluster M lands (#85 quantifier substrate + #86 program-generator carrier) |
+| **`.dag` TestClaim runner can execute generic DimensionReport / cementing assertions** | ~20-25 | Gate #84 + #87 (cementing-test discipline complete) — same family as above |
+| **PB-Runtime evaluator-as-data lands** | ~5-8 | Cluster F (T-LP-Retirement) — enables Row-4 / R2-Evaluator corpus comparison without host harness |
+| **`.dag`-fn-resolution-against-bootstrap as TestClaim** | ~5-8 | T-Tests-As-Data infrastructure (#1966 §3 ratchet predicate scope) |
+| **R1 close dissolves wrappers** (R1C-D / R1C-E scaffolds) | ~3 | R1 close (already past — these may be eligible NOW) |
+| **L4/L7/L5 skeleton retirement when TestRunner can evaluate directly** | ~5 | Verification Cluster G + M overlap |
+| **Specific carrier-test retirements** (each with own structural trigger) | ~10-15 | Various gates |
+| **Process-level: m1/m2 boundary tests** | ~10 | Likely T-V2-Retirement + T-Tests-As-Data |
+
+**Net**: ~80-90 of the 101 test entries collapse via **Cluster M (Tests-As-Data-Completeness)** landing. Cluster M is therefore a **bulk-dissolution event** for the test-side ratchet.
+
+### §2.2 Non-test entries (48 entries, gate #8) — dissolution triggers
+
+| Trigger class | Approx count | Dissolution event |
+|---|---|---|
+| **Bin-shims** (`src/bin/regen_*.rs`, `r1c_e_emit_gates.rs`, `self_host_fixed_point.rs`) | 9 | PB Item 5 (bin-shim emit pattern) — PR #2282 PROPOSAL merged; full retirement pending |
+| **Regen-emit support** (`regen_*_emit.rs`, `bootstrap_regen_fresh.rs`, `regen_tokenize.rs`) | 5 | Retires alongside bin-shims |
+| **Lens-producer family** (`lens_apply.rs`, `lens_testgen.rs`, `dimension.rs`) | 3 | Cluster F (T-LP-Retirement gates #5/#6/#7) — gated on PB-Runtime interpreter-as-data |
+| **emit/codegen** (`emit.rs`, `emit/python_target.rs`, `emit/rust_target.rs`, `emit_rust*.rs`, `emit/collection_ops_method_contract.rs`) | 6 | Self-host via PB-Runtime trampoline (gate #71) + T-V2-Retirement |
+| **dag substrate** (`dag.rs`, `dag/builder.rs`, `dag/effects.rs`, `dag/ports.rs`, `dag/cardinality_payload.rs`) | 5 | T-Tier3-Dissolution Cluster K (gates #1-#4) + dag.rs reflection-completeness work |
+| **infer/lower/test_runner** | 3 | Self-host via PB-Runtime + Cluster M for test_runner |
+| **bootstrap.rs** | 1 | PB-Runtime trampoline (gate #71) |
+| **R3 lane carries** (`tier3_mirror_perf.rs`, `workflow_idempotency.rs`, `workflow_parallelism.rs`, `omni_shape_b_openapi.rs`, `pb_method_template_projection.rs` × 2, `r1c_e_gates.rs`, `int_literal_ranges.rs`, `emit_rust_roundtrip_fixtures.rs`, `process_exit.rs`, `self_host_receipt_p0.rs`, `pipeline_authority.rs`, `post_emit_verifier.rs`, `diagnostics.rs`, `lib.rs`, `build.rs`) | 16 | Various lane-specific dissolutions; many tied to T-V2-Retirement + Cluster K + Cluster F |
+
+**Net**: the 48 non-test entries collapse via **PB-Runtime trampoline + T-LP-Retirement + T-V2-Retirement + T-Tier3-Dissolution** firing across Clusters F + K + E. No single event collapses all 48; multiple bulk-dissolution events needed.
+
+---
+
+## §3. Velocity-to-zero math
+
+### §3.1 At current per-file rate
+- 9-day window net delta: **+30 entries**
+- Current count: 149
+- Implied "weeks-to-zero": **never** (negative velocity)
+
+### §3.2 At observed bulk-dissolution event rate
+Cycle landings since 2026-05-06 that materially reduced entries:
+- **PR #2279** (Coercion-Fold ScratchIntExamples retired) — reduced ~3 entries (substrate move collapses class)
+- **PR #2281** (G6 emit-shim coherence test) — added 1 entry but enables future v2-retirement bulk drop
+- **PR #2271** (Substrate T-LBP complexity-lens substrate) — added 0 net (substrate-shape-only)
+- **PR #2200** (T-E-P P1 Slice 6) — added entries (cementing tests are option-c entries)
+
+**Observed bulk-dissolution rate**: ~0.5/cycle. Not enough to collapse 149 entries inside 8-12 week R3 window.
+
+### §3.3 Required bulk-dissolution events for R3 close
+
+**Test side (gate #84 → 0)**:
+- **Cluster M COMPLETE** (Tests-As-Data #85/#86/#87 + #84 closure) → bulk-collapses ~80-90 test entries in single event
+- **Without Cluster M**: ratchet cannot reach zero (per-file is too slow)
+
+**Non-test side (gate #8 → 0)**:
+- **PB-Runtime interpreter-as-data fully landed** (gates #5/#6/#7 + Items 4+5 disposition) → ~14 non-test entries collapse (LP family + bin-shims + regen support + bootstrap)
+- **T-Tier3-Dissolution complete** → ~5 entries collapse (dag-substrate family)
+- **T-V2-Retirement complete (gate #42)** → ~10 entries collapse (emit/codegen + R3 lane carries)
+- **Self-host via PB-Runtime (gate #71)** → ~5 entries collapse (infer/lower/emit-side)
+- **Remaining ~14 entries**: each lane-specific; per-file or small-class dissolutions
+
+**At least 4-6 bulk-dissolution events required** for R3 close. Each is a substantial substrate / cluster milestone.
+
+---
+
+## §4. Reclassification: Cluster M is critical-path, not parallel
+
+The PR #2300 cluster analysis classified Cluster M (T-Tests-As-Data-Completeness) as a **parallel cluster** in §2 (worth 2-3 PRs). This audit corrects:
+
+**Cluster M is critical-path-load-bearing for the entire PB-0 closure thesis.** Without Cluster M COMPLETE:
+- Gate #84 (test side → 0) cannot close → SG-0 ratchet stays >0 → R3 close blocked
+- ~80-90 of 101 test entries cannot dissolve (no testgen capability)
+- Per-file retirement cannot make up the gap inside 8-12 week window
+
+**New dependency picture (replaces PR #2300 §2 Cluster M row)**:
+
+```
+A T-E-P-Producer-Broadening
+  ↓
+B T-Lens-Behavioral-Parity (complexity + cost narrowing per option-b)
+  ↓
+M T-Tests-As-Data-Completeness  ← critical-path: testgen capability + program-generator + cementing-test discipline
+  ↓
+gate #84 fires + ~80-90 test entries dissolve
+  ↓
+gate #8 dependency on PB-Runtime + T-V2 + T-Tier3 (parallel cluster events)
+  ↓
+gates #8 + #84 BOTH GREEN  =  PB-0 closure  =  R3 close minimum bar
+```
+
+---
+
+## §5. Honest-close risk update (additions to PR #2300 §4)
+
+**Risk 5 (NEW) — SG-0 census growth trajectory**:
+At observed +3.3/day rate, the census is growing 3-4× faster than dissolution events fire. Without bulk-dissolution events firing in the next 4-6 cycles, R3 close becomes impossible inside the 8-12 week window. **Severity**: load-bearing for R3 thesis.
+
+**Risk 6 (NEW) — Cluster M dispatch / authoring status**:
+Cluster M's gates (#84/#85/#86/#87) are all DECLARED. No active worker visible at HEAD on any of the four. Verification Mgr (wise-bear-525 #2075) lane scope includes T-Tests-As-Data-Completeness, but recent dispatches focus on Pattern-A executable (Cluster G) and V7 ValueBody. **Cluster M needs explicit dispatch sequencing**; without active authoring, the bulk-dissolution event for ~80% of the test ratchet is not in flight.
+
+**Risk 4 (UPDATE) — #75 pr_anticipation_discipline_ci_active**:
+Earlier flagged as "PM/Debt-Paydown standing-program owned." Closer reading of [`ROADMAP.md`](../../ROADMAP.md):177: the script `scripts/check-pr-sg0-net-shrink-discipline.sh` already exists in CI. Gate #75 may be closer to CONSUMER_LANDED than the §1.8 status indicates — verify with Debt-Paydown Mgr.
+
+---
+
+## §6. PM-tier surfaces (recommendations, not authoring)
+
+These are surfaces for Director cycle absorption, not PM-authored directives:
+
+1. **Cluster M sequencing-criticality**: Director-tier sequencing decision on whether Cluster M should ride the M → B → E sequencing-critical chain (currently only B oracle-freeze is documented as sequencing-critical). M → bulk-dissolution → gate #84 = R3 close enablement.
+
+2. **§10 RED elevation candidates** (Director discretion):
+   - SG-0 census growth trajectory (Risk 5 above)
+   - Cluster M authoring status (Risk 6 above)
+
+3. **Brian-tier framing question**:
+   - Is the "Pure-Bootstrap-Zero by R3 close" claim still load-bearing for R3, or has it drifted into a longer-horizon goal? Current trajectory implies it cannot close inside 8-12 weeks unless Cluster M + 3-4 other bulk-dissolution events fire. If the claim is still load-bearing, dispatch needs to prioritize Cluster M. If it's drifted, the R3 plan §1.5/§1.8 framing needs reconciliation.
+
+---
+
+## §7. What's durable in this audit
+
+§2 partition (per-class dissolution triggers) is durable methodology — useful for any future PM walk against SG-0 census. §3 velocity math is point-in-time but the framework (per-file rate vs bulk-dissolution event rate) is reusable. §4 reclassification updates the cluster analysis structure.
+
+The growth-trajectory finding in §0 supersedes any earlier cluster-analysis claim that "structural execution fits in 4-6 days at 10 PRs/day." That was correct at the per-PR level but missed that **PRs are net-adding to the ratchet, not net-shrinking**.
+
+---
+
+**End of audit.**
