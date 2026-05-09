@@ -118,7 +118,7 @@ The representative is **not** a coverage proof; it is a strict-fire witness for 
 
 **RATIFIED** at gunbc#828 c#4413738978 (2026-05-09): specific-representative selection + scope statement above are dispatch-locked. The illustrative subject body (`fn tc3_subject_bounded_sum() -> Int = fold([1, 2, 3], 0, lambda acc x. acc + x)`) is **illustrative-not-binding**; final fixture wording is canvas-tier authoring scope at worker-dispatch time per `feedback_substrate_shape_belongs_in_mgr_canvas`. Bounded-`Cardinality(3)` shape is ratified as the binding structural constraint.
 
-Cross-Pattern-A consistency preserved across the family (TC1/TC2/TC3/TC4/R3 §1.8 row #13 sibling context) — strict-mirror discipline maintained; (α)/(β) novel-substrate-introduction **formerly** explicitly carved to R4+ via Class P partition (Debt-Paydown PR #2437) + scope statement (**DISSOLVED** carve framing — Cluster F / gates #81/#82/#95 **PROMOTED-IN-R3** per gunbc#846 2026-05-09).
+Cross-Pattern-A consistency preserved across the family (TC1/TC2/TC3/TC4; R3 §1.8 row #13 / Pattern-A sibling context) — strict-mirror discipline maintained; (α)/(β) novel-substrate-introduction explicitly deferred-not-blocked to a post-R3 cycle (prior R4+ carve framing — DISSOLVED 2026-05-09 per gunbc#846 #issuecomment-4412330468 carve-promotion-IN-R3 ratification; Class P partition cite is historical reference to PR #2437 Debt-Paydown lane).
 
 ## 7 Discipline notes (worker-tier)
 
