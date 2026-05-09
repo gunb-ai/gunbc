@@ -1,17 +1,22 @@
 ---
-status: PROPOSAL
+status: STOP-BLOCKED
 owning_manager: Pure Bootstrap Manager (R2 → R3 continuation)
 lane: T-Bridge-Retirement — distributed bridge #4 (`bridge_include_str_side_channels_retired`)
 authored: 2026-05-06 (neat-bear-351 — PB Mgr cycle #1861 / Director #846 pre-auth queue)
+standalone_closure_issue: gunb-ai/gunbc#1976
+depends_on: gunb-ai/gunbc#1939
+last_reverified: 2026-05-09 (clever-cat-146)
 ---
 
 # R3 PB — `include_str!` side-channel closure (pipeline_authority) — worker brief
 
-**Status:** PROPOSAL — **pre-authored closure brief** (dispatch-gated). Does **not** authorize merging `include_str!` removal until **dispatch triggers** fire. Aligns with Director pre-auth brief-queue discipline: authoring is **not** merge; triggers gate worker pickup.
+**Status:** STOP-BLOCKED — **standalone closure brief for [#1976](https://github.com/gunb-ai/gunbc/issues/1976)**. This is a dispatch-gated closure packet, not an implementation authorization. It records the current #1171 disposition, the acceptance predicate, and the substrate witness required before PB can execute the retirement. Authoring this brief does **not** authorize merging `include_str!` removal until **dispatch triggers** fire.
 
 **Owning manager:** Pure Bootstrap Manager (R3 continuation per [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-Bridge-Retirement distribution map).
 
 **Verification Manager ledger row:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — bridge **#4** `include_str!` side channels; **`bridge_include_str_side_channels_retired`** remains **open** until this closure lands structurally.
+
+**Dependency:** This brief currently depends on [#1939](https://github.com/gunb-ai/gunbc/issues/1939) because no narrower Substrate issue is recorded for the compile-body witness. If Substrate decomposes a narrower issue for this exact T1 trigger, replace the dependency with that finer-grained issue.
 
 ## Purpose
 
@@ -28,6 +33,8 @@ Per [`docs/design-emission-model.md`](../design-emission-model.md) ~944:
 - **PR #1171 (2026-04-29)** **suspended** the prior **`reconcile_with_compile_body`** path rather than swapping **`include_str!`** for **runtime file IO**.
 
 **Corollary:** PB **must not** “close” this bridge by **reading `pipeline.dag` bytes from disk at runtime** as a substitute for `include_str!` — that repeats the **side-channel** failure mode #1171 explicitly rejected.
+
+**Live check (2026-05-09):** `src/v3/compiler/src/pipeline_authority.rs` still documents this suspension, and its test `pipeline_compile_body_remains_unparsed_blocking_structural_retirement` pins the blocker: `fn compile` lowers to `ArrowBody::Unparsed`. The remaining active in-scope `include_str!("../../pipeline.dag")` is in `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs`; it is intentionally part of the blocked dispatch because replacing it before T1 would only move the same authority problem to another non-structural channel.
 
 ## Acceptance (`bridge_include_str_side_channels_retired` — scoped slice)
 
@@ -57,7 +64,7 @@ Pick up implementation **only when** a **single live-state check** shows **both*
 | T1 | **Substrate / lowering** lands a **structural compile-body witness** OR an approved **derivation** path such that compile-stage order is a **Dag fact** without unparsed-body guessing — **or** Director records an explicit **narrow exception** revising #1171’s suspension rationale | Substrate Manager + Director / emission-model |
 | T2 | **`pipeline_authority.rs`** change is **pair-authored** with a **Verification** ledger note (closure row movement) | PB + Verification Manager cadence |
 
-Until **T1** is true, this brief stays **PROPOSAL / queued** — PB may **pre-author** tests and refactors that **do not** fake structural facts.
+Until **T1** is true, this brief stays **STOP-BLOCKED / queued** — PB may **pre-author** tests and refactors that **do not** fake structural facts, but must not claim `bridge_include_str_side_channels_retired` is green.
 
 ## STOP conditions
 
