@@ -11,7 +11,7 @@ use crate::common::{cached_compile_any, cached_compile_to_dag};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     literal_bits_int, ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId,
-    LogicalOp, OperatorKind, TransformTarget, TypeConnective,
+    LiteralBits, LogicalOp, OperatorKind, PortId, TransformNode, TransformTarget, TypeConnective,
 };
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
@@ -1269,6 +1269,141 @@ fn test_gt_zero_lowers_to_real_refinement_body_not_placeholder() {
     assert!(
         zero_literal,
         "`gt_zero` body's Gt operator should have a literal `Int(0)` input"
+    );
+}
+
+/// R3 gate #20 cement: `unicode_scalar` lowers to the surrogate-excluding union
+/// `(0 ≤ s ≤ 0xD7FF) ∨ (0xE000 ≤ s ≤ 0x10FFFF)`. A regression that modeled
+/// Unicode scalars as a single full range through `U+10FFFF` would admit
+/// surrogate code units `U+D800..=U+DFFF` and still satisfy weaker tests that
+/// only assert “some refinement exists”.
+#[test]
+fn test_unicode_scalar_lowers_to_surrogate_excluding_union() {
+    use v3_compiler::dag::{ArrowBody, TypeConnective};
+    use v3_compiler::operators::{ComparisonOp, LogicalOp, OperatorKind};
+
+    fn transform_at_output(dag: &Dag, output_port: PortId) -> &TransformNode {
+        dag.nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Transform(t) if t.output == output_port => Some(t),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no transform producing port {output_port:?}"))
+    }
+
+    fn int_literal_on_port(dag: &Dag, port: PortId) -> Option<i64> {
+        dag.nodes().iter().find_map(|node| match node {
+            Behavior::Value(v) if v.output == port => match &v.data {
+                LiteralBits::Int(s) => s.parse().ok(),
+                _ => None,
+            },
+            _ => None,
+        })
+    }
+
+    fn comparison_op_and_literal(dag: &Dag, t: &TransformNode) -> (ComparisonOp, i64) {
+        let op = match &t.target {
+            TransformTarget::Operator(OperatorKind::Comparison(c)) => *c,
+            other => panic!("expected comparison transform; got {other:?}"),
+        };
+        let lit = t
+            .inputs
+            .iter()
+            .filter_map(|p| int_literal_on_port(dag, *p))
+            .next()
+            .expect("comparison should reference an int literal operand");
+        (op, lit)
+    }
+
+    fn band_interval(dag: &Dag, and_t: &TransformNode) -> (i64, i64) {
+        assert!(
+            matches!(
+                and_t.target,
+                TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And))
+            ),
+            "unicode_scalar arm should be logical And; got {:?}",
+            and_t.target
+        );
+        assert_eq!(and_t.inputs.len(), 2, "each scalar band is two comparisons");
+        let mut ge_v = None;
+        let mut le_v = None;
+        for &p in &and_t.inputs {
+            let cmp_t = transform_at_output(dag, p);
+            let (op, v) = comparison_op_and_literal(dag, cmp_t);
+            match op {
+                ComparisonOp::Ge => ge_v = Some(v),
+                ComparisonOp::Le => le_v = Some(v),
+                _ => panic!("band comparisons must be Ge/Le; got {op:?}"),
+            }
+        }
+        (ge_v.expect("band needs Ge"), le_v.expect("band needs Le"))
+    }
+
+    const MAX_BMP_NON_SURROGATE: i64 = 0xD7FF;
+    const MIN_POST_SURROGATE: i64 = 0xE000;
+    const MAX_UNICODE_SCALAR: i64 = 0x10_FFFF;
+
+    let f = "dsl/std/types.dag";
+    let dag = cached_compile_to_dag("type ScalarInt = Int where unicode_scalar", f);
+    let decl = dag
+        .declaration_by_name("ScalarInt")
+        .expect("type alias `ScalarInt` should exist");
+    let pred_id = decl
+        .refinement
+        .expect("`unicode_scalar` must produce a refinement declaration");
+    let pred = dag.declaration(pred_id);
+    if let Some(label) = pred.name.as_deref() {
+        assert!(
+            !label.contains("predicate not lowered"),
+            "`unicode_scalar` must lower to a real body; got label {label:?}"
+        );
+    }
+    let TypeConnective::Arrow { body, .. } = &pred.connective else {
+        panic!(
+            "`unicode_scalar` refinement should be Arrow-shaped; got {:?}",
+            pred.connective
+        );
+    };
+    let ArrowBody::UserDefined(bind_node_id) = body else {
+        panic!("expected UserDefined arrow body; got {body:?}");
+    };
+    let bind = bind_node_id
+        .bind_opt(&dag)
+        .expect("bind node for unicode_scalar body");
+    let value_port = bind.value;
+    let or_t = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            Behavior::Transform(t) if t.output == value_port => Some(t),
+            _ => None,
+        })
+        .expect("unicode_scalar body should end in a Transform");
+    assert!(
+        matches!(
+            or_t.target,
+            TransformTarget::Operator(OperatorKind::Logical(LogicalOp::Or))
+        ),
+        "unicode_scalar root should be Or of two bands; got {:?}",
+        or_t.target
+    );
+    assert_eq!(or_t.inputs.len(), 2, "exactly two disjoint intervals");
+
+    let mut bands = Vec::new();
+    for &p in &or_t.inputs {
+        let and_t = transform_at_output(&dag, p);
+        bands.push(band_interval(&dag, and_t));
+    }
+    bands.sort_by_key(|(lo, _)| *lo);
+    assert_eq!(
+        bands,
+        vec![
+            (0, MAX_BMP_NON_SURROGATE),
+            (MIN_POST_SURROGATE, MAX_UNICODE_SCALAR)
+        ],
+        "expected BMP ∪ supplementary scalar ranges excluding surrogates U+D800..=U+DFFF \
+         (hole between 0xD7FF and 0xE000)"
     );
 }
 
