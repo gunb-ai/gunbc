@@ -373,3 +373,35 @@ fn timing_lens_validate_surfaces_diagnostic_for_non_observed_states() {
         "timing_lens_validate_non_observed must construct SomeDiagnostic; got: {helper_window:?}"
     );
 }
+
+/// openai-pro / PR #2360 (REQUEST_CHANGES): `timing_measurement_iterate` must not
+/// return unchanged `Observed` while dropping `LoopBound` (P3 fail-closed).
+#[test]
+fn timing_measurement_iterate_fail_closed_on_observed_with_loop_bound() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../std/timing_lens.dag");
+    let src = std::fs::read_to_string(&path).expect("read src/v3/std/timing_lens.dag");
+    let start = src
+        .find("fn timing_measurement_iterate(body: TimingMeasurement, bound: LoopBound)")
+        .expect("timing_measurement_iterate");
+    let end = src[start..]
+        .find("fn timing_lens_read")
+        .map(|i| start + i)
+        .expect("timing_lens_read follows iterate");
+    let body = &src[start..end];
+    assert!(
+        body.contains("Observed { duration: _ } =>")
+            && body.contains("Cardinality(_) => timing_measurement_unobserved()")
+            && body.contains("Descent(_) => timing_measurement_unobserved()"),
+        "`Observed` × any `LoopBound` must map to `timing_measurement_unobserved()` until lowering lands; got:\n{body}"
+    );
+    assert!(
+        body.contains("Unobserved => Unobserved")
+            && body.contains("Ambiguous => Ambiguous")
+            && body.contains("Stale => Stale"),
+        "non-`Observed` arms must pass through unchanged; got:\n{body}"
+    );
+    assert!(
+        !body.contains("Cardinality(_) => body") && !body.contains("Descent(_) => body"),
+        "`timing_measurement_iterate` must not ignore `LoopBound` by returning `body` unchanged on `Observed`; got:\n{body}"
+    );
+}

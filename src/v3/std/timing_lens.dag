@@ -5,10 +5,10 @@
 //
 // 🟡 SCAFFOLD. External CI / runner timing facts are not yet reflected into
 // `timing_lens_read`; the uniform unobserved witness is an honest fail-open
-// substrate receipt until observation wiring lands. Loop iteration scaling
-// against `LoopBound` measure ports is likewise deferred:
-// `timing_measurement_iterate` is identity on `body` pending measure lowering.
-
+// substrate receipt until observation wiring lands. Loop-bound measure lowering
+// into compositional timing algebra is deferred: `timing_measurement_iterate` is
+// fail-closed on `Observed` (returns `Unobserved` while the bound cannot refine
+// durations) and passes `Unobserved` / `Ambiguous` / `Stale` through unchanged.
 module v3.std.timing_lens
 
 import std.list { List, is_empty }
@@ -180,12 +180,20 @@ fn timing_lens_validate_non_observed(d: Dag, text: String) -> OptionalDiagnostic
   else
     SomeDiagnostic { value: timing_lens_scaffold_non_evidence_diagnostic(text) }
 
-// Bounded iteration witness hook — identity until `LoopBound` measure ports
-// lower into compositional timing algebra (deferred; see module banner).
+// Bounded iteration witness hook — until `LoopBound` measure ports lower into
+// compositional timing algebra, **`Observed` × any bound must not return the
+// same `Observed`** (P3: that would fabricate loop-correct timing while silently
+// discarding the bound). Fault arms pass through unchanged (see module banner).
 fn timing_measurement_iterate(body: TimingMeasurement, bound: LoopBound) -> TimingMeasurement =
-  match bound {
-    Cardinality(_) => body
-    Descent(_) => body
+  match body {
+    Observed { duration: _ } =>
+      match bound {
+        Cardinality(_) => timing_measurement_unobserved()
+        Descent(_) => timing_measurement_unobserved()
+      }
+    Unobserved => Unobserved
+    Ambiguous => Ambiguous
+    Stale => Stale
   }
 
 // `d` / `b` are threaded through trivial substrate queries so
