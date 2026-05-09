@@ -1,7 +1,7 @@
 # R3 PB-0 Velocity Walk + SG-0 Census Trajectory — 2026-05-09
 
 **Author**: deep-wolf-155 (PM)
-**Authority scope**: PM-tier audit. Director-greenlit follow-up to PR #2300 cluster analysis (Director acknowledgment at `/Users/briansrls/.worktrees/gunbc/zesty-bear-812` thread; via PM relay 2026-05-09).
+**Authority scope**: PM-tier audit. Director-greenlit follow-up to PR #2300 cluster analysis (Director acknowledgment relayed at [gunbc#846 #issuecomment-4411924843](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4411924843), 2026-05-09; subsequent ratification + partner-work delegation at [gunbc#846 #issuecomment-4412008376](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4412008376)).
 **Parent docs**:
 - [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.8 gates **#8** + **#84** (Pure-Bootstrap-Zero closure gates)
 - [`THESIS.md`](../../THESIS.md):298 — "v3's trajectory is the Pure Bootstrap to Zero program (0 hand-maintained)"
@@ -83,13 +83,20 @@ Reading the per-entry "Dissolution trigger" / "Dissolves when..." comments in `s
 - Implied "weeks-to-zero": **never** (negative velocity)
 
 ### §3.2 At observed bulk-dissolution event rate
-Cycle landings since 2026-05-06 that materially reduced entries:
-- **PR #2279** (Coercion-Fold ScratchIntExamples retired) — reduced ~3 entries (substrate move collapses class)
-- **PR #2281** (G6 emit-shim coherence test) — added 1 entry but enables future v2-retirement bulk drop
-- **PR #2271** (Substrate T-LBP complexity-lens substrate) — added 0 net (substrate-shape-only)
-- **PR #2200** (T-E-P P1 Slice 6) — added entries (cementing tests are option-c entries)
 
-**Observed bulk-dissolution rate**: ~0.5/cycle. Not enough to collapse 149 entries inside 8-12 week R3 window.
+Recent cycle landings since 2026-05-06, partitioned into actual census reductions vs enabling-only landings (no immediate reduction):
+
+**Census-reducing landings** (the only events that count toward bulk-dissolution rate):
+- **PR #2279** (Coercion-Fold ScratchIntExamples retired) — reduced ~3 entries (substrate move collapses class)
+
+**Enabling-only landings** (substrate or scaffolding work that opens future bulk-dissolution paths but does NOT reduce census in-PR; some net-add):
+- **PR #2281** (G6 emit-shim coherence test) — added 1 entry; enables future v2-retirement bulk drop (gate #97 is the structural enforcement that fails closed when v2 retires without Grounding shim removal)
+- **PR #2271** (Substrate T-LBP complexity-lens substrate) — net 0 in census (substrate-shape-only)
+- **PR #2200** (T-E-P P1 Slice 6) — added entries (cementing tests under option-(c) deferral)
+
+**Observed bulk-dissolution rate** (using census-reducing landings only): **1 reduction event in 4-day window** ≈ ~0.25/day or ~0.5-1/cycle depending on cycle definition. Even at the upper bound, **not enough to collapse 149 entries inside 8-12 week R3 window via per-PR retirements**. Bulk events (per §3.3) are required.
+
+**Why this matters for §3.3**: rate measurement only counts census-reducing landings; enabling-only landings are tracked separately because they are *prerequisites* for future bulk events (e.g., #2281 enables T-V2-Retirement future drop) but do not themselves reduce the count.
 
 ### §3.3 Required bulk-dissolution events for R3 close
 
