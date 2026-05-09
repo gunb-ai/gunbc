@@ -111,18 +111,20 @@ Worker authored `TimingMeasurement = Observed { nanoseconds: Int } | Missing | A
 - **Con**: \"per-observation\" framing means TimingObservationSet lens-fold semantics need explicit aggregation logic (sequential / parallel composition over per-observation TimingMeasurement values).
 - **Status**: shape ratification pending — Director call between (a)(i) separate-projection vs (c) folded-carrier per #828 c#4412018726.
 
-## Question 4 (Q-WAD-S2-Placement) — Carrier placement: `dsl/std/` vs `dsl/extdeps/`
+## Question 4 (Q-WAD-S2-Placement) — Carrier placement: `src/v3/std/` vs `dsl/extdeps/`
 
 Per Director STOP-and-PING standby (#828 c#4411989488): "carrier-placement decisions are well-precedented (compare T-LBP / T-CostLens / T-LAS history); no pre-ratification needed."
 
+**Critical convention** (per `src/v3/std/lens.dag:17-21`): v3-only carriers stay under **`src/v3/std/`**, NOT `dsl/std/`, until substrate graduation. The lens-framework carrier `Lens<C>` itself lives at `src/v3/std/lens.dag` for this reason. T-LBP / T-CostLens / T-LAS lens substrate live in `src/v3/std/` (e.g., `src/v3/std/lens_application.dag`, `src/v3/lenses/cost.dag`). The earlier canvas claim that "T-LBP / T-CostLens / T-LAS lens carriers all live in `dsl/std/`" was **wrong** — they live in `src/v3/std/` and `src/v3/lenses/`.
+
 Two options:
 
-### Option (a) — `dsl/std/timing_lens.dag` (cross-provider universal)
+### Option (a) — `src/v3/std/timing_lens.dag` (correct v3 layer)
 
-Place all four carriers (`TimingMeasurement`, `TimingObservationSet`, `WorkflowObservationAnchor`, `TimingBudget`) + lens declaration in a new `dsl/std/timing_lens.dag` file.
+Place all four carriers (`TimingMeasurement`, `TimingObservationSet`, `WorkflowObservationAnchor`, `TimingBudget`) + lens declaration in a new `src/v3/std/timing_lens.dag` file.
 
-- **Pro**: timing-as-observation is a substrate-universal concept (any workflow runner produces timing observations); not provider-specific. T-LBP / T-CostLens / T-LAS lens carriers all live in `dsl/std/`. Promotes the "lens framework is cross-provider" claim.
-- **Con**: WorkflowObservationAnchor's first concrete *workflow* is GitHub Actions CI (per Slice 1 placement at `dsl/extdeps/github/actions.dag`); having anchor in `dsl/std/` while workflow grammar lives in `dsl/extdeps/` could feel split.
+- **Pro**: matches the explicit v3-only-carriers convention at `src/v3/std/lens.dag:17-21`; precedent from T-LBP / T-CostLens / T-LAS lens substrate location. Substrate-graduation trigger (when v3 substrate types graduate into shared `dsl/std/`) is the future move-to-dsl-std event, not Slice 2's call.
+- **Con**: WorkflowObservationAnchor's first concrete *workflow* is GitHub Actions CI (per Slice 1 placement at `dsl/extdeps/github/actions.dag`); split between substrate (v3) and workflow grammar (extdeps) is structural — workflow grammar IS provider-specific, lens substrate is NOT.
 
 ### Option (b) — `dsl/extdeps/github/actions.dag` (extends Slice 1 placement)
 
@@ -131,7 +133,7 @@ Fold the four carriers into the existing `dsl/extdeps/github/actions.dag` adjace
 - **Pro**: workflow-coherent; all workflow-related substrate in one file.
 - **Con**: timing-lens carriers are NOT GitHub-Actions-specific; placing in `dsl/extdeps/github/` would require a future migration when second runner (e.g., GitLab CI, Buildkite) lands.
 
-**Recommended (Mgr-tier preliminary)**: **(a)** — `dsl/std/timing_lens.dag`. Lens carriers are cross-provider universal per existing T-LBP / T-CostLens / T-LAS precedent. WorkflowObservationAnchor is anchor-generic (per Q-WAD-S2-Anchor (b)), not GitHub-specific. Workflow grammar (GitHub-specific) staying at `dsl/extdeps/github/actions.dag` is correct; lens substrate (cross-provider) belongs in `dsl/std/`.
+**Recommended (Mgr-tier — corrected per PR #2333 inline review)**: **(a)** — `src/v3/std/timing_lens.dag`. Matches the v3-only-carriers convention at `src/v3/std/lens.dag:17-21` and existing T-LBP / T-CostLens / T-LAS lens substrate placement. Workflow grammar (GitHub-specific) staying at `dsl/extdeps/github/actions.dag` remains correct; lens substrate (v3-internal) belongs in `src/v3/std/`. Worker tidy-raven-610 PR #2360 already placed at `src/v3/std/timing_lens.dag` ✓ — matches corrected recommendation.
 
 ## Six invariants (gate #55 acceptance — `WorkflowObservationAnchor`)
 
