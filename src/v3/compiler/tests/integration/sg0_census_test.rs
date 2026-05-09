@@ -264,6 +264,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
+    // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
+    "src/v3/compiler/src/memory_peak_cost.rs",
     // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): transitional
     // Rust-side OpenAPI projection receipt after the Shape A/Shape B boundary
     // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
@@ -334,6 +336,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // COMPLETE promotion against frozen v2-oracle values. Dissolves when `.dag`
     // TestClaims can execute the same complexity summary assertions directly.
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
+    // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
+    "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
