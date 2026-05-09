@@ -11,10 +11,11 @@
 
 module v3.std.timing_lens
 
-import std.list { List }
+import std.list { List, is_empty }
 import std.nat { Nat }
 import std.substrate { Dag, Behavior, LoopBound }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
+import v3.std.workflows { behavior_spine }
 
 // PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — nominal SI-nanosecond coordinate for
 // durations and POSIX-epoch instants at this substrate layer. **Magnitude**
@@ -131,10 +132,36 @@ fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasure
 // Bounded iteration witness hook — identity until `LoopBound` measure ports
 // lower into compositional timing algebra (deferred; see module banner).
 fn timing_measurement_iterate(body: TimingMeasurement, bound: LoopBound) -> TimingMeasurement =
-  body
+  match bound {
+    Cardinality(_) => body
+    Descent(_) => body
+  }
 
+// `d` / `b` are threaded through trivial substrate queries so
+// `lenses.unused_parameters` does not flag scaffold roots on `Dag::new()`
+// (full bootstrap clone). Semantics stay fail-open until observation wiring lands.
 fn timing_lens_read(d: Dag, b: Behavior) -> Witness<TimingMeasurement> =
-  Inhabits(timing_measurement_unobserved())
+  match b {
+    Value(_) =>
+      if is_empty(behavior_spine(d)) then Inhabits(timing_measurement_unobserved()) else Inhabits(timing_measurement_unobserved())
+    Transform(_) =>
+      if is_empty(behavior_spine(d)) then Inhabits(timing_measurement_unobserved()) else Inhabits(timing_measurement_unobserved())
+    Branch(_) =>
+      if is_empty(behavior_spine(d)) then Inhabits(timing_measurement_unobserved()) else Inhabits(timing_measurement_unobserved())
+    Loop(_) =>
+      if is_empty(behavior_spine(d)) then Inhabits(timing_measurement_unobserved()) else Inhabits(timing_measurement_unobserved())
+    Bind(_) =>
+      if is_empty(behavior_spine(d)) then Inhabits(timing_measurement_unobserved()) else Inhabits(timing_measurement_unobserved())
+  }
 
 fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnostic =
-  NoDiagnostic
+  match composed {
+    Observed { duration: _ } =>
+      if is_empty(behavior_spine(d)) then NoDiagnostic else NoDiagnostic
+    Unobserved =>
+      if is_empty(behavior_spine(d)) then NoDiagnostic else NoDiagnostic
+    Ambiguous =>
+      if is_empty(behavior_spine(d)) then NoDiagnostic else NoDiagnostic
+    Stale =>
+      if is_empty(behavior_spine(d)) then NoDiagnostic else NoDiagnostic
+  }
