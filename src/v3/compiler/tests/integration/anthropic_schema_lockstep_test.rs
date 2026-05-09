@@ -587,10 +587,14 @@ fn assert_disj_lockstep_against(type_name: &str, v2_variants: Vec<(String, V2Var
                     );
                 }
             }
+            // v2 uses `Variant {}` to force singleton coproduct parsing; emitted
+            // Rust still treats the empty payload as a nullary/unit variant.
+            (Some(v2_fields), None) if v2_fields.is_empty() => {}
             (Some(_), None) => panic!(
                 "lockstep drift: v2 `type {type_name}::{variant_label}` carries a \
                  record payload but v3 mirror has none."
             ),
+            (None, Some(v3_fields)) if v3_fields.is_empty() => {}
             (None, Some(_)) => panic!(
                 "lockstep drift: v3 mirror `type {type_name}::{variant_label}` \
                  carries a record payload but v2 source declares the variant bare."
@@ -654,6 +658,11 @@ fn anthropic_server_tool_name_lockstep() {
 #[test]
 fn anthropic_messages_200_usage_lockstep() {
     assert_record_lockstep("AnthropicMessages200Usage");
+}
+
+#[test]
+fn anthropic_messages_200_role_lockstep() {
+    assert_disj_lockstep("AnthropicMessages200Role");
 }
 
 #[test]
