@@ -76,6 +76,7 @@ module v3.std.algebra
 import std.algebra { Semiring, BoundedLattice }
 import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId, DeclarationId }
+import std.computation { positive_descent_count }
 import std.termination { PositiveDescentAmount }
 import v3.std.lookup { Lookup }
 
@@ -407,15 +408,11 @@ fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
 // ClassConstant <= ClassLog <= ClassLinear <= ClassLinearithmic <=
 // ClassQuadratic <= ClassPolynomial(k>=3) <= ClassExponential <= ClassUnknown.
 //
-// `asymptotic_dominates(ClassPolynomial, ClassPolynomial)` stays tier-coarse at the
-// `.dag` lattice tier (any polynomial class dominates any other at this carrier
-// layer). **Polynomial degree** for **T-LAS `EnforcedApplication` budgets** is compared
-// only in `v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates`
-// (Rust emission wires generated `complexity_enforcement_violates` through that named
-// bridge, not an unqualified alias of this `.dag` `fn`). Same ordering as
-// `dominates(PolynomialCost, PolynomialCost)` (k1 >= k2) for degree-ready carriers.
-// Dissolution: lift the same Peano compare into this `asymptotic_dominates` match
-// once variant payload patterns lower cleanly in bootstrap (tracked with gate #92).
+// `asymptotic_dominates(ClassPolynomial { degree: da }, ClassPolynomial { degree: db })`
+// compares Peano degrees structurally via `positive_descent_count` (same story as
+// `dominates(PolynomialCost, PolynomialCost)` on `DegreeAtLeastTwo` raw counts for k≥2).
+// `v3_compiler::complexity_lattice::complexity_enforcement_budget_dominates` stays aligned
+// with this `.dag` relation for every arm including poly×poly (single authority for gate #92).
 type AsymptoticClass inhabits BoundedLattice<AsymptoticClass>
   = ClassConstant
   | ClassLog
@@ -440,11 +437,12 @@ fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
         ClassLog => True
         ClassConstant => True
       }
-    ClassPolynomial(_) =>
+    ClassPolynomial { degree: da } =>
       match b {
         ClassUnknown => False
         ClassExponential => False
-        ClassPolynomial(_) => True
+        ClassPolynomial { degree: db } =>
+          positive_descent_count(steps: da) >= positive_descent_count(steps: db)
         ClassQuadratic => True
         ClassLinearithmic => True
         ClassLinear => True

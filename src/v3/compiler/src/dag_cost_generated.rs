@@ -294,7 +294,18 @@ where
         SymbolicCost::ConstantCost { .. } => AsymptoticClass::ClassConstant,
         SymbolicCost::LinearCost { .. } => AsymptoticClass::ClassLinear,
         SymbolicCost::LogCost { .. } => AsymptoticClass::ClassLog,
-        SymbolicCost::PolynomialCost { .. } => AsymptoticClass::ClassQuadratic,
+        SymbolicCost::PolynomialCost { degree, .. } => {
+            let raw = degree.raw();
+            if raw == 2 {
+                AsymptoticClass::ClassQuadratic
+            } else {
+                AsymptoticClass::ClassPolynomial {
+                    degree: positive_amount_from_i64(raw).expect(
+                        "PolynomialCost.degree is DegreeAtLeastTwo (2..=256 materialization cap)",
+                    ),
+                }
+            }
+        }
         SymbolicCost::ProductCost { .. }
         | SymbolicCost::SumCost { .. }
         | SymbolicCost::UnknownCost { .. } => AsymptoticClass::ClassUnknown,
