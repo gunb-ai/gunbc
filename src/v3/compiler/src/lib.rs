@@ -3688,8 +3688,8 @@ pub mod lens_cost_symbolic {
     }
 
     pub use generated::{
-        compute_symbolic_costs, symbolic_cost_of, CostBasisDeclaration, CostBasisKind,
-        SymbolicCostEntry,
+        compute_symbolic_costs, symbolic_cost_of, transform_cost_for_target, CostBasisDeclaration,
+        CostBasisKind, SymbolicCostEntry,
     };
     /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
     /// at `SymbolicCost`. Alias (not a second sum type) — the lens now

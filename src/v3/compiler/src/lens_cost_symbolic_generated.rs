@@ -200,7 +200,7 @@ pub fn transform_cost_for_target(
                 ArithmeticOp::Div => match p2 {
                     [] => transform_cost(p0, p2),
                     [__list_head, __list_tail @ ..] => combine_sequential(
-                        &(Lookup::Hit(SymbolicCost::ConstantCost { _0: 1 })),
+                        &(transform_cost(p0, p2)),
                         &(Lookup::Hit(SymbolicCost::LogCost {
                             _0: SizeVariable {
                                 source_port: *__list_head,
