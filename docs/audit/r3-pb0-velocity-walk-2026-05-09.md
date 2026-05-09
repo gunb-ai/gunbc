@@ -165,7 +165,7 @@ M T-Tests-As-Data-Completeness COMPLETE  (gates #85/#86/#87 substrate-landed)
 - The two edge-classes describe different relations (substrate-availability vs PB-0-honest-closure-readiness); both are simultaneously true for distinct nodes-pair purposes
 - Gate #84 (~80-90 test entries dissolve) requires M COMPLETE per View 1
 - Gate #79/#80 PB-0-honest closure requires View 1 (A → B substrate) AND View 2 (M before B-cementing-`.dag`-migration)
-- Gate #8 (non-test → 0) dependency: PB-Runtime + T-V2 + T-Tier3 (parallel cluster events; orthogonal to M/B closure flow)
+- Gate #8 (non-test → 0) dependency: PB-Runtime + T-V2 + T-Tier3 (parallel cluster events for the bulk of non-test entries) **plus partial Cluster M overlap for `test_runner.rs` specifically** — the test runner retires when Cluster M's TestClaim system can drive testing end-to-end as `.dag` data (i.e., when #87 cementing-test discipline + bulk-port discipline land). Gate #8 is mostly orthogonal to M/B closure flow but not fully; per §2.2 row "infer/lower/test_runner" — `test_runner.rs` is the specific overlap entry. (Per openai-pro REQUEST_CHANGES on sha `cf89a699`: prior phrasing "orthogonal to M/B closure flow" was too strong; corrected to acknowledge partial overlap.)
 - gates #8 + #84 BOTH GREEN = PB-0 closure = R3 close minimum bar
 
 ---
