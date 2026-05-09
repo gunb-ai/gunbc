@@ -7,12 +7,12 @@
 
 ## §0. Scope
 
-Two parallel substrate carrier landings — Phase 1 of Cluster M sequencing per (γ) hybrid dispatch shape:
+Two parallel substrate carrier landings — Phase 1 of Cluster M sequencing per (γ) hybrid dispatch shape. Per locked design `docs/design-tests-as-data-completeness.md` §6 line 344, Phase 1 introduces **5 carriers** to `src/v3/std/verification.dag`:
 
-1. **#85** `forall_exists_quantifier_substrate_landed` — `Quantifier` + `QuantifiedTestClaim` carrier landing in `src/v3/std/verification.dag`
-2. **#86** `program_generator_carrier_landed` — `ProgramGenerator` carrier landing in `src/v3/std/verification.dag`
+1. **#85** `forall_exists_quantifier_substrate_landed` — `Quantifier` + `QuantifiedTestClaim` + `SuiteClaim` carriers (per design §2.2). `SuiteClaim` has `Enumerated`/`Quantified` variants — existing `TestSuite.claims` sites migrate to wrap in `Enumerated(...)` per design §6 step 1.
+2. **#86** `program_generator_carrier_landed` — `ProgramGenerator` + `ProgramShape` carriers (per design §2.1). `ProgramShape` is the element type of `ProgramGenerator`'s body (`List<ProgramShape>`); generator types reference it structurally per design §2.1 (Rust signature in design doc).
 
-Both carrier landings parallel-authorable; no mutual substrate dep.
+Both #85 + #86 carrier landings parallel-authorable; no mutual substrate dep. **Full carrier list per design §6 line 344**: `ProgramGenerator`, `ProgramShape`, `Quantifier`, `QuantifiedTestClaim`, `SuiteClaim` — all five extensions to `src/v3/std/verification.dag` (split #85/#86 follows the gate-id partition: #85 = quantifier surface; #86 = generator surface).
 
 ## §1. Authority correction 2026-05-09 (codex BLOCKING on PR #2361 sha `c6c3fb96`)
 
@@ -43,17 +43,25 @@ type QuantifiedTestClaim {
   quantifier: Quantifier
   // ... see design doc for full Rust signature
 }
+
+type SuiteClaim
+  | Enumerated(TestClaim)            // existing single-source claim
+  | Quantified(QuantifiedTestClaim)  // generator-driven family claim
 ```
 
-`Quantifier` is a closed two-variant sum exhausting structurally meaningful quantifications over a `ProgramGenerator`'s output. `QuantifiedTestClaim` lives **alongside** `TestClaim` (not as replacement) — covers the property-based axis where the existing `TestClaim` covers single-source enumerated tests.
+`Quantifier` is a closed two-variant sum exhausting structurally meaningful quantifications over a `ProgramGenerator`'s output. `QuantifiedTestClaim` covers the property-based axis where the existing `TestClaim` covers single-source enumerated tests. `SuiteClaim` is the **wrapper sum** that lets `TestSuite.claims` hold both — existing claims migrate to `Enumerated(TestClaim)`; quantified claims land as `Quantified(QuantifiedTestClaim)`.
 
-**Worker scope**: extend `src/v3/std/verification.dag` to add `Quantifier` + `QuantifiedTestClaim` per design §2.2 spec. No Director ratification needed.
+**Worker scope**: extend `src/v3/std/verification.dag` to add `Quantifier` + `QuantifiedTestClaim` + `SuiteClaim` per design §2.2 spec. Migrate existing `TestSuite.claims: List<TestClaim>` sites to `TestSuite.claims: List<SuiteClaim>` with claims wrapped in `Enumerated(...)` (mechanical migration; backward-compatible at the predicate level). No Director ratification needed.
 
-### §3.2 #86 — `ProgramGenerator` carrier (per locked design §2.1)
+### §3.2 #86 — `ProgramGenerator` + `ProgramShape` carriers (per locked design §2.1)
 
 **Locked carrier shape** (`docs/design-tests-as-data-completeness.md` §2.1):
 
 ```
+type ProgramShape
+  | LiteralProgram(String)  // bootstrap variant per design §8.2
+  // richer shapes deferred per design §8.2 dissolution trigger
+
 type ProgramGenerator {
   // structural reference to a generator declaration whose body
   // produces a List<ProgramShape> (or iterator-shaped value)
@@ -61,9 +69,9 @@ type ProgramGenerator {
 }
 ```
 
-`ProgramGenerator` is a structural reference to a generator declaration — **not** a roster of "shape kinds" (which would replicate the closed-roster failure flagged by `lens-library-design.md` §1.5). The generator body is itself a `.dag` declaration producing program shapes; `ProgramGenerator` references it structurally.
+`ProgramShape` is the element type — the "shape" a generator emits. Bootstrap variant `LiteralProgram(String)` per design §8.2 (richer shapes attach later via the same generator carrier; substrate-shape stable). `ProgramGenerator` is a structural reference to a generator declaration whose body returns `List<ProgramShape>` — **not** a roster of "shape kinds" (which would replicate the closed-roster failure flagged by `lens-library-design.md` §1.5).
 
-**Worker scope**: extend `src/v3/std/verification.dag` to add `ProgramGenerator` carrier per design §2.1 spec. Composition with §3.1 #85: `QuantifiedTestClaim.generator` field references `ProgramGenerator`. No Director ratification needed.
+**Worker scope**: extend `src/v3/std/verification.dag` to add `ProgramGenerator` + `ProgramShape` per design §2.1 spec. Composition with §3.1 #85: `QuantifiedTestClaim.generator: ProgramGenerator`; `ProgramGenerator` body returns `List<ProgramShape>`. No Director ratification needed.
 
 ## §4. STOP-and-PING posture
 
