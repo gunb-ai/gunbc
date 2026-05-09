@@ -39,8 +39,8 @@ use std::collections::HashSet;
 use num_bigint::BigInt;
 
 use crate::dag::{
-    AtomPayload, Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortId, TypeConnective,
-    ValueBody,
+    AtomPayload, Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortId, TemplateArgument,
+    TypeConnective, ValueBody,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::types::TypeShape;
@@ -131,7 +131,8 @@ pub(crate) enum IntegerRangeLookup {
 /// Structural witness for routing integer literals: `IntegerAlgebra` and
 /// `TargetCarrier` variant **payload type** ids (the `constructor` field on
 /// `FieldValue::Variant`), derived from std `OrderedRing<C>` / `Semiring<C>`
-/// by `DeclarationId` equality on template and carrier type declarations.
+/// **or** `Compose<Int|UInt, MachineWidth<Word*>>` (R3 gate #19 refinement form)
+/// by resolving to the same pilot `(OrderedRing|Semiring, Word*)` routing key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct IntegerRoutingWitness {
     pub(crate) algebra_variant_ty: DeclarationId,
@@ -293,11 +294,63 @@ fn integer_routing_witness_walk(
             if arguments.is_empty() {
                 return integer_routing_witness_walk(dag, *template, depth + 1);
             }
+            if let Some(compose_id) = dag.declaration_by_name("Compose").map(|d| d.id) {
+                if *template == compose_id && arguments.len() == 2 {
+                    if let Some(w) = compose_integer_routing_witness(dag, arguments.as_slice()) {
+                        return Some(w);
+                    }
+                }
+            }
             let carrier = arguments.first()?.value;
             integer_instantiation_witness(dag, *template, carrier)
         }
         _ => None,
     }
+}
+
+/// Fixed-width integers after gate #19: `Compose<Int, MachineWidth<Word*>>` (signed) or
+/// `Compose<UInt, MachineWidth<Word*>>` (unsigned). Maps to the same `(OrderedRing|Semiring, Word*)`
+/// pilot routing key as the legacy `OrderedRing<Word*>` / `Semiring<Word*>` instantiations.
+fn compose_integer_routing_witness(
+    dag: &Dag,
+    arguments: &[TemplateArgument],
+) -> Option<IntegerRoutingWitness> {
+    let int_id = dag.declaration_by_name("Int").map(|d| d.id)?;
+    let uint_id = dag.declaration_by_name("UInt").map(|d| d.id)?;
+    let machine_width = dag.declaration_by_name("MachineWidth").map(|d| d.id)?;
+
+    let mut signed: Option<bool> = None;
+    let mut word_carrier: Option<DeclarationId> = None;
+
+    for arg in arguments {
+        let v = arg.value;
+        if v == int_id {
+            signed = Some(true);
+        } else if v == uint_id {
+            signed = Some(false);
+        } else if let TypeConnective::Instantiation {
+            template,
+            arguments: mw_args,
+        } = &dag.declaration(v).connective
+        {
+            if *template == machine_width && mw_args.len() == 1 {
+                word_carrier = Some(mw_args[0].value);
+            }
+        }
+    }
+
+    let signed = signed?;
+    let carrier_decl = word_carrier?;
+    let algebra_variant_ty = if signed {
+        disj_variant_payload_ty(dag, "IntegerAlgebra", "OrderedRingAlgebra")?
+    } else {
+        disj_variant_payload_ty(dag, "IntegerAlgebra", "SemiringAlgebra")?
+    };
+    let carrier_variant_ty = std_word_carrier_to_target_carrier_variant_ty(dag, carrier_decl)?;
+    Some(IntegerRoutingWitness {
+        algebra_variant_ty,
+        carrier_variant_ty,
+    })
 }
 
 fn integer_instantiation_witness(
