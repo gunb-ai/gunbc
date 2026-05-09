@@ -2,6 +2,10 @@
 
 **Status:** PROPOSAL (planning artifact, dispatch-gated). Authored 2026-04-29 by PB Manager continuation per the BinShim instances + emit pattern row in [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#program-scope-t-pb-post-r1-only) and the Item 5 ownership lock from [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §5.4 (LANDED via #1176/#1186).
 
+**Substrate-disposition update 2026-05-09**: §7.3 `CensusListConstant` / filter-predicate question (formerly an open Substrate gap) was **RATIFIED by Substrate Manager** (warm-wolf-698) at gunbc#2068 [c#4411574142](https://github.com/gunb-ai/gunbc/issues/2068#issuecomment-4411574142). Locked shape: **(b) `CensusSubsetCount` filter** with closed predicate `BinShimFilesSubsetPredicate` mirroring the existing `LensProducerFilesSubsetPredicate` precedent at [`src/v3/std/verification.dag:41-43`](../../src/v3/std/verification.dag). Carriers + consumer wire-up enumerated below in §"Substrate landings (locked shape)".
+
+**Item-4 prerequisite update 2026-05-09**: PB-Runtime interpreter-as-data + bin-shim emit pattern landed via PR #2282 (closes gunbc#2227). Both Item-4 sub-gate dependencies are met; this brief is now in **READY-FOR-DISPATCH** posture pending only the standard R2/R2-Evaluator close signal.
+
 **Owning manager:** Pure Bootstrap Manager (R2 → R3 continuation per `r3-structure.md` §"Manager structure" Item 1).
 
 **Lane size:** S (per `r2-pure-bootstrap-manager.md` R3 continuation table).
@@ -46,9 +50,49 @@ Per design doc §5.4 + §7 + the broader R3 Evaluator-gated lane discipline in [
 2. **Item 4 (PB-Runtime interpreter-as-data) landed.** Item 5 (this lane) inherits Item 4's runtime-value vocabulary; the bin-shim emitter is "one of many `.dag` emitters" per §6 anti-bridge invariant #4, sharing the same fold-over-`Lens<C>` substrate.
 3. **Substrate-owned `BinShim` carrier type live.** The `type BinShim { ... }` sketch in design doc §4.2 is the locked design; Substrate Manager lands the carrier (in `dsl/std/runtime/bin_shim.dag` or wherever Substrate picks per their dispatch). PB cannot author instance declarations against a carrier that doesn't exist.
 4. **`std.process.ProcessExit` substrate live.** Design doc §4.2 names this as the structural contract for translating `.dag` program return values into host process exit codes. Already declared per design doc reference; verify on dispatch.
-5. **No-new-bin-shim-hand-Rust fixture's substrate prerequisite.** §7.3 names a substrate gap: neither `expected_hand_authored_bin_shims` `CensusListConstant` nor a filter-predicate-over-`expected_hand_authored_non_test` exists today (current `CensusListConstant` values per design doc §7.3 are `expected_hand_authored_non_test` and `expected_hand_authored_test` only). Substrate Manager picks the [P1](../../INVARIANTS.md#p1-modeling-faithfulness) disposition (new constant vs filter predicate vs `CensusSubsetCount` reuse) when this lane dispatches; PB does not pre-empt that choice.
+5. **No-new-bin-shim-hand-Rust fixture's substrate prerequisite — RESOLVED 2026-05-09.** Substrate Manager (warm-wolf-698) ratified shape (b) `CensusSubsetCount` reuse with closed predicate `BinShimFilesSubsetPredicate` at gunbc#2068 [c#4411574142](https://github.com/gunb-ai/gunbc/issues/2068#issuecomment-4411574142). See §"Substrate landings (locked shape)" below for required carrier + consumer wire-up.
 
 These dependencies are cumulative: R2-Evaluator → Item 4 (PB-Runtime) → BinShim carrier + ProcessExit live → bin-shim instances/emitter (this lane) → per-shim retirement.
+
+## Substrate landings (locked shape)
+
+Authoritative source: Substrate Mgr (warm-wolf-698) disposition at gunbc#2068 [c#4411574142](https://github.com/gunb-ai/gunbc/issues/2068#issuecomment-4411574142). Per `feedback_strict_mirror_vs_novel_substrate_fact`, this is a strict mirror of the existing `LensProducerFilesSubsetPredicate` precedent (no novel substrate fact; ratifies directly).
+
+The retirement worker MUST land the following four artifacts (atomic with the first per-shim retirement, or as a preceding scaffolding PR):
+
+1. **Substrate marker type** at [`src/v3/std/verification.dag`](../../src/v3/std/verification.dag) (adjacent to the `LensProducerFilesSubsetPredicate` block at `:41-43`):
+   ```dag
+   // Closed PB bin-shim predicate follows the same declaration-ref pattern
+   // as the lens-producer subset.
+   type BinShimFilesSubsetPredicate {}
+   ```
+2. **Substrate marker value**, co-located:
+   ```dag
+   data bin_shim_files_subset_predicate: BinShimFilesSubsetPredicate = {}
+   ```
+3. **Runtime predicate body** in [`src/v3/compiler/src/test_runner.rs`](../../src/v3/compiler/src/test_runner.rs), adjacent to `is_lens_producer_census_path`:
+   ```rust
+   fn is_bin_shim_census_path(path: &str) -> bool {
+       path.starts_with("src/v3/compiler/src/bin/")
+   }
+   ```
+4. **Dispatch branch** in `eval_census_subset_count_shape` (parallel to the existing `LensProducerFilesSubsetPredicate` branch around `test_runner.rs:3273-3290`) that resolves the `subset_predicate` field as `BinShimFilesSubsetPredicate` and counts entries via `is_bin_shim_census_path`.
+
+Bin-shim file inventory at main `5a13ed800` (initial count = **9**; closure at 0):
+
+```
+src/v3/compiler/src/bin/emit_method_template_projection.rs
+src/v3/compiler/src/bin/r1c_e_emit_gates.rs
+src/v3/compiler/src/bin/regen_bootstrap.rs
+src/v3/compiler/src/bin/regen_lens.rs
+src/v3/compiler/src/bin/regen_parse.rs
+src/v3/compiler/src/bin/regen_parse_tables.rs
+src/v3/compiler/src/bin/regen_tokenize.rs
+src/v3/compiler/src/bin/regen_v3.rs
+src/v3/compiler/src/bin/self_host_fixed_point.rs
+```
+
+All 9 are members of `expected_hand_authored_non_test`; per-shim retirement net-decreases the subset count by one and atomically grows `REGEN_OUTPUTS` / `GENERATED_FILES` by one.
 
 ## Acceptance — what a future implementation PR must prove
 
@@ -71,9 +115,25 @@ test_claim {
 
 If the existing `TestPredicate` envelope at `src/v3/std/verification.dag:108-235` cannot express "behavioral equivalence between emitted and hand-Rust binaries," this is a **substrate gap** — escalate per `INVARIANTS.md` [P1](../../INVARIANTS.md#p1-modeling-faithfulness) to Substrate Manager. PB does not invent a new `TestPredicate` variant from this lane.
 
-### `no_new_bin_shim_hand_rust` (§7.3)
+### `no_new_bin_shim_hand_rust` (§7.3) — substrate-shape locked 2026-05-09
 
-Closed-set retirement gate: hand-Rust bin-shim count never exceeds the documented retirement schedule. Substrate prerequisite is **not yet live** (see §"Dependencies" item 5); this gate is unauthorable until Substrate Manager picks the [P1](../../INVARIANTS.md#p1-modeling-faithfulness) disposition.
+Closed-set retirement gate: hand-Rust bin-shim count never exceeds the documented retirement schedule. **Substrate disposition resolved** per §"Substrate landings (locked shape)" above. Authorable acceptance shape:
+
+```dag
+data census_subset_claim: TestClaim = {
+  name: "no_new_bin_shim_hand_rust",
+  source: "let x: Int = 1",
+  file_name: "no_new_bin_shim_hand_rust.v3",
+  predicate: CensusSubsetCount {
+    authority: census_authority,
+    list_constant: expected_hand_authored_non_test,
+    subset_predicate: bin_shim_files_subset_predicate
+  },
+  requires: []
+}
+```
+
+Closure when count==0 (currently observes 9). Per-PR shrink receipts acceptable per Substrate Mgr disposition; closure at 0.
 
 ### Other behavioral acceptance bullets (per dispatch directive)
 
@@ -100,7 +160,7 @@ PB Manager dispatches per-shim retirement workers when **a single readiness chec
 2. R2-Evaluator landed and stable.
 3. **Item 4 (PB-Runtime interpreter-as-data) sub-gate green** — `pb_runtime_equivalent_to_evaluator_on_corpus` evaluates true.
 4. **Substrate-owned `BinShim` carrier type live on main** — `type BinShim { ... }` declared per design doc §4.2 (verify by grep at dispatch).
-5. **Substrate-owned `CensusListConstant` / filter disposition for §7.3 picked** — without this, the `no_new_bin_shim_hand_rust` gate is unauthorable and the closed-set discipline is unenforceable.
+5. **Substrate-owned `CensusListConstant` / filter disposition for §7.3 picked** — **RESOLVED 2026-05-09** per gunbc#2068 [c#4411574142](https://github.com/gunb-ai/gunbc/issues/2068#issuecomment-4411574142); locked-shape carriers + consumer wire-up enumerated in §"Substrate landings (locked shape)".
 
 If any of (1)-(5) is unmet, this brief stays in PROPOSAL state; PB Manager does not dispatch.
 
@@ -111,7 +171,7 @@ Worker MUST STOP and escalate to PB Manager (which escalates to Director if cros
 - **`BinShim` carrier shape pressure.** Authoring a `data <name>_shim: BinShim = { ... }` instance reveals that the locked carrier shape (per design doc §4.2) cannot express the bin's actual entry-function signature or pipeline composition. That's a Substrate-owned carrier-shape evolution per §5.4 boundary; signal Substrate Manager via [P1](../../INVARIANTS.md#p1-modeling-faithfulness) — do not extend the carrier from this lane.
 - **No fitting `TestPredicate` variant for §7.2 equivalence.** If "behavioral equivalence between emitted Rust and hand-Rust binary" cannot compose from existing variants at `src/v3/std/verification.dag:108-235`, that's a substrate gap — [P1](../../INVARIANTS.md#p1-modeling-faithfulness) to Substrate Manager. Do not invent a new variant here.
 - **Emit-pattern divergence from `dsl/extdeps/languages/rust/emit.dag` shape.** Per anti-bridge invariant #4 the `BinShim` emitter "is one of many `.dag` emitters; its shape mirrors `dsl/extdeps/languages/rust/emit.dag`." If the retirement worker finds itself authoring parallel emit logic, STOP — that's a sign the carrier or pattern is wrong.
-- **§7.3 substrate disposition not yet live.** If the substrate prerequisite (item (5) above) hasn't landed, the lane cannot close even if the per-shim retirement is mechanically successful — `no_new_bin_shim_hand_rust` would be unauthorable. Surface this to Substrate Manager + R3 Release Manager rather than working around it.
+- **§7.3 substrate disposition drift.** The locked shape is recorded in §"Substrate landings (locked shape)" above; if a worker grep finds the substrate marker types/values already exist on main but with a different shape than enumerated, STOP — surface the drift to PB Mgr + Substrate Mgr rather than authoring against the stale brief encoding.
 - **SG-0 census drift the wrong way.** Per `feedback_ratchet_only_down`: if the retirement PR does not net-decrease the hand-Rust bin-shim count, that's a defect in the work, not a ratchet to relax.
 
 ## Cross-program signals
