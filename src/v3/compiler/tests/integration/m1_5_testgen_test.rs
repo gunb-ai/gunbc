@@ -896,10 +896,12 @@ fn extension_predicates_reach_interpreter_boundary() {
     );
     assert_runner_deferred_panics(&dag, positive_source, file, &diff, "DifferentialEquals");
 
-    // `Identity` remains classified by `AlgebraicLawProgramError` (not panic message substrings)
-    // until the identity-element edge is present. `Commutativity` is covered by TestRunner's
-    // focused PR-B.3 tests because this bootstrap-only expectation DAG has no fixture-local lens
-    // declaration for the public helper to resolve.
+    // `AlgebraicLaw::Identity` shares the bounded Int witness path with Associativity /
+    // Commutativity in `eval_algebraic_law_for_claim_program`. This bootstrap expectation DAG does not
+    // embed `ValueBehavior` as a binary Int lens in `inner`, so the helper returns `Ok(false)`
+    // (missing lens decl). `Commutativity` is covered by TestRunner's focused PR-B.3 tests because
+    // this bootstrap-only expectation DAG has no fixture-local lens declaration for the public
+    // helper to resolve.
     let inner = match cached_compile_outcome(positive_source, file) {
         CachedCompileOutcome::Clean(program_dag) => program_dag,
         other => panic!(
@@ -912,9 +914,7 @@ fn extension_predicates_reach_interpreter_boundary() {
     ];
     assert_eq!(
         eval_algebraic_law_for_claim_program(&dag, &inner, &identity_payload),
-        Err(AlgebraicLawProgramError::UnsupportedLaw {
-            law_label: "Identity".to_string(),
-        })
+        Ok(false)
     );
     let law = sum_variant(
         &dag,
@@ -923,11 +923,8 @@ fn extension_predicates_reach_interpreter_boundary() {
         identity_payload.clone(),
     );
     assert!(
-        catch_unwind(AssertUnwindSafe(|| {
-            predicate_holds(&dag, positive_source, file, &law);
-        }))
-        .is_err(),
-        "M1.5 harness should panic fail-closed on runner-deferred AlgebraicLaw"
+        !predicate_holds(&dag, positive_source, file, &law),
+        "AlgebraicLaw Identity without resolvable lens in inner program should evaluate false"
     );
 
     let behavioral = sum_variant(

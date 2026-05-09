@@ -1,8 +1,8 @@
 // std.r3_verification_l7_algebraic_laws — R3 Lane 1/L7 algebraic-law fixtures.
 //
-// The original skeleton suite remains a single `AlgebraicLaw(Identity, ...)`
-// placeholder. The matrix suite below pre-authors enum-backed per-(algebra, law)
-// fixture rows for the current `AlgebraicLawKind` surface:
+// The skeleton suite uses `AlgebraicLaw(Identity, …)` over Int `+` as an ordinary bounded witness
+// row (same discipline as `Associativity` / `Commutativity`). The matrix suite below pre-authors
+// enum-backed per-(algebra, law) fixture rows for the current `AlgebraicLawKind` surface:
 // `Associativity`, `Commutativity`, and `Identity`.
 //
 // Laws such as distributivity, absorption, inverse, complement, annihilation,
@@ -42,9 +42,8 @@ data r3_verification_l7_algebraic_laws_skeleton: TestClaim = {
 }
 
 // Matrix rows are intentionally ordinary `AlgebraicLaw` consumers. They do not
-// claim full algebra closure: the runner's current `Associativity` /
-// `Commutativity` path is a bounded operational witness over Int samples, while
-// `Identity` stays deferred until the lens identity-element edge lands.
+// claim full algebra closure: the runner's current witness paths use bounded Int samples for
+// `Associativity`, `Commutativity`, and `Identity` (unique candidate search).
 data r3_l7_semigroup_associativity: TestClaim = {
   name: "r3_l7_semigroup_associativity",
   source: "fn r3_l7_semigroup_associativity_op(a: Int, b: Int) -> Int = a + b\n",

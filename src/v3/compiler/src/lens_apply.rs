@@ -949,6 +949,20 @@ pub const COMMUTATIVITY_WITNESS_PAIRS: &[(i64, i64)] = &[
     (100, 200),
 ];
 
+/// Samples for `AlgebraicLaw(Identity, …)` operational checks: **every** value must appear in at
+/// least one [`COMMUTATIVITY_WITNESS_PAIRS`] coordinate so identity witnessing stays materially
+/// aligned with the commutativity witness authority (still not a substrate law proof).
+pub const IDENTITY_WITNESS_SAMPLES: &[i64] = &[
+    -4, -3, -1, 0, 1, 2, 3, 5, 7, 10, 99, 100, 200,
+];
+
+/// Candidate identity elements searched left-to-right; exactly one must satisfy
+/// `e ⊕ a = a` and `a ⊕ e = a` for every sample in [`IDENTITY_WITNESS_SAMPLES`]. Multiple matches
+/// fail closed (`Ok(false)`) so incidental finite-table coincidences cannot certify an ambiguous op.
+pub const IDENTITY_WITNESS_CANDIDATES: &[i64] = &[
+    -300, -200, -100, -99, -10, -7, -5, -4, -3, -2, -1, 0, 1, 2, 3, 5, 7, 10, 99, 100, 200, 300,
+];
+
 /// Evaluate `(a ⊕ b) ⊕ c` vs `a ⊕ (b ⊕ c)` for a binary `Int` lens using [`apply_lens_declaration`].
 pub fn int_associativity_holds(
     program_dag: &Dag,
@@ -978,6 +992,40 @@ pub fn int_associativity_holds_all_triples(
     }
     Ok(true)
 }
+
+/// True iff exactly one `e` in `candidates` satisfies left/right identity against every `samples`
+/// entry via [`apply_lens_declaration`].
+pub fn int_identity_witness_holds(
+    program_dag: &Dag,
+    lens_decl_id: DeclarationId,
+    samples: &[i64],
+    candidates: &[i64],
+) -> Result<bool, LensApplyError> {
+    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+    let mut matching = 0_i32;
+    for &e in candidates {
+        let ev = int(e);
+        let mut ok = true;
+        for &a in samples {
+            let left = apply_lens_declaration(program_dag, lens_decl_id, &[ev.clone(), int(a)])?;
+            let right = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), ev.clone()])?;
+            if left != int(a) || right != int(a) {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            matching += 1;
+            if matching > 1 {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(matching == 1)
+}
+
+const _: () = assert!(IDENTITY_WITNESS_SAMPLES.len() > 1);
+const _: () = assert!(IDENTITY_WITNESS_CANDIDATES.len() > 1);
 
 #[cfg(test)]
 mod tests {
@@ -1012,6 +1060,44 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
             int_associativity_holds_all_triples(&dag, id, ASSOCIATIVITY_WITNESS_TRIPLES)
                 .expect("assoc witness"),
             "Int `+` lens must pass every ASSOCIATIVITY_WITNESS_TRIPLES entry"
+        );
+    }
+
+    #[test]
+    fn int_add_lens_identity_witness_finds_zero_uniquely() {
+        let src = r#"module w
+fn lens_composition_op(a: Int, b: Int) -> Int = a + b
+"#;
+        let dag = compile_to_dag(src, "id_add.v3").expect("compiles");
+        let id = dag.declaration_by_name("lens_composition_op").unwrap().id;
+        assert!(
+            super::int_identity_witness_holds(
+                &dag,
+                id,
+                IDENTITY_WITNESS_SAMPLES,
+                IDENTITY_WITNESS_CANDIDATES
+            )
+            .expect("identity witness"),
+            "Int `+` lens identity must be uniquely 0 on the bounded witness tables"
+        );
+    }
+
+    #[test]
+    fn int_mul_lens_identity_witness_finds_one_uniquely() {
+        let src = r#"module w
+fn lens_mul_op(a: Int, b: Int) -> Int = a * b
+"#;
+        let dag = compile_to_dag(src, "id_mul.v3").expect("compiles");
+        let id = dag.declaration_by_name("lens_mul_op").unwrap().id;
+        assert!(
+            super::int_identity_witness_holds(
+                &dag,
+                id,
+                IDENTITY_WITNESS_SAMPLES,
+                IDENTITY_WITNESS_CANDIDATES
+            )
+            .expect("identity witness"),
+            "Int `*` lens identity must be uniquely 1 on the bounded witness tables"
         );
     }
 

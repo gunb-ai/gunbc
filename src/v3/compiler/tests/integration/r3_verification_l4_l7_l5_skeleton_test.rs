@@ -4,9 +4,9 @@
 //! `TestClaim.name`) + suite `r3_verification_l4_l7_direct_suite` exercise the wired W1
 //! `DifferentialEquals(rust_emit_output, dag_eval_output)` path on **certification seeds only**
 //! (`docs/r3-program-plan.md` §1.7 corpus-quantified rule — ledger **PASSING** awaits full corpus).
-//! Plus a mixed-lineage `NotYetImplemented` control. Lane 1 L7 now exercises the wired `Associativity`
-//! and `Commutativity` operational witnesses. Lane 2 / L5 rows remain intentionally deferred
-//! where noted.
+//! Plus a mixed-lineage `NotYetImplemented` control. Lane 1 L7 now exercises the wired
+//! `Associativity`, `Commutativity`, and `Identity` operational witnesses (bounded Int tables).
+//! Lane 2 / L5 rows remain intentionally deferred where noted.
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
 use std::sync::OnceLock;
@@ -41,8 +41,7 @@ const L7_CLAIM: &str = "r3_verification_l7_algebraic_laws_skeleton";
 const L7_SEMIGROUP_ASSOCIATIVITY_CLAIM: &str = "r3_l7_semigroup_associativity";
 const L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM: &str = "r3_l7_commutative_monoid_commutativity";
 const L7_MATRIX_SUITE: &str = "r3_verification_l7_algebra_matrix_suite";
-const L7_MATRIX_WIRED_COUNT: usize = 8;
-const L7_MATRIX_IDENTITY_NYI_COUNT: usize = 8;
+const L7_MATRIX_CLAIM_COUNT: usize = 16;
 
 const L5_FIXTURE: &str = include_str!("../fixtures/r3_verification_l5_corpus.dag");
 const L5_FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag";
@@ -225,50 +224,34 @@ fn r3_verification_l7_commutative_monoid_commutativity_passes_wired_commutativit
 }
 
 #[test]
-fn r3_verification_l7_algebraic_law_identity_skeleton_is_nyi() {
-    let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
-    let results = TestRunner::new(dag).run_suite(L7_SUITE);
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].claim_name, L7_CLAIM);
-    assert!(
-        matches!(results[0].result, ClaimResult::NotYetImplemented(_)),
-        "expected AlgebraicLaw::Identity to stay deferred, got {:?}",
-        results[0].result
-    );
+fn r3_verification_l7_algebraic_law_identity_skeleton_passes_bounded_witness() {
+    run_on_larger_stack(|| {
+        let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
+        let results = TestRunner::new(dag).run_suite(L7_SUITE);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].claim_name, L7_CLAIM);
+        assert!(
+            matches!(results[0].result, ClaimResult::Pass),
+            "expected AlgebraicLaw::Identity bounded witness Pass on Int `+` placeholder, got {:?}",
+            results[0].result
+        );
+    });
 }
 
 #[test]
 fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
     let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
     let results = TestRunner::new(dag).run_suite(L7_MATRIX_SUITE);
-    assert_eq!(
-        results.len(),
-        L7_MATRIX_WIRED_COUNT + L7_MATRIX_IDENTITY_NYI_COUNT
-    );
+    assert_eq!(results.len(), L7_MATRIX_CLAIM_COUNT);
 
-    let mut wired_passes = 0;
-    let mut identity_deferred = 0;
     for result in &results {
-        if result.claim_name.ends_with("_identity") {
-            assert!(
-                matches!(result.result, ClaimResult::NotYetImplemented(_)),
-                "{} should remain deferred until identity-element substrate edges land; got {:?}",
-                result.claim_name,
-                result.result
-            );
-            identity_deferred += 1;
-        } else {
-            assert!(
-                matches!(result.result, ClaimResult::Pass),
-                "{} should exercise the current wired AlgebraicLaw witness path; got {:?}",
-                result.claim_name,
-                result.result
-            );
-            wired_passes += 1;
-        }
+        assert!(
+            matches!(result.result, ClaimResult::Pass),
+            "{} should exercise the wired AlgebraicLaw witness path; got {:?}",
+            result.claim_name,
+            result.result
+        );
     }
-    assert_eq!(wired_passes, L7_MATRIX_WIRED_COUNT);
-    assert_eq!(identity_deferred, L7_MATRIX_IDENTITY_NYI_COUNT);
 }
 
 #[test]
