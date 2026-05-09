@@ -302,6 +302,12 @@ fn parse_target_integer_inhabitance_bound(
     }
 }
 
+fn under_refined_target_integer_type_realization() -> EmissionDiagnostic {
+    EmissionDiagnostic::UnderRefined {
+        unspecified_axis: "target_integer_type_realization".to_string(),
+    }
+}
+
 /// Fail-closed `TypeRealization` payload inspection + **`SelectedTargetInhabitance`** mint (**single
 /// step** — proof and construction coincide). See **E-6** / inlined checks below.
 ///
@@ -320,39 +326,27 @@ fn selected_target_after_row_type_realization_gate(
 
     let realization = row.type_realization;
     let Some(decl) = dag.declaration_opt(&realization) else {
-        return Err(EmissionDiagnostic::UnderRefined {
-            unspecified_axis: "target_integer_type_realization".to_string(),
-        });
+        return Err(under_refined_target_integer_type_realization());
     };
 
     if decl.meta_tag != Some(type_real_meta) {
-        return Err(EmissionDiagnostic::UnderRefined {
-            unspecified_axis: "target_integer_type_realization".to_string(),
-        });
+        return Err(under_refined_target_integer_type_realization());
     }
 
     let Some(ValueBody::Structural { fields }) = &decl.value_body else {
-        return Err(EmissionDiagnostic::UnderRefined {
-            unspecified_axis: "target_integer_type_realization".to_string(),
-        });
+        return Err(under_refined_target_integer_type_realization());
     };
 
     let Some(rez_language) = reference_field(fields, "language") else {
-        return Err(EmissionDiagnostic::UnderRefined {
-            unspecified_axis: "target_integer_type_realization".to_string(),
-        });
+        return Err(under_refined_target_integer_type_realization());
     };
 
     let Some(rez_target) = reference_field(fields, "target") else {
-        return Err(EmissionDiagnostic::UnderRefined {
-            unspecified_axis: "target_integer_type_realization".to_string(),
-        });
+        return Err(under_refined_target_integer_type_realization());
     };
 
     if rez_language != row.language || rez_target != row.kernel_integer {
-        return Err(EmissionDiagnostic::UnderRefined {
-            unspecified_axis: "target_integer_type_realization".to_string(),
-        });
+        return Err(under_refined_target_integer_type_realization());
     }
 
     Ok(SelectedTargetInhabitance::from_validated_type_realization(
