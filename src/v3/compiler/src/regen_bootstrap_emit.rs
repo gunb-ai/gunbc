@@ -11,7 +11,7 @@ use crate::dag::{
     PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody,
     ValueNode,
 };
-use crate::diagnostics::Diagnostic;
+use crate::diagnostics::{Diagnostic, DiagnosticAttribution};
 
 pub fn render_bootstrap_generated_rs(
     dag: &Dag,
@@ -678,19 +678,30 @@ fn render_port_state(state: &PortState) -> String {
     }
 }
 
+fn render_diagnostic_attribution(attribution: &DiagnosticAttribution) -> String {
+    match attribution {
+        DiagnosticAttribution::Unattributed => "DiagnosticAttribution::Unattributed".to_string(),
+        DiagnosticAttribution::BootstrapAuthority(key) => format!(
+            "DiagnosticAttribution::BootstrapAuthority(crate::diagnostics::BootstrapAuthorityKey::new({:?}))",
+            key.path()
+        ),
+    }
+}
+
 fn render_diagnostics(dag: &Dag) -> String {
-    let mut entries: Vec<_> = dag.diagnostics().iter().collect();
-    entries.sort_by_key(|(port, _)| port.raw());
+    let mut entries: Vec<_> = dag.diagnostics().iter_attributed().collect();
+    entries.sort_by_key(|(port, _, _)| port.raw());
     if entries.is_empty() {
         return "DiagnosticTable::new()".to_string();
     }
     let mut out = String::from("{ let mut table = DiagnosticTable::new();\n");
-    for (port, diagnostic) in entries {
+    for (port, diagnostic, attribution) in entries {
         let _ = writeln!(
             out,
-            "        table.insert({}, {});",
+            "        table.insert({}, {}, {});",
             render_port_id(port),
-            render_diagnostic(diagnostic)
+            render_diagnostic(diagnostic),
+            render_diagnostic_attribution(attribution)
         );
     }
     out.push_str("        table }\n");
