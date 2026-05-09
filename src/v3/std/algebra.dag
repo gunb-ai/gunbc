@@ -76,6 +76,7 @@ module v3.std.algebra
 import std.algebra { Semiring, BoundedLattice }
 import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId, DeclarationId }
+import std.computation { positive_descent_count }
 import std.termination { PositiveDescentAmount }
 import v3.std.lookup { Lookup }
 
@@ -406,6 +407,8 @@ fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
 // enforcement. Ordering is by asymptotic dominance:
 // ClassConstant <= ClassLog <= ClassLinear <= ClassLinearithmic <=
 // ClassQuadratic <= ClassPolynomial(k>=3) <= ClassExponential <= ClassUnknown.
+// For two `ClassPolynomial` values, dominance follows polynomial degree —
+// same rule as `dominates(PolynomialCost, PolynomialCost)` in this module.
 type AsymptoticClass inhabits BoundedLattice<AsymptoticClass>
   = ClassConstant
   | ClassLog
@@ -430,11 +433,12 @@ fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
         ClassLog => True
         ClassConstant => True
       }
-    ClassPolynomial(_) =>
+    ClassPolynomial { degree: da } =>
       match b {
         ClassUnknown => False
         ClassExponential => False
-        ClassPolynomial(_) => True
+        ClassPolynomial { degree: db } =>
+          positive_descent_count(steps: da) >= positive_descent_count(steps: db)
         ClassQuadratic => True
         ClassLinearithmic => True
         ClassLinear => True
