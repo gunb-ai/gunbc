@@ -96,7 +96,7 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
   - `numeric_inherited_bake_ins_dissolved` — `Char`, `EpochMs`, `Duration`, `Milliseconds`, `Seconds` consume abstract `Int` (or appropriate refinement)
   - `int_refinement_overflow_proven_parametric` — replaces `tier2_int128_overflow_proven`; overflow caught structurally for any width refinement
   - `int_lit_full_magnitude_consumer` — replaces `int_lit_full_int128_word128_consumer`; IntLit accepts full magnitude range
-  - `string_audit_receipt` — Substrate Mgr String audit landed (per Director scope-add 2026-05-01); either reframe applied OR documented-no-change
+  - `string_audit_receipt` — Substrate Mgr String audit landed (per Director scope-add 2026-05-01); documented-no-change in [`docs/audit/t-numeric-construction-string-audit-receipt.md`](audit/t-numeric-construction-string-audit-receipt.md): `String = FreeMonoid<Char>` already, with only `Char` retained in inherited numeric-refinement scope
   - `numeric_reframe_no_parallel_authority` — old `Int = Int64` / `UInt = UInt64` / `Float = Float64` aliases removed; refinement chain is single authority
 - **T-Omni-Shape-B** (Director-locked target pair 2026-04-28: OpenAPI + Markdown drift-lock primary; SQL DDL alternative).
   - `omni_openapi_backend_emission_demo` — one workflow `.dag` declaration emits to (a) an OpenAPI spec describing the workflow's external API + (b) a runnable backend service implementing it. Both derive from the same `compile_to_dag` result
