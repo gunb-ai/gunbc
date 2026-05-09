@@ -12,6 +12,8 @@ use v3_compiler::dag::Dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
+use crate::common::run_on_larger_stack;
+
 const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_free_consequences_second_batch.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_free_consequences_second_batch.dag";
 const SUITE_NAME: &str = "r3_free_consequences_second_batch_suite";
@@ -45,6 +47,12 @@ fn second_batch_dag() -> &'static Dag {
 
 #[test]
 fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes() {
+    run_on_larger_stack(|| {
+        r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner()
+    });
+}
+
+fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
     let results = TestRunner::new(second_batch_dag()).run_suite(SUITE_NAME);
     assert_eq!(results.len(), EXPECTED_CLAIMS.len());
 
