@@ -610,6 +610,10 @@ fn r3_bridge_retirement_ledger_zero_open_row_count_ratchet() {
 
 #[test]
 fn rust_dag_isomorphism_executable_passes_dag_shape_report_gate() {
+    // P5 per-PR receipt for this expanded hand-Rust test harness: explicit deferral to
+    // ROADMAP.md "Course correction #1" / table row 1 ("One BinaryDimensionReportEquals
+    // path executes"). This test must continue to stop at the shape-valid NYI boundary
+    // until the generated DimensionReport/DagShapeReport path replaces the Rust harness.
     std::thread::Builder::new()
         .stack_size(32 * 1024 * 1024)
         .spawn(|| {
