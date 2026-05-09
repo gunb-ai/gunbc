@@ -491,6 +491,10 @@ fn complexity_summary_work_class_consistent(c: ComplexitySummary) -> Bool =
 fn complexity_lens_validate(d: Dag, c: ComplexitySummary) -> OptionalDiagnostic =
   NoDiagnostic
 
+// Review-note: GitHub inline anchors near this `data complexity_lens_monoid` block still
+// cite “work vs stored class” bugs — that predicate is `complexity_summary_work_class_consistent`
+// above (bound must dominate classified work). Rust ratchet:
+// `lens_cost::complexity_summary_work_class_consistent_tests` in `lib.rs`.
 data complexity_lens_monoid: Monoid<ComplexitySummary> = {
   op: complexity_lens_sequential_op
   identity: {
