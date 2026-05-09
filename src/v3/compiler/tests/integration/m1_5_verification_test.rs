@@ -610,13 +610,20 @@ fn r3_bridge_retirement_ledger_zero_open_row_count_ratchet() {
 
 #[test]
 fn rust_dag_isomorphism_executable_passes_dag_shape_report_gate() {
-    let results = TestRunner::new(rust_dag_isomorphism_dag())
-        .run_suite("rust_dag_isomorphism_consumer_suite");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].claim_name, "rust_dag_isomorphism_executable");
-    assert!(
-        matches!(&results[0].result, ClaimResult::Pass),
-        "expected RustDagIsomorphism executable gate to pass; got {:?}",
-        results[0].result
-    );
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            let results = TestRunner::new(rust_dag_isomorphism_dag())
+                .run_suite("rust_dag_isomorphism_consumer_suite");
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].claim_name, "rust_dag_isomorphism_executable");
+            assert!(
+                matches!(&results[0].result, ClaimResult::Pass),
+                "expected RustDagIsomorphism executable gate to pass; got {:?}",
+                results[0].result
+            );
+        })
+        .expect("spawn rust_dag_isomorphism stack")
+        .join()
+        .expect("rust_dag_isomorphism gate thread");
 }
