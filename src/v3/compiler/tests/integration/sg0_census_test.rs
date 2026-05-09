@@ -264,6 +264,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
+    // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
+    "src/v3/compiler/src/memory_peak_cost.rs",
     // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): transitional
     // Rust-side OpenAPI projection receipt after the Shape A/Shape B boundary
     // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
@@ -334,10 +336,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // COMPLETE promotion against frozen v2-oracle values. Dissolves when `.dag`
     // TestClaims can execute the same complexity summary assertions directly.
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
-    // R3 T-Lens-Behavioral-Parity: v3-side cementing receipt for the cost lens
-    // `analyze_symbolic_cost_dimension` entrypoint. This is not the Band-C
-    // frozen-v2-oracle closure; dissolves with the same `.dag` TestClaim path.
-    "src/v3/compiler/tests/integration/cementing/cost_lens_behavioral_completion.rs",
+    // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
+    "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
@@ -348,6 +348,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
+    // v3-side consumer wiring for generated `symbolic_cost_of` (cost.dag). Not
+    // under `cementing/`: Band-C (`TESTING.md`) requires v2-oracle parity only for
+    // explicit subsumption / COMPLETE+v2-counterpart register promotions.
+    "src/v3/compiler/tests/integration/cost_lens_symbolic_consumer_test.rs",
     // R3 L6 carrier slice (PR #1842; Measure-carrier precedent at #1819,
     // Director Option 2 RATIFIED at
     // gunbc#828 #issuecomment-4377533390): slice-active ratchet for
@@ -569,6 +573,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
+    // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
+    // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
+    // constructor isomorphism. Dissolves when `ValueBody` no longer has a
+    // Rust mirror or when this assertion is expressible as a `.dag` TestClaim.
+    "src/v3/compiler/tests/integration/value_body_substrate_mirror_isomorphism_test.rs",
     // R2-Substrate Prereq-3a (`workflow_root_port` accessor + `WorkflowRoot`
     // sum) per merged audit `docs/design-lens-fold-prerequisites.md`.
     // Director-locked α: last topological `Bind`. Three integration

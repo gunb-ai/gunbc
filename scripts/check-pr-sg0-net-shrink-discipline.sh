@@ -23,8 +23,8 @@
 #
 # Exit codes:
 #   0 — not a pull_request event, census file unchanged, or body satisfies rules
-#   1 — pull_request but origin/main missing; census changed on PR but body missing /
-#       invalid / positive delta without pairing; or other gate failure
+#   1 — pull_request but origin/main missing; census changed on PR but body invalid /
+#       positive declared delta without pairing; declared vs computed mismatch; or other gate failure
 
 set -euo pipefail
 

@@ -53,8 +53,8 @@ mod canonical_lens_bridge_ratchet_test;
 mod cementing_lens_registry_dispatch_test;
 #[path = "integration/cementing/complexity_lens_behavioral_completion.rs"]
 mod complexity_lens_behavioral_completion;
-#[path = "integration/cementing/cost_lens_behavioral_completion.rs"]
-mod cost_lens_behavioral_completion;
+#[path = "integration/cost_lens_symbolic_consumer_test.rs"]
+mod cost_lens_symbolic_consumer_test;
 #[path = "integration/cross_target_coverage_carrier_test.rs"]
 mod cross_target_coverage_carrier_test;
 #[path = "integration/e6_g1a_option3_static_lens_test.rs"]
@@ -141,6 +141,8 @@ mod m2_lens_unused_parameters_migration_test;
 mod m2_lens_variant_payload_migration_test;
 #[path = "integration/m2_substrate_inhabitance_test.rs"]
 mod m2_substrate_inhabitance_test;
+#[path = "integration/cementing/memory_peak_cost_basis_demo.rs"]
+mod memory_peak_cost_basis_demo;
 #[path = "integration/method_registry_test.rs"]
 mod method_registry_test;
 #[path = "integration/method_template_contract_test.rs"]
@@ -217,6 +219,8 @@ mod test_runner_test;
 mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]
 mod thesis_validation_test;
+#[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
+mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/workflow_root_port_test.rs"]
 mod workflow_root_port_test;
 
