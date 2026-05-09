@@ -352,7 +352,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Director Option 2 RATIFIED at
     // gunbc#828 #issuecomment-4377533390): slice-active ratchet for
     // `cross_target_coverage.dag` (six type declarations exist;
-    // `emission_path_projections == []`). Stays hand-Rust alongside
+    // `emission_path_projections` Phase-1 populated with 41 rows —
+    // Rust 13 / Python 16 / Go 12). Stays hand-Rust alongside
     // `method_template_contract_test.rs` until testgen covers
     // reflected-Dag structural assertions over std/ row authorities.
     "src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs",

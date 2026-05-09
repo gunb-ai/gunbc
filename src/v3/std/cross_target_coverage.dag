@@ -176,7 +176,7 @@ type EmissionPathProjection {
   cells: List<EmissionCell>
 }
 
-// --- emission_path_projections (empty data state) ------------------------
+// --- emission_path_projections (Phase-1 populated: 41 rows) -------------
 //
 // Grounding follow-up population for the current Phase-1 row-list authorities:
 // Rust 13, Python 16, Go 12 (41 total). Each row carries the single
