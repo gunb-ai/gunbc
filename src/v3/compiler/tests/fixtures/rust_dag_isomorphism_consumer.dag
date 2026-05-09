@@ -15,8 +15,8 @@ import std.verification { BinaryDimensionReportEquals, TestClaim, TestSuite }
 type RustEnumExtractionDagShapeReport = DimensionReport<Dag>
 type DagReflectionDagShapeReport = DimensionReport<Dag>
 
-data rust_dag_isomorphism_executable: TestClaim = {
-  name: "rust_dag_isomorphism_executable",
+data rust_dag_isomorphism_shape_reports_equal: TestClaim = {
+  name: "rust_dag_isomorphism_shape_reports_equal",
   source: "",
   file_name: "src/v3/lenses/dag_shape.dag",
   predicate: BinaryDimensionReportEquals(
@@ -28,5 +28,5 @@ data rust_dag_isomorphism_executable: TestClaim = {
 
 data rust_dag_isomorphism_consumer_suite: TestSuite = {
   name: "rust_dag_isomorphism_consumer_suite",
-  claims: [rust_dag_isomorphism_executable]
+  claims: [rust_dag_isomorphism_shape_reports_equal]
 }
