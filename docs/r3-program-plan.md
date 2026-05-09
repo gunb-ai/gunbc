@@ -237,7 +237,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 | 14 | `rust_dag_isomorphism_executable` | Dag-iso | T-V-L4-L7-Direct | DECLARED (NEW 2026-05-06) | runtime prereq: shape-report producers |
 | 15 | `l5_cross_target_consistency` | structural-fold | T-V-L5-Corpus | DECLARED | corpus-driven; depends on L4 + Shape A grounding |
 | 16 | `pb_self_compile_fixed_point` | fixed-point | T-FixedPoint | CONSUMER_LANDED (R1 horizon; R3 stronger interpretation) | bit-identical stage0 + emitted artifact |
-| 17 | `numeric_abstract_carriers_landed` | substrate-shape | T-Numeric-Construction | DECLARED | Magnitude/Nat/Int/Rational/Real chain |
+| 17 | `numeric_abstract_carriers_landed` | substrate-shape | T-Numeric-Construction | CONSUMER_LANDED | Magnitude (`dsl/std/magnitude.dag`) → Nat (`dsl/std/nat.dag`) → Int (`dsl/std/integer.dag`) → **`Rational = Field<FieldOfFractions<Int>>`** (`dsl/std/rational.dag`) → **`Real = ApproximateField<FieldOfFractions<Int>>`** (`dsl/std/float.dag`; STOP Option A — **not** `ApproximateField<Rational>`). Authority: [`docs/design-numeric-construction.md`](design-numeric-construction.md) + [`docs/r3-structure.md`](r3-structure.md) §T-Numeric-Construction; substrate ratchet `real_default_alias_resolves_to_approximate_field_over_field_of_fractions_of_int`. |
 | 18 | `numeric_width_refinements_landed` | substrate-shape | T-Numeric-Construction | DECLARED | `Int<N>` / `Nat<N>` / `Real<N>` |
 | 19 | `numeric_aliases_align_to_refinements` | substrate-shape | T-Numeric-Construction | DECLARED | Int8/.../Int128 as refinements |
 | 20 | `numeric_inherited_bake_ins_dissolved` | substrate-shape | T-Numeric-Construction | DECLARED | Char/EpochMs/Duration consume abstract Int |

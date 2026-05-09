@@ -783,6 +783,29 @@ fn carrier_chain_names(dag: &Dag, decl_id: DeclarationId) -> Vec<String> {
     out
 }
 
+/// Follow only `Atom(ResolvedByName)` edges — bounded forward walk (INVARIANTS
+/// §P3/P4). Same discipline as [`carrier_chain_names`] (which also caps hops);
+/// this helper is for template resolution where only import stubs use `ResolvedByName`.
+///
+/// Returns `None` when more than `max_depth` consecutive `ResolvedByName` edges
+/// remain (cycle or excessive depth).
+fn follow_resolved_by_name_bounded(
+    dag: &Dag,
+    mut id: DeclarationId,
+    max_depth: usize,
+) -> Option<DeclarationId> {
+    for _ in 0..max_depth {
+        match &dag.declaration(id).connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => id = *next,
+            _ => return Some(id),
+        }
+    }
+    match &dag.declaration(id).connective {
+        TypeConnective::Atom(AtomPayload::ResolvedByName(_)) => None,
+        _ => Some(id),
+    }
+}
+
 /// Outcome of validating a single registered-predicate clause against
 /// [`KNOWN_PREDICATES`]. Path (a) RATIFIED at gunbc#828
 /// `issuecomment-4390760353`: registered predicates must validate carrier
@@ -3286,7 +3309,14 @@ fn build_template_arguments(
         }
         return Vec::new();
     }
-    let template_for_params = resolve_template_for_type_parameters(dag, template);
+    let Some(template_for_params) =
+        resolve_template_for_type_parameters(dag, template, template_name, span)
+    else {
+        for arg in args {
+            let _ = type_to_declaration_id(arg, symbols, local, dag);
+        }
+        return Vec::new();
+    };
     let template_param_count = dag.declaration(template_for_params).type_params.len();
     if template_param_count != args.len() {
         report_declaration_error(
@@ -3519,18 +3549,42 @@ fn template_param_id(dag: &Dag, template: DeclarationId, idx: usize) -> Option<D
     dag.declaration(template).type_params.get(idx).copied()
 }
 
+/// Upper bound on `ResolvedByName` hops while resolving an imported type to the
+/// declaration that carries `type_params` for generic application (INVARIANTS
+/// §P3/P4 — bounded lowering). Longer chains (including cyclic forwarding)
+/// fail closed with [`Diagnostic::ResolveError`].
+const MAX_TEMPLATE_IMPORT_ALIAS_DEPTH: usize = 64;
+
 /// `import std.other { Foo }` introduces a forwarding declaration whose
 /// connective is `Atom(ResolvedByName(target))` with an empty `type_params`
 /// slot. Generic instantiation must read params from the **target** template
 /// (e.g. `ApproximateField<F>` in `src/v3/std/approximate_field.dag`), not the
 /// import stub — otherwise `Foo<Bar>` lowers as arity-0 and drops arguments.
-fn resolve_template_for_type_parameters(dag: &Dag, mut template: DeclarationId) -> DeclarationId {
-    while let TypeConnective::Atom(AtomPayload::ResolvedByName(next)) =
-        &dag.declaration(template).connective
-    {
-        template = *next;
+///
+/// Returns `None` after attaching `ResolveError` when the chain exceeds
+/// [`MAX_TEMPLATE_IMPORT_ALIAS_DEPTH`] (cycle or pathological depth).
+fn resolve_template_for_type_parameters(
+    dag: &mut Dag,
+    template: DeclarationId,
+    template_name: &str,
+    span: &SourceSpan,
+) -> Option<DeclarationId> {
+    match follow_resolved_by_name_bounded(dag, template, MAX_TEMPLATE_IMPORT_ALIAS_DEPTH) {
+        Some(id) => Some(id),
+        None => {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "type `{template_name}`: import-alias chain exceeds bound ({MAX_TEMPLATE_IMPORT_ALIAS_DEPTH} `ResolvedByName` hops)"
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            None
+        }
     }
-    template
 }
 
 // DB-11 (3a.3) single-construction-authority cleanup:
