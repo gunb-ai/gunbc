@@ -434,12 +434,14 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
 /// fixed-width integer refinement with a source-representable out-of-range
 /// literal must route through the same structural range facts and produce the
 /// same typed [`MagnitudeOutOfRange`](v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange)
-/// diagnostic. Upper-half `UInt64` / `UInt128` and full `Int128` overflow
-/// source literals remain blocked by the current i64 source literal carrier,
-/// which is covered separately by `uint64_upper_half_literals_are_tracked_carrier_limitation`.
-/// `UInt128` is still included for its source-representable lower-bound
-/// overflow (`-1`). Alias coverage is representative rather than exhaustive
-/// so this receipt stays under the CI per-test wall-clock ratchet.
+/// diagnostic. **UInt64** literals above `i64::MAX` that still fit in `u64`
+/// are accepted under the decimal-string literal carrier (R3 gate #22;
+/// see `uint64_upper_half_literal_tokenizes_and_narrows`). **UInt128** /
+/// full **Int128** overflow cases that remain outside the representable
+/// surface continue to use the same magnitude / range machinery. `UInt128`
+/// is still included here for its source-representable lower-bound overflow
+/// (`-1`). Alias coverage is representative rather than exhaustive so this
+/// receipt stays under the CI per-test wall-clock ratchet.
 #[test]
 fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
     let cases = [
