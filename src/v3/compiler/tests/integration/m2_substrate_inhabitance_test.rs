@@ -4375,27 +4375,42 @@ fn real_default_alias_resolves_to_approximate_field_over_field_of_fractions_of_i
             }
         };
 
-        let inner_carrier = match connective {
+        let (template_id, arguments) = match connective {
             TypeConnective::Instantiation {
                 template,
                 arguments,
-            } => {
-                assert_eq!(
-                    *template,
-                    approx.id,
-                    "Real must be `ApproximateField<F>` per STOP Option A"
-                );
-                assert_eq!(
-                    arguments.len(),
-                    1,
-                    "ApproximateField<F> takes exactly one carrier type parameter"
-                );
-                arguments[0].value
-            }
-            other => panic!("Real must lower to an ApproximateField instantiation; got {other:?}"),
+            } => (*template, arguments),
+            other => panic!(
+                "Real must lower to an ApproximateField instantiation; got {other:?}"
+            ),
         };
 
-        let carrier_decl = dag.declaration(inner_carrier);
+        assert_eq!(
+            arguments.len(),
+            1,
+            "`Real` must instantiate `ApproximateField` with exactly one carrier argument \
+             (`FieldOfFractions<Int>` per STOP Option A)"
+        );
+
+        let mut resolved_template = template_id;
+        loop {
+            match &dag.declaration(resolved_template).connective {
+                TypeConnective::Atom(AtomPayload::ResolvedByName(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => {
+                    resolved_template = *next;
+                }
+                _ => break,
+            }
+        }
+
+        assert_eq!(
+            resolved_template,
+            approx.id,
+            "Real must instantiate imported `ApproximateField<F>` (resolve import stubs)"
+        );
+
+        let carrier_id = arguments[0].value;
+        let carrier_decl = dag.declaration(carrier_id);
         match &carrier_decl.connective {
             TypeConnective::Instantiation {
                 template,
@@ -4404,7 +4419,7 @@ fn real_default_alias_resolves_to_approximate_field_over_field_of_fractions_of_i
                 assert_eq!(
                     *template,
                     fof.id,
-                    "Real's carrier slot must be `FieldOfFractions<Int>` — not `Rational` \
+                    "Real's type argument must be `FieldOfFractions<Int>` — not `Rational` \
                      (`Rational` names `Field<FieldOfFractions<Int>>`, a witness type)"
                 );
                 assert_eq!(
@@ -4419,7 +4434,7 @@ fn real_default_alias_resolves_to_approximate_field_over_field_of_fractions_of_i
                 );
             }
             other => panic!(
-                "Real's ApproximateField carrier must be a FieldOfFractions instantiation; got {other:?}"
+                "Real's ApproximateField carrier argument must be a FieldOfFractions instantiation; got {other:?}"
             ),
         }
     });
