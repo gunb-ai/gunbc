@@ -13,8 +13,9 @@ module v3.std.timing_lens
 
 import std.list { List, is_empty }
 import std.nat { Nat }
-import std.types { Bool, ContentHash, WorkflowProducerId, WorkflowObserverId, WorkflowProverId, WorkflowRunId }
+import std.types { Bool, ContentHash, FilePath, WorkflowProducerId, WorkflowObserverId, WorkflowProverId, WorkflowRunId }
 import std.substrate { Dag, Behavior, LoopBound, NodeId }
+import v3.std.substrate { SourceSpan }
 import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.workflows { behavior_spine }
@@ -160,13 +161,16 @@ fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasure
 fn timing_lens_empty_corrections() -> List<Correction> =
   Empty
 
+data timing_lens_scaffold_diagnostic_span_file: FilePath =
+  "src/v3/std/timing_lens.dag"
+
 // Placeholder `Diagnostic` for scaffold validate: non-`Observed` carriers are
 // not admissible as validated evidence until runner-backed observation wiring
 // lands (`ResolveError` is the closest Layer-1 kind for “evidence not resolved”).
 fn timing_lens_scaffold_non_evidence_diagnostic(text: String) -> Diagnostic =
   {
     kind: CompilerKind(ResolveError)
-    span: { file: "src/v3/std/timing_lens.dag", start: 0, end: 0 }
+    span: SourceSpan { file: timing_lens_scaffold_diagnostic_span_file, start: 0, end: 0 }
     message: text
     fixes: timing_lens_empty_corrections()
   }
