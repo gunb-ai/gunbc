@@ -6,7 +6,7 @@
 
 **Substrate canvas (authority for blocker matrix):** [`docs/briefs/r3-substrate-s2-t-lbp-scope-calibration-canvas.md`](r3-substrate-s2-t-lbp-scope-calibration-canvas.md).
 
-**Carve-out routing (IN R3 vs R4):** [`docs/r4-carve-out-routing.md`](../r4-carve-out-routing.md) **C1–C3** — **complexity** + **cost** lenses **IN R3**; **parallelism** + **effect_enumeration** **carved to R4**; register gate **#83** narrowed to in-scope lenses only.
+**AMENDED 2026-05-09 — full T-LBP scope IN R3 per Director carve-promotion-IN-R3 ratification at gunbc#846 #issuecomment-4412330468 + (a) at #issuecomment-4412380947**: all 4 lenses (complexity + cost + parallelism + effect_enum) R3-load-bearing within Cluster F per [`docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md`](../audit/r3-cluster-f-sequencing-plan-2026-05-09.md). Prior C1/C2/C3 carves DISSOLVED. Register gate **#83** fires for ALL 4 in-R3 lenses (prior narrowed scope DISSOLVED).
 
 **Single authority (INVARIANTS §P2):** Option **(b)** obligation text is **`docs/r3-structure.md`** §"Acceptance" T-Lens-Behavioral-Parity **plus** the matching Summary lane bullet (item **14**) **plus** the §"Lane structure" table row — updated in lockstep. **This brief** elaborates Verification receipts only; it does **not** define lane scope independently of `r3-structure.md`.
 
@@ -19,7 +19,7 @@
 | 79 | `complexity_lens_behaviorally_complete` | Cementing tests + `ClaimResult` diagnostics; consumes T-E-P producer evidence; aligns witness shapes with [`r3-v-witness-shape-pattern-survey.md`](r3-v-witness-shape-pattern-survey.md) |
 | 80 | `cost_lens_behaviorally_complete` | Same — shared producer dependency as complexity (S2 matrix lens 2) |
 | 73 | `lens_behavioral_parity_demonstration` | Per **in-R3** lens demo (complexity, cost) matching **frozen** v2-oracle snapshot (plan §1.6 — **not** live v2 consumer); carved lenses **R4** |
-| 83 | `lens_capability_register_zero_proxy_zero_stub` | Receipt that register lists **ZERO PROXY / ZERO STUB** for **complexity + cost only**; **document** R4-carved rows per **C3** |
+| 83 | `lens_capability_register_zero_proxy_zero_stub` | Receipt that register lists **ZERO PROXY / ZERO STUB** for **ALL 4 in-R3 lenses** (complexity + cost + parallelism + effect_enum) per Director carve-promotion ratification 2026-05-09 c#4412330468; prior narrowed-scope C3 framing DISSOLVED |
 
 ## Out of R3 (partner discipline)
 

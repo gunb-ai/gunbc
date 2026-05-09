@@ -1,7 +1,7 @@
 ---
-status: draft (Mgr-tier canvas; ENGAGE-NOW per Director disposition 2026-05-06)
+status: HISTORICAL CANVAS — DISSOLVED 2026-05-09 per Director carve-promotion-IN-R3 ratification at gunbc#846 #issuecomment-4412330468 + (a) at #issuecomment-4412380947. Option-(b) ratification was original disposition (2026-05-06); subsequent carve-promotion DISSOLVES the option-(b) narrowing — all 4 lenses now R3-load-bearing within Cluster F (T-LP-Retirement) per docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md. Preserved as historical record of the decision process; current authority lives in r3-structure.md + r3-program-plan.md + cluster-f-sequencing-plan.
 authority parent: R3 Substrate Manager (#1739) + Verification Manager (#1740) cross-program
-ratification: Director needs Substrate canvas detail before engaging Q-Lens-Behavioral-Parity-R3-Closeability (E3 RED)
+ratification: Director ratified option (b) at gunbc#828 #issuecomment-4385329180 (2026-05-06); AMENDED 2026-05-09 (carve-promotion DISSOLVES option-(b) carve-narrowing)
 roadmap row: docs/r3-program-plan.md §10 Q-LBP-R3-Closeability + §1.8 ledger rows #79-#83 (T-LBP), #61 (Class 2), #88-#95 (T-LAS), #54 (timing-lens), #57-#59 (T-LSA)
 authority docs:
   - docs/r3-structure.md §"Summary" T-LBP lane (L-XL sized; cross-program Substrate+Verification)
@@ -33,8 +33,9 @@ substrate / runtime / consumer blockers that gate
 - **(a) accept**: T-LBP scope unchanged; Director ratifies finite
   close-path within R3 horizon for all 4 lenses.
 - **(b) reframe**: narrow R3 T-LBP scope to 1-2 lenses; remaining
-  lenses carve to R4 with substrate-gap routing.
-- **(c) carve to R4**: T-LBP fully out of R3; cascading lanes
+  lenses carve to R4 with substrate-gap routing. *(historical option;
+  ratified 2026-05-06 then carve-promoted-IN-R3 2026-05-09 — DISSOLVED)*
+- **(c) carve to R4** *(historical option; rejected 2026-05-06)*: T-LBP fully out of R3; cascading lanes
   (T-LAS / T-WAD / T-LSA / Class 2) re-routed or carved.
 
 This canvas is **Mgr-tier scope-calibration input**, not a worker
