@@ -972,23 +972,6 @@ pub mod evaluator {
                 .collect()
         }
 
-        fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
-        where
-            T: Send + 'static,
-        {
-            // Test-harness containment: TC2/evaluator tests exercise bootstrap-sized paths
-            // that can overflow the default harness stack in CI. Dissolution trigger:
-            // remove or centralize this wrapper once those paths run on the default stack.
-            const TC2_EVALUATOR_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
-
-            std::thread::Builder::new()
-                .stack_size(TC2_EVALUATOR_TEST_STACK_BYTES)
-                .spawn(f)
-                .expect("spawn larger-stack evaluator test thread")
-                .join()
-                .expect("larger-stack evaluator test thread panicked")
-        }
-
         fn node_for_port(dag: &Dag, port: PortId) -> NodeId {
             dag.resolve_producer_opt(&port).expect("producer").id()
         }
@@ -1471,23 +1454,21 @@ pub mod evaluator {
 
         #[test]
         fn transform_right_first_evaluates_inputs_without_reordering_operands() {
-            run_on_larger_stack(|| {
-                let mut dag = Dag::new();
-                let lhs = dag.push_value(LiteralBits::Int(10), span());
-                let rhs = dag.push_value(LiteralBits::Int(3), span());
-                let output = dag.push_transform(
-                    TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
-                    vec![lhs, rhs],
-                    span(),
-                );
-                let entry = node_for_port(&dag, output);
-                let mut state = empty_state();
-                let strategy = eager_right_first_strategy();
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(10), span());
+            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+            let strategy = eager_right_first_strategy();
 
-                let value = eval_node(&dag, entry, &mut state, &strategy).expect("right-first sub");
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("right-first sub");
 
-                assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
-            });
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
         }
 
         #[test]
