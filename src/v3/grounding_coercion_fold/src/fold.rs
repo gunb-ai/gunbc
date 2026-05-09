@@ -10,9 +10,9 @@
 //!
 //! **`DeclaredIntegerIntents`:** before selection, the fold counts meta-tagged
 //! `TargetIntegerTypeInhabitance` declarations (**INVARIANTS.md E-6**). After a unique structural
-//! match, **`type_realization`** must reference substrate `data …: TypeRealization`
-//! (**`dag.type_realization_meta()`**) or the fold surfaces `UnderRefined` on
-//! **`target_integer_type_realization`**. Row `bound:` values use
+//! match, **`type_realization`** must name substrate `data …: TypeRealization` with
+//! **`language`/`target`** fields matching **`row.language`** / **`row.kernel_integer`**; otherwise the
+//! fold surfaces `UnderRefined` on **`target_integer_type_realization`**. Row `bound:` values use
 //! [`TargetIntegerInhabitanceBound`](../../std/emit_model.dag) — including **unit
 //! `PlatformDependentFact`** for platform-sized targets. [`match_bound`] pairs program
 //! [`BoundDeclarationView`] with those facts: kind-only **positive match** for
@@ -302,18 +302,22 @@ fn parse_target_integer_inhabitance_bound(
     }
 }
 
-/// Fail-closed check: **`type_realization`** from an inhabitance row must reference substrate
-/// `data …: TypeRealization` (**`meta_tag == type_realization_meta()`**).
-fn validate_type_realization_reference(
+/// Fail-closed check: **`row.type_realization`** must reference substrate **`data …: TypeRealization`**
+/// (**`meta_tag == type_realization_meta()`**) *and* the realization’s **`language`** /
+/// **`target`** fields (**`emit_model.dag`** `TypeRealization`) must match **`row.language`** and
+/// **`row.kernel_integer`** respectively — guarding against cross-target / cross-language spec drift
+/// (**E-6**).
+fn validate_type_realization_matches_inhabitance_row(
     dag: &Dag,
-    realization: DeclarationId,
+    row: &TargetIntegerTypeInhabitanceRow,
 ) -> Result<(), EmissionDiagnostic> {
-    let Some(type_real_meta) = dag.type_realization_meta() else {
-        return Err(EmissionDiagnostic::UnderRefined {
-            unspecified_axis: "TypeRealization_meta".to_string(),
-        });
-    };
+    let type_real_meta =
+        dag.type_realization_meta()
+            .ok_or_else(|| EmissionDiagnostic::UnderRefined {
+                unspecified_axis: "TypeRealization_meta".to_string(),
+            })?;
 
+    let realization = row.type_realization;
     let Some(decl) = dag.declaration_opt(&realization) else {
         return Err(EmissionDiagnostic::UnderRefined {
             unspecified_axis: "target_integer_type_realization".to_string(),
@@ -321,6 +325,30 @@ fn validate_type_realization_reference(
     };
 
     if decl.meta_tag != Some(type_real_meta) {
+        return Err(EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_integer_type_realization".to_string(),
+        });
+    }
+
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        return Err(EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_integer_type_realization".to_string(),
+        });
+    };
+
+    let Some(rez_language) = reference_field(fields, "language") else {
+        return Err(EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_integer_type_realization".to_string(),
+        });
+    };
+
+    let Some(rez_target) = reference_field(fields, "target") else {
+        return Err(EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_integer_type_realization".to_string(),
+        });
+    };
+
+    if rez_language != row.language || rez_target != row.kernel_integer {
         return Err(EmissionDiagnostic::UnderRefined {
             unspecified_axis: "target_integer_type_realization".to_string(),
         });
@@ -386,7 +414,7 @@ fn select_declared_inhabitance(
         }
     };
 
-    validate_type_realization_reference(dag, selected.type_realization)?;
+    validate_type_realization_matches_inhabitance_row(dag, selected)?;
 
     Ok(SelectedTargetInhabitance::from_validated_type_realization(
         selected.type_realization,
@@ -539,22 +567,44 @@ mod type_realization_gate_tests {
             .id
     }
 
+    fn u32_fixture_row_for_rust(dag: &Dag) -> TargetIntegerTypeInhabitanceRow {
+        TargetIntegerTypeInhabitanceRow {
+            language: dag.rust_language_spec().expect("Rust LanguageSpec"),
+            kernel_integer: declaration_id_by_name(dag, "UInt32"),
+            algebra: declaration_id_by_name(dag, "UInt32"),
+            bound: TargetIntegerInhabitanceBoundView::BoundUnspecified,
+            type_realization: declaration_id_by_name(dag, "rust_u32"),
+        }
+    }
+
     #[test]
-    fn rust_u32_realization_decl_passes_type_realization_meta_gate() {
+    fn substrate_type_realization_aligns_language_and_kernel_for_fixture_row() {
         with_bootstrap_stack(|| {
             let dag = Dag::new();
-            let id = declaration_id_by_name(&dag, "rust_u32");
-            assert!(validate_type_realization_reference(&dag, id).is_ok());
+            let row = u32_fixture_row_for_rust(&dag);
+            assert!(validate_type_realization_matches_inhabitance_row(&dag, &row).is_ok());
         });
     }
 
     #[test]
-    fn kernel_declaration_rejected_without_type_realization_meta() {
+    fn mismatched_language_on_type_realization_fails_gate() {
         with_bootstrap_stack(|| {
             let dag = Dag::new();
-            let id = declaration_id_by_name(&dag, "UInt32");
+            let rust_u32 = declaration_id_by_name(&dag, "rust_u32");
+            let kernel_u32 = declaration_id_by_name(&dag, "UInt32");
+            let python_lang = dag.python_language_spec().expect("Python LanguageSpec");
+
             assert_eq!(
-                validate_type_realization_reference(&dag, id),
+                validate_type_realization_matches_inhabitance_row(
+                    &dag,
+                    &TargetIntegerTypeInhabitanceRow {
+                        language: python_lang,
+                        kernel_integer: kernel_u32,
+                        algebra: kernel_u32,
+                        bound: TargetIntegerInhabitanceBoundView::BoundUnspecified,
+                        type_realization: rust_u32,
+                    },
+                ),
                 Err(EmissionDiagnostic::UnderRefined {
                     unspecified_axis: "target_integer_type_realization".to_string(),
                 })
@@ -563,12 +613,69 @@ mod type_realization_gate_tests {
     }
 
     #[test]
-    fn unknown_declaration_id_fails_type_realization_gate() {
+    fn mismatched_kernel_integer_vs_realization_target_fails_gate() {
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let rust_language = dag.rust_language_spec().expect("Rust LanguageSpec");
+            let rust_u32 = declaration_id_by_name(&dag, "rust_u32");
+            let wrong_kernel = declaration_id_by_name(&dag, "Int32");
+
+            assert_eq!(
+                validate_type_realization_matches_inhabitance_row(
+                    &dag,
+                    &TargetIntegerTypeInhabitanceRow {
+                        language: rust_language,
+                        kernel_integer: wrong_kernel,
+                        algebra: wrong_kernel,
+                        bound: TargetIntegerInhabitanceBoundView::BoundUnspecified,
+                        type_realization: rust_u32,
+                    },
+                ),
+                Err(EmissionDiagnostic::UnderRefined {
+                    unspecified_axis: "target_integer_type_realization".to_string(),
+                })
+            );
+        });
+    }
+
+    #[test]
+    fn kernel_declaration_used_as_payload_fails_meta_gate() {
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let kernel_u32 = declaration_id_by_name(&dag, "UInt32");
+            let row = TargetIntegerTypeInhabitanceRow {
+                language: dag.rust_language_spec().expect("Rust LanguageSpec"),
+                kernel_integer: kernel_u32,
+                algebra: kernel_u32,
+                bound: TargetIntegerInhabitanceBoundView::BoundUnspecified,
+                type_realization: kernel_u32,
+            };
+
+            assert_eq!(
+                validate_type_realization_matches_inhabitance_row(&dag, &row),
+                Err(EmissionDiagnostic::UnderRefined {
+                    unspecified_axis: "target_integer_type_realization".to_string(),
+                })
+            );
+        });
+    }
+
+    #[test]
+    fn unknown_declaration_id_used_as_payload_fails_gate() {
         with_bootstrap_stack(|| {
             let dag = Dag::new();
             let bogus = DeclarationId::declaration_id_raw_for_testing(u32::MAX);
             assert_eq!(
-                validate_type_realization_reference(&dag, bogus),
+                validate_type_realization_matches_inhabitance_row(
+                    &dag,
+                    &TargetIntegerTypeInhabitanceRow {
+                        language: dag.rust_language_spec().expect("Rust LanguageSpec"),
+                        kernel_integer: declaration_id_by_name(&dag, "UInt32"),
+                        algebra: declaration_id_by_name(&dag, "UInt32"),
+                        bound: TargetIntegerInhabitanceBoundView::BoundUnspecified,
+                        type_realization: bogus,
+                    },
+                ),
                 Err(EmissionDiagnostic::UnderRefined {
                     unspecified_axis: "target_integer_type_realization".to_string(),
                 })

@@ -48,7 +48,8 @@ pub struct IntegerTargetIntent {
 }
 
 /// Selected integer target: identity from a `TargetIntegerTypeInhabitance` row after the fold’s
-/// fail-closed `TypeRealization` meta gate on `type_realization`.
+/// fail-closed payload check on **`type_realization`** (substrate **`TypeRealization`** meta + row
+/// `language`/`kernel_integer` consistency with realization `language`/`target`; see `fold.rs`).
 ///
 /// **API contract:** downstream code must not fabricate this carrier — obtain values only from
 /// [`fold_program_to_target`](crate::fold::fold_program_to_target). The field is private so random
