@@ -131,8 +131,10 @@ Per openai-pro meta-review on PR #1808 sha `cf249389` ([#issuecomment-4384405832
 **Per-gate status taxonomy:**
 
 - **DECLARED** — gate id + Pass condition exists in `r3-structure.md` §"Acceptance" or this plan §1. Document-level only.
-- **CONSUMER_LANDED** — the consumer (CI check, `.dag` TestClaim runner executing through Evaluator, manual demonstration receipt) executes the Pass condition + can fail-closed if violated.
+- **CONSUMER_LANDED** — an executable consumer exists for the gate id (runner, CI check, or demonstration harness) and evaluates the predicate **fail-closed over the coverage it implements**. For gates whose §Acceptance is **corpus-quantified** (§1.7 corpus rule), that coverage may be a **proper subset** until **PASSING**; slice receipts document **evidence** in the §1.8 **Notes** column — they are **not** a second closure gate and **not** PASSING by themselves.
 - **PASSING** — consumer landed AND Pass condition currently true.
+
+**Corpus-quantified §Acceptance gates (P2 — single authority vs slice receipts):** When `r3-structure.md` §"Acceptance" states a property over **every** program in a named certification corpus, **PASSING** means that **full** quantifier is satisfied: the consumer covers the corpus end-to-end and each wired row passes. **CONSUMER_LANDED** may attach once an executable consumer exists that evaluates the predicate fail-closed for **some** corpus subset (early seeds / incremental wiring); slice receipts **Pass** in CI do **not** imply **PASSING** until coverage matches the §Acceptance corpus authority.
 
 **Status at HEAD**: per §1.8 canonical ledger Status column — most gates are **DECLARED**; `pb_self_compile_fixed_point` is a canonical CONSUMER_LANDED exemplar (R1 horizon Pass = current `verification.dag` + `test_runner` evaluation). **`method_template_projection_emit_shim_retirement_coherence` (§1.8 #97)** is **CONSUMER_LANDED + PASSING** via the integration test cited in the §1.8 ledger row. `tier3_*_mirror_dissolved` gates remain **DECLARED** at HEAD (T-Tier3-Dissolution lane work in flight per §3 lane status; consumer count / mirror-symbol count test not yet authored). Per-gate status updates flow through §1.8 ledger as Mgrs land consumer infrastructure per their lane scope; all 16 NEW gates added 2026-05-06 in PR #1808 are DECLARED-only.
 
@@ -172,7 +174,7 @@ Mgrs author per-gate spec citing the (a)/(b)/(c) satisfaction; closure-ledger en
 |---|---|---|
 | T-Tier3-Dissolution | `tier3_*_mirror_dissolved` (state-check) | + `tier3_dissolution_demonstration_executes` — at least one Tier3-mirror-consumer .dag program runs end-to-end via Evaluator |
 | T-LensProducer-Retirement | retirement gates (state-check) | + `lens_producer_retirement_executable_witness` (per PB Mgr poke-hole 2026-05-06 F3 — reframed from `_demonstration`) — execution-ready witness DEFERRED to Row-4 equivalence receipt landing per `docs/design-pb-runtime-interpreter.md` §5.1 + convergence matrix; near-term demo = retirement state-check + doc receipts; "demonstration" status re-promotes when Row-4 + Item 4 receipts exist |
-| T-V-L4-L7-Direct | `l4_emit_eval_match`, `l7_algebraic_laws_witnessed` (skeleton/staged at HEAD; closure bar = exhaustive per-(algebra, inhabitant, law) coverage per `r3-structure.md` §"Lane structure" → T-Verification-L4-L7-Direct row + 2026-05-02 fold-in) | (existing harness — NOT yet "fully demonstrated"; over-greening risk per Verification Mgr poke-hole 2026-05-06) |
+| T-V-L4-L7-Direct | `l4_emit_eval_match` (**§1.8 #9** — **CONSUMER_LANDED** on Rust/Int W1 slice; **not §1.8 PASSING** until full certification corpus per `r3-structure.md` §Acceptance); `l7_algebraic_laws_witnessed` still staged (closure bar = exhaustive L4 corpus + per-(algebra, inhabitant, law) L7 coverage per `r3-structure.md` §"Lane structure") | Executable seeds + §1.7 corpus rule: slice **Pass** receipts ≠ acceptance **PASSING**; full lane demonstration remains gated on corpus exhaustion + L7 |
 | T-V-L5-Corpus | `l5_cross_target_consistency` ✓ | (existing) |
 | T-FixedPoint | `pb_self_compile_fixed_point` ✓ | (existing) |
 | T-Numeric-Construction | substrate-shape gates only | + `numeric_construction_demonstration` — end-to-end program using `Int<32>` + `Real<64>` round-trip executes |
@@ -211,7 +213,9 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 - **CI-discipline**: CI-enforced PR-authoring contract gate
 - **substrate-gap-class**: conjunctive closure-criterion over existing lane work (per §1.4)
 
-**Status legend** (per §1.7): DECLARED (doc-level only) / CONSUMER_LANDED (consumer verifies Pass) / PASSING (consumer + condition true).
+**Status legend** (per §1.7): DECLARED (doc-level only) / CONSUMER_LANDED (executable consumer for gate id — coverage may be partial for corpus gates; see §1.7) / PASSING (consumer + §Acceptance condition true).
+
+**§1.8 Status vs Notes (corpus gates):** For corpus-quantified §Acceptance predicates, the **Status** cell states **ledger closure progress only** (`CONSUMER_LANDED` → `PASSING`). **Slice receipts** (e.g. “N seeds Pass in CI”) live in **Notes** as implementation evidence — never substitute a slice receipt for **PASSING**, and do not mint a duplicate §1.8 row for the same gate id (P2).
 
 | # | Gate ID | Family | Owner Lane | Status | Notes |
 |---|---|---|---|---|---|
@@ -223,7 +227,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 | 6 | `lens_testgen_dot_rs_retired` | state-check | T-LensProducer-Retirement | DECLARED | same gate as #5 |
 | 7 | `regen_lens_dot_rs_retired` | state-check | T-LensProducer-Retirement | DECLARED | gated on PB-1 bin-shim emit pattern |
 | 8 | `sg0_non_test_zero` | state-check | T-LensProducer-Retirement | DECLARED | SG-0 EXPECTED_HAND_AUTHORED_NON_TEST count = 0 |
-| 9 | `l4_emit_eval_match` | structural-fold | T-V-L4-L7-Direct | DECLARED (skeleton/staged per Verification Mgr poke-hole) | per-program emit ↔ eval algebraic equality |
+| 9 | `l4_emit_eval_match` | structural-fold | T-V-L4-L7-Direct | **CONSUMER_LANDED** — executable consumer exists; §Acceptance corpus coverage **incomplete** (§1.7 corpus-quantified rule) | **Slice-1 receipt (evidence, non-closure):** three Rust/Int W1 `DifferentialEquals` certification seeds Pass in CI (`r3_verification_l4_emit_eval_match.dag`, suite `r3_verification_l4_l7_direct_suite`, harness `r3_verification_l4_l7_l5_skeleton_test.rs`; canonical claim `l4_emit_eval_match`). **PASSING** = every certification-corpus program per `r3-structure.md` §Acceptance. **Ledger phrase:** per-program emit ↔ eval algebraic equality |
 | 10 | `l7_algebraic_laws_witnessed` | alg-law-witness | T-V-L4-L7-Direct | DECLARED (skeleton/staged) | exhaustive per-(algebra, inhabitant, law) coverage |
 | 11 | `tc1_eta_equivalence_executable` | DimensionReport-typed | T-V-L4-L7-Direct | **DECLARED through R3** (scaffold authored PR #2184 with NotYetImplemented sentinel per Director (C-modified) ratification at #828). **AMENDED 2026-05-09 per Director (a)-disposition**: TC1 V1 strict-fire cannot reach PASSING absent #1972 substrate canvas-tier work, which is HELD-CANVAS-DEFERRED past R3 per Substrate Mgr Path-A confirmation 2026-05-08. Gate #11 stays DECLARED through R3 close; not load-bearing for R3-thesis honest-close arithmetic (97 enumerated − 1 canvas-deferred {#11} = 96 R3-load-bearing per §1.5). Prior phrasing ("flips DECLARED → CONSUMER_LANDED → PASSING in one move on Evaluator E3.c merge") superseded — that path required #1972 substrate which is post-R3. | runtime prereq: G1.a static-rep OR G1.b generic + eta relation; #1972 canvas-tier substrate post-R3 |
 | 12 | `tc2_church_rosser_executable` | DimensionReport-typed | T-V-L4-L7-Direct | DECLARED (NEW 2026-05-06) | runtime prereq: second strategy/input order + strategy-keyed report |
