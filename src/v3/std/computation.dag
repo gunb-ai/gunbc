@@ -164,7 +164,7 @@ fn forever_iteration_bound() -> Int { 9223372036854775807 }
 fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
     ExplicitCountZero => Some { value: 0 }
-    ExplicitCountPositive { steps: s } => Some { value: positive_descent_count(steps: s) }
+    ExplicitCountPositive { steps: s } => Some { value: positive_descent_count(s) }
     Forever                    => Some { value: forever_iteration_bound() }
     _                          => none
   }

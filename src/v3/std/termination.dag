@@ -126,7 +126,7 @@ type PositiveDescentAmount
 fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
   match steps {
     OneStep => 1
-    AdditionalStep { previous: p } => 1 + positive_descent_count(steps: p)
+    AdditionalStep { previous: p } => 1 + positive_descent_count(p)
   }
 }
 

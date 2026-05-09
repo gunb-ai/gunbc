@@ -254,7 +254,7 @@ fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
     ConstantShrink { steps: sa } =>
       match b {
         ConstantShrink { steps: sb } =>
-          positive_descent_count(steps: sa) == positive_descent_count(steps: sb)
+          positive_descent_count(sa) == positive_descent_count(sb)
         _ => false
       }
     ProportionalShrink { divisor: da } =>
