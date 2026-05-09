@@ -554,6 +554,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
+    "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs",
     // TC1 substrate lens eta-equivalence (deferred / R2 research): integration for
