@@ -27,7 +27,8 @@ type TokenKind
   | KwTrue
   | KwFalse
   | Ident(String)
-  | IntLit(Int)
+  // Signed decimal string; same authority as `substrate.dag` `LitInt(String)`.
+  | IntLit(String)
   | StringLit(String)
   | Eq
   | EqEq
