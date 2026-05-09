@@ -5,7 +5,7 @@ lane: T-Bridge-Retirement — distributed bridge #4 (`bridge_include_str_side_ch
 authored: 2026-05-06 (neat-bear-351 — PB Mgr cycle #1861 / Director #846 pre-auth queue)
 standalone_closure_issue: gunb-ai/gunbc#1976
 depends_on: gunb-ai/gunbc#1939
-last_reverified: 2026-05-09 (clever-cat-146)
+last_reverified: 2026-05-09T01:50Z UTC (clever-cat-146)
 ---
 
 # R3 PB — `include_str!` side-channel closure (pipeline_authority) — worker brief
@@ -34,7 +34,7 @@ Per [`docs/design-emission-model.md`](../design-emission-model.md) ~944:
 
 **Corollary:** PB **must not** “close” this bridge by **reading `pipeline.dag` bytes from disk at runtime** as a substitute for `include_str!` — that repeats the **side-channel** failure mode #1171 explicitly rejected.
 
-**Live check (2026-05-09):** `src/v3/compiler/src/pipeline_authority.rs` still documents this suspension, and its test `pipeline_compile_body_remains_unparsed_blocking_structural_retirement` pins the blocker: `fn compile` lowers to `ArrowBody::Unparsed`. The remaining active in-scope `include_str!("../../pipeline.dag")` is in `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs`; it is intentionally part of the blocked dispatch because replacing it before T1 would only move the same authority problem to another non-structural channel.
+**Live check (2026-05-09T01:50Z UTC):** `src/v3/compiler/src/pipeline_authority.rs` still documents this suspension, and its test `pipeline_compile_body_remains_unparsed_blocking_structural_retirement` pins the blocker: `fn compile` lowers to `ArrowBody::Unparsed`. The remaining active in-scope `include_str!("../../pipeline.dag")` is in `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs`; it is intentionally part of the blocked dispatch because replacing it before T1 would only move the same authority problem to another non-structural channel.
 
 ## Acceptance (`bridge_include_str_side_channels_retired` — scoped slice)
 
