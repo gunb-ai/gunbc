@@ -3,8 +3,10 @@
 //! `FormAxis` enumerates the six [`v3_compiler::dag::TypeConnective`]
 //! discriminants (substrate-anchored per #1229), `BehaviorAxis` the
 //! five [`v3_compiler::dag::Behavior`] variants, and `ShapeATarget`
-//! the three Shape A targets (Rust / Python / Go). Each `Cell` is one
-//! of the 90 `(form × behavior × target)` triples.
+//! is a typed reference to a target `LanguageSpec` declaration. Each
+//! `Cell` is one `(form × behavior × LanguageSpec target)` triple.
+
+use v3_compiler::dag::{Dag, DeclarationId};
 
 /// Form-axis discriminant — mirrors [`v3_compiler::dag::TypeConnective`]
 /// variants without carrying their payloads (the cross-product walker
@@ -75,26 +77,24 @@ impl BehaviorAxis {
     }
 }
 
-/// Shape A target identity. Three concrete targets per
-/// `r2-grounding-manager.md`'s portability requirements
-/// (target-side primitive declarations for Rust / Python / Go).
+/// Shape A target identity, backed by the `LanguageSpec` data declaration
+/// that owns the target's substrate facts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ShapeATarget {
-    Rust,
-    Python,
-    Go,
+pub struct ShapeATarget {
+    pub spec: DeclarationId,
 }
 
 impl ShapeATarget {
-    /// All three Shape A targets.
-    pub const ALL: [ShapeATarget; 3] = [ShapeATarget::Rust, ShapeATarget::Python, ShapeATarget::Go];
+    pub fn new(spec: DeclarationId) -> ShapeATarget {
+        ShapeATarget { spec }
+    }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            ShapeATarget::Rust => "Rust",
-            ShapeATarget::Python => "Python",
-            ShapeATarget::Go => "Go",
-        }
+    pub fn label(self, dag: &Dag) -> String {
+        dag.declaration(self.spec)
+            .name
+            .as_deref()
+            .unwrap_or("<anonymous_language_spec>")
+            .to_string()
     }
 }
 
@@ -109,12 +109,12 @@ pub struct Cell {
 }
 
 impl Cell {
-    /// Iterator over all 90 cells, in nested-loop order
+    /// Iterator over all cells, in nested-loop order
     /// (form outer, behavior middle, target inner).
-    pub fn all() -> impl Iterator<Item = Cell> {
+    pub fn all(targets: &[ShapeATarget]) -> impl Iterator<Item = Cell> + '_ {
         FormAxis::ALL.iter().copied().flat_map(|connective| {
             BehaviorAxis::ALL.iter().copied().flat_map(move |behavior| {
-                ShapeATarget::ALL.iter().copied().map(move |target| Cell {
+                targets.iter().copied().map(move |target| Cell {
                     connective,
                     behavior,
                     target,
@@ -124,13 +124,13 @@ impl Cell {
     }
 
     /// Stable key for closure-ledger gap rows (`docs/r2-closure-ledger.md`):
-    /// `Form_Behavior_Target` using substrate axis labels.
-    pub fn ledger_key(self) -> String {
+    /// `Form_Behavior_Target` using substrate axis labels and LanguageSpec name.
+    pub fn ledger_key(self, dag: &Dag) -> String {
         format!(
             "{}_{}_{}",
             self.connective.label(),
             self.behavior.label(),
-            self.target.label()
+            self.target.label(dag)
         )
     }
 }

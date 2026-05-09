@@ -120,17 +120,17 @@ mod tests {
             Cell {
                 connective: FormAxis::Cardinality,
                 behavior: BehaviorAxis::Transform,
-                target: ShapeATarget::Rust,
+                target: ShapeATarget::new(dag.rust_language_spec().expect("rust language")),
             },
             Cell {
                 connective: FormAxis::Cardinality,
                 behavior: BehaviorAxis::Transform,
-                target: ShapeATarget::Python,
+                target: ShapeATarget::new(dag.python_language_spec().expect("python language")),
             },
             Cell {
                 connective: FormAxis::Cardinality,
                 behavior: BehaviorAxis::Transform,
-                target: ShapeATarget::Go,
+                target: ShapeATarget::new(dag.go_language_spec().expect("go language")),
             },
         ];
         for cell in expected_present {

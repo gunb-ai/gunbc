@@ -85,17 +85,16 @@ fn conj_field_label_and_type_names<'a>(
 }
 
 #[test]
-fn shape_a_target_disj_variants_match_ratified_labels() {
+fn shape_a_target_record_carries_language_spec_ref() {
     let dag = generated_full_bootstrap_dag();
     let decl = dag
         .declaration_by_name(SHAPE_A_TARGET)
         .expect("ShapeATarget must exist");
-    let labels = disj_variant_labels(decl, SHAPE_A_TARGET);
+    let fields = conj_field_label_and_type_names(&dag, decl, SHAPE_A_TARGET);
     assert_eq!(
-        labels,
-        vec!["Rust", "Python", "Go"],
-        "ShapeATarget variants must be exactly [Rust, Python, Go] in declaration order \
-         (closed set per Q-Unit-1 brief §1; new target requires P1 substrate-fact-introduction)"
+        fields,
+        vec![("spec", "LanguageSpec")],
+        "ShapeATarget must dissolve the closed Rust/Python/Go enum into a typed LanguageSpec ref"
     );
 }
 
@@ -245,11 +244,22 @@ fn variant_label<'a>(dag: &'a Dag, axis_name: &str, value: &FieldValue) -> &'a s
 }
 
 fn projection_target(dag: &Dag, value: &FieldValue) -> ProjectionTarget {
-    match variant_label(dag, SHAPE_A_TARGET, value) {
-        "Rust" => ProjectionTarget::Rust,
-        "Python" => ProjectionTarget::Python,
-        "Go" => ProjectionTarget::Go,
-        other => panic!("unknown ShapeATarget variant `{other}`"),
+    let FieldValue::Record(fields) = value else {
+        panic!("ShapeATarget must be a record carrying `spec`, got {value:?}");
+    };
+    let spec = field(fields, "spec");
+    let FieldValue::Reference(spec) = spec else {
+        panic!("ShapeATarget.spec must be a LanguageSpec reference, got {spec:?}");
+    };
+    if Some(*spec) == dag.rust_language_spec() {
+        ProjectionTarget::Rust
+    } else if Some(*spec) == dag.python_language_spec() {
+        ProjectionTarget::Python
+    } else if Some(*spec) == dag.go_language_spec() {
+        ProjectionTarget::Go
+    } else {
+        let name = dag.declaration(*spec).name.as_deref().unwrap_or("<anonymous>");
+        panic!("unknown ShapeATarget LanguageSpec `{name}`")
     }
 }
 

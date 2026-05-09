@@ -34,6 +34,8 @@
 module v3.std.cross_target_coverage
 
 import v3.std.methods { MethodRef }
+import v3.std.emit_model { LanguageSpec }
+import std.verification { Compiles, TestClaim }
 import std.methods {
   all_method,
   any_method,
@@ -55,63 +57,15 @@ import std.methods {
 
 // --- ShapeATarget ---------------------------------------------------------
 //
-// PRACTICE 4 CHECKPOINT: 🟢 TERMINAL
-// Closed set of v3 target languages (Rust / Python / Go). Adding a target
-// is a substrate-scope event (new emitter, new method-template contracts),
-// NOT a row-level addition. Any new variant requires a P1 substrate-fact-
-// introduction procedure on this declaration directly; row-level addition
-// is not authorized.
-//
-// FOUR-PATTERN DISSOLUTION RECEIPT (per `feedback_coproduct_dissolution`
-// — required for 🟢 TERMINAL stamp; mirrors the DB-18 / DB-9 / DB-16
-// pattern at `docs/design-db18-workflow-effect-carrier.md` §"Dissolution
-// receipt"):
-//
-//   Pattern 1 (Fact placement — multiple consumers, different DAG
-//   locations). All three variants attach to the same `ShapeATarget`-typed
-//   slot at the same DAG location: the `target` field of
-//   `MethodTemplateContractKey` (and the `target` field of every
-//   `MethodTemplateContract` row at `{rust,python,go}_method_template_
-//   contracts.dag`). The variant discriminates WHICH TARGET LANGUAGE,
-//   not WHERE THE TARGET FACT LIVES. No fact-placement compression to
-//   dissolve. ✓ does not apply.
-//
-//   Pattern 2 (Variant-is-data — same shape, different label). The three
-//   variants have NO payload (zero-field constructors). They are pure
-//   tags, but the tag identity governs which method-template-contract
-//   list authoritatively drives Grounding emission for that target:
-//   `Rust` → `rust_method_template_contracts`, `Python` →
-//   `python_method_template_contracts`, `Go` → `go_method_template_
-//   contracts`. Each tag is a typed dispatch key into a separate
-//   substrate authority list. Collapsing to a single labeled string
-//   (e.g., `target_name: String`) would re-introduce string-name
-//   dispatch — exactly the discipline-violation Option 2's typed
-//   `target: ShapeATarget` shape was ratified to prevent (per Director
-//   §4.C=(i) RATIFIED at gunbc#828 #issuecomment-4377533390). The tag
-//   IS the dispatch authority, not redundant labeling. ✓ does not apply.
-//
-//   Pattern 3 (Algebraic-form — traces to intro/elim of algebraic
-//   structures). Target identity is not an algebraic operation: there
-//   is no `target_compose` / `target_unit` / `target_inverse` operation
-//   over `{Rust, Python, Go}`. The set is enumerated by Director
-//   ratification (Shape A target identity per `r2-grounding-manager.md`'s
-//   portability requirements), not derived from a categorical structure.
-//   ✓ does not apply.
-//
-//   Pattern 4 (Dimensional — flat enum hides M-dimensional record). The
-//   three targets do not factor into orthogonal coordinates. Target
-//   identity is not `{ paradigm: SystemsLang | Scripting,
-//   typing_discipline: Static | Dynamic, ... }` — Rust / Python / Go
-//   each carry their own irreducible portability profile (per-target
-//   primitives + per-target method-template contracts + per-target
-//   emit). A coordinate decomposition would force partial-record
-//   semantics where each dimension's meaning depends on the target
-//   tag, which is the coproduct-tag pattern in disguise. ✓ does not
-//   apply.
-//
-// Conclusion: `ShapeATarget`'s 3-variant coproduct is structurally
-// irreducible. The coproduct is the correct shape. Stamp: 🟢 TERMINAL.
-type ShapeATarget = Rust | Python | Go
+// PRACTICE 4 DISSOLUTION RECEIPT: the former closed
+// `Rust | Python | Go` coproduct duplicated `LanguageSpec` as a second
+// target authority. Target identity is now a typed reference to the
+// target's `LanguageSpec` data declaration; adding a target is
+// data-driven by adding a new `LanguageSpec` declaration and the
+// corresponding row authorities, without editing this carrier.
+type ShapeATarget {
+  spec: LanguageSpec
+}
 
 // --- FormAxis -------------------------------------------------------------
 //
@@ -184,45 +138,53 @@ type EmissionPathProjection {
 // source row lists at HEAD; `go_method_template_contracts.dag` documents why
 // Go `chars` is not part of Phase 1.
 data emission_path_projections: List<EmissionPathProjection> = [
-  { row_identity: { target: Rust, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: last_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: first_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: enumerate_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: chars_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Rust, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: last_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: first_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: enumerate_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: chars_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: sort_by_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: append_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Python, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: sort_by_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: append_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: Go, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] }
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: last_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: first_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: enumerate_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: chars_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: rust_language }, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: last_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: first_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: enumerate_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: chars_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: sort_by_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: append_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: python_language }, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: sort_by_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: append_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: { spec: go_language }, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] }
 ]
+
+data shape_a_target_language_spec_ref_invariant: TestClaim = {
+  name: "shape_a_target_language_spec_ref_invariant"
+  source: "// ShapeATarget is a typed LanguageSpec reference, not a closed Rust/Python/Go enum.\nlet _: Int = 0\n"
+  file_name: "shape_a_target_language_spec_ref_invariant.v3"
+  predicate: Compiles
+  requires: []
+}

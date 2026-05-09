@@ -13,8 +13,8 @@
 
 use v3_compiler::dag::Dag;
 
-use crate::cells::Cell;
-use crate::coverage::language_spec_emission_cells_covered;
+use crate::cells::{Cell, ShapeATarget};
+use crate::coverage::{language_spec_emission_cells_covered, language_spec_targets};
 use crate::diagnostic::EmissionDiagnostic;
 
 /// Per-cell coverage report produced by the L6 walker.
@@ -29,8 +29,7 @@ pub struct CrossProductReport {
 }
 
 impl CrossProductReport {
-    /// Total cells walked. Always 6 × 5 × 3 = 90 (the cross-product
-    /// shape is structural; only coverage of each cell varies).
+/// Total cells walked.
     pub fn total_cells(&self) -> usize {
         self.present.len() + self.missing.len()
     }
@@ -42,9 +41,11 @@ impl CrossProductReport {
 /// **Pure function** — no mutation, no side effects, no panics.
 pub fn walk_cross_product(dag: &Dag) -> CrossProductReport {
     let covered = language_spec_emission_cells_covered(dag);
+    let targets = language_spec_targets(dag)
+        .unwrap_or_else(|| covered.iter().map(|cell| cell.target).collect::<Vec<ShapeATarget>>());
     let mut present = Vec::new();
     let mut missing = Vec::new();
-    for cell in Cell::all() {
+    for cell in Cell::all(&targets) {
         if covered.contains(&cell) {
             present.push(cell);
         } else {
