@@ -42,7 +42,7 @@ src/v3/std/diagnostics.dag	11	21478	7d2e9e73d74e5adb
 src/v3/std/dimensions.dag	21	39170	c6833b618a39e0af
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emission_provenance.dag	6	4966	ac93c5c74cb4f9f9
-src/v3/std/emit_model.dag	44	83040	71640f0720ab903a
+src/v3/std/emit_model.dag	44	83040	affde4f732f411ec
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	16839	22cffc76152e82dd
 src/v3/std/go_method_template_contracts.dag	14	133273	43ccd439b5e388ea
 src/v3/std/induction.dag	62	116143	4cb9b51af2e9ca44
