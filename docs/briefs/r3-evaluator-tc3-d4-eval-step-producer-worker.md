@@ -114,9 +114,11 @@ This representative is the **single canonical TC3 second-mover bounded-represent
 
 The representative is **not** a coverage proof; it is a strict-fire witness for second-mover disposition under (γ). Mirror to G1.a TC1 V1 strict-fire fixture authority shape.
 
-### Director ratification ask
+### Director ratification
 
-Surfacing for Director ratification at #828 (separate post) the specific-representative selection + scope statement above. If Director ratifies, this brief is the dispatch-ready spec for the worker once §5 dispatch-table preconditions land. If Director nominates a different representative, this section is amended; brief's §1 scope + §3 implementation guidance unchanged (representative is parametric to the producer surfaces).
+**RATIFIED** at gunbc#828 c#4413738978 (2026-05-09): specific-representative selection + scope statement above are dispatch-locked. The illustrative subject body (`fn tc3_subject_bounded_sum() -> Int = fold([1, 2, 3], 0, lambda acc x. acc + x)`) is **illustrative-not-binding**; final fixture wording is canvas-tier authoring scope at worker-dispatch time per `feedback_substrate_shape_belongs_in_mgr_canvas`. Bounded-`Cardinality(3)` shape is ratified as the binding structural constraint.
+
+Cross-Pattern-A consistency preserved across the family (TC1/TC2/TC3/TC4/#19) — strict-mirror discipline maintained; (α)/(β) novel-substrate-introduction explicitly carved to R4+ via Class P partition (Debt-Paydown PR #2437) + scope statement.
 
 ## 7 Discipline notes (worker-tier)
 
