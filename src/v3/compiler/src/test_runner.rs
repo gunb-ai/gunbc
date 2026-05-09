@@ -4075,27 +4075,6 @@ impl<'a> TestRunner<'a> {
     }
 }
 
-fn perf_budget_comparator_label(dag: &Dag, value: &FieldValue) -> Option<String> {
-    let FieldValue::Variant {
-        constructor,
-        payload,
-    } = value
-    else {
-        return None;
-    };
-    if !payload.is_empty() {
-        return None;
-    }
-    let comparator_decl = dag.declaration_by_name("PerfBudgetComparisonOp")?;
-    let TypeConnective::Disj { variants } = &comparator_decl.connective else {
-        return None;
-    };
-    variants
-        .iter()
-        .find(|variant| variant.ty == *constructor)
-        .map(|variant| variant.label.clone())
-}
-
 impl TestClaimValue {
     pub fn from_declaration(decl: &Declaration) -> Result<Self, String> {
         let fields = structural_fields(decl)
@@ -4345,6 +4324,27 @@ fn variant_label(dag: &Dag, variant_id: DeclarationId) -> Option<String> {
                 .map(|variant| variant.label.clone()),
             _ => None,
         })
+}
+
+fn perf_budget_comparator_label(dag: &Dag, value: &FieldValue) -> Option<String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return None;
+    };
+    if !payload.is_empty() {
+        return None;
+    }
+    let comparator_decl = dag.declaration_by_name("PerfBudgetComparisonOp")?;
+    let TypeConnective::Disj { variants } = &comparator_decl.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|variant| variant.ty == *constructor)
+        .map(|variant| variant.label.clone())
 }
 
 fn algebraic_law_payload_fields(
