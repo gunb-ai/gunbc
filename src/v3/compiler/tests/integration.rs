@@ -91,6 +91,8 @@ mod lens_cost_target_realization_test;
 mod lens_register_correspondence_test;
 #[path = "integration/lens_substrate_carrier_test.rs"]
 mod lens_substrate_carrier_test;
+#[path = "integration/timing_lens_substrate_carrier_test.rs"]
+mod timing_lens_substrate_carrier_test;
 #[path = "integration/m0_acceptance.rs"]
 mod m0_acceptance;
 #[path = "boundary/m1_3_emit_go_test.rs"]

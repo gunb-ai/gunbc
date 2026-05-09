@@ -1,0 +1,112 @@
+// v3.std.timing_lens — T-Workflow-As-Data Slice 2 timing-lens substrate
+// (gunbc#1955). Carriers consumed as `Lens<TimingMeasurement>` alongside
+// `TimingObservationSet`, `WorkflowObservationAnchor`, and `TimingBudget`.
+// Authority: `docs/design-timing-lens.md` + `docs/r3-structure.md` T-WAD row.
+//
+// 🟡 SCAFFOLD. External CI / runner timing facts are not yet reflected into
+// `timing_lens_read`; the uniform `Inhabits(Missing)` witness is an honest
+// fail-open substrate receipt until observation wiring lands. Loop iteration
+// scaling against `LoopBound` measure ports is likewise deferred:
+// `timing_measurement_iterate` is identity on `body` pending measure lowering.
+
+module v3.std.timing_lens
+
+import std.list { List }
+import std.substrate { Dag, Behavior, LoopBound }
+import v3.std.dimensions { Witness, OptionalDiagnostic }
+
+// Terminal vocabulary for timing-lens outputs (report-not-scalar discipline).
+type TimingMeasurement
+  = Observed { nanoseconds: Int }
+  | Missing
+  | Ambiguous
+  | Stale
+
+// Batched timing observations keyed for workflow-step / anchor correlation.
+type TimingObservationSet {
+  observations: List<TimingObservationEntry>
+}
+
+type TimingObservationEntry {
+  subject_stable_id: String
+  measurement: TimingMeasurement
+}
+
+// Shared External Attachment Pattern — stable workflow-side anchor for facts
+// sourced outside the `.dag` program text (CI logs, artifacts, receipts).
+// Six invariants are documented in `docs/design-timing-lens.md` §2; this
+// record carries the structural coordinates those invariants reference.
+type WorkflowObservationAnchor {
+  subject_stable_id: String
+  artifact_digest: String
+  producer_id: String
+  observer_id: String
+  prover_id: String
+  attached_at_epoch_ns: Int
+  workflow_run_id: String
+}
+
+// Budget carrier paired with timing enforcement (`LensEnforcement` / demo
+// lanes consume this shape; substrate lands the fact here).
+type TimingBudget {
+  max_nanoseconds: Int
+}
+
+// Sequential monoid operation for `Lens<TimingMeasurement>.sequential`:
+// sums observed nanoseconds; error states dominate; `Missing` is strict.
+fn timing_sequential_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
+  match a {
+    Missing => Missing
+    Stale => Stale
+    Ambiguous =>
+      match b {
+        Missing => Missing
+        Stale => Stale
+        Ambiguous => Ambiguous
+        Observed { nanoseconds: _ } => Ambiguous
+      }
+    Observed { nanoseconds: ax } =>
+      match b {
+        Missing => Missing
+        Stale => Stale
+        Ambiguous => Ambiguous
+        Observed { nanoseconds: bx } => Observed { nanoseconds: ax + bx }
+      }
+  }
+
+fn timing_sequential_identity() -> TimingMeasurement =
+  Observed { nanoseconds: 0 }
+
+// Branch composition (`Lens<TimingMeasurement>.branch`): parallel wall-clock
+// uses max on `Observed`; fault states use the same dominance as sequential.
+fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
+  match a {
+    Missing => Missing
+    Stale => Stale
+    Ambiguous =>
+      match b {
+        Missing => Missing
+        Stale => Stale
+        Ambiguous => Ambiguous
+        Observed { nanoseconds: _ } => Ambiguous
+      }
+    Observed { nanoseconds: ax } =>
+      match b {
+        Missing => Missing
+        Stale => Stale
+        Ambiguous => Ambiguous
+        Observed { nanoseconds: bx } =>
+          Observed { nanoseconds: if ax > bx then ax else bx }
+      }
+  }
+
+// Bounded iteration witness hook — identity until `LoopBound` measure ports
+// lower into compositional timing algebra (deferred; see module banner).
+fn timing_measurement_iterate(body: TimingMeasurement, bound: LoopBound) -> TimingMeasurement =
+  body
+
+fn timing_lens_read(d: Dag, b: Behavior) -> Witness<TimingMeasurement> =
+  Inhabits(Missing)
+
+fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnostic =
+  NoDiagnostic
