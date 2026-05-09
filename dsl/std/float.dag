@@ -1,18 +1,21 @@
 // std/float.dag -- Floating-point types as algebraic compositions.
 //
-// Float IS a Field over Word64. All ring operations plus division
-// emerge from the field structure. "Approximate" is honest — IEEE 754
-// rounding means associativity of add fails. The algebra captures
-// intent (field operations); the target language handles precision.
+// Fixed-width floats are width refinements of a single approximate-float
+// algebra axis (`Ieee754Float`) composed with `MachineWidth<Word*>` (R3 §1.8
+// gate #19 `numeric_aliases_align_to_refinements`). IEEE 754 rounding still
+// breaks pure field laws — approximate semantics remain Grounding's concern.
 
 module std.float
 
-import std.algebra { Field }
 import std.bit { Word32, Word64 }
+import std.machine_constraints { Compose, MachineWidth }
 
-// IEEE 754 floating-point types: fields (ring + division)
-type Float32 = Field<Word32>
-type Float64 = Field<Word64>
+// Opaque substrate carrier for the IEEE-754 approximate-float algebra axis
+// (width-independent at this layer; specialization via Compose).
+type Ieee754Float
+
+type Float32 = Compose<Ieee754Float, MachineWidth<Word32>>
+type Float64 = Compose<Ieee754Float, MachineWidth<Word64>>
 
 // Default alias
 type Float = Float64
