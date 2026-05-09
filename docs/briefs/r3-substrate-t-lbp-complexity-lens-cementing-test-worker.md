@@ -1,5 +1,5 @@
 ---
-status: draft (worker brief; queued — gates on T-LBP complexity-lens substrate landing + frozen v2-oracle snapshot capture)
+status: complete for closure-receipt scope (implementation landed in #2271, focused tests verified by warm-stag-135 on 2026-05-09)
 authority parent: R3 Substrate Manager (#1739)
 ratification: T-LBP narrowed to complexity + cost lenses only per Q-Lens-Behavioral-Parity-R3-Closeability option (b) RATIFIED at gunbc#828 #issuecomment-4385329180 (zesty-bear-812, 2026-05-06)
 roadmap row: §1.8 ledger row #79 (`complexity_lens_behaviorally_complete`) + §1.8 row #87 (`lens_cementing_test_discipline_complete`) + §1.8 row #166 (T-LBP `lens_behavioral_parity_demonstration`)
@@ -12,7 +12,7 @@ authority docs:
 gates:
   - §1.8 row #79 (`complexity_lens_behaviorally_complete`) — cementing test bullet
   - §1.8 row #87 (`lens_cementing_test_discipline_complete`) — first lens entry
-worker pin: TBD (queued post-T-LBP complexity-lens substrate landing)
+worker pin: warm-stag-135
 ---
 
 # R3 Substrate T-LBP — `Lens<Complexity>` cementing-test worker brief
@@ -34,9 +34,54 @@ This brief lands the cementing-test infrastructure for the complexity
 lens specifically (cost lens follows in companion brief —
 `r3-substrate-t-lbp-cost-lens-cementing-test-worker.md` Tier-1 5/5).
 
-## Precondition gates
+## Completion receipt
 
-Brief dispatches when **all** of the following land:
+The preconditions cleared at `5a13ed800` after #2271 landed the
+behaviorally complete complexity lens substrate and same-PR Band-C
+cementing module:
+
+- `src/v3/lenses/complexity.dag` is `STRUCTURALLY TERMINAL` /
+  `BEHAVIORALLY COMPLETE`.
+- `src/v3/compiler/src/lens_cost_generated.rs` exposes
+  `ComplexitySummary` through `complexity_of`.
+- `docs/v3-lens-capability-register.md` marks `complexity.dag`
+  `COMPLETE` with the `src/v2/complexity.dag` counterpart and names
+  `complexity_lens_behavioral_completion` as the frozen-oracle
+  cementing dispatch.
+- `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs`
+  cements the published carrier on same-source fixtures for constant
+  literal and recursive countdown cases: work, span, asymptotic class,
+  and certainty.
+- `src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs`
+  ratchets the register + `regen.dag` v2-complete slice so the
+  cementing module and `tests/integration.rs` wiring cannot drift.
+
+Warm-stag-135 re-verified the focused closure tests via BuildBuddy on
+2026-05-09:
+
+- `cargo test -p v3-compiler --test integration complexity_lens_behavioral_completion -- --nocapture`
+  passed 2/2.
+- `cargo test -p v3-compiler --test integration cementing_lens_registry_dispatch_test -- --nocapture`
+  passed 14/14.
+
+This closure receipt is intentionally narrower than the original
+dispatch packet below. It records that the already-landed #2271
+artifacts satisfy the complexity-lens cementing presence and focused
+behavioral pins now required by `TESTING.md` Band-C. It does **not**
+claim that warm-stag-135 re-ran the original full-workspace acceptance
+suite, performed an external snapshot mutation test, or added new
+code beyond the existing #2271 implementation.
+
+## Historical dispatch packet
+
+The remaining sections preserve the original 2026-05-06 dispatch packet
+for provenance. They are not the live closure contract for this PR;
+see **Completion receipt** above and **Acceptance accounting** below
+for the evidence this receipt actually claims.
+
+### Precondition gates
+
+Brief dispatched after **all** of the following landed:
 
 1. **`Lens<Complexity>` instance landed** in `src/v3/std/` (or canonical
    substrate location). Per row #79: requires symbolic CostExpr +
@@ -52,9 +97,9 @@ Brief dispatches when **all** of the following land:
 If any precondition is missing at dispatch, STOP and surface — this
 brief is consumer-side cementing-test landing, not substrate-producer.
 
-## Scope
+### Scope
 
-### Deliverable 1 — Representative `.dag` source corpus
+#### Deliverable 1 — Representative `.dag` source corpus
 
 DFS-catalog `dsl/std/` and `src/v3/std/` to choose ≥1 representative
 `.dag` source(s) that exercise:
@@ -72,7 +117,7 @@ Per row #79's "asymptotic classification" — cementing test verifies
 the lens outputs the expected asymptotic class for each
 representative input.
 
-### Deliverable 2 — Frozen v2-oracle snapshot (consumer-only)
+#### Deliverable 2 — Frozen v2-oracle snapshot (consumer-only)
 
 The snapshot is **NOT authored by this brief** — it must already exist
 as a captured file (precondition #2 above). This brief consumes it.
@@ -84,7 +129,7 @@ pre-retirement). Bundling capture into this brief would require the
 v2 oracle to still be live at PR time; per
 `v2_oracle_no_remaining_test_consumers`, that's structurally barred.
 
-### Deliverable 3 — Cementing test landing
+#### Deliverable 3 — Cementing test landing
 
 Author cementing test in `tests/` (or canonical equivalent — worker
 greps existing `Lens<C>` cementing-test convention; T-CostLens
@@ -102,7 +147,7 @@ precedent if landed):
    or `Lens<Complexity>` instance isn't loadable, test errors out
    (not skipped)
 
-### Deliverable 4 — §1.8 ledger receipt
+#### Deliverable 4 — §1.8 ledger receipt
 
 Cementing test landing advances:
 - Row #79 (`complexity_lens_behaviorally_complete`) — cementing test
@@ -112,7 +157,7 @@ Cementing test landing advances:
   for #87 GREEN per option (b) ratification narrowing T-LBP to two
   lenses
 
-## Slice — single PR
+### Slice — single PR
 
 Phase ordering (PR-internal):
 1. Verify preconditions at HEAD (Lens<Complexity> + snapshot) — STOP
@@ -125,28 +170,33 @@ Phase ordering (PR-internal):
 5. §1.8 ledger row updates (#79 cementing-test bullet; #87 first-lens
    entry)
 
-## Acceptance
+## Acceptance accounting
 
-- Cementing test landed in `tests/` (or canonical equivalent) consuming
-  frozen v2-oracle snapshot for ≥1 representative `.dag` source
-- Test verifies behavioral parity across all complexity-lens output
-  facets per row #79: work/span split + asymptotic class +
-  per-Behavior CostExpr
-- Mutation-test verification: injected divergence in snapshot causes
-  test failure (fail-closed path verified)
-- Both fail-closed paths verified: missing snapshot → error (not
-  skip); missing Lens<Complexity> → error (not skip)
-- §1.8 row #79 cementing-test bullet flips DECLARED → satisfied
-- §1.8 row #87 first lens entry recorded (cost lens follows in
-  companion brief; #87 GREEN gates on both)
-- `cargo test --workspace --exclude v2-compiler-tests` green (3
-  pre-existing v2-compiler --lib failures verified unrelated)
-- `cargo test -p v2-compiler-tests` green; strict-compile diagnostic
-  ratchet at 0
-- `cargo clippy --all-targets -- -D warnings` clean
-- `cargo fmt --all --check` clean
-- Citation discipline per `docs/briefs/brief-authoring-checklist.md`
-- 5-question authority audit in PR body
+The original acceptance list was authored before the #2271 landing and
+before the in-tree Band-C discipline in `TESTING.md` settled on
+register-driven cementing modules for v2-complete claims. Current
+accounting is:
+
+- **Satisfied by #2271:** `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs`
+  landed and is wired through `tests/integration.rs`.
+- **Satisfied by #2271:** the test pins the published
+  `ComplexitySummary` carrier on same-source fixtures: work, span,
+  asymptotic class, and certainty.
+- **Satisfied by #2271:** `cementing_lens_registry_dispatch_test.rs`
+  requires the `docs/v3-lens-capability-register.md` + `regen.dag`
+  v2-complete slice to name the complexity cementing module and its
+  `tests/integration.rs` path, fail-closed on missing wiring.
+- **Verified by warm-stag-135 on 2026-05-09:** the focused complexity
+  cementing module passed 2/2 via BuildBuddy.
+- **Verified by warm-stag-135 on 2026-05-09:** the Band-C dispatch
+  ratchet passed 14/14 via BuildBuddy.
+- **Verified by warm-stag-135 in this PR:** `git diff --check` passed
+  for this doc-only closure diff.
+- **Not claimed by this closure PR:** external frozen-snapshot file
+  mutation testing, full-workspace `cargo test`, `v2-compiler-tests`,
+  and full clippy. Those checks exceed the scope of this receipt-only
+  PR and remain CI / lane-close concerns, not evidence introduced by
+  this document update.
 
 ## STOP-AND-ESCALATE
 
