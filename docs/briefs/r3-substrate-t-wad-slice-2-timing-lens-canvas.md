@@ -178,10 +178,10 @@ Per r3-structure.md:169 (verbatim, for worker brief reference):
 
 Per PR #2333 inline review at canvas (b526a26f finding 1): gate #55 mixes anchor-fact-carriage with fail-closed semantics. Split:
 
-- **Gate #55a** (anchor-fact-carriage): `WorkflowObservationAnchor<Subject, Source>` declared with all 5 anchor-resident invariants (1-5) as concrete fields, including `observation_outcome: ObservationOutcome<Source>` carrying invariant 5 report state. Closes when carrier lands per Q-WAD-S2-Anchor (b) generic-from-authoring shape.
-- **Gate #55b** (fail-closed enforcement): `LensEnforcement` substrate-extension landed per Q-WAD-S2-Output (a)(ii) or (a)(iii) Director disposition; non-Observed `ObservationOutcome` variants reaching the enforcement layer trigger violate without Budget fabrication. Closes when substrate-extension lands across all lens consumers (T-LBP / T-CostLens / T-LAS — cascading scope).
+- **Gate #55a** (anchor-fact-carriage): `WorkflowObservationAnchor` declared with invariants 1-4 as concrete fields (subject identity / artifact digest / producer-observer-prover identity / attachment timestamp + run id) per Director-ratified (a) timing-specific shape. Invariant 5 (report state Observed/Missing/Ambiguous/Stale) lives on the lens Output type `TimingMeasurement` variants, NOT on the anchor — single-authority preserved at the lens layer (consumed by `violates` per (a)(ii)). Closes when worker carrier lands per PR #2360.
+- **Gate #55b** (fail-closed enforcement): `LensEnforcement` substrate-extension landed per Q-WAD-S2-Output (a)(ii) Director ratification at #828 c#4413284764 — `violates: fn(Output, Budget, Budget) -> Bool` signature change cascading across T-LBP / T-CostLens / T-LAS impls (semantic-equivalent updates) + timing-lens `violates` body pattern-matches `TimingMeasurement` variants, returning true for Missing/Ambiguous/Stale (fail-closed without Budget fabrication, preserving typed report-state evidence per P3/C-8).
 
-Both gates required for full §1.8 row #55 `shared_external_attachment_pattern_documented` CONSUMER_LANDED. Worker (#2359) lands #55a; #55b is canvas-tier substrate work (separate dispatch, scope: `LensEnforcement` substrate extension, owner: Substrate Mgr per ratification).
+Per Director (A)-modified disposition at #828 c#4413322671: gates #55a + #55b co-close in the LensEnforcement (a)(ii) extension PR (Substrate Mgr scope) once PR #2360 (folded-carrier worker scope) merges first. Worker scope = #55a anchor + carrier landing; Mgr-tier (a)(ii) extension PR adds the `violates` Output-arg signature + timing-lens fail-closed body. No separate dispatch for #55b; same PR as the substrate-extension.
 
 ## Acceptance gates (worker dispatch — same-canvas)
 
