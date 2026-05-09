@@ -106,7 +106,7 @@ fn realization_cost_table_reads_rust_type_realization_cost() {
         .expect("rust Int TypeRealization cost should be indexed by target declaration");
 
     assert_eq!(entry.language, rust_language);
-    assert_eq!(entry.category, RealizationCostCategory::Type);
+    assert_eq!(entry.category(), RealizationCostCategory::Type);
     assert_eq!(entry.cost, 1);
     assert_eq!(entry.declaration, named_id(&dag, "rust_int"));
 }
@@ -140,7 +140,7 @@ fn realization_cost_table_indexes_operator_by_target_and_op() {
         .get(&RealizationCostKey::Operator { target, op })
         .expect("rust int add OperatorRealization cost should use (target, op) key");
 
-    assert_eq!(entry.category, RealizationCostCategory::Operator);
+    assert_eq!(entry.category(), RealizationCostCategory::Operator);
     assert_eq!(entry.cost, 1);
     assert_eq!(entry.declaration, named_id(&dag, "rust_int_add"));
 }

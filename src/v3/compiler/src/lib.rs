@@ -82,13 +82,31 @@ pub mod realization_cost {
         Pattern(DeclarationId),
     }
 
+    impl RealizationCostKey {
+        pub fn category(self) -> RealizationCostCategory {
+            match self {
+                Self::Type(_) => RealizationCostCategory::Type,
+                Self::Callable(_) => RealizationCostCategory::Callable,
+                Self::Operator { .. } => RealizationCostCategory::Operator,
+                Self::Behavior(_) => RealizationCostCategory::Behavior,
+                Self::TypeInstantiation(_) => RealizationCostCategory::TypeInstantiation,
+                Self::Pattern(_) => RealizationCostCategory::Pattern,
+            }
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct RealizationCostEntry {
         pub declaration: DeclarationId,
         pub language: DeclarationId,
-        pub category: RealizationCostCategory,
         pub key: RealizationCostKey,
         pub cost: i64,
+    }
+
+    impl RealizationCostEntry {
+        pub fn category(&self) -> RealizationCostCategory {
+            self.key.category()
+        }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,7 +178,6 @@ pub mod realization_cost {
                 let entry = RealizationCostEntry {
                     declaration: decl.id,
                     language,
-                    category,
                     key,
                     cost: require_nonnegative_int(fields, "cost", decl.id)?,
                 };
