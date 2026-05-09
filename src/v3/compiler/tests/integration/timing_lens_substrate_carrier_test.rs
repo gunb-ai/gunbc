@@ -310,6 +310,35 @@ fn timing_lens_sequential_and_branch_delegate_to_shared_combine() {
     );
 }
 
+/// Inline review (briansrls / PR #2360): outer `Stale` must not return `Stale`
+/// without inspecting `b` — `(Stale, Unobserved)` must stay **`Unobserved`**
+/// (strict missing-evidence on the RHS; P2 facts-forward / no silencing).
+#[test]
+fn timing_measurement_lens_combine_stale_arm_inspects_rhs() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../std/timing_lens.dag");
+    let src = std::fs::read_to_string(&path).expect("read src/v3/std/timing_lens.dag");
+    let start = src
+        .find("fn timing_measurement_lens_combine")
+        .expect("timing_measurement_lens_combine");
+    let end = src[start..]
+        .find("// Sequential monoid")
+        .map(|i| start + i)
+        .expect("comment sentinel before timing_sequential_op");
+    let body = &src[start..end];
+    let stale_arm = body
+        .find("Stale =>")
+        .expect("outer `Stale =>` arm in timing_measurement_lens_combine");
+    let head = &body[stale_arm..(stale_arm + 120).min(body.len())];
+    assert!(
+        head.contains("match b") && head.contains("Unobserved => Unobserved"),
+        "outer `Stale` arm must `match b` and map `Unobserved` to `Unobserved`; got:\n{head}"
+    );
+    assert!(
+        !head.contains("Stale =>\n      Stale"),
+        "outer `Stale` arm must not short-circuit to `Stale` without inspecting `b`; got:\n{head}"
+    );
+}
+
 /// openai-pro / PR #2360: `timing_lens_validate` must not all-pass non-`Observed`
 /// report states at the substrate hook (P3 / design §2.6).
 #[test]
