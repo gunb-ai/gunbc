@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 
 use crate::dag::{
-    positive_descent_count, ArrowBody, AsymptoticClass, Dag, DeclarationId, FieldValue,
-    LiteralBits, Lookup, PortId, PositiveDescentAmount, TypeConnective, ValueBody,
+    literal_decimal_i64, positive_descent_count, ArrowBody, AsymptoticClass, Dag, DeclarationId,
+    FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount, TypeConnective, ValueBody,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost::{
@@ -268,16 +268,16 @@ fn record_as_source_span(fields: &[(String, FieldValue)]) -> Option<SourceSpan> 
         match (label.as_str(), value) {
             ("file", FieldValue::Literal(LiteralBits::String(s))) => file = Some(s.clone()),
             ("byte_start", FieldValue::Literal(LiteralBits::Int(n))) => {
-                byte_start = (*n).try_into().ok();
+                byte_start = literal_decimal_i64(n.as_str()).and_then(|v| u32::try_from(v).ok());
             }
             ("byte_end", FieldValue::Literal(LiteralBits::Int(n))) => {
-                byte_end = (*n).try_into().ok();
+                byte_end = literal_decimal_i64(n.as_str()).and_then(|v| u32::try_from(v).ok());
             }
             ("start", FieldValue::Literal(LiteralBits::Int(n))) => {
-                byte_start = (*n).try_into().ok();
+                byte_start = literal_decimal_i64(n.as_str()).and_then(|v| u32::try_from(v).ok());
             }
             ("end", FieldValue::Literal(LiteralBits::Int(n))) => {
-                byte_end = (*n).try_into().ok();
+                byte_end = literal_decimal_i64(n.as_str()).and_then(|v| u32::try_from(v).ok());
             }
             _ => {}
         }

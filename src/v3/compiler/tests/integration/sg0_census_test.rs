@@ -360,7 +360,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Director Option 2 RATIFIED at
     // gunbc#828 #issuecomment-4377533390): slice-active ratchet for
     // `cross_target_coverage.dag` (six type declarations exist;
-    // `emission_path_projections == []`). Stays hand-Rust alongside
+    // `emission_path_projections` Phase-1 populated with 41 rows —
+    // Rust 13 / Python 16 / Go 12). Stays hand-Rust alongside
     // `method_template_contract_test.rs` until testgen covers
     // reflected-Dag structural assertions over std/ row authorities.
     "src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs",
@@ -575,7 +576,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // TC1 V1 strict-fire — §1.8 gate #11 (`tc1_eta_equivalence_executable`); Q-PAFS Path A
     // (E6-G1.a static representative) per Director ratification cascade 2026-05-06/07.
     "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs",
+    // TC2 strict-fire — §1.8 gate #12 (`tc2_church_rosser_executable`); Church-Rosser /
+    // strategy-order `BinaryDimensionReportEquals` pairing per `r3-v-pattern-a-tc2-v1-worker.md`.
+    "src/v3/compiler/tests/integration/tc2_church_rosser_strict_fire_test.rs",
     "src/v3/compiler/tests/integration/tc3_strong_normalization_deferred_test.rs",
+    // TC3 strict-fire — §1.8 gate #13 (`tc3_pattern_a_second_mover_executable`); strong-
+    // normalization / Pattern-A second-mover `BinaryDimensionReportEquals` pairing per
+    // `r3-v-pattern-a-tc3-v1-worker.md` (two-stage gate; PASSING gated on T-FixedPoint stage (b)).
+    "src/v3/compiler/tests/integration/tc3_strong_normalization_strict_fire_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
