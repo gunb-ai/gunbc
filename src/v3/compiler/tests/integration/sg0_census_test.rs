@@ -573,6 +573,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // TC1 V1 strict-fire — §1.8 gate #11 (`tc1_eta_equivalence_executable`); Q-PAFS Path A
     // (E6-G1.a static representative) per Director ratification cascade 2026-05-06/07.
     "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs",
+    // TC2 strict-fire — §1.8 gate #12 (`tc2_church_rosser_executable`); Church-Rosser /
+    // strategy-order `BinaryDimensionReportEquals` pairing per `r3-v-pattern-a-tc2-v1-worker.md`.
+    "src/v3/compiler/tests/integration/tc2_church_rosser_strict_fire_test.rs",
     "src/v3/compiler/tests/integration/tc3_strong_normalization_deferred_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
