@@ -20,9 +20,14 @@ worker pin: warm-stag-135
 ## Context
 
 Q-Lens-Behavioral-Parity-R3-Closeability option (b) RATIFIED 2026-05-06
-narrowed T-LBP R3 scope to **complexity + cost lenses only**;
-parallelism + effect_enum carved to R4 per
-`docs/r4-carve-out-routing.md`.
+narrowed T-LBP R3 scope to **complexity + cost lenses only** —
+**AMENDED 2026-05-09 per Director carve-promotion-IN-R3 ratification at
+gunbc#846 #issuecomment-4412330468 + (a) at #issuecomment-4412380947**:
+all 4 lenses (complexity + cost + parallelism + effect_enum) are
+R3-load-bearing within Cluster F. This brief's complexity-lens
+cementing-test scope is unchanged (still complexity-axis only); other
+lenses get parallel cementing tests via Cluster F sub-phases.
+See `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md`.
 
 Per `docs/r2-structure.md` §"Lane structure" + §1.8 row #166: T-LBP
 demonstration consumes **frozen v2-oracle snapshot** captured
