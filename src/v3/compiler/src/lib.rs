@@ -95,12 +95,31 @@ pub mod realization_cost {
         }
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct RealizationCostAmount {
+        value: i64,
+    }
+
+    impl RealizationCostAmount {
+        fn new(value: i64) -> Result<Self, i64> {
+            if value >= 0 {
+                Ok(Self { value })
+            } else {
+                Err(value)
+            }
+        }
+
+        pub fn value(self) -> i64 {
+            self.value
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct RealizationCostEntry {
         pub declaration: DeclarationId,
         pub language: DeclarationId,
         pub key: RealizationCostKey,
-        pub cost: i64,
+        pub cost: RealizationCostAmount,
     }
 
     impl RealizationCostEntry {
@@ -208,7 +227,7 @@ pub mod realization_cost {
             self.entries.get(key)
         }
 
-        pub fn cost(&self, key: &RealizationCostKey) -> Option<i64> {
+        pub fn cost(&self, key: &RealizationCostKey) -> Option<RealizationCostAmount> {
             self.get(key).map(|entry| entry.cost)
         }
     }
@@ -297,13 +316,11 @@ pub mod realization_cost {
         fields: &[(String, FieldValue)],
         label: &str,
         declaration: DeclarationId,
-    ) -> Result<i64, RealizationCostError> {
+    ) -> Result<RealizationCostAmount, RealizationCostError> {
         match require_field(fields, label, declaration)? {
-            FieldValue::Literal(LiteralBits::Int(value)) if *value >= 0 => Ok(*value),
-            FieldValue::Literal(LiteralBits::Int(cost)) => {
-                Err(RealizationCostError::NegativeRealizationCost {
-                    declaration,
-                    cost: *cost,
+            FieldValue::Literal(LiteralBits::Int(value)) => {
+                RealizationCostAmount::new(*value).map_err(|cost| {
+                    RealizationCostError::NegativeRealizationCost { declaration, cost }
                 })
             }
             _ => Err(RealizationCostError::MalformedRealization {

@@ -107,7 +107,7 @@ fn realization_cost_table_reads_rust_type_realization_cost() {
 
     assert_eq!(entry.language, rust_language);
     assert_eq!(entry.category(), RealizationCostCategory::Type);
-    assert_eq!(entry.cost, 1);
+    assert_eq!(entry.cost.value(), 1);
     assert_eq!(entry.declaration, named_id(&dag, "rust_int"));
 }
 
@@ -121,7 +121,9 @@ fn realization_cost_table_reads_zero_cost_behavior_realization() {
         .expect("rust realization-cost table should build from structural rows");
 
     assert_eq!(
-        table.cost(&RealizationCostKey::Behavior(let_stmt_target)),
+        table
+            .cost(&RealizationCostKey::Behavior(let_stmt_target))
+            .map(|cost| cost.value()),
         Some(0),
         "BehaviorRealization.cost must be observable, including zero-cost rows"
     );
@@ -141,7 +143,7 @@ fn realization_cost_table_indexes_operator_by_target_and_op() {
         .expect("rust int add OperatorRealization cost should use (target, op) key");
 
     assert_eq!(entry.category(), RealizationCostCategory::Operator);
-    assert_eq!(entry.cost, 1);
+    assert_eq!(entry.cost.value(), 1);
     assert_eq!(entry.declaration, named_id(&dag, "rust_int_add"));
 }
 
