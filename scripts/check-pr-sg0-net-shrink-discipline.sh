@@ -134,7 +134,7 @@ sg0_validate_pr_body_format() {
           [ -z "$p" ] && continue
           # Reject path-traversal tokens: any `..` segment escapes docs/briefs/ scope.
           if grep -qE '(^|/)\.\.(/|$)' <<<"$p"; then
-            echo "::error::SG-0 pairing (c) cited brief path '$p' contains `..` path-traversal segment; brief paths must be canonical under docs/briefs/. Tightened 2026-05-09 per codex BLOCKING."
+            echo "::error::SG-0 pairing (c) cited brief path '$p' contains '..' path-traversal segment; brief paths must be canonical under docs/briefs/. Tightened 2026-05-09 per codex BLOCKING."
             return 1
           fi
           # Reject paths not actually under docs/briefs/ (defense-in-depth — prefix already enforced
