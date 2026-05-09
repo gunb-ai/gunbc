@@ -4254,24 +4254,21 @@ fn field_value_for_symbolic_cost_expected(
 }
 
 /// Normalization for `SymbolicCost` equality across distinct compiled DAGs (`TestClaim.source` vs
-/// fixture graph). [`PortId`] values are compared structurally via their numeric substrate encoding
-/// (`FieldValue` literal `Int`, same as lens reflection). Per `algebra.dag`, **identity** for
-/// [`crate::dag::SizeVariable`] is `source_port`; `display_name` is presentation-only but still
-/// participates in the pattern so two folds over the **same** port can match even when labels differ.
+/// fixture graph). [`PortId`] values are compared via stable numeric encoding (`FieldValue` literal
+/// `Int`, same as lens reflection). Per `algebra.dag`, [`crate::dag::SizeVariable`] identity is
+/// **`source_port` only** — `display_name` is parsed for structural validity but **must not**
+/// participate in equality (same rule as `SizeVariable`'s `PartialEq` implementation).
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SymbolicCostEqPattern {
     Constant(i64),
     Linear {
         source_port_raw: u32,
-        display_name: Option<String>,
     },
     Log {
         source_port_raw: u32,
-        display_name: Option<String>,
     },
     Polynomial {
         source_port_raw: u32,
-        display_name: Option<String>,
         degree_raw: i64,
     },
     Product(Vec<SymbolicCostEqPattern>),
@@ -4284,15 +4281,12 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
         SymbolicCost::ConstantCost { _0 } => SymbolicCostEqPattern::Constant(*_0),
         SymbolicCost::LinearCost { _0: sv } => SymbolicCostEqPattern::Linear {
             source_port_raw: sv.source_port.raw(),
-            display_name: sv.display_name.clone(),
         },
         SymbolicCost::LogCost { _0: sv } => SymbolicCostEqPattern::Log {
             source_port_raw: sv.source_port.raw(),
-            display_name: sv.display_name.clone(),
         },
         SymbolicCost::PolynomialCost { var, degree } => SymbolicCostEqPattern::Polynomial {
             source_port_raw: var.source_port.raw(),
-            display_name: var.display_name.clone(),
             degree_raw: degree.raw(),
         },
         SymbolicCost::ProductCost { _0: list } => SymbolicCostEqPattern::Product(
@@ -4349,20 +4343,16 @@ fn field_value_to_symbolic_cost_eq_pattern(
                 }
                 "LinearCost" => {
                     let inner = single_payload(payload)?;
-                    let (source_port_raw, display_name) =
-                        parse_size_variable_for_symbolic_cost_eq(dag, inner)?;
+                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
                     Ok(SymbolicCostEqPattern::Linear {
                         source_port_raw,
-                        display_name,
                     })
                 }
                 "LogCost" => {
                     let inner = single_payload(payload)?;
-                    let (source_port_raw, display_name) =
-                        parse_size_variable_for_symbolic_cost_eq(dag, inner)?;
+                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
                     Ok(SymbolicCostEqPattern::Log {
                         source_port_raw,
-                        display_name,
                     })
                 }
                 "PolynomialCost" => {
@@ -4379,12 +4369,10 @@ fn field_value_to_symbolic_cost_eq_pattern(
                     let degree = field(fields, "degree").ok_or_else(|| {
                         "SymbolicCostExprEquals: PolynomialCost missing `degree` field".to_string()
                     })?;
-                    let (source_port_raw, display_name) =
-                        parse_size_variable_for_symbolic_cost_eq(dag, var)?;
+                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
                     let degree_raw = degree_raw_from_degree_at_least_two_field_value(dag, degree)?;
                     Ok(SymbolicCostEqPattern::Polynomial {
                         source_port_raw,
-                        display_name,
                         degree_raw,
                     })
                 }
@@ -4448,17 +4436,45 @@ fn one_string_payload(payload: &[FieldValue]) -> Result<String, String> {
     }
 }
 
-fn parse_size_variable_display_name_only(
+fn port_id_raw_field_value(fv: &FieldValue) -> Result<u32, String> {
+    match fv {
+        FieldValue::Literal(LiteralBits::Int(s)) => {
+            let n = s.parse::<i64>().map_err(|_| {
+                format!("SymbolicCostExprEquals: PortId literal not a valid integer: {s:?}")
+            })?;
+            if n < 0 {
+                return Err(format!(
+                    "SymbolicCostExprEquals: PortId raw must be non-negative, got {n}"
+                ));
+            }
+            u32::try_from(n)
+                .map_err(|_| format!("SymbolicCostExprEquals: PortId raw out of u32 range: {n}"))
+        }
+        other => Err(format!(
+            "SymbolicCostExprEquals: PortId field must be Int literal, got {other:?}"
+        )),
+    }
+}
+
+/// Decode `source_port` from a structural [`SizeVariable`] record; validate optional `display_name`
+/// payload shape (same authority as [`optional_string_field_for_record`]) without using it in
+/// equality — identity follows `algebra.dag` / [`SizeVariable`]'s `PartialEq`.
+fn parse_size_variable_source_port_for_symbolic_cost_eq(
     dag: &Dag,
     fv: &FieldValue,
-) -> Result<Option<String>, String> {
+) -> Result<u32, String> {
     let fields = record_fields(fv).ok_or_else(|| {
         format!(
             "SymbolicCostExprEquals: SizeVariable value must be a record, got {:?}",
             fv
         )
     })?;
-    optional_string_field_for_record(dag, fields, "display_name")
+    let source_port_fv = field(fields, "source_port").ok_or_else(|| {
+        "SymbolicCostExprEquals: SizeVariable missing required field `source_port`".to_string()
+    })?;
+    let source_port_raw = port_id_raw_field_value(source_port_fv)?;
+    let _ = optional_string_field_for_record(dag, fields, "display_name")?;
+    Ok(source_port_raw)
 }
 
 fn optional_string_field_for_record(
@@ -6199,5 +6215,47 @@ mod symbolic_cost_expr_equals_decoder_tests {
             },
         )];
         assert!(optional_string_field_for_record(&dag, &fields, "display_name").is_err());
+    }
+
+    #[test]
+    fn eq_pattern_linear_matches_algebra_identity_source_port_only() {
+        use crate::dag::{PortId, SizeVariable, SymbolicCost};
+        let with_label = SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: PortId::test_raw(42),
+                display_name: Some("n".to_string()),
+            },
+        };
+        let unnamed = SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: PortId::test_raw(42),
+                display_name: None,
+            },
+        };
+        assert_eq!(
+            super::symbolic_cost_to_eq_pattern(&with_label),
+            super::symbolic_cost_to_eq_pattern(&unnamed)
+        );
+    }
+
+    #[test]
+    fn eq_pattern_linear_distinguishes_source_ports() {
+        use crate::dag::{PortId, SizeVariable, SymbolicCost};
+        let a = SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: PortId::test_raw(1),
+                display_name: None,
+            },
+        };
+        let b = SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: PortId::test_raw(2),
+                display_name: None,
+            },
+        };
+        assert_ne!(
+            super::symbolic_cost_to_eq_pattern(&a),
+            super::symbolic_cost_to_eq_pattern(&b)
+        );
     }
 }
