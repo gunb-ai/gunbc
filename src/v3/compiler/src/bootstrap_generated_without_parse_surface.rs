@@ -1641,63 +1641,63 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(189),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17862, 17866),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18281, 18285),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(139),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(190),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17931, 17936),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18350, 18355),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(140),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(191),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17965, 17969),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18384, 18388),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(141),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(193),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18000, 18004),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18419, 18423),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(142),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(194),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18031, 18035),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18450, 18454),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(143),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(195),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18065, 18069),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18484, 18488),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(144),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(196),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18093, 18097),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18512, 18516),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(145),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(197),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18118, 18122),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18537, 18541),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(146),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(198),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18148, 18152),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18567, 18571),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(147),
@@ -1708,7 +1708,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(190),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 17915, 17927),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18334, 18346),
                     },
                     binding: None,
                 },
@@ -1717,7 +1717,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(191),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 17945, 17961),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18364, 18380),
                     },
                     binding: None,
                 },
@@ -1726,7 +1726,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(193),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 17978, 17996),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18397, 18415),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -1738,7 +1738,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(194),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18013, 18027),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18432, 18446),
                     },
                     binding: None,
                 },
@@ -1747,7 +1747,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(195),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18044, 18061),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18463, 18480),
                     },
                     binding: None,
                 },
@@ -1756,7 +1756,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(196),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18078, 18089),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18497, 18508),
                     },
                     binding: None,
                 },
@@ -1765,7 +1765,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(197),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18106, 18114),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18525, 18533),
                     },
                     binding: None,
                 },
@@ -1774,13 +1774,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(198),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18131, 18144),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18550, 18563),
                     },
                     binding: None,
                 },
             ],
             output: PortId(199),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17897, 18160),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18316, 18579),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -1788,56 +1788,56 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(201),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18227, 18232),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18646, 18651),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(149),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(202),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18261, 18266),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18680, 18685),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(150),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(204),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18297, 18301),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18716, 18720),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(151),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(205),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18328, 18332),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18747, 18751),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(152),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(206),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18362, 18366),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18781, 18785),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(153),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(207),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18390, 18394),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18809, 18813),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(154),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(208),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18415, 18419),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18834, 18838),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(155),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(209),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18445, 18449),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18864, 18868),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(156),
@@ -1848,7 +1848,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(201),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18211, 18223),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18630, 18642),
                     },
                     binding: None,
                 },
@@ -1857,7 +1857,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(202),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18241, 18257),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18660, 18676),
                     },
                     binding: None,
                 },
@@ -1866,7 +1866,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(204),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18275, 18293),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18694, 18712),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -1878,7 +1878,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(205),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18310, 18324),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18729, 18743),
                     },
                     binding: None,
                 },
@@ -1887,7 +1887,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(206),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18341, 18358),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18760, 18777),
                     },
                     binding: None,
                 },
@@ -1896,7 +1896,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(207),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18375, 18386),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18794, 18805),
                     },
                     binding: None,
                 },
@@ -1905,7 +1905,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(208),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18403, 18411),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18822, 18830),
                     },
                     binding: None,
                 },
@@ -1914,13 +1914,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(209),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18428, 18441),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18847, 18860),
                     },
                     binding: None,
                 },
             ],
             output: PortId(210),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18193, 18457),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18612, 18876),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -1928,56 +1928,56 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(211),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18521, 18525),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18940, 18944),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(158),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(212),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18546, 18550),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18965, 18969),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(159),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(213),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18574, 18578),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18993, 18997),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(160),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(214),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18608, 18612),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19027, 19031),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(161),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(215),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18639, 18643),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19058, 19062),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(162),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(217),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18674, 18679),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19093, 19098),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(163),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(218),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18708, 18713),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19127, 19132),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(164),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(219),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18738, 18743),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19157, 19162),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(165),
@@ -1988,7 +1988,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(211),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18504, 18517),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18923, 18936),
                     },
                     binding: None,
                 },
@@ -1997,7 +1997,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(212),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18534, 18542),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18953, 18961),
                     },
                     binding: None,
                 },
@@ -2006,7 +2006,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(213),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18559, 18570),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18978, 18989),
                     },
                     binding: None,
                 },
@@ -2015,7 +2015,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(214),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18587, 18604),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19006, 19023),
                     },
                     binding: None,
                 },
@@ -2024,7 +2024,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(215),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18621, 18635),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19040, 19054),
                     },
                     binding: None,
                 },
@@ -2033,7 +2033,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(217),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18652, 18670),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19071, 19089),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -2045,7 +2045,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(218),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18688, 18704),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19107, 19123),
                     },
                     binding: None,
                 },
@@ -2054,13 +2054,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(219),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18722, 18734),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19141, 19153),
                     },
                     binding: None,
                 },
             ],
             output: PortId(220),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18486, 18751),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18905, 19170),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -2068,56 +2068,56 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(221),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18818, 18822),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19237, 19241),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(167),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(222),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18843, 18847),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19262, 19266),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(168),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(223),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18871, 18875),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19290, 19294),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(169),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(224),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18905, 18909),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19324, 19328),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(170),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(225),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18936, 18941),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19355, 19360),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(171),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(227),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18972, 18977),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19391, 19396),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(172),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(228),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19006, 19011),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19425, 19430),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(173),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(229),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19036, 19041),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19455, 19460),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(174),
@@ -2128,7 +2128,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(221),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18801, 18814),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19220, 19233),
                     },
                     binding: None,
                 },
@@ -2137,7 +2137,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(222),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18831, 18839),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19250, 19258),
                     },
                     binding: None,
                 },
@@ -2146,7 +2146,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(223),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18856, 18867),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19275, 19286),
                     },
                     binding: None,
                 },
@@ -2155,7 +2155,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(224),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18884, 18901),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19303, 19320),
                     },
                     binding: None,
                 },
@@ -2164,7 +2164,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(225),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18918, 18932),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19337, 19351),
                     },
                     binding: None,
                 },
@@ -2173,7 +2173,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(227),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18950, 18968),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19369, 19387),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -2185,7 +2185,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(228),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18986, 19002),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19405, 19421),
                     },
                     binding: None,
                 },
@@ -2194,13 +2194,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(229),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19020, 19032),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19439, 19451),
                     },
                     binding: None,
                 },
             ],
             output: PortId(230),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 18783, 19049),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19202, 19468),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -2208,56 +2208,56 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(231),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19110, 19114),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19529, 19533),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(176),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(232),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19135, 19139),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19554, 19558),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(177),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(233),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19163, 19167),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19582, 19586),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(178),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(234),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19197, 19202),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19616, 19621),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(179),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(235),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19229, 19234),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19648, 19653),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(180),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(237),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19265, 19270),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19684, 19689),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(181),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(238),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19299, 19304),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19718, 19723),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(182),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(239),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19329, 19334),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19748, 19753),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(183),
@@ -2268,7 +2268,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(231),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19093, 19106),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19512, 19525),
                     },
                     binding: None,
                 },
@@ -2277,7 +2277,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(232),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19123, 19131),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19542, 19550),
                     },
                     binding: None,
                 },
@@ -2286,7 +2286,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(233),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19148, 19159),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19567, 19578),
                     },
                     binding: None,
                 },
@@ -2295,7 +2295,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(234),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19176, 19193),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19595, 19612),
                     },
                     binding: None,
                 },
@@ -2304,7 +2304,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(235),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19211, 19225),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19630, 19644),
                     },
                     binding: None,
                 },
@@ -2313,7 +2313,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(237),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19243, 19261),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19662, 19680),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -2325,7 +2325,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(238),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19279, 19295),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19698, 19714),
                     },
                     binding: None,
                 },
@@ -2334,13 +2334,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(239),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19313, 19325),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19732, 19744),
                     },
                     binding: None,
                 },
             ],
             output: PortId(240),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19075, 19342),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19494, 19761),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -2348,56 +2348,56 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(241),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19400, 19404),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19819, 19823),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(185),
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(242),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19425, 19429),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19844, 19848),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(186),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(243),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19453, 19458),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19872, 19877),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(187),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(244),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19488, 19493),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19907, 19912),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(188),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(245),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19520, 19525),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19939, 19944),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(189),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(247),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19556, 19561),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19975, 19980),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(190),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(248),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19590, 19595),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20009, 20014),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(191),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(249),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19620, 19625),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20039, 20044),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(192),
@@ -2408,7 +2408,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(241),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19383, 19396),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19802, 19815),
                     },
                     binding: None,
                 },
@@ -2417,7 +2417,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(242),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19413, 19421),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19832, 19840),
                     },
                     binding: None,
                 },
@@ -2426,7 +2426,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(243),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19438, 19449),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19857, 19868),
                     },
                     binding: None,
                 },
@@ -2435,7 +2435,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(244),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19467, 19484),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19886, 19903),
                     },
                     binding: None,
                 },
@@ -2444,7 +2444,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(245),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19502, 19516),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19921, 19935),
                     },
                     binding: None,
                 },
@@ -2453,7 +2453,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(247),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19534, 19552),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19953, 19971),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -2465,7 +2465,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(248),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19570, 19586),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19989, 20005),
                     },
                     binding: None,
                 },
@@ -2474,13 +2474,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(249),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19604, 19616),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20023, 20035),
                     },
                     binding: None,
                 },
             ],
             output: PortId(250),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19365, 19633),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 19784, 20052),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -2488,56 +2488,56 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(469)),
             inputs: vec![],
             output: PortId(251),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19696, 19700),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20115, 20119),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(194),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(252),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19721, 19726),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20140, 20145),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(195),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(253),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19750, 19755),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20169, 20174),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(196),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(254),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19785, 19790),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20204, 20209),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(197),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(255),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19817, 19822),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20236, 20241),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(198),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(257),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19853, 19858),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20272, 20277),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(199),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(258),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19887, 19892),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20306, 20311),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(200),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(259),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19917, 19922),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20336, 20341),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(201),
@@ -2548,7 +2548,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(251),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19679, 19692),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20098, 20111),
                     },
                     binding: None,
                 },
@@ -2557,7 +2557,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(252),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19709, 19717),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20128, 20136),
                     },
                     binding: None,
                 },
@@ -2566,7 +2566,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(253),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19735, 19746),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20154, 20165),
                     },
                     binding: None,
                 },
@@ -2575,7 +2575,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(254),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19764, 19781),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20183, 20200),
                     },
                     binding: None,
                 },
@@ -2584,7 +2584,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(255),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19799, 19813),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20218, 20232),
                     },
                     binding: None,
                 },
@@ -2593,7 +2593,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(257),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19831, 19849),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20250, 20268),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -2605,7 +2605,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(258),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19867, 19883),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20286, 20302),
                     },
                     binding: None,
                 },
@@ -2614,13 +2614,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(259),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19901, 19913),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20320, 20332),
                     },
                     binding: None,
                 },
             ],
             output: PortId(260),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19661, 19930),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20080, 20349),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -2632,7 +2632,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(189),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassUnknown".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 17846, 17858),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18265, 18277),
                     },
                     binding: None,
                 },
@@ -2641,7 +2641,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(199),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassExponential".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 17871, 17887),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18290, 18306),
                     },
                     binding: None,
                 },
@@ -2650,7 +2650,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(210),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassPolynomial".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18165, 18183),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18584, 18602),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -2662,7 +2662,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(220),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassQuadratic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18462, 18476),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 18881, 18895),
                     },
                     binding: None,
                 },
@@ -2671,7 +2671,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(230),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinearithmic".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 18756, 18773),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19175, 19192),
                     },
                     binding: None,
                 },
@@ -2680,7 +2680,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(240),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLinear".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19054, 19065),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19473, 19484),
                     },
                     binding: None,
                 },
@@ -2689,7 +2689,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(250),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassLog".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19347, 19355),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 19766, 19774),
                     },
                     binding: None,
                 },
@@ -2698,13 +2698,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(260),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ClassConstant".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 19638, 19651),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20057, 20070),
                     },
                     binding: None,
                 },
             ],
             output: PortId(261),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17832, 19934),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18251, 20353),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -2712,7 +2712,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "asymptotic_dominates".to_string(),
             value: PortId(261),
             params: vec![PortId(187), PortId(188)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17832, 19934),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18251, 20353),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -2721,7 +2721,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(800)),
             inputs: vec![PortId(262), PortId(263)],
             output: PortId(264),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 20027, 20053),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20446, 20472),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(205),
@@ -2732,7 +2732,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(263),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 20059, 20060),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20478, 20479),
                     },
                     binding: None,
                 },
@@ -2741,13 +2741,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(262),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 20066, 20067),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20485, 20486),
                     },
                     binding: None,
                 },
             ],
             output: PortId(265),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 20024, 20067),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20443, 20486),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -2755,7 +2755,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "meet_asymptotic_class".to_string(),
             value: PortId(265),
             params: vec![PortId(262), PortId(263)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 20024, 20067),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20443, 20486),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -2764,7 +2764,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(800)),
             inputs: vec![PortId(266), PortId(267)],
             output: PortId(268),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 20160, 20186),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20579, 20605),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(208),
@@ -2775,7 +2775,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(266),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 20192, 20193),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20611, 20612),
                     },
                     binding: None,
                 },
@@ -2784,13 +2784,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(267),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 20199, 20200),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 20618, 20619),
                     },
                     binding: None,
                 },
             ],
             output: PortId(269),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 20157, 20200),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20576, 20619),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -2798,7 +2798,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "join_asymptotic_class".to_string(),
             value: PortId(269),
             params: vec![PortId(266), PortId(267)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 20157, 20200),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20576, 20619),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -2807,49 +2807,49 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(805)),
             inputs: vec![PortId(271)],
             output: PortId(272),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21390, 21408),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21809, 21827),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(211),
             target: TransformTarget::Callable(DeclarationId(806)),
             inputs: vec![PortId(272)],
             output: PortId(273),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21371, 21409),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21790, 21828),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(212),
             target: TransformTarget::Callable(DeclarationId(812)),
             inputs: vec![PortId(273)],
             output: PortId(274),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21360, 21410),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21779, 21829),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(213),
             target: TransformTarget::Callable(DeclarationId(805)),
             inputs: vec![PortId(275)],
             output: PortId(276),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21514, 21532),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21933, 21951),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(214),
             target: TransformTarget::Callable(DeclarationId(807)),
             inputs: vec![PortId(276)],
             output: PortId(277),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21482, 21533),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21901, 21952),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(215),
             target: TransformTarget::Callable(DeclarationId(809)),
             inputs: vec![PortId(277)],
             output: PortId(278),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21458, 21534),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21877, 21953),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(216),
             target: TransformTarget::Callable(DeclarationId(814)),
             inputs: vec![PortId(278)],
             output: PortId(279),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21443, 21535),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21862, 21954),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(217),
@@ -2860,7 +2860,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(270),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 21238, 21250),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 21657, 21669),
                     },
                     binding: None,
                 },
@@ -2869,7 +2869,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(270),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 21260, 21270),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 21679, 21689),
                     },
                     binding: None,
                 },
@@ -2878,7 +2878,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(270),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 21280, 21294),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 21699, 21713),
                     },
                     binding: None,
                 },
@@ -2887,7 +2887,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(270),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 21304, 21311),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 21723, 21730),
                     },
                     binding: None,
                 },
@@ -2896,7 +2896,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(270),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "UnknownCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 21321, 21332),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 21740, 21751),
                     },
                     binding: None,
                 },
@@ -2905,7 +2905,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(274),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 21342, 21356),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 21761, 21775),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "terms".to_string(),
@@ -2917,7 +2917,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(279),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 21415, 21433),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 21834, 21852),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "terms".to_string(),
@@ -2926,7 +2926,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(280),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21224, 21539),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21643, 21958),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -2934,7 +2934,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "normalize".to_string(),
             value: PortId(280),
             params: vec![PortId(270)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21224, 21539),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21643, 21958),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -2946,7 +2946,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(281)],
             output: PortId(282),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21632, 21637),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22051, 22056),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(220),
@@ -2956,7 +2956,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(281)],
             output: PortId(283),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21650, 21656),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22069, 22075),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(221),
@@ -2966,28 +2966,28 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(281)],
             output: PortId(284),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21664, 21668),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22083, 22087),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(222),
             target: TransformTarget::Callable(DeclarationId(1868)),
             inputs: vec![PortId(283), PortId(284)],
             output: PortId(285),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21639, 21669),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22058, 22088),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(223),
             target: TransformTarget::Callable(DeclarationId(1869)),
             inputs: vec![PortId(282), PortId(285)],
             output: PortId(286),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21621, 21670),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22040, 22089),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(224),
             name: "nsl_to_list".to_string(),
             value: PortId(286),
             params: vec![PortId(281)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21621, 21670),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22040, 22089),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -2996,7 +2996,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(1870)),
             inputs: vec![],
             output: PortId(288),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21949, 21956),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22368, 22375),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(226),
@@ -3006,14 +3006,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(289)],
             output: PortId(290),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22012, 22016),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22431, 22435),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(227),
             target: TransformTarget::Callable(DeclarationId(810)),
             inputs: vec![PortId(290)],
             output: PortId(291),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21987, 22017),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22406, 22436),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(228),
@@ -3023,14 +3023,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(289)],
             output: PortId(292),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22058, 22062),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22477, 22481),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(229),
             target: TransformTarget::Callable(DeclarationId(806)),
             inputs: vec![PortId(292)],
             output: PortId(293),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22031, 22063),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22450, 22482),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(230),
@@ -3040,7 +3040,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(289)],
             output: PortId(294),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22096, 22100),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22515, 22519),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(231),
@@ -3050,21 +3050,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(289)],
             output: PortId(295),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22129, 22133),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22548, 22552),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(232),
             target: TransformTarget::Callable(DeclarationId(806)),
             inputs: vec![PortId(295)],
             output: PortId(296),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22102, 22134),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22521, 22553),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(233),
             target: TransformTarget::Callable(DeclarationId(1871)),
             inputs: vec![PortId(294), PortId(296)],
             output: PortId(297),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22083, 22135),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22502, 22554),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(234),
@@ -3075,7 +3075,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(293),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 22031, 22063),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 22450, 22482),
                     },
                     binding: None,
                 },
@@ -3084,13 +3084,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(297),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 22083, 22135),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 22502, 22554),
                     },
                     binding: None,
                 },
             ],
             output: PortId(298),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21984, 22135),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22403, 22554),
             emit_participation: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -3102,7 +3102,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(288),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 21940, 21945),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 22359, 22364),
                     },
                     binding: None,
                 },
@@ -3111,7 +3111,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(298),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 21961, 21974),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 22380, 22393),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -3120,7 +3120,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(299),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21922, 22139),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22341, 22558),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Loop(LoopNode {
@@ -3130,14 +3130,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             body: NodeId(235),
             bound: LoopBound::Cardinality { count: PortId(287) },
             output: PortId(300),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21922, 22139),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22341, 22558),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(237),
             name: "drop_additive_zero".to_string(),
             value: PortId(300),
             params: vec![PortId(287)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21922, 22139),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22341, 22558),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -3146,13 +3146,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(808)),
             inputs: vec![PortId(301)],
             output: PortId(302),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22439, 22454),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22858, 22873),
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(239),
             data: LiteralBits::Int(0),
             output: PortId(303),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22482, 22483),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22901, 22902),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -3160,21 +3160,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(1839)),
             inputs: vec![PortId(303)],
             output: PortId(304),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22469, 22484),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22888, 22903),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(241),
             target: TransformTarget::Callable(DeclarationId(1872)),
             inputs: vec![],
             output: PortId(305),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22486, 22493),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22905, 22912),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(242),
             target: TransformTarget::Callable(DeclarationId(1873)),
             inputs: vec![PortId(304), PortId(305)],
             output: PortId(306),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22464, 22494),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22883, 22913),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(243),
@@ -3185,7 +3185,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(306),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 22464, 22494),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 22883, 22913),
                     },
                     binding: None,
                 },
@@ -3194,13 +3194,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(301),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 22506, 22511),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 22925, 22930),
                     },
                     binding: None,
                 },
             ],
             output: PortId(307),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22436, 22511),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22855, 22930),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -3208,7 +3208,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "collapse_on_multiplicative_zero".to_string(),
             value: PortId(307),
             params: vec![PortId(301)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22436, 22511),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22855, 22930),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -3217,7 +3217,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(309),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22591, 22596),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23010, 23015),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(246),
@@ -3227,14 +3227,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(310)],
             output: PortId(311),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22643, 22647),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23062, 23066),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(247),
             target: TransformTarget::Callable(DeclarationId(810)),
             inputs: vec![PortId(311)],
             output: PortId(312),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22618, 22648),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23037, 23067),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(248),
@@ -3244,21 +3244,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(310)],
             output: PortId(313),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22669, 22673),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23088, 23092),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(249),
             target: TransformTarget::Callable(DeclarationId(808)),
             inputs: vec![PortId(313)],
             output: PortId(314),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22652, 22674),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23071, 23093),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(250),
             target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::Or)),
             inputs: vec![PortId(312), PortId(314)],
             output: PortId(315),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22618, 22674),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23037, 23093),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(251),
@@ -3269,7 +3269,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(309),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 22582, 22587),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23001, 23006),
                     },
                     binding: None,
                 },
@@ -3278,7 +3278,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(315),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 22601, 22614),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23020, 23033),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -3287,7 +3287,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(316),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22564, 22678),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22983, 23097),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Loop(LoopNode {
@@ -3297,14 +3297,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             body: NodeId(251),
             bound: LoopBound::Cardinality { count: PortId(308) },
             output: PortId(317),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22564, 22678),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22983, 23097),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(253),
             name: "any_zero".to_string(),
             value: PortId(317),
             params: vec![PortId(308)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22564, 22678),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22983, 23097),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -3313,7 +3313,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(1874)),
             inputs: vec![],
             output: PortId(319),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22943, 22950),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23362, 23369),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(255),
@@ -3323,14 +3323,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(320)],
             output: PortId(321),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23005, 23009),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23424, 23428),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(256),
             target: TransformTarget::Callable(DeclarationId(811)),
             inputs: vec![PortId(321)],
             output: PortId(322),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22981, 23010),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23400, 23429),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(257),
@@ -3340,14 +3340,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(320)],
             output: PortId(323),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23056, 23060),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23475, 23479),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(258),
             target: TransformTarget::Callable(DeclarationId(809)),
             inputs: vec![PortId(323)],
             output: PortId(324),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23024, 23061),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23443, 23480),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(259),
@@ -3357,7 +3357,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(320)],
             output: PortId(325),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23094, 23098),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23513, 23517),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(260),
@@ -3367,21 +3367,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(320)],
             output: PortId(326),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23132, 23136),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23551, 23555),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(261),
             target: TransformTarget::Callable(DeclarationId(809)),
             inputs: vec![PortId(326)],
             output: PortId(327),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23100, 23137),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23519, 23556),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(262),
             target: TransformTarget::Callable(DeclarationId(1875)),
             inputs: vec![PortId(325), PortId(327)],
             output: PortId(328),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23081, 23138),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23500, 23557),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(263),
@@ -3392,7 +3392,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(324),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23024, 23061),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23443, 23480),
                     },
                     binding: None,
                 },
@@ -3401,13 +3401,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(328),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23081, 23138),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23500, 23557),
                     },
                     binding: None,
                 },
             ],
             output: PortId(329),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22978, 23138),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23397, 23557),
             emit_participation: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -3419,7 +3419,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(319),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 22934, 22939),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23353, 23358),
                     },
                     binding: None,
                 },
@@ -3428,7 +3428,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(329),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 22955, 22968),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23374, 23387),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -3437,7 +3437,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(330),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22916, 23142),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23335, 23561),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Loop(LoopNode {
@@ -3447,14 +3447,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             body: NodeId(264),
             bound: LoopBound::Cardinality { count: PortId(318) },
             output: PortId(331),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22916, 23142),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23335, 23561),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(266),
             name: "drop_multiplicative_one".to_string(),
             value: PortId(331),
             params: vec![PortId(318)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22916, 23142),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23335, 23561),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -3462,7 +3462,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             id: NodeId(267),
             data: LiteralBits::Int(0),
             output: PortId(334),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23231, 23232),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23650, 23651),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -3470,49 +3470,49 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
             inputs: vec![PortId(333), PortId(334)],
             output: PortId(335),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23226, 23232),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23645, 23651),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(269),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(337),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23254, 23259),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23673, 23678),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(270),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(339),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23285, 23290),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23704, 23709),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(271),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(341),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23313, 23318),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23732, 23737),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(272),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(343),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23337, 23342),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23756, 23761),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(273),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(345),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23361, 23366),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23780, 23785),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(274),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(347),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23389, 23394),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23808, 23813),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(275),
@@ -3523,7 +3523,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(335),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23207, 23222),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23626, 23641),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "n".to_string(),
@@ -3535,7 +3535,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(337),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23237, 23250),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23656, 23669),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3547,7 +3547,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(339),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23264, 23281),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23683, 23700),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3559,7 +3559,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(341),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23295, 23309),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23714, 23728),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3571,7 +3571,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(343),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23323, 23333),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23742, 23752),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3583,7 +3583,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(345),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23347, 23357),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23766, 23776),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3595,7 +3595,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(347),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "UnknownCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23371, 23385),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23790, 23804),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3604,7 +3604,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(348),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23193, 23398),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23612, 23817),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -3612,7 +3612,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "is_zero_constant".to_string(),
             value: PortId(348),
             params: vec![PortId(332)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23193, 23398),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23612, 23817),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -3620,7 +3620,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             id: NodeId(277),
             data: LiteralBits::Int(1),
             output: PortId(351),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23486, 23487),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23905, 23906),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -3628,49 +3628,49 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
             inputs: vec![PortId(350), PortId(351)],
             output: PortId(352),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23481, 23487),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23900, 23906),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(279),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(354),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23509, 23514),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23928, 23933),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(280),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(356),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23540, 23545),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23959, 23964),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(281),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(358),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23568, 23573),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23987, 23992),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(282),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(360),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23592, 23597),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24011, 24016),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(283),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(362),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23616, 23621),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24035, 24040),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(284),
             target: TransformTarget::Callable(DeclarationId(470)),
             inputs: vec![],
             output: PortId(364),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23644, 23649),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24063, 24068),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(285),
@@ -3681,7 +3681,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(352),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23462, 23477),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23881, 23896),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "n".to_string(),
@@ -3693,7 +3693,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(354),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23492, 23505),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23911, 23924),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3705,7 +3705,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(356),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23519, 23536),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23938, 23955),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3717,7 +3717,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(358),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23550, 23564),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23969, 23983),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3729,7 +3729,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(360),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23578, 23588),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 23997, 24007),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3741,7 +3741,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(362),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23602, 23612),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24021, 24031),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3753,7 +3753,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(364),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "UnknownCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 23626, 23640),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24045, 24059),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3762,7 +3762,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(365),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23448, 23653),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23867, 24072),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -3770,7 +3770,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "is_one_constant".to_string(),
             value: PortId(365),
             params: vec![PortId(349)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23448, 23653),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23867, 24072),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -3778,7 +3778,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             id: NodeId(287),
             data: LiteralBits::Int(0),
             output: PortId(367),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24539, 24540),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24958, 24959),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -3786,7 +3786,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(1839)),
             inputs: vec![PortId(367)],
             output: PortId(368),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24526, 24541),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24945, 24960),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(289),
@@ -3796,7 +3796,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(369)],
             output: PortId(370),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24583, 24587),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25002, 25006),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(290),
@@ -3806,7 +3806,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(369)],
             output: PortId(371),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24615, 24619),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25034, 25038),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(291),
@@ -3816,7 +3816,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(369)],
             output: PortId(373),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24676, 24680),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25095, 25099),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(292),
@@ -3826,28 +3826,28 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(369)],
             output: PortId(374),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24690, 24694),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25109, 25113),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(293),
             target: TransformTarget::Callable(DeclarationId(1876)),
             inputs: vec![PortId(373), PortId(374)],
             output: PortId(375),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24663, 24695),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25082, 25114),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(294),
             target: TransformTarget::Callable(DeclarationId(824)),
             inputs: vec![PortId(375)],
             output: PortId(376),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24648, 24696),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25067, 25115),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(295),
             target: TransformTarget::Callable(DeclarationId(813)),
             inputs: vec![PortId(376)],
             output: PortId(377),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24639, 24697),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25058, 25116),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(296),
@@ -3858,7 +3858,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(371),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24598, 24603),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25017, 25022),
                     },
                     binding: None,
                 },
@@ -3867,7 +3867,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(377),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24628, 24635),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25047, 25054),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -3876,7 +3876,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(378),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24569, 24705),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24988, 25124),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -3888,7 +3888,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(368),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24517, 24522),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24936, 24941),
                     },
                     binding: None,
                 },
@@ -3897,7 +3897,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(378),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24546, 24559),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 24965, 24978),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -3906,7 +3906,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(379),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24499, 24709),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24918, 25128),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -3914,7 +3914,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "reduce_sum".to_string(),
             value: PortId(379),
             params: vec![PortId(366)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24499, 24709),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24918, 25128),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -3922,7 +3922,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             id: NodeId(299),
             data: LiteralBits::Int(0),
             output: PortId(381),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24810, 24811),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25229, 25230),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -3930,7 +3930,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(1839)),
             inputs: vec![PortId(381)],
             output: PortId(382),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24797, 24812),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25216, 25231),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(301),
@@ -3940,7 +3940,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(383)],
             output: PortId(384),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24854, 24858),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25273, 25277),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(302),
@@ -3950,7 +3950,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(383)],
             output: PortId(385),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24886, 24890),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25305, 25309),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(303),
@@ -3960,7 +3960,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(383)],
             output: PortId(387),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24942, 24946),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25361, 25365),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(304),
@@ -3970,7 +3970,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(386)],
             output: PortId(388),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24955, 24959),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25374, 25378),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(305),
@@ -3980,21 +3980,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(386)],
             output: PortId(389),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24968, 24972),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25387, 25391),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(306),
             target: TransformTarget::Callable(DeclarationId(789)),
             inputs: vec![PortId(387), PortId(388), PortId(389)],
             output: PortId(390),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24923, 24973),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25342, 25392),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(307),
             target: TransformTarget::Callable(DeclarationId(1845)),
             inputs: vec![PortId(390)],
             output: PortId(391),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24915, 24974),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25334, 25393),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(308),
@@ -4005,7 +4005,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(385),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24869, 24874),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25288, 25293),
                     },
                     binding: None,
                 },
@@ -4014,7 +4014,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(391),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24899, 24911),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25318, 25330),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "second".to_string(),
@@ -4023,7 +4023,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(392),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24840, 24982),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25259, 25401),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -4035,7 +4035,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(382),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24788, 24793),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25207, 25212),
                     },
                     binding: None,
                 },
@@ -4044,7 +4044,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(392),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 24817, 24830),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25236, 25249),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -4053,7 +4053,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(393),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24770, 24986),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25189, 25405),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -4061,7 +4061,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "wrap_sum".to_string(),
             value: PortId(393),
             params: vec![PortId(380)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24770, 24986),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25189, 25405),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -4069,7 +4069,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             id: NodeId(311),
             data: LiteralBits::Int(1),
             output: PortId(395),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25276, 25277),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25695, 25696),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -4077,7 +4077,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(1839)),
             inputs: vec![PortId(395)],
             output: PortId(396),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25263, 25278),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25682, 25697),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(313),
@@ -4087,7 +4087,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(397)],
             output: PortId(398),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25320, 25324),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25739, 25743),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(314),
@@ -4097,7 +4097,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(397)],
             output: PortId(399),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25352, 25356),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25771, 25775),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(315),
@@ -4107,7 +4107,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(400)],
             output: PortId(401),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25404, 25408),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25823, 25827),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(316),
@@ -4117,7 +4117,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(397)],
             output: PortId(402),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25463, 25467),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25882, 25886),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(317),
@@ -4127,14 +4127,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(400)],
             output: PortId(403),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25476, 25480),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25895, 25899),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(318),
             target: TransformTarget::Callable(DeclarationId(815)),
             inputs: vec![PortId(402), PortId(403)],
             output: PortId(404),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25432, 25481),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25851, 25900),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(319),
@@ -4144,7 +4144,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(397)],
             output: PortId(406),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25536, 25540),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25955, 25959),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(320),
@@ -4154,7 +4154,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(400)],
             output: PortId(407),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25549, 25553),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25968, 25972),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(321),
@@ -4164,21 +4164,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(400)],
             output: PortId(408),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25562, 25566),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25981, 25985),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(322),
             target: TransformTarget::Callable(DeclarationId(789)),
             inputs: vec![PortId(406), PortId(407), PortId(408)],
             output: PortId(409),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25517, 25567),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25936, 25986),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(323),
             target: TransformTarget::Callable(DeclarationId(1843)),
             inputs: vec![PortId(409)],
             output: PortId(410),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25505, 25568),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25924, 25987),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(324),
@@ -4189,7 +4189,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(404),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 25423, 25428),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25842, 25847),
                     },
                     binding: None,
                 },
@@ -4198,7 +4198,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(410),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 25494, 25501),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25913, 25920),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4207,7 +4207,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(411),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25391, 25580),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25810, 25999),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -4219,7 +4219,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(399),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 25335, 25340),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25754, 25759),
                     },
                     binding: None,
                 },
@@ -4228,7 +4228,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(411),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 25365, 25377),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25784, 25796),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "second".to_string(),
@@ -4237,7 +4237,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(412),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25306, 25588),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25725, 26007),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -4249,7 +4249,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(396),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 25254, 25259),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25673, 25678),
                     },
                     binding: None,
                 },
@@ -4258,7 +4258,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(412),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 25283, 25296),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 25702, 25715),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -4267,7 +4267,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(413),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25236, 25592),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25655, 26011),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -4275,7 +4275,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "reduce_product".to_string(),
             value: PortId(413),
             params: vec![PortId(394)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25236, 25592),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25655, 26011),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -4284,49 +4284,49 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(816)),
             inputs: vec![PortId(416), PortId(414), PortId(415)],
             output: PortId(417),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25869, 25898),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26288, 26317),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(329),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(414), PortId(415)],
             output: PortId(419),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25922, 25940),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26341, 26359),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(330),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(414), PortId(415)],
             output: PortId(421),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25966, 25984),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26385, 26403),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(331),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(414), PortId(415)],
             output: PortId(423),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26003, 26021),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26422, 26440),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(332),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(414), PortId(415)],
             output: PortId(425),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26040, 26058),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26459, 26477),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(333),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(414), PortId(415)],
             output: PortId(427),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26081, 26099),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26500, 26518),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(334),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(414), PortId(415)],
             output: PortId(429),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26122, 26140),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26541, 26559),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(335),
@@ -4337,7 +4337,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(417),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 25851, 25865),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26270, 26284),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "va".to_string(),
@@ -4349,7 +4349,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(419),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 25903, 25918),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26322, 26337),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4361,7 +4361,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(421),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 25945, 25962),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26364, 26381),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4373,7 +4373,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(423),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 25989, 25999),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26408, 26418),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4385,7 +4385,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(425),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26026, 26036),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26445, 26455),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4397,7 +4397,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(427),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26063, 26077),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26482, 26496),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4409,7 +4409,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(429),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "UnknownCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26104, 26118),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26523, 26537),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4418,7 +4418,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(430),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25837, 26144),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26256, 26563),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -4426,7 +4426,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "combine_binary_product".to_string(),
             value: PortId(430),
             params: vec![PortId(414), PortId(415)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25837, 26144),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26256, 26563),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -4435,49 +4435,49 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(817)),
             inputs: vec![PortId(431), PortId(434), PortId(432), PortId(433)],
             output: PortId(435),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26273, 26309),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26692, 26728),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(338),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(432), PortId(433)],
             output: PortId(437),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26333, 26351),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26752, 26770),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(339),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(432), PortId(433)],
             output: PortId(439),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26377, 26395),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26796, 26814),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(340),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(432), PortId(433)],
             output: PortId(441),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26414, 26432),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26833, 26851),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(341),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(432), PortId(433)],
             output: PortId(443),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26451, 26469),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26870, 26888),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(342),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(432), PortId(433)],
             output: PortId(445),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26492, 26510),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26911, 26929),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(343),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(432), PortId(433)],
             output: PortId(447),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26533, 26551),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26952, 26970),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(344),
@@ -4488,7 +4488,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(435),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LinearCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26255, 26269),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26674, 26688),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "vb".to_string(),
@@ -4500,7 +4500,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(437),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ConstantCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26314, 26329),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26733, 26748),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4512,7 +4512,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(439),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "PolynomialCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26356, 26373),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26775, 26792),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4524,7 +4524,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(441),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "LogCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26400, 26410),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26819, 26829),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4536,7 +4536,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(443),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "SumCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26437, 26447),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26856, 26866),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4548,7 +4548,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(445),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "ProductCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26474, 26488),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26893, 26907),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4560,7 +4560,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(447),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "UnknownCost".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26515, 26529),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 26934, 26948),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "_".to_string(),
@@ -4569,7 +4569,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(448),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26241, 26555),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26660, 26974),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -4577,7 +4577,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "combine_linear_with".to_string(),
             value: PortId(448),
             params: vec![PortId(431), PortId(432), PortId(433)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26241, 26555),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26660, 26974),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -4586,21 +4586,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(798)),
             inputs: vec![PortId(449), PortId(450)],
             output: PortId(453),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26686, 26712),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27105, 27131),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(347),
             target: TransformTarget::Callable(DeclarationId(818)),
             inputs: vec![PortId(449)],
             output: PortId(454),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26722, 26743),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27141, 27162),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(348),
             target: TransformTarget::Callable(DeclarationId(819)),
             inputs: vec![PortId(451), PortId(452)],
             output: PortId(455),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26755, 26773),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27174, 27192),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(349),
@@ -4611,7 +4611,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(454),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26722, 26743),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 27141, 27162),
                     },
                     binding: None,
                 },
@@ -4620,13 +4620,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(455),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 26755, 26773),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 27174, 27192),
                     },
                     binding: None,
                 },
             ],
             output: PortId(456),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26683, 26773),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27102, 27192),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -4634,7 +4634,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "collapse_linear_square".to_string(),
             value: PortId(456),
             params: vec![PortId(449), PortId(450), PortId(451), PortId(452)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26683, 26773),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27102, 27192),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -4643,21 +4643,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(788)),
             inputs: vec![PortId(457), PortId(458)],
             output: PortId(459),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26963, 26978),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27382, 27397),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(352),
             target: TransformTarget::Callable(DeclarationId(1843)),
             inputs: vec![PortId(459)],
             output: PortId(460),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26951, 26979),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27370, 27398),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(353),
             name: "product_pair".to_string(),
             value: PortId(460),
             params: vec![PortId(457), PortId(458)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26951, 26979),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27370, 27398),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -4669,7 +4669,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(461)],
             output: PortId(463),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27079, 27082),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27498, 27501),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(355),
@@ -4679,21 +4679,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(461)],
             output: PortId(464),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27103, 27108),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27522, 27527),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(356),
             target: TransformTarget::Callable(DeclarationId(797)),
             inputs: vec![PortId(462), PortId(464)],
             output: PortId(465),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27086, 27109),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27505, 27528),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(357),
             target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::Or)),
             inputs: vec![PortId(463), PortId(465)],
             output: PortId(466),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27075, 27109),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27494, 27528),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(358),
@@ -4703,21 +4703,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(461)],
             output: PortId(467),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27123, 27128),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27542, 27547),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(359),
             target: TransformTarget::Callable(DeclarationId(784)),
             inputs: vec![PortId(466), PortId(467)],
             output: PortId(468),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27066, 27130),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27485, 27549),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(360),
             name: "fold_or_dominate_scan".to_string(),
             value: PortId(468),
             params: vec![PortId(461), PortId(462)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27066, 27130),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27485, 27549),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -4729,14 +4729,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(469)],
             output: PortId(470),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27184, 27187),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27603, 27606),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(362),
             name: "scan_hit".to_string(),
             value: PortId(470),
             params: vec![PortId(469)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27179, 27187),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27598, 27606),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -4745,7 +4745,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(1877)),
             inputs: vec![],
             output: PortId(473),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27334, 27341),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27753, 27760),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(364),
@@ -4755,14 +4755,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(474)],
             output: PortId(475),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27398, 27402),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27817, 27821),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(365),
             target: TransformTarget::Callable(DeclarationId(797)),
             inputs: vec![PortId(472), PortId(475)],
             output: PortId(476),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27372, 27403),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27791, 27822),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(366),
@@ -4772,14 +4772,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(474)],
             output: PortId(477),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27449, 27453),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27868, 27872),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(367),
             target: TransformTarget::Callable(DeclarationId(822)),
             inputs: vec![PortId(477), PortId(472)],
             output: PortId(478),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27417, 27462),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27836, 27881),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(368),
@@ -4789,7 +4789,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(474)],
             output: PortId(479),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27495, 27499),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27914, 27918),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(369),
@@ -4799,21 +4799,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(474)],
             output: PortId(480),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27533, 27537),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27952, 27956),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(370),
             target: TransformTarget::Callable(DeclarationId(822)),
             inputs: vec![PortId(480), PortId(472)],
             output: PortId(481),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27501, 27546),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27920, 27965),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(371),
             target: TransformTarget::Callable(DeclarationId(1878)),
             inputs: vec![PortId(479), PortId(481)],
             output: PortId(482),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27482, 27547),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27901, 27966),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(372),
@@ -4824,7 +4824,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(478),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 27417, 27462),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 27836, 27881),
                     },
                     binding: None,
                 },
@@ -4833,13 +4833,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(482),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 27482, 27547),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 27901, 27966),
                     },
                     binding: None,
                 },
             ],
             output: PortId(483),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27369, 27547),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27788, 27966),
             emit_participation: None,
         }));
         nodes.push(Behavior::Branch(BranchNode {
@@ -4851,7 +4851,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(473),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Empty".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 27325, 27330),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 27744, 27749),
                     },
                     binding: None,
                 },
@@ -4860,7 +4860,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(483),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cons".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 27346, 27359),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 27765, 27778),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -4869,7 +4869,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(484),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27302, 27551),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27721, 27970),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Loop(LoopNode {
@@ -4879,14 +4879,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             body: NodeId(373),
             bound: LoopBound::Cardinality { count: PortId(471) },
             output: PortId(485),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27302, 27551),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27721, 27970),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(375),
             name: "filter_not_dominated_by".to_string(),
             value: PortId(485),
             params: vec![PortId(471), PortId(472)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27302, 27551),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27721, 27970),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -4895,35 +4895,35 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(785)),
             inputs: vec![PortId(487)],
             output: PortId(488),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27675, 27699),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28094, 28118),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(377),
             target: TransformTarget::Callable(DeclarationId(1880)),
             inputs: vec![PortId(486), PortId(488)],
             output: PortId(489),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27665, 27723),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28084, 28142),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(378),
             target: TransformTarget::Callable(DeclarationId(821)),
             inputs: vec![PortId(489)],
             output: PortId(490),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27656, 27724),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28075, 28143),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(379),
             target: TransformTarget::Callable(DeclarationId(822)),
             inputs: vec![PortId(486), PortId(487)],
             output: PortId(491),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27760, 27794),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28179, 28213),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(380),
             target: TransformTarget::Callable(DeclarationId(1881)),
             inputs: vec![PortId(487), PortId(491)],
             output: PortId(492),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27749, 27795),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28168, 28214),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(381),
@@ -4934,7 +4934,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(486),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "True".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 27734, 27737),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 28153, 28156),
                     },
                     binding: None,
                 },
@@ -4943,13 +4943,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(492),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "False".to_string(),
-                        span: SourceSpan::new("src/v3/std/algebra.dag", 27749, 27795),
+                        span: SourceSpan::new("src/v3/std/algebra.dag", 28168, 28214),
                     },
                     binding: None,
                 },
             ],
             output: PortId(493),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27653, 27795),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28072, 28214),
             emit_participation: None,
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -4957,7 +4957,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "drop_dominated_step".to_string(),
             value: PortId(493),
             params: vec![PortId(486), PortId(487)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27653, 27795),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28072, 28214),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -4966,21 +4966,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(1882)),
             inputs: vec![],
             output: PortId(495),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 28066, 28073),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28485, 28492),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(384),
             target: TransformTarget::Callable(DeclarationId(1884)),
             inputs: vec![PortId(494), PortId(495)],
             output: PortId(496),
-            span: SourceSpan::new("src/v3/std/algebra.dag", 28054, 28095),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28473, 28514),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(385),
             name: "drop_dominated".to_string(),
             value: PortId(496),
             params: vec![PortId(494)],
-            span: SourceSpan::new("src/v3/std/algebra.dag", 28054, 28095),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28473, 28514),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -22870,7 +22870,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17513, 17754),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 17932, 18173),
         });
         declarations.push(Declaration {
             id: DeclarationId(800),
@@ -22888,7 +22888,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17756, 19934),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18175, 20353),
         });
         declarations.push(Declaration {
             id: DeclarationId(801),
@@ -22906,7 +22906,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 19936, 20067),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20355, 20486),
         });
         declarations.push(Declaration {
             id: DeclarationId(802),
@@ -22924,7 +22924,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 20069, 20200),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20488, 20619),
         });
         declarations.push(Declaration {
             id: DeclarationId(803),
@@ -22932,7 +22932,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(783)],
                 output: DeclarationId(799),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/algebra.dag", 20267, 20300)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/algebra.dag", 20686, 20719)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -22942,7 +22942,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 20202, 20300),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 20621, 20719),
         });
         declarations.push(Declaration {
             id: DeclarationId(804),
@@ -22960,7 +22960,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21174, 21539),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21593, 21958),
         });
         declarations.push(Declaration {
             id: DeclarationId(805),
@@ -22978,7 +22978,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21541, 21670),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21960, 22089),
         });
         declarations.push(Declaration {
             id: DeclarationId(806),
@@ -22996,7 +22996,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21847, 22139),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22266, 22558),
         });
         declarations.push(Declaration {
             id: DeclarationId(807),
@@ -23014,7 +23014,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22348, 22511),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22767, 22930),
         });
         declarations.push(Declaration {
             id: DeclarationId(808),
@@ -23032,7 +23032,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22513, 22678),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22932, 23097),
         });
         declarations.push(Declaration {
             id: DeclarationId(809),
@@ -23050,7 +23050,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22836, 23142),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23255, 23561),
         });
         declarations.push(Declaration {
             id: DeclarationId(810),
@@ -23068,7 +23068,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23144, 23398),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23563, 23817),
         });
         declarations.push(Declaration {
             id: DeclarationId(811),
@@ -23086,7 +23086,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23400, 23653),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23819, 24072),
         });
         declarations.push(Declaration {
             id: DeclarationId(812),
@@ -23104,7 +23104,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24438, 24709),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24857, 25128),
         });
         declarations.push(Declaration {
             id: DeclarationId(813),
@@ -23122,7 +23122,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24711, 24986),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25130, 25405),
         });
         declarations.push(Declaration {
             id: DeclarationId(814),
@@ -23140,7 +23140,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25171, 25592),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25590, 26011),
         });
         declarations.push(Declaration {
             id: DeclarationId(815),
@@ -23158,7 +23158,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25757, 26144),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26176, 26563),
         });
         declarations.push(Declaration {
             id: DeclarationId(816),
@@ -23176,7 +23176,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26146, 26555),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26565, 26974),
         });
         declarations.push(Declaration {
             id: DeclarationId(817),
@@ -23199,7 +23199,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26557, 26773),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 26976, 27192),
         });
         declarations.push(Declaration {
             id: DeclarationId(818),
@@ -23207,7 +23207,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(779)],
                 output: DeclarationId(783),
-                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/algebra.dag", 26829, 26879)),
+                body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/algebra.dag", 27248, 27298)),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -23217,7 +23217,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26775, 26879),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27194, 27298),
         });
         declarations.push(Declaration {
             id: DeclarationId(819),
@@ -23235,7 +23235,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26881, 26979),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27300, 27398),
         });
         declarations.push(Declaration {
             id: DeclarationId(820),
@@ -23253,7 +23253,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 26981, 27130),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27400, 27549),
         });
         declarations.push(Declaration {
             id: DeclarationId(821),
@@ -23271,7 +23271,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27132, 27187),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27551, 27606),
         });
         declarations.push(Declaration {
             id: DeclarationId(822),
@@ -23289,7 +23289,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27189, 27551),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27608, 27970),
         });
         declarations.push(Declaration {
             id: DeclarationId(823),
@@ -23307,7 +23307,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27553, 27795),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27972, 28214),
         });
         declarations.push(Declaration {
             id: DeclarationId(824),
@@ -23325,7 +23325,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27983, 28095),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28402, 28514),
         });
         declarations.push(Declaration {
             id: DeclarationId(825),
@@ -58416,7 +58416,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21563, 21593),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 21982, 22012),
         });
         declarations.push(Declaration {
             id: DeclarationId(1809),
@@ -58436,7 +58436,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21598, 21616),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22017, 22035),
         });
         declarations.push(Declaration {
             id: DeclarationId(1810),
@@ -58456,7 +58456,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21876, 21894),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22295, 22313),
         });
         declarations.push(Declaration {
             id: DeclarationId(1811),
@@ -58476,7 +58476,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21899, 21917),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22318, 22336),
         });
         declarations.push(Declaration {
             id: DeclarationId(1812),
@@ -58496,7 +58496,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22390, 22408),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22809, 22827),
         });
         declarations.push(Declaration {
             id: DeclarationId(1813),
@@ -58516,7 +58516,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22413, 22431),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22832, 22850),
         });
         declarations.push(Declaration {
             id: DeclarationId(1814),
@@ -58536,7 +58536,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22532, 22550),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22951, 22969),
         });
         declarations.push(Declaration {
             id: DeclarationId(1815),
@@ -58556,7 +58556,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22870, 22888),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23289, 23307),
         });
         declarations.push(Declaration {
             id: DeclarationId(1816),
@@ -58576,7 +58576,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22893, 22911),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23312, 23330),
         });
         declarations.push(Declaration {
             id: DeclarationId(1817),
@@ -58596,7 +58596,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24459, 24477),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 24878, 24896),
         });
         declarations.push(Declaration {
             id: DeclarationId(1818),
@@ -58616,7 +58616,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24730, 24748),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25149, 25167),
         });
         declarations.push(Declaration {
             id: DeclarationId(1819),
@@ -58636,7 +58636,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 25196, 25214),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25615, 25633),
         });
         declarations.push(Declaration {
             id: DeclarationId(1820),
@@ -58656,7 +58656,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27231, 27249),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27650, 27668),
         });
         declarations.push(Declaration {
             id: DeclarationId(1821),
@@ -58676,7 +58676,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27279, 27297),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27698, 27716),
         });
         declarations.push(Declaration {
             id: DeclarationId(1822),
@@ -58696,7 +58696,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27584, 27602),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28003, 28021),
         });
         declarations.push(Declaration {
             id: DeclarationId(1823),
@@ -58716,7 +58716,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27630, 27648),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28049, 28067),
         });
         declarations.push(Declaration {
             id: DeclarationId(1824),
@@ -58736,7 +58736,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 28008, 28026),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28427, 28445),
         });
         declarations.push(Declaration {
             id: DeclarationId(1825),
@@ -58756,7 +58756,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 28031, 28049),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28450, 28468),
         });
         declarations.push(Declaration {
             id: DeclarationId(1826),
@@ -59176,7 +59176,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17579, 17592),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 17998, 18011),
         });
         declarations.push(Declaration {
             id: DeclarationId(1850),
@@ -59190,7 +59190,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17597, 17605),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18016, 18024),
         });
         declarations.push(Declaration {
             id: DeclarationId(1851),
@@ -59204,7 +59204,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17610, 17621),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18029, 18040),
         });
         declarations.push(Declaration {
             id: DeclarationId(1852),
@@ -59218,7 +59218,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17626, 17643),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18045, 18062),
         });
         declarations.push(Declaration {
             id: DeclarationId(1853),
@@ -59232,7 +59232,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17648, 17662),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18067, 18081),
         });
         declarations.push(Declaration {
             id: DeclarationId(1854),
@@ -59251,7 +59251,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17667, 17716),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18086, 18135),
         });
         declarations.push(Declaration {
             id: DeclarationId(1855),
@@ -59265,7 +59265,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17721, 17737),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18140, 18156),
         });
         declarations.push(Declaration {
             id: DeclarationId(1856),
@@ -59279,7 +59279,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17742, 17754),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 18161, 18173),
         });
         declarations.push(Declaration {
             id: DeclarationId(1857),
@@ -59299,7 +59299,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 17543, 17574),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 17962, 17993),
         });
         declarations.push(Declaration {
             id: DeclarationId(1858),
@@ -59547,7 +59547,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21639, 21669),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22058, 22088),
         });
         declarations.push(Declaration {
             id: DeclarationId(1869),
@@ -59567,7 +59567,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21621, 21670),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22040, 22089),
         });
         declarations.push(Declaration {
             id: DeclarationId(1870),
@@ -59587,7 +59587,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 21949, 21956),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22368, 22375),
         });
         declarations.push(Declaration {
             id: DeclarationId(1871),
@@ -59607,7 +59607,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22083, 22135),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22502, 22554),
         });
         declarations.push(Declaration {
             id: DeclarationId(1872),
@@ -59627,7 +59627,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22486, 22493),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22905, 22912),
         });
         declarations.push(Declaration {
             id: DeclarationId(1873),
@@ -59647,7 +59647,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22464, 22494),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 22883, 22913),
         });
         declarations.push(Declaration {
             id: DeclarationId(1874),
@@ -59667,7 +59667,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 22943, 22950),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23362, 23369),
         });
         declarations.push(Declaration {
             id: DeclarationId(1875),
@@ -59687,7 +59687,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 23081, 23138),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 23500, 23557),
         });
         declarations.push(Declaration {
             id: DeclarationId(1876),
@@ -59707,7 +59707,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 24663, 24695),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 25082, 25114),
         });
         declarations.push(Declaration {
             id: DeclarationId(1877),
@@ -59727,7 +59727,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27334, 27341),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27753, 27760),
         });
         declarations.push(Declaration {
             id: DeclarationId(1878),
@@ -59747,7 +59747,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27482, 27547),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 27901, 27966),
         });
         declarations.push(Declaration {
             id: DeclarationId(1879),
@@ -59795,7 +59795,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27665, 27723),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28084, 28142),
         });
         declarations.push(Declaration {
             id: DeclarationId(1881),
@@ -59815,7 +59815,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 27749, 27795),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28168, 28214),
         });
         declarations.push(Declaration {
             id: DeclarationId(1882),
@@ -59835,7 +59835,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 28066, 28073),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28485, 28492),
         });
         declarations.push(Declaration {
             id: DeclarationId(1883),
@@ -59883,7 +59883,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/algebra.dag", 28054, 28095),
+            span: SourceSpan::new("src/v3/std/algebra.dag", 28473, 28514),
         });
         declarations.push(Declaration {
             id: DeclarationId(1885),

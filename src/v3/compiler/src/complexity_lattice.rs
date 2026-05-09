@@ -1,9 +1,10 @@
 //! Rust execution mirror of `asymptotic_dominates` in `src/v3/std/algebra.dag`.
 //!
 //! `emit_rust_module(complexity.dag)` lowers calls in `complexity_enforcement_violates`
-//! to this symbol. Keep this implementation aligned with the `.dag` lattice — the
-//! structural authority remains `algebra.dag`; this module is the host bridge for
-//! generated lens code.
+//! to this symbol. **Polynomial-vs-polynomial** ordering uses `PositiveDescentAmount`
+//! (k1 ≥ k2), matching `dominates(PolynomialCost, PolynomialCost)` in that file; the
+//! staged `.dag` `asymptotic_dominates` carrier layer remains tier-coarse for bootstrap
+//! lowering (see comment on `AsymptoticClass` in `algebra.dag`).
 
 use crate::dag::{positive_descent_count, AsymptoticClass};
 
