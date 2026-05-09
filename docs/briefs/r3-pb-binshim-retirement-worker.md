@@ -4,7 +4,9 @@
 
 **Substrate-disposition update 2026-05-09**: §7.3 `CensusListConstant` / filter-predicate question (formerly an open Substrate gap) was **RATIFIED by Substrate Manager** (warm-wolf-698) at gunbc#2068 [c#4411574142](https://github.com/gunb-ai/gunbc/issues/2068#issuecomment-4411574142). Locked shape: **(b) `CensusSubsetCount` filter** with closed predicate `BinShimFilesSubsetPredicate` mirroring the existing `LensProducerFilesSubsetPredicate` precedent at [`src/v3/std/verification.dag:41-43`](../../src/v3/std/verification.dag). Carriers + consumer wire-up enumerated below in §"Substrate landings (locked shape)".
 
-**Item-4 prerequisite update 2026-05-09**: PB-Runtime interpreter-as-data + bin-shim emit pattern landed via PR #2282 (closes gunbc#2227). Both Item-4 sub-gate dependencies are met; this brief is now in **READY-FOR-DISPATCH** posture pending only the standard R2/R2-Evaluator close signal.
+**Item-4 partial-landing update 2026-05-09**: PR #2282 (closes gunbc#2227) landed the **Item-4 carrier substrate** (`runtime.dag` PB-Runtime types + regenerated bootstrap surface) only — it did **not** author the §7.1 `pb_runtime_equivalent_to_evaluator_on_corpus` equivalence claim, the bin-shim emitter, the §7.2 BinShim equivalence fixture, or any per-shim `BinShim` instance rows. Those remain dispatch preconditions for this lane.
+
+**This brief stays in PROPOSAL.** This 2026-05-09 amendment is a **substrate-disposition absorption** (encoding §7.3 ratification per #2068 [c#4411574142](https://github.com/gunb-ai/gunbc/issues/2068#issuecomment-4411574142)) — it does **not** flip the lane to ready. Dispatch remains gated on §"Dispatch preconditions" below, which still includes §7.1 Item-4 sub-gate green + §7.2 equivalence fixture authoring + the emitter / instance-row landings. Per `INVARIANTS.md` [P5](../../INVARIANTS.md), the dispatch gate must continue to fail-closed against incomplete Item-4 / Item-5 deliverables.
 
 **Owning manager:** Pure Bootstrap Manager (R2 → R3 continuation per `r3-structure.md` §"Manager structure" Item 1).
 
