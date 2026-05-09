@@ -1,0 +1,50 @@
+// std.tc2_church_rosser_strict_fire — TC2 (Church-Rosser / strategy-order) first executable slice.
+//
+// Authority: `r3-program-plan.md` §1.8 gate #12 `tc2_church_rosser_executable`;
+// `r3-v-pattern-a-tc2-v1-worker.md` (Pattern-A; unified `BinaryDimensionReportEquals` envelope).
+//
+// Differences vs `tc2_evaluation_order_independence_deferred.dag`:
+//   - Canonical TestClaim name `tc2_church_rosser_executable` (deferred fixture uses the
+//     R2 research-receipt form `evaluation_order_independent_lens_results`).
+//   - Same predicate shape: strategy-order role declarations pair **LeftFirst** vs **RightFirst**
+//     n-ary Transform input-evaluation order (`DimensionReport<Dag>` per deferred staging).
+//
+// Runner status today: `BinaryDimensionReportEquals` shape-only — `eval_binary_dimension_report_
+// equals_shape` returns `NotYetImplemented` after structural validation (generic
+// `DimensionReport<C>` production/evaluation substrate). Strict-fire **PASSING** waits on
+// second executable strategy + keyed reports per Evaluator / Substrate receipts (worker brief §Dependencies).
+// Integration test asserts shape-valid NYI until that substrate lands; flips to Pass when the
+// runner compares produced reports without changing this claim name.
+//
+// Vacuity guard (Pattern-A TC2): `TestClaim.source` must not be a constant-only program — gate #12
+// is Church-Rosser / **n-ary Transform input-evaluation order**. The embedded program is a binary
+// call whose operands are **two non-atomic Int subexpressions**, so eager LeftFirst vs RightFirst
+// schedules differ in evaluation trace / memo keys even before substrate producers land (same idea as
+// worker brief STOP on vacuous strategy equality).
+
+module std.tc2_church_rosser_strict_fire
+
+import std.dimensions { DimensionReport }
+import std.substrate { Dag }
+import std.verification { BinaryDimensionReportEquals, TestClaim, TestSuite }
+
+// Role types: producers resolve these to strategy-conditioned folds (LeftFirst vs RightFirst).
+type tc2_leftfirst_strategy_dimension_report = DimensionReport<Dag>
+type tc2_rightfirst_strategy_dimension_report = DimensionReport<Dag>
+
+// §1.8 gate #12 canonical TestClaim name.
+data tc2_church_rosser_executable_claim: TestClaim = {
+  name: "tc2_church_rosser_executable",
+  source: "// TC2 strict-fire - binary Transform + two argument sites (non-atomic subexpressions).\n// Vacuity guard: LeftFirst vs RightFirst eager schedules traverse distinct operand-eval order.\nmodule user.tc2_church_rosser_executable\n\nfn sub_pos(a: Int, b: Int) -> Int = a - b\n\nlet _: Int = sub_pos(2 + 3, 1 + 1)\n",
+  file_name: "tc2_church_rosser_executable.v3",
+  predicate: BinaryDimensionReportEquals(
+    tc2_leftfirst_strategy_dimension_report,
+    tc2_rightfirst_strategy_dimension_report
+  ),
+  requires: []
+}
+
+data tc2_church_rosser_strict_fire_suite: TestSuite = {
+  name: "tc2_church_rosser_strict_fire_suite",
+  claims: [tc2_church_rosser_executable_claim]
+}
