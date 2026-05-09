@@ -1,3 +1,8 @@
+// R3 gate #6 (`lens_testgen_dot_rs_retired`): former `lens_testgen.rs` body, included from `lens_apply.rs`.
+// Dissolution trigger: PB-Runtime `.dag` testgen authority owns this logic end-to-end; delete this
+// fragment and the `pub mod lens_testgen` wrapper, then drop the path from
+// `EXPECTED_HAND_AUTHORED_FRAGMENTS` in `sg0_census_test.rs`.
+
 use crate::dag::{
     AtomPayload, Dag, Declaration, DeclarationId, Field, FieldValue, LiteralBits, TypeConnective,
 };

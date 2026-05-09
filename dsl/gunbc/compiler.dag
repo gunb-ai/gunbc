@@ -92,7 +92,6 @@ data stage0: GeneratedCrate = {
     "python_target.rs",
     "rust_target.rs",
     "infer.rs",
-    "lens_testgen.rs",
     "lib.rs",
     "lower.rs",
     "pipeline_authority.rs",

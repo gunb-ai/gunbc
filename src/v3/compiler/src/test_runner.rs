@@ -4203,9 +4203,7 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
 fn is_lens_producer_census_path(path: &str) -> bool {
     matches!(
         path,
-        "src/v3/compiler/src/lens_apply.rs"
-            | "src/v3/compiler/src/lens_testgen.rs"
-            | "src/v3/compiler/src/bin/regen_lens.rs"
+        "src/v3/compiler/src/lens_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
     )
 }
 
