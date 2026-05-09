@@ -87,8 +87,8 @@ Per r3-structure.md:168, `Output` is "projection/report distinguishing `Observed
 
 Direct sum-type encoding. Each variant carries shape-appropriate payload (`Observed { value: TimingMeasurement }`, `Missing { reason }`, `Ambiguous { candidates }`, `Stale { observed_at, expired_after }`).
 
-- **Pro**: direct match to gate #55 invariant 5 ("stale/ambiguous/missing/observed report states"); fail-closed is straightforward (`LensEnforcement.violates = Output != Observed`).
-- **Con**: none material.
+- **Pro**: direct match to gate #55 invariant 5 ("stale/ambiguous/missing/observed report states").
+- **Con**: `LensEnforcement<Output, Budget>.violates: fn(Budget, Budget) -> Bool` (per `src/v3/std/lens_application.dag:100`) does NOT see raw Output — it sees projected Budget values. Fail-closed on non-Observed states requires either (i) the projection step (Output → Budget) fabricating a max-violating Budget for non-Observed variants, or (ii) substrate extension of `violates` signature to `fn(Output, Budget, Budget) -> Bool`. (i) is workable but pushes the report-state semantics one level out of the lens-framework view; (ii) is a substrate-shape change to `LensEnforcement` itself (not just the Output type).
 
 ### Option (b) — `Result<TimingMeasurement, ObservationFailure>` with `ObservationFailure` enum
 
@@ -97,7 +97,15 @@ Two-level: outcome is `Result`, failure is enum. Shifts the ambiguous/stale/miss
 - **Pro**: matches stdlib-Result-style intuition.
 - **Con**: extra indirection; gate #55 acceptance language reads as flat-sum (Observed *and* the failure variants are peer report states); fail-closed is more verbose to express.
 
-**Recommended (Mgr-tier preliminary)**: **(a)** — direct match to gate language; flat sum is simpler.
+**Recommended (Mgr-tier preliminary)**: **(a)** with projection-step report-state fold (option (a)(i) — projection fabricates violating Budget for non-Observed). NOT option (a)(ii) — substrate extension of `LensEnforcement.violates` signature is canvas-tier and would cascade across all lens-application consumers (T-LBP / T-CostLens / T-LAS), not just timing.
+
+### Option (c) — Output-folded-into-carrier (worker tidy-raven-610 PR #2360 shape)
+
+Worker authored `TimingMeasurement = Observed { nanoseconds: Int } | Missing | Ambiguous | Stale` directly — the carrier IS the report state, no separate Output projection. `Lens<TimingMeasurement>` is per-observation; `TimingObservationSet` is separate aggregation. Budget projection (TimingMeasurement → TimingBudget compare-shape) handles the (a)(i) fabrication naturally: non-Observed variants project to a violating Budget value.
+
+- **Pro**: avoids the `violates: (Budget, Budget) -> Bool` signature collision entirely — projection step IS where Observed-vs-non-Observed semantics live, no fabrication ambiguity. Substrate carrier count is lower (no separate Output projection type).
+- **Con**: \"per-observation\" framing means TimingObservationSet lens-fold semantics need explicit aggregation logic (sequential / parallel composition over per-observation TimingMeasurement values).
+- **Status**: shape ratification pending — Director call between (a)(i) separate-projection vs (c) folded-carrier per #828 c#4412018726.
 
 ## Question 4 (Q-WAD-S2-Placement) — Carrier placement: `dsl/std/` vs `dsl/extdeps/`
 
