@@ -976,8 +976,13 @@ pub mod evaluator {
         where
             T: Send + 'static,
         {
+            // Test-harness containment: TC2/evaluator tests exercise bootstrap-sized paths
+            // that can overflow the default harness stack in CI. Dissolution trigger:
+            // remove or centralize this wrapper once those paths run on the default stack.
+            const TC2_EVALUATOR_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
+
             std::thread::Builder::new()
-                .stack_size(32 * 1024 * 1024)
+                .stack_size(TC2_EVALUATOR_TEST_STACK_BYTES)
                 .spawn(f)
                 .expect("spawn larger-stack evaluator test thread")
                 .join()
@@ -1483,6 +1488,34 @@ pub mod evaluator {
 
                 assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
             });
+        }
+
+        #[test]
+        fn transform_right_first_reports_rightmost_input_error_first() {
+            let mut dag = Dag::new();
+            let lhs = dag.alloc_port(None);
+            let rhs = dag.alloc_port(None);
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+
+            let mut left_first_state = empty_state();
+            let left_first_err = eval_node(&dag, entry, &mut left_first_state, &eager_strategy())
+                .expect_err("left-first should read lhs first");
+            assert_eq!(left_first_err, EvalError::UnboundPort { port: lhs });
+
+            let mut right_first_state = empty_state();
+            let right_first_err = eval_node(
+                &dag,
+                entry,
+                &mut right_first_state,
+                &eager_right_first_strategy(),
+            )
+            .expect_err("right-first should read rhs first");
+            assert_eq!(right_first_err, EvalError::UnboundPort { port: rhs });
         }
 
         #[test]

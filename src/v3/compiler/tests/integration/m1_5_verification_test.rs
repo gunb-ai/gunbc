@@ -480,11 +480,15 @@ const TC2_EVALUATION_ORDER_FIXTURE: &str =
     include_str!("../fixtures/tc2_evaluation_order_independence_deferred.dag");
 const TC2_EVALUATION_ORDER_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag";
+// Test-harness containment: this fixture compiles enough bootstrap/runtime surface to
+// overflow the default harness stack in CI. Dissolution trigger: remove or centralize
+// this wrapper once the TC2 fixture runs on the default stack.
+const TC2_FIXTURE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
 
 #[test]
 fn tc2_evaluation_order_independence_suite_passes() {
     std::thread::Builder::new()
-        .stack_size(32 * 1024 * 1024)
+        .stack_size(TC2_FIXTURE_TEST_STACK_BYTES)
         .spawn(tc2_evaluation_order_independence_suite_passes_impl)
         .expect("spawn larger-stack TC2 fixture test thread")
         .join()

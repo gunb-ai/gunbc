@@ -3922,10 +3922,16 @@ fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
     );
 }
 
+// Test-harness containment: this carrier-shape ratchet loads the full generated
+// bootstrap DAG, which can overflow the default harness stack in CI. Dissolution
+// trigger: remove or centralize this wrapper once full-bootstrap shape tests run
+// on the default stack.
+const FULL_BOOTSTRAP_SHAPE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
+
 #[test]
 fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape() {
     std::thread::Builder::new()
-        .stack_size(32 * 1024 * 1024)
+        .stack_size(FULL_BOOTSTRAP_SHAPE_TEST_STACK_BYTES)
         .spawn(pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape_impl)
         .expect("spawn larger-stack PR-A.3 carrier test thread")
         .join()
