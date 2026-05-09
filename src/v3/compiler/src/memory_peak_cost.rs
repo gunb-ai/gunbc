@@ -25,15 +25,21 @@ pub fn compose_branch_memory_peak(a: SymbolicCost, b: SymbolicCost) -> SymbolicC
 
 /// Enforce-mode lens check: observed peak **exceeds** the user-declared budget.
 ///
-/// Mirrors `LensEnforcement.violates(declared_budget, projected_observed)` orientation in
-/// `src/v3/std/lens_application.dag`: returns `true` iff the observed cost dominates the budget
-/// under [`dominates`].
+/// Aligns with `LensEnforcement.violates(declared_budget, projected)` (`src/v3/std/lens_application.dag`):
+/// per substrate comment, **`violates` is true iff observed EXCEEDS the budget** — **reflexive**
+/// dominance must **not** count as violation (equality is compliant).
+///
+/// Under the **`SymbolicCost` partial order** ([`dominates`]), **`declared_budget` dominates
+/// `observed_peak`** means the budget asymptotically **covers** the peak (budget is looser /
+/// tying on the declared bound). **`!dominates(budget, peak)`** therefore means the contract is
+/// not certified: **strict exceed** where comparable, and **fail-closed** wherever the order is
+/// **incomparable** (distinct size variables without a dominance edge).
 #[must_use]
 pub fn memory_peak_enforcement_violates(
     declared_budget: &SymbolicCost,
     observed_peak: &SymbolicCost,
 ) -> bool {
-    dominates(observed_peak, declared_budget)
+    !dominates(declared_budget, observed_peak)
 }
 
 #[cfg(test)]
@@ -62,7 +68,7 @@ mod tests {
     }
 
     #[test]
-    fn enforcement_violates_when_peak_dominates_budget() {
+    fn enforcement_violates_when_peak_exceeds_budget() {
         let p = PortId::test_raw(200);
         let n = var(p);
         let budget = SymbolicCost::LogCost { _0: n.clone() };
@@ -77,6 +83,31 @@ mod tests {
         let budget = SymbolicCost::LinearCost { _0: n.clone() };
         let peak = SymbolicCost::LogCost { _0: n };
         assert!(!memory_peak_enforcement_violates(&budget, &peak));
+    }
+
+    #[test]
+    fn enforcement_clean_when_budget_ties_observed_peak_under_dominance() {
+        let p = PortId::test_raw(202);
+        let n = var(p);
+        let cost = SymbolicCost::LinearCost { _0: n.clone() };
+        assert!(
+            !memory_peak_enforcement_violates(&cost, &SymbolicCost::LinearCost { _0: n }),
+            "reflexive asymptotic pairs must not violate (EXCEEDS is strict over = in the contract)"
+        );
+    }
+
+    #[test]
+    fn enforcement_violates_on_incomparable_size_variables_fail_closed() {
+        let a = SymbolicCost::LinearCost {
+            _0: var(PortId::test_raw(203)),
+        };
+        let b = SymbolicCost::LinearCost {
+            _0: var(PortId::test_raw(204)),
+        };
+        assert!(
+            memory_peak_enforcement_violates(&a, &b),
+            "incomparable `LinearCost` keys must not pass Enforce silently"
+        );
     }
 
     #[test]
