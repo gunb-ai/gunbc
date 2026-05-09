@@ -169,6 +169,14 @@ fn timing_measurement_iterate(body: TimingMeasurement, bound: LoopBound) -> Timi
 // `d` / `b` are threaded through trivial substrate queries so
 // `lenses.unused_parameters` does not flag scaffold roots on `Dag::new()`
 // (full bootstrap clone). Semantics stay fail-open until observation wiring lands.
+//
+// P3 / DB-3 (witness partition): `Inhabits(Unobserved)` is not "success" that hides
+// absent evidence -- `Unobserved` is the `TimingMeasurement` report that no
+// external timing row is attached yet (no fabricated `Observed` / `Nat` magnitude).
+// `Violates` on `Witness<_>` is for policy/dimension faults once real `read` rules
+// exist; routing "no row yet" through `Violates` would collapse the carrier's
+// `Unobserved` arm into the wrong DB-3 bucket. See `docs/design-timing-lens.md` section 1.3
+// and `dimensions.dag` on `Witness<Carrier>`.
 fn timing_lens_read(d: Dag, b: Behavior) -> Witness<TimingMeasurement> =
   match b {
     Value(_) =>
