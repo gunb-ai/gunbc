@@ -16,8 +16,6 @@ Today's `dsl/std/integer.dag:45` declares `type Int = Int64`, baking in 64-bit w
 
 This doc executes that end-state. The structural fix layers as the textbook math construction chain: model ℕ first as the foundational counting algebra, derive ℤ from ℕ via Grothendieck construction, derive ℚ from ℤ as the field of fractions, derive ℝ from ℚ via Cauchy completion (IEEE 754 = approximation thereof).
 
-**Gate #17 scope (2026-05-09):** `numeric_abstract_carriers_landed` closes only the carrier-prep slice that is executable and ratcheted today: `Magnitude`, `Nat`, `Int`, `Rational`, and the parametric `ApproximateField<F>` carrier axes. The `Real` alias is not part of that closure until [`docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`](audit/t-numeric-construction-approximate-field-real-parameter-stop.md) is dissolved by choosing the `ApproximateField` carrier-parameter convention and adding the corresponding ratchet.
-
 ## The construction chain
 
 ```
@@ -27,10 +25,12 @@ Nat = Semiring<Magnitude>              (ℕ — natural numbers; no neg, no div)
    ↓
 Int                                   (ℤ via Grothendieck completion of Nat; AbelianGroup<Int> witness)
    ↓
-Rational = Field<FieldOfFractions<Int>> (ℚ — fractions; field witness over fraction carrier)
+Rational = Field<FieldOfFractions<Int>>   (ℚ — alias in dsl/std/rational.dag; localization carrier + Field witness)
    ↓
-Real alias HELD                        (ℝ; exact spelling blocked on ApproximateField carrier parameter convention)
+Real = ApproximateField<FieldOfFractions<Int>>   (ℝ approximating ℚ; IEEE 754 = ApproximateField instance)
 ```
+
+**Canonical spelling note (`ApproximateField` parameter):** [`docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`](audit/t-numeric-construction-approximate-field-real-parameter-stop.md) Option **A** — the type argument to `ApproximateField<F>` is the **same carrier slot** as in `Field<F>` (`F = FieldOfFractions<Int>`). The name `Rational` denotes `Field<FieldOfFractions<Int>>` (a witness applied to that carrier), so writing `ApproximateField<Rational>` would mis-instantiate `Field<F>`. Substrate authority: `type Real = ApproximateField<FieldOfFractions<Int>>` in `dsl/std/float.dag`.
 
 Refinements apply at any layer:
 
@@ -103,9 +103,7 @@ If audit confirms structural completeness, **no new substrate** for this layer.
 - Multiplicative inverse for non-zero
 - Distributivity over the underlying ring
 
-If audit confirms, **no new substrate** for the `Field<T>` witness layer. The
-landed rational slice uses the separate fraction carrier:
-`Rational = Field<FieldOfFractions<Int>>`.
+If audit confirms, **no new substrate** for `Rational = Field<FieldOfFractions<Int>>` (canonical Q6 form in `dsl/std/rational.dag`; **`Field<Int>` is not** the honest fractional layer — ℤ lacks reciprocals).
 
 ### 5. `ApproximateField<F>` — biggest substrate-introduction
 
@@ -115,7 +113,7 @@ landed rational slice uses the separate fraction carrier:
 
 ```dag
 type ApproximateField<F> {
-  base: Field<F>                       // underlying field structure (e.g., Field<Rational>)
+  base: Field<F>                       // underlying exact field over carrier F (e.g., F = FieldOfFractions<Int> ⇒ Field<F> ≡ Rational alias)
   rounding: RoundingMode               // how arithmetic results round to representable values
   special_values: SpecialValues        // NaN / ±∞ / signed zero / denormals
   precision: Precision                 // mantissa bits + exponent bits (or unbounded for true ℝ)
@@ -137,7 +135,7 @@ type Precision = Unbounded | IEEE754Width<N>   // N = total bits (32 / 64 / 128)
 
 | Aspect | Choice | Rationale |
 |---|---|---|
-| Why NOT `Real = Field<Rational>` directly | Field laws fail under IEEE 754 rounding (associativity of add fails on floats) | The existing `Float = Field<Word64>` at `float.dag:20` quietly lies about this. `ApproximateField` makes the rounding-induced lawlessness structural — the field-with-rounding inhabits a weaker algebra than pure Field |
+| Why NOT `Real = Field<…>` over the **witness** name `Rational` | `Rational` names `Field<FieldOfFractions<Int>>`; `Field<Rational>` would nest `Field` incorrectly (see STOP audit). Approximate reals use `ApproximateField<FieldOfFractions<Int>>` | Field laws also fail under IEEE 754 rounding versus pure `Field<F>`; `ApproximateField` makes approximation structural |
 | Why explicit `RoundingMode` enum | Different IEEE 754 contexts have different rounding semantics; Rust `f64` defaults to ToNearestEven; some scientific contexts want ToZero | Closed-system requires explicit choice; can't be implicit |
 | Why explicit `SpecialValues` | NaN propagation, ±∞ handling, signed zero are all observable program facts that affect emission | Same as RoundingMode — explicit choice avoids hidden assumptions |
 | Why `Precision = Unbounded \| IEEE754Width<N>` | Distinguishes "true ℝ" (Cauchy-complete; unbounded precision; impossible on hardware but useful as a substrate concept) from "IEEE 754 fp{32,64,128}" (bounded; hardware-realizable) | Refinement chain: `Real<N>` is `Real where precision = IEEE754Width<N>` |
@@ -252,10 +250,10 @@ The construction chain has different cost characteristics per layer that the cos
 | **Nat** | `mul(a, b)` | O(1) algebraic; target: O(1) for fixed-width; O(n*m) for arbitrary-precision | |
 | **Int completion over Nat** | `add(a, b)` (via Grothendieck) | O(1) algebraic; same target cost as Nat | Sign handling adds constant factor; doesn't change asymptotic |
 | **Int** | `negate(a)` | O(1) algebraic; O(1) target | Sign flip |
-| **Rational = Field<FieldOfFractions<Int>>** | `mul(a, b)` (multiplying fractions) | O(1) algebraic; target: O(1) for fixed-width components; O(N) per gcd-reduction step | gcd dominates |
+| **`Rational = Field<FieldOfFractions<Int>>`** | `mul(a, b)` (multiplying fractions) | O(1) algebraic; target: O(1) for fixed-width components; O(N) per gcd-reduction step | gcd dominates |
 | **Rational** | `add(a, b)` (LCD'ing) | O(N) for LCD computation + O(1) for sum + gcd-reduction | |
-| **ApproximateField<F> carrier axes** | All ops | Constant rounding overhead per op | IEEE 754: ~few cycles per op on FPU; software-emulated: ~100s of cycles. `Real` alias spelling is held by the parameter-convention STOP. |
-| **Real alias** (unbounded) | All ops | Variable per configured precision | Alias not landed; expected target realizations include `decimal.Decimal` / `math/big.Float` / `rug::Float` once the carrier convention is ratified. |
+| **`Real = ApproximateField<FieldOfFractions<Int>>`** | All ops | Constant rounding overhead per op | IEEE 754: ~few cycles per op on FPU; software-emulated: ~100s of cycles |
+| **Real** (unbounded) | All ops | Variable per configured precision | `decimal.Decimal` / `math/big.Float` / `rug::Float` — depends on precision config |
 
 T-CostLens-Composition consumes these layer-cost facts to derive end-to-end program cost. Per `feedback_lenses_not_passes`: lens reads physics, no heuristics.
 
