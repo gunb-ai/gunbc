@@ -8,6 +8,53 @@ use v3_compiler::dag::{
 use v3_compiler::emit_rust;
 use v3_compiler::{compile_to_dag, integer_literal_routing_witness, CompileError};
 
+#[derive(Debug, Clone, Copy)]
+struct IntegerOverflowCase {
+    ty: &'static str,
+    target: &'static str,
+    literal: &'static str,
+    min: &'static str,
+    max: &'static str,
+    check_alias: bool,
+}
+
+fn assert_magnitude_out_of_range(source: String, file: &str, case: IntegerOverflowCase) {
+    let err = match compile_to_dag(&source, file) {
+        Ok(_) => panic!("{file}: `{}` overflow must fail closed", case.ty),
+        Err(err) => err,
+    };
+    let CompileError::Semantic(dag) = err else {
+        panic!("{file}: expected semantic diagnostic, got {err:?}");
+    };
+    assert_eq!(
+        dag.diagnostics().len(),
+        1,
+        "{file}: out-of-range integer literal should emit one root-cause diagnostic, got {:#?}",
+        dag.diagnostics()
+    );
+    assert!(
+        dag.diagnostics().iter().any(|(_, diagnostic)| {
+            matches!(
+                diagnostic,
+                v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange {
+                    literal,
+                    target,
+                    range_min_inclusive,
+                    range_max_inclusive,
+                    fixes,
+                    ..
+                } if literal == case.literal
+                    && target == case.target
+                    && range_min_inclusive == case.min
+                    && range_max_inclusive == case.max
+                    && fixes.is_empty()
+            )
+        }),
+        "{file}: expected MagnitudeOutOfRange for {case:?}, got {:#?}",
+        dag.diagnostics()
+    );
+}
+
 fn assert_data_value_scalar_typed_u8(
     dag: &v3_compiler::dag::Dag,
     name: &str,
@@ -366,6 +413,159 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
         "MagnitudeOutOfRange should carry typed bounds and no fabricated correction, got {:#?}",
         dag.diagnostics()
     );
+}
+
+/// R3 gate #21 — `int_refinement_overflow_proven_parametric`.
+///
+/// The proof obligation is not "UInt8 has a one-off overflow check"; every
+/// fixed-width integer refinement with a source-representable out-of-range
+/// literal must route through the same structural range facts and produce the
+/// same typed [`MagnitudeOutOfRange`](v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange)
+/// diagnostic. Upper-half `UInt64` / `UInt128` and full `Int128` overflow
+/// source literals remain blocked by the current i64 source literal carrier,
+/// which is covered separately by `uint64_upper_half_literals_are_tracked_carrier_limitation`.
+/// `UInt128` is still included for its source-representable lower-bound
+/// overflow (`-1`), but the alias leg stays on widths whose positive and
+/// negative overflow edges are both source-representable today.
+#[test]
+fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
+    let cases = [
+        IntegerOverflowCase {
+            ty: "Int8",
+            target: "i8",
+            literal: "128",
+            min: "-128",
+            max: "127",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "Int8",
+            target: "i8",
+            literal: "-129",
+            min: "-128",
+            max: "127",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "Int16",
+            target: "i16",
+            literal: "32768",
+            min: "-32768",
+            max: "32767",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "Int16",
+            target: "i16",
+            literal: "-32769",
+            min: "-32768",
+            max: "32767",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "Int32",
+            target: "i32",
+            literal: "2147483648",
+            min: "-2147483648",
+            max: "2147483647",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "Int32",
+            target: "i32",
+            literal: "-2147483649",
+            min: "-2147483648",
+            max: "2147483647",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "UInt8",
+            target: "u8",
+            literal: "256",
+            min: "0",
+            max: "255",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "UInt8",
+            target: "u8",
+            literal: "-1",
+            min: "0",
+            max: "255",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "UInt16",
+            target: "u16",
+            literal: "65536",
+            min: "0",
+            max: "65535",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "UInt16",
+            target: "u16",
+            literal: "-1",
+            min: "0",
+            max: "65535",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "UInt32",
+            target: "u32",
+            literal: "4294967296",
+            min: "0",
+            max: "4294967295",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "UInt32",
+            target: "u32",
+            literal: "-1",
+            min: "0",
+            max: "4294967295",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "UInt64",
+            target: "u64",
+            literal: "-1",
+            min: "0",
+            max: "18446744073709551615",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "UInt128",
+            target: "u128",
+            literal: "-1",
+            min: "0",
+            max: "340282366920938463463374607431768211455",
+            check_alias: false,
+        },
+    ];
+
+    for case in cases {
+        assert_magnitude_out_of_range(
+            format!("data x: {} = {}", case.ty, case.literal),
+            &format!(
+                "parametric_overflow_{}_{}.v3",
+                case.ty,
+                case.literal.replace('-', "neg")
+            ),
+            case,
+        );
+        if case.check_alias {
+            assert_magnitude_out_of_range(
+                format!("type Alias = {}\ndata x: Alias = {}", case.ty, case.literal),
+                &format!(
+                    "parametric_alias_overflow_{}_{}.v3",
+                    case.ty,
+                    case.literal.replace('-', "neg")
+                ),
+                case,
+            );
+        }
+    }
 }
 
 #[test]
