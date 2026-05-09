@@ -17,13 +17,12 @@
 // INVARIANTS P2 (codex BLOCKING surfaced post-merge at PR #2194
 // #issuecomment-4404079935).
 //
-// **Out of scope** (later sub-slices): full realization-row walking via
-// `d.declarations` fold + `meta_tag`-filtering + `ValueBody.Structural.fields`
-// extraction → folds into a Slice 1a.2 once the realization-row walking
-// expressivity is grep-confirmed against existing `.dag` precedents
-// (\`structural_resolution.dag:50,93\` is the closest precedent for
-// `d.declarations` fold). The composition of abstract `SymbolicCost`
-// shape × per-target realization-cost remains the ε-ratified target.
+// **Slice 1a.2 (Rust-side row walker)**: `v3_compiler::realization_cost`
+// filters realization rows by `meta_tag`, requires structural
+// `ValueBody.Structural.fields`, matches the active `language`, and extracts
+// each row's `target` / `op` key plus `cost: Int` into `RealizationCostTable`.
+// This stays Rust-side per ε ratification; the composition of abstract
+// `SymbolicCost` shape × per-target realization-cost remains the next slice.
 //
 // **ε factoring** (per `docs/proposals/q-cost-composition-layering-canvas.md`):
 //   - Layer 1 (target-agnostic abstract shape): `SymbolicCost` algebra at

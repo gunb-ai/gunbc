@@ -10,8 +10,10 @@
 //   consumer). Concrete-cost wiring lives Rust-side per ε; this file's
 //   substrate role does NOT change. T-CostLens follow-on multi-slice plan
 //   (#2141 ε scope per gunbc#2068 #issuecomment-4402339074) sequences
-//   gates #37 + #40 + #70 across separate PRs: Slice 1a Rust-side
-//   `RealizationCostTable` infra (PR #2194) → Slice 1b parameterized
+//   gates #37 + #40 + #70 across separate PRs: Slice 1a.0/1a.1 staged
+//   declaration lookup and .dag-tier meta resolvers; Slice 1a.2 adds the
+//   Rust-side `RealizationCostTable` row walker over structural
+//   `*Realization.cost` fields; Slice 1b parameterizes the concrete
 //   cost-fold consumer → Slice 2 test_runner #40 wiring → Slice 3 demo
 //   fixture #70. Status stays PROXY per single-authority discipline with
 //   `docs/v3-lens-capability-register.md` cost.dag row (INVARIANTS P2);
