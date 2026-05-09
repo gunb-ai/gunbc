@@ -223,6 +223,8 @@ mod test_runner_test;
 mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]
 mod thesis_validation_test;
+#[path = "integration/timing_lens_substrate_carrier_test.rs"]
+mod timing_lens_substrate_carrier_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/workflow_root_port_test.rs"]

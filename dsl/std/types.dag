@@ -332,6 +332,13 @@ type WorkerId     = NonEmptyStr where brand("WorkerId")
 type CommentId    = NonEmptyStr where brand("CommentId")
 type SignalKey    = NonEmptyStr where brand("SignalKey")
 type ContentHash  = NonEmptyStr where brand("ContentHash")
+// Workflow external-attachment anchor (T-WAD Slice 2 / gate #55): distinct
+// nominals for producer / observer / prover / run keys so provenance roles and
+// run scope cannot be conflated at callsites (P2 / M9 vs bare `String`).
+type WorkflowProducerId = NonEmptyStr where brand("WorkflowProducerId")
+type WorkflowObserverId = NonEmptyStr where brand("WorkflowObserverId")
+type WorkflowProverId = NonEmptyStr where brand("WorkflowProverId")
+type WorkflowRunId = NonEmptyStr where brand("WorkflowRunId")
 
 // --- Git types (refinements of String) ------------------------------------
 type GitRef       = String where non_empty
