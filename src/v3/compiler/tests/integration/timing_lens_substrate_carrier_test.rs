@@ -95,7 +95,7 @@ fn timing_observation_entry_shape_locked() {
     labels.sort();
     assert_eq!(
         labels,
-        vec!["measurement".to_string(), "subject_stable_id".to_string()],
+        vec!["anchor".to_string(), "measurement".to_string()],
         "TimingObservationEntry field set drifted"
     );
 }

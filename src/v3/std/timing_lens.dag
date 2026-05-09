@@ -42,20 +42,13 @@ type TimingMeasurement
   | Ambiguous
   | Stale
 
-// Batched timing observations keyed for workflow-step / anchor correlation.
-type TimingObservationSet {
-  observations: List<TimingObservationEntry>
-}
-
-type TimingObservationEntry {
-  subject_stable_id: String
-  measurement: TimingMeasurement
-}
-
 // Shared External Attachment Pattern — stable workflow-side anchor for facts
 // sourced outside the `.dag` program text (CI logs, artifacts, receipts).
 // Six invariants are documented in `docs/design-timing-lens.md` §2; this
 // record carries the structural coordinates those invariants reference.
+// Declared before `TimingObservationEntry` so each observation row embeds the
+// same anchor authority as its measurement (Boundary Discipline: one product
+// fact, no join drift between payload and provenance).
 type WorkflowObservationAnchor {
   subject_stable_id: String
   artifact_digest: String
@@ -64,6 +57,16 @@ type WorkflowObservationAnchor {
   prover_id: String
   attached_at_ns: Nanoseconds
   workflow_run_id: String
+}
+
+// Batched timing observations: each entry is anchor × measurement (typed edge).
+type TimingObservationSet {
+  observations: List<TimingObservationEntry>
+}
+
+type TimingObservationEntry {
+  anchor: WorkflowObservationAnchor
+  measurement: TimingMeasurement
 }
 
 // Budget carrier paired with timing enforcement (`LensEnforcement` / demo
