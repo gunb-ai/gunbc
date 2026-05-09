@@ -2,10 +2,15 @@
 
 **Author**: deep-wolf-155 (PM)
 **Authority scope**: PM-tier substrate-readiness audit per Director ratification at gunbc#846 #issuecomment-4412330468 (2026-05-09; Director RATIFIED PM (α) carve-promotion-IN-R3 recommendation per operator's 2026-05-09 framing "R3 close = 0 hand-Rust including tests AND stage0; bootstrap is data + self-generated; no need to edit stage0 ever").
-**Parent docs**:
-- [`docs/r4-carve-out-routing.md`](../r4-carve-out-routing.md) — current carve enumeration (C1/C2/C3 will dissolve per this audit's recommendations)
-- [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.5 + §1.8 (gates #81/#82/#95)
-- [`docs/audit/r3-pb0-velocity-walk-2026-05-09.md`](r3-pb0-velocity-walk-2026-05-09.md) — original drift finding that surfaced workflow_parallelism.rs
+**Parent docs (live state on main)**:
+- [`docs/r4-carve-out-routing.md`](../r4-carve-out-routing.md) — current carve enumeration (C1/C2/C3 amend to dissolved-status via concurrent PR #2364 Task 12 amendment)
+- [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.5 + §1.8 (gates #81/#82/#95) — live ledger
+- [`docs/r3-structure.md`](../r3-structure.md) — live lane authority (T-Lens-Application-Surface lane gates #88-#95)
+- [`docs/design-effect-enumeration-resource-threading.md`](../design-effect-enumeration-resource-threading.md) — locked design authority for C2 atomic-migration shape (§3.2 + §6.2)
+- [`docs/design-lens-application-surface.md`](../design-lens-application-surface.md) — locked design authority for T-LAS Slice A/B carrier shape (§10 step 2 enforcement-mode violation routing)
+
+**In-flight authorities** (cited inline; not on main at audit-authoring time):
+- `docs/audit/r3-pb0-velocity-walk-2026-05-09.md` — original drift finding that surfaced `workflow_parallelism.rs` as the parallelism producer (concurrent PR #2358; routing context only — substrate state of `effects.dag` + `workflow_parallelism.rs` is independently verifiable on main)
 
 ---
 
@@ -119,19 +124,30 @@ This corrects the audit's prior framing. C2's gate #82 #issuecomment-needed-disp
 
 ## §3. C3 — opt-in iteration parallelism via lens application (#95)
 
-### §3.1 Substrate state
+### §3.1 Substrate state — live ledger reading (corrected 2026-05-09)
 
-**REVISION 2026-05-09 per codex BLOCKING on PR #2363 sha `c3a4b110`**: prior assessment treated `lens_application.dag` existence as substrate-ready for #95. Codex correct: **Slice A landed (#88-#90) but Slice B is pending** — `lens_enforcement_carrier_landed` (#91) + `enforce_violation_routing_landed` per design §10 step 2 are deferred to T-LAS Slice B. C3 readiness is conditional on Slice B + C1, not just lens_application.dag existence.
+**REVISION 2026-05-09 (round 2) per codex BLOCKING on PR #2363 sha `32afcd32`**: prior framing imported gate-status claims that misidentified the gate-number → carrier-landing mapping. Below is the **live ledger reading from `docs/r3-program-plan.md` §1.8 on main**.
 
-- `src/v3/std/lens_application.dag` — Slice A landed (gates #88/#89/#90 CONSUMER_LANDED per PR #2145). Provides `EnforcedApplication<Output, Budget>` + `IntrospectApplication<Output>` + `SectionRef` carriers.
-- **Slice B pending**: per [`docs/r3-structure.md`](../r3-structure.md):157-164 (T-Lens-Application-Surface lane gates) — `lens_enforcement_carrier_landed` (#91; per-lens `LensEnforcement<Output, Budget>` projection + violation-relation declarations co-located with each lens) + `enforce_violation_routing_landed` are NOT yet landed. These are required for the demonstration cascade per design [`docs/design-lens-application-surface.md`](../design-lens-application-surface.md) §10 step 2.
-- **Cascade chain for #95** per `r3-structure.md`:164: "Pass requires parallelism lens BEHAVIORALLY COMPLETE (design §7 / §9 substantive-semantics cascade)." Plus T-LAS Slice B landing.
+**Live state of `src/v3/std/lens_application.dag` on main** (`git ls-tree origin/main -- src/v3/std/lens_application.dag` confirms; file content carries Slice A authority):
 
-**Lane-level dependency** (refined 2026-05-09 per codex BLOCKING on `c3a4b110` line 112): per [`r3-structure.md`](../r3-structure.md):61, the **T-Lens-Application-Surface lane** depends on **T-Lens-Behavioral-Parity COMPLETE** (lenses must be COMPLETE to produce useful structural facts on application sections), NOT only on parallelism (#81). T-LBP COMPLETE = complexity (#79) + cost (#80) + parallelism (#81 post-carve-promotion) + effect_enum (#82 post-carve-promotion). The Slice B authoring closure (per-lens enforcement projections for all in-R3 lenses + violation routing) gates on full T-LBP COMPLETE.
+| Gate | Predicate | Status on main | Carrier in lens_application.dag |
+|---|---|---|---|
+| **#88** | `lens_application_carrier_landed` | **CONSUMER_LANDED** (Slice A receipt PR #2145) | `EnforcedApplication<Output, Budget>` + `IntrospectApplication<Output>` |
+| **#89** | `section_ref_substrate_landed` | **CONSUMER_LANDED** (Slice A receipt PR #2145) | `SectionRef = DeclarationScope \| NodeScope` |
+| **#90** | `lens_enforcement_carrier_landed` | **CONSUMER_LANDED** (Slice A receipt PR #2145) | parametric `LensEnforcement<Output, Budget>` + `EnforceableLens<Output, Budget>`; **per-lens data instances co-located with each lens land in Slice B** (per #90 Pass condition) |
+| **#91** | `enforce_violation_routing_landed` | **DECLARED** — substrate routing surface landed PR #2145 (`DiagnosticSeverity = Error` + `EnforcedApplication.diagnostic_severity` + `LensEnforcement.violates`); **CONSUMER_LANDED requires the fold-pass consumer per design §10 step 2 — deferred to Slice B** |
+
+**What is actually pending for Slice B** (per #90 + #91 Pass conditions on main):
+- **Per-lens data instances** of `LensEnforcement<Output, Budget>` co-located with each lens (parallelism lens specifically required for #95)
+- **Fold-pass consumer** for #91 violation routing per design `docs/design-lens-application-surface.md` §10 step 2
+
+**Cascade chain for #95** per `docs/r3-structure.md`:164: "Pass requires parallelism lens BEHAVIORALLY COMPLETE (design §7 / §9 substantive-semantics cascade)." Plus parallelism-lens slice of Slice B authoring (per-lens LensEnforcement instance + parallelism violation routing).
+
+**Lane-level dependency** per `docs/r3-structure.md`:61: the **T-Lens-Application-Surface lane** depends on **T-Lens-Behavioral-Parity COMPLETE** (lenses must be COMPLETE to produce useful structural facts on application sections), NOT only on parallelism (#81). T-LBP COMPLETE = complexity (#79) + cost (#80) + parallelism (#81 post-carve-promotion) + effect_enum (#82 post-carve-promotion). The Slice B authoring closure (per-lens enforcement projections for all in-R3 lenses + violation routing) gates on full T-LBP COMPLETE.
 
 **Distinction**: lane-level vs gate-level dependencies for #95 specifically:
-- **Lane-level (T-LAS Slice B substrate authoring complete)**: gates on T-LBP COMPLETE (all 4 in-R3 lenses).
-- **Gate-level (#95 specific demo)**: gates on parallelism-lens projection within Slice B + parallelism BEHAVIORALLY COMPLETE (C1).
+- **Lane-level (T-LAS lane closes — all #88-#95)**: gates on T-LBP COMPLETE (all 4 in-R3 lenses) per `r3-structure.md`:61.
+- **Gate-level (#95 specific demo)**: gates on **parallelism-slice of Slice B** (parallelism `LensEnforcement` instance + parallelism violation routing) + **parallelism BEHAVIORALLY COMPLETE** (C1 #81). The full T-LBP-COMPLETE prerequisite is for full lane closure, not for #95-specific firing.
 
 For #95 to fire as a demonstration gate, the parallelism slice of Slice B + parallelism behavioral completion are the load-bearing prerequisites. For the full T-LAS lane to close (all #88-#94 + #95), full T-LBP COMPLETE is required.
 
@@ -139,10 +155,15 @@ For #95 to fire as a demonstration gate, the parallelism slice of Slice B + para
 
 C3's gate #95 is a **demonstration gate** under the T-Lens-Application-Surface lane (per `r3-structure.md`:164 — "fourth worked example (design §4.4): opt-in cross-iteration parallelism via `Lens<Iteration-Independence>`"). Not a separate substrate carve — it's a worked-example demo of the shared lens-application surface lane.
 
-**Cascade-gating chain**:
-1. **T-LAS Slice B landing** (#91 lens_enforcement carrier per-lens projections + violation routing) — substrate prerequisite, not yet landed.
-2. **Parallelism lens BEHAVIORALLY COMPLETE** (C1 #81 carve-promotion).
-3. **#95 demonstration** lands as worked example via `apply_lens(parallelism, fn, Enforce { ... })`.
+**Cascade-gating chain** (live-ledger gate identifiers per main `r3-program-plan.md` §1.8):
+1. **Slice A on main**: gates #88/#89/#90 CONSUMER_LANDED (parametric carriers + SectionRef + parametric LensEnforcement carrier in `src/v3/std/lens_application.dag`).
+2. **Slice B substrate prerequisites for #95** (substrate-side):
+   a. **Per-lens parallelism `LensEnforcement` instance** (#90 Pass condition's "per-lens data instances co-located with each lens land in Slice B" — parallelism slice specifically).
+   b. **Fold-pass consumer for #91 violation routing** per design `docs/design-lens-application-surface.md` §10 step 2 (substrate routing surface landed PR #2145; consumer pending).
+3. **Parallelism lens BEHAVIORALLY COMPLETE** (C1 #81 carve-promotion).
+4. **#95 demonstration** lands as worked example via `apply_lens(parallelism, fn, Enforce { ... })`.
+
+**Substrate prerequisite ordering**: Slice B substrate (2a + 2b) must land **before** #95 can fire as a worked-example demonstration gate. This makes carrier landing the prerequisite slice before #95, per codex BLOCKING ratification.
 
 ### §3.3 Recommendation — substrate-ready conditional on Slice B + C1
 
