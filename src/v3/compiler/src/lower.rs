@@ -3900,13 +3900,18 @@ fn symbolic_cost_variant_constructor_id(dag: &Dag, variant_label: &str) -> Optio
         .map(|v| v.ty)
 }
 
-/// `data …: SymbolicCost = ConstantCost(<Int literal>)` — **P5 receipt** (INVARIANTS §P5): dissolves
-/// the ROADMAP.md debt row that §SymbolicCostExprEquals stayed `NotYetImplemented` / gate `#40`
-/// (`symbolic_cost_expr_equals_executable`) could not close on shape-only — this path is an explicit
-/// narrow **class-5 gap #3** lowering slice until general `SymbolicCost` data literals lower
-/// structurally without ad hoc Rust (same gap named in `lower_data_item` / DOWNSTREAM_REQUIREMENTS).
+/// `data …: SymbolicCost = ConstantCost(<Int literal>)` — progress on **R3 gate #40**
+/// (`symbolic_cost_expr_equals_executable`) / the ROADMAP.md debt row where §SymbolicCostExprEquals was
+/// still `NotYetImplemented`: a narrow **class-5 gap #3** lowering slice until general `SymbolicCost`
+/// data literals lower structurally (same gap named in `lower_data_item` / DOWNSTREAM_REQUIREMENTS).
 ///
-/// **Authority (INVARIANTS §P5 / modeling Practice 5):** like [`dsl_std_render_repeat_string_decl_id`]
+/// **Terminology:** do not read this staged compiler hook as INVARIANTS **P5(b)**’s per-PR “checkable
+/// receipt” (deleted scaffold path, SG-0 census before/after in `sg0_census_test.rs`, or explicit
+/// deferral citing a `ROADMAP.md` row). Those receipts belong in the **PR description**, not in this
+/// doc comment.
+///
+/// **Canonical constructor id (modeling Practice 5 / single authority at the boundary):** like
+/// [`dsl_std_render_repeat_string_decl_id`]
 /// for `repeat_string`, only the **bootstrap** `SymbolicCost::ConstantCost` variant constructor is
 /// eligible — compare the resolved callee [`DeclarationId`] to [`symbolic_cost_variant_constructor_id`],
 /// not only the surface spelling `ConstantCost` (local shadowing must not reinterpret as std arm).
