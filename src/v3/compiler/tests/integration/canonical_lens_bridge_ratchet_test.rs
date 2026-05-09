@@ -297,12 +297,10 @@ fn canonical_lens_include_str_bridges_pinned() {
         n, EXPECTED_INCLUDE_STR_LENS_BYTES,
         "test_runner.rs canonical-lens `include_str!` count drifted: \
          expected {EXPECTED_INCLUDE_STR_LENS_BYTES}, found {n}. \
-         If this is a *reduction* (bridge retired), lower the constant in \
-         this file in the same PR. If this is *growth*, that is forbidden \
-         per the disposition in \
-         docs/briefs/r2-pb-canonical-lens-bridge-disposition.md — split \
-         a structural lens-registry carrier brief instead of adding another \
-         `include_str!` of canonical lens bytes."
+         The canonical lens-name dispatch bridge is retired; any nonzero \
+         count reintroduces a production canonical-lens byte authority. \
+         Keep lens execution routed through the resolved fixture \
+         DeclarationRef, not through runner-owned `include_str!` bytes."
     );
 }
 
@@ -314,11 +312,9 @@ fn canonical_lens_name_dispatch_arms_pinned() {
         n, EXPECTED_NAME_EQ_DISPATCH_ARMS,
         "test_runner.rs `lens_decl.name.as_deref() == Some(\"…\")` arm \
          count drifted: expected {EXPECTED_NAME_EQ_DISPATCH_ARMS}, found \
-         {n}. If this is a *reduction*, lower the constant. If this is \
-         *growth*, that is forbidden per the disposition — name-keyed \
-         dispatch on lens identity must be retired via PB-Runtime \
-         interpreter-as-data or a typed lens-registry carrier, not \
-         extended."
+         {n}. The canonical lens-name dispatch bridge is retired; any \
+         nonzero count reintroduces name-keyed semantic dispatch on lens \
+         identity."
     );
 }
 
@@ -330,8 +326,8 @@ fn canonical_lens_generic_name_lookups_pinned() {
         n, EXPECTED_GENERIC_NAME_LOOKUPS,
         "test_runner.rs generic `lens_decl.name.as_deref()` name-keyed \
          lookup count drifted: expected {EXPECTED_GENERIC_NAME_LOOKUPS}, \
-         found {n}. Same rule as the equality-arm ratchet: ratchet only \
-         down."
+         found {n}. The canonical lens-name dispatch bridge is retired; \
+         lens body selection must not route through declaration spelling."
     );
 }
 
