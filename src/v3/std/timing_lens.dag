@@ -79,11 +79,18 @@ fn timing_measurement_unobserved() -> TimingMeasurement =
   Unobserved
 
 // Sequential monoid operation for `Lens<TimingMeasurement>.sequential`:
-// sums observed nanoseconds; error states dominate; `Unobserved` is strict.
+// sums observed nanoseconds; fault states dominate; `Unobserved` is strict on
+// **both** operands (missing evidence must not be silenced by `Stale` / etc.).
 fn timing_sequential_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
   match a {
     Unobserved => Unobserved
-    Stale => Stale
+    Stale =>
+      match b {
+        Unobserved => Unobserved
+        Stale => Stale
+        Ambiguous => Stale
+        Observed { duration: _ } => Stale
+      }
     Ambiguous =>
       match b {
         Unobserved => Unobserved
@@ -108,11 +115,18 @@ fn timing_sequential_identity() -> TimingMeasurement =
   Observed { duration: nanoseconds_zero() }
 
 // Branch composition (`Lens<TimingMeasurement>.branch`): parallel wall-clock
-// uses max on `Observed`; fault states use the same dominance as sequential.
+// uses max on `Observed`; fault states use the same dominance as sequential
+// (including strict `Unobserved` on both sides).
 fn timing_branch_op(a: TimingMeasurement, b: TimingMeasurement) -> TimingMeasurement =
   match a {
     Unobserved => Unobserved
-    Stale => Stale
+    Stale =>
+      match b {
+        Unobserved => Unobserved
+        Stale => Stale
+        Ambiguous => Stale
+        Observed { duration: _ } => Stale
+      }
     Ambiguous =>
       match b {
         Unobserved => Unobserved
