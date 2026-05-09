@@ -77,6 +77,7 @@ fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
 where
     T: Send + 'static,
 {
+    // `compile_to_dag` for this fixture can overflow the default test-thread stack.
     std::thread::Builder::new()
         .stack_size(32 * 1024 * 1024)
         .spawn(f)
