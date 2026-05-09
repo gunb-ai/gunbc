@@ -429,7 +429,7 @@ type AsymptoticClass inhabits BoundedLattice<AsymptoticClass>
 fn positive_descent_amount_to_int(steps: PositiveDescentAmount) -> Int =
   match steps {
     OneStep => 1
-    AdditionalStep { previous: p } => 1 + positive_descent_amount_to_int(p)
+    AdditionalStep { previous: p } => 1 + positive_descent_amount_to_int(steps: p)
   }
 
 fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
@@ -446,12 +446,12 @@ fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
         ClassLog => True
         ClassConstant => True
       }
-    ClassPolynomial { degree: da } =>
+    ClassPolynomial { degree: d_a } =>
       match b {
         ClassUnknown => False
         ClassExponential => False
-        ClassPolynomial { degree: db } =>
-          positive_descent_amount_to_int(da) >= positive_descent_amount_to_int(db)
+        ClassPolynomial { degree: d_b } =>
+          positive_descent_amount_to_int(steps: d_a) >= positive_descent_amount_to_int(steps: d_b)
         ClassQuadratic => True
         ClassLinearithmic => True
         ClassLinear => True
