@@ -10,10 +10,8 @@
 //! **Lockstep discipline:** any new variant added to substrate
 //! `EmissionDiagnostic` MUST land here as a parallel Rust mirror update.
 //!
-//! **Example 1 (scratch path):** design-emission-model §Example 1 names richer
-//! diagnostic fields (candidates, hints). Until the substrate carrier carries
-//! those structurally, the fold surfaces the **substrate-shaped** `UnderRefined`
-//! with `unspecified_axis: "bound"` only (axis matches the worked example).
+//! **UnderRefined axes:** mirror substrate’s string axis payload; declared projection
+//! selection may surface axes such as `"target_integer_inhabitance"` or row-population gates.
 
 /// Rust mirror of substrate `EmissionDiagnostic` (subset; grows with substrate).
 ///
@@ -24,9 +22,9 @@
 pub enum EmissionDiagnostic {
     /// Program intent or structural axis under-specified (substrate `UnderRefined`).
     UnderRefined {
-        /// Mirrors substrate’s string axis payload for now. Scratch Example 1 only supplies
-        /// `"bound"`; when substrate grows structured axes (or this mirror gains a sum type),
-        /// replace free-form spelling here rather than widening implicit string conventions.
+        /// Mirrors substrate’s string axis payload for now; when substrate grows structured
+        /// axes (or this mirror gains a sum type), replace free-form spelling here rather than
+        /// widening implicit string conventions.
         unspecified_axis: String,
     },
     /// No target inhabitant can satisfy the requested structural facts.
