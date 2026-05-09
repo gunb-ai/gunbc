@@ -54,6 +54,7 @@ m1_3_emit_rust_test::rustc_roundtrip_emitted_module_matches_reflected_behavior_p
 m1_3_emit_rust_test::rustc_roundtrip_emitted_module_returns_reflected_source_span_list  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
 m1_3_emit_rust_test::rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
 m1_3_emit_rust_test::rustc_roundtrip_generic_list_fold_prints_one  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
+m1_3_emit_rust_test::roundtrip_temp_dirs_are_unique  # Lane 1 Stage 1e SG-7 Rust roundtrip temp-dir isolation still shells through rustc harness setup and exceeded 2s on PR #2286 CI (3270ms); paydown with adjacent m1_3_emit_rust_test harness/shared-setup optimization, not PB closure work.
 
 m2_lens_cost_migration_test::complexity_dag_compiles_cleanly  # Lane 2 migration harness roundtrip; cold-compiles complexity.dag authority (main baseline 1949ms, sits on 2000ms edge). Paydown owned by lens migration lane, not TM-0.
 m2_lens_cost_migration_test::complexity_dag_runs_end_to_end_via_rustc_harness  # Lane 2 migration harness roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
