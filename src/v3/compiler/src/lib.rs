@@ -504,21 +504,25 @@ pub mod evaluator {
         Err(DescentResidual::EvidenceIncomplete)
     }
 
-    /// Rust mirror of the PR-A.3 eager-baseline strategy carrier.
+    /// Rust mirror of the PR-A.3 / TC2 eager strategy carrier.
     ///
-    /// **Dissolution receipt: TERMINAL at PR-A.3 eager-baseline scope.** The
+    /// **Dissolution receipt: TERMINAL at PR-A.3 / TC2 input-order scope.** The
     /// public evaluator boundary carries strategy now so downstream slices
-    /// cannot erase it, but the mirror stays identical to `runtime.dag`:
-    /// exactly `ApplicativeOrder / LeftFirst`. Additional inhabitants must land
-    /// with substrate carriers and executable evaluator rules.
+    /// cannot erase it. TC2 adds a second executable input order under the same
+    /// applicative/eager skeleton; additional strategy families must land with
+    /// substrate carriers and executable evaluator rules.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalStrategy {
         ApplicativeOrder { input_order: InputEvaluationOrder },
     }
 
+    /// 🟢 TERMINAL: Rust mirror of `std.runtime::InputEvaluationOrder`. Both
+    /// variants have executable eager evaluator behavior and key TC2
+    /// strategy-paired report producers through `EvalStrategy`.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum InputEvaluationOrder {
         LeftFirst,
+        RightFirst,
     }
 
     /// **Dissolution receipt: TERMINAL.** Typed fail-closed outcomes for
@@ -656,11 +660,6 @@ pub mod evaluator {
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
-        match strategy {
-            EvalStrategy::ApplicativeOrder {
-                input_order: InputEvaluationOrder::LeftFirst,
-            } => {}
-        }
         match dag.node_opt(&node).ok_or(EvalError::MissingNode { node })? {
             Behavior::Value(value) => Ok(eval_value(value)),
             Behavior::Transform(t) => eval_transform_node(dag, t, state, strategy),
@@ -946,10 +945,7 @@ pub mod evaluator {
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
-        let mut operands = Vec::with_capacity(t.inputs.len());
-        for port in &t.inputs {
-            operands.push(eval_port(dag, *port, state, strategy)?);
-        }
+        let operands = eval_transform_operands(dag, &t.inputs, state, strategy)?;
         match &t.target {
             TransformTarget::Operator(OperatorKind::Arithmetic(op)) => {
                 if operands.len() != 2 {
@@ -1146,6 +1142,33 @@ pub mod evaluator {
                 })
             }
         }
+    }
+
+    fn eval_transform_operands(
+        dag: &Dag,
+        inputs: &[PortId],
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Vec<Value>, EvalError> {
+        let mut evaluated = Vec::with_capacity(inputs.len());
+        match strategy {
+            EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::LeftFirst,
+            } => {
+                for (index, port) in inputs.iter().enumerate() {
+                    evaluated.push((index, eval_port(dag, *port, state, strategy)?));
+                }
+            }
+            EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::RightFirst,
+            } => {
+                for (index, port) in inputs.iter().enumerate().rev() {
+                    evaluated.push((index, eval_port(dag, *port, state, strategy)?));
+                }
+                evaluated.sort_by_key(|(index, _)| *index);
+            }
+        }
+        Ok(evaluated.into_iter().map(|(_, value)| value).collect())
     }
 
     fn eval_callable_body_in_pushed_frame(
@@ -1373,6 +1396,12 @@ pub mod evaluator {
         fn eager_strategy() -> EvalStrategy {
             EvalStrategy::ApplicativeOrder {
                 input_order: InputEvaluationOrder::LeftFirst,
+            }
+        }
+
+        fn eager_right_first_strategy() -> EvalStrategy {
+            EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::RightFirst,
             }
         }
 
@@ -1793,6 +1822,53 @@ pub mod evaluator {
             let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("sub");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+        }
+
+        #[test]
+        fn transform_right_first_evaluates_inputs_without_reordering_operands() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(10), span());
+            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+            let strategy = eager_right_first_strategy();
+
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("right-first sub");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+        }
+
+        #[test]
+        fn transform_right_first_reports_rightmost_input_error_first() {
+            let mut dag = Dag::new();
+            let lhs = dag.alloc_port(None);
+            let rhs = dag.alloc_port(None);
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+
+            let mut left_first_state = empty_state();
+            let left_first_err = eval_node(&dag, entry, &mut left_first_state, &eager_strategy())
+                .expect_err("left-first should read lhs first");
+            assert_eq!(left_first_err, EvalError::UnboundPort { port: lhs });
+
+            let mut right_first_state = empty_state();
+            let right_first_err = eval_node(
+                &dag,
+                entry,
+                &mut right_first_state,
+                &eager_right_first_strategy(),
+            )
+            .expect_err("right-first should read rhs first");
+            assert_eq!(right_first_err, EvalError::UnboundPort { port: rhs });
         }
 
         #[test]
