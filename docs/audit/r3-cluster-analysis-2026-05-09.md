@@ -66,7 +66,7 @@ The 94 R3-load-bearing gates resolve into 15 clusters by **close-shape** (the st
 | N | substrate-gap-class | #60-#64 | cross-lane | each gate has its own conjunctive Pass condition per [`r3-program-plan.md`](../r3-program-plan.md) §1.4 line 70: **(a)** representative gap-test executes through v3 cleanly per per-class Pass condition AND **(b)** systematic enumeration of class-bridges shows count=0. Per-class authoring scope (gap-test + enumeration) lives in §4.1–§4.5; this audit defers there. | 5-10 |
 | O | Pattern E ratchets / standing | #36 #75 #87 | distributed | aggregated into J / Debt-Paydown / M | (in others) |
 
-**Cluster sizing**: A-D = 9-13 PRs serialized critical chain; E-O = 26-41 PRs parallel. **Total: ~35-54 consumer-PRs to close R3** (excludes bug-fix, follow-up, ledger refresh).
+**Cluster sizing**: A-D = 8-11 PRs serialized critical chain; E-O = 26-41 PRs parallel. **Total: ~34-52 consumer-PRs to close R3** (excludes bug-fix, follow-up, ledger refresh).
 
 ---
 
@@ -91,7 +91,7 @@ Cementing tests for #79 / #80 / #83 require **frozen v2-oracle snapshot captured
 
 ### Velocity vs schedule
 
-Observed velocity: ~30 PRs in 3 days (10/day). Structural R3-close-PR work (~35-54 PRs) **fits in 4-6 days of execution time**. The 8-12 week window is dominated by:
+Observed velocity: ~30 PRs in 3 days (10/day). Structural R3-close-PR work (~34-52 PRs) **fits in 4-6 days of execution time**. The 8-12 week window is dominated by:
 
 - Substrate Mgr self-throttle on velocity-vs-grep-floor (deliberate; protects against carrier reshape thrash)
 - Director ratification cycle latency (canvas-tier dispositions)
@@ -151,7 +151,7 @@ The **§1 promotion candidates table** is point-in-time (HEAD `87291782c` at aud
 
 ### Velocity sanity
 
-Compare observed PR-merge rate vs estimated 35-54 close-PRs:
+Compare observed PR-merge rate vs estimated 34-52 close-PRs:
 - 10 PRs/day observed → 4-6 days execution
 - Multiplier from substrate-discipline / Director-ratification / CI-cycle = ~10-14x
 - **8-12 week window is substrate-discipline-bound** not throughput-bound
