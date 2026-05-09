@@ -120,6 +120,16 @@ type PositiveDescentAmount
   = OneStep
   | AdditionalStep { previous: PositiveDescentAmount }
 
+// Peano depth as `Int` (Lane E-T / E-C). Declared in `std.termination` (not
+// `std.computation`) so `v3.std.algebra` can compare polynomial degrees without
+// importing `std.computation`, which would create a bootstrap SCC with `std.algebra`.
+fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
+  match steps {
+    OneStep => 1
+    AdditionalStep { previous: p } => 1 + positive_descent_count(p)
+  }
+}
+
 // 🟢 TERMINAL at descent-witness scope. Structural divisor ≥ 2; lives here so
 // `DescentSource` can reference it without `std.computation` (which imports this module).
 //

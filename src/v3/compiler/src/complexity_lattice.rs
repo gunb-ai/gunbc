@@ -1,11 +1,7 @@
 //! **`complexity_enforcement_budget_dominates`** — executable **T-LAS enforcement**
 //! ordering on `AsymptoticClass` for `complexity_enforcement_violates` /
-//! `EnforcedApplication` (gate #92). It agrees with staged
-//! `v3.std.algebra::asymptotic_dominates` on every arm **except**
-//! `ClassPolynomial×ClassPolynomial`, where this function compares Peano degrees
-//! (`positive_descent_count`), while the substrate `.dag` carrier stays tier-coarse
-//! for `meet` / `join` until bootstrap can lower the same story in `algebra.dag`
-//! (dissolution: program-plan gate **#92** / ROADMAP).
+//! `EnforcedApplication` (gate #92). It matches `v3.std.algebra::asymptotic_dominates`
+//! on every arm including `ClassPolynomial×ClassPolynomial` (Peano `degree` compare).
 //!
 //! **`asymptotic_dominates`** is a backward-compatible alias for tests and older
 //! call sites; new enforcement code should call [`complexity_enforcement_budget_dominates`].
