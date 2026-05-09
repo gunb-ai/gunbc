@@ -12,9 +12,11 @@
 //! **R3 §1.8 gate #37** (`cost_lens_reads_target_realization`, ε path per
 //! Q-Cost-Composition-Layering / PR #2181): **partial integration receipt**
 //! (`docs/r3-program-plan.md` — not full emit-time `LanguageSpec` consumer;
-//! that remains gates **#40** / **#70**). Proves Rust-side `symbolic_cost_of`
-//! × lowered realization row `cost` on bootstrap `rust_*` declarations,
-//! composed via `Semiring<SymbolicCost>` `sequential`.
+//! that remains gates **#40** / **#70**). Proves (i) **TypeRealization**:
+//! `symbolic_cost_of` × `rust_int` row `cost` via `sequential`; (ii)
+//! **CallableRealization**: `rust_is_empty_callable` row `cost` readable from
+//! the same lowered structural shape (**no** extra `sequential` pin in that
+//! subtest — see program-plan gate row).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
@@ -270,9 +272,10 @@ fn cost_lens_composes_symbolic_cost_with_rust_type_realization_row() {
     });
 }
 
-/// Same gate #37 surface on a `CallableRealization` row (list helper realization).
+/// Gate #37 — `CallableRealization` row: lowered `cost` field is readable (bootstrap `rust_is_empty_callable`).
+/// Does **not** assert `symbolic_cost_of` × `sequential` on this row; see program plan gate **#37** wording.
 #[test]
-fn cost_lens_reads_cost_field_on_rust_callable_realization_row() {
+fn callable_realization_row_cost_readable_on_bootstrap() {
     let boot = bootstrap_dag();
     let cr_meta = callable_realization_meta(&boot).expect("CallableRealization meta");
     let row = boot
