@@ -148,7 +148,7 @@ fn crdt_field_dimension_and_basis() -> (v3_compiler::dag::Dag, SymbolicCost, Cos
     let root = find_bind(&dag, "my_crdt_field");
     let basis =
         try_build_per_write_log_cost_basis_declaration(&dag, "my_crdt_field", "crdt_merge_step")
-            .expect("fixture DAG has my_crdt_field + crdt_merge_step with a replicas param");
+            .expect("fixture DAG has my_crdt_field + crdt_merge_step declarations with divide witness");
     let composed = match analyze_symbolic_cost_dimension(&dag, root.id) {
         DimensionReport::DimensionOk { composed, .. } => composed,
         DimensionReport::DimensionFail { violations, .. } => {
