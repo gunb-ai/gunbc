@@ -5,12 +5,27 @@
 //! stand-in for cost `LensEnforcement::violates` until `apply_lens(cost, …)` lowers
 //! through the compiler fold.
 //!
-//! **Normalized root cost:** the dimension report’s `composed` carrier is
-//! algebra-normalized at the workflow root. For this fixture it is often
-//! `LinearCost(num_writes)` even though each per-write step lowers from division on
-//! `replicas` (`LogCost` in the cost lens). The gate still witnesses §4.2 via
-//! `dominates(composed, per_op)` for `per_op = LogCost(replicas)` — the composed bound
-//! majorizes the per-op O(log replicas) budget after loop multiplication.
+//! **Normalized root cost:** `analyze_symbolic_cost_dimension` on `my_crdt_field`
+//! may algebra-normalize to **`LinearCost(num_writes)`** at the workflow root while
+//! each per-write step still lowers from division on `replicas`. Under the MVP
+//! `dominates` relation in `dag_cost_generated.rs`, **any** `LinearCost` dominates
+//! **any** `LogCost`, so `dominates(my_crdt_field_composed, LogCost(replicas))` is
+//! *vacuous* and is **not** asserted here.
+//!
+//! **What we pin instead:** (1) a concrete **`CostBasisDeclaration`** (carrier from
+//! `lenses.cost` / `lens_cost_symbolic_generated.rs`): `PerWrite` + **§4.2**
+//! `O_log_replicas` as `LogCost(replicas_port)` + `subject: DeclarationId` for the
+//! labeled `my_crdt_field` fn + source **`span`** from that bind — the cost-basis
+//! evidence the audit splits out from `apply_lens` configuration until the fold
+//! reads persisted declarations. (2) **`!dominates(basis.cost, composed)`** — the
+//! per-write log budget is **not** a sound ceiling for the full recursive workflow
+//! (this direction is non-vacuous: `LogCost` does not dominate unrelated
+//! `LinearCost`).
+//!
+//! Reading **`CostBasisDeclaration` rows from `.dag` / wiring them into**
+//! **`compute_symbolic_costs`** remains follow-on substrate work; this module
+//! demonstrates the carrier shape and ties it to the same `SymbolicCost` lens
+//! algebra used by dimension analysis.
 //!
 //! Fixture companion: `src/v3/compiler/tests/fixtures/t_las_crdt_cost_basis_demo.dag`.
 //! Design: `docs/design-lens-application-surface.md` §4.2 + cost-basis audit
@@ -18,6 +33,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{dominates, Behavior, PortId, SizeVariable, SymbolicCost};
+use v3_compiler::lens_cost_symbolic::{CostBasisDeclaration, CostBasisKind};
 use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport};
 
 use crate::common::cached_compile_to_dag;
@@ -83,7 +99,7 @@ fn per_write_log_replicas_budget(replicas_port: PortId) -> SymbolicCost {
     }
 }
 
-fn crdt_field_dimension_ok() -> (v3_compiler::dag::Dag, SymbolicCost, SymbolicCost) {
+fn crdt_field_dimension_and_basis() -> (v3_compiler::dag::Dag, SymbolicCost, CostBasisDeclaration) {
     let dag = cached_compile_to_dag(MY_CRDT_FIELD, CRDT_FIELD_PROGRAM_FILE);
     let root = find_bind(&dag, "my_crdt_field");
     let replicas_port = *root
@@ -91,13 +107,23 @@ fn crdt_field_dimension_ok() -> (v3_compiler::dag::Dag, SymbolicCost, SymbolicCo
         .get(1)
         .expect("my_crdt_field should have replicas parameter port");
     let per_op = per_write_log_replicas_budget(replicas_port);
+    let subject = dag
+        .declaration_by_name("my_crdt_field")
+        .expect("named fn `my_crdt_field` should register a DeclarationId")
+        .id;
+    let basis = CostBasisDeclaration {
+        subject,
+        kind: CostBasisKind::PerWrite,
+        cost: per_op,
+        span: root.span.clone(),
+    };
     let composed = match analyze_symbolic_cost_dimension(&dag, root.id) {
         DimensionReport::DimensionOk { composed, .. } => composed,
         DimensionReport::DimensionFail { violations, .. } => {
             panic!("expected DimensionOk, got failures: {violations:?}")
         }
     };
-    (dag, composed, per_op)
+    (dag, composed, basis)
 }
 
 #[test]
@@ -113,26 +139,33 @@ fn crdt_cost_basis_fixture_dag_compiles_on_bootstrap() {
 }
 
 #[test]
-fn crdt_cost_basis_demonstrated_composed_exceeds_per_op_log_budget() {
+fn crdt_cost_basis_demonstrated_declaration_pins_subject_span_and_per_write_log_budget() {
     run_with_symbolic_cost_stack(|| {
-        let (_dag, composed, per_op) = crdt_field_dimension_ok();
-        assert!(
-            dominates(&composed, &per_op),
-            "composed workflow cost should **exceed** a per-op O(log replicas) budget \
-             when num_writes is a size variable (N writes × per-write log); \
-             composed={composed:?} per_op={per_op:?}"
-        );
+        let (dag, _composed, basis) = crdt_field_dimension_and_basis();
+        let root = find_bind(&dag, "my_crdt_field");
+        let replicas_port = *root
+            .params
+            .get(1)
+            .expect("my_crdt_field should have replicas parameter port");
+        let decl = dag
+            .declaration_by_name("my_crdt_field")
+            .expect("my_crdt_field declaration");
+        assert_eq!(basis.subject, decl.id);
+        assert!(matches!(basis.kind, CostBasisKind::PerWrite));
+        assert_eq!(basis.cost, per_write_log_replicas_budget(replicas_port));
+        assert_eq!(basis.span, root.span);
     });
 }
 
 #[test]
 fn crdt_cost_basis_demonstrated_per_op_budget_is_not_sound_ceiling_for_composed_workflow() {
     run_with_symbolic_cost_stack(|| {
-        let (_dag, composed, per_op) = crdt_field_dimension_ok();
+        let (_dag, composed, basis) = crdt_field_dimension_and_basis();
         assert!(
-            !dominates(&per_op, &composed),
-            "per-op budget must not dominate full composed cost (otherwise enforcement could not fire); \
-             composed={composed:?} per_op={per_op:?}"
+            !dominates(&basis.cost, &composed),
+            "per-op basis.cost (declared Log replicas) must not dominate full composed cost \
+             (otherwise enforcement could not fire); composed={composed:?} basis.cost={:?}",
+            basis.cost
         );
     });
 }
@@ -140,14 +173,7 @@ fn crdt_cost_basis_demonstrated_per_op_budget_is_not_sound_ceiling_for_composed_
 #[test]
 fn crdt_cost_basis_demonstrated_unknown_ceiling_covers_composed_workflow() {
     run_with_symbolic_cost_stack(|| {
-        let dag = cached_compile_to_dag(MY_CRDT_FIELD, CRDT_FIELD_PROGRAM_FILE);
-        let root = find_bind(&dag, "my_crdt_field");
-        let composed = match analyze_symbolic_cost_dimension(&dag, root.id) {
-            DimensionReport::DimensionOk { composed, .. } => composed,
-            DimensionReport::DimensionFail { violations, .. } => {
-                panic!("expected DimensionOk, got failures: {violations:?}")
-            }
-        };
+        let (_dag, composed, _) = crdt_field_dimension_and_basis();
 
         let loose = SymbolicCost::UnknownCost {
             _0: "demo ceiling / opt-in slack budget".to_string(),
