@@ -15,7 +15,7 @@ Wall-clock durations and POSIX-style epoch coordinates are carried by a dedicate
 
 ### 1.2 `TimingMeasurement` report coproduct (Practice 4 dissolution)
 
-**PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD** — declared inline on `TimingMeasurement` in `src/v3/std/timing_lens.dag` (emoji classification + four-pattern table per `docs/modeling-discipline.md#4-coproduct-dissolution`).
+**PRACTICE 4 / P5 checkpoint:** the **`TimingMeasurement` sum** inline in `src/v3/std/timing_lens.dag` is **🟢 GREEN (terminal)** at the observation boundary (coproduct dissolution per `docs/modeling-discipline.md#4-coproduct-dissolution`). **🟡 SCAFFOLD** applies only to **composition / read / validate hooks** around that carrier (`timing_measurement_lens_combine`, `timing_lens_read`, `timing_lens_validate`, etc.), not to reclassifying the sum itself.
 
 `TimingMeasurement` is a closed sum encoding **report state folded with the timing fact** (`Observed { duration: Nanoseconds } | Unobserved | Ambiguous | Stale`). Practice 4 four-pattern dissolution:
 

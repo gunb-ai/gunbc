@@ -29,15 +29,23 @@ type Nanoseconds {
   count: Nat
 }
 
-// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — `TimingMeasurement` (T-WAD Slice 2 / §1.8 gate #54):
-// external workflow timing **report** coproduct (`Observed` carries `Nanoseconds`;
-// `Unobserved` / `Ambiguous` / `Stale` are unit observation outcomes; no bare
-// `Missing` label — witness-resolution collision class).
-// Four-pattern dissolution (per `docs/modeling-discipline.md#4-coproduct-dissolution`):
+// PRACTICE 4 / P5 — `TimingMeasurement` report coproduct (T-WAD Slice 2 / §1.8 gate #54):
+// **🟢 GREEN (terminal)** — this sum is the landed observation-boundary coproduct:
+// external timing **report** states (`Observed` carries `Nanoseconds`; `Unobserved` /
+// `Ambiguous` / `Stale` are unit outcomes; no bare `Missing` label — witness-resolution
+// collision class). Four-pattern dissolution (`docs/modeling-discipline.md#4-coproduct-dissolution`):
 //   1. Fact placement — PASS: each variant names one external observation fact.
 //   2. Variant-is-data — PASS: `Observed` carries `Nanoseconds`; others unit facts.
 //   3. Algebraic form — PASS: closed sum over report outcomes (no stringly state).
 //   4. Dimensional — N/A at this layer (time magnitude is tagged via `Nanoseconds`).
+//
+// **🟡 SCAFFOLD (hooks only, not the carrier sum):** `timing_measurement_lens_combine`
+// precedence until evidence-bearing runners supply richer algebra; `timing_lens_read` /
+// `timing_lens_validate` / `timing_measurement_iterate` behavior — see module banner
+// and `timing_measurement_lens_combine` / `timing_lens_read` / `timing_lens_validate`
+// below. Run/digest / anchor coordinates for each row stay on `WorkflowObservationAnchor`
+// inside `TimingObservationEntry` (gate #55 attachment row). P5 / INVARIANTS Progress Is
+// Dissolution + modeling-discipline checkpoint (~L131–L134) — **carrier = GREEN; hooks = YELLOW**.
 //
 // **Report-state join (scaffold, one authority):** `timing_measurement_lens_combine`
 // below defines precedence for composing two `TimingMeasurement` values until
@@ -47,15 +55,6 @@ type Nanoseconds {
 // pairing with `Observed` (see `Stale` / `Ambiguous` arms); `Observed`×`Observed`
 // uses `sequential` sum vs `branch` max only in that combine helper.
 //
-// 🟢 GREEN (terminal) — `TimingMeasurement` coproduct: variants exhaust externally
-// attested timing **report** states at the workflow-observation boundary (gate #54;
-// shared-attachment pattern gate #55). `Observed` carries `Nanoseconds` (`Nat`
-// magnitude); `Unobserved`, `Ambiguous`, `Stale` are unit observation outcomes (no
-// `Missing` label — witness/bootstrap collision class). No finer observation-row
-// type replaces this sum here; run/digest coordinates live on
-// `WorkflowObservationAnchor` inside `TimingObservationEntry`. P5 / INVARIANTS
-// Progress Is Dissolution + `docs/modeling-discipline.md` coproduct dissolution
-// checkpoint (classification comment discipline ~L131–L134).
 type TimingMeasurement
   = Observed { duration: Nanoseconds }
   | Unobserved
