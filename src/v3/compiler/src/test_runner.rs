@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    Path, PortId, PortState, TypeConnective, ValueBody,
+    Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
@@ -16,6 +16,7 @@ use crate::lens_apply::{
     reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES, COMMUTATIVITY_WITNESS_PAIRS,
 };
 use crate::lens_cost::{cost_of, CostLookup};
+use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use crate::types::TypeShape;
 use crate::{
     compare_stage_snapshots, compile_stage_snapshots, compile_to_dag, default_fixed_point_source,
@@ -2507,7 +2508,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_symbolic_cost_expr_equals_shape(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [expected_fv] = payload else {
@@ -2523,29 +2524,91 @@ impl<'a> TestRunner<'a> {
         };
         let expected_decl = self.dag.declaration(expected_id);
         let expected_name = decl_display_name(expected_id, expected_decl);
-        if expected_decl.value_body.is_none() {
+        let Some(expected_body) = expected_decl.value_body.as_ref() else {
             return ClaimResult::Fail(format!(
                 "SymbolicCostExprEquals: expected `{expected_name}` has no value body to compare against"
             ));
-        }
-        // The `expected: DeclarationRef` field is unrefined (`DeclarationRef`
-        // admits any declaration); validate at the runner boundary that the
-        // referenced declaration actually inhabits `SymbolicCost`. Mirror of
-        // the boundary check in `validate_dimension_report_ref` for
-        // `BinaryDimensionReportEquals`. Dissolution: when refinement-typing
-        // on `DeclarationRef` (or a `SymbolicCostRef` wrapper class) lands in
-        // substrate, this runner-side check retires alongside the wrapper.
+        };
         if let Err(reason) = self.validate_symbolic_cost_ref(expected_id, "expected") {
             return ClaimResult::Fail(reason);
         }
-        ClaimResult::NotYetImplemented(format!(
-            "SymbolicCostExprEquals: structural shape is valid for `{expected_name}`, but runner \
-             evaluation waits for the heuristic-cost-function-5th-gate testgen dispatch \
-             (Verification follow-up). The eval will apply the symbolic-cost lens to the \
-             program-under-test (`TestClaim.source` for enumerated claims; `ProgramShape.source` \
-             for quantified claims once Slice 1 lands) and compare the result structurally to \
-             `{expected_name}`."
-        ))
+        let expected_field = match field_value_for_symbolic_cost_expected(self.dag, expected_body) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "SymbolicCostExprEquals: could not lower expected `{expected_name}` to a \
+                     structural value: {err:?}"
+                ));
+            }
+        };
+        let expected_pattern = match field_value_to_symbolic_cost_eq_pattern(self.dag, &expected_field)
+        {
+            Ok(p) => p,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "SymbolicCostExprEquals: claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "SymbolicCostExprEquals: claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+
+        let bind_name = match last_emit_rust_program_top_level_value_bind_name(&program_dag) {
+            Ok(Some(name)) => name,
+            Ok(None) => {
+                return ClaimResult::Fail(
+                    "SymbolicCostExprEquals: claim program has no top-level value bind — add at least \
+                     one top-level `let` / value declaration so the symbolic-cost lens has an output \
+                     port (same convention as emit-rust program-mode `main` per \
+                     `last_emit_rust_program_top_level_value_bind_name`)"
+                        .to_string(),
+                );
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "SymbolicCostExprEquals: cannot resolve emit-rust print target bind for `{}`: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+        let Some(bind) = find_bind(&program_dag, &bind_name, &claim.file_name) else {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEquals: bind `{bind_name}` not found in `{}`",
+                claim.file_name
+            ));
+        };
+
+        let computed = match symbolic_cost_of(&program_dag, &bind.value) {
+            SymbolicCostLookup::Hit(cost) => cost,
+            SymbolicCostLookup::Miss => {
+                return ClaimResult::Fail(format!(
+                    "SymbolicCostExprEquals: `symbolic_cost_of` returned Miss for bind `{bind_name}` \
+                     in `{}`",
+                    claim.file_name
+                ));
+            }
+        };
+        let computed_pattern = symbolic_cost_to_eq_pattern(&computed);
+        if computed_pattern == expected_pattern {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "SymbolicCostExprEquals: for bind `{bind_name}` in `{}`, expected pattern \
+                 {expected_pattern:?}, computed pattern {computed_pattern:?} (from symbolic-cost lens)",
+                claim.file_name
+            ))
+        }
     }
 
     /// Boundary check that `decl_id` references a declaration whose declared
@@ -4134,6 +4197,313 @@ fn decl_display_name(id: DeclarationId, decl: &Declaration) -> String {
     decl.name
         .clone()
         .unwrap_or_else(|| format!("Declaration#{}", id.raw()))
+}
+
+/// Lowered [`SymbolicCost`] data bodies may wrap a bare [`FieldValue::Variant`] in a
+/// single-field structural carrier (`"_"`) — see `try_lower_symbolic_cost_constant_cost_data` in
+/// `lower.rs`. Peel that wrapper before comparing to lens output.
+fn field_value_for_symbolic_cost_expected(
+    fixture_dag: &Dag,
+    body: &ValueBody,
+) -> Result<FieldValue, crate::lens_apply::LensApplyError> {
+    match body {
+        ValueBody::Structural { fields }
+            if fields.len() == 1 && fields[0].0 == "_" =>
+        {
+            Ok(fields[0].1.clone())
+        }
+        other => field_value_from_value_body(fixture_dag, other),
+    }
+}
+
+/// Normalization for `SymbolicCost` equality across distinct compiled DAGs (`TestClaim.source` vs
+/// fixture graph). [`PortId`] identity on [`crate::dag::SizeVariable`] is intentionally ignored;
+/// correlation uses optional `display_name` only (presentation discipline in `algebra.dag`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SymbolicCostEqPattern {
+    Constant(i64),
+    Linear { display_name: Option<String> },
+    Log { display_name: Option<String> },
+    Polynomial {
+        display_name: Option<String>,
+        degree_raw: i64,
+    },
+    Product(Vec<SymbolicCostEqPattern>),
+    Sum(Vec<SymbolicCostEqPattern>),
+    Unknown(String),
+}
+
+fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
+    match cost {
+        SymbolicCost::ConstantCost { _0 } => SymbolicCostEqPattern::Constant(*_0),
+        SymbolicCost::LinearCost { _0: sv } => SymbolicCostEqPattern::Linear {
+            display_name: sv.display_name.clone(),
+        },
+        SymbolicCost::LogCost { _0: sv } => SymbolicCostEqPattern::Log {
+            display_name: sv.display_name.clone(),
+        },
+        SymbolicCost::PolynomialCost { var, degree } => SymbolicCostEqPattern::Polynomial {
+            display_name: var.display_name.clone(),
+            degree_raw: degree.raw(),
+        },
+        SymbolicCost::ProductCost { _0: list } => SymbolicCostEqPattern::Product(
+            list.iter()
+                .map(|boxed| symbolic_cost_to_eq_pattern(boxed.as_ref()))
+                .collect(),
+        ),
+        SymbolicCost::SumCost { _0: list } => SymbolicCostEqPattern::Sum(
+            list.iter()
+                .map(|boxed| symbolic_cost_to_eq_pattern(boxed.as_ref()))
+                .collect(),
+        ),
+        SymbolicCost::UnknownCost { _0: s } => SymbolicCostEqPattern::Unknown(s.clone()),
+    }
+}
+
+fn field_value_to_symbolic_cost_eq_pattern(
+    dag: &Dag,
+    fv: &FieldValue,
+) -> Result<SymbolicCostEqPattern, String> {
+    match fv {
+        FieldValue::Variant {
+            constructor,
+            payload,
+        } => {
+            let label_owned = match dag.declaration(*constructor).name.clone() {
+                Some(name) => name,
+                None => symbolic_cost_variant_label_for_constructor(dag, *constructor).ok_or_else(
+                    || {
+                        format!(
+                            "SymbolicCostExprEquals: anonymous symbolic-cost variant constructor {:?} \
+                             is not a SymbolicCost variant payload declaration id",
+                            constructor
+                        )
+                    },
+                )?,
+            };
+            let label = label_owned.as_str();
+            match label {
+                "ConstantCost" => {
+                    let n = one_int_payload(payload)?;
+                    Ok(SymbolicCostEqPattern::Constant(n))
+                }
+                "LinearCost" => {
+                    let inner = single_payload(payload)?;
+                    let display_name = parse_size_variable_display_name_only(dag, inner)?;
+                    Ok(SymbolicCostEqPattern::Linear { display_name })
+                }
+                "LogCost" => {
+                    let inner = single_payload(payload)?;
+                    let display_name = parse_size_variable_display_name_only(dag, inner)?;
+                    Ok(SymbolicCostEqPattern::Log { display_name })
+                }
+                "PolynomialCost" => {
+                    let record = single_payload(payload)?;
+                    let fields = record_fields(record).ok_or_else(|| {
+                        format!(
+                            "SymbolicCostExprEquals: PolynomialCost payload must be a record, got {:?}",
+                            record
+                        )
+                    })?;
+                    let var = field(fields, "var").ok_or_else(|| {
+                        "SymbolicCostExprEquals: PolynomialCost missing `var` field".to_string()
+                    })?;
+                    let degree = field(fields, "degree").ok_or_else(|| {
+                        "SymbolicCostExprEquals: PolynomialCost missing `degree` field".to_string()
+                    })?;
+                    let display_name = parse_size_variable_display_name_only(dag, var)?;
+                    let degree_raw = degree_raw_from_degree_at_least_two_field_value(dag, degree)?;
+                    Ok(SymbolicCostEqPattern::Polynomial {
+                        display_name,
+                        degree_raw,
+                    })
+                }
+                "ProductCost" => {
+                    let inner = single_payload(payload)?;
+                    Ok(SymbolicCostEqPattern::Product(
+                        parse_non_singleton_symbolic_cost_patterns(dag, inner)?,
+                    ))
+                }
+                "SumCost" => {
+                    let inner = single_payload(payload)?;
+                    Ok(SymbolicCostEqPattern::Sum(
+                        parse_non_singleton_symbolic_cost_patterns(dag, inner)?,
+                    ))
+                }
+                "UnknownCost" => {
+                    let s = one_string_payload(payload)?;
+                    Ok(SymbolicCostEqPattern::Unknown(s))
+                }
+                other => Err(format!(
+                    "SymbolicCostExprEquals: decoding `{other}` from expected SymbolicCost is not supported"
+                )),
+            }
+        }
+        other => Err(format!(
+            "SymbolicCostExprEquals: expected value must lower to a SymbolicCost variant; got {:?}",
+            other
+        )),
+    }
+}
+
+fn single_payload<'a>(payload: &'a [FieldValue]) -> Result<&'a FieldValue, String> {
+    match payload {
+        [one] => Ok(one),
+        _ => Err(format!(
+            "SymbolicCostExprEquals: expected a single payload field, got {} slot(s)",
+            payload.len()
+        )),
+    }
+}
+
+fn one_int_payload(payload: &[FieldValue]) -> Result<i64, String> {
+    match single_payload(payload)? {
+        FieldValue::Literal(LiteralBits::Int(n)) => Ok(*n),
+        other => Err(format!(
+            "SymbolicCostExprEquals: expected Int literal payload, got {:?}",
+            other
+        )),
+    }
+}
+
+fn one_string_payload(payload: &[FieldValue]) -> Result<String, String> {
+    match single_payload(payload)? {
+        FieldValue::Literal(LiteralBits::String(s)) => Ok(s.clone()),
+        other => Err(format!(
+            "SymbolicCostExprEquals: expected String literal payload, got {:?}",
+            other
+        )),
+    }
+}
+
+fn parse_size_variable_display_name_only(
+    dag: &Dag,
+    fv: &FieldValue,
+) -> Result<Option<String>, String> {
+    let fields = record_fields(fv).ok_or_else(|| {
+        format!(
+            "SymbolicCostExprEquals: SizeVariable value must be a record, got {:?}",
+            fv
+        )
+    })?;
+    optional_string_field_for_record(dag, fields, "display_name")
+}
+
+fn optional_string_field_for_record(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    key: &str,
+) -> Result<Option<String>, String> {
+    let Some((_, fv)) = fields.iter().find(|(k, _)| k == key) else {
+        return Ok(None);
+    };
+    match fv {
+        FieldValue::Literal(LiteralBits::String(s)) => Ok(Some(s.clone())),
+        FieldValue::Variant { constructor, payload } => {
+            let name = dag.declaration(*constructor).name.as_deref().unwrap_or("");
+            if name == "None" || name.ends_with("None") {
+                return Ok(None);
+            }
+            if name == "Some" || name.ends_with("Some") {
+                let inner = single_payload(payload)?;
+                match inner {
+                    FieldValue::Literal(LiteralBits::String(s)) => Ok(Some(s.clone())),
+                    other => Err(format!(
+                        "SymbolicCostExprEquals: optional string Some(...) expected String, got {:?}",
+                        other
+                    )),
+                }
+            } else {
+                Err(format!(
+                    "SymbolicCostExprEquals: optional string field `{key}`: unsupported variant `{name}`"
+                ))
+            }
+        }
+        other => Err(format!(
+            "SymbolicCostExprEquals: optional string field `{key}`: unsupported shape {:?}",
+            other
+        )),
+    }
+}
+
+fn degree_raw_from_degree_at_least_two_field_value(
+    dag: &Dag,
+    fv: &FieldValue,
+) -> Result<i64, String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = fv
+    else {
+        return Err(format!(
+            "SymbolicCostExprEquals: DegreeAtLeastTwo must be a variant, got {:?}",
+            fv
+        ));
+    };
+    let label = dag
+        .declaration(*constructor)
+        .name
+        .as_deref()
+        .ok_or_else(|| "SymbolicCostExprEquals: anonymous DegreeAtLeastTwo constructor".to_string())?;
+    match label {
+        "DegreeTwo" => Ok(2),
+        "DegreeSuccessor" => {
+            let record = single_payload(payload)?;
+            let fields = record_fields(record).ok_or_else(|| {
+                format!(
+                    "SymbolicCostExprEquals: DegreeSuccessor payload must be a record, got {:?}",
+                    record
+                )
+            })?;
+            let prev = field(fields, "previous").ok_or_else(|| {
+                "SymbolicCostExprEquals: DegreeSuccessor missing `previous`".to_string()
+            })?;
+            let prev_raw = degree_raw_from_degree_at_least_two_field_value(dag, prev)?;
+            Ok(prev_raw + 1)
+        }
+        other => Err(format!(
+            "SymbolicCostExprEquals: unknown DegreeAtLeastTwo variant `{other}`"
+        )),
+    }
+}
+
+fn parse_non_singleton_symbolic_cost_patterns(
+    dag: &Dag,
+    fv: &FieldValue,
+) -> Result<Vec<SymbolicCostEqPattern>, String> {
+    let fields = record_fields(fv).ok_or_else(|| {
+        format!(
+            "SymbolicCostExprEquals: NonSingletonList<SymbolicCost> must be a record, got {:?}",
+            fv
+        )
+    })?;
+    let first = field(fields, "first").ok_or_else(|| {
+        "SymbolicCostExprEquals: NonSingletonList missing `first`".to_string()
+    })?;
+    let second = field(fields, "second").ok_or_else(|| {
+        "SymbolicCostExprEquals: NonSingletonList missing `second`".to_string()
+    })?;
+    let rest = field(fields, "rest").ok_or_else(|| {
+        "SymbolicCostExprEquals: NonSingletonList missing `rest`".to_string()
+    })?;
+    let mut out = vec![
+        field_value_to_symbolic_cost_eq_pattern(dag, first)?,
+        field_value_to_symbolic_cost_eq_pattern(dag, second)?,
+    ];
+    match rest {
+        FieldValue::List(items) => {
+            for item in items {
+                out.push(field_value_to_symbolic_cost_eq_pattern(dag, item)?);
+            }
+        }
+        other => {
+            return Err(format!(
+                "SymbolicCostExprEquals: NonSingletonList `rest` must be a List, got {:?}",
+                other
+            ));
+        }
+    }
+    Ok(out)
 }
 
 fn find_bind<'a>(

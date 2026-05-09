@@ -3638,7 +3638,12 @@ fn lower_data_item(
                 (Some(canonical), Some(&callee)) if callee == canonical => {
                     try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, dag)
                 }
-                _ => None,
+                _ => try_lower_symbolic_cost_constant_cost_data(
+                    target,
+                    args.as_slice(),
+                    ty_decl_id,
+                    dag,
+                ),
             }
         }
         _ => None,
@@ -3749,6 +3754,73 @@ fn fold_repeat_string_semantics(s: &str, n: i64) -> Option<String> {
         return None;
     }
     Some(s.repeat(n as usize))
+}
+
+fn type_decl_is_symbolic_cost(dag: &Dag, mut ty_decl_id: DeclarationId) -> bool {
+    for _ in 0..32 {
+        let decl = dag.declaration(ty_decl_id);
+        if decl.name.as_deref() == Some("SymbolicCost") {
+            return true;
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => {
+                ty_decl_id = *template;
+            }
+            TypeConnective::Atom(
+                AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+            ) => {
+                ty_decl_id = *next;
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn symbolic_cost_variant_constructor_id(dag: &Dag, variant_label: &str) -> Option<DeclarationId> {
+    let symbolic_cost = dag.declaration_by_name("SymbolicCost")?;
+    let TypeConnective::Disj { variants } = &symbolic_cost.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.label == variant_label)
+        .map(|v| v.ty)
+}
+
+/// `data …: SymbolicCost = ConstantCost(<Int literal>)` — class-5 gap #3 narrow slice for R3 gate #40.
+fn try_lower_symbolic_cost_constant_cost_data(
+    target: &str,
+    args: &[SurfaceExpr],
+    ty_decl_id: DeclarationId,
+    dag: &Dag,
+) -> Option<crate::dag::ValueBody> {
+    if target != "ConstantCost" || args.len() != 1 {
+        return None;
+    }
+    if !type_decl_is_symbolic_cost(dag, ty_decl_id) {
+        return None;
+    }
+    let SurfaceExpr::Literal {
+        value: SurfaceLiteral::Int(n),
+        ..
+    } = &args[0]
+    else {
+        return None;
+    };
+    let constructor = symbolic_cost_variant_constructor_id(dag, "ConstantCost")?;
+    Some(crate::dag::ValueBody::Structural {
+        fields: vec![(
+            "_".to_string(),
+            crate::dag::FieldValue::Variant {
+                constructor,
+                payload: vec![crate::dag::FieldValue::Literal(LiteralBits::Int(*n))],
+            },
+        )],
+    })
 }
 
 fn lower_list_to_structural(
