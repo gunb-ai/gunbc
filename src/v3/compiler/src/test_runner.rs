@@ -3132,21 +3132,23 @@ impl<'a> TestRunner<'a> {
             Ok(id) => id,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        let comparator_label = match self.variant_value(comparator) {
-            Some((label, payload)) if payload.is_empty() => label,
-            _ => {
-                return ClaimResult::Fail(
-                    "PerfWithinBaseline `comparator`: expected unit PerfBudgetComparisonOp variant; \
-                     got non-variant or non-empty payload"
-                        .to_string(),
-                );
-            }
+        // Enforce the Director-locked "within baseline" semantics (`r3-structure.md`
+        // §225): budget is `median ≤ 2× baseline` AND `p99 ≤ 5× baseline`.
+        // `std.verification` exposes a closed budget comparator instead of the
+        // general `ComparisonOp` coproduct so inverted comparisons cannot be
+        // authored into this gate.
+        let Some(comparator_label) = perf_budget_comparator_label(self.dag, comparator) else {
+            return ClaimResult::Fail(
+                "PerfWithinBaseline `comparator`: expected unit PerfBudgetComparisonOp variant; \
+                 got non-PerfBudgetComparisonOp variant, non-variant, or non-empty payload"
+                    .to_string(),
+            );
         };
-        if !is_perf_budget_at_most(&comparator_label) {
+        if !is_perf_budget_comparator_at_most(&comparator_label) {
             return ClaimResult::Fail(format!(
                 "PerfWithinBaseline `comparator`: only `AtMostBudget` matches the Director-locked \
                  §225 budget semantics (median ≤ 2× baseline median, absolute p99 ≤ 5× baseline absolute p99); \
-                 `{comparator_label}` is not a supported perf-budget comparator"
+                 `{comparator_label}` would invert or skew the gate"
             ));
         }
         let subject = match self.perf_baseline_measurement(subject_id, "subject") {
@@ -4071,6 +4073,27 @@ impl<'a> TestRunner<'a> {
             _ => None,
         }
     }
+}
+
+fn perf_budget_comparator_label(dag: &Dag, value: &FieldValue) -> Option<String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return None;
+    };
+    if !payload.is_empty() {
+        return None;
+    }
+    let comparator_decl = dag.declaration_by_name("PerfBudgetComparisonOp")?;
+    let TypeConnective::Disj { variants } = &comparator_decl.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|variant| variant.ty == *constructor)
+        .map(|variant| variant.label.clone())
 }
 
 impl TestClaimValue {
@@ -5307,7 +5330,7 @@ mod perf_within_baseline_tests {
     //!    fail-closed semantics.
 
     use super::compute_perf_budget_bounds;
-    use super::is_perf_budget_at_most;
+    use super::is_perf_budget_comparator_at_most;
     use super::PerfBudgetOverflow;
     use super::PerfMeasurement;
     use super::PerfMeasurementResolveError;
@@ -5442,14 +5465,26 @@ mod perf_within_baseline_tests {
         );
     }
 
-    /// `PerfWithinBaseline.comparator` is `PerfBudgetComparisonOp` from
-    /// `src/v3/std/verification.dag` (not `ComparisonOp` from `substrate.dag`).
-    /// Drift gate: every bootstrap-declared variant is classified by
-    /// [`is_perf_budget_at_most`]; only `AtMostBudget` is accepted today.
+    /// The Director-locked §225 budget semantics are `median ≤ 2× baseline`
+    /// AND `p99 ≤ 5× baseline`. The substrate `PerfBudgetComparisonOp`
+    /// carries a closed budget comparator so inverted general comparisons
+    /// cannot be authored into the gate. This test reads its variant set
+    /// from `std.verification` (substrate-source-of-truth, not a hardcoded
+    /// list) and asserts the runtime guard classifies every variant:
+    /// `AtMostBudget` alone passes, every other variant fails-closed.
     #[test]
-    fn runtime_classifies_every_perf_budget_comparison_op_variant() {
+    fn runtime_classifies_every_perf_budget_comparison_op_variant_at_most_only() {
         use crate::dag::TypeConnective;
-        let dag = crate::generated_full_bootstrap_dag();
+
+        let dag = std::thread::Builder::new()
+            .name("perf_budget_comparator_bootstrap_dag".to_string())
+            // The generated full bootstrap DAG overflows the default libtest
+            // thread stack on this path; keep the structural drift check.
+            .stack_size(8 * 1024 * 1024)
+            .spawn(crate::generated_full_bootstrap_dag)
+            .expect("spawn generated_full_bootstrap_dag helper")
+            .join()
+            .expect("generated_full_bootstrap_dag helper panicked");
         let comparison_op = dag
             .declaration_by_name("PerfBudgetComparisonOp")
             .expect("PerfBudgetComparisonOp must exist in bootstrap (src/v3/std/verification.dag)");
@@ -5460,21 +5495,63 @@ mod perf_within_baseline_tests {
         variant_labels.sort();
         assert!(
             variant_labels.contains(&"AtMostBudget"),
-            "verification.dag PerfBudgetComparisonOp must include AtMostBudget; got {variant_labels:?}"
+            "PerfBudgetComparisonOp must include `AtMostBudget` for §225 semantics; got {variant_labels:?}"
         );
+        // Drift gate: every substrate-declared variant must be explicitly
+        // classified by the runtime guard. The guard's classification is a
+        // single rule — `label == \"AtMostBudget\"` — so the assertion below mirrors it.
+        // If substrate adds a variant, `is_perf_budget_comparator_at_most`
+        // continues to return `false` for it (correctly fail-closed under the
+        // current locked semantics) and this test continues to pass without
+        // edits — the new variant is structurally rejected by the same guard,
+        // matching the §225 lock.
         for label in &variant_labels {
-            let accepted = is_perf_budget_at_most(label);
+            let accepted = is_perf_budget_comparator_at_most(label);
             assert_eq!(
                 accepted,
                 *label == "AtMostBudget",
-                "PerfBudgetComparisonOp variant `{label}`: runtime guard disagrees with locked semantics",
+                "PerfBudgetComparisonOp variant `{label}`: runtime guard classification disagrees \
+                 with §225 lock (only `AtMostBudget` may be accepted)",
             );
         }
     }
+
+    #[test]
+    fn perf_budget_comparator_rejects_general_comparison_op_constructor() {
+        use crate::dag::{FieldValue, TypeConnective};
+
+        let dag = std::thread::Builder::new()
+            .name("perf_budget_comparator_wrong_disj_bootstrap_dag".to_string())
+            // The generated full bootstrap DAG overflows the default libtest
+            // thread stack on this path; keep the structural boundary check.
+            .stack_size(8 * 1024 * 1024)
+            .spawn(crate::generated_full_bootstrap_dag)
+            .expect("spawn generated_full_bootstrap_dag helper")
+            .join()
+            .expect("generated_full_bootstrap_dag helper panicked");
+        let comparison_op = dag
+            .declaration_by_name("ComparisonOp")
+            .expect("ComparisonOp must exist in generated bootstrap DAG");
+        let TypeConnective::Disj { variants } = &comparison_op.connective else {
+            panic!("ComparisonOp must be a coproduct (Disj)");
+        };
+        let general_comparator = FieldValue::Variant {
+            constructor: variants[0].ty,
+            payload: Vec::new(),
+        };
+        assert_eq!(
+            super::perf_budget_comparator_label(&dag, &general_comparator),
+            None,
+            "PerfWithinBaseline must reject unit variants from non-PerfBudgetComparisonOp coproducts"
+        );
+    }
 }
 
-/// `PerfWithinBaseline` accepts only `PerfBudgetComparisonOp::AtMostBudget`.
-#[inline]
-fn is_perf_budget_at_most(comparator_label: &str) -> bool {
+/// Single-rule classifier for the §225 `AtMostBudget` guard. The runtime
+/// path in [`TestRunner::eval_perf_within_baseline`] calls this helper
+/// (`comparator_label != "AtMostBudget"` → fail-closed). Lifted as a free function
+/// so unit tests can drive the same classifier against the substrate-
+/// declared `PerfBudgetComparisonOp` variant set without DAG fixtures.
+fn is_perf_budget_comparator_at_most(comparator_label: &str) -> bool {
     comparator_label == "AtMostBudget"
 }
