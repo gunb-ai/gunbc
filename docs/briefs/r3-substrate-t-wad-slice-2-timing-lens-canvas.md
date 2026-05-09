@@ -109,7 +109,7 @@ Per r3-structure.md:168, `Output` is "projection/report distinguishing `Observed
 
 ### Option (a) — Sum type: `TimingObservationOutcome = Observed | Missing | Ambiguous | Stale`
 
-Direct sum-type encoding. Each variant carries shape-appropriate payload (`Observed { value: TimingMeasurement }`, `Missing { reason }`, `Ambiguous { candidates }`, `Stale { observed_at, expired_after }`).
+Direct sum-type encoding. Each variant carries shape-appropriate payload (`Observed { value: Source }`, `Missing { reason }`, `Ambiguous { candidates }`, `Stale { observed_at, expired_after }`). For timing instantiation, `Source = TimingPayload { nanoseconds: Int }` — the **payload-only** observed value, NOT the full `TimingMeasurement` (which would re-introduce the variants and split P2 single-authority for invariant 5). Per Q-WAD-S2-Anchor revised convergence: subject identity / attestation / report-state all live on the anchor; payload carries only the observed-value-when-present.
 
 **Dissolution classification (INVARIANTS P5 / modeling-discipline.md §coproduct dissolution): 🟢 GREEN (terminal).** No richer source exists at the workflow-observation boundary. The four variants exhaust the externally-attested observation states: a fact was attached cleanly (Observed), no fact attached (Missing), multiple conflicting facts attached (Ambiguous), a previously-attached fact has expired its validity window (Stale). All variants trace to the substrate's external-data attachment surface (six invariants per gate #55); none has a richer-source-extraction path that would dissolve to a finer coproduct. Worker `.dag` declarations MUST carry the 🟢 marker comment per modeling-discipline.md:132 checkpoint discipline.
 
