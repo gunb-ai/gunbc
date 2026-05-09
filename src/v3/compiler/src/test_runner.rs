@@ -4254,18 +4254,23 @@ fn field_value_for_symbolic_cost_expected(
 }
 
 /// Normalization for `SymbolicCost` equality across distinct compiled DAGs (`TestClaim.source` vs
-/// fixture graph). [`PortId`] identity on [`crate::dag::SizeVariable`] is intentionally ignored;
-/// correlation uses optional `display_name` only (presentation discipline in `algebra.dag`).
+/// fixture graph). [`PortId`] values are compared structurally via their numeric substrate encoding
+/// (`FieldValue` literal `Int`, same as lens reflection). Per `algebra.dag`, **identity** for
+/// [`crate::dag::SizeVariable`] is `source_port`; `display_name` is presentation-only but still
+/// participates in the pattern so two folds over the **same** port can match even when labels differ.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SymbolicCostEqPattern {
     Constant(i64),
     Linear {
+        source_port_raw: u32,
         display_name: Option<String>,
     },
     Log {
+        source_port_raw: u32,
         display_name: Option<String>,
     },
     Polynomial {
+        source_port_raw: u32,
         display_name: Option<String>,
         degree_raw: i64,
     },
@@ -4278,12 +4283,15 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
     match cost {
         SymbolicCost::ConstantCost { _0 } => SymbolicCostEqPattern::Constant(*_0),
         SymbolicCost::LinearCost { _0: sv } => SymbolicCostEqPattern::Linear {
+            source_port_raw: sv.source_port.raw(),
             display_name: sv.display_name.clone(),
         },
         SymbolicCost::LogCost { _0: sv } => SymbolicCostEqPattern::Log {
+            source_port_raw: sv.source_port.raw(),
             display_name: sv.display_name.clone(),
         },
         SymbolicCost::PolynomialCost { var, degree } => SymbolicCostEqPattern::Polynomial {
+            source_port_raw: var.source_port.raw(),
             display_name: var.display_name.clone(),
             degree_raw: degree.raw(),
         },
@@ -4341,13 +4349,21 @@ fn field_value_to_symbolic_cost_eq_pattern(
                 }
                 "LinearCost" => {
                     let inner = single_payload(payload)?;
-                    let display_name = parse_size_variable_display_name_only(dag, inner)?;
-                    Ok(SymbolicCostEqPattern::Linear { display_name })
+                    let (source_port_raw, display_name) =
+                        parse_size_variable_for_symbolic_cost_eq(dag, inner)?;
+                    Ok(SymbolicCostEqPattern::Linear {
+                        source_port_raw,
+                        display_name,
+                    })
                 }
                 "LogCost" => {
                     let inner = single_payload(payload)?;
-                    let display_name = parse_size_variable_display_name_only(dag, inner)?;
-                    Ok(SymbolicCostEqPattern::Log { display_name })
+                    let (source_port_raw, display_name) =
+                        parse_size_variable_for_symbolic_cost_eq(dag, inner)?;
+                    Ok(SymbolicCostEqPattern::Log {
+                        source_port_raw,
+                        display_name,
+                    })
                 }
                 "PolynomialCost" => {
                     let record = single_payload(payload)?;
@@ -4363,9 +4379,11 @@ fn field_value_to_symbolic_cost_eq_pattern(
                     let degree = field(fields, "degree").ok_or_else(|| {
                         "SymbolicCostExprEquals: PolynomialCost missing `degree` field".to_string()
                     })?;
-                    let display_name = parse_size_variable_display_name_only(dag, var)?;
+                    let (source_port_raw, display_name) =
+                        parse_size_variable_for_symbolic_cost_eq(dag, var)?;
                     let degree_raw = degree_raw_from_degree_at_least_two_field_value(dag, degree)?;
                     Ok(SymbolicCostEqPattern::Polynomial {
+                        source_port_raw,
                         display_name,
                         degree_raw,
                     })
