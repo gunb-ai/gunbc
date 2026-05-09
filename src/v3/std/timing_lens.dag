@@ -89,11 +89,7 @@ fn timing_measurement_unobserved() -> TimingMeasurement =
 
 // Single declared join for `Lens<TimingMeasurement>` composition hooks.
 // `sequential`: `Observed`×`Observed` sums nanoseconds; else `branch` takes max.
-fn timing_measurement_lens_combine(
-  a: TimingMeasurement,
-  b: TimingMeasurement,
-  sequential: Bool,
-) -> TimingMeasurement =
+fn timing_measurement_lens_combine(a: TimingMeasurement, b: TimingMeasurement, sequential: Bool) -> TimingMeasurement =
   match a {
     Unobserved => Unobserved
     Stale =>

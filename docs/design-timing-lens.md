@@ -24,6 +24,8 @@ Wall-clock durations and POSIX-style epoch coordinates are carried by a dedicate
 3. **Algebraic form** — PASS: explicit sum type (no stringly encoding of outcomes).
 4. **Dimensional** — N/A at this scaffold layer; dimensional semantics for time are carried by the `Nanoseconds` nominal (non-negative magnitude via `Nat`; further refinement deferred per §1.1).
 
+**Composition:** `timing_measurement_lens_combine` in `timing_lens.dag` is the single declared join for sequential vs branch hooks (`timing_sequential_op` / `timing_branch_op` delegate to it); prose on the `TimingMeasurement` declaration records strict `Unobserved` and fault dominance rules.
+
 The carrier uses `Unobserved` (not the bare label `Missing`) so witness sites avoid ambiguous resolution against other `Missing`-shaped substrate names; it denotes the same external “missing timing evidence” state described in program gates.
 
 ### 1.3 `Witness<TimingMeasurement>` vs. `Violates` (DB-3 / P3)
