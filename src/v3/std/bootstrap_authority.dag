@@ -80,6 +80,7 @@ data bootstrap_authority: BootstrapAuthoritySet = {
     "src/v3/std/substrate.dag": V3StdAuthority,
     "src/v3/std/substrate_minimal.dag": V3StdAuthority,
     "src/v3/std/termination.dag": V3StdAuthority,
+    "src/v3/std/timing_lens.dag": V3StdAuthority,
     "src/v3/std/tokenize.dag": V3StdAuthority,
     "src/v3/std/verification.dag": V3StdAuthority,
     "src/v3/std/workflows.dag": V3StdAuthority,
