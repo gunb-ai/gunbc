@@ -936,6 +936,64 @@ pub const COMMUTATIVITY_WITNESS_PAIRS: &[(i64, i64)] = &[
     (100, 200),
 ];
 
+/// Values `a` such that a candidate identity `e` must satisfy `op(e,a) == a` and `op(a,e) == a`
+/// for **every** entry — bounded operational witness for `AlgebraicLaw::Identity`, not a declared
+/// monoid identity from `std.algebra` (see dissolution comment on `AlgebraicLaw` in
+/// `src/v3/std/verification.dag`).
+///
+/// Breadth matches operands drawn from [`ASSOCIATIVITY_WITNESS_TRIPLES`] and
+/// [`COMMUTATIVITY_WITNESS_PAIRS`].
+pub const IDENTITY_WITNESS_VALUES: &[i64] = &[-4, -3, -1, 0, 1, 2, 3, 5, 7, 10, 99, 100, 200, 300];
+
+/// Identity candidates tried in order until one validates against [`IDENTITY_WITNESS_VALUES`].
+pub const IDENTITY_CANDIDATE_VALUES: &[i64] = &[
+    0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8, 9, -9, 10, -10, 11, -11, 12, -12,
+    13, -13, 14, -14, 15, -15, 16, -16,
+];
+
+const _: () = assert!(IDENTITY_WITNESS_VALUES.len() > 1);
+const _: () = assert!(IDENTITY_CANDIDATE_VALUES.len() > 1);
+
+/// True iff `op(identity, a) == a` and `op(a, identity) == a` for every `a` in `witness_as`.
+pub fn int_identity_holds_with_candidate(
+    program_dag: &Dag,
+    lens_decl_id: DeclarationId,
+    identity: i64,
+    witness_as: &[i64],
+) -> Result<bool, LensApplyError> {
+    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+    let e = identity;
+    for &a in witness_as {
+        let left = apply_lens_declaration(program_dag, lens_decl_id, &[int(e), int(a)])?;
+        if left != int(a) {
+            return Ok(false);
+        }
+        let right = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), int(e)])?;
+        if right != int(a) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Scan [`IDENTITY_CANDIDATE_VALUES`] for some `e` satisfying [`int_identity_holds_with_candidate`].
+pub fn int_identity_holds_scan_candidates(
+    program_dag: &Dag,
+    lens_decl_id: DeclarationId,
+) -> Result<bool, LensApplyError> {
+    for &candidate in IDENTITY_CANDIDATE_VALUES {
+        if int_identity_holds_with_candidate(
+            program_dag,
+            lens_decl_id,
+            candidate,
+            IDENTITY_WITNESS_VALUES,
+        )? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Evaluate `(a ⊕ b) ⊕ c` vs `a ⊕ (b ⊕ c)` for a binary `Int` lens using [`apply_lens_declaration`].
 pub fn int_associativity_holds(
     program_dag: &Dag,
@@ -999,6 +1057,19 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
             int_associativity_holds_all_triples(&dag, id, ASSOCIATIVITY_WITNESS_TRIPLES)
                 .expect("assoc witness"),
             "Int `+` lens must pass every ASSOCIATIVITY_WITNESS_TRIPLES entry"
+        );
+    }
+
+    #[test]
+    fn int_add_lens_identity_sample() {
+        let src = r#"module w
+fn lens_composition_op(a: Int, b: Int) -> Int = a + b
+"#;
+        let dag = compile_to_dag(src, "ident.v3").expect("compiles");
+        let id = dag.declaration_by_name("lens_composition_op").unwrap().id;
+        assert!(
+            int_identity_holds_scan_candidates(&dag, id).expect("identity witness"),
+            "Int `+` lens must admit a bounded identity witness"
         );
     }
 

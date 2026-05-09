@@ -2,9 +2,9 @@
 //!
 //! R3 Lane 1 + Lane 2 + L5 harness receipts: Lane 1 L4 now exercises the wired W1
 //! `DifferentialEquals(rust_emit_output, dag_eval_output)` path (plus a mixed-lineage
-//! `NotYetImplemented` control), and Lane 1 L7 now exercises the wired `Associativity`
-//! and `Commutativity` operational witnesses. Lane 2 / L5 rows remain intentionally deferred
-//! where noted.
+//! `NotYetImplemented` control), and Lane 1 L7 exercises `Associativity`,
+//! `Commutativity`, and bounded operational `Identity` witnesses. Lane 2 / L5 rows remain
+//! intentionally deferred where noted.
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
 use std::sync::OnceLock;
@@ -39,8 +39,7 @@ const L7_CLAIM: &str = "r3_verification_l7_algebraic_laws_skeleton";
 const L7_SEMIGROUP_ASSOCIATIVITY_CLAIM: &str = "r3_l7_semigroup_associativity";
 const L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM: &str = "r3_l7_commutative_monoid_commutativity";
 const L7_MATRIX_SUITE: &str = "r3_verification_l7_algebra_matrix_suite";
-const L7_MATRIX_WIRED_COUNT: usize = 8;
-const L7_MATRIX_IDENTITY_NYI_COUNT: usize = 8;
+const L7_MATRIX_CLAIM_COUNT: usize = 16;
 
 const L5_FIXTURE: &str = include_str!("../fixtures/r3_verification_l5_corpus.dag");
 const L5_FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag";
@@ -223,50 +222,32 @@ fn r3_verification_l7_commutative_monoid_commutativity_passes_wired_commutativit
 }
 
 #[test]
-fn r3_verification_l7_algebraic_law_identity_skeleton_is_nyi() {
+fn r3_verification_l7_algebraic_law_identity_skeleton_passes() {
     let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
     let results = TestRunner::new(dag).run_suite(L7_SUITE);
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].claim_name, L7_CLAIM);
     assert!(
-        matches!(results[0].result, ClaimResult::NotYetImplemented(_)),
-        "expected AlgebraicLaw::Identity to stay deferred, got {:?}",
+        matches!(results[0].result, ClaimResult::Pass),
+        "expected AlgebraicLaw::Identity wire-up to pass for `{L7_CLAIM}`; got {:?}",
         results[0].result
     );
 }
 
 #[test]
-fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
+fn r3_verification_l7_algebraic_law_matrix_all_claims_pass() {
     let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
     let results = TestRunner::new(dag).run_suite(L7_MATRIX_SUITE);
-    assert_eq!(
-        results.len(),
-        L7_MATRIX_WIRED_COUNT + L7_MATRIX_IDENTITY_NYI_COUNT
-    );
+    assert_eq!(results.len(), L7_MATRIX_CLAIM_COUNT);
 
-    let mut wired_passes = 0;
-    let mut identity_deferred = 0;
     for result in &results {
-        if result.claim_name.ends_with("_identity") {
-            assert!(
-                matches!(result.result, ClaimResult::NotYetImplemented(_)),
-                "{} should remain deferred until identity-element substrate edges land; got {:?}",
-                result.claim_name,
-                result.result
-            );
-            identity_deferred += 1;
-        } else {
-            assert!(
-                matches!(result.result, ClaimResult::Pass),
-                "{} should exercise the current wired AlgebraicLaw witness path; got {:?}",
-                result.claim_name,
-                result.result
-            );
-            wired_passes += 1;
-        }
+        assert!(
+            matches!(result.result, ClaimResult::Pass),
+            "`{}` should pass with Associativity, Commutativity, and Identity runners wired; got {:?}",
+            result.claim_name,
+            result.result
+        );
     }
-    assert_eq!(wired_passes, L7_MATRIX_WIRED_COUNT);
-    assert_eq!(identity_deferred, L7_MATRIX_IDENTITY_NYI_COUNT);
 }
 
 #[test]

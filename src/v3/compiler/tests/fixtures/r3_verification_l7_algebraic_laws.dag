@@ -1,8 +1,8 @@
 // std.r3_verification_l7_algebraic_laws — R3 Lane 1/L7 algebraic-law fixtures.
 //
-// The original skeleton suite remains a single `AlgebraicLaw(Identity, ...)`
-// placeholder. The matrix suite below pre-authors enum-backed per-(algebra, law)
-// fixture rows for the current `AlgebraicLawKind` surface:
+// The skeleton suite carries one `AlgebraicLaw(Identity, …)` claim whose program text includes
+// the referenced lens so the runner resolves `lens_ref` in `compile_to_dag(claim.source)` (same
+// discipline as matrix rows). The matrix suite below pre-authors enum-backed per-(algebra, law)
 // `Associativity`, `Commutativity`, and `Identity`.
 //
 // Laws such as distributivity, absorption, inverse, complement, annihilation,
@@ -35,7 +35,7 @@ fn r3_l7_free_monoid_identity_op(a: Int, b: Int) -> Int = a + b
 
 data r3_verification_l7_algebraic_laws_skeleton: TestClaim = {
   name: "r3_verification_l7_algebraic_laws_skeleton",
-  source: "let _: Int = 1\n",
+  source: "fn r3_l7_identity_placeholder_op(a: Int, b: Int) -> Int = a + b\nlet _: Int = 1\n",
   file_name: "r3_verification_l7_algebraic_laws_skeleton.v3",
   predicate: AlgebraicLaw(Identity, r3_l7_identity_placeholder_op),
   requires: []
