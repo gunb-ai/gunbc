@@ -50,20 +50,24 @@
 //!
 //! ## Status
 //!
-//! **R2 closure-pre-pass scaffold.** The walker enumerates cells and
-//! reports current LanguageSpec coverage. Today's coverage is 0/90
-//! cells (no `LanguageSpec.emission_paths` table exists yet — it lands
-//! as part of `T-Ground-LanguageSpec` Phase 1.5+). Expected output:
-//! 90 [`EmissionDiagnostic::MissingEmissionPath`] entries, each
-//! consumable by the closure ledger as a tracked-gap receipt.
+//! **R2 closure-pre-pass — real coverage fold.** The walker enumerates
+//! all 90 cells and resolves each against landed `MethodTemplateContract`
+//! row authorities (`src/v3/std/*_method_template_contracts.dag`). At
+//! HEAD, Phase 1 rows cover **Cardinality × Transform × Shape A target**
+//! for each non-empty per-target list (see `coverage` module audit); all
+//! other cells report [`EmissionDiagnostic::MissingEmissionPath`] as
+//! honest structural gaps until additional LanguageSpec tables land.
 
 use v3_compiler::dag::Dag;
 
 mod cells;
+#[cfg(test)]
+mod closure_ledger_gate;
+mod coverage;
 mod diagnostic;
 mod walker;
 
-pub use cells::{Cell, FormAxis, ShapeATarget};
+pub use cells::{BehaviorAxis, Cell, FormAxis, ShapeATarget};
 pub use diagnostic::EmissionDiagnostic;
 pub use walker::{walk_cross_product, CrossProductReport};
 
@@ -81,6 +85,14 @@ mod tests {
     use super::*;
     use v3_compiler::generated_full_bootstrap_dag;
 
+    /// Expected L6 coverage at HEAD from Step 1 audit of
+    /// `rust_method_template_contracts` / `python_method_template_contracts` /
+    /// `go_method_template_contracts`: each list is non-empty (Rust 13, Python 17,
+    /// Go 13 rows) and every Phase 1 row maps to the single structural bucket
+    /// **Cardinality × Transform × &lt;target&gt;** for collection method templates.
+    const EXPECTED_PRESENT_COUNT: usize = 3;
+    const EXPECTED_MISSING_COUNT: usize = 90 - EXPECTED_PRESENT_COUNT;
+
     #[test]
     fn cross_product_walks_90_cells() {
         let dag = generated_full_bootstrap_dag();
@@ -94,23 +106,40 @@ mod tests {
     }
 
     #[test]
-    fn current_coverage_is_zero_with_named_gaps() {
-        // Phase 0 scaffold: today's LanguageSpec has no
-        // `emission_paths` table populated. Every cell is `MissingEmissionPath`.
-        // When `T-Ground-LanguageSpec` Phase 1.5+ populates the table, this
-        // test grows to assert per-cell coverage as it lands. For now the
-        // expectation is "every cell missing, every miss tracked."
+    fn coverage_matches_audit_table() {
         let dag = generated_full_bootstrap_dag();
         let report = check_l6_load_completeness(&dag);
         assert_eq!(
-            report.missing.len(),
-            90,
-            "Phase 0 expectation: every cell missing (LanguageSpec.emission_paths \
-             not yet populated). Once `T-Ground-LanguageSpec` Phase 1.5+ lands, \
-             the missing count drops as cells gain coverage. Got {} missing.",
-            report.missing.len()
+            report.present.len(),
+            EXPECTED_PRESENT_COUNT,
+            "present cells must match audit table (Cardinality×Transform×each target \
+             when that target's MethodTemplateContract list is non-empty)"
         );
-        assert_eq!(report.present.len(), 0);
+        assert_eq!(report.missing.len(), EXPECTED_MISSING_COUNT);
+        let expected_present = [
+            Cell {
+                connective: FormAxis::Cardinality,
+                behavior: BehaviorAxis::Transform,
+                target: ShapeATarget::Rust,
+            },
+            Cell {
+                connective: FormAxis::Cardinality,
+                behavior: BehaviorAxis::Transform,
+                target: ShapeATarget::Python,
+            },
+            Cell {
+                connective: FormAxis::Cardinality,
+                behavior: BehaviorAxis::Transform,
+                target: ShapeATarget::Go,
+            },
+        ];
+        for cell in expected_present {
+            assert!(
+                report.present.contains(&cell),
+                "expected {:?} present per landed row audit",
+                cell
+            );
+        }
     }
 
     #[test]

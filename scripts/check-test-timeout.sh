@@ -46,7 +46,7 @@
 #                         (default scripts/slow-test-exemptions.txt).
 #   TEST_TIMEOUT_MAX_EXEMPTIONS
 #                         Ratchet floor for active exemption entries
-#                         (default 39, captured 2026-04-25). Lower this
+#                         (default 39, captured 2026-05-07). Lower this
 #                         value in the same PR that removes exemptions.
 
 set -euo pipefail
@@ -188,7 +188,7 @@ warned=""
 if [ -n "$violations" ]; then
   while IFS=$'\t' read -r name elapsed_ms; do
     if [ -z "$name" ]; then continue; fi
-    if [ -n "$exempt_set" ] && echo "$exempt_set" | grep -Fxq "$name"; then
+    if [ -n "$exempt_set" ] && grep -Fxq "$name" <<< "$exempt_set"; then
       warned+=$(printf '%s\t%s\n' "$name" "$elapsed_ms")
       warned+=$'\n'
     else

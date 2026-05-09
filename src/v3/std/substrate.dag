@@ -6,6 +6,7 @@ import v3.std.substrate_minimal {
 }
 import std.effects { WorkflowEffect }
 import v3.std.lookup { Lookup }
+import std.nat { Nat }
 
 type TypeShape {
   declaration: DeclarationId
@@ -50,7 +51,8 @@ type LiteralBits
 // 4-pattern check:
 // - Pattern 1 (fact placement): fails. Each variant has distinct downstream
 //   consumers (literal constant folding, identifier resolution via
-//   declaration_by_name, SubstStack lookup).
+//   declaration_by_name, SubstStack lookup) — `declaration_by_name` now
+//   landed as `host` accessor below; `SubstStack lookup` still pending.
 // - Pattern 2 (variant-is-data): fails. Different payload types per variant.
 // - Pattern 3 (algebraic form): fails. Each variant is a terminal fact from a
 //   distinct user-input boundary.
@@ -79,7 +81,7 @@ type AtomPayload
 // 🟢 TERMINAL. PR-PreF shared bound parent. CardinalityBound, SizeBound,
 // and the cardinality arm of LoopBound all describe bounded intervals over
 // different domains; this parent is the substrate target named by
-// INVARIANTS.md §P1. Existing carriers retrofit as instances instead of
+// INVARIANTS.md#p1-modeling-faithfulness. Existing carriers retrofit as instances instead of
 // growing new sibling bound declarations.
 //
 // `BoundedInterval` stores a lower endpoint plus a nonnegative width, never
@@ -88,6 +90,28 @@ type AtomPayload
 type PositiveIntervalWidth
   = OneUnit
   | AdditionalUnit { previous: PositiveIntervalWidth }
+  // 🟡 SCAFFOLD (substrate authoring sugar — explicit bridge, not a second width axiom).
+  //
+  // **Canonical semantic witness:** `OneUnit` / `AdditionalUnit` — inductive proof-carrying
+  // encoding for positive interval width already consumed by structural passes.
+  //
+  // **`UnitCount` role:** decimal/spec authoring shorthand denoting the **same** discrete span as a
+  // unary `AdditionalUnit` chain of length `units` atop `OneUnit` over `Int` (inclusive span above
+  // `lower` in `BoundedInterval<Int>`). Large fixed-width rows (Coercion-Fold examples) use this so
+  // specs stay compact; Peano spines remain valid everywhere small unary witnesses are preferred.
+  //
+  // **Same-PR structural consumers (fail-closed):** `integer_range_for_decl` /
+  // `lower_scalar_literal_for_type` reject negative decimals for `Nat`; `enforce_non_negative_unit_count_payload`
+  // witnesses nonnegative payloads when lowering bypasses those gates.
+  //
+  // **Dissolution trigger:** add a substrate normalizer or shared query that expands every
+  // `UnitCount { units: N }` **value** to an equivalent Peano spine **before** consumers that require
+  // an explicit unary witness for induction-shaped reasoning — until then, treat both variants as
+  // denotationally equivalent via this bridge (single interval-width fact; no competing lattices).
+  //
+  // **INVARIANTS.md P5** (Progress Is Dissolution): parallel surface shapes land only under tracked
+  // scaffold + named exit; Peano remains the durable unary carrier where proof structure matters.
+  | UnitCount { units: Nat }
 
 type IntervalWidth
   = ZeroWidth
@@ -100,6 +124,19 @@ type IntervalWidth
 type Interval<D>
   = BoundedInterval { lower: D, width: IntervalWidth }
   | Unbounded
+
+// Alias so LanguageSpec-side carriers (`emit_model`) can name fixed `Int`
+// intervals without instantiating `Interval<Int>` at every import site.
+type IntInterval = Interval<Int>
+
+// 🟢 TERMINAL at Coercion-Fold bound-declaration scope. Static value-domain
+// bounds are represented by the shared Interval<Int> parent; platform-dependent
+// bounds are a distinct kind because their interval is resolved only after the
+// target platform is known. No parser/lowerer or per-target population lands in
+// this substrate carrier slice.
+type BoundDeclaration
+  = StaticBound(Interval<Int>)
+  | PlatformDependent
 
 // 🟢 TERMINAL. Cardinality bounds are structural substrate facts and
 // not a temporary bridge to another representation. PR-PreF projects this
@@ -138,21 +175,63 @@ type FieldValue
       payload: List<FieldValue>
     }
 
-// 🟡 SCAFFOLD paired with `FieldValue`. `Unparsed` and structural body
-// carriers are bootstrap-time receipts for data-body lowering.
+// 🟡 SCAFFOLD paired with `FieldValue`. `ValueBody` is the bootstrap
+// data-body carrier until all source data bodies lower through ordinary
+// declaration-shaped value DAGs. Named dissolution trigger: M2+ parser
+// extensions plus value-sub-DAG lowering close the class-5 data-body gap,
+// allowing `Unparsed` and the top-level structural body carriers below to
+// dissolve into regular declarations/behaviors.
+//
+// Coproduct receipt:
+// - `ValueBodyUnparsed(SourceSpan)` — 🟡 scaffold for source bodies not yet
+//   structurally lowered; trigger is parser/lowering coverage for the
+//   remaining opaque data-body forms.
+// - `ValueBodyStructural { fields }` — 🟡 scaffold for top-level record
+//   bodies; kept distinct from list/map/scalar so records are not encoded as
+//   anonymous positional or keyed containers.
+// - `ValueBodyScalar(LiteralBits)` — 🟡 scaffold for scalar-valued data
+//   declarations (`data answer: Int = 42`); `LiteralBits` is intentionally
+//   narrower than `FieldValue` so top-level records/references/variants do
+//   not become overlapping scalar states.
+// - `ValueBodyList(List<FieldValue>)` — 🟡 scaffold for top-level list data
+//   bodies; preserves authored order and reuses `FieldValue` for nested
+//   structural elements until value-sub-DAG lowering owns lists directly.
+// - `ValueBodyMap(List<FieldEntry>)` — 🟡 scaffold for top-level
+//   string-keyed map data bodies. Rust wraps this payload in `FieldMap`
+//   post-codegen to preserve duplicate-key rejection while substrate remains
+//   the minimal carrier authority.
 type ValueBody
   = ValueBodyUnparsed(SourceSpan)
   | ValueBodyStructural { fields: List<FieldEntry> }
+  | ValueBodyScalar(LiteralBits)
+  | ValueBodyList(List<FieldValue>)
   | ValueBodyMap(List<FieldEntry>)
 
 // Type substrate.
+// Typed witness that a NodeId identifies a BindNode. `ArrowBody::UserDefined`
+// carries this witness instead of a raw NodeId so the bind-body invariant lives
+// in the substrate authority as well as the Rust mirror.
+//
+// Constructor-validation asymmetry (tracked Track 9 debt): validity is
+// enforced today by `BindNodeId::from_bind_node(dag, id)`, which fails closed
+// unless `id` resolves to `Behavior::Bind`. The reflected substrate exposes the
+// witness field shape only; direct `.dag` construction can still write the
+// record. When .dag-side construction matures in the Lane 3c self-hosting
+// cycle, add the equivalent substrate-level constructor authority so direct
+// producers cannot forge invalid bind handles. Same ROADMAP authority as
+// ParamRef / TransformRef: ../../../ROADMAP.md — Track 9 ("Tracked debt —
+// substrate constructor-validation asymmetry").
+type BindNodeId {
+  node: NodeId
+}
+
 // 🟡 MIXED. `ArrowBody` carries the durable user/external/no-body
 // edges plus the temporary `Pending` / `Unparsed` bootstrap states
 // still present in today's lowering pipeline. See the Rust-side
 // ledger in `src/v3/compiler/src/dag.rs` for variant rationale and
 // dissolution triggers.
 type ArrowBody
-  = UserDefined(NodeId)
+  = UserDefined(BindNodeId)
   | ExternalRealization(DeclarationId)
   | Pending
   | NoBody
@@ -235,6 +314,18 @@ type ComparisonOp
   | Le
   | Gt
   | Ge
+
+// 🟢 TERMINAL at T-Tier3 perf-budget substrate scope. Wall-clock
+// mirror-dissolution baseline facts are measured values, not symbolic
+// cost expressions: consumers compare live/captured measurements to a
+// declared baseline using the Tier-3 budget thresholds (median <= 2x,
+// p99 <= 5x). Durations are `Nat`, and `p99_delta_ns` encodes
+// `p99_ns - median_ns`, making negative durations and `p99 < median`
+// uninhabitable in the carrier shape.
+type PerfBaselineMeasurement {
+  median_ns: Nat
+  p99_delta_ns: Nat
+}
 
 // 🟡 SCAFFOLD. `&&` / `||` are structurally tracked for the current
 // surface grammar, but they stay on the operator-shim path until the
@@ -335,13 +426,22 @@ type Cluster {
 
 // 🟢 TERMINAL. `LoopBound` records the irreducible witness that makes a
 // reflected `LoopNode` honest: either an explicit runtime count port or
-// a proved mutual-recursion descent cluster. Collapsing the variants
-// would either fabricate a count fact or erase the structural proof.
-// See `docs/design-mutual-recursion-lowering.md` for the full
-// dissolution receipt and named trigger rationale.
+// a proved mutual-recursion descent cluster plus the runtime measure
+// port whose size bounds that descent. Collapsing the variants would
+// either fabricate a count fact or erase the structural proof. The
+// shared `loop_bound_measure` accessor projects the cost/iteration
+// measure while keeping cluster topology on `Dag.clusters`. See
+// `docs/design-mutual-recursion-lowering.md` for the full dissolution
+// receipt and named trigger rationale.
 type LoopBound
   = Cardinality { count: PortId }
-  | Descent { cluster: ClusterId }
+  | Descent { cluster: ClusterId, measure: PortId }
+
+fn loop_bound_measure(bound: LoopBound) -> PortId =
+  match bound {
+    Cardinality(payload) => payload.count
+    Descent(payload) => payload.measure
+  }
 
 type ValueNode {
   id: NodeId
@@ -478,6 +578,21 @@ fn resolve_producer(d: Dag, port_id: PortId) -> Behavior? {
 // miss).
 fn declaration_by_id(d: Dag, id: DeclarationId) -> Declaration? {
   host declaration_by_id
+}
+
+// Declaration-by-name accessor — strict mirror of `declaration_by_id`,
+// keyed by name instead of id. Director-ratified path (α) at gunbc#2068
+// #issuecomment-4402899692 (T-CostLens follow-on Slice 1a.0): consumers
+// that need a substrate meta-type's `DeclarationId` (e.g., `TypeRealization`,
+// `CallableRealization`) can acquire it via name-lookup at compile time.
+// `Declaration?` mirrors the permissive reflected-substrate shape per
+// `declaration_by_id`; C-8 fail-closed at the caller (a name that doesn't
+// resolve to a known declaration is a substrate-integrity question, not a
+// silent miss). Pre-anticipated as part of the intended substrate primitive
+// set (see comment authority at the top of this file referencing
+// `declaration_by_name, SubstStack lookup`).
+fn declaration_by_name(d: Dag, name: String) -> Declaration? {
+  host declaration_by_name
 }
 
 // Lane 2 Stage 2b — reads the optional workflow fact installed on `Value` /

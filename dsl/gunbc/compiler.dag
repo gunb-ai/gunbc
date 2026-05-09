@@ -86,6 +86,8 @@ data stage0: GeneratedCrate = {
     "emit_go.rs",
     "emit_python.rs",
     "emit_rust.rs",
+    // PB-1 Item 5: hand-authored `main.rs` shell formatter (not emitted into src/).
+    "emit_rust_bin_shim.rs",
     "python_target.rs",
     "rust_target.rs",
     "infer.rs",
@@ -94,6 +96,8 @@ data stage0: GeneratedCrate = {
     "lower.rs",
     "pipeline_authority.rs",
     "post_emit_verifier.rs",
+    // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted shells.
+    "process_exit.rs",
     "regen_parse_emit.rs",
     "workflow_idempotency.rs",
     "workflow_parallelism.rs"

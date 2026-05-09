@@ -39,7 +39,14 @@ fn operator_helpers_round_trip_from_dag_authority() {
 }
 
 #[test]
-fn bootstrap_int_add_walk_reaches_ordered_ring_add_nobody_arrow() {
+fn bootstrap_int64_add_walk_reaches_ordered_ring_add_nobody_arrow() {
+    // T-Numeric-Construction Slice 3: default `Int` alias pivoted to
+    // `AbelianGroup<GroupCompletion<Nat>>`; this ratchet now walks the
+    // fixed-width `Int64` row, which still terminates at
+    // `OrderedRing<Word64>` per `dsl/std/integer.dag`. The default `Int`
+    // alias is covered by
+    // `int_default_alias_resolves_to_abelian_group_over_group_completion_of_nat`
+    // in `m2_substrate_inhabitance_test.rs`.
     assert_bootstrap_int_ordered_ring_add_arrow(&Dag::new());
 }
 
@@ -1752,10 +1759,7 @@ let y = f(42)
         let ArrowBody::UserDefined(bind_id) = body else {
             continue;
         };
-        let bind = dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("lambda body bind should exist");
+        let bind = (*bind_id).bind(&dag);
         if bind.name.starts_with("__anon_lambda_") {
             saw_lambda_call = true;
             assert_eq!(
@@ -1962,10 +1966,7 @@ let y = f(3)
         let ArrowBody::UserDefined(bind_id) = body else {
             continue;
         };
-        let bind = dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("lambda body bind should exist");
+        let bind = (*bind_id).bind(&dag);
         if bind.name.starts_with("__anon_lambda_") {
             saw_lambda_call = true;
             assert_eq!(
@@ -2133,6 +2134,33 @@ let total: Int = x_of({ x: 1, y: 2 })
     assert!(
         dag.diagnostics().is_empty(),
         "record literal in expression position should compile when an expected type is available, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn record_literal_duplicate_fields_fail_closed_at_repeated_field() {
+    let src = "\
+type Pair { a: Int b: Int }
+fn first(p: Pair) -> Int = p.a
+let duplicate: Int = first({ a: 1, a: 2, b: 3 })
+";
+    let dag = compile_any(src, "expr_record_literal_duplicate_fields.v3");
+    let duplicate_span = u32::try_from(src.find("a: 2").expect("fixture includes repeated field"))
+        .expect("fixture span fits in SourceSpan");
+
+    assert!(
+        dag.diagnostics().iter().any(|(_, diagnostic)| {
+            matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, span, .. }
+                    if name.contains("record literal repeats field `a`")
+                        && span.file == "expr_record_literal_duplicate_fields.v3"
+                        && span.byte_start <= duplicate_span
+                        && duplicate_span < span.byte_end
+            )
+        }),
+        "expected duplicate record literal diagnostic anchored to second `a`, got {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
 }
@@ -3293,8 +3321,8 @@ fn substrate_accessor_rust_binding_invariants() {
         checked += 1;
     }
     assert_eq!(
-        checked, 6,
-        "expected 6 substrate accessor bindings (port, node, resolve_producer, lane2_workflow_at, declaration_by_id, workflow_root_port)"
+        checked, 8,
+        "expected 8 substrate accessor bindings (port, node, resolve_producer, lane2_workflow_at, declaration_by_id, workflow_root_port, declaration_by_name, per_call_pattern_at)"
     );
     let missing: Vec<_> = universe.difference(&rust_covered).copied().collect();
     assert!(
@@ -3475,7 +3503,7 @@ fn loop_inputs(d: Dag, loop_node: LoopNode) -> List<PortId> =
 fn loop_bound_inputs(bound: LoopBound) -> List<PortId> =
   match bound {
     Cardinality(payload) => singleton(payload.count)
-    Descent(_) => empty()
+    Descent(payload) => singleton(payload.measure)
   }
 
 fn branch_path_outputs(paths: List<BranchPath>) -> List<PortId> =

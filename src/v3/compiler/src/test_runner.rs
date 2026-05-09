@@ -1,18 +1,22 @@
 use std::collections::BTreeSet;
+use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::dag::{
-    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId, PortState,
-    TypeConnective, ValueBody,
+    AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
+    Path, PortId, PortState, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
+use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
 use crate::generated_files::GENERATED_FILES;
+use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
-    reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
+    reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES, COMMUTATIVITY_WITNESS_PAIRS,
 };
 use crate::lens_cost::{cost_of, CostLookup};
+use crate::types::TypeShape;
 use crate::{
     compare_stage_snapshots, compile_stage_snapshots, compile_to_dag, default_fixed_point_source,
     CompileError,
@@ -210,6 +214,367 @@ fn eval_lane_e_differential_cost_lineage(
     }
 }
 
+fn w1_parse_single_int_stdout_carve_out(stdout: &str) -> Result<i64, String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Err(
+            "W1 rust_emit_output: empty stdout after trim (transitional Int-only stdout parse \
+             carve-out authorized for slice-1 only; dissolution: substrate `ProgramObservation<Value>` \
+             + observation-channel / `ValueKind` per `docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md`)"
+                .to_string(),
+        );
+    }
+    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+    if parts.len() != 1 {
+        return Err(format!(
+            "W1 rust_emit_output: stdout must be exactly one integer token (transitional carve-out); \
+             got {parts:?} (dissolution: typed observation channel + `ValueKind`)"
+        ));
+    }
+    parts[0].parse::<i64>().map_err(|_| {
+        format!(
+            "W1 rust_emit_output: stdout token `{}` is not a valid i64 (transitional Int-only carve-out)",
+            parts[0]
+        )
+    })
+}
+
+/// RAII guard: delete the W1 rustc scratch directory on return or panic (best-effort `remove_dir_all`).
+struct W1RustEmitScratchGuard {
+    dir: std::path::PathBuf,
+}
+
+impl W1RustEmitScratchGuard {
+    fn new(dir: std::path::PathBuf) -> Self {
+        Self { dir }
+    }
+}
+
+impl Drop for W1RustEmitScratchGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// Max bytes retained from a W1 host child's **stdout** (slice-1 Int observation: one token +
+/// whitespace). Beyond this we keep draining until EOF so the child cannot stall on a full pipe.
+const W1_HOST_CAPTURE_MAX_STDOUT_BYTES: usize = 16 * 1024;
+
+/// Max bytes retained from a W1 host child's **stderr** (`rustc` diagnostics / runtime errors).
+/// Same drain-to-EOF behavior after the cap.
+const W1_HOST_CAPTURE_MAX_STDERR_BYTES: usize = 256 * 1024;
+
+const W1_HOST_DRAIN_CHUNK_BYTES: usize = 8192;
+
+#[derive(Debug)]
+struct W1BoundedPipeCapture {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+/// Read from `r` until EOF: store at most `max_stored` bytes, then discard the rest so the peer
+/// cannot block on a full pipe (P2 host-process boundary).
+fn w1_drain_reader_bounded(
+    mut r: impl std::io::Read,
+    max_stored: usize,
+) -> std::io::Result<W1BoundedPipeCapture> {
+    let mut buf = Vec::new();
+    let mut truncated = false;
+    let mut scratch = [0u8; W1_HOST_DRAIN_CHUNK_BYTES];
+    loop {
+        let n = r.read(&mut scratch)?;
+        if n == 0 {
+            break;
+        }
+        if buf.len() >= max_stored {
+            truncated = true;
+            continue;
+        }
+        let room = max_stored - buf.len();
+        if n <= room {
+            buf.extend_from_slice(&scratch[..n]);
+        } else {
+            buf.extend_from_slice(&scratch[..room]);
+            truncated = true;
+        }
+    }
+    Ok(W1BoundedPipeCapture {
+        bytes: buf,
+        truncated,
+    })
+}
+
+/// New process group for the W1 host child so [`kill_process_group_on_timeout`] can tear down a
+/// wedged `rustc` or emitted binary without leaving grandchildren (same contract as
+/// [`build_execute_command_process`]).
+fn w1_prepare_host_command(cmd: &mut Command) {
+    cmd.stdin(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setpgid(0, 0) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+}
+
+/// `spawn` + wall-bounded wait + **bounded** stdout/stderr capture — fail-closed vs unbounded
+/// `output()` / `read_to_end` allocation (Decidability / CI). Uses [`EXECUTE_COMMAND_WALL_TIMEOUT`]
+/// and the same `try_wait` poll + process-group kill path as [`child_wait_for_execute_command`].
+/// After [`W1_HOST_CAPTURE_MAX_STDOUT_BYTES`] / [`W1_HOST_CAPTURE_MAX_STDERR_BYTES`] the reader keeps
+/// draining until EOF so a verbose child cannot wedge on a full pipe.
+fn w1_host_command_output(
+    label: &str,
+    wall: Duration,
+    mut cmd: Command,
+) -> Result<std::process::Output, String> {
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("{label}: failed to spawn host child: {e}"))?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| format!("{label}: internal error: stdout not piped (W1 host harness)"))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("{label}: internal error: stderr not piped (W1 host harness)"))?;
+
+    let stdout_handle = std::thread::spawn(move || {
+        w1_drain_reader_bounded(&mut stdout, W1_HOST_CAPTURE_MAX_STDOUT_BYTES)
+    });
+    let stderr_handle = std::thread::spawn(move || {
+        w1_drain_reader_bounded(&mut stderr, W1_HOST_CAPTURE_MAX_STDERR_BYTES)
+    });
+
+    let status = match child_wait_for_execute_command(&mut child, wall) {
+        Ok(s) => s,
+        Err(ChildWaitFail::WallTimeout { wall_time }) => {
+            let _ = stdout_handle.join();
+            let _ = stderr_handle.join();
+            return Err(format!(
+                "{label}: exceeded {:.2}s wall-clock limit (timeout — process group / child killed, fail-closed); \
+                 dissolution: PB-Runtime owns host subprocess policy for generated tests",
+                wall_time.as_secs_f64()
+            ));
+        }
+        Err(ChildWaitFail::Io(err)) => {
+            let _ = stdout_handle.join();
+            let _ = stderr_handle.join();
+            return Err(format!("{label}: wait on host child failed: {err}"));
+        }
+    };
+
+    let stdout_cap = stdout_handle
+        .join()
+        .map_err(|_| format!("{label}: stdout capture thread panicked"))?
+        .map_err(|e| format!("{label}: read stdout failed: {e}"))?;
+    let stderr_cap = stderr_handle
+        .join()
+        .map_err(|_| format!("{label}: stderr capture thread panicked"))?
+        .map_err(|e| format!("{label}: read stderr failed: {e}"))?;
+
+    if stdout_cap.truncated || stderr_cap.truncated {
+        return Err(format!(
+            "{label}: bounded host I/O exceeded (stdout cap {} B, stderr cap {} B; stdout_trunc={} stderr_trunc={}); \
+             child exit={:?}; fail-closed vs unbounded capture; dissolution: PB-Runtime owns diagnostic bounds for generated-test subprocesses",
+            W1_HOST_CAPTURE_MAX_STDOUT_BYTES,
+            W1_HOST_CAPTURE_MAX_STDERR_BYTES,
+            stdout_cap.truncated,
+            stderr_cap.truncated,
+            status.code(),
+        ));
+    }
+
+    Ok(std::process::Output {
+        status,
+        stdout: stdout_cap.bytes,
+        stderr: stderr_cap.bytes,
+    })
+}
+
+fn w1_rust_emit_output_int(
+    program_dag: &Dag,
+    output_bind: &BindNode,
+    claim_file: &str,
+) -> Result<i64, String> {
+    // **Transitional producer identity (contract 1):** only the spelling `rust_emit_output` is
+    // accepted at the `DifferentialEquals` subject/oracle `DeclarationRef` site, fail-closed
+    // elsewhere in `eval_differential_equals`. **Dissolution:** substrate producer-role markers
+    // replace name-keyed recognition (`docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md`).
+    let last_bind = match last_emit_rust_program_top_level_value_bind_name(program_dag) {
+        Ok(Some(name)) => name,
+        Ok(None) => {
+            return Err(
+                "W1 rust_emit_output: compiled program has no top-level value binds (emit_rust program \
+                 mode requires at least one); dissolution: PB-Runtime-generated target-language tests"
+                    .to_string(),
+            );
+        }
+        Err(e) => {
+            return Err(format!(
+                "W1 rust_emit_output: cannot resolve emit-rust print target (same `RealizationIndexes` \
+                 path as `emit_rust_with_mode`): {e:?}"
+            ));
+        }
+    };
+    if last_bind != output_bind.name {
+        return Err(format!(
+            "W1 rust_emit_output: `ProgramOutputBind.output_ref` must name the **last** top-level \
+             value bind after `source_filtering` (same bind `emit_rust` program-mode `main` prints; \
+             see `last_emit_rust_program_top_level_value_bind_name`) — expected `{last_bind}`, got `{}` \
+             (claim file `{claim_file}`; transitional coupling; dissolution: PB-Runtime harness + typed \
+             observation channel)",
+            output_bind.name
+        ));
+    }
+    let rust_src = std::thread::scope(|s| -> Result<String, String> {
+        let handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn_scoped(s, || crate::emit_rust::emit_rust(program_dag))
+            .map_err(|e| format!("W1 rust_emit_output: spawn emit worker: {e}"))?;
+        let joined = handle
+            .join()
+            .map_err(|_| "W1 rust_emit_output: emit worker panicked".to_string())?;
+        joined.map_err(|e| {
+            format!(
+                "W1 rust_emit_output: emit_rust failed (use #1485-approved `emit_rust` / `emit_rust_with_mode` path only; dissolution: PB-Runtime-generated tests): {e:?}"
+            )
+        })
+    })?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let scratch = std::env::temp_dir().join(format!(
+        "gunbc_w1_rust_emit_{}_{}",
+        std::process::id(),
+        stamp
+    ));
+    std::fs::create_dir_all(&scratch).map_err(|e| {
+        format!(
+            "W1 rust_emit_output: create scratch dir {}: {e}",
+            scratch.display()
+        )
+    })?;
+    let _scratch_guard = W1RustEmitScratchGuard::new(scratch.clone());
+    let src_path = scratch.join("main.rs");
+    let bin_path = scratch.join("w1_emit_eval_out");
+    let mut file = std::fs::File::create(&src_path)
+        .map_err(|e| format!("W1 rust_emit_output: create {}: {e}", src_path.display()))?;
+    file.write_all(rust_src.as_bytes())
+        .map_err(|e| format!("W1 rust_emit_output: write {}: {e}", src_path.display()))?;
+
+    let mut rustc = Command::new("rustc");
+    // Same stable-toolchain contract as boundary rustc harnesses (strip bootstrap leakage).
+    // Wall-bounded `spawn` + pipe drain (not `status()` / not unbounded `output()`): piped stderr
+    // can stall `rustc`; a wedged compile must fail-closed like [`EXECUTE_COMMAND_WALL_TIMEOUT`].
+    rustc
+        .env_remove("RUSTC_BOOTSTRAP")
+        .arg("--edition=2021")
+        .arg(&src_path)
+        .arg("-o")
+        .arg(&bin_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    w1_prepare_host_command(&mut rustc);
+    let compile_out = w1_host_command_output(
+        "W1 rust_emit_output: rustc",
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+        rustc,
+    )?;
+    if !compile_out.status.success() {
+        let stderr = String::from_utf8_lossy(&compile_out.stderr);
+        let stdout = String::from_utf8_lossy(&compile_out.stdout);
+        return Err(format!(
+            "W1 rust_emit_output: rustc failed (exit {:?}); rustc stdout:\n{}\nrustc stderr:\n{}; \
+             dissolution: PB-Runtime owns compilation policy for generated tests",
+            compile_out.status.code(),
+            stdout.trim_end(),
+            stderr.trim_end(),
+        ));
+    }
+    let mut run_cmd = Command::new(&bin_path);
+    run_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    w1_prepare_host_command(&mut run_cmd);
+    let run = w1_host_command_output(
+        "W1 rust_emit_output: emitted binary",
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+        run_cmd,
+    )?;
+    if !run.status.success() {
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        let stdout = String::from_utf8_lossy(&run.stdout);
+        return Err(format!(
+            "W1 rust_emit_output: emitted Rust binary exited with {:?}; stdout:\n{}\nstderr:\n{}; \
+             dissolution: PB-Runtime-generated tests own exit-status / stdio policy",
+            run.status.code(),
+            stdout.trim_end(),
+            stderr.trim_end(),
+        ));
+    }
+    w1_parse_single_int_stdout_carve_out(&String::from_utf8_lossy(&run.stdout))
+}
+
+fn w1_dag_eval_output_int(program_dag: &Dag, output_bind: &BindNode) -> Result<i64, String> {
+    // **Dissolution:** `dag_eval_output` collapses into PR-B eager evaluation + witness construction
+    // (`docs/briefs/r2-pr-b-2-runner-extension-bundle.md`); this arm is the first runner bridge only.
+    if !output_bind.params.is_empty() {
+        return Err(format!(
+            "W1 dag_eval_output: bind `{}` must be a top-level value bind (empty `params`); got callable-shaped bind",
+            output_bind.name
+        ));
+    }
+    let producer = program_dag
+        .resolve_producer_opt(&output_bind.value)
+        .ok_or_else(|| {
+            format!(
+            "W1 dag_eval_output: bind `{}` value port has no producer node in compiled program Dag",
+            output_bind.name
+        )
+        })?;
+    let entry = producer.id();
+    let strategy = crate::evaluator::EvalStrategy::ApplicativeOrder {
+        input_order: crate::evaluator::InputEvaluationOrder::LeftFirst,
+    };
+    let mut state =
+        crate::evaluator::EvalStateStack::with_root_frame(crate::evaluator::EvalFrame::empty());
+    let value = crate::evaluator::evaluate_body(program_dag, entry, &mut state, strategy)
+        .map_err(|e| {
+            format!(
+                "W1 dag_eval_output: `evaluate_body` / `eval_node` error on bind `{}` (no-memo eager `ApplicativeOrder` / `LeftFirst` at call site per #1485 fire criteria): {e:?}",
+                output_bind.name
+            )
+        })?;
+    match &value {
+        crate::evaluator::Value::LiteralValue(LiteralBits::Int(n)) => Ok(*n),
+        other => Err(format!(
+            "W1 dag_eval_output: only `Value::LiteralValue(Int)` is supported for slice-1 Int parity \
+             (transitional debt; dissolution: substrate `ValueKind` widening + observation normalization): {other:?}"
+        )),
+    }
+}
+
+fn w1_differential_equals_lineage_int(
+    lineage: &str,
+    program_dag: &Dag,
+    output_bind: &BindNode,
+    claim_file: &str,
+) -> Result<i64, String> {
+    match lineage {
+        "rust_emit_output" => w1_rust_emit_output_int(program_dag, output_bind, claim_file),
+        "dag_eval_output" => w1_dag_eval_output_int(program_dag, output_bind),
+        _ => Err(format!(
+            "W1 internal error: unknown lineage `{lineage}` (expected rust_emit_output or dag_eval_output)"
+        )),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimResult {
     Pass,
@@ -236,17 +601,17 @@ pub enum AlgebraicLawProgramError {
 
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
-/// **`Associativity` — bounded operational witness (T-LensAPI D3), not substrate law proof:**
+/// **`Associativity` / `Commutativity` — bounded operational witnesses, not substrate law proof:**
 /// uses [`int_associativity_holds_all_triples`](crate::lens_apply::int_associativity_holds_all_triples)
 /// over [`ASSOCIATIVITY_WITNESS_TRIPLES`](crate::lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES) so a
-/// single lucky `(a,b,c)` cannot certify a false law. This path does **not** consume quantified
-/// associativity facts declared on `OrderedRing` / semigroup
-/// carriers in `std.algebra` (those are not yet first-class runner inputs). Treating `Pass` here
-/// as full algebraic law evidence would be weaker than a substrate-backed law check — the R1
-/// gate is intentionally a **regression harness** that the witness lens behaves associatively on
-/// the full witness set, not a proof for all `Int`. **Dissolution:** wire `AlgebraicLaw` to declared law
-/// metadata / witnesses on disk and reserve sample-only checks to explicit testgen predicates, or
-/// return [`ClaimResult::NotYetImplemented`] until that substrate surface exists.
+/// single lucky `(a,b,c)` cannot certify a false law; `Commutativity` uses
+/// [`COMMUTATIVITY_WITNESS_PAIRS`](crate::lens_apply::COMMUTATIVITY_WITNESS_PAIRS) the same way.
+/// These paths do **not** consume quantified facts declared on `OrderedRing` / semigroup carriers
+/// in `std.algebra` (those are not yet first-class runner inputs). Treating `Pass` here as full
+/// algebraic law evidence would be weaker than a substrate-backed law check. **Dissolution:** wire
+/// `AlgebraicLaw` to declared law metadata / witnesses on disk and reserve sample-only checks to
+/// explicit testgen predicates, or return [`ClaimResult::NotYetImplemented`] until that substrate
+/// surface exists.
 ///
 /// `lens_ref` is a [`FieldValue::Reference`] into `fixture_dag`; the runner resolves the **name**
 /// and looks up the same name in `program_dag`.
@@ -257,26 +622,86 @@ pub fn eval_algebraic_law_for_claim_program(
 ) -> Result<bool, AlgebraicLawProgramError> {
     let (law, lens_ref) = algebraic_law_payload_fields(payload)?;
     let (law_label, law_payload) = variant_fields(fixture_dag, law)?;
-    if law_label != "Associativity" {
-        return Err(AlgebraicLawProgramError::UnsupportedLaw { law_label });
-    }
-    if !law_payload.is_empty() {
-        return Err(AlgebraicLawProgramError::MalformedPayload(
-            "Associativity should be payload-free".to_string(),
-        ));
+    match law_label.as_str() {
+        "Associativity" | "Commutativity" => {}
+        "Identity" => return Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }),
+        // `Distributivity` is intentionally absent from AlgebraicLawKind. If a future substrate
+        // enum extension adds it, route implementation through INVARIANTS P1 first instead of
+        // encoding it through another predicate or overloading an existing law.
+        other => {
+            return Err(AlgebraicLawProgramError::UnsupportedLaw {
+                law_label: other.to_string(),
+            });
+        }
     }
     let lens_name = declaration_ref_name(fixture_dag, lens_ref)?;
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    int_associativity_holds_all_triples(program_dag, target.id, ASSOCIATIVITY_WITNESS_TRIPLES)
-        .map_err(|e| AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}")))
+    match law_label.as_str() {
+        "Associativity" => {
+            if !law_payload.is_empty() {
+                return Err(AlgebraicLawProgramError::MalformedPayload(
+                    "Associativity should be payload-free".to_string(),
+                ));
+            }
+            int_associativity_holds_all_triples(
+                program_dag,
+                target.id,
+                ASSOCIATIVITY_WITNESS_TRIPLES,
+            )
+            .map_err(|e| {
+                AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}"))
+            })
+        }
+        "Commutativity" => {
+            if !law_payload.is_empty() {
+                return Err(AlgebraicLawProgramError::MalformedPayload(
+                    "Commutativity should be payload-free".to_string(),
+                ));
+            }
+            int_commutativity_holds_all_pairs(program_dag, target.id, COMMUTATIVITY_WITNESS_PAIRS)
+                .map_err(|e| {
+                    AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}"))
+                })
+        }
+        _ => unreachable!("unsupported AlgebraicLawKind returned before lens resolution"),
+    }
 }
 
 /// Compile-time ratchet (PR #741 / codex P1): `Associativity` must not regress to checking one
 /// lucky `(a, b, c)` triple — the gate is a correctness signal only when the witness set has
 /// material breadth (see `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES`).
 const _: () = assert!(ASSOCIATIVITY_WITNESS_TRIPLES.len() > 1);
+
+/// Shared structural-value comparator for runner-side value-domain checks.
+///
+/// PR-B.3 uses this for `AlgebraicLaw::Commutativity`; PR-B.4 should reuse this authority when
+/// per-target structural-output normalization lands instead of introducing a second comparator.
+pub fn runner_structural_values_equal(left: &FieldValue, right: &FieldValue) -> bool {
+    left == right
+}
+
+/// Transitional PR-B.3 runner scaffold: evaluate `a ⊕ b == b ⊕ a` over the bounded Int witness
+/// table. Dissolution hook: replace sample-table checks with first-class substrate law witnesses
+/// consumed by PR-B evaluator / PB-Runtime once lens algebra facts are declared.
+fn int_commutativity_holds_all_pairs(
+    program_dag: &Dag,
+    lens_decl_id: DeclarationId,
+    pairs: &[(i64, i64)],
+) -> Result<bool, crate::lens_apply::LensApplyError> {
+    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+    for &(a, b) in pairs {
+        let left = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), int(b)])?;
+        let right = apply_lens_declaration(program_dag, lens_decl_id, &[int(b), int(a)])?;
+        if !runner_structural_values_equal(&left, &right) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+const _: () = assert!(COMMUTATIVITY_WITNESS_PAIRS.len() > 1);
 
 // --- `TestPredicate::ExecuteCommand` (PB-Runtime) — shared by `TestRunner` and M1.5 testgen ---
 
@@ -1420,6 +1845,97 @@ pub struct TestRunner<'a> {
     dag: &'a Dag,
 }
 
+/// Resolved `PerfBaselineMeasurement` carrier read from a `.dag data`
+/// declaration body. Consumed by [`TestRunner::eval_perf_within_baseline`]
+/// to apply the Director-locked Tier-3 budget thresholds (`r3-structure.md`
+/// §225). Carrier shape mirrors `src/v3/std/substrate.dag` `PerfBaselineMeasurement`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PerfMeasurement {
+    median_ns: i64,
+    p99_ns: i64,
+}
+
+/// Which budget axis overflowed when computing thresholds; produced by
+/// [`compute_perf_budget_bounds`]. Single-authority for the §225 ratio
+/// arithmetic — both the runtime evaluator and unit tests call through
+/// this function so the `× 2` / `× 5` constants live in one place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PerfBudgetOverflow {
+    Median,
+    P99,
+}
+
+/// Apply the Director-locked §225 ratio thresholds to a baseline:
+/// `median_bound = baseline.median_ns × 2`, `p99_bound = baseline.p99_ns × 5`.
+/// Saturate-on-overflow → `Err(PerfBudgetOverflow::*)` so the runtime can
+/// fail-closed without silently wrapping. Single-authority for the budget
+/// arithmetic per `INVARIANTS.md` P2.
+fn compute_perf_budget_bounds(baseline: PerfMeasurement) -> Result<(i64, i64), PerfBudgetOverflow> {
+    let median_bound = baseline
+        .median_ns
+        .checked_mul(2)
+        .ok_or(PerfBudgetOverflow::Median)?;
+    let p99_bound = baseline
+        .p99_ns
+        .checked_mul(5)
+        .ok_or(PerfBudgetOverflow::P99)?;
+    Ok((median_bound, p99_bound))
+}
+
+/// Typed resolver failures for [`TestRunner::perf_baseline_measurement`].
+/// Per `CODING.md` typed-error discipline: raw `String` is reserved for the
+/// `ClaimResult::Fail` boundary at [`PerfMeasurementResolveError::into_claim_fail`];
+/// inner helpers carry structural variants.
+///
+/// **🟢 TERMINAL coproduct** (per `docs/modeling-discipline.md` Practice 4
+/// classification checkpoint). The four variants enumerate the exhaustive
+/// failure shapes when reading a `PerfBaselineMeasurement` data declaration:
+/// either the declaration is absent (`MissingDeclaration` — substrate-integrity
+/// violation), present but not a structural record (`WrongConnective` —
+/// `Unparsed`, `Scalar`, `List`, or `None`), structural with a missing required
+/// field (`MissingField`), or structural with the field present but not an Int
+/// literal (`WrongFieldKind`). These cover every way the structural resolver
+/// can fail-closed against the substrate-declared shape; no further variants
+/// are reachable. No dissolution trigger — the carrier persists with the
+/// runtime invariant impl.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PerfMeasurementResolveError {
+    /// `DeclarationId` did not resolve via [`Dag::declaration_opt`] —
+    /// substrate-integrity violation.
+    MissingDeclaration,
+    /// Declaration's `value_body` is not `ValueBody::Structural` (e.g.
+    /// `Unparsed`, `Scalar`, `List`, or `None`); a `PerfBaselineMeasurement`
+    /// data declaration must be a record literal.
+    WrongConnective,
+    /// Required field absent from the structural record body.
+    MissingField { field: &'static str },
+    /// Required field present but not `FieldValue::Literal(LiteralBits::Int(_))`.
+    WrongFieldKind { field: &'static str },
+}
+
+impl PerfMeasurementResolveError {
+    /// Convert the typed error into `ClaimResult::Fail` reason text with the
+    /// role label preserved for triage.
+    fn into_claim_fail(self, role: &str) -> String {
+        match self {
+            Self::MissingDeclaration => format!(
+                "PerfWithinBaseline `{role}`: declaration id did not resolve in DAG \
+                 (substrate-integrity violation)"
+            ),
+            Self::WrongConnective => format!(
+                "PerfWithinBaseline `{role}`: declaration is not a structural record \
+                 (expected `PerfBaselineMeasurement {{ median_ns, p99_ns }}`)"
+            ),
+            Self::MissingField { field } => {
+                format!("PerfWithinBaseline `{role}`: record is missing required field `{field}`")
+            }
+            Self::WrongFieldKind { field } => {
+                format!("PerfWithinBaseline `{role}`: field `{field}` is not an Int literal")
+            }
+        }
+    }
+}
+
 enum ProgramInputRole {
     ProgramInput,
     ProgramOutputBind { output_bind_name: String },
@@ -1514,8 +2030,15 @@ impl<'a> TestRunner<'a> {
                             self.eval_declaration_has_refinement(claim, &payload)
                         }
                         "CostBounded" => self.eval_cost_bounded(claim, &payload),
+                        "PerfWithinBaseline" => self.eval_perf_within_baseline(claim, &payload),
                         "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                         "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
+                        "BinaryDimensionReportEquals" => {
+                            self.eval_binary_dimension_report_equals_shape(claim, &payload)
+                        }
+                        "SymbolicCostExprEquals" => {
+                            self.eval_symbolic_cost_expr_equals_shape(claim, &payload)
+                        }
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
@@ -1524,6 +2047,7 @@ impl<'a> TestRunner<'a> {
                             self.eval_fixed_point_converges_shape(claim, &payload)
                         }
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
+                        "BridgeLedgerZero" => self.eval_bridge_ledger_zero(claim, &payload),
                         "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
                         "ReleaseDeferredClaim" => {
                             self.eval_release_deferred_claim_shape(claim, &payload)
@@ -1971,6 +2495,211 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    fn eval_symbolic_cost_expr_equals_shape(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [expected_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEquals payload should be exactly one DeclarationRef field \
+                 (expected); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let expected_id = match self.resolve_declaration_ref_id(expected_fv, "expected") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let expected_decl = self.dag.declaration(expected_id);
+        let expected_name = decl_display_name(expected_id, expected_decl);
+        if expected_decl.value_body.is_none() {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEquals: expected `{expected_name}` has no value body to compare against"
+            ));
+        }
+        // The `expected: DeclarationRef` field is unrefined (`DeclarationRef`
+        // admits any declaration); validate at the runner boundary that the
+        // referenced declaration actually inhabits `SymbolicCost`. Mirror of
+        // the boundary check in `validate_dimension_report_ref` for
+        // `BinaryDimensionReportEquals`. Dissolution: when refinement-typing
+        // on `DeclarationRef` (or a `SymbolicCostRef` wrapper class) lands in
+        // substrate, this runner-side check retires alongside the wrapper.
+        if let Err(reason) = self.validate_symbolic_cost_ref(expected_id, "expected") {
+            return ClaimResult::Fail(reason);
+        }
+        ClaimResult::NotYetImplemented(format!(
+            "SymbolicCostExprEquals: structural shape is valid for `{expected_name}`, but runner \
+             evaluation waits for the heuristic-cost-function-5th-gate testgen dispatch \
+             (Verification follow-up). The eval will apply the symbolic-cost lens to the \
+             program-under-test (`TestClaim.source` for enumerated claims; `ProgramShape.source` \
+             for quantified claims once Slice 1 lands) and compare the result structurally to \
+             `{expected_name}`."
+        ))
+    }
+
+    /// Boundary check that `decl_id` references a declaration whose declared
+    /// type is `SymbolicCost`. The runner walks transparent aliases (no-arg
+    /// instantiations + ResolvedBy* atoms) to handle `data X: SymbolicCost
+    /// = ConstantCost(0)`-style declarations whose connective is an alias to
+    /// the algebra type. Same shape as `validate_dimension_report_ref`,
+    /// scoped to a single nominal type instead of `DimensionReport<C>`.
+    fn validate_symbolic_cost_ref(
+        &self,
+        decl_id: DeclarationId,
+        field_label: &str,
+    ) -> Result<(), String> {
+        let symbolic_cost_id = self
+            .dag
+            .declaration_by_name("SymbolicCost")
+            .map(|decl| decl.id)
+            .ok_or_else(|| {
+                format!(
+                    "SymbolicCostExprEquals `{field_label}`: \
+                     `SymbolicCost` type not found in bootstrap"
+                )
+            })?;
+        let decl = self.dag.declaration(decl_id);
+        // For `fn`-shaped expected refs, walk through the arrow output;
+        // otherwise normalize the declaration itself.
+        let candidate = match &decl.connective {
+            TypeConnective::Arrow { output, .. } => *output,
+            _ => decl_id,
+        };
+        if self.normalize_transparent_type(candidate) == symbolic_cost_id {
+            return Ok(());
+        }
+        Err(format!(
+            "SymbolicCostExprEquals `{field_label}` must reference a declaration of type \
+             `SymbolicCost`; `{}` does not (declared type does not normalize to `SymbolicCost`).",
+            decl_display_name(decl_id, decl)
+        ))
+    }
+
+    fn eval_binary_dimension_report_equals_shape(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [left_fv, right_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals payload should be exactly two DeclarationRef fields \
+                 (left_report_ref, right_report_ref); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let left_id = match self.resolve_declaration_ref_id(left_fv, "left_report_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let right_id = match self.resolve_declaration_ref_id(right_fv, "right_report_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let left_name = decl_display_name(left_id, self.dag.declaration(left_id));
+        let right_name = decl_display_name(right_id, self.dag.declaration(right_id));
+        let left_carrier = match self.validate_dimension_report_ref(left_id, "left_report_ref") {
+            Ok(carrier) => carrier,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let right_carrier = match self.validate_dimension_report_ref(right_id, "right_report_ref") {
+            Ok(carrier) => carrier,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        if !self.dimension_report_carriers_equivalent(left_carrier, right_carrier) {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals requires both refs to produce DimensionReport<C> \
+                 for the same carrier C; `{left_name}` uses `{}` but `{right_name}` uses `{}`",
+                decl_display_name(left_carrier, self.dag.declaration(left_carrier)),
+                decl_display_name(right_carrier, self.dag.declaration(right_carrier))
+            ));
+        }
+        ClaimResult::NotYetImplemented(format!(
+            "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
+             `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
+             production/evaluation substrate; serialized report comparison is intentionally \
+             unsupported"
+        ))
+    }
+
+    fn validate_dimension_report_ref(
+        &self,
+        decl_id: DeclarationId,
+        field_label: &str,
+    ) -> Result<DeclarationId, String> {
+        let decl = self.dag.declaration(decl_id);
+        let candidate_type = match &decl.connective {
+            TypeConnective::Arrow { output, .. } => *output,
+            _ => decl_id,
+        };
+        self.dimension_report_carrier(candidate_type)
+            .ok_or_else(|| {
+                format!(
+                    "BinaryDimensionReportEquals `{field_label}` must reference a declaration \
+                     that produces or inhabits DimensionReport<C>; `{}` does not",
+                    decl_display_name(decl_id, decl)
+                )
+            })
+    }
+
+    fn dimension_report_carriers_equivalent(
+        &self,
+        left_carrier: DeclarationId,
+        right_carrier: DeclarationId,
+    ) -> bool {
+        left_carrier == right_carrier
+            || type_shapes_equivalent(
+                self.dag,
+                &TypeShape::new(left_carrier),
+                &TypeShape::new(right_carrier),
+            )
+    }
+
+    fn dimension_report_carrier(&self, mut current: DeclarationId) -> Option<DeclarationId> {
+        let report_id = self
+            .dag
+            .declaration_by_name("DimensionReport")
+            .map(|decl| decl.id)?;
+        // Bounded alias walk: this is a fail-closed cycle/depth guard, not a
+        // semantic limit on valid DimensionReport<C> producer shapes.
+        for _ in 0..32 {
+            match &self.dag.declaration(current).connective {
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if *template == report_id => match arguments.as_slice() {
+                    [carrier] => return Some(self.normalize_transparent_type(carrier.value)),
+                    _ => return None,
+                },
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if arguments.is_empty() => current = *template,
+                TypeConnective::Atom(
+                    AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+                ) => current = *next,
+                _ => return None,
+            }
+        }
+        None
+    }
+
+    fn normalize_transparent_type(&self, mut current: DeclarationId) -> DeclarationId {
+        for _ in 0..32 {
+            match &self.dag.declaration(current).connective {
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if arguments.is_empty() => current = *template,
+                TypeConnective::Atom(
+                    AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+                ) => current = *next,
+                _ => return current,
+            }
+        }
+        current
+    }
+
     fn resolve_declaration_ref_id(
         &self,
         value: &FieldValue,
@@ -1979,11 +2708,11 @@ impl<'a> TestRunner<'a> {
         match value {
             FieldValue::Reference(id) => Ok(*id),
             FieldValue::Record(fields) if fields.is_empty() => Err(format!(
-                "LensOutputEquals `{field_label}`: DeclarationRef is the empty record literal {{}} — use an identifier \
+                "`{field_label}`: DeclarationRef is the empty record literal {{}} — use an identifier \
                  so lowering emits FieldValue::Reference(DeclarationId), not an empty record",
             )),
             other => Err(format!(
-                "LensOutputEquals `{field_label}`: expected FieldValue::Reference(DeclarationId) \
+                "`{field_label}`: expected FieldValue::Reference(DeclarationId) \
                  for a DeclarationRef edge, got {other:?}"
             )),
         }
@@ -2143,13 +2872,58 @@ impl<'a> TestRunner<'a> {
             );
         }
 
+        let w1_emit_eval_pair = (subject_lineage.as_str(), oracle_lineage.as_str());
+        if matches!(
+            w1_emit_eval_pair,
+            ("rust_emit_output", "dag_eval_output") | ("dag_eval_output", "rust_emit_output")
+        ) {
+            let subject_int = match w1_differential_equals_lineage_int(
+                subject_lineage.as_str(),
+                &program_dag,
+                bind,
+                &claim.file_name,
+            ) {
+                Ok(v) => v,
+                Err(msg) => return ClaimResult::Fail(msg),
+            };
+            let oracle_int = match w1_differential_equals_lineage_int(
+                oracle_lineage.as_str(),
+                &program_dag,
+                bind,
+                &claim.file_name,
+            ) {
+                Ok(v) => v,
+                Err(msg) => return ClaimResult::Fail(msg),
+            };
+            return if subject_int == oracle_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "DifferentialEquals(W1): `{subject_lineage}` int {subject_int} != `{oracle_lineage}` int {oracle_int} \
+                     (emit vs eager eval parity; dissolution: PB-Runtime tests + PR-B witness-shaped `ProgramObservation<Value>`)"
+                ))
+            };
+        }
+
         let pairing_ok = (subject_lineage.as_str() == "v3_program_cost"
             && oracle_lineage.as_str() == "v2_oracle_cost")
             || (subject_lineage.as_str() == "v2_oracle_cost"
                 && oracle_lineage.as_str() == "v3_program_cost");
         if !pairing_ok {
+            // E8/W1: unsupported output producers must stay fail-closed until
+            // producer identity and typed observation normalization are declared.
+            // Dissolution targets: `rust_emit_output` -> PB-Runtime generated
+            // target-language tests; `dag_eval_output` -> PR-B eager evaluator
+            // plus witness construction.
             return ClaimResult::NotYetImplemented(format!(
-                "DifferentialEquals(cost): only the (v3_program_cost, v2_oracle_cost) lineage pairing is implemented; got ({subject_lineage}, {oracle_lineage})"
+                "DifferentialEquals: unsupported producer pairing ({subject_lineage}, {oracle_lineage}); \
+                 implemented: (v3_program_cost, v2_oracle_cost) Lane-E cost parity and \
+                 (rust_emit_output, dag_eval_output) W1 emit/eval Int slice per #1485 / \
+                 `docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md`. \
+                 This path stays NotYetImplemented (fail-closed unsupported-pair receipt, not Pass) until \
+                 an approved producer + observation contract matches; after #1495 lands, rebase this \
+                 branch and preserve the stronger unsupported-pair ratchet / producer-identity gates vs \
+                 substrate-owned dissolution (`r2-pr-b-2-runner-extension-bundle.md`)."
             ));
         }
 
@@ -2184,10 +2958,10 @@ impl<'a> TestRunner<'a> {
     }
 
     fn eval_algebraic_law(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
-        // Only `Associativity` is wired via D3 multi-triple operational witness (see
-        // `eval_algebraic_law_for_claim_program` — not substrate law-fact evaluation).
-        // Other `AlgebraicLawKind` variants are `NotYetImplemented` (runner cannot evaluate yet),
-        // not `Fail` (claim false).
+        // `Associativity` and `Commutativity` are wired via bounded operational witness tables
+        // (see `eval_algebraic_law_for_claim_program` — not substrate law-fact evaluation).
+        // `Identity` remains `NotYetImplemented` until the substrate exposes the lens identity
+        // element edge required by the PR-B.3 runner-extension brief.
         let (law, _) = match algebraic_law_payload_fields(payload) {
             Ok(parts) => parts,
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => {
@@ -2206,13 +2980,22 @@ impl<'a> TestRunner<'a> {
                 "variant_fields only yields MalformedPayload (got UnsupportedLaw({law_label:?}))"
             ),
         };
-        if law_label != "Associativity" {
+        if law_label == "Identity" {
+            return ClaimResult::NotYetImplemented(
+                "AlgebraicLaw::Identity is blocked: no lens identity-element edge is exposed on \
+                 the algebra inhabitance yet (PR-B.3 W2); leave fail-closed until that substrate \
+                 fact exists"
+                    .to_string(),
+            );
+        }
+        if law_label != "Associativity" && law_label != "Commutativity" {
             return ClaimResult::NotYetImplemented(format!(
-                "AlgebraicLaw::{law_label} is not wired in the Rust runner yet"
+                "AlgebraicLaw::{law_label} is not wired in the Rust runner; Distributivity must \
+                 route through INVARIANTS P1 as an AlgebraicLawKind substrate enum extension"
             ));
         }
         if !law_payload.is_empty() {
-            return ClaimResult::Fail("Associativity should be payload-free".to_string());
+            return ClaimResult::Fail(format!("{law_label} should be payload-free"));
         }
 
         let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
@@ -2232,15 +3015,16 @@ impl<'a> TestRunner<'a> {
         match eval_algebraic_law_for_claim_program(self.dag, &program_dag, payload) {
             Ok(true) => ClaimResult::Pass,
             Ok(false) => ClaimResult::Fail(format!(
-                "AlgebraicLaw Associativity: operational witness failed (must pass all {} fixed \
-                 Int triples in lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES; D1 apply — not a \
-                 substrate declared-law check; see eval_algebraic_law_for_claim_program)",
-                ASSOCIATIVITY_WITNESS_TRIPLES.len()
+                "AlgebraicLaw {law_label}: operational witness failed (must pass all fixed Int \
+                 samples in lens_apply; D1 apply — not a substrate declared-law check; see \
+                 eval_algebraic_law_for_claim_program)"
             )),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
-            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => unreachable!(
-                "eval_algebraic_law gated on Associativity; helper cannot return UnsupportedLaw({law_label:?})"
-            ),
+            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => {
+                ClaimResult::NotYetImplemented(format!(
+                    "AlgebraicLaw::{law_label} is not implemented by the Rust runner"
+                ))
+            }
         }
     }
 
@@ -2306,6 +3090,135 @@ impl<'a> TestRunner<'a> {
         } else {
             ClaimResult::Fail(format!("cost {actual} did not satisfy bound {bound}"))
         }
+    }
+
+    /// Evaluate `TestPredicate::PerfWithinBaseline { subject, comparator, baseline_ref }`.
+    ///
+    /// Resolves both `DeclarationRef`s to `PerfBaselineMeasurement` records
+    /// (`{ median_ns: Int, p99_ns: Int }`) and applies the Director-locked
+    /// Tier-3 budget thresholds (`docs/r3-structure.md` §225): subject median
+    /// must satisfy `comparator` against `baseline.median_ns × 2`; subject p99
+    /// against `baseline.p99_ns × 5`. Both axes must satisfy → `Pass`. Overflow
+    /// in the multiplication is fail-closed.
+    fn eval_perf_within_baseline(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [subject_fv, comparator, baseline_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "PerfWithinBaseline payload should be exactly three fields \
+                 (subject: DeclarationRef, comparator: ComparisonOp, baseline_ref: DeclarationRef); \
+                 got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let subject_id = match self.resolve_declaration_ref_id(subject_fv, "subject") {
+            Ok(id) => id,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let baseline_id = match self.resolve_declaration_ref_id(baseline_fv, "baseline_ref") {
+            Ok(id) => id,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        // Enforce the Director-locked "within baseline" semantics (`r3-structure.md`
+        // §225): budget is `median ≤ 2× baseline` AND `p99 ≤ 5× baseline`. The
+        // substrate-declared shape carries `comparator: ComparisonOp` for explicit
+        // intent in `.dag` claims, but only `Le` matches the locked semantics —
+        // `Gt`/`Ge`/`Ne`/`Eq`/`Lt` would invert or skew the gate. Reject
+        // fail-closed at the runtime boundary so a malformed claim cannot pass.
+        let comparator_label = match self.variant_value(comparator) {
+            Some((label, payload)) if payload.is_empty() => label,
+            _ => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline `comparator`: expected unit ComparisonOp variant; \
+                     got non-variant or non-empty payload"
+                        .to_string(),
+                );
+            }
+        };
+        if !is_comparator_le(&comparator_label) {
+            return ClaimResult::Fail(format!(
+                "PerfWithinBaseline `comparator`: only `Le` matches the Director-locked \
+                 §225 budget semantics (median ≤ 2× baseline, p99 ≤ 5× baseline); \
+                 `{comparator_label}` would invert or skew the gate"
+            ));
+        }
+        let subject = match self.perf_baseline_measurement(subject_id, "subject") {
+            Ok(measurement) => measurement,
+            Err(err) => return ClaimResult::Fail(err.into_claim_fail("subject")),
+        };
+        let baseline = match self.perf_baseline_measurement(baseline_id, "baseline_ref") {
+            Ok(measurement) => measurement,
+            Err(err) => return ClaimResult::Fail(err.into_claim_fail("baseline_ref")),
+        };
+        let (median_bound, p99_bound) = match compute_perf_budget_bounds(baseline) {
+            Ok(bounds) => bounds,
+            Err(PerfBudgetOverflow::Median) => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline: median baseline threshold (baseline_ref median_ns × 2) \
+                     overflowed Int — fail-closed; recapture with smaller baseline or widen Int."
+                        .to_string(),
+                );
+            }
+            Err(PerfBudgetOverflow::P99) => {
+                return ClaimResult::Fail(
+                    "PerfWithinBaseline: p99 baseline threshold (baseline_ref p99_ns × 5) \
+                     overflowed Int — fail-closed; recapture with smaller baseline or widen Int."
+                        .to_string(),
+                );
+            }
+        };
+        let median_ok = self.compare_cost(comparator, subject.median_ns, median_bound);
+        let p99_ok = self.compare_cost(comparator, subject.p99_ns, p99_bound);
+        if median_ok && p99_ok {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "PerfWithinBaseline: subject median_ns={} vs threshold {} (median_ok={}) \
+                 and subject p99_ns={} vs threshold {} (p99_ok={}) did not satisfy comparator",
+                subject.median_ns, median_bound, median_ok, subject.p99_ns, p99_bound, p99_ok
+            ))
+        }
+    }
+
+    /// Structurally resolve a `PerfBaselineMeasurement` data declaration to
+    /// `{ median_ns, p99_ns }`. Returns a typed `PerfMeasurementResolveError`
+    /// per `CODING.md` typed-error discipline; the outer
+    /// [`Self::eval_perf_within_baseline`] boundary converts to
+    /// `ClaimResult::Fail(...)` with the role label preserved.
+    fn perf_baseline_measurement(
+        &self,
+        decl_id: DeclarationId,
+        _role: &str,
+    ) -> Result<PerfMeasurement, PerfMeasurementResolveError> {
+        let decl = match self.dag.declaration_opt(&decl_id) {
+            Some(decl) => decl,
+            None => return Err(PerfMeasurementResolveError::MissingDeclaration),
+        };
+        let fields = match decl.value_body.as_ref() {
+            Some(ValueBody::Structural { fields }) => fields,
+            _ => return Err(PerfMeasurementResolveError::WrongConnective),
+        };
+        let median_ns = match field(fields, "median_ns") {
+            Some(FieldValue::Literal(LiteralBits::Int(v))) => *v,
+            Some(_) => {
+                return Err(PerfMeasurementResolveError::WrongFieldKind { field: "median_ns" });
+            }
+            None => {
+                return Err(PerfMeasurementResolveError::MissingField { field: "median_ns" });
+            }
+        };
+        let p99_ns = match field(fields, "p99_ns") {
+            Some(FieldValue::Literal(LiteralBits::Int(v))) => *v,
+            Some(_) => {
+                return Err(PerfMeasurementResolveError::WrongFieldKind { field: "p99_ns" });
+            }
+            None => {
+                return Err(PerfMeasurementResolveError::MissingField { field: "p99_ns" });
+            }
+        };
+        Ok(PerfMeasurement { median_ns, p99_ns })
     }
 
     fn eval_census_bound_check_shape(
@@ -2452,6 +3365,220 @@ impl<'a> TestRunner<'a> {
         } else {
             ClaimResult::Fail(format!(
                 "RatchetZero `compiler_std_positive_set_ratchet` observed {count}"
+            ))
+        }
+    }
+
+    /// `TestPredicate::BridgeLedgerZero { ledger: BridgeLedgerRef }`.
+    /// Unwraps the `BridgeLedgerRef { decl: DeclarationRef }` typed
+    /// wrapper, fail-closes if the inner declaration is not the
+    /// canonical `bridge_ledger`, then walks the
+    /// `List<BridgeLedgerRow>` and `Pass`es iff every row's `status`
+    /// field resolves to the `Retired` constructor of `BridgeStatus`.
+    /// Open rows surface in the failure message by name so
+    /// Verification points directly at the residual debt.
+    fn eval_bridge_ledger_zero(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [ledger] = payload else {
+            return ClaimResult::Fail(
+                "BridgeLedgerZero payload should be (BridgeLedgerRef)".to_string(),
+            );
+        };
+        // `ledger: BridgeLedgerRef` lowers as a record `{ decl: DeclarationRef }`.
+        // Extract the inner declaration reference structurally; reject
+        // an unwrapped `DeclarationRef` because that would regress the
+        // typed-edge discipline the `BridgeLedgerRef` wrapper adds.
+        let ledger_id = match ledger {
+            FieldValue::Record(fields) => {
+                let Some(decl) = fields.iter().find(|(l, _)| l == "decl").map(|(_, v)| v) else {
+                    return ClaimResult::Fail(
+                        "BridgeLedgerZero `ledger`: BridgeLedgerRef record missing `decl` field"
+                            .to_string(),
+                    );
+                };
+                match decl {
+                    FieldValue::Reference(id) => *id,
+                    other => {
+                        return ClaimResult::Fail(format!(
+                            "BridgeLedgerZero `ledger.decl`: expected \
+                             FieldValue::Reference(DeclarationId), got {other:?}"
+                        ));
+                    }
+                }
+            }
+            other => {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero `ledger`: expected BridgeLedgerRef record \
+                     `{{ decl: <ref> }}`, got {other:?}"
+                ));
+            }
+        };
+        let decl = self.dag.declaration(ledger_id);
+        // Fail-closed *identity* check: the ledger declaration must be
+        // exactly `bridge_ledger` from `v3.std.bridge_ledger`, not any
+        // sibling `List<BridgeLedgerRow>`. Single-authority discipline
+        // (INVARIANTS P2 / modeling-discipline single-authority): a
+        // second list that happens to share the row type cannot be
+        // accepted as a parallel ledger authority and pass the gate
+        // independently of the canonical carrier.
+        let canonical_ledger_id = self.dag.declaration_by_name("bridge_ledger").map(|d| d.id);
+        match canonical_ledger_id {
+            Some(canonical) if canonical == ledger_id => {}
+            Some(_) => {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero `ledger`: only the canonical \
+                     `v3.std.bridge_ledger.bridge_ledger` declaration is an \
+                     accepted ledger authority. Got `{}` (DeclarationId {:?}).",
+                    decl_display_name(decl.id, decl),
+                    decl.id
+                ));
+            }
+            None => {
+                return ClaimResult::Fail(
+                    "BridgeLedgerZero: canonical `bridge_ledger` declaration is missing \
+                     from the bootstrap; the ledger gate cannot resolve."
+                        .to_string(),
+                );
+            }
+        }
+        // Type check (kept as a defense-in-depth guard even after the
+        // identity check above): the canonical declaration must be
+        // `List<BridgeLedgerRow>`. If the carrier authority ever
+        // diverges from this shape the predicate fails closed instead
+        // of silently misreading the rows.
+        match &decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                let template_name = self.dag.declaration(*template).name.clone();
+                if template_name.as_deref() != Some("List") {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero `ledger`: declaration `{}` is not a `List<...>` \
+                         instantiation (template is `{}`)",
+                        decl_display_name(decl.id, decl),
+                        template_name.as_deref().unwrap_or("<anon>")
+                    ));
+                }
+                let [arg] = arguments.as_slice() else {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero `ledger`: `List<...>` instantiation must carry \
+                         exactly one type argument, got {}",
+                        arguments.len()
+                    ));
+                };
+                let element_name = self.dag.declaration(arg.value).name.clone();
+                if element_name.as_deref() != Some("BridgeLedgerRow") {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero `ledger`: expected `List<BridgeLedgerRow>` \
+                         element type, got `List<{}>`",
+                        element_name.as_deref().unwrap_or("<anon>")
+                    ));
+                }
+            }
+            other => {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero `ledger`: declaration `{}` is not a `List<...>` \
+                     instantiation; connective is {other:?}",
+                    decl_display_name(decl.id, decl)
+                ));
+            }
+        }
+        let rows = match &decl.value_body {
+            Some(ValueBody::List(rows)) => rows,
+            Some(other) => {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero `ledger` must point at a `data X: List<BridgeLedgerRow>` \
+                     declaration; `{}` value_body is {other:?}",
+                    decl_display_name(decl.id, decl)
+                ));
+            }
+            None => {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero `ledger` declaration `{}` has no value_body",
+                    decl_display_name(decl.id, decl)
+                ));
+            }
+        };
+
+        let Some(bridge_status) = self.dag.declaration_by_name("BridgeStatus") else {
+            return ClaimResult::Fail(
+                "BridgeLedgerZero: `BridgeStatus` is not declared in the bootstrap; \
+                 cannot resolve the `Retired` / `Open` constructors structurally"
+                    .to_string(),
+            );
+        };
+        let TypeConnective::Disj { variants } = &bridge_status.connective else {
+            return ClaimResult::Fail(
+                "BridgeLedgerZero: `BridgeStatus` must be a Disj coproduct".to_string(),
+            );
+        };
+        let allowed_constructors: std::collections::HashSet<DeclarationId> =
+            variants.iter().map(|v| v.ty).collect();
+        let Some(retired_ty) = variants.iter().find(|v| v.label == "Retired").map(|v| v.ty) else {
+            return ClaimResult::Fail(
+                "BridgeLedgerZero: `BridgeStatus::Retired` variant missing".to_string(),
+            );
+        };
+
+        let mut open_rows: Vec<String> = Vec::new();
+        for (idx, row) in rows.iter().enumerate() {
+            let FieldValue::Record(fields) = row else {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero: row {idx} is not a record literal: {row:?}"
+                ));
+            };
+            let name = match fields.iter().find(|(l, _)| l == "name").map(|(_, v)| v) {
+                Some(FieldValue::Literal(LiteralBits::String(s))) => s.clone(),
+                Some(other) => {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero: row {idx} `name` must be a String literal, got {other:?}"
+                    ));
+                }
+                None => {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero: row {idx} missing required `name` field"
+                    ));
+                }
+            };
+            let status = match fields.iter().find(|(l, _)| l == "status").map(|(_, v)| v) {
+                Some(FieldValue::Variant { constructor, .. }) => *constructor,
+                Some(other) => {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero: row `{name}` `status` must be a Variant, got {other:?}"
+                    ));
+                }
+                None => {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero: row `{name}` missing `status` field"
+                    ));
+                }
+            };
+            // Defensive: a row carrying a constructor outside `BridgeStatus`'s
+            // declared variants is malformed at the claim boundary, even
+            // though the carrier ratchet guards the substrate side.
+            if !allowed_constructors.contains(&status) {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero: row `{name}` `status` constructor (DeclarationId {:?}) \
+                     is not one of `BridgeStatus`'s declared variants",
+                    status
+                ));
+            }
+            if status != retired_ty {
+                open_rows.push(name);
+            }
+        }
+
+        if open_rows.is_empty() {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "BridgeLedgerZero: {} bridge row(s) not yet `Retired`: [{}]",
+                open_rows.len(),
+                open_rows.join(", ")
             ))
         }
     }
@@ -2999,26 +4126,11 @@ fn find_bind<'a>(
     })
 }
 
-fn diagnostic_kind(diagnostic: &Diagnostic) -> &'static str {
-    match diagnostic {
-        Diagnostic::TokenizerError { .. } => "TokenizerError",
-        Diagnostic::ParseError { .. } => "ParseError",
-        Diagnostic::TypeMismatch { .. } => "TypeMismatch",
-        Diagnostic::UnitMismatch { .. } => "UnitMismatch",
-        Diagnostic::ArityMismatch { .. } => "ArityMismatch",
-        Diagnostic::ResolveError { .. } => "ResolveError",
-        Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
-        Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
-        Diagnostic::MalformedIntegerRangeFact { .. } => "MalformedIntegerRangeFact",
-        Diagnostic::NominalOpacityViolation { .. } => "NominalOpacityViolation",
-    }
-}
-
 fn diagnostic_matches_reference(
     diagnostic: &Diagnostic,
     reference: &(String, DiagnosticDetailFilter),
 ) -> bool {
-    diagnostic_kind(diagnostic) == reference.0
+    diagnostic.layer1_kind_label() == reference.0
         && match &reference.1 {
             DiagnosticDetailFilter::Any => true,
             DiagnosticDetailFilter::Contains(text) => diagnostic.message().contains(text),
@@ -4149,4 +5261,204 @@ mod helper_path_validation_tests {
             "file with no execute permission for the calling uid must be rejected (P2(c))"
         );
     }
+}
+
+#[cfg(test)]
+mod perf_within_baseline_tests {
+    //! Unit tests for the `PerfWithinBaseline` evaluator path per the
+    //! T-Tier3-Dissolution consumer-slice worker brief
+    //! (`docs/briefs/r3-pb-t-tier3-consumer-slice-worker.md` §1).
+    //!
+    //! Two coverage axes:
+    //!
+    //! 1. **Resolver fail-closed**: `PerfMeasurementResolveError` table-form
+    //!    over the four typed variants × two role labels. Each variant must
+    //!    produce a `ClaimResult::Fail` reason text that preserves the role
+    //!    label for triage (per `CODING.md` typed-error discipline +
+    //!    `INVARIANTS.md` P3 fail-closed).
+    //!
+    //! 2. **Budget evaluation logic**: the four cases enumerated in the
+    //!    brief acceptance — pass-when-under-budget, fail-on-median-over,
+    //!    fail-on-p99-over, fail-on-overflow. Tested via a small free
+    //!    function rather than through full DAG construction; the helper
+    //!    encodes the §225 ratio thresholds and the saturating-overflow
+    //!    fail-closed semantics.
+
+    use super::compute_perf_budget_bounds;
+    use super::is_comparator_le;
+    use super::PerfBudgetOverflow;
+    use super::PerfMeasurement;
+    use super::PerfMeasurementResolveError;
+
+    /// Apply the `Le` budget against the §225-locked thresholds. Tests
+    /// call through `compute_perf_budget_bounds` (the same single-authority
+    /// free function the runtime uses) so there is no second copy of the
+    /// `× 2` / `× 5` constants — drift between test harness and runtime
+    /// is structurally impossible.
+    fn budget_pass_le(
+        subject: PerfMeasurement,
+        baseline: PerfMeasurement,
+    ) -> Result<bool, PerfBudgetOverflow> {
+        let (median_bound, p99_bound) = compute_perf_budget_bounds(baseline)?;
+        Ok(subject.median_ns <= median_bound && subject.p99_ns <= p99_bound)
+    }
+
+    /// Differential test: every typed `PerfMeasurementResolveError` variant
+    /// must produce a structurally-distinct `ClaimResult::Fail` for two
+    /// different role labels, demonstrating that the role parameter flows
+    /// through `into_claim_fail` without pinning the exact format string.
+    /// This avoids the `TESTING.md` anti-pattern of asserting on
+    /// human-readable error message text while still exercising the
+    /// role-preservation contract from the brief acceptance.
+    #[test]
+    fn resolver_fail_closed_role_label_flows_through_for_every_variant() {
+        let variants: &[PerfMeasurementResolveError] = &[
+            PerfMeasurementResolveError::MissingDeclaration,
+            PerfMeasurementResolveError::WrongConnective,
+            PerfMeasurementResolveError::MissingField { field: "median_ns" },
+            PerfMeasurementResolveError::MissingField { field: "p99_ns" },
+            PerfMeasurementResolveError::WrongFieldKind { field: "median_ns" },
+            PerfMeasurementResolveError::WrongFieldKind { field: "p99_ns" },
+        ];
+        for variant in variants {
+            let alpha = variant.clone().into_claim_fail("alpha_role");
+            let beta = variant.clone().into_claim_fail("beta_role");
+            assert_ne!(
+                alpha, beta,
+                "role label must produce different output for variant {:?}; \
+                 got identical strings (role param ignored?)",
+                variant,
+            );
+            // Also verify the role string itself is reachable in the output —
+            // not by pinning the format but by checking the role name is a
+            // distinguishing substring (a role drop would make alpha == beta
+            // above, but a role used non-identifyingly could still differ).
+            assert!(
+                alpha.contains("alpha_role") && beta.contains("beta_role"),
+                "role substrings must appear in their respective outputs for {:?}",
+                variant,
+            );
+        }
+    }
+
+    #[test]
+    fn budget_pass_when_subject_under_thresholds() {
+        // baseline median 100, p99 200; bounds = (200, 1000); subject (150, 800) — both under.
+        let baseline = PerfMeasurement {
+            median_ns: 100,
+            p99_ns: 200,
+        };
+        let subject = PerfMeasurement {
+            median_ns: 150,
+            p99_ns: 800,
+        };
+        assert_eq!(budget_pass_le(subject, baseline), Ok(true));
+    }
+
+    #[test]
+    fn budget_fails_when_subject_median_exceeds_bound() {
+        // baseline median 100 → bound 200; subject median 201 fails despite fine p99.
+        let baseline = PerfMeasurement {
+            median_ns: 100,
+            p99_ns: 200,
+        };
+        let subject = PerfMeasurement {
+            median_ns: 201,
+            p99_ns: 800,
+        };
+        assert_eq!(budget_pass_le(subject, baseline), Ok(false));
+    }
+
+    #[test]
+    fn budget_fails_when_subject_p99_exceeds_bound() {
+        // baseline p99 200 → bound 1000; subject p99 1001 fails despite fine median.
+        let baseline = PerfMeasurement {
+            median_ns: 100,
+            p99_ns: 200,
+        };
+        let subject = PerfMeasurement {
+            median_ns: 150,
+            p99_ns: 1001,
+        };
+        assert_eq!(budget_pass_le(subject, baseline), Ok(false));
+    }
+
+    #[test]
+    fn budget_fail_closed_on_threshold_overflow() {
+        // baseline median = i64::MAX → ×2 overflows; helper must surface the
+        // overflow rather than silently wrap. The runtime impl converts this
+        // to ClaimResult::Fail with an explicit reason.
+        let baseline = PerfMeasurement {
+            median_ns: i64::MAX,
+            p99_ns: 1,
+        };
+        let subject = PerfMeasurement {
+            median_ns: 0,
+            p99_ns: 0,
+        };
+        assert_eq!(
+            budget_pass_le(subject, baseline),
+            Err(PerfBudgetOverflow::Median)
+        );
+
+        let baseline_p99_overflow = PerfMeasurement {
+            median_ns: 1,
+            p99_ns: i64::MAX,
+        };
+        assert_eq!(
+            budget_pass_le(subject, baseline_p99_overflow),
+            Err(PerfBudgetOverflow::P99)
+        );
+    }
+
+    /// The Director-locked §225 budget semantics are `median ≤ 2× baseline`
+    /// AND `p99 ≤ 5× baseline`. The substrate `ComparisonOp` variant
+    /// carries `comparator` for explicit intent, but only `Le` matches the
+    /// locked semantics. This test reads `ComparisonOp`'s variant set
+    /// from the bootstrap DAG (substrate-source-of-truth, not a hardcoded
+    /// list) and asserts the runtime guard classifies every variant: `Le`
+    /// alone passes, every other variant fails-closed.
+    #[test]
+    fn runtime_classifies_every_comparison_op_variant_le_only() {
+        use crate::dag::TypeConnective;
+        let dag = crate::generated_full_bootstrap_dag();
+        let comparison_op = dag
+            .declaration_by_name("ComparisonOp")
+            .expect("ComparisonOp must exist in bootstrap DAG (src/v3/std/substrate.dag)");
+        let TypeConnective::Disj { variants } = &comparison_op.connective else {
+            panic!("ComparisonOp must be a coproduct (Disj)");
+        };
+        let mut variant_labels: Vec<&str> = variants.iter().map(|v| v.label.as_str()).collect();
+        variant_labels.sort();
+        assert!(
+            variant_labels.contains(&"Le"),
+            "substrate ComparisonOp must include `Le` for §225 semantics; got {variant_labels:?}"
+        );
+        // Drift gate: every substrate-declared variant must be explicitly
+        // classified by the runtime guard. The guard's classification is a
+        // single rule — `label == \"Le\"` — so the assertion below mirrors it.
+        // If substrate adds a variant (e.g., `Approx`), `is_comparator_le`
+        // continues to return `false` for it (correctly fail-closed under the
+        // current locked semantics) and this test continues to pass without
+        // edits — the new variant is structurally rejected by the same guard,
+        // matching the §225 lock.
+        for label in &variant_labels {
+            let accepted = is_comparator_le(label);
+            assert_eq!(
+                accepted,
+                *label == "Le",
+                "ComparisonOp variant `{label}`: runtime guard classification disagrees with §225 \
+                 lock (only `Le` may be accepted)",
+            );
+        }
+    }
+}
+
+/// Single-rule classifier for the §225 comparator-Le guard. The runtime
+/// path in [`TestRunner::eval_perf_within_baseline`] calls this helper
+/// (`comparator_label != "Le"` → fail-closed). Lifted as a free function
+/// so unit tests can drive the same classifier against the substrate-
+/// declared `ComparisonOp` variant set without DAG fixtures.
+fn is_comparator_le(comparator_label: &str) -> bool {
+    comparator_label == "Le"
 }

@@ -1,0 +1,44 @@
+// std/nat.dag -- Natural numbers (ℕ) as semiring over the abstract counting carrier.
+//
+// Layer 2 of the construction chain authored in
+// `docs/design-numeric-construction.md`:
+//
+//   Magnitude → Nat → Int → Rational → Real
+//
+// `Nat = CommutativeSemiring<Magnitude>` says "ℕ is the algebra of addition +
+// multiplication (with identities 0 and 1) over the unbounded counting carrier
+// `Magnitude`, and multiplication is commutative." No additive inverse —
+// `CommutativeSemiring` is the right algebra layer for ℕ; `Int` extends to
+// `AbelianGroup<Nat>` in a later slice (Grothendieck construction).
+//
+// T-Nat-Sharpening stack-overflow receipt:
+//   The direct alias pivot originally overflowed the default Rust test thread
+//   inside `bootstrap_generated::bootstrapped_fixture_dag()`, before runtime
+//   finalization, cloning, declaration lookup, or instantiation traversal.
+//   The committed bootstrap emitter now splits generated snapshot construction
+//   into helper functions; `generated_full_bootstrap_dag()` loads this sharpened
+//   alias on the default test stack, ratcheted by
+//   `nat_resolves_to_semiring_over_magnitude` in
+//   `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs`.
+//
+// CONSUMERS: none in this slice. Refinements `Nat<N>` (later slices, gated
+// on T-V2-Retirement per design doc §"path (a) coordination") parameterize
+// the namespace to bind concrete bit-width at grounding time.
+//
+// HARD BOUNDARIES:
+//   - Carrier is `Magnitude`, the canonical algebraic counting carrier.
+//     `Word64` / `Word128` (and `Byte`/`Word16`/`Word32`) at `dsl/std/bit.dag`
+//     remain **storage refinements** at the bit-/byte-record layer; they are
+//     not alternate `Nat`/`Magnitude` authorities.
+//   - No tokenizer / `LitInt` / literal-grammar changes.
+//   - No refinement syntax (`Nat<N>`, `where bits <= N`) — gated on
+//     T-V2-Retirement per design doc.
+//   - No migration of legacy `dsl/std/integer.dag` `Semiring<Word*>` / `OrderedRing<Word*>`
+//     chain — sequenced for design doc §6 cascade slice.
+
+module std.nat
+
+import std.algebra { CommutativeSemiring }
+import std.magnitude { Magnitude }
+
+type Nat = CommutativeSemiring<Magnitude>

@@ -226,6 +226,236 @@ pub fn analyze_symbolic_cost_dimension(
     }
 }
 
+/// PR-E E7 symbolic-cost-only first executable slice: public
+/// complexity-analysis entrypoint per
+/// `docs/briefs/r3-evaluator-e7-symbolic-cost-only-follow-on-readiness.md`.
+///
+/// **Single authority.** Thin wrapper that delegates to
+/// [`analyze_symbolic_cost_dimension`] — the lens-spine path that walks
+/// reachable behaviors from `workflow_root` via
+/// `workflow_reachable_behavior_ids` and consumes
+/// [`crate::lens_cost_symbolic::symbolic_cost_of`] for each behavior's
+/// result port. The wrapper exists so the E7 public surface is named
+/// the way the dispatch brief locks it (`analyze_complexity` /
+/// `analyze_tenant_flow` / `analyze_ifc`) without introducing a
+/// parallel analyzer.
+///
+/// **Lens-spine, not body-evaluator-driven.** This entrypoint does
+/// **not** depend on `eval_node` / `evaluate_body` at all — the
+/// symbolic-cost lens (`lens_cost_symbolic_generated.rs`) walks the
+/// program DAG structurally and produces `SymbolicCostLookup::Hit(cost)`
+/// for every reachable behavior including `Loop`. Even now that
+/// `eval_node` dispatches `Behavior::Loop` (E5 landed), this wrapper
+/// remains the single-authority complexity entrypoint until
+/// `analyze_with_evaluator` (the body-evaluator-driven form) lands;
+/// at that point this lens-spine wrapper either dissolves or stays as
+/// the not-evaluator-driven path for cost specifically.
+///
+/// **Diagnostics.** `DimensionFail.violations` carries typed
+/// [`Diagnostic`] entries; tests must assert by typed pattern match,
+/// never by parsing `Witness::Violates.reason` strings.
+pub fn analyze_complexity(dag: &Dag, workflow_root: NodeId) -> DimensionReport<SymbolicCost> {
+    analyze_symbolic_cost_dimension(dag, workflow_root)
+}
+
+#[cfg(test)]
+mod analyze_complexity_tests {
+    use super::*;
+    use crate::dag::{Dag, LiteralBits, TransformTarget};
+    use crate::operators::{ArithmeticOp, OperatorKind};
+
+    fn span() -> SourceSpan {
+        SourceSpan::new("analyze_complexity_test", 0, 0)
+    }
+
+    fn int_add_dag() -> (Dag, NodeId) {
+        let mut dag = Dag::new();
+        let lhs = dag.push_value(LiteralBits::Int(1), span());
+        let rhs = dag.push_value(LiteralBits::Int(2), span());
+        let add_out = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, rhs],
+            span(),
+        );
+        let root = dag.push_bind("sum", add_out, vec![], span());
+        (dag, root)
+    }
+
+    // E7 §test 1 — single-authority: analyze_complexity must produce
+    // the same DimensionReport as the live analyze_symbolic_cost_dimension
+    // for the same (dag, workflow_root). Pins that the wrapper does not
+    // introduce a parallel analyzer.
+    #[test]
+    fn analyze_complexity_matches_analyze_symbolic_cost_dimension_for_known_workflow() {
+        let (dag, root) = int_add_dag();
+
+        let wrapped = analyze_complexity(&dag, root);
+        let direct = analyze_symbolic_cost_dimension(&dag, root);
+
+        match (&wrapped, &direct) {
+            (
+                DimensionReport::DimensionOk {
+                    dimension_name: w_name,
+                    composed: w_composed,
+                    witnesses: w_witnesses,
+                },
+                DimensionReport::DimensionOk {
+                    dimension_name: d_name,
+                    composed: d_composed,
+                    witnesses: d_witnesses,
+                },
+            ) => {
+                assert_eq!(w_name, d_name);
+                assert_eq!(w_composed, d_composed);
+                assert_eq!(w_witnesses.len(), d_witnesses.len());
+            }
+            other => {
+                panic!("expected both branches DimensionOk with matching content, got {other:?}")
+            }
+        }
+    }
+
+    // E7 §test 1 (returns_ok shape check) — DimensionOk arm carries the
+    // expected dimension_name and a SymbolicCost composed value.
+    #[test]
+    fn analyze_complexity_returns_ok_for_bounded_int_add_workflow() {
+        let (dag, root) = int_add_dag();
+
+        let report = analyze_complexity(&dag, root);
+
+        let DimensionReport::DimensionOk {
+            dimension_name,
+            composed: _,
+            witnesses,
+        } = report
+        else {
+            panic!("expected DimensionOk for bounded int-add, got {report:?}");
+        };
+        assert_eq!(dimension_name, "symbolic_cost");
+        assert!(
+            witnesses
+                .iter()
+                .all(|w| !matches!(w, Witness::Violates { .. })),
+            "no Violates witness expected on the happy path",
+        );
+    }
+
+    // E7 §test 2 — fail-closed on missing cost: program with a
+    // ghost-input transform produces DimensionFail with at least one
+    // typed Diagnostic::ParseError in violations. Asserted by typed
+    // pattern match on the Diagnostic enum, never by string parsing.
+    #[test]
+    fn analyze_complexity_fails_closed_with_typed_diagnostic_on_missing_cost() {
+        let mut dag = Dag::new();
+        let int_shape = dag.int_shape().expect("bootstrap Int");
+        let lhs = dag.push_value(LiteralBits::Int(1), span());
+        let ghost_input = dag.alloc_port_with_shape(int_shape);
+        let bad_add = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, ghost_input],
+            span(),
+        );
+        let root = dag.push_bind("x", bad_add, vec![], span());
+
+        let report = analyze_complexity(&dag, root);
+
+        let DimensionReport::DimensionFail {
+            dimension_name,
+            violations,
+            witnesses: _,
+        } = report
+        else {
+            panic!("expected DimensionFail when the cost lens misses a port, got {report:?}");
+        };
+        assert_eq!(dimension_name, "symbolic_cost");
+        assert!(
+            !violations.is_empty(),
+            "DimensionFail must carry at least one typed diagnostic",
+        );
+        assert!(
+            violations
+                .iter()
+                .all(|d| matches!(d, Diagnostic::ParseError { .. })),
+            "every violation must be a typed Diagnostic enum variant, got {violations:?}",
+        );
+    }
+
+    // E7 §test 3 — DimensionFail does not fabricate a `composed`
+    // carrier. Pattern-matching the `DimensionFail` arm is enough to
+    // assert this: the field is unreachable on that arm by
+    // construction. The wrapper preserves the partition. Reuses the
+    // ghost-input transform pattern from the existing
+    // `missing_symbolic_cost_surfaces_as_dimension_fail_with_violates_witnesses`
+    // test so the workflow is well-formed enough for the lens walk.
+    #[test]
+    fn analyze_complexity_fail_arm_has_no_composed_field() {
+        let mut dag = Dag::new();
+        let int_shape = dag.int_shape().expect("bootstrap Int");
+        let lhs = dag.push_value(LiteralBits::Int(1), span());
+        let ghost_input = dag.alloc_port_with_shape(int_shape);
+        let bad_add = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, ghost_input],
+            span(),
+        );
+        let root = dag.push_bind("y", bad_add, vec![], span());
+
+        let report = analyze_complexity(&dag, root);
+
+        match report {
+            DimensionReport::DimensionFail { .. } => {
+                // Exhaustive match on this arm: the only fields are
+                // dimension_name / violations / witnesses. There is no
+                // `composed` field to fabricate. Pattern coverage IS
+                // the assertion.
+            }
+            DimensionReport::DimensionOk { .. } => {
+                panic!("expected DimensionFail on a ghost-input workflow, not DimensionOk")
+            }
+        }
+    }
+
+    // E7 §test 6 — typed-diagnostic discipline: every entry in
+    // DimensionFail.violations must be inspectable as a typed
+    // Diagnostic enum variant. No to_string / format / regex on the
+    // human-facing message field beyond non-empty checks. (Test #5
+    // from the brief is a discipline rule enforced by reviewer
+    // convention, not a runtime assertion.)
+    #[test]
+    fn analyze_complexity_violation_entries_are_typed_diagnostic_enums() {
+        let mut dag = Dag::new();
+        let int_shape = dag.int_shape().expect("bootstrap Int");
+        let lhs = dag.push_value(LiteralBits::Int(1), span());
+        let ghost_input = dag.alloc_port_with_shape(int_shape);
+        let bad_add = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, ghost_input],
+            span(),
+        );
+        let root = dag.push_bind("z", bad_add, vec![], span());
+
+        let report = analyze_complexity(&dag, root);
+        let DimensionReport::DimensionFail { violations, .. } = report else {
+            panic!("expected DimensionFail for ghost-port workflow");
+        };
+
+        for diagnostic in &violations {
+            // Exhaustive enum match: every variant of Diagnostic is a
+            // structural type the test can pattern-match on without
+            // parsing message content. Non-`ParseError` variants are
+            // also acceptable typed inhabitants.
+            let typed = match diagnostic {
+                Diagnostic::ParseError { message, .. } => !message.is_empty(),
+                _ => true,
+            };
+            assert!(
+                typed,
+                "Diagnostic must carry a non-empty human-facing message; got {diagnostic:?}",
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod fail_closed_tests {
     use super::*;

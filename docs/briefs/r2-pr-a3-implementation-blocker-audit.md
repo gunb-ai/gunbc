@@ -1,7 +1,9 @@
 # R2 PR-A.3 Implementation Blocker Audit
 
-**Status:** BLOCKED - implementation audit for PR-A.3 eager strategy /
-memoization carriers. This is not a carrier declaration PR.
+**Status:** PARSER PREREQUISITE RESOLVED - PR #1286 landed parser support for
+the one-variant sum syntax. The blocker audit remains as the historical
+receipt; Substrate now owns the PR-A.3 carrier declarations. This is not a
+carrier declaration PR.
 
 **Parent authority:** [`r2-pr-a3-strategy-memoization-audit.md`](r2-pr-a3-strategy-memoization-audit.md),
 [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md), and
@@ -36,10 +38,11 @@ implementation slice. `NormalOrder`, `RightFirst`, parallel input order,
 `EvalThunk`, body evaluator logic, and TC2 strict equality are deferred by
 the parent audit.
 
-## Parser Gap
+## Historical Parser Gap
 
-The current handwritten parser cannot express the desired one-inhabitant
-record-payload sum in the intended spelling. In
+Before PR #1286, the handwritten parser could not express the desired
+one-inhabitant record-payload sum in the intended spelling. In that earlier
+state,
 [`src/v3/compiler/src/parse_generated.rs`](../../src/v3/compiler/src/parse_generated.rs),
 `rhs_is_sum()` routes a `type X = ...` RHS to `TypeSum` only when it sees a
 top-level `|` before the next item boundary. `parse_sum_variants()` then
@@ -52,8 +55,8 @@ As a result, this authored PR-A.3 spelling:
 type EvalStrategy = ApplicativeOrder { input_order: InputEvaluationOrder }
 ```
 
-is treated as a `TypeAlias` to `ApplicativeOrder`, and the following `{`
-is reported as a top-level parse error. Bootstrap regeneration then records
+was treated as a `TypeAlias` to `ApplicativeOrder`, and the following `{`
+was reported as a top-level parse error. Bootstrap regeneration recorded
 the parse diagnostic instead of declaring `EvalStrategy`.
 
 ## Forbidden Workarounds
@@ -68,24 +71,21 @@ Do not add fake variants just to satisfy `rhs_is_sum()`:
 - no new `Value` variants, especially no `ClosureValue`.
 
 Those workarounds would make illegal PR-A.3 states constructible merely to
-pacify a parser heuristic. The correct result is to block implementation
-until the surface syntax or carrier model can represent the closed
-one-inhabitant semantics directly.
+pacify a parser heuristic. PR #1286 resolved the parser prerequisite; the
+remaining discipline is to keep carrier implementation in Substrate territory
+and preserve the closed one-inhabitant semantics directly.
 
-## Acceptable Unblock Paths
+## Resolved Unblock Record
 
-PR-A.3 implementation may resume after one of these lands:
+The accepted unblock path was parser support for single-variant sums:
 
-1. Parser support for single-variant sums, including record-payload variants
-   such as `ApplicativeOrder { input_order: InputEvaluationOrder }`, with a
-   regression test covering this exact shape and a second regression covering
-   the bare single-variant atom shape `InputEvaluationOrder = LeftFirst`.
-2. An approved product/alias carrier amendment that preserves the
-   one-inhabitant closed strategy semantics and is explicitly accepted by the
-   PR-A.3 / PB-Runtime authorities.
-3. A broader substrate syntax decision that provides an equivalent
-   one-inhabitant sum spelling without adding fake strategy inhabitants.
+1. Record-payload variant support for
+   `ApplicativeOrder { input_order: InputEvaluationOrder }`.
+2. Bare single-variant atom support for `InputEvaluationOrder = LeftFirst`.
+3. Regression coverage for both shapes in the parser prerequisite PR.
 
-Until one of those gates lands, PR-A.3 remains blocked at implementation and
-the existing TC2 `evaluation_order_independent_lens_results` fixture remains
-deferred.
+After PR #1286, parser syntax is no longer the live blocker. Substrate owns the
+carrier declarations and generated bootstrap updates; Worker A owns the
+follow-on verification surface. The existing TC2
+`evaluation_order_independent_lens_results` fixture remains deferred until
+multiple executable strategies exist.

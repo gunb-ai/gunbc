@@ -320,8 +320,8 @@ data top_level_kw_data: TopLevelItemKwRow = {
 
 // --- SG-2c-5: keyword-token aliases that the parser accepts as bare
 // identifier spellings in label/name positions. Today this is the
-// single `KwType -> "type"` carveout used by both record-field labels
-// and sum-variant names. The parser consumes the generated
+// `KwType -> "type"` carveout used by both record-field labels and sum-variant names.
+// The parser consumes the generated
 // `soft_keyword_ident_spelling` projection rather than duplicating the
 // `TokenKind::KwType => "type"` match at each call site.
 //

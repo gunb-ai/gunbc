@@ -37,7 +37,7 @@ Per `design-pb-runtime-interpreter.md` §5.1 sub-gate 1 row + §3 (Item 4) + the
 - **`lens_apply_dot_rs_retired`** — `src/v3/compiler/src/lens_apply.rs` deleted.
 - **SG-0 census delta** — `EXPECTED_HAND_AUTHORED_NON_TEST` decreases by 1 (`lens_apply.rs` removed from the census authority at `src/v3/compiler/tests/integration/sg0_census_test.rs`).
 - **Lens-application invariants preserved by construction** — every lens consumer that reached `apply_lens_declaration(...)` now routes through PB-Runtime's `evaluate(...)` (per anti-bridge invariant #4: "no parallel emit logic"; the `.dag` evaluator IS the dispatch path, not a parallel one). Behavioral equivalence proven by the convergence-matrix Row 4 TestClaim landing green pre-deletion.
-- **No new `TestPredicate` variant** introduced from this lane. If the equivalence acceptance requires a substrate gap, escalate per `INVARIANTS.md:94` §P1 to Substrate Manager.
+- **No new `TestPredicate` variant** introduced from this lane. If the equivalence acceptance requires a substrate gap, escalate per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure) to Substrate Manager.
 - **Canonical-lens bridge ratchet** at `src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs` (#1183) lowers (or its companion deletion lands in the same PR) — that ratchet's pinned counts collapse when `lens_apply.rs` retires.
 
 The sub-gate is reported as a `.dag` `TestClaim` to the closure ledger; the locked predicate name is `lens_apply_dot_rs_retired` per design-doc §5.1.
@@ -62,7 +62,7 @@ Worker MUST STOP and escalate to PB Manager when any of these surface during imp
 - **Not** `Lens<C>` substrate carrier-shape edits — Substrate Manager territory.
 - **Not** `TestPredicate` invention — §P1 escalation route only.
 - **Not** T-FixedPoint implementation — separate planning brief.
-- **Not** advanced lifetime analyzer cases d/e/f folding — per PB Manager brief line 36, those land alongside retirement; this skeleton stays scoped to retirement mechanics. The lifetime-analyzer-handles-closures-of-async-self-referential-state work is its own dispatch chain.
+- **Not** advanced lifetime analyzer cases d/e/f folding — per the PB Manager brief's [`Owns (R3 continuation — Director cascade Item 4 + Item 8 ratified 2026-04-28)`](r2-pure-bootstrap-manager.md#program-scope-t-pb-post-r1-only) table, those land alongside retirement; this skeleton stays scoped to retirement mechanics. The lifetime-analyzer-handles-closures-of-async-self-referential-state work is its own dispatch chain.
 
 ## Cross-program signals
 
@@ -88,7 +88,7 @@ If any of (2)–(6) is unmet, this brief stays in PROPOSAL state; PB Manager doe
 ## Cross-refs
 
 - Parent design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §3 (Item 4 PB-Runtime), §5.1 (sub-gate decomposition), §5.2 (SG-0 cascade), §6 (anti-bridge invariants).
-- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) line 36 (T-LensProducer-Retirement R3 lane row).
+- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#program-scope-t-pb-post-r1-only) — R3 continuation table row for T-LensProducer-Retirement.
 - T-LensProducer-Retirement parent lane: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure".
 - Convergence matrix: [`docs/briefs/r2-pb-runtime-evaluator-convergence-matrix.md`](r2-pb-runtime-evaluator-convergence-matrix.md) Rows 1+2+4.
 - Corpus seed audit (Row-4 expansion): [`docs/briefs/r3-pb-runtime-equivalence-corpus-seed-audit.md`](r3-pb-runtime-equivalence-corpus-seed-audit.md) Seed (3) `Lens<C>` instance.
@@ -97,4 +97,4 @@ If any of (2)–(6) is unmet, this brief stays in PROPOSAL state; PB Manager doe
 - Sibling PB R3 briefs: [`r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md), [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md).
 - SG-0 census authority: `src/v3/compiler/tests/integration/sg0_census_test.rs` (`EXPECTED_HAND_AUTHORED_NON_TEST`).
 - File targeted for retirement (do not edit until dispatch): `src/v3/compiler/src/lens_apply.rs`.
-- Substrate-fact-introduction procedure (escalation path): `INVARIANTS.md:94`.
+- Substrate-fact-introduction procedure (escalation path): [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).

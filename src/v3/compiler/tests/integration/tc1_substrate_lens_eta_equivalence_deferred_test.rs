@@ -1,7 +1,8 @@
 //! **Layer:** integration
 //!
-//! TC1 substrate lens eta-equivalence — `SubstrateResearchDeferredClaim` is scoped to
-//! `tc1_substrate_lens_eta_equivalence_deferred.dag` (R2 research), not R1 release acceptance.
+//! TC1 substrate lens eta-equivalence — strict consumer shape uses
+//! `BinaryDimensionReportEquals`; `SubstrateResearchDeferredClaim` remains
+//! fixture-scoped and must not widen into general runner validity.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -14,7 +15,7 @@ const FIXTURE_PATH: &str =
 const SUITE_NAME: &str = "tc1_substrate_lens_eta_equivalence_suite";
 
 #[test]
-fn tc1_substrate_lens_eta_suite_passes_at_head() {
+fn tc1_substrate_lens_eta_suite_reaches_unified_predicate_shape() {
     let dag = match compile_to_dag(FIXTURE_SOURCE, FIXTURE_PATH) {
         Ok(dag) => {
             assert!(
@@ -37,7 +38,16 @@ fn tc1_substrate_lens_eta_suite_passes_at_head() {
         results[0].claim_name,
         "eta_equivalent_dag_forms_yield_identical_lens_results"
     );
-    assert_eq!(results[0].result, ClaimResult::Pass);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::NotYetImplemented(reason)
+                if reason.contains("BinaryDimensionReportEquals")
+                    && reason.contains("structural shape is valid")
+        ),
+        "expected BinaryDimensionReportEquals shape-valid deferred result, got {:?}",
+        results[0].result
+    );
 }
 
 #[test]

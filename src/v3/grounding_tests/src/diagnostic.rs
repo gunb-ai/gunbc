@@ -1,9 +1,10 @@
-//! Lane-local fail-closed outcomes for T-Ground-Tests (Stratum A scaffold).
+//! Lane-local fail-closed outcomes for T-Ground-Tests.
 //!
 //! The shared `EmissionDiagnostic` substrate carrier **LANDED** at
 //! `src/v3/std/diagnostics.dag` per #1216 brief + #1133 dispatch 4355793511.
 //! However, this crate's variants (`StratumARowCountMismatch` with usize
-//! fields, `StratumARegistryResolutionFailed { row_index, ... }`, etc.)
+//! fields, `StratumARegistryResolutionFailed { row_index, ... }`,
+//! `StratumBPrerequisiteMissing`, etc.)
 //! are **test-outcome-specific** — they carry test-side measurement
 //! coordinates that don't naturally fit the fold/emission failure pattern
 //! the substrate carrier authors. These stay lane-local pending a
@@ -38,6 +39,12 @@ pub enum GroundingTestsDiagnostic {
     StratumALockstepListDigestMismatch { list_name: String, detail: String },
     /// Expected Substrate declaration or connective shape was absent or non-conforming.
     StratumADagProjectionFailed { step: &'static str, detail: String },
+    /// Stratum B cannot run production algebra-homomorphism assertions until a named upstream
+    /// prerequisite is present. This is a readiness diagnostic, not a skipped production test.
+    StratumBPrerequisiteMissing {
+        prerequisite: &'static str,
+        detail: String,
+    },
 }
 
 impl fmt::Display for GroundingTestsDiagnostic {
@@ -68,6 +75,13 @@ impl fmt::Display for GroundingTestsDiagnostic {
             GroundingTestsDiagnostic::StratumADagProjectionFailed { step, detail } => {
                 write!(f, "Stratum A Dag projection failed at `{step}`: {detail}")
             }
+            GroundingTestsDiagnostic::StratumBPrerequisiteMissing {
+                prerequisite,
+                detail,
+            } => write!(
+                f,
+                "Stratum B prerequisite `{prerequisite}` is not ready: {detail}"
+            ),
         }
     }
 }

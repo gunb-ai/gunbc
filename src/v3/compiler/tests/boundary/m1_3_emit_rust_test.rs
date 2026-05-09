@@ -300,18 +300,18 @@ let x: Int = 42",
 }
 
 #[test]
-fn emit_rust_omits_div_prelude_for_user_diverror_signature_without_division() {
+fn emit_rust_structural_diverror_signature_uses_substrate_prelude() {
     let out = emit_module(
         "type DivError = DivideByZero | Overflow\n\
 fn passthrough(x: DivError) -> DivError = x\n",
     );
     assert!(
-        !out.contains("__v3_int_div"),
-        "user DivError signatures should not trigger integer division prelude; got: {out}"
+        out.contains("__v3_int_div"),
+        "structural DivError signatures use the substrate prelude, independent of source path; got: {out}"
     );
     assert!(
         out.matches("pub enum DivError").count() == 1,
-        "user DivError should emit once without colliding with a std prelude; got: {out}"
+        "structural DivError should materialize once through the substrate prelude; got: {out}"
     );
 }
 
@@ -1022,6 +1022,23 @@ fn rustc_roundtrip_list_filter_then_fold_prints_seven() {
     assert_eq!(
         stdout, expected,
         "compiled binary printed {stdout:?}, not {expected:?}"
+    );
+}
+
+#[test]
+fn rustc_roundtrip_list_filter_non_copy_record_predicate_prints_two() {
+    let stdout = roundtrip_stdout(
+        "type Point { x: Int y: Int }\n\
+         fn x_of(p: Point) -> Int = p.x\n\
+         let p1: Point = { x: 1, y: 2 }\n\
+         let p2: Point = { x: 3, y: 4 }\n\
+         let p3: Point = { x: 5, y: 6 }\n\
+         fn keep(p: Point) -> Bool = x_of(p) > 2\n\
+         let total: Int = length(filter(cons(p1, cons(p2, singleton(p3))), keep))",
+    );
+    assert_eq!(
+        stdout, "2",
+        "filter should render predicate against a borrowed item and retain a cloned item"
     );
 }
 

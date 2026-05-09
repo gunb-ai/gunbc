@@ -1,0 +1,309 @@
+# R3 PR-E E6-G0d Constructor Runtime Execution Worker Brief
+
+**Status:** worker brief / audit for the next Evaluator slice after E6-G0c.
+This is docs-only. It does not implement constructor execution, edit the
+parser/lowerer, widen `Value`, touch `lens_apply.rs`, add `fold_lens` logic, or
+port Population A property tests.
+
+**Parent authorities:** [`r3-pr-e6-lens-fold-readiness-audit.md`](r3-pr-e6-lens-fold-readiness-audit.md),
+[`r3-pr-e6-post-blocker-gate-packet.md`](r3-pr-e6-post-blocker-gate-packet.md),
+[`r3-pb-tv2-population-coverage-audit.md`](r3-pb-tv2-population-coverage-audit.md),
+and the live evaluator / lowerer in `src/v3/compiler/src/lib.rs` and
+`src/v3/compiler/src/lower.rs`.
+
+**Current main context:** #1721 landed the clean E6-G0c receipt for static data
+field projection plus Arrow/UserDefined `Callable` execution. #1723 landed PB's
+Population A reclassification: Pop A remains blocked because constructor
+expressions lower to non-Arrow `TransformTarget::Callable(target)` values that
+the evaluator still rejects.
+
+## Problem
+
+E6-G0c made `TransformTarget::Callable(decl)` executable only when `decl`
+resolves to an Arrow with a `UserDefined` body. The current evaluator branch
+fails closed on every non-Arrow callable target:
+
+- `src/v3/compiler/src/lib.rs` `eval_transform_node` reads
+  `dag.declaration(callee_decl).connective`, accepts only
+  `TypeConnective::Arrow { body, .. }`, and otherwise returns
+  `BadTransformOperands { reason: "Callable target declaration is not an Arrow type" }`.
+
+That is correct for ordinary function dispatch, but the lowerer also uses
+`TransformTarget::Callable(target_decl)` as the lowered representation for
+constructor execution. Those constructor targets are declarations for record
+and variant shapes, not Arrow functions, so they currently hit the G0c
+fail-closed path.
+
+PB's post-#1723 Population A reclassification is the consumer-facing symptom:
+the substrate declarations exist, but behavioral tests cannot run because
+values such as `Some { value: ... }`, `ErrorBound`, `ConstantShrink { steps:
+... }`, and `StrictSubValue { field, factor }` require constructor runtime
+values before user-defined Arrow bodies can complete.
+
+## Target Shapes Reaching `Callable(non_arrow_decl)`
+
+Two lowered constructor families reach `TransformTarget::Callable(target)`:
+
+1. **Record constructors.**
+   - `lower_record_literal_expr` resolves the expected record type to a
+     `Conj`, orders inputs by the declaration's `children` labels, lowers each
+     field expression against its field type, then calls
+     `lower_constructor_invocation(dag, target_decl, inputs, span)` in
+     `src/v3/compiler/src/lower.rs` `lower_record_literal_expr`.
+   - `lower_constructor_invocation` emits
+     `Behavior::Transform(TransformNode { target:
+     TransformTarget::Callable(target), inputs, ... })` in
+     `src/v3/compiler/src/lower.rs` `lower_constructor_invocation`.
+   - The `target_decl` here is the record / Conj declaration, not an Arrow.
+
+2. **Variant constructors.**
+   - Nullary variants can enter through `SurfaceExpr::Var` when the expected
+     type is a sum: `resolve_expected_variant_constructor(...)` followed by
+     `lower_constructor_invocation(..., Vec::new(), ...)` in
+     `src/v3/compiler/src/lower.rs` `lower_expr`.
+   - Named variant-record constructors enter through
+     `lower_variant_record_expr`: the lowerer resolves the variant declaration,
+     reads payload field labels/types via
+     `variant_payload_fields_for_lowering`, orders payload inputs by those
+     declared labels, and calls `lower_constructor_invocation(dag,
+     variant_decl, inputs, ...)` in
+     `src/v3/compiler/src/lower.rs` `lower_variant_record_expr`.
+   - `variant_payload_fields_for_lowering` gets the payload fields by walking
+     the variant declaration to a `Conj` and preserving child labels in
+     `src/v3/compiler/src/lower.rs` `variant_payload_fields_for_lowering`.
+   - Variant membership is not inferred from "walks to `Conj`" alone. The
+     lowerer resolves constructor identity through
+     `resolve_expected_variant_constructor`, which checks the parent
+     `TypeConnective::Disj { variants }` list in `src/v3/compiler/src/lower.rs`.
+     For generic sums, that resolver may materialize an
+     `Instantiation { template: variant_decl, arguments }`; E6-G0d must
+     preserve that instantiation instead of checking only the outer
+     declaration id.
+   - The `target` here is the variant constructor declaration, not an Arrow.
+
+This confirms the next Evaluator slice is not "broaden Callable" in general.
+It is: when a lowered `Callable` target is a constructor declaration already
+accepted by the lowerer, evaluate it into the existing runtime `Value` carrier.
+
+## Runtime Output Contract
+
+Use only the live evaluator carriers in `src/v3/compiler/src/lib.rs`:
+
+```rust
+Value::RecordValue(Vec<NamedField>)
+Value::VariantValue {
+    tag: DeclarationId,
+    payload: Box<Value>,
+}
+```
+
+Expected outputs:
+
+- **Record constructor target:** return
+  `Value::RecordValue(Vec<NamedField>)`, with one `NamedField { label, value }`
+  per declared record field, in declaration order. Field labels come from the
+  target declaration's record payload after walking to `Conj`. If the lowered
+  record target is an `Instantiation { template, arguments }`, peel to
+  `template` to prove the base target is a `Conj`, but preserve the
+  instantiation arguments when resolving field types / payload shape so generic
+  record construction follows the same substitution facts the lowerer used.
+  Field values come from the already-evaluated transform operands, preserving
+  the existing evaluator's operand evaluation order and arity discipline.
+- **Variant constructor target with record payload:** return
+  `Value::VariantValue { tag: tag_decl, payload:
+  Box::new(Value::RecordValue(fields)) }` only after proving the target's
+  base variant is listed in a parent `TypeConnective::Disj { variants }`.
+  If the lowered `callee_decl` is an `Instantiation { template, arguments }`,
+  peel to `template` for both `Disj.variants` membership and `tag_decl`.
+  Preserve the instantiated `callee_decl` and `arguments` only as the payload
+  construction authority. Use those arguments when walking the payload to a
+  `Conj` so field labels/types are the specialized constructor payload, not the
+  generic template by accident. Field values come from operands.
+- **Nullary variant constructor target:** return
+  `Value::VariantValue { tag: tag_decl, payload:
+  Box::new(Value::RecordValue(Vec::new())) }`, again only after proving the
+  base variant is a member of a parent `Disj.variants` list. Generic nullary
+  variants use the template variant as `tag_decl`; the lowered instantiated
+  target is retained only for substitution-sensitive payload/shape walking.
+
+No new `Value` inhabitants are authorized by this slice. The evaluator must
+not introduce host-only mirrors for `Option`, `CostBound`, `ShrinkFactor`,
+`SubValueRelation`, `DimensionReport`, or any Population A family.
+
+## Responsibility Split
+
+- **Substrate authority remains in the Dag declarations.** Declaration
+  connective shapes, variant membership, payload field labels, record field
+  labels, generic substitution, and constructor identity belong to the
+  substrate/lowerer authority that already produced the lowered
+  `TransformTarget::Callable(target)` node. For generic record constructors,
+  an instantiated callable target must retain its `TemplateArgument`s while
+  walking to the base `Conj`; do not collapse to the template and lose
+  substitution. For variants, the parent
+  `TypeConnective::Disj { variants }` list is the membership authority; a
+  target that merely walks to `Conj` is not enough to classify a constructor as
+  a variant. For instantiated generic variants, membership is proven by the
+  instantiation template's presence in `Disj.variants`, while the instantiated
+  target and its `TemplateArgument`s remain the payload-construction authority.
+  Runtime tag identity must be the same declaration id that branch
+  `ResolvedVariant` arms compare against; for instantiated generic variants,
+  that is the template variant id, not the anonymous instantiation id.
+- **Evaluator authority is runtime interpretation only.** Given a lowered
+  constructor `Callable` target and already-evaluated operands, the evaluator
+  may construct `Value::RecordValue` or `Value::VariantValue` using facts read
+  from `dag.declaration(target)`. It may enforce arity and shape fail-closed.
+- **PB / Population A stays a consumer.** Pop A property migration should wait
+  until this constructor execution gate lands. This gate should not port Pop A
+  tests or hard-code its property families.
+
+## First Implementation Slice
+
+Implement the non-Arrow constructor arm inside the existing
+`TransformTarget::Callable(callee_decl)` branch in `eval_transform_node`.
+Recommended flow:
+
+1. Keep the current Arrow/UserDefined path unchanged.
+2. Before returning `"Callable target declaration is not an Arrow type"`,
+   recognize constructor target shapes:
+   - First ask whether `callee_decl` is a member of some parent
+     `TypeConnective::Disj { variants }`, after normalizing constructor
+     targets as follows:
+     - bare variant target: membership candidate is `callee_decl`;
+     - instantiated variant target:
+       `TypeConnective::Instantiation { template, arguments }` means the
+       membership candidate and runtime tag id are `template`; the evaluator
+       must retain `callee_decl` plus `arguments` for specialized payload
+       walking only.
+     The `variants` list is the sole authority for variant membership in this
+     slice.
+   - If the normalized membership candidate is a `Disj.variants` member, build
+     `VariantValue { tag: membership_candidate, payload }`. This keeps runtime
+     tag identity aligned with `BranchPattern::ResolvedVariant` exact matching.
+     A payload that walks to `Conj` under the retained substitution arguments
+     becomes `RecordValue(fields)`; a nullary variant uses
+     `RecordValue(Vec::new())`.
+   - If no parent `Disj` membership is found, then normalize for the record
+     constructor path:
+     - bare record target: the candidate is `callee_decl`;
+     - instantiated record target:
+       `TypeConnective::Instantiation { template, arguments }` means the
+       candidate is `template`, and the evaluator must retain `arguments` for
+       substitution-aware field walking.
+     A candidate that resolves to `TypeConnective::Conj { children }` builds
+     `RecordValue(fields)` using labels from the substituted field walk, not a
+     raw template-only walk.
+3. For every constructor path, compare `operands.len()` to the declared field
+   count and return `TransformArityMismatch` on mismatch.
+4. If declaration walking cannot identify a constructor shape, preserve the
+   existing fail-closed reason for non-Arrow callables.
+
+The implementation should reuse existing declaration-walking helpers where
+they are already public to the module. If the only way forward is to duplicate
+or recreate lowerer-only substitution/walking rules in a Rust-side registry,
+STOP rather than adding a second constructor authority.
+
+Generic constructor ratchet: include at least one `Int?` / `Some<Int>`-style
+case whose lowered constructor target is an `Instantiation`; the test should
+fail if the evaluator checks the instantiated declaration directly against
+`Disj.variants` or drops the substitution while building the payload.
+Also include a normalization receipt that constructs an instantiated generic
+variant and immediately matches on it; the test should fail if
+`Value::VariantValue.tag` is the anonymous instantiation instead of the
+template variant id used by `BranchPattern::ResolvedVariant`.
+Generic record ratchet: include at least one generic record constructor whose
+lowered target is an `Instantiation`; the test should fail if the evaluator
+only recognizes bare `Conj` targets or drops the instantiation arguments while
+walking record fields.
+
+## Executable Ratchets
+
+Add focused evaluator tests in the existing `#[cfg(test)]` module in
+`src/v3/compiler/src/lib.rs`. Do not add new Rust test files.
+
+At minimum:
+
+1. **Variant constructor return executes.**
+   - Use a small program such as:
+     ```text
+     fn pack(x: Int) -> Int? = Some { value: x }
+     ```
+     or `Some(x)` if that is the syntax accepted by the current parser for
+     the selected fixture.
+   - Evaluate the function body through the existing evaluator entry point.
+   - Assert the result is `Value::VariantValue { tag: some_decl, payload:
+     RecordValue([{ label: "value", value: LiteralValue(Int(...)) }]) }`.
+   - This fails today at the non-Arrow `Callable` gate.
+
+2. **Record constructor return executes.**
+   - Use a minimal record-returning function with an expected record type.
+   - Assert the result is `Value::RecordValue` with declared labels and operand
+     values in declaration order, not source-order accident.
+
+3. **Nullary variant constructor executes.**
+   - Use an `Int?` / option-like `none` value or another existing nullary
+     variant.
+   - Assert the payload is an empty `RecordValue`, matching the existing
+     runtime representation used by branch matching.
+
+If match/unpack syntax is stable enough for the first PR, add one positive
+composition test:
+
+```text
+fn pack(x: Int) -> Int? = Some { value: x }
+fn unpack(x: Int) -> Int =
+  match pack(x) {
+    Some { value } => value
+    none => 0
+  }
+```
+
+This is useful because `eval_branch` already consumes
+`Value::VariantValue`; however, it is not required for the first landing if
+pattern syntax would pull the PR into parser/lowerer edits. A constructor-return
+receipt is the first honest ratchet.
+
+## STOP Conditions
+
+Stop and surface to the Evaluator manager if the implementation needs any of
+the following:
+
+- A Rust-side mirror registry for constructor declarations, variant
+  membership, or payload labels.
+- New `Value` inhabitants or local report/option/cost/shrink carriers.
+- Parser or lowerer surface changes.
+- Changes to `lens_apply.rs`, `lens_testgen.rs`, `fold_lens`, X1.b /
+  `TransformDispatch`, or Population A porting.
+- Hard-coded Pop A property families, constructor names, or result codecs.
+- New hand-authored Rust test files.
+- Any substrate/carrier ambiguity where declaration/connective facts are not
+  sufficient to identify constructor output shape.
+
+## Recommendation
+
+The next PR should be **implementation + ratchets**, not ratchet-only.
+
+Rationale:
+
+- The current failing boundary is already precise and ratcheted by the
+  evaluator's non-Arrow `Callable` error; a ratchet-only PR would mostly
+  duplicate the known failure from the PB reclassification.
+- The implementation surface is narrow if it can read constructor labels from
+  existing `Declaration` / `TypeConnective` facts and emit existing
+  `Value::RecordValue` / `Value::VariantValue` carriers.
+- The useful proof is executable: a constructor-returning body that fails today
+  should pass in the same PR that teaches the evaluator to construct the value.
+
+Risk / ETA: **S/M, one focused PR.** Low risk if declaration walking is already
+available from the evaluator module or can be factored without changing
+substrate authority. Escalate to M if variant payload walking requires generic
+substitution logic that is currently lowerer-private; do not paper that over
+with a mirror registry.
+
+## Non-Goals
+
+- No broad Population A migration.
+- No parser or lowerer edits.
+- No X1.b / `TransformDispatch` work.
+- No `fold_lens` or `DimensionReport` construction.
+- No changes to `lens_apply.rs` or `lens_testgen.rs`.
+- No new substrate carrier design.

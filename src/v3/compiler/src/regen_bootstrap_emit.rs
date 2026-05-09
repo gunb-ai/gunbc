@@ -57,18 +57,20 @@ fn rustfmt_stdout(combined: &str) -> Result<String, String> {
 }
 
 fn emit_bootstrap_module(dag: &Dag, function_name: &str) -> String {
+    let nodes_fn = format!("{function_name}_nodes");
+    let declarations_fn = format!("{function_name}_declarations");
+    let ports_fn = format!("{function_name}_ports");
+    let diagnostics_fn = format!("{function_name}_diagnostics");
+    let clusters_fn = format!("{function_name}_clusters");
+    let optional_match_disjs_fn = format!("{function_name}_optional_match_disjs");
+
     let mut out = String::new();
     out.push_str(&format!("pub(crate) fn {function_name}() -> Dag {{\n"));
     out.push_str("    Dag {\n");
-    push_field(&mut out, "nodes", &render_behaviors(dag.nodes()), 2);
-    push_field(
-        &mut out,
-        "declarations",
-        &render_declarations(dag.declarations()),
-        2,
-    );
-    push_field(&mut out, "ports", &render_ports(dag), 2);
-    push_field(&mut out, "diagnostics", &render_diagnostics(dag), 2);
+    push_field(&mut out, "nodes", &format!("{nodes_fn}()"), 2);
+    push_field(&mut out, "declarations", &format!("{declarations_fn}()"), 2);
+    push_field(&mut out, "ports", &format!("{ports_fn}()"), 2);
+    push_field(&mut out, "diagnostics", &format!("{diagnostics_fn}()"), 2);
     push_field(&mut out, "next_node_id", &dag.nodes().len().to_string(), 2);
     push_field(
         &mut out,
@@ -89,11 +91,12 @@ fn emit_bootstrap_module(dag: &Dag, function_name: &str) -> String {
         "        verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),\n",
     );
     out.push_str("        callable_strategy_variants: CallableStrategyVariants::default(),\n");
-    push_field(&mut out, "clusters", &render_clusters(dag), 2);
+    out.push_str("        emit_model_variants: EmitModelVariants::default(),\n");
+    push_field(&mut out, "clusters", &format!("{clusters_fn}()"), 2);
     push_field(
         &mut out,
         "optional_match_disjs",
-        &render_optional_match_disjs(dag),
+        &format!("{optional_match_disjs_fn}()"),
         2,
     );
     push_field(
@@ -104,6 +107,30 @@ fn emit_bootstrap_module(dag: &Dag, function_name: &str) -> String {
     );
     out.push_str("    }\n");
     out.push_str("}\n");
+    out.push_str(&format!(
+        "\n#[allow(clippy::vec_init_then_push)]\nfn {nodes_fn}() -> Vec<Behavior> {{\n    {}\n}}\n",
+        render_behaviors(dag.nodes())
+    ));
+    out.push_str(&format!(
+        "\n#[allow(clippy::vec_init_then_push)]\nfn {declarations_fn}() -> Vec<Declaration> {{\n    {}\n}}\n",
+        render_declarations(dag.declarations())
+    ));
+    out.push_str(&format!(
+        "\nfn {ports_fn}() -> HashMap<PortId, Port> {{\n    {}\n}}\n",
+        render_ports(dag)
+    ));
+    out.push_str(&format!(
+        "\nfn {diagnostics_fn}() -> DiagnosticTable {{\n    {}\n}}\n",
+        render_diagnostics(dag)
+    ));
+    out.push_str(&format!(
+        "\nfn {clusters_fn}() -> Vec<Cluster> {{\n    {}\n}}\n",
+        render_clusters(dag)
+    ));
+    out.push_str(&format!(
+        "\nfn {optional_match_disjs_fn}() -> HashMap<DeclarationId, DeclarationId> {{\n    {}\n}}\n",
+        render_optional_match_disjs(dag)
+    ));
     out
 }
 
@@ -113,11 +140,21 @@ fn push_field(out: &mut String, name: &str, value: &str, indent: usize) {
 }
 
 fn render_declarations(declarations: &[Declaration]) -> String {
-    let mut out = String::from("vec![\n");
-    for declaration in declarations {
-        let _ = writeln!(out, "        {},", render_declaration(declaration));
+    if declarations.is_empty() {
+        return "Vec::new()".to_string();
     }
-    out.push_str("    ]");
+    let mut out = format!(
+        "{{ let mut declarations = Vec::with_capacity({});\n",
+        declarations.len()
+    );
+    for declaration in declarations {
+        let _ = writeln!(
+            out,
+            "        declarations.push({});",
+            render_declaration(declaration)
+        );
+    }
+    out.push_str("        declarations }\n");
     out
 }
 
@@ -201,7 +238,7 @@ fn render_type_connective(connective: &TypeConnective) -> String {
             render_arrow_body(body),
         ),
         TypeConnective::Cardinality(payload) => format!(
-            "TypeConnective::Cardinality(CardinalityPayload::new_unchecked({}, {}))",
+            "TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence({}, {}))",
             render_declaration_id(payload.element()),
             render_cardinality_bound(&payload.bound()),
         ),
@@ -256,7 +293,10 @@ fn render_atom_payload(payload: &AtomPayload) -> String {
 
 fn render_arrow_body(body: &ArrowBody) -> String {
     match body {
-        ArrowBody::UserDefined(id) => format!("ArrowBody::UserDefined({})", render_node_id(*id)),
+        ArrowBody::UserDefined(id) => format!(
+            "ArrowBody::UserDefined(BindNodeId::new_unchecked({}))",
+            render_node_id(id.node_id())
+        ),
         ArrowBody::ExternalRealization(id) => {
             format!(
                 "ArrowBody::ExternalRealization({})",
@@ -370,8 +410,18 @@ fn render_field_value(value: &FieldValue) -> String {
 }
 
 fn render_behaviors(behaviors: &[Behavior]) -> String {
-    let values: Vec<String> = behaviors.iter().map(render_behavior).collect();
-    render_vec(&values)
+    if behaviors.is_empty() {
+        return "Vec::new()".to_string();
+    }
+    let mut out = format!(
+        "{{ let mut nodes = Vec::with_capacity({});\n",
+        behaviors.len()
+    );
+    for behavior in behaviors {
+        let _ = writeln!(out, "        nodes.push({});", render_behavior(behavior));
+    }
+    out.push_str("        nodes }\n");
+    out
 }
 
 fn render_behavior(behavior: &Behavior) -> String {
@@ -585,10 +635,11 @@ fn render_loop_bound(bound: &LoopBound) -> String {
                 render_port_id(*count)
             )
         }
-        LoopBound::Descent { cluster } => {
+        LoopBound::Descent { cluster, measure } => {
             format!(
-                "LoopBound::Descent {{ cluster: {} }}",
-                render_cluster_id(*cluster)
+                "LoopBound::Descent {{ cluster: {}, measure: {} }}",
+                render_cluster_id(*cluster),
+                render_port_id(*measure)
             )
         }
     }

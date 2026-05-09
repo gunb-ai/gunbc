@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
 use super::{
-    algebra_field_for_operator_shared, dag_needs_div_error_prelude,
-    div_prelude_reserved_name_collision, optional_match_variant_roles, parse_pattern_strategy,
+    algebra_field_for_operator_shared,
+    collection_ops_method_contract::require_method_template_contract_dag_method,
+    dag_needs_div_error_prelude, div_prelude_reserved_name_collision,
+    method_emit_template_variant_label, optional_match_variant_roles, parse_pattern_strategy,
     primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
     SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
     VariantPayloadFieldAccessRuleBinding,
@@ -345,31 +347,111 @@ impl PythonIndexes {
                 "cons",
                 collections,
             )?,
-            concat: require_field_string(
-                structural_fields_for_decl(dag, collections)?,
-                "concat",
-                collections,
-            )?,
-            length: require_field_string(
-                structural_fields_for_decl(dag, collections)?,
-                "length",
-                collections,
-            )?,
-            is_empty: require_field_string(
-                structural_fields_for_decl(dag, collections)?,
-                "is_empty",
-                collections,
-            )?,
-            fold: require_field_string(
-                structural_fields_for_decl(dag, collections)?,
-                "fold",
-                collections,
-            )?,
-            map: require_field_string(
-                structural_fields_for_decl(dag, collections)?,
-                "map",
-                collections,
-            )?,
+            concat: {
+                let cfields = structural_fields_for_decl(dag, collections)?;
+                let concat_method_decl =
+                    dag.concat_method_decl()
+                        .ok_or(EmitPythonError::MalformedSpec {
+                            declaration: collections,
+                            detail: "internal: concat_method missing from std.methods registry",
+                        })?;
+                let id = require_field_decl_ref(cfields, "concat_contract", collections)?;
+                require_method_template_contract_dag_method(
+                    dag,
+                    id,
+                    "concat_contract",
+                    concat_method_decl,
+                )
+                .map_err(|detail| EmitPythonError::MalformedSpec {
+                    declaration: id,
+                    detail,
+                })?;
+                method_contract_single_emit_template_string(dag, id)?
+            },
+            length: {
+                let cfields = structural_fields_for_decl(dag, collections)?;
+                let length_method_decl =
+                    dag.length_method_decl()
+                        .ok_or(EmitPythonError::MalformedSpec {
+                            declaration: collections,
+                            detail: "internal: length_method missing from std.methods registry",
+                        })?;
+                let id = require_field_decl_ref(cfields, "length_contract", collections)?;
+                require_method_template_contract_dag_method(
+                    dag,
+                    id,
+                    "length_contract",
+                    length_method_decl,
+                )
+                .map_err(|detail| EmitPythonError::MalformedSpec {
+                    declaration: id,
+                    detail,
+                })?;
+                method_contract_single_emit_template_string(dag, id)?
+            },
+            is_empty: {
+                let cfields = structural_fields_for_decl(dag, collections)?;
+                let is_empty_method_decl =
+                    dag.is_empty_method_decl()
+                        .ok_or(EmitPythonError::MalformedSpec {
+                            declaration: collections,
+                            detail: "internal: is_empty_method missing from std.methods registry",
+                        })?;
+                let id = require_field_decl_ref(cfields, "is_empty_contract", collections)?;
+                require_method_template_contract_dag_method(
+                    dag,
+                    id,
+                    "is_empty_contract",
+                    is_empty_method_decl,
+                )
+                .map_err(|detail| EmitPythonError::MalformedSpec {
+                    declaration: id,
+                    detail,
+                })?;
+                method_contract_single_emit_template_string(dag, id)?
+            },
+            fold: {
+                let cfields = structural_fields_for_decl(dag, collections)?;
+                let fold_method_decl =
+                    dag.fold_method_decl()
+                        .ok_or(EmitPythonError::MalformedSpec {
+                            declaration: collections,
+                            detail: "internal: fold_method missing from std.methods registry",
+                        })?;
+                let fold_contract = require_field_decl_ref(cfields, "fold_contract", collections)?;
+                require_method_template_contract_dag_method(
+                    dag,
+                    fold_contract,
+                    "fold_contract",
+                    fold_method_decl,
+                )
+                .map_err(|detail| EmitPythonError::MalformedSpec {
+                    declaration: fold_contract,
+                    detail,
+                })?;
+                method_contract_single_emit_template_string(dag, fold_contract)?
+            },
+            map: {
+                let cfields = structural_fields_for_decl(dag, collections)?;
+                let map_method_decl =
+                    dag.map_method_decl()
+                        .ok_or(EmitPythonError::MalformedSpec {
+                            declaration: collections,
+                            detail: "internal: map_method missing from std.methods registry",
+                        })?;
+                let map_contract = require_field_decl_ref(cfields, "map_contract", collections)?;
+                require_method_template_contract_dag_method(
+                    dag,
+                    map_contract,
+                    "map_contract",
+                    map_method_decl,
+                )
+                .map_err(|detail| EmitPythonError::MalformedSpec {
+                    declaration: map_contract,
+                    detail,
+                })?;
+                method_contract_single_emit_template_string(dag, map_contract)?
+            },
             filter: require_field_string(
                 structural_fields_for_decl(dag, collections)?,
                 "filter",
@@ -610,6 +692,7 @@ pub(crate) fn emit_python_with_mode(
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| !super::substrate_result_type_decl_suppressed_for_emit(dag, decl))
+        .filter(|decl| !super::substrate_div_error_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -688,6 +771,7 @@ pub(crate) fn emit_python_with_mode(
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(
+            dag,
             type_decls.iter(),
             function_decls.iter(),
             top_level_binds.iter(),
@@ -1309,11 +1393,7 @@ impl<'a> Ctx<'a> {
                 "python emitter only supports user-defined callable bodies".to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         if bind.params.len() < inputs.len() {
             return Err(EmitPythonError::Unsupported(
                 "callable bind parameter count does not match arrow inputs".to_string(),
@@ -1385,11 +1465,7 @@ impl<'a> Ctx<'a> {
                 "emit_python only supports user-defined function bodies".to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         let mut locals = RenderLocals::default();
         let mut params = Vec::new();
         for (idx, port) in bind.params.iter().enumerate() {
@@ -1732,6 +1808,50 @@ fn parse_pattern_realization(
     })
 }
 
+fn method_contract_single_emit_template_string(
+    dag: &Dag,
+    contract_decl: DeclarationId,
+) -> Result<String, EmitPythonError> {
+    let fields = structural_fields_for_decl(dag, contract_decl)?;
+    let emit_value = fields
+        .iter()
+        .find(|(label, _)| label == "emit_template")
+        .map(|(_, v)| v)
+        .ok_or(EmitPythonError::MalformedSpec {
+            declaration: contract_decl,
+            detail: "MethodTemplateContract missing emit_template field",
+        })?;
+    let FieldValue::Variant {
+        constructor,
+        ref payload,
+    } = emit_value
+    else {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration: contract_decl,
+            detail: "MethodTemplateContract.emit_template must be a sum variant",
+        });
+    };
+    let ctor_name = method_emit_template_variant_label(dag, *constructor)
+        .ok_or(EmitPythonError::MalformedSpec {
+        declaration: contract_decl,
+        detail:
+            "MethodTemplateContract.emit_template variant not found under MethodEmitTemplate disj",
+    })?;
+    if ctor_name != "SingleTemplate" {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration: contract_decl,
+            detail: "CollectionOps MethodTemplateContract must use MethodEmitTemplate.SingleTemplate today",
+        });
+    }
+    let [FieldValue::Literal(LiteralBits::String(template))] = payload.as_slice() else {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration: contract_decl,
+            detail: "SingleTemplate must carry exactly one string template payload",
+        });
+    };
+    Ok(template.clone())
+}
+
 fn structural_fields_for_decl(
     dag: &Dag,
     declaration: DeclarationId,
@@ -1826,14 +1946,27 @@ fn require_memory_model(
             detail: "MemoryModel variants must not carry payload fields",
         });
     }
-    let variants = [
-        ("ValueOnly", MemoryModelBinding::ValueOnly),
-        ("GarbageCollected", MemoryModelBinding::GarbageCollected),
-        ("RefCounted", MemoryModelBinding::RefCounted),
-        ("OwnershipBased", MemoryModelBinding::OwnershipBased),
+    let variants = dag.emit_model_variants();
+    let memory_variants = [
+        (
+            variants.memory_model.value_only,
+            MemoryModelBinding::ValueOnly,
+        ),
+        (
+            variants.memory_model.garbage_collected,
+            MemoryModelBinding::GarbageCollected,
+        ),
+        (
+            variants.memory_model.ref_counted,
+            MemoryModelBinding::RefCounted,
+        ),
+        (
+            variants.memory_model.ownership_based,
+            MemoryModelBinding::OwnershipBased,
+        ),
     ];
-    for (label, binding) in variants {
-        let variant_id = named_variant_id(dag, "MemoryModel", label)?;
+    for (variant_id, binding) in memory_variants {
+        let variant_id = variant_id.ok_or(EmitPythonError::MissingMeta("MemoryModel variant"))?;
         if constructor == variant_id {
             return Ok(binding);
         }
@@ -1859,12 +1992,19 @@ fn require_scope_model(
             detail: "ScopeModel variants must not carry payload fields",
         });
     }
-    let variants = [
-        ("LexicalScoping", ScopeModelBinding::LexicalScoping),
-        ("DynamicScoping", ScopeModelBinding::DynamicScoping),
+    let variants = dag.emit_model_variants();
+    let scope_variants = [
+        (
+            variants.scope_model.lexical_scoping,
+            ScopeModelBinding::LexicalScoping,
+        ),
+        (
+            variants.scope_model.dynamic_scoping,
+            ScopeModelBinding::DynamicScoping,
+        ),
     ];
-    for (label, binding) in variants {
-        let variant_id = named_variant_id(dag, "ScopeModel", label)?;
+    for (variant_id, binding) in scope_variants {
+        let variant_id = variant_id.ok_or(EmitPythonError::MissingMeta("ScopeModel variant"))?;
         if constructor == variant_id {
             return Ok(binding);
         }
@@ -1873,26 +2013,6 @@ fn require_scope_model(
         declaration,
         detail: "TargetExecutionModel.scope must be LexicalScoping/DynamicScoping",
     })
-}
-
-fn named_variant_id(
-    dag: &Dag,
-    parent_name: &str,
-    variant_label: &str,
-) -> Result<DeclarationId, EmitPythonError> {
-    let parent = dag
-        .declaration_by_name(parent_name)
-        .ok_or(EmitPythonError::MissingMeta("variant parent"))?;
-    let TypeConnective::Disj { variants } = &parent.connective else {
-        return Err(EmitPythonError::Unsupported(format!(
-            "{parent_name} is not a disjunction"
-        )));
-    };
-    variants
-        .iter()
-        .find(|variant| variant.label == variant_label)
-        .map(|variant| variant.ty)
-        .ok_or(EmitPythonError::MissingMeta("variant"))
 }
 
 fn render_named_template(template: &str, bindings: &[(&str, &str)]) -> String {

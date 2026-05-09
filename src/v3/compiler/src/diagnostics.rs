@@ -66,6 +66,19 @@ use crate::types::TypeShape;
 // adopts the shared std diagnostic record directly.
 include!("diagnostics_generated.rs");
 
+/// Stable `ResolveError.name` for a negative `PositiveIntervalWidth.UnitCount.units` payload when
+/// lowering bypasses the normal `Nat` literal gate (e.g. tests calling `enforce_non_negative_unit_count_payload` directly).
+///
+/// Wording is centralized for tests that assert on [`Diagnostic::ResolveError`] directly (see repo
+/// `TESTING.md`, behavior-driven). Primary authoring rejects `-1` via [`Diagnostic::MagnitudeOutOfRange`]
+/// against `Nat`'s decimal range facts.
+#[doc(hidden)]
+pub fn positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
+    units: i64,
+) -> String {
+    format!("PositiveIntervalWidth.UnitCount requires nonnegative `units` literal; got {units}")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CorrectionApplyError {
     FileMismatch {
@@ -207,7 +220,60 @@ pub enum Diagnostic {
     },
 }
 
+/// Layer-1 compiler diagnostic kind labels in **declaration order** of [`Diagnostic`].
+///
+/// This is the **only** source of label strings for [`Diagnostic::layer1_kind_label`], which
+/// indexes this slice using an exhaustive per-variant index match (no wildcard). Crate tests assert
+/// the declaration-order fixture matches those indices; integration tests ratchet
+/// `CompilerDiagnosticKind` / `std.verification.DiagnosticKind` in the bootstrap DAG against this
+/// slice. When adding a [`Diagnostic`] variant, extend this list, add an index arm next to
+/// `layer1_kind_label`, and update the `.dag` closed sums — lens-instance kinds stay on the
+/// Layer-2 path (Q6.5), not here.
+pub const LAYER1_DIAGNOSTIC_KIND_LABELS: &[&str] = &[
+    "TokenizerError",
+    "ParseError",
+    "TypeMismatch",
+    "ArityMismatch",
+    "ResolveError",
+    "UnitMismatch",
+    "BranchConditionNotBool",
+    "MagnitudeOutOfRange",
+    "MalformedIntegerRangeFact",
+    "NominalOpacityViolation",
+];
+
 impl Diagnostic {
+    /// Zero-based declaration index for Layer-1 kind strings (same order as [`Diagnostic`] and
+    /// [`LAYER1_DIAGNOSTIC_KIND_LABELS`]).
+    ///
+    /// This match is **exhaustive with no wildcard**: adding a [`Diagnostic`] variant is a compile
+    /// error until a new arm is authored here **and** [`LAYER1_DIAGNOSTIC_KIND_LABELS`] is extended
+    /// by one entry. [`Diagnostic::layer1_kind_label`] reads only from that slice, so the label
+    /// strings have a single authority.
+    fn layer1_declaration_index(&self) -> usize {
+        match self {
+            Diagnostic::TokenizerError { .. } => 0,
+            Diagnostic::ParseError { .. } => 1,
+            Diagnostic::TypeMismatch { .. } => 2,
+            Diagnostic::ArityMismatch { .. } => 3,
+            Diagnostic::ResolveError { .. } => 4,
+            Diagnostic::UnitMismatch { .. } => 5,
+            Diagnostic::BranchConditionNotBool { .. } => 6,
+            Diagnostic::MagnitudeOutOfRange { .. } => 7,
+            Diagnostic::MalformedIntegerRangeFact { .. } => 8,
+            Diagnostic::NominalOpacityViolation { .. } => 9,
+        }
+    }
+
+    /// Stable Layer-1 kind name for substrate mirrors and test predicates (Q6.5).
+    ///
+    /// Labels come only from [`LAYER1_DIAGNOSTIC_KIND_LABELS`]; an exhaustive per-variant index
+    /// match selects the row so new enum variants cannot compile without extending the const slice
+    /// and substrate closed sums.
+    pub fn layer1_kind_label(&self) -> &'static str {
+        LAYER1_DIAGNOSTIC_KIND_LABELS[self.layer1_declaration_index()]
+    }
+
     pub fn span(&self) -> &SourceSpan {
         match self {
             Diagnostic::TokenizerError { span, .. }
@@ -654,9 +720,110 @@ pub(crate) fn witness_correction_for_decl(
     })
 }
 
+/// Opaque, validated witness to a path in the substrate
+/// `bootstrap_authority` set declared by
+/// `src/v3/std/bootstrap_authority.dag`. Held internally as a
+/// `&'static str` because the only minters are the bootstrap loader
+/// (`bootstrap_regen_fresh::parse_fixture`) and bootstrap kernel-patch
+/// helpers (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`),
+/// both of which iterate the `&'static`-keyed authority arrays
+/// produced by `build.rs` (`STAGED_FILES`/`V3_SPECS`/`COMPILER_FILES`/
+/// `EXTDEPS_FILES`) — derivations of the same substrate
+/// `bootstrap_authority` set.
+///
+/// The constructor is deliberately `pub(crate)`. Consumers receive
+/// minted keys through [`DiagnosticAttribution::BootstrapAuthority`]
+/// and dispatch on witness identity (equality / hash). They MUST NOT
+/// rebuild a `BootstrapAuthorityKey` from a `SourceSpan.file` string
+/// to recover attribution — that would defeat the witness contract.
+/// `path()` is exposed for diagnostic display only.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BootstrapAuthorityKey(&'static str);
+
+impl BootstrapAuthorityKey {
+    /// Mint a key from a `&'static str` known to be a row in the
+    /// substrate `bootstrap_authority` set. Bootstrap-only constructor
+    /// — see type-level doc for the witness contract.
+    pub(crate) fn new(path: &'static str) -> Self {
+        Self(path)
+    }
+
+    /// Typed witness for the kernel-`Bool` `inhabits` patch authority
+    /// (`dsl/std/types.dag` row of the substrate `bootstrap_authority`
+    /// set, classified `StdAuthority`). Encapsulates the path-string so
+    /// `bootstrap.rs` consumers do not name `dsl/std/types.dag` directly
+    /// — audit-row #2 retirement (bootstrap.rs slice 1 of 2). Reviewers
+    /// must treat new `for_*` accessors as additions to the witness
+    /// surface; each one represents a hand-Rust authority site.
+    pub(crate) fn for_kernel_bool() -> Self {
+        Self::new("dsl/std/types.dag")
+    }
+
+    /// Typed witness for the pipeline-authority row
+    /// (`src/v3/compiler/pipeline.dag` of the substrate
+    /// `bootstrap_authority` set, classified `CompilerAuthority`).
+    /// Encapsulates the path-string so `bootstrap.rs` consumers do not
+    /// name `src/v3/compiler/pipeline.dag` directly — audit-row #6
+    /// retirement (bootstrap.rs slice 1 of 2).
+    pub(crate) fn for_pipeline_authority() -> Self {
+        Self::new("src/v3/compiler/pipeline.dag")
+    }
+
+    /// Canonical bootstrap-authority path. **Display only.** Consumers
+    /// dispatching on attribution must use witness equality, not this
+    /// string, to decide bootstrap membership; a string compare against
+    /// `SourceSpan.file` is precisely the path-string bridge this type
+    /// dissolves.
+    ///
+    /// **Egress-only contract.** This accessor is intentionally a
+    /// one-way door: a consumer may read the path for diagnostic
+    /// rendering, but the only way *back* to a `BootstrapAuthorityKey`
+    /// witness is the `pub(crate)` [`Self::new`] constructor that the
+    /// bootstrap loader owns. Round-tripping `path()` through some
+    /// other public constructor is a contract-violation that the type
+    /// system cannot block on its own; reviewers should treat any new
+    /// `pub fn from_path` / `From<&str>` impl on this type as the same
+    /// path-string bridge re-introduced and reject it.
+    pub fn path(&self) -> &'static str {
+        self.0
+    }
+}
+
+/// Where a diagnostic originated in the bootstrap-vs-user dimension.
+///
+/// `Unattributed` is the default for diagnostics raised against
+/// user-compile sources or against not-yet-classified internal
+/// failures. `BootstrapAuthority` carries an opaque witness that the
+/// diagnostic was attached while loading or patching one of the
+/// substrate `bootstrap_authority` rows. Verification consumers (e.g.
+/// the row-82 `diagnostics_empty_after_bootstrap` ratchet) dispatch on
+/// this discriminant rather than scanning `Diagnostic.span().file`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagnosticAttribution {
+    Unattributed,
+    BootstrapAuthority(BootstrapAuthorityKey),
+}
+
+impl DiagnosticAttribution {
+    /// `true` iff this diagnostic was attached against a known
+    /// bootstrap-authority row. Verification surfaces should prefer
+    /// this over `span.file == "src/v3/std/..."` predicates.
+    pub fn is_bootstrap(&self) -> bool {
+        matches!(self, Self::BootstrapAuthority(_))
+    }
+
+    /// Borrow the bootstrap-authority witness, when present.
+    pub fn as_bootstrap_authority(&self) -> Option<&BootstrapAuthorityKey> {
+        match self {
+            Self::BootstrapAuthority(key) => Some(key),
+            Self::Unattributed => None,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct DiagnosticTable {
-    entries: HashMap<PortId, Diagnostic>,
+    entries: HashMap<PortId, (Diagnostic, DiagnosticAttribution)>,
 }
 
 impl DiagnosticTable {
@@ -675,7 +842,15 @@ impl DiagnosticTable {
     }
 
     pub fn get(&self, port: PortId) -> Option<&Diagnostic> {
-        self.entries.get(&port)
+        self.entries.get(&port).map(|(d, _)| d)
+    }
+
+    /// Borrow the structural attribution recorded alongside a
+    /// diagnostic. `Some(Unattributed)` for ordinary user-compile
+    /// failures; `Some(BootstrapAuthority(_))` for diagnostics attached
+    /// while loading or patching a substrate bootstrap-authority row.
+    pub fn attribution(&self, port: PortId) -> Option<&DiagnosticAttribution> {
+        self.entries.get(&port).map(|(_, a)| a)
     }
 
     pub fn len(&self) -> usize {
@@ -683,23 +858,130 @@ impl DiagnosticTable {
     }
 
     /// Iterate `(port, diagnostic)` pairs. Used by tests and callers
-    /// that need to scan all diagnostics for a specific kind.
+    /// that need to scan all diagnostics for a specific kind. For
+    /// attribution-aware iteration use [`Self::iter_attributed`].
     pub fn iter(&self) -> impl Iterator<Item = (PortId, &Diagnostic)> {
-        self.entries.iter().map(|(p, d)| (*p, d))
+        self.entries.iter().map(|(p, (d, _))| (*p, d))
+    }
+
+    /// Iterate `(port, diagnostic, attribution)` triples. Verification
+    /// consumers that need to count or filter by bootstrap attribution
+    /// without touching `SourceSpan.file` use this surface.
+    pub fn iter_attributed(
+        &self,
+    ) -> impl Iterator<Item = (PortId, &Diagnostic, &DiagnosticAttribution)> {
+        self.entries.iter().map(|(p, (d, a))| (*p, d, a))
     }
 
     /// Insert a diagnostic entry for a port. pub(crate) because the
-    /// only callers are Dag::mark_unresolved (which atomically also
+    /// only callers are Dag::mark_unresolved* (which atomically also
     /// clears the port's value_type) and should never be called
     /// independently from outside the crate.
-    pub(crate) fn insert(&mut self, port: PortId, diagnostic: Diagnostic) {
-        self.entries.insert(port, diagnostic);
+    pub(crate) fn insert(
+        &mut self,
+        port: PortId,
+        diagnostic: Diagnostic,
+        attribution: DiagnosticAttribution,
+    ) {
+        self.entries.insert(port, (diagnostic, attribution));
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TypeShape;
+
+    fn layer1_diagnostic_examples_in_declaration_order() -> Vec<Diagnostic> {
+        let span = SourceSpan::new("layer1_kind_label_ratchets.v3", 0, 0);
+        let fixes = Vec::new();
+        let ty = TypeShape::new(DeclarationId::test_raw(0));
+        vec![
+            Diagnostic::TokenizerError {
+                message: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::ParseError {
+                message: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::TypeMismatch {
+                expected: ty,
+                actual: ty,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::ArityMismatch {
+                function: String::new(),
+                expected: 0,
+                actual: 0,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::ResolveError {
+                name: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::UnitMismatch {
+                operator: String::new(),
+                parameter: String::new(),
+                expected: ty,
+                actual: ty,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::BranchConditionNotBool {
+                port: PortId::test_raw(0),
+                actual_type: None,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::MagnitudeOutOfRange {
+                literal: String::new(),
+                target: String::new(),
+                range_min_inclusive: String::new(),
+                range_max_inclusive: String::new(),
+                expected: ty,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::MalformedIntegerRangeFact {
+                message: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::NominalOpacityViolation {
+                declaration: DeclarationId::test_raw(0),
+                accessor: None,
+                span,
+                fixes,
+            },
+        ]
+    }
+
+    #[test]
+    fn layer1_ordered_labels_match_layer1_kind_label() {
+        let examples = layer1_diagnostic_examples_in_declaration_order();
+        assert_eq!(
+            examples.len(),
+            LAYER1_DIAGNOSTIC_KIND_LABELS.len(),
+            "declaration-order fixture must list every Diagnostic variant exactly once"
+        );
+        let mut seen = std::collections::HashSet::new();
+        for (i, diag) in examples.iter().enumerate() {
+            let idx = diag.layer1_declaration_index();
+            assert_eq!(
+                idx, i,
+                "fixture must stay in declaration order and match layer1_declaration_index()"
+            );
+            let label = diag.layer1_kind_label();
+            assert_eq!(label, LAYER1_DIAGNOSTIC_KIND_LABELS[i]);
+            assert!(seen.insert(label), "duplicate layer1 label: {label}");
+        }
+    }
 
     #[test]
     fn apply_correction_replaces_the_requested_span() {
@@ -1189,5 +1471,78 @@ mod tests {
         )
         .expect("render");
         assert!(rendered.contains("\"\n    config[\n    \\\"path\\\\\\\\name\\\"\n    ]\""));
+    }
+
+    #[test]
+    fn diagnostic_attribution_default_is_unattributed_and_distinguishes_bootstrap() {
+        let key_a = BootstrapAuthorityKey::new("src/v3/std/induction.dag");
+        let key_b = BootstrapAuthorityKey::new("dsl/std/types.dag");
+
+        let unattributed = DiagnosticAttribution::Unattributed;
+        let bootstrap_a = DiagnosticAttribution::BootstrapAuthority(key_a.clone());
+        let bootstrap_a_again = DiagnosticAttribution::BootstrapAuthority(key_a.clone());
+        let bootstrap_b = DiagnosticAttribution::BootstrapAuthority(key_b.clone());
+
+        assert!(!unattributed.is_bootstrap());
+        assert_eq!(unattributed.as_bootstrap_authority(), None);
+
+        assert!(bootstrap_a.is_bootstrap());
+        assert_eq!(bootstrap_a.as_bootstrap_authority(), Some(&key_a));
+
+        // Witness identity (==) is the consumer dispatch path — no
+        // `span.file` string compare.
+        assert_eq!(bootstrap_a, bootstrap_a_again);
+        assert_ne!(bootstrap_a, bootstrap_b);
+        assert_ne!(bootstrap_a, unattributed);
+    }
+
+    #[test]
+    fn diagnostic_table_round_trips_bootstrap_attribution_per_port() {
+        // Drive through the public dag attach surface so we exercise
+        // the same biconditional (`Unresolved port iff diagnostic`) as
+        // production. `attach_diagnostic` is `pub(crate)`, so this
+        // test stays in-crate.
+        let mut dag = Dag::empty();
+        let key = BootstrapAuthorityKey::new("src/v3/std/python_method_template_contracts.dag");
+        let span = SourceSpan::new("src/v3/std/python_method_template_contracts.dag", 0, 0);
+
+        dag.attach_diagnostic(Diagnostic::ResolveError {
+            name: "user".to_string(),
+            span: span.clone(),
+            fixes: Vec::new(),
+        });
+        dag.attach_bootstrap_diagnostic(
+            key.clone(),
+            Diagnostic::ResolveError {
+                name: "bootstrap".to_string(),
+                span,
+                fixes: Vec::new(),
+            },
+        );
+
+        let mut unattr_seen = 0usize;
+        let mut bootstrap_seen = 0usize;
+        for (_port, diag, attribution) in dag.diagnostics().iter_attributed() {
+            let Diagnostic::ResolveError { name, .. } = diag else {
+                panic!("unexpected diagnostic kind: {diag:?}");
+            };
+            match (name.as_str(), attribution) {
+                ("user", DiagnosticAttribution::Unattributed) => unattr_seen += 1,
+                ("bootstrap", DiagnosticAttribution::BootstrapAuthority(k)) => {
+                    assert_eq!(k, &key);
+                    bootstrap_seen += 1;
+                }
+                other => panic!("unexpected (name, attribution) pair: {other:?}"),
+            }
+        }
+        assert_eq!(unattr_seen, 1);
+        assert_eq!(bootstrap_seen, 1);
+
+        let bootstrap_count = dag
+            .diagnostics()
+            .iter_attributed()
+            .filter(|(_, _, a)| a.is_bootstrap())
+            .count();
+        assert_eq!(bootstrap_count, 1);
     }
 }

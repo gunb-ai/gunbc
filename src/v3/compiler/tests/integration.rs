@@ -43,14 +43,24 @@ mod anthropic_messages_callable_test;
 mod anthropic_operations_test;
 #[path = "integration/anthropic_schema_lockstep_test.rs"]
 mod anthropic_schema_lockstep_test;
+#[path = "integration/bridge_ledger_carrier_test.rs"]
+mod bridge_ledger_carrier_test;
 #[path = "integration/bridge_lower_helpers_patch_zero_residual_test.rs"]
 mod bridge_lower_helpers_patch_zero_residual_test;
 #[path = "integration/canonical_lens_bridge_ratchet_test.rs"]
 mod canonical_lens_bridge_ratchet_test;
 #[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
 mod cementing_lens_registry_dispatch_test;
+#[path = "integration/cementing/complexity_lens_behavioral_completion.rs"]
+mod complexity_lens_behavioral_completion;
+#[path = "integration/cross_target_coverage_carrier_test.rs"]
+mod cross_target_coverage_carrier_test;
+#[path = "integration/e6_g1a_option3_static_lens_test.rs"]
+mod e6_g1a_option3_static_lens_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
 mod e_i_lane_induction_preflight_test;
+#[path = "integration/emission_provenance_lens_test.rs"]
+mod emission_provenance_lens_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
 mod extdeps_rust_primitives_loader_test;
 #[path = "integration/four_fixture_regression_test.rs"]
@@ -73,6 +83,8 @@ mod lane2_stage_2d_symbolic_cost_test;
 mod lane2_stage_2e_parallelism_test;
 #[path = "integration/lane3_stage_3b_db1_test.rs"]
 mod lane3_stage_3b_db1_test;
+#[path = "integration/lens_cost_target_realization_test.rs"]
+mod lens_cost_target_realization_test;
 #[path = "integration/lens_register_correspondence_test.rs"]
 mod lens_register_correspondence_test;
 #[path = "integration/lens_substrate_carrier_test.rs"]
@@ -91,6 +103,8 @@ mod m1_3_lens_unused_parameters_test;
 mod m1_4_emit_python_test;
 #[path = "boundary/m1_5_emit_omni_demo_test.rs"]
 mod m1_5_emit_omni_demo_test;
+#[path = "integration/m1_5_omni_shape_b_openapi_test.rs"]
+mod m1_5_omni_shape_b_openapi_test;
 #[path = "integration/m1_5_testgen_test.rs"]
 mod m1_5_testgen_test;
 #[path = "integration/m1_5_user_authored_lens_gate_test.rs"]
@@ -129,10 +143,16 @@ mod m2_substrate_inhabitance_test;
 mod method_registry_test;
 #[path = "integration/method_template_contract_test.rs"]
 mod method_template_contract_test;
+#[path = "integration/method_template_projection_emit_shim_coherence_test.rs"]
+mod method_template_projection_emit_shim_coherence_test;
 #[path = "integration/p0_std_render_repeat_string_test.rs"]
 mod p0_std_render_repeat_string_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]
 mod pb1_bootstrap_full_snapshot_test;
+#[path = "integration/pb_method_template_projection_dag_emit_test.rs"]
+mod pb_method_template_projection_dag_emit_test;
+#[path = "integration/pb_method_template_projection_test.rs"]
+mod pb_method_template_projection_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
 #[path = "integration/prereq_x_call_on_field_access_ratchet_test.rs"]
@@ -147,6 +167,14 @@ mod r1c_e_emit_gates_dag_test;
 mod r1c_e_emit_gates_omni_dag_test;
 #[path = "integration/r2_b5_loop_construction_closure_test.rs"]
 mod r2_b5_loop_construction_closure_test;
+#[path = "integration/r3_free_consequences_first_batch_test.rs"]
+mod r3_free_consequences_first_batch_test;
+#[path = "integration/r3_free_consequences_second_batch_test.rs"]
+mod r3_free_consequences_second_batch_test;
+#[path = "integration/r3_pb_runtime_evaluator_corpus_seed_test.rs"]
+mod r3_pb_runtime_evaluator_corpus_seed_test;
+#[path = "integration/r3_verification_l4_l7_l5_skeleton_test.rs"]
+mod r3_verification_l4_l7_l5_skeleton_test;
 #[path = "integration/services_carrier_shape_test.rs"]
 mod services_carrier_shape_test;
 #[path = "integration/sg0_census_test.rs"]
@@ -177,6 +205,10 @@ mod t_pb_b_1_dag_runner_test;
 mod t_pb_b_brief_d_fixture_smoke_test;
 #[path = "integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs"]
 mod tc1_substrate_lens_eta_equivalence_deferred_test;
+#[path = "integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs"]
+mod tc1_substrate_lens_eta_equivalence_strict_fire_test;
+#[path = "integration/tc3_strong_normalization_deferred_test.rs"]
+mod tc3_strong_normalization_deferred_test;
 #[path = "integration/test_runner_test.rs"]
 mod test_runner_test;
 #[path = "integration/thesis_parallelism_test.rs"]
@@ -191,13 +223,17 @@ mod t_demo_fixture_test {
 
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::OnceLock;
 
+    use crate::common::cached_compile_to_dag;
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::Dag;
     use v3_compiler::test_runner::{ClaimResult, TestRunner};
     use v3_compiler::CompileError;
 
     const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
+
+    static T_DEMO_FIXTURE_DAG: OnceLock<Dag> = OnceLock::new();
 
     /// Byte-sync with `t_demo_structural_cost_obligation_gate.source` in `t_demo_fixtures.dag`.
     const T_DEMO_STRUCTURAL_COST_OBLIGATION_CLAIM_SOURCE: &str = "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))\nlet complexity_demo_out: Int = pair_score(cons(1, singleton(2)))\n";
@@ -210,13 +246,20 @@ mod t_demo_fixture_test {
     }
 
     fn compile_fixture(source: &str) -> Dag {
-        compile_to_dag(source, FIXTURE).expect("T-Demo fixture skeleton compiles")
+        cached_compile_to_dag(source, FIXTURE)
     }
 
+    fn cached_t_demo_fixture_dag() -> &'static Dag {
+        T_DEMO_FIXTURE_DAG.get_or_init(|| compile_fixture(&fixture_source()))
+    }
+
+    /// Smoke: the checked-in T-Demo `.dag` fixture lowers with empty module diagnostics. Uses
+    /// `cached_t_demo_fixture_dag` so the compile is amortized with sibling tests (TESTING.md
+    /// `OnceLock` carve-out); the first caller pays `OnceLock::get_or_init`; libtest order is not
+    /// part of the contract.
     #[test]
     fn t_demo_fixture_skeleton_compiles() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
+        let dag = cached_t_demo_fixture_dag();
 
         assert!(
             dag.diagnostics().is_empty(),
@@ -227,14 +270,13 @@ mod t_demo_fixture_test {
 
     #[test]
     fn t_demo_canonical_suites_are_runner_visible() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
+        let dag = cached_t_demo_fixture_dag();
 
         for suite_name in [
             "fixture_compiler_nerd_canonical",
             "fixture_integration_canonical",
         ] {
-            let results = TestRunner::new(&dag).run_suite(suite_name);
+            let results = TestRunner::new(dag).run_suite(suite_name);
             assert!(
                 !results.is_empty(),
                 "T-Demo suite `{suite_name}` should contain Day-1 Compiles claims"
@@ -269,9 +311,8 @@ mod t_demo_fixture_test {
 
     #[test]
     fn t_demo_impossible_bug_suite_r1_passes() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
-        let results = TestRunner::new(&dag).run_suite("impossible_bug_class_suite_r1");
+        let dag = cached_t_demo_fixture_dag();
+        let results = TestRunner::new(dag).run_suite("impossible_bug_class_suite_r1");
         assert_eq!(results.len(), 2);
         assert!(
             results
@@ -287,9 +328,8 @@ mod t_demo_fixture_test {
     /// surface is user-extensible (THESIS §"User-defined dimensions").
     #[test]
     fn t_demo_user_authored_lens_rejects_violating_program_passes() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
-        let results = TestRunner::new(&dag)
+        let dag = cached_t_demo_fixture_dag();
+        let results = TestRunner::new(dag)
             .run_suite("demo_user_authored_lens_rejects_violating_program_suite");
         assert_eq!(results.len(), 1);
         assert!(
@@ -314,9 +354,8 @@ mod t_demo_fixture_test {
 
     #[test]
     fn t_demo_structural_cost_obligation_suite_observes_cost_bound_fail() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
-        let results = TestRunner::new(&dag).run_suite("t_demo_structural_cost_obligation_suite");
+        let dag = cached_t_demo_fixture_dag();
+        let results = TestRunner::new(dag).run_suite("t_demo_structural_cost_obligation_suite");
         assert_eq!(results.len(), 1);
         let ClaimResult::Fail(msg) = &results[0].result else {
             panic!(
@@ -515,6 +554,268 @@ mod lane2_stage_2f_dimension_test {
     }
 }
 
+/// PR-E E7 symbolic-cost-only — public-API integration coverage.
+///
+/// `analyze_complexity` is the named E7 entrypoint authorized by #1471
+/// and landed in #1484. These tests pin that the **public crate API**
+/// (`v3_compiler::analyze_complexity`) is reachable from outside the
+/// `dimension` module, delegates to the existing symbolic-cost
+/// analyzer, and preserves the typed `DimensionReport` /
+/// `Diagnostic` partition without parsing `Witness::Violates.reason`.
+mod e7_analyze_complexity_integration {
+    use v3_compiler::compile_to_dag;
+    use v3_compiler::dag::Behavior;
+    use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+    use v3_compiler::{analyze_complexity, analyze_symbolic_cost_dimension, DimensionReport};
+
+    fn find_bind_root(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
+        dag.nodes()
+            .iter()
+            .find(|behavior| {
+                behavior
+                    .as_bind()
+                    .map(|bind| bind.name == name)
+                    .unwrap_or(false)
+            })
+            .map(|behavior| behavior.id())
+            .unwrap_or_else(|| panic!("bind `{name}` not found"))
+    }
+
+    fn find_bind_port(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::PortId {
+        dag.nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .find(|bind| bind.name == name)
+            .unwrap_or_else(|| panic!("bind `{name}` not found"))
+            .value
+    }
+
+    /// E7 §test 1 (integration form): the public `analyze_complexity`
+    /// API delegates to the live `analyze_symbolic_cost_dimension` —
+    /// pinned by structural equality of the resulting `DimensionOk`
+    /// fields. Single-authority via the public crate surface.
+    #[test]
+    fn analyze_complexity_public_api_delegates_to_symbolic_cost_dimension() {
+        let dag = compile_to_dag("let y = 3 + 4", "e7_int_match.v3").expect("compiles");
+        let root = find_bind_root(&dag, "y");
+
+        let via_complexity = analyze_complexity(&dag, root);
+        let via_dimension = analyze_symbolic_cost_dimension(&dag, root);
+
+        match (&via_complexity, &via_dimension) {
+            (
+                DimensionReport::DimensionOk {
+                    dimension_name: cn,
+                    composed: cc,
+                    witnesses: cw,
+                },
+                DimensionReport::DimensionOk {
+                    dimension_name: dn,
+                    composed: dc,
+                    witnesses: dw,
+                },
+            ) => {
+                assert_eq!(cn, dn);
+                assert_eq!(cc, dc);
+                assert_eq!(cw.len(), dw.len());
+                // Strengthen length-equality to per-witness content
+                // equality on the typed Inhabits arm (the only arm
+                // reachable on a well-typed program through the
+                // public surface). SymbolicCost derives PartialEq, so
+                // structural equality on the carrier is honest;
+                // Violates would need Behavior PartialEq which it
+                // does not derive — fail-arm equality stays in the
+                // in-module unit tests where ghost-port DAGs are
+                // constructible.
+                for (cw_i, dw_i) in cw.iter().zip(dw.iter()) {
+                    match (cw_i, dw_i) {
+                        (
+                            v3_compiler::Witness::Inhabits(cc),
+                            v3_compiler::Witness::Inhabits(dc),
+                        ) => assert_eq!(cc, dc),
+                        (
+                            v3_compiler::Witness::Violates { .. },
+                            v3_compiler::Witness::Violates { .. },
+                        ) => {
+                            panic!(
+                                "well-typed program produced Violates witnesses on both arms; \
+                                 the symbolic-cost analyzer should not emit Violates here, \
+                                 so the test must be revisited (likely a regression)."
+                            );
+                        }
+                        other => panic!(
+                            "wrapper and direct analyzer produced different witness arms: {other:?}"
+                        ),
+                    }
+                }
+            }
+            other => panic!(
+                "expected both DimensionOk with matching content via the public API, got {other:?}",
+            ),
+        }
+    }
+
+    /// E7 §test 1 (root-arg observable): a two-bind program makes the
+    /// `workflow_root` argument structurally observable. The wrapper
+    /// must agree with `analyze_symbolic_cost_dimension` on the
+    /// non-default root specifically — a wrapper that ignored the
+    /// supplied root and always picked "the only bind" or "the first
+    /// bind" would diverge here on **witness-spine size**, since the
+    /// reachable-behaviors filter for the second bind covers strictly
+    /// more nodes than the first.
+    #[test]
+    fn analyze_complexity_public_api_honors_supplied_workflow_root() {
+        let dag = compile_to_dag("let a = 1 + 2\nlet b = a + 3 + 4", "e7_int_two_binds.v3")
+            .expect("compiles");
+
+        let root_a = find_bind_root(&dag, "a");
+        let root_b = find_bind_root(&dag, "b");
+        assert_ne!(root_a, root_b, "two-bind fixture must distinguish roots");
+
+        // For each root the public wrapper agrees with the underlying
+        // analyzer on the same root.
+        for selected_root in [root_a, root_b] {
+            let via_complexity = analyze_complexity(&dag, selected_root);
+            let via_dimension = analyze_symbolic_cost_dimension(&dag, selected_root);
+
+            match (&via_complexity, &via_dimension) {
+                (
+                    DimensionReport::DimensionOk {
+                        composed: cc,
+                        witnesses: cw,
+                        ..
+                    },
+                    DimensionReport::DimensionOk {
+                        composed: dc,
+                        witnesses: dw,
+                        ..
+                    },
+                ) => {
+                    assert_eq!(cc, dc, "wrapper must honor selected root {selected_root:?}");
+                    assert_eq!(
+                        cw.len(),
+                        dw.len(),
+                        "wrapper must produce the same witness-spine count for root {selected_root:?}",
+                    );
+                    // Strengthen length-equality to per-witness
+                    // content equality on the typed `Inhabits` arm.
+                    // SymbolicCost has PartialEq; Behavior on the
+                    // Violates arm does not, so fail-arm content
+                    // equality stays in the in-module unit tests.
+                    for (cw_i, dw_i) in cw.iter().zip(dw.iter()) {
+                        match (cw_i, dw_i) {
+                            (
+                                v3_compiler::Witness::Inhabits(cc),
+                                v3_compiler::Witness::Inhabits(dc),
+                            ) => assert_eq!(
+                                cc, dc,
+                                "wrapper must produce identical Inhabits content for root {selected_root:?}",
+                            ),
+                            (
+                                v3_compiler::Witness::Violates { .. },
+                                v3_compiler::Witness::Violates { .. },
+                            ) => panic!(
+                                "well-typed two-bind fixture should not emit Violates witnesses; \
+                                 likely regression for root {selected_root:?}",
+                            ),
+                            other => panic!(
+                                "wrapper and direct analyzer produced different witness arms for \
+                                 root {selected_root:?}: {other:?}",
+                            ),
+                        }
+                    }
+                }
+                other => panic!(
+                    "expected both DimensionOk for selected root {selected_root:?}, got {other:?}",
+                ),
+            }
+        }
+
+        // The two roots reach different sets of behaviors via
+        // `workflow_reachable_behavior_ids`: `b`'s slice contains
+        // `a`'s slice plus the additional adds. A wrapper that
+        // ignored the supplied root would return the same witness
+        // count for both — this assertion catches that regression.
+        let witnesses_a = match analyze_complexity(&dag, root_a) {
+            DimensionReport::DimensionOk { witnesses, .. } => witnesses,
+            other => panic!("expected Ok at root_a, got {other:?}"),
+        };
+        let witnesses_b = match analyze_complexity(&dag, root_b) {
+            DimensionReport::DimensionOk { witnesses, .. } => witnesses,
+            other => panic!("expected Ok at root_b, got {other:?}"),
+        };
+        assert!(
+            witnesses_a.len() < witnesses_b.len(),
+            "root `a`'s reachable spine ({}) must be strictly smaller than root `b`'s ({}); \
+             a wrapper that ignored the supplied root would return equal counts here",
+            witnesses_a.len(),
+            witnesses_b.len(),
+        );
+    }
+
+    /// E7 §test 1 (cross-check): `analyze_complexity.composed` matches
+    /// the lens authority `symbolic_cost_of` at the workflow root.
+    /// Confirms the wrapper preserves the lens contract.
+    #[test]
+    fn analyze_complexity_composed_matches_lens_at_workflow_root() {
+        let dag = compile_to_dag("let z = 5 + 6", "e7_int_lens.v3").expect("compiles");
+        let root = find_bind_root(&dag, "z");
+
+        let SymbolicCostLookup::Hit(lens_cost) = symbolic_cost_of(&dag, &find_bind_port(&dag, "z"))
+        else {
+            panic!("lens authority must produce a Hit on a well-typed program");
+        };
+
+        let DimensionReport::DimensionOk {
+            composed,
+            dimension_name,
+            ..
+        } = analyze_complexity(&dag, root)
+        else {
+            panic!("expected DimensionOk on a well-typed program");
+        };
+        assert_eq!(composed, lens_cost);
+        assert_eq!(dimension_name, "symbolic_cost");
+    }
+
+    /// E7 §test 6 (integration form, success-path scope): the public
+    /// API preserves the typed `Witness<SymbolicCost>` envelope on
+    /// the `DimensionOk` arm — every witness is a typed enum
+    /// inhabitant the test pattern-matches without inspecting the
+    /// `reason` string. Typed-diagnostic discipline on the `Fail`
+    /// arm is pinned by the in-module `analyze_complexity_tests`
+    /// (`src/v3/compiler/src/dimension.rs`), which constructs
+    /// ghost-port DAGs via crate-private builders that the public
+    /// API surface here cannot reach (the surface compiler always
+    /// wires its outputs). This integration test confirms the public
+    /// API does not lose the typed envelope on the success path.
+    #[test]
+    fn analyze_complexity_public_api_preserves_typed_witness_envelope_on_ok() {
+        let dag = compile_to_dag("let w = 7 + 8", "e7_int_typed.v3").expect("compiles");
+        let root = find_bind_root(&dag, "w");
+
+        let DimensionReport::DimensionOk { witnesses, .. } = analyze_complexity(&dag, root) else {
+            panic!("expected DimensionOk for well-typed program");
+        };
+        // Each witness is a typed enum inhabitant; the test
+        // pattern-matches without ever inspecting the `reason` string
+        // (which is only present on the `Violates` arm anyway).
+        for witness in &witnesses {
+            // Exhaustive match on the typed Witness enum; both arms
+            // are acceptable inhabitants. `Violates.reason` is never
+            // string-parsed by this test.
+            match witness {
+                v3_compiler::Witness::Inhabits(_) => {}
+                v3_compiler::Witness::Violates { at, .. } => {
+                    // Only structural assertions on `at`; never on
+                    // `reason`.
+                    let _ = at;
+                }
+            }
+        }
+    }
+}
+
 mod parse_stage4_prep {
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -561,17 +862,21 @@ mod parse_stage4_prep {
 
     fn parse_corpus_paths() -> Vec<String> {
         let compiler_root = compiler_root();
-        // Keep the `dsl/std` subset aligned with the seven bootstrap
-        // fixtures loaded in `bootstrap.rs`; this prep harness is a
-        // snapshot of the incumbent parser over that bootstrap-facing
-        // corpus, not a claim that every `dsl/std/*.dag` file parses
-        // under v3 today.
+        // Keep the `dsl/std` subset aligned with the bootstrap fixtures
+        // loaded in `bootstrap_regen_fresh.rs::std_fixtures`; this prep
+        // harness is a snapshot of the incumbent parser over that
+        // bootstrap-facing corpus, not a claim that every
+        // `dsl/std/*.dag` file parses under v3 today.
         let mut paths = vec![
             "dsl/std/algebra.dag".to_string(),
             "dsl/std/bit.dag".to_string(),
             "dsl/std/float.dag".to_string(),
             "dsl/std/integer.dag".to_string(),
             "dsl/std/logic.dag".to_string(),
+            "dsl/std/magnitude.dag".to_string(),
+            "dsl/std/machine_constraints.dag".to_string(),
+            "dsl/std/nat.dag".to_string(),
+            "dsl/std/rational.dag".to_string(),
             "dsl/std/string_type.dag".to_string(),
             "dsl/std/types.dag".to_string(),
         ];
@@ -692,6 +997,38 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/integer.dag"),
             "dsl/std/integer.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_rational_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/rational.dag"),
+            "dsl/std/rational.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_magnitude_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/magnitude.dag"),
+            "dsl/std/magnitude.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_machine_constraints_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/machine_constraints.dag"),
+            "dsl/std/machine_constraints.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_nat_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/nat.dag"),
+            "dsl/std/nat.dag",
         );
     }
 

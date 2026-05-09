@@ -65,19 +65,7 @@ fn compiler_tokenize_dag_imports_moved_types_from_std() {
 #[test]
 fn tokenize_generated_module_matches_checked_in_snapshot() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let out_path = manifest_dir.join("src").join("tokenize_generated.rs");
-    let fresh =
-        std::process::Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()))
-            .current_dir(&manifest_dir)
-            .args(["run", "-q", "-p", "v3-compiler", "--bin", "regen_tokenize"])
-            .output()
-            .expect("spawn regen_tokenize");
-    assert!(
-        fresh.status.success(),
-        "regen_tokenize failed: {}",
-        String::from_utf8_lossy(&fresh.stderr)
-    );
-    let regen = std::fs::read_to_string(&out_path).expect("read regenerated tokenize_generated.rs");
+    let regen = v3_compiler::regen_tokenize::tokenize_generated_rust_formatted(&manifest_dir);
     assert_eq!(
         CHECKED_IN_GENERATED.trim(),
         regen.trim(),
@@ -237,6 +225,14 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
         extract_balanced_section(SHARED_SYNTAX_DAG, "data dag_operators", '[', ']'),
         "symbol",
     );
+    let v3_supported_operators: BTreeSet<_> = parse_map_string_keys(extract_balanced_section(
+        SHARED_SYNTAX_DAG,
+        "data v3_supported_dag_operators",
+        '{',
+        '}',
+    ))
+    .into_iter()
+    .collect();
     let punct_kind_decl = dag
         .declaration_by_name("PunctTokenKind")
         .expect("PunctTokenKind declaration");
@@ -252,9 +248,8 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
         .collect();
 
     let mut shared_tokenized_kinds = BTreeSet::new();
-    let mut parser_only_patterns = BTreeSet::new();
     for pattern in &shared_operators {
-        match classify_shared_operator_for_tokenizer(pattern) {
+        match classify_shared_operator_for_tokenizer(pattern, &v3_supported_operators) {
             SharedOperatorTokenizerBoundary::Tokenized { kind } => {
                 assert!(
                     punct_variant_labels.contains(kind),
@@ -265,19 +260,11 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
             SharedOperatorTokenizerBoundary::ParserOnlyDebt { reason } => {
                 assert!(
                     !reason.is_empty(),
-                    "parser-only shared operator `{pattern}` should carry a dissolution note"
+                    "parser-only shared operator `{pattern}` should document the v3 boundary"
                 );
-                parser_only_patterns.insert(pattern.clone());
             }
         }
     }
-
-    assert_eq!(
-        parser_only_patterns,
-        BTreeSet::from([String::from("%"), String::from("??")]),
-        "SG-1a banks exactly two parser-only shared operators today; changing that boundary \
-         must update the ratchet and the scaffold rationale together"
-    );
 
     let mut covered_punct_kinds = shared_tokenized_kinds;
     for decl in dag.declarations() {
@@ -332,7 +319,16 @@ enum SharedOperatorTokenizerBoundary {
     ParserOnlyDebt { reason: &'static str },
 }
 
-fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokenizerBoundary {
+fn classify_shared_operator_for_tokenizer(
+    pattern: &str,
+    v3_supported: &BTreeSet<String>,
+) -> SharedOperatorTokenizerBoundary {
+    if !v3_supported.contains(pattern) {
+        return SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "operator is declared in external dag_operators but excluded from \
+                     v3_supported_dag_operators until v3 parses it end-to-end",
+        };
+    }
     match pattern {
         "==" => SharedOperatorTokenizerBoundary::Tokenized { kind: "EqEq" },
         "!=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "NotEq" },
@@ -348,15 +344,9 @@ fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokeni
         "||" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipePipe" },
         "|>" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipeArrow" },
         "." => SharedOperatorTokenizerBoundary::Tokenized { kind: "Dot" },
-        "??" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
-            reason: "null-coalescing remains outside the v3 tokenizer punctuation subset",
-        },
-        "%" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
-            reason: "modulo remains outside the v3 tokenizer punctuation subset",
-        },
         other => panic!(
-            "shared syntax operator `{other}` must be classified as tokenizer punctuation or \
-             explicit parser-only debt"
+            "`v3_supported_dag_operators` includes `{other}`, but the SG-1 tokenizer bridge has \
+             no TokenKind mapping for it"
         ),
     }
 }

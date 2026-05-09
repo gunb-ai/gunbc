@@ -10,10 +10,11 @@
 //     reopens substrate extension.
 //
 // The two substrates reference each other by typed ID, not by name. Transform.target
-// is a DeclarationId into the Declaration table; ArrowBody::UserDefined holds a NodeId
-// back into the computation substrate. There is no name-based dispatch at the substrate
-// layer — operators like `+` resolve to the `add` field of an inhabited algebra
-// declaration during inference (via M1_DESIGN §8.9), not at parse time.
+// is a DeclarationId into the Declaration table; ArrowBody::UserDefined holds a
+// BindNodeId witness back into the computation substrate. There is no name-based
+// dispatch at the substrate layer — operators like `+` resolve to the `add` field of
+// an inhabited algebra declaration during inference (via M1_DESIGN §8.9), not at
+// parse time.
 //
 // Dissolution receipt — M0.3 (UPDATED at M1(2.5)):
 //
@@ -50,7 +51,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use crate::bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS;
-use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
+use crate::diagnostics::{
+    BootstrapAuthorityKey, Diagnostic, DiagnosticAttribution, DiagnosticTable, SourceSpan,
+};
 use crate::types::TypeShape;
 
 mod bootstrap_std_generated {
@@ -103,12 +106,50 @@ impl NodeId {
     }
 }
 
+/// Typed witness that a `NodeId` identifies a [`BindNode`].
+///
+/// `ArrowBody::UserDefined` means "the declaration body is this bind." Keeping the
+/// witness here prevents every emitter/lens/inference consumer from revalidating the
+/// same raw `NodeId -> BindNode` invariant with `as_bind().expect(...)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BindNodeId(NodeId);
+
+impl BindNodeId {
+    fn new_unchecked(id: NodeId) -> Self {
+        Self(id)
+    }
+
+    pub(crate) fn from_bind_node(dag: &Dag, id: NodeId) -> Option<Self> {
+        dag.node_opt(&id).and_then(Behavior::as_bind)?;
+        Some(Self::new_unchecked(id))
+    }
+
+    pub fn node_id(self) -> NodeId {
+        self.0
+    }
+
+    pub fn bind_opt(self, dag: &Dag) -> Option<&BindNode> {
+        dag.node_opt(&self.0)?.as_bind()
+    }
+
+    pub fn bind(self, dag: &Dag) -> &BindNode {
+        self.bind_opt(dag).expect("BindNodeId must point at a Bind")
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PortId(u32);
 
 impl PortId {
     pub fn raw(self) -> u32 {
         self.0
+    }
+}
+
+#[cfg(test)]
+impl PortId {
+    pub(crate) const fn test_raw(raw: u32) -> Self {
+        Self(raw)
     }
 }
 
@@ -125,6 +166,23 @@ impl DeclarationId {
     }
 }
 
+#[cfg(test)]
+impl DeclarationId {
+    pub(crate) const fn test_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+}
+
+#[cfg(feature = "declaration-id-raw-test-witness")]
+impl DeclarationId {
+    /// Builds an opaque id without validating substrate indexing — **dependent test witness only**
+    /// (feature **`declaration-id-raw-test-witness`**; row-count gates that never read ids).
+    #[doc(hidden)]
+    pub const fn declaration_id_raw_for_testing(raw: u32) -> Self {
+        Self(raw)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ClusterId(u32);
 
@@ -136,6 +194,103 @@ impl ClusterId {
     pub fn raw(self) -> u32 {
         self.0
     }
+}
+
+/// `std.error_primitives` declares canonical `Result<ok, err> = Ok { value: ok } | Err { value: err }`.
+/// Emitters lower it to a target-native `Result` / `struct { Ok; Err }` carrier and must
+/// not also emit a second substrate `type Result`.
+///
+/// Suppression keys off the **resolved structural fingerprint** of that declaration
+/// (name + type-parameter identities + `Ok`/`Err` payload wiring), not `span.file`
+/// suffixes — so unrelated modules named `errors.dag` cannot collide, and renaming
+/// the std file alone does not silently retarget suppression.
+///
+/// **Policy:** the fingerprint is **global**, not std-scoped: any other declaration
+/// named `Result` that matches this exact shape is also suppressed (intentional — the
+/// substrate owns one canonical `Result<ok, err>` carrier; a user-defined twin with
+/// the same fingerprint would not emit as a separate `type Result`).
+pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
+    dag: &Dag,
+    decl: &Declaration,
+) -> bool {
+    if decl.name.as_deref() != Some("Result") {
+        return false;
+    }
+    let [ok_param, err_param] = match decl.type_params.as_slice() {
+        [a, b] => [*a, *b],
+        _ => return false,
+    };
+    let ok_decl = dag.declaration(ok_param);
+    let err_decl = dag.declaration(err_param);
+    let ok_param_ok = matches!(
+        &ok_decl.connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "ok"
+    );
+    let err_param_ok = matches!(
+        &err_decl.connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "err"
+    );
+    if !ok_param_ok || !err_param_ok {
+        return false;
+    }
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        return false;
+    };
+    if variants.len() != 2 {
+        return false;
+    }
+    let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
+        return false;
+    };
+    let Some(err_field) = variants.iter().find(|v| v.label == "Err") else {
+        return false;
+    };
+    substrate_result_variant_payload_is_value_of(dag, ok_field.ty, ok_param)
+        && substrate_result_variant_payload_is_value_of(dag, err_field.ty, err_param)
+}
+
+fn substrate_result_variant_payload_is_value_of(
+    dag: &Dag,
+    payload_ty: DeclarationId,
+    type_param: DeclarationId,
+) -> bool {
+    let payload = dag.declaration(payload_ty);
+    let TypeConnective::Conj { children } = &payload.connective else {
+        return false;
+    };
+    children.len() == 1 && children[0].label == "value" && children[0].ty == type_param
+}
+
+/// `std.error_primitives` declares canonical `DivError = DivideByZero | Overflow`.
+/// Like `Result`, emit suppression keys off the resolved structural fingerprint,
+/// not the declaration source path. A declaration with this exact global shape is
+/// the substrate-owned integer-division error carrier and is materialized by the
+/// target division prelude when a program actually needs it.
+pub(crate) fn substrate_div_error_type_decl_suppressed_for_emit(
+    dag: &Dag,
+    decl: &Declaration,
+) -> bool {
+    if decl.name.as_deref() != Some("DivError") || !decl.type_params.is_empty() {
+        return false;
+    }
+    matches!(&decl.connective, TypeConnective::Disj { variants } if {
+        variants.len() == 2
+            && variants.iter().any(|variant| {
+                variant.label == "DivideByZero"
+                    && substrate_div_error_variant_payload_is_unit(dag, variant.ty)
+            })
+            && variants.iter().any(|variant| {
+                variant.label == "Overflow"
+                    && substrate_div_error_variant_payload_is_unit(dag, variant.ty)
+            })
+    })
+}
+
+fn substrate_div_error_variant_payload_is_unit(dag: &Dag, payload_ty: DeclarationId) -> bool {
+    matches!(
+        &dag.declaration(payload_ty).connective,
+        TypeConnective::Conj { children } if children.is_empty()
+    )
 }
 
 /// A type-system declaration. The unit of the type substrate.
@@ -238,125 +393,15 @@ pub struct NominalOpacity {
     pub permitted_accessors: Vec<DeclarationId>,
 }
 
-/// Value-body shape for `data foo: T = { body }` declarations. Two
-/// variants at M1(3) PR-B-unwind:
-///
-/// - **`Unparsed(SourceSpan)`** — the parser could not lower the
-///   body to a supported top-level value shape. The body's source
-///   span is preserved so sibling parser/substrate extensions (map
-///   literals and any remaining opaque forms) can reach in later. User-range declarations
-///   carrying `Unparsed` are rejected by
-///   `reject_user_unparsed_scaffolds`; bootstrap-range declarations
-///   tolerate it so std/*.dag files whose data bodies still use
-///   unsupported shapes continue to load.
-///
-/// - **`Structural { fields }`** — the body parsed as a record
-///   literal and lowering ran inhabitance checking against the
-///   declared type. Each field is a `(String, FieldValue)` pair
-///   where `FieldValue` is either a scalar literal or a typed
-///   declaration reference (the unwind shape — PR-B's initial
-///   payload was `Vec<(String, LiteralBits)>` and it forced
-///   downstream consumers like `emit_rust.rs` to dispatch on
-///   string keys, regenerating the name-bridge pattern that
-///   M1(2.7) had eliminated at the inference layer).
-///
-/// **Dissolution ledger** — mixed-lifecycle coproduct. `Unparsed`
-/// is the bounded scaffold (named dissolution trigger: M2+ parser
-/// extensions close class-5 gap #3); `Structural` is the
-/// structurally-grounded form. When the M2+ parser catches up to
-/// nested records / list literals / map literals, those non-record
-/// shapes currently landing in `Unparsed` move to structural variants
-/// (`ValueBody::List` and `ValueBody::Map` now cover top-level list
-/// and string-keyed map bodies), and `Unparsed` is removed via a
-/// reverse substrate-extension PR.
-///
-/// 4-pattern check on `Structural`:
-/// - Pattern 1 (fact placement): fails. The inline `(label,
-///   FieldValue)` list is a data-item-specific record-construction
-///   fact with no natural home on the other substrate edges.
-/// - Pattern 2 (variant-is-data): fails. `Structural`'s payload is
-///   structurally distinct from `Unparsed`'s source span.
-/// - Pattern 3 (algebraic form): fails. The two variants represent
-///   two parser-boundary states (structurally lowered vs
-///   scaffolded), not two points in a single algebra.
-/// - Pattern 4 (dimensional): fails. No shared coordinate space.
-///
-/// Verdict: `Structural` is terminal-at-current-scope for top-level
-/// record bodies, with the `FieldValue` enum carrying nested structural
-/// distinctions internally. Top-level list/map bodies use dedicated
-/// variants below because they are not records and must not be encoded
-/// as anonymous fields. Bounded by the Scaffold Boundaries invariant in
-/// `INVARIANTS.md`.
-#[derive(Debug, Clone)]
-pub enum ValueBody {
-    /// The body exists in source at the given span but is not yet
-    /// lowered to a value sub-DAG. Records, lists, and string-keyed
-    /// maps lower structurally.
-    Unparsed(SourceSpan),
-    /// The body parsed as a record literal and was inhabitance-
-    /// checked against the declared type. Each field holds a
-    /// recursively structural `FieldValue`; the label matches a
-    /// field on the type's Conj children.
-    Structural { fields: Vec<(String, FieldValue)> },
-    /// Scalar-valued data declaration: `data answer: Int = 42`.
-    /// Carries `LiteralBits` directly (Int / Bool / String) —
-    /// NOT a full `FieldValue`. This is deliberate:
-    ///
-    /// - `FieldValue::Record { .. }` at the top level is already
-    ///   representable as `ValueBody::Structural { fields }`;
-    ///   allowing `ValueBody::Scalar(FieldValue::Record(..))` would
-    ///   make illegal/overlapping states representable (two distinct
-    ///   encodings of the same top-level record body). Rejected.
-    /// - `FieldValue::Reference` and `Variant` as top-level data
-    ///   bodies are out of scope for DB-10's acceptance. Top-level
-    ///   lists use `ValueBody::List` above; do not widen `Scalar`
-    ///   to swallow non-scalar shapes.
-    ///
-    /// DB-10 (Lane 3 Stage 3a.2) — `compiler.dag` needs compile-time
-    /// scalar constants; previously the parser rejected non-
-    /// `{`-shaped RHS, so scalar `data` declarations could not exist.
-    Scalar(LiteralBits),
-    /// Top-level structural list value: `data xs: List<T> = [...]`.
-    ///
-    /// 4-pattern check for `List`:
-    /// - Pattern 1 (fact placement): fails. The ordered element sequence
-    ///   is the data declaration's value fact, not a property of the
-    ///   declaration's type edge or meta tag.
-    /// - Pattern 2 (variant-is-data): fails. `Vec<FieldValue>` is a
-    ///   distinct structural payload from source spans, record fields, and
-    ///   scalar bits.
-    /// - Pattern 3 (algebraic form): fails. List bodies are not points in
-    ///   the same algebra as records/scalars; they carry ordered
-    ///   homogeneous element facts needed by Engine/tokenizer consumers.
-    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
-    ///   `Structural` record labels or `Scalar` primitive constants.
-    ///
-    /// Verdict: terminal at the current top-level data-body layer. Elements
-    /// deliberately reuse `FieldValue`, matching nested structural list
-    /// values and preserving sum-constructor identity for list-of-sum data.
-    List(Vec<FieldValue>),
-    /// Top-level structural string-keyed map value:
-    /// `data table: Map<String, T> = { "k": v }`.
-    ///
-    /// 4-pattern check for `Map`:
-    /// - Pattern 1 (fact placement): fails. The key/value table is the
-    ///   data declaration's value fact, not a type-edge or meta-tag fact.
-    /// - Pattern 2 (variant-is-data): fails. `FieldMap` carries
-    ///   duplicate-free keyed entries, distinct from ordered lists, records,
-    ///   scalar bits, and source spans.
-    /// - Pattern 3 (algebraic form): fails. Map bodies are not points in
-    ///   the same algebra as records/scalars/lists; they carry string-keyed
-    ///   lookup facts needed by map-shaped bootstrap data.
-    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
-    ///   record labels or ordered list positions.
-    ///
-    /// Verdict: terminal at the current top-level data-body layer. Values
-    /// deliberately reuse `FieldValue`, matching nested structural map
-    /// values. `FieldMap` keeps insertion order for deterministic regen
-    /// while making duplicate keys unrepresentable. Non-string-key maps are
-    /// a separate future carrier.
-    Map(FieldMap),
-}
+// Value-body shape for `data foo: T = ...` declarations.
+//
+// Dissolution ledger: `Unparsed` is the bounded scaffold (named dissolution
+// trigger: M2+ parser extensions close class-5 gap #3); structural variants
+// carry lowered record/scalar/list/map data bodies. Keep the enum itself in the
+// generated include below so `src/v3/std/substrate.dag` remains the carrier
+// authority. Map payloads are wrapped in `FieldMap` on the Rust side to
+// preserve duplicate-key rejection.
+include!("dag_value_body_generated.rs");
 
 /// Ordered string-keyed structural map entries with duplicate keys rejected at
 /// construction. The ordered storage is deliberate: `.dag` data maps preserve
@@ -599,7 +644,9 @@ pub(crate) fn type_connective_cardinality(
     if let Some(keep) = cardinality_idempotent_target(dag, element, bound) {
         return dag.declaration(keep).connective.clone();
     }
-    TypeConnective::Cardinality(CardinalityPayload::new_unchecked(element, bound))
+    TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
+        element, bound,
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -642,7 +689,7 @@ impl AtomPayload {
 ///      writes `Pending` for `fn foo(x) -> T = body` declarations as
 ///      the initial substrate state. `lower_fn_item` is responsible
 ///      for patching every such declaration to
-///      `ArrowBody::UserDefined(bind_id)` before the Dag is frozen
+///      `ArrowBody::UserDefined(BindNodeId::from_bind_node(dag, bind_id))` before the Dag is frozen
 ///      — including on error paths (R13 fix in `lower.rs`). A
 ///      final `Arrow(Pending)` surviving into the Dag is
 ///      structurally equivalent to "body lowering missed a path,"
@@ -744,10 +791,10 @@ impl AtomPayload {
 /// `Unparsed` stays gated (R14).
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
-    /// User-defined function. NodeId is the root of a sub-DAG of L1 behavior
-    /// nodes in `Dag.nodes`. Inference walks the sub-DAG and checks the body
-    /// against the declared inputs/output.
-    UserDefined(NodeId),
+    /// User-defined function. BindNodeId is the root bind of a sub-DAG of L1
+    /// behavior nodes in `Dag.nodes`. Inference walks the sub-DAG and checks
+    /// the body against the declared inputs/output.
+    UserDefined(BindNodeId),
     /// Primitive whose realization is declared in an extdeps language spec.
     /// DeclarationId points at the realization declaration via a typed edge;
     /// inference verifies signature compatibility.
@@ -1284,6 +1331,72 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
     entries
 }
 
+/// E-P typed CallPattern query over the per-call evidence authority.
+///
+/// This is the query surface named by the cost/complexity design docs. It
+/// deliberately projects from [`per_call_descent_evidence`] instead of walking
+/// call nodes independently, so producer broadening does not create a second
+/// callable-edge authority. This first bounded broadening slice adds the
+/// locally provable `PreservedValue -> SameArgumentCall` projection for
+/// self-calls that pass their argument through unchanged. Existing
+/// `SubValueRelation -> CallPattern` projections from `std.induction` remain
+/// preserved here; multi-argument composition and lowered/lens consumers
+/// remain separate E-P gates.
+pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> {
+    let entry = per_call_descent_evidence(dag)
+        .into_iter()
+        .find(|entry| entry.call == call_site)?;
+    call_pattern_from_relations(&entry.evidence)
+}
+
+fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPattern> {
+    if let Some(pattern) = relations
+        .iter()
+        .filter(|relation| !matches!(relation, SubValueRelation::PreservedValue))
+        .find_map(sub_value_relation_to_call_pattern)
+    {
+        return Some(pattern);
+    }
+
+    if relations
+        .iter()
+        .any(|relation| matches!(relation, SubValueRelation::SubValueUnknown))
+    {
+        return None;
+    }
+
+    relations
+        .iter()
+        .find_map(sub_value_relation_to_call_pattern)
+}
+
+pub fn sub_value_relation_to_call_pattern(relation: &SubValueRelation) -> Option<CallPattern> {
+    match relation {
+        SubValueRelation::ArithmeticDescent { param, factor } => match factor {
+            ShrinkFactor::ConstantShrink { steps } => Some(CallPattern::ArithmeticSubtractCall {
+                steps: steps.clone(),
+                ring_param: param.clone(),
+            }),
+            ShrinkFactor::ProportionalShrink { divisor } => {
+                Some(CallPattern::ArithmeticDivideCall {
+                    divisor: divisor.clone(),
+                    ring_param: param.clone(),
+                })
+            }
+            ShrinkFactor::UnitShrink => Some(CallPattern::ArithmeticSubtractCall {
+                steps: PositiveDescentAmount::OneStep,
+                ring_param: param.clone(),
+            }),
+        },
+        SubValueRelation::StrictSubValue { field, .. }
+        | SubValueRelation::IteratedSubValue { field } => Some(CallPattern::ChildAccessorCall {
+            accessor: field.field_name.clone(),
+        }),
+        SubValueRelation::PreservedValue => Some(CallPattern::SameArgumentCall),
+        SubValueRelation::SubValueUnknown => None,
+    }
+}
+
 fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a BindNode> {
     // Use the lowered structural authority: function declarations point at
     // their owning body bind through `ArrowBody::UserDefined`.
@@ -1294,7 +1407,7 @@ fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a Bin
     else {
         return None;
     };
-    dag.node_opt(bind_id)?.as_bind()
+    Some((*bind_id).bind(dag))
 }
 
 fn bind_body_transform_ids(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
@@ -1454,7 +1567,320 @@ fn classify_call_argument(
         return relation;
     }
 
+    if let Some(relation) = match_payload_descent_relation(dag, param, arg) {
+        return relation;
+    }
+
+    if let Some(relation) = match_payload_field_projection_descent_relation(dag, param, arg) {
+        return relation;
+    }
+
     SubValueRelation::SubValueUnknown
+}
+
+/// Phase-1 broadening: classify recursive-call arguments that name a match-arm
+/// payload binding whose scrutinee is the caller's parameter directly. The
+/// surface shape this catches is the canonical positional cons-tail recursion:
+///
+/// ```ignore
+/// type List = Nil | Cons(List)
+/// fn length(xs: List) -> Int = match xs { Cons(tail) => length(tail), Nil => 0 }
+/// ```
+///
+/// The `tail` argument port equals the `Path.binding.payload_port` of a path
+/// whose enclosing `BranchNode.input` is the parameter port. Field-projection
+/// patterns (`Cons { tail }`) and transitive scrutinee tracing (scrutinee
+/// reached through identity-ish nodes) are deferred to later slices — same
+/// fail-closed discipline as the existing arithmetic slice (left-operand only,
+/// integer literal only) keeps producer broadening incrementally provable.
+///
+/// **Substrate-fact discipline.** `InductiveField` is consumer-facing
+/// substrate provenance (cost / complexity lenses project this through
+/// `sub_value_relation_to_call_pattern → CallPattern::ChildAccessorCall`).
+/// The producer therefore derives every field from authoritative DAG state:
+/// - `type_name` / `variant_name` from the parent-Disj lookup of the variant
+///   declaration the post-infer `resolve_branch_patterns` pass installed on
+///   the path (`crate::infer::resolve_branch_patterns` — `BranchPattern::ResolvedVariant`).
+/// - `field_name` from the variant `Conj`'s sole `_0` positional field
+///   label, **not** from the user-chosen pattern binding name. The binding
+///   name is a user-scope identifier (`Cons(tail) => length(tail)` and
+///   `Cons(t) => length(t)` are structurally identical descents); using it
+///   would publish an unstable accessor as substrate provenance.
+/// - `element_type` from the resolved name of the variant's payload type.
+///
+/// When any of those facts is unavailable — `UnresolvedVariant`, parent-Disj
+/// lookup miss, multi-field variant Conj on a positional pattern, anonymous
+/// payload type — the producer fails closed (`SubValueUnknown` upstream).
+fn match_payload_descent_relation(
+    dag: &Dag,
+    param: PortId,
+    arg: PortId,
+) -> Option<SubValueRelation> {
+    for branch in dag.nodes().iter().filter_map(Behavior::as_branch) {
+        if !scrutinee_traces_to_param(dag, branch.input, param) {
+            continue;
+        }
+        for path in &branch.paths {
+            let Some(binding) = &path.binding else {
+                continue;
+            };
+            if binding.payload_port != arg {
+                continue;
+            }
+            let facts = variant_structural_facts(dag, &path.pattern)?;
+            // Positional payload (`VariantWith`): variant Conj has exactly
+            // one `_0`-style field. Multi-field variants are
+            // `VariantFields` lowering territory (record-payload slice) and
+            // are outside this helper's positional-payload contract.
+            let [(field_name, payload_ty)] = facts.payload_fields.as_slice() else {
+                return None;
+            };
+            let element_type = named_type_name(dag, *payload_ty)?;
+            return Some(SubValueRelation::StrictSubValue {
+                field: InductiveField {
+                    type_name: facts.type_name,
+                    variant_name: facts.variant_name,
+                    field_name: field_name.clone(),
+                    shape: RecursionShape::DirectRecursion,
+                    element_type,
+                },
+                factor: ShrinkFactor::UnitShrink,
+            });
+        }
+    }
+    None
+}
+
+/// Phase-1 broadening Slice 2: classify recursive-call arguments produced by
+/// a single `FieldProject` transform whose input is the payload port of a
+/// match arm whose scrutinee is the parameter directly. This is the
+/// record-payload sibling of [`match_payload_descent_relation`]'s
+/// positional-payload case.
+///
+/// Surface shape:
+///
+/// ```ignore
+/// type EpRec = EpLeaf | EpNode { left: EpRec }
+/// fn ep_depth(t: EpRec) -> Int =
+///   match t { EpNode { left: l } => ep_depth(l), EpLeaf => 0 }
+/// ```
+///
+/// `lower.rs` lowers `EpNode { left: l }` by allocating a payload binding
+/// and synthesizing a `FieldProject { field_label: "left", .. }` transform
+/// whose input is the payload port (see `lower_field_projection_from_port`).
+/// The recursive call's argument is therefore the projection's output port,
+/// not the payload port itself — Slice 1's direct-equality check misses it.
+///
+/// Same fail-closed discipline + structural-fact derivation as Slice 1.
+/// `field_name` here is the `FieldProject.field_label` — already structural,
+/// established by the lowering, NOT a user-pattern-binding name. The label
+/// must also appear in the variant's `Conj` children (validation; if not, the
+/// projection isn't on this variant's payload). Cross-slice invariants
+/// preserved: no new `CallPattern` variant, no `TransformNode` widening,
+/// fail-closed discipline.
+fn match_payload_field_projection_descent_relation(
+    dag: &Dag,
+    param: PortId,
+    arg: PortId,
+) -> Option<SubValueRelation> {
+    let Behavior::Transform(transform) = dag.resolve_producer_opt(&arg)? else {
+        return None;
+    };
+    let TransformTarget::FieldProject { field_label, .. } = &transform.target else {
+        return None;
+    };
+    if transform.inputs.len() != 1 {
+        return None;
+    }
+    let projected_input = transform.inputs[0];
+
+    for branch in dag.nodes().iter().filter_map(Behavior::as_branch) {
+        if !scrutinee_traces_to_param(dag, branch.input, param) {
+            continue;
+        }
+        for path in &branch.paths {
+            let Some(binding) = &path.binding else {
+                continue;
+            };
+            if binding.payload_port != projected_input {
+                continue;
+            }
+            let facts = variant_structural_facts(dag, &path.pattern)?;
+            // Validate the projection's structural label appears in the
+            // resolved variant's Conj field set; otherwise this isn't a
+            // descent on the variant payload.
+            let payload_ty = facts
+                .payload_fields
+                .iter()
+                .find(|(label, _)| label == field_label)
+                .map(|(_, ty)| *ty)?;
+            let element_type = named_type_name(dag, payload_ty)?;
+            return Some(SubValueRelation::StrictSubValue {
+                field: InductiveField {
+                    type_name: facts.type_name,
+                    variant_name: facts.variant_name,
+                    field_name: field_label.clone(),
+                    shape: RecursionShape::DirectRecursion,
+                    element_type,
+                },
+                factor: ShrinkFactor::UnitShrink,
+            });
+        }
+    }
+    None
+}
+
+/// Phase-1 broadening Slice 3: bounded transitive trace from a match
+/// scrutinee back to the caller's parameter port through nested-match
+/// payload-binding chains.
+///
+/// Surface shape this enables (sibling of Slices 1 + 2; the recursive call
+/// is two structural peels away from the parameter):
+///
+/// ```ignore
+/// type EpListN = EpNilN | EpConsN(EpListN)
+/// fn ep_count2(xs: EpListN) -> Int =
+///   match xs {
+///     EpConsN(t1) => match t1 {
+///       EpConsN(t2) => ep_count2(t2),  // arg traces param via nested match
+///       EpNilN => 0
+///     },
+///     EpNilN => 0
+///   }
+/// ```
+///
+/// The inner `Branch.input` is `t1` — a payload binding from the outer
+/// match — not the parameter. Slices 1 / 2's direct
+/// `branch.input == param` check rejects this; the tracer walks one or more
+/// payload-binding levels to confirm structural descent before classifying.
+///
+/// The trace is bounded by a fixed depth (`SCRUTINEE_TRACE_DEPTH_LIMIT`)
+/// for the same reason `callable_target_template_for_provenance` bounds its
+/// instantiation peel: hitting the cap means the producer can no longer
+/// prove the structural relation, so the caller fails closed
+/// (`SubValueUnknown` upstream). `StrictSubValue` is sound at any positive
+/// depth — every level peels one constructor — so the helper does not
+/// distinguish depth in its boolean answer.
+const SCRUTINEE_TRACE_DEPTH_LIMIT: usize = 16;
+
+fn scrutinee_traces_to_param(dag: &Dag, scrutinee: PortId, param: PortId) -> bool {
+    let mut current = scrutinee;
+    for _ in 0..SCRUTINEE_TRACE_DEPTH_LIMIT {
+        if current == param {
+            return true;
+        }
+        // Walk one FieldProject indirection: record-payload variant patterns
+        // (`EpNodeN { left: a }`) bind the user-scope name to the OUTPUT
+        // port of a synthesized FieldProject whose input is the match arm's
+        // payload port (see `lower_field_projection_from_port`). When such
+        // a binding is itself an inner-match scrutinee, the tracer must
+        // peel the projection before climbing payload-binding chains.
+        if let Some(proj_input) = field_project_input_for_port(dag, current) {
+            current = proj_input;
+            continue;
+        }
+        if let Some(parent_input) = enclosing_branch_input_for_payload(dag, current) {
+            current = parent_input;
+            continue;
+        }
+        return false;
+    }
+    false
+}
+
+/// If `port` is the output of a single-input `FieldProject` transform,
+/// return the projected-from input port. Used by [`scrutinee_traces_to_param`]
+/// to walk past variant-record-pattern FieldProject indirections.
+fn field_project_input_for_port(dag: &Dag, port: PortId) -> Option<PortId> {
+    let Behavior::Transform(transform) = dag.resolve_producer_opt(&port)? else {
+        return None;
+    };
+    let TransformTarget::FieldProject { .. } = &transform.target else {
+        return None;
+    };
+    if transform.inputs.len() != 1 {
+        return None;
+    }
+    Some(transform.inputs[0])
+}
+
+/// If `port` is the payload binding port of some `Path`, return the
+/// enclosing `BranchNode.input`. Used by [`scrutinee_traces_to_param`] to
+/// climb one nested-match level. `None` indicates the chain bottoms out
+/// (port isn't a payload binding) — the tracer's fail-closed signal.
+fn enclosing_branch_input_for_payload(dag: &Dag, port: PortId) -> Option<PortId> {
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_branch)
+        .find_map(|b| {
+            b.paths.iter().find_map(|p| {
+                let binding = p.binding.as_ref()?;
+                if binding.payload_port == port {
+                    Some(b.input)
+                } else {
+                    None
+                }
+            })
+        })
+}
+
+/// Authoritative variant-structural facts derived from a resolved variant
+/// declaration. Returns `None` for `UnresolvedVariant` and for `ResolvedVariant`
+/// whose parent `Disj` cannot be located by scanning declarations — same
+/// fail-closed discipline as the rest of the per-call producer.
+struct VariantStructuralFacts {
+    type_name: String,
+    variant_name: String,
+    payload_fields: Vec<(String, DeclarationId)>,
+}
+
+fn variant_structural_facts(dag: &Dag, pattern: &BranchPattern) -> Option<VariantStructuralFacts> {
+    let variant_decl_id = match pattern {
+        BranchPattern::ResolvedVariant(id) => *id,
+        BranchPattern::UnresolvedVariant { .. } => return None,
+    };
+    let (parent_decl, variants) = dag.declarations().iter().find_map(|decl| {
+        if let TypeConnective::Disj { variants } = &decl.connective {
+            if variants.iter().any(|f| f.ty == variant_decl_id) {
+                return Some((decl, variants));
+            }
+        }
+        None
+    })?;
+    let type_name = parent_decl.name.clone()?;
+    let variant_name = variants
+        .iter()
+        .find(|f| f.ty == variant_decl_id)
+        .map(|f| f.label.clone())?;
+    let payload_fields = match &dag.declaration(variant_decl_id).connective {
+        TypeConnective::Conj { children } => children
+            .iter()
+            .map(|f| (f.label.clone(), f.ty))
+            .collect::<Vec<_>>(),
+        _ => return None,
+    };
+    Some(VariantStructuralFacts {
+        type_name,
+        variant_name,
+        payload_fields,
+    })
+}
+
+/// Walk a declaration through `Instantiation` / structural-alias edges to a
+/// named declaration. Returns `None` when the chain bottoms out without a name
+/// (anonymous template fields, unresolved atoms, depth-limit hit).
+fn named_type_name(dag: &Dag, mut current: DeclarationId) -> Option<String> {
+    for _ in 0..CALLABLE_PROVENANCE_TEMPLATE_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        if let Some(name) = &decl.name {
+            return Some(name.clone());
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            _ => return None,
+        }
+    }
+    None
 }
 
 fn arithmetic_descent_relation(
@@ -1554,12 +1980,11 @@ pub enum IterationDimension {
     ArithmeticRepeat,
 }
 
-/// 🟡 SCAFFOLD — `AlgebraProfile` coproduct (`docs/modeling-discipline.md` §4).
+/// 🟢 TERMINAL — `AlgebraProfile` coproduct (`docs/modeling-discipline.md` §4).
 ///
-/// Closed seven-variant mirror of `dsl/std/algebra.dag` `kernel_algebra_profile` while the
-/// table is still `ArrowBody::Unparsed`. **Named trigger:** evaluated std bodies / read the
-/// table from `.dag` (see [`kernel_algebra_profile`] below). **Ledger:** P2 ratchet
-/// `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`.
+/// Closed seven-variant mirror of `dsl/std/algebra.dag` `AlgebraProfile`.
+/// The profile table itself is read from the lowered `kernel_algebra_profile`
+/// `ValueBody::Map`, not from a hand-maintained Rust lookup table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlgebraProfile {
     OrderedRingProfile,
@@ -1595,27 +2020,9 @@ pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
 /// Kernel type name → iteration algebra profile (`Int`, `List`, …).
 ///
 /// Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`).
-/// `v2_compiler::std_algebra::kernel_algebra_profile` is regenerated from that
-/// block; this match is a transitional Rust mirror while bootstrap still carries
-/// the table as [`ArrowBody::Unparsed`].
-///
-/// **P2 drift ratchet:** `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`
-/// compares this map entry-for-entry to the stage0 table.
-///
-/// **Dissolution:** when `kernel_algebra_profile` lowers to evaluated `.dag` (same
-/// std-body staging trigger as the termination-lattice scaffold above), delete
-/// this mirror and read the evaluated map instead.
+/// Runtime v3 reads the lowered [`ValueBody::Map`] from the bootstrapped DAG.
 pub fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
-    match type_name {
-        "Int" => Some(AlgebraProfile::OrderedRingProfile),
-        "Float" => Some(AlgebraProfile::ApproximateFieldProfile),
-        "Bool" => Some(AlgebraProfile::BooleanAlgebraProfile),
-        "String" => Some(AlgebraProfile::FreeMonoidScalarProfile),
-        "List" => Some(AlgebraProfile::FreeMonoidCollectionProfile),
-        "Set" => Some(AlgebraProfile::BooleanAlgebraCollectionProfile),
-        "Map" => Some(AlgebraProfile::PartialFunctionProfile),
-        _ => None,
-    }
+    BOOTSTRAPPED_DAG.kernel_algebra_profile(type_name)
 }
 #[derive(Debug, Clone)]
 pub struct ValueNode {
@@ -2194,6 +2601,114 @@ pub(crate) struct EmitAnchorCache {
     /// `src/v3/spec/rust.dag` (bootstrap name resolution prefers `src/v3/`
     /// over the duplicate carrier in `dsl/std/languages.dag`).
     pub rust_functions: Option<DeclarationId>,
+    /// `MethodEmitTemplate` coproduct parent used to map a method-template
+    /// constructor id back to its variant label during target emission.
+    pub method_emit_template: Option<DeclarationId>,
+    /// `MethodTemplateContract` meta-type used by fold-method contract checks.
+    pub method_template_contract: Option<DeclarationId>,
+    /// `std.list.concat_method` method declaration.
+    pub concat_method: Option<DeclarationId>,
+    /// `std.list.length_method` method declaration.
+    pub length_method: Option<DeclarationId>,
+    /// `std.list.fold_method` method declaration.
+    pub fold_method: Option<DeclarationId>,
+    /// `std.list.is_empty_method` method declaration.
+    pub is_empty_method: Option<DeclarationId>,
+    /// `std.list.filter_method` method declaration.
+    pub filter_method: Option<DeclarationId>,
+    /// `std.list.flat_map_method` method declaration.
+    pub flat_map_method: Option<DeclarationId>,
+    /// `std.list.any_method` method declaration.
+    pub any_method: Option<DeclarationId>,
+    /// `std.list.all_method` method declaration.
+    pub all_method: Option<DeclarationId>,
+    /// `std.list.map_method` method declaration.
+    pub map_method: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct PatternStrategyVariants {
+    pub vector_list: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct FieldAccessVariants {
+    pub direct_field: Option<DeclarationId>,
+    pub accessor_method: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ParameterDispositionVariants {
+    pub borrowed: Option<DeclarationId>,
+    pub consumed: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct MemoryModelVariants {
+    pub value_only: Option<DeclarationId>,
+    pub garbage_collected: Option<DeclarationId>,
+    pub ref_counted: Option<DeclarationId>,
+    pub ownership_based: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ScopeModelVariants {
+    pub lexical_scoping: Option<DeclarationId>,
+    pub dynamic_scoping: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ReadStrategyVariants {
+    pub borrow: Option<DeclarationId>,
+    pub pass_by_value: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ConstructStrategyVariants {
+    pub copy_or_clone: Option<DeclarationId>,
+    pub pass_by_value: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct MutabilityVariants {
+    pub immutable: Option<DeclarationId>,
+    pub mutable: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct PurityVariants {
+    pub pure: Option<DeclarationId>,
+    pub effectful: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct StructureVariants {
+    pub explicit_dag: Option<DeclarationId>,
+    pub arbitrary: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct IterationVariants {
+    pub bounded: Option<DeclarationId>,
+    pub unbounded: Option<DeclarationId>,
+}
+
+/// Cached variant DeclarationIds for fixed emit-model coproducts.
+/// Populated once at bootstrap end so emitters dispatch on typed
+/// constructors instead of resolving parent/variant names at parse time.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct EmitModelVariants {
+    pub pattern_strategy: PatternStrategyVariants,
+    pub field_access: FieldAccessVariants,
+    pub parameter_disposition: ParameterDispositionVariants,
+    pub memory_model: MemoryModelVariants,
+    pub scope_model: ScopeModelVariants,
+    pub read_strategy: ReadStrategyVariants,
+    pub construct_strategy: ConstructStrategyVariants,
+    pub mutability: MutabilityVariants,
+    pub purity: PurityVariants,
+    pub structure: StructureVariants,
+    pub iteration: IterationVariants,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2392,6 +2907,9 @@ pub struct Dag {
     /// emitter plus Rust/Python target emitters when parsing
     /// `CallableRealization.strategy`.
     callable_strategy_variants: CallableStrategyVariants,
+    /// Cached fixed emit-model coproduct variant DeclarationIds used by
+    /// emit target parsers.
+    emit_model_variants: EmitModelVariants,
     /// Sidecar structural facts for mutually-recursive SCCs.
     clusters: Vec<Cluster>,
     /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
@@ -2471,6 +2989,7 @@ impl Dag {
                 VariantPayloadFieldAccessRuleVariants::default(),
             verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
             callable_strategy_variants: CallableStrategyVariants::default(),
+            emit_model_variants: EmitModelVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
             declaration_append_begin_after_bootstrap: 0,
@@ -2479,6 +2998,18 @@ impl Dag {
 
     pub fn new() -> Self {
         (*BOOTSTRAPPED_DAG).clone()
+    }
+
+    /// Declaration graph with **no** embedded bootstrap fixture.
+    ///
+    /// Cross-crate **tests** only (e.g. E-6 witnesses that compare bootstrap-full vs empty graphs).
+    /// Production paths must use [`Dag::new`].
+    ///
+    /// Gated behind feature `empty-substrate-for-tests` so normal library builds do not expose a
+    /// public constructor for substrate-invalid empty graphs ([`Dag::new`] remains the production entry).
+    #[cfg(feature = "empty-substrate-for-tests")]
+    pub fn new_empty_for_testing() -> Self {
+        Self::empty()
     }
 
     /// First [`DeclarationId::raw`] reserved for declarations appended after
@@ -2507,6 +3038,7 @@ impl Dag {
         &mut self,
         kind: RuntimeBootstrapFixtureKind,
     ) {
+        self.assert_user_defined_arrow_bodies_point_at_binds();
         if matches!(
             kind,
             RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot
@@ -2521,6 +3053,28 @@ impl Dag {
             crate::int_literal_ranges::validate_rust_pilot_integer_primitives(self);
         }
         self.stamp_declaration_append_begin_after_bootstrap();
+    }
+
+    fn assert_user_defined_arrow_bodies_point_at_binds(&self) {
+        for declaration in &self.declarations {
+            let TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(bind_id),
+                ..
+            } = &declaration.connective
+            else {
+                continue;
+            };
+            let node_id = bind_id.node_id();
+            if !matches!(self.node_opt(&node_id), Some(Behavior::Bind(_))) {
+                let name = declaration.name.as_deref().unwrap_or("<anonymous>");
+                panic!(
+                    "generated bootstrap invariant violation: declaration {name:?} ({:?}) has \
+                     ArrowBody::UserDefined({node_id:?}), but that NodeId does not point at \
+                     Behavior::Bind",
+                    declaration.id
+                );
+            }
+        }
     }
 
     /// Clone of the bootstrapped Dag used by [`crate::compile_parse_surface_std_authority_dag`]:
@@ -2546,6 +3100,30 @@ impl Dag {
     /// bootstrap-failure semantics as `int_shape`.
     pub fn bool_shape(&self) -> Option<TypeShape> {
         self.primitives.bool
+    }
+
+    /// Runtime/substrate Bool reification authority for branch dispatch.
+    ///
+    /// Bool remains a scalar [`LiteralBits::Bool`] for ordinary literal data,
+    /// comparisons, and spec fields. When a Bool value is used as a Branch
+    /// scrutinee, however, the runtime must compare against the same
+    /// declaration-id identity that inference resolved for `True` / `False`
+    /// patterns. This helper is the transitional single lookup point for that
+    /// reification.
+    ///
+    /// Retirement trigger: delete this helper once Bool runtime production is
+    /// uniformly represented as `VariantValue { tag: True/False, .. }` at the
+    /// producer boundary instead of at branch consumers.
+    pub fn bool_runtime_variant_id(&self, value: bool) -> Option<DeclarationId> {
+        let bool_decl = self.declaration_by_name("Bool")?;
+        let TypeConnective::Disj { variants } = &bool_decl.connective else {
+            return None;
+        };
+        let label = if value { "True" } else { "False" };
+        variants
+            .iter()
+            .find(|variant| variant.label == label)
+            .map(|variant| variant.ty)
     }
 
     /// Typed accessor for the cached `String` primitive `TypeShape`. Same
@@ -2878,6 +3456,61 @@ impl Dag {
         self.emit_anchors.rust_functions
     }
 
+    /// `MethodEmitTemplate` coproduct parent.
+    pub(crate) fn method_emit_template_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.method_emit_template
+    }
+
+    /// `MethodTemplateContract` meta-type.
+    pub(crate) fn method_template_contract_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.method_template_contract
+    }
+
+    /// `fold_method` method declaration.
+    pub(crate) fn fold_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.fold_method
+    }
+
+    /// `concat_method` method declaration.
+    pub(crate) fn concat_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.concat_method
+    }
+
+    /// `length_method` method declaration.
+    pub(crate) fn length_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.length_method
+    }
+
+    /// `is_empty_method` method declaration.
+    pub(crate) fn is_empty_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.is_empty_method
+    }
+
+    /// `filter_method` method declaration.
+    pub(crate) fn filter_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.filter_method
+    }
+
+    /// `flat_map_method` method declaration.
+    pub(crate) fn flat_map_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.flat_map_method
+    }
+
+    /// `any_method` method declaration.
+    pub(crate) fn any_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.any_method
+    }
+
+    /// `all_method` method declaration.
+    pub(crate) fn all_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.all_method
+    }
+
+    /// `map_method` method declaration.
+    pub(crate) fn map_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.map_method
+    }
+
     /// Typed accessor for the cached `PatternBindingRule` variant
     /// handles resolved from `src/v3/std/clean_emission.dag` at
     /// bootstrap end. Consumed by per-target emitters when
@@ -2913,6 +3546,11 @@ impl Dag {
     /// `CallableRealization.strategy`.
     pub(crate) fn callable_strategy_variants(&self) -> &CallableStrategyVariants {
         &self.callable_strategy_variants
+    }
+
+    /// Typed accessor for fixed emit-model coproduct variant handles.
+    pub(crate) fn emit_model_variants(&self) -> &EmitModelVariants {
+        &self.emit_model_variants
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -3183,6 +3821,58 @@ impl Dag {
         self.declaration_by_name("rust_pilot_primitives")
     }
 
+    /// Typed accessor for `data kernel_algebra_profile` in
+    /// `dsl/std/algebra.dag`.
+    ///
+    /// This is the v3-side substrate authority for kernel algebra enrichment:
+    /// the map is lowered as [`ValueBody::Map`], keys are kernel type names,
+    /// and values are zero-payload `AlgebraProfile` variants. Returning `None`
+    /// means either the key is absent or the lowered declaration is malformed;
+    /// callers treat both as "no kernel algebra profile for this type".
+    pub fn kernel_algebra_profile(&self, type_name: &str) -> Option<AlgebraProfile> {
+        let decl = self.declaration_by_name("kernel_algebra_profile")?;
+        let ValueBody::Map(entries) = decl.value_body.as_ref()? else {
+            return None;
+        };
+        let (_, value) = entries.entries().iter().find(|(key, _)| key == type_name)?;
+        self.algebra_profile_from_field_value(value)
+    }
+
+    fn algebra_profile_from_field_value(&self, value: &FieldValue) -> Option<AlgebraProfile> {
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = value
+        else {
+            return None;
+        };
+        if !payload.is_empty() {
+            return None;
+        }
+
+        let profile_decl = self.declaration_by_name("AlgebraProfile")?;
+        let TypeConnective::Disj { variants } = &profile_decl.connective else {
+            return None;
+        };
+        let label = variants
+            .iter()
+            .find(|variant| variant.ty == *constructor)?
+            .label
+            .as_str();
+        match label {
+            "OrderedRingProfile" => Some(AlgebraProfile::OrderedRingProfile),
+            "ApproximateFieldProfile" => Some(AlgebraProfile::ApproximateFieldProfile),
+            "BooleanAlgebraProfile" => Some(AlgebraProfile::BooleanAlgebraProfile),
+            "BooleanAlgebraCollectionProfile" => {
+                Some(AlgebraProfile::BooleanAlgebraCollectionProfile)
+            }
+            "FreeMonoidScalarProfile" => Some(AlgebraProfile::FreeMonoidScalarProfile),
+            "FreeMonoidCollectionProfile" => Some(AlgebraProfile::FreeMonoidCollectionProfile),
+            "PartialFunctionProfile" => Some(AlgebraProfile::PartialFunctionProfile),
+            _ => None,
+        }
+    }
+
     /// Virtual paths from the B4.4 extdeps-bootstrap fixture carrier
     /// (`bootstrap_fixture_authority` in
     /// `src/v3/std/extdeps_bootstrap_fixtures.dag`), in the order fields
@@ -3347,10 +4037,29 @@ impl Dag {
     /// Biconditional invariant, held by construction:
     ///   port.state == Unresolved  iff  diagnostics.contains(port_id)
     pub(crate) fn mark_unresolved(&mut self, port: PortId, diagnostic: Diagnostic) {
+        self.mark_unresolved_with_attribution(
+            port,
+            diagnostic,
+            DiagnosticAttribution::Unattributed,
+        );
+    }
+
+    /// `mark_unresolved` carrying an explicit
+    /// [`DiagnosticAttribution`]. The diagnostic is recorded against
+    /// the same fail-closed biconditional as ordinary
+    /// `mark_unresolved`; the attribution rides alongside on
+    /// [`DiagnosticTable`] so consumers can dispatch bootstrap-vs-user
+    /// origins without scanning `SourceSpan.file`.
+    pub(crate) fn mark_unresolved_with_attribution(
+        &mut self,
+        port: PortId,
+        diagnostic: Diagnostic,
+        attribution: DiagnosticAttribution,
+    ) {
         if let Some(p) = self.ports.get_mut(&port) {
             p.state = PortState::Unresolved;
         }
-        self.diagnostics.insert(port, diagnostic);
+        self.diagnostics.insert(port, diagnostic, attribution);
     }
 
     /// Attach a diagnostic to the Dag without a pre-existing port anchor.
@@ -3360,9 +4069,35 @@ impl Dag {
     /// PortId (unresolved declarations, tokenize/parse errors on
     /// bootstrap fixtures, duplicate top-level declarations, etc.).
     /// `compile_to_dag` surfaces these through `Err(CompileError::Semantic)`.
+    ///
+    /// Records [`DiagnosticAttribution::Unattributed`]. Bootstrap
+    /// loaders attaching tokenize/parse/fixture failures against a
+    /// substrate `bootstrap_authority` row should call
+    /// [`Self::attach_bootstrap_diagnostic`] instead so verification
+    /// consumers get a structural witness rather than a path string.
     pub(crate) fn attach_diagnostic(&mut self, diagnostic: Diagnostic) {
         let port = self.alloc_port(None);
         self.mark_unresolved(port, diagnostic);
+    }
+
+    /// Sibling of [`Self::attach_diagnostic`] for diagnostics raised
+    /// while loading or patching a substrate `bootstrap_authority` row.
+    /// Allocates the same detached phantom port (no fabricated producer
+    /// node) but records
+    /// [`DiagnosticAttribution::BootstrapAuthority(key)`] so consumers
+    /// can recover bootstrap origin via witness identity instead of a
+    /// `SourceSpan.file` string compare.
+    pub(crate) fn attach_bootstrap_diagnostic(
+        &mut self,
+        authority: BootstrapAuthorityKey,
+        diagnostic: Diagnostic,
+    ) {
+        let port = self.alloc_port(None);
+        self.mark_unresolved_with_attribution(
+            port,
+            diagnostic,
+            DiagnosticAttribution::BootstrapAuthority(authority),
+        );
     }
 
     /// Populate `primitives` by reading the declaration table for the
@@ -3466,6 +4201,22 @@ impl Dag {
         self.emit_anchors.dag_type = self.declaration_by_name("Dag").map(|d| d.id);
         self.emit_anchors.std_list_fold = self.declaration_by_name("fold").map(|d| d.id);
         self.emit_anchors.rust_functions = self.declaration_by_name("rust_functions").map(|d| d.id);
+        self.emit_anchors.method_emit_template =
+            self.declaration_by_name("MethodEmitTemplate").map(|d| d.id);
+        self.emit_anchors.method_template_contract = self
+            .declaration_by_name("MethodTemplateContract")
+            .map(|d| d.id);
+        self.emit_anchors.concat_method = self.declaration_by_name("concat_method").map(|d| d.id);
+        self.emit_anchors.length_method = self.declaration_by_name("length_method").map(|d| d.id);
+        self.emit_anchors.fold_method = self.declaration_by_name("fold_method").map(|d| d.id);
+        self.emit_anchors.is_empty_method =
+            self.declaration_by_name("is_empty_method").map(|d| d.id);
+        self.emit_anchors.filter_method = self.declaration_by_name("filter_method").map(|d| d.id);
+        self.emit_anchors.flat_map_method =
+            self.declaration_by_name("flat_map_method").map(|d| d.id);
+        self.emit_anchors.any_method = self.declaration_by_name("any_method").map(|d| d.id);
+        self.emit_anchors.all_method = self.declaration_by_name("all_method").map(|d| d.id);
+        self.emit_anchors.map_method = self.declaration_by_name("map_method").map(|d| d.id);
 
         // `PatternBindingRule` variant resolution. Walks the
         // `std/clean_emission.dag` declaration's `Disj` variants
@@ -3592,6 +4343,174 @@ impl Dag {
             }
         }
         self.callable_strategy_variants = callable_strategy_variants;
+
+        let mut emit_model_variants = EmitModelVariants::default();
+        if let Some(parent) = self.declaration_by_name("PatternStrategy") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    if variant.label == "VectorList" {
+                        emit_model_variants.pattern_strategy.vector_list = Some(variant.ty);
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("FieldAccess") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "DirectField" => {
+                            emit_model_variants.field_access.direct_field = Some(variant.ty);
+                        }
+                        "AccessorMethod" => {
+                            emit_model_variants.field_access.accessor_method = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("ParameterDisposition") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "Borrowed" => {
+                            emit_model_variants.parameter_disposition.borrowed = Some(variant.ty);
+                        }
+                        "Consumed" => {
+                            emit_model_variants.parameter_disposition.consumed = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("MemoryModel") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "ValueOnly" => {
+                            emit_model_variants.memory_model.value_only = Some(variant.ty);
+                        }
+                        "GarbageCollected" => {
+                            emit_model_variants.memory_model.garbage_collected = Some(variant.ty);
+                        }
+                        "RefCounted" => {
+                            emit_model_variants.memory_model.ref_counted = Some(variant.ty);
+                        }
+                        "OwnershipBased" => {
+                            emit_model_variants.memory_model.ownership_based = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("ScopeModel") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "LexicalScoping" => {
+                            emit_model_variants.scope_model.lexical_scoping = Some(variant.ty);
+                        }
+                        "DynamicScoping" => {
+                            emit_model_variants.scope_model.dynamic_scoping = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("ReadStrategy") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "Borrow" => {
+                            emit_model_variants.read_strategy.borrow = Some(variant.ty);
+                        }
+                        "PassByValue" => {
+                            emit_model_variants.read_strategy.pass_by_value = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("ConstructStrategy") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "CopyOrClone" => {
+                            emit_model_variants.construct_strategy.copy_or_clone = Some(variant.ty);
+                        }
+                        "PassByValue" => {
+                            emit_model_variants.construct_strategy.pass_by_value = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("Mutability") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "Immutable" => {
+                            emit_model_variants.mutability.immutable = Some(variant.ty);
+                        }
+                        "Mutable" => {
+                            emit_model_variants.mutability.mutable = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("Purity") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "Pure" => {
+                            emit_model_variants.purity.pure = Some(variant.ty);
+                        }
+                        "Effectful" => {
+                            emit_model_variants.purity.effectful = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("Structure") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "ExplicitDAG" => {
+                            emit_model_variants.structure.explicit_dag = Some(variant.ty);
+                        }
+                        "Arbitrary" => {
+                            emit_model_variants.structure.arbitrary = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("Iteration") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "Bounded" => {
+                            emit_model_variants.iteration.bounded = Some(variant.ty);
+                        }
+                        "Unbounded" => {
+                            emit_model_variants.iteration.unbounded = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        self.emit_model_variants = emit_model_variants;
     }
 
     fn populate_target_clean_emission_bindings(&mut self) {
@@ -3825,6 +4744,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn call_pattern_from_relations_fails_closed_for_mixed_unknown_and_preserved_evidence() {
+        assert_eq!(
+            call_pattern_from_relations(&[
+                SubValueRelation::PreservedValue,
+                SubValueRelation::SubValueUnknown
+            ]),
+            None,
+            "mixed unknown + preserved evidence must not fabricate SameArgumentCall"
+        );
+    }
+
+    #[test]
     fn workflow_root_zero_bind_returns_no_root() {
         // V3 surface syntax always lowers each top-level decl to a
         // Bind, so the zero-Bind case is structurally unreachable from
@@ -3931,6 +4862,21 @@ mod tests {
             dag.rust_functions_syntax_decl().is_some(),
             "rust_functions syntax anchor"
         );
+        assert!(
+            dag.method_emit_template_decl().is_some(),
+            "MethodEmitTemplate anchor"
+        );
+        assert!(
+            dag.method_template_contract_decl().is_some(),
+            "MethodTemplateContract anchor"
+        );
+        assert!(dag.fold_method_decl().is_some(), "fold_method anchor");
+        assert!(dag.concat_method_decl().is_some(), "concat_method anchor");
+        assert!(dag.length_method_decl().is_some(), "length_method anchor");
+        assert!(
+            dag.is_empty_method_decl().is_some(),
+            "is_empty_method anchor"
+        );
     }
 
     #[test]
@@ -3964,6 +4910,92 @@ mod tests {
         assert!(
             variants.list_contains.is_some(),
             "CallableStrategy.ListContains"
+        );
+    }
+
+    #[test]
+    fn emit_model_variants_populated_after_bootstrap() {
+        let dag = Dag::new();
+        let variants = dag.emit_model_variants();
+        assert!(
+            variants.pattern_strategy.vector_list.is_some(),
+            "PatternStrategy.VectorList"
+        );
+        assert!(
+            variants.field_access.direct_field.is_some(),
+            "FieldAccess.DirectField"
+        );
+        assert!(
+            variants.field_access.accessor_method.is_some(),
+            "FieldAccess.AccessorMethod"
+        );
+        assert!(
+            variants.parameter_disposition.borrowed.is_some(),
+            "ParameterDisposition.Borrowed"
+        );
+        assert!(
+            variants.parameter_disposition.consumed.is_some(),
+            "ParameterDisposition.Consumed"
+        );
+        assert!(
+            variants.memory_model.value_only.is_some(),
+            "MemoryModel.ValueOnly"
+        );
+        assert!(
+            variants.memory_model.garbage_collected.is_some(),
+            "MemoryModel.GarbageCollected"
+        );
+        assert!(
+            variants.memory_model.ref_counted.is_some(),
+            "MemoryModel.RefCounted"
+        );
+        assert!(
+            variants.memory_model.ownership_based.is_some(),
+            "MemoryModel.OwnershipBased"
+        );
+        assert!(
+            variants.scope_model.lexical_scoping.is_some(),
+            "ScopeModel.LexicalScoping"
+        );
+        assert!(
+            variants.scope_model.dynamic_scoping.is_some(),
+            "ScopeModel.DynamicScoping"
+        );
+        assert!(
+            variants.read_strategy.borrow.is_some(),
+            "ReadStrategy.Borrow"
+        );
+        assert!(
+            variants.read_strategy.pass_by_value.is_some(),
+            "ReadStrategy.PassByValue"
+        );
+        assert!(
+            variants.construct_strategy.copy_or_clone.is_some(),
+            "ConstructStrategy.CopyOrClone"
+        );
+        assert!(
+            variants.construct_strategy.pass_by_value.is_some(),
+            "ConstructStrategy.PassByValue"
+        );
+        assert!(
+            variants.mutability.immutable.is_some(),
+            "Mutability.Immutable"
+        );
+        assert!(variants.mutability.mutable.is_some(), "Mutability.Mutable");
+        assert!(variants.purity.pure.is_some(), "Purity.Pure");
+        assert!(variants.purity.effectful.is_some(), "Purity.Effectful");
+        assert!(
+            variants.structure.explicit_dag.is_some(),
+            "Structure.ExplicitDAG"
+        );
+        assert!(
+            variants.structure.arbitrary.is_some(),
+            "Structure.Arbitrary"
+        );
+        assert!(variants.iteration.bounded.is_some(), "Iteration.Bounded");
+        assert!(
+            variants.iteration.unbounded.is_some(),
+            "Iteration.Unbounded"
         );
     }
 
@@ -4004,6 +5036,44 @@ mod tests {
         assert!(
             secret.nominal_opacity.is_some(),
             "Secret must carry nominal opacity from std source authority"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "generated bootstrap invariant violation")]
+    fn generated_bootstrap_rejects_user_defined_body_that_is_not_a_bind() {
+        let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
+        let non_bind = dag
+            .nodes
+            .iter()
+            .find_map(|behavior| {
+                if matches!(behavior, Behavior::Bind(_)) {
+                    None
+                } else {
+                    Some(behavior.id())
+                }
+            })
+            .expect("generated bootstrap fixture should include a non-Bind behavior");
+        let declaration = dag
+            .declarations
+            .iter_mut()
+            .find(|declaration| {
+                matches!(
+                    &declaration.connective,
+                    TypeConnective::Arrow {
+                        body: ArrowBody::UserDefined(_),
+                        ..
+                    }
+                )
+            })
+            .expect("generated bootstrap fixture should include a user-defined arrow body");
+        let TypeConnective::Arrow { body, .. } = &mut declaration.connective else {
+            unreachable!("declaration was selected by arrow body shape")
+        };
+        *body = ArrowBody::UserDefined(BindNodeId::new_unchecked(non_bind));
+
+        dag.finalize_runtime_bootstrap_from_generated_snapshot(
+            RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot,
         );
     }
 
@@ -4191,10 +5261,12 @@ mod tests {
         dag.push_declaration(Declaration {
             id: exact_two,
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
-                int_decl,
-                CardinalityBound::Exact(2),
-            )),
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    int_decl,
+                    CardinalityBound::Exact(2),
+                ),
+            ),
             type_params: Vec::new(),
             phantom_params: Vec::new(),
             meta_tag: None,

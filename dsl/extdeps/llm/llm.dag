@@ -33,6 +33,8 @@ type Role = System | User | Assistant | Tool
 // anthropic.dag / openai.dag.
 
 type ImageSource
+  // v3's Anthropic callable precursor mirrors this field as `base64`
+  // because `data` is a v3 keyword; lockstep maps that label explicitly.
   = Base64Image { media_type: String, data: String }
   | UrlImage { url: String }
 

@@ -10,7 +10,19 @@ import v3.std.emit_model {
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
   TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
-  CollectionOps, ValueConstructionSyntax, LanguageSpec
+  CollectionOps, ValueConstructionSyntax, LanguageSpec,
+  TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
+}
+import v3.std.go_method_template_contracts {
+  go_language_spec_free_monoid_concat_contract,
+  go_language_spec_free_monoid_length_contract,
+  go_language_spec_free_monoid_emptiness_contract,
+  go_language_spec_free_monoid_fold_contract,
+  go_language_spec_map_contract,
+  go_filter_method_template_contract,
+  go_flat_map_method_template_contract,
+  go_any_method_template_contract,
+  go_all_method_template_contract
 }
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping,
@@ -31,6 +43,7 @@ import v3.std.clean_emission {
 }
 import std.algebra { BooleanAlgebra }
 import std.list { List }
+import std.integer { Int, Int32 }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
   VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMapEntry, SurfaceMatchArm,
@@ -56,6 +69,39 @@ data go_int: TypeRealization = {
   is_copy: true
   fields: []
   cost: 1
+}
+
+data go_int32: TypeRealization = {
+  language: go_language
+  target: Int32
+  carrier: "int32"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data go_integer_inhabit_i32_at_program_bound: TargetIntegerTypeInhabitance = {
+  language: go_language
+  kernel_integer: Int32
+  algebra: Int32
+  bound: StaticBoundFact(BoundedInterval {
+    lower: -2147483648
+    width: PositiveWidth(UnitCount { units: 4294967295 })
+  })
+  type_realization: go_int32
+}
+
+// Native Go `int` — platform-sized bound witness only: unit `PlatformDependentFact`
+// (design-emission-model.md Q1), distinct from fixed-width `StaticBoundFact` rows.
+// `type_realization` must remain `go_int` — the sole Go `TypeRealization` for `target: Int`
+// (emit duplicate-realization fail-closed per `emit.rs`); carrier spelling stays `int64` until
+// substrate introduces a distinct primitive for native `int` vs `int64`.
+data go_integer_inhabit_int_platform_dependent: TargetIntegerTypeInhabitance = {
+  language: go_language
+  kernel_integer: Int
+  algebra: Int
+  bound: PlatformDependentFact
+  type_realization: go_int
 }
 
 data go_bool: TypeRealization = {
@@ -1140,11 +1186,15 @@ data go_patterns: PatternMatchSyntax = {
 }
 
 data go_collection_ops: CollectionOps = {
-  concat: "append({left}, {right}...)"
-  length: "int64(len({recv}))"
-  is_empty: "len({recv}) == 0"
-  fold: "/* fold({recv}, {init}, {body}) */"
-  map: "/* map({recv}, {body}) */"
+  concat_contract: go_language_spec_free_monoid_concat_contract
+  length_contract: go_language_spec_free_monoid_length_contract
+  is_empty_contract: go_language_spec_free_monoid_emptiness_contract
+  fold_contract: go_language_spec_free_monoid_fold_contract
+  filter_contract: go_filter_method_template_contract
+  flat_map_contract: go_flat_map_method_template_contract
+  any_contract: go_any_method_template_contract
+  all_contract: go_all_method_template_contract
+  map_contract: go_language_spec_map_contract
   filter: "/* filter({recv}, {body}) */"
   contains: "/* contains({recv}, {item}) */"
   empty_list: "nil"

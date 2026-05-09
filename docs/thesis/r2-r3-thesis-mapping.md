@@ -34,7 +34,7 @@ Per THESIS §"Tier 1 — Structural correctness (impossible to write the bug)":
 | **Grounding completeness — Go target primitives structurally modeled** | R2 | T-Ground-Go L | PR #910 (primitives.dag tranche 1) | ✅ landed in R2 |
 | **Grounding completeness — algebra-homomorphism search (not name-keyed lookup)** | R2 | **5 NEW substrate-completion lanes** (per [`docs/design-emission-model.md`](../design-emission-model.md) engine reframe replacing the retracted T-Ground-Engine): T-Ground-Coercion-Fold S + T-Ground-LanguageSpec M + T-Ground-Lifetime-Analyzer M + T-Ground-Diagnostic S + T-Ground-CrossTarget-Meta S. Plus existing T-Ground-Dissolve S as a sibling lane in the 11-lane Grounding program (pre-existing, not part of the 5-new reframe) | Engine framing retracted via PR #1078; PR #989 slice-1 merged under prior framing, post-merge cleanup queued (option (c) in design doc); Track-13 dissolution PR pending | 🟡 5-new-lane substrate-completion structure pending dispatch (T-Ground-Dissolve is sibling, not part of the 5); PR #989 slice-1 cleanup queued |
 | **Sealed-accessor patterns at type level (Secret<T>)** | R2 | T-Modeling Secret<T> + T-Substrate NominalOpacity | #900 carrier ✓; #937 walker ✓; PR A in flight (Copernicus); PR B pending | 🟡 in flight |
-| **`AnalysisDimension<Carrier>` proof-dimension framework (one-parameter; behavioral analysis carrier)** | R2 | T-Modeling Dimensions | PR #886 — landed `AnalysisDimension<Carrier>` per `src/v3/std/dimensions.dag:72-78` (`name` / `witness_of: fn(Dag, Behavior) -> Witness<Carrier>` / `compose` / `identity` / `break_diagnostic`). Note: PR #886 also landed the separate phantom value wrapper `Dimension<Unit, Carrier>` at `dimensions.dag:89-91` (two parameters; typed-value-wrapper for `Duration<Seconds>`-shape values). The substrate deliberately split these into distinct types. The `compose + identity` field pair on `AnalysisDimension<Carrier>` duplicates `Monoid<Carrier>` (`dsl/std/algebra.dag:110`) — same drift the lens framework retired via structural inhabitance per Director synthesis 2026-04-28; AnalysisDimension's collapse to `Monoid<Carrier>` is a future cleanup item | ✅ landed in R2 |
+| **`AnalysisDimension<Carrier>` proof-dimension framework (one-parameter; behavioral analysis carrier)** | R2 | T-Modeling Dimensions | PR #886 — landed `AnalysisDimension<Carrier>` per `src/v3/std/dimensions.dag` (`name` / `witness_of: fn(Dag, Behavior) -> Witness<Carrier>` / `compose: Monoid<Carrier>` / `break_diagnostic`). Note: PR #886 also landed the separate phantom value wrapper `Dimension<Unit, Carrier>` (two parameters; typed-value-wrapper for `Duration<Seconds>`-shape values). The substrate deliberately split these into distinct types. PR #1607 (F2 dispatch) collapsed the prior `compose: fn(C,C)->C` + `identity: C` field pair into a single `compose: Monoid<Carrier>` field, mirroring the `Lens<C>` precedent (`sequential: Monoid<C>`) and dissolving the same drift the lens framework retired on 2026-04-28 — monoid-law authority now lives once on `Monoid<Carrier>` (`dsl/std/algebra.dag:110`) via structural inhabitance | ✅ landed in R2 (collapse merged in R3 substrate cleanup, PR #1607) |
 | **Phantom-parameter typed value wrappers (`Duration<Unit>`, `Money<Currency>`)** | post-R3 modeling | not yet a named lane | ROADMAP `:450` — "The live tree does not yet support this shape." Not the same as `Dimension<Carrier>`; requires substrate for typed value wrappers with phantom parameters propagating through arithmetic + algebra inhabitance for those wrappers (abelian group with compare, no multiplication). Adjacent to DB-18 user-defined parametric algebra attachment | ⏳ post-R3 (no lane) |
 | **User-authored lenses validate programs (THESIS §"User-defined dimensions")** | R1 + R3 verification | T-LensAPI (R1) + T-Verification-L4-L7-Direct (R3 verifies the claim end-to-end via L4 emit/eval match + L7 algebraic-law witnesses) | T-LensAPI lane R1 — `user_authored_lens_compiles` Day-1 gate; `lens_composition_associative` ext gate via `AlgebraicLaw` | 🟡 R1 closure for compile-side; R3 for runtime-validation receipt |
 | **Fabrication path closures (B-series)** | R2 | T-Substrate B-wave Tier 0 | PR #817 (B2 Arrow re-derive→fail-closed); PR #820 (B1 Go UnknownVariant); PR #821 (B3 fold template-formal) | ✅ landed in R2 |
@@ -49,7 +49,7 @@ Per THESIS §"Tier 2 — Runtime safety (proven safe or total)":
 |---|---|---|---|---|
 | **Division by zero — proven safe or total** | R2 | T-ImpossibleBugs Class 2 (unhandled-diagnostic-paths via DivError) | PR #969 iterating CI | 🟡 in flight |
 | **Integer overflow — proven safe at i64-bounded carrier** | R2 | T-Modeling int-lit + T-Substrate cardinality | PR #897 (i64-bounded consumer) | ✅ landed in R2 |
-| **Integer overflow — proven safe at full Int128/Word128** | R3 | T-Int128 (M-L) | r3-structure.md §T-Int128 | ⏳ R3 dispatch |
+| **Integer overflow — proven safe at full magnitude (any refinement, including unbounded)** | R3 | T-Numeric-Construction (L-XL; reframed 2026-05-01 from T-Int128 — absorbs the overflow claim into refinement-parametric form) | r3-structure.md §T-Numeric-Construction; design doc `docs/design-numeric-construction.md` | ⏳ R3 dispatch |
 | **Out-of-bounds — proven safe or total** | R2 | T-ImpossibleBugs Class 2 (unhandled-diagnostic-paths) | PR #969 iterating | 🟡 in flight |
 | **Force-unwrap — proven safe or total** | R2 | T-ImpossibleBugs Class 1 (nested-optional flatten) | PR #890 ✓; PR #962 follow-ups ✓ | ✅ landed in R2 |
 | **Partial functions — made total** | R2 + R3 | T-ImpossibleBugs (R2 partial) + T-Verification-L4-L7-Direct (R3 verifies totality via L4 emit/eval match — no failed evaluations) | R2 dissolves call sites; R3 harness verifies no partials remain | 🟡 R2 partial / R3 close |
@@ -107,12 +107,17 @@ Per THESIS §"Free consequences (fall out when Tiers 1-2 close)":
 
 | Claim | Disposition | Lane / gate | Evidence | Status |
 |---|---|---|---|---|
-| **Automatic parallelism from dependency graph** | post-R3 ecosystem | not gated on a release; emerges when Tier 1 + Tier 2 fully close | implicit in substrate; no demo lane | 🟡 implicit |
-| **Automatic memoization from purity + cost** | post-R3 ecosystem | same | same | 🟡 implicit |
+| **Automatic parallelism from dependency graph** | R3 | T-Free-Consequences-Demonstration / `auto_parallelism_*` + `auto_loop_parallelism_*` gates | `docs/design-free-consequences.md` + 6 parallelism TestClaims; `Lens<Bind-Independence>` / `Lens<Iteration-Independence>` + `Lens<Effect-Commutativity>` + `Lens<Cost>` | 🟡 R3 |
+| **Automatic memoization from purity + cost** | R3 | T-Free-Consequences-Demonstration / `auto_memoization_*` gates | `docs/design-free-consequences.md` + 2 memoization TestClaims; `Lens<Purity>` + `Lens<Cost>` | 🟡 R3 |
+| **Incremental cross-run execution from purity + bounded execution + dependency graph** | post-R3 (indirect) | No dedicated R3 gate; falls out from existing Tier 1 + Tier 2 commitments | THESIS:208 + what-else-falls-out.md §"Incremental cross-run execution"; **post-R3 tracked, not a live capability until consumer artifact lands** — named consumer-proof artifact: **T-Incremental-Cross-Run-Demo** with acceptance criteria: (a) content-hash keying — pure expression result keyed by `hash(structural_form, input_hashes)`; (b) dependency invalidation — source change to subgraph X re-executes only subgraphs depending on X; (c) one `.dag` TestClaim or runner path or interpreter cache path proving changed inputs ⇒ re-executed and unchanged inputs ⇒ cache hit. Closes the SHIP_WITH_DEBT consumer-proof gap from PR #1738 meta-review (gpt-5-5-pro 2026-05-05) | ⏳ post-R3 (indirect) |
 | **Space bound proofs from CX** | R1 | T-LaneE complexity-lens gates | E-family carrier port | 🟡 R1 closure |
-| **Cross-language optimization from shared cost algebra** | post-R3 ecosystem | falls out when R3 closes; not a release gate | implicit | 🟡 implicit |
+| **Cross-language optimization from shared cost algebra** | R3 | T-Free-Consequences-Demonstration / `cross_target_optimization_*` gates | `docs/design-free-consequences.md` + 2 cross-target optimization TestClaims; `Lens<Cost>` + `LanguageSpec` | 🟡 R3 |
 
-**Note on "free consequences":** these are *consequences*, not gates. The thesis claim is that they fall out *because* Tier 1 + Tier 2 close — they're not separately deliverable. R3's L4-L7 verification harness is the structural test that they actually do fall out (not just claimed-to).
+**Note on "free consequences":** these are *consequences*, but the 2026-04-30
+R3 expansion operationalizes three of them as Lane 3 demonstration deliverables:
+`docs/design-free-consequences.md` plus the 10-gate TestClaim suite named in
+`docs/r3-structure.md`. Space-bound CX remains assigned to R1/T-LaneE authority
+and is referenced, not re-derived, by Lane 3.
 
 ## Disposition table — Omni-emission
 
@@ -126,15 +131,16 @@ Per THESIS §"Omni-emission (1:1 effort applied to full-stack systems)":
 | **Shape B: O(1) per artifact class** | R3 | T-Omni-Shape-B (≥2 Shape B targets demonstrate the claim) | r3-structure.md §T-Omni-Shape-B | ⏳ R3 |
 | **Target-level cost complexity composes with .dag-level CX** | R3 | T-CostLens-Composition (R3 lane 10; Director-locked 2026-04-28; owned by Substrate Manager (post-R2 continuation) per the row above) — exact same composition fold as the "Coercion cost = complexity" row above; structural composition of `.dag` algebra-level cost + target-primitive realization cost via the language spec | Per [`docs/design-emission-model.md`](../design-emission-model.md) Modeling problem 8 — the unification "coercion cost = complexity" IS the structural composition of `.dag` CX with target-level cost; both rows resolve to the same R3 lane | ⏳ R3 dispatch (gated on R2-Evaluator + **R2-T-Substrate-Lens-Primitive** + R2-T-Substrate per-op algebra cost + R2-T-Ground-LanguageSpec per-primitive realization cost) |
 
-## Disposition table — Self-hosting (3 facets)
+## Disposition table — Self-hosting (4 facets)
 
-Per THESIS §"Self-hosting — three facets":
+Per THESIS §"Self-hosting — four facets" (Facet 4 added 2026-05-04 per Director ratification — committed structurally in THESIS.md alongside this disposition row):
 
 | Claim | Disposition | Lane / gate | Evidence | Status |
 |---|---|---|---|---|
 | **Facet 1: Compiler written in `.dag`** (partial today; full at SG-0=0) | R1 + R2 + R3 | T-PB-A SG-0 census reduction (R1 + R2) → 0 (R3) | 70 → 37+1 frag (R2 progress); 0 (R3 close via T-LensProducer-Retirement) | 🟡 R1+R2 partial / R3 close |
 | **Facet 2: Compiler self-emits (fixed-point) — bit-identical output** | R3 | T-FixedPoint / `pb_self_compile_fixed_point` | r3-structure.md §T-FixedPoint | ⏳ R3 (gated on R2-Evaluator + T-LensProducer-Retirement) |
 | **Facet 3: Tests are data — pipeline.rs equivalent ports to .dag** | R1 + R2 | T-PB-B (bulk migration of class-5 tests via ExecuteCommand) | R2 helper binary #1063 ✓; T-PB-B 2A/2B about to unblock post-#1049 | 🟡 R2 in flight |
+| **Facet 4: Recursive-flex / self-application** (NEW 2026-05-04) — gunbc applies its own correctness/cost/parallelism/timing lenses to its own build pipeline. The compiler that compiles gunbc programs validates the workflow that produces gunbc itself. | R3 | T-Workflow-As-Data + T-Lens-Self-Application | THESIS.md §"Self-hosting — four facets" Facet 4; r3-structure.md §T-Workflow-As-Data + §T-Lens-Self-Application; Director ratification at [gunbc#828 inbox-4374342708](https://github.com/gunb-ai/gunbc/issues/828); Substrate Mgr design stance at [gunbc#1130 comment-4374109666](https://github.com/gunb-ai/gunbc/issues/1130#issuecomment-4374109666) | ⏳ R3 dispatch (gated on T-Lens-Behavioral-Parity COMPLETE + T-Lens-Application-Surface + R2-Evaluator) |
 
 ## Disposition table — Enumerable impossible-bug classes
 
@@ -148,6 +154,16 @@ Per THESIS §"Enumerable impossible-bug classes":
 | **R2+ class: nested-optional flatten** | R2 | T-ImpossibleBugs Class 1 | PR #890 + PR #962 | ✅ landed in R2 |
 | **R2+ class: unenumerated effects** | R2 | T-ImpossibleBugs Class 3 | PR #971 | ✅ landed in R2 |
 | **R2+ class: unhandled diagnostic paths** | R2 | T-ImpossibleBugs Class 2 | PR #969 iterating CI | 🟡 in flight |
+
+## Disposition table — Meta-process modeling
+
+Per THESIS §"Meta-process modeling":
+
+| Claim | Disposition | Lane / gate | Evidence | Status |
+|---|---|---|---|---|
+| **Build orchestration modeled as .dag workflows** | R3 | T-Workflow-As-Data (R3 Lane #17) | `docs/r3-structure.md` §T-Workflow-As-Data; THESIS:224 added "build orchestration" via PR #1738 | ⏳ R3 dispatch |
+
+**Note:** Bootstrap / CI / dev process modeling (other items in the THESIS Meta-process bullet at line 224) are tracked via T-PB program / extdeps emission / ROADMAP entries respectively; not expanded into separate rows here pending future scope extension. Build orchestration is broken out because PR #1738's SHIP_WITH_DEBT meta-review (gpt-5-5-pro 2026-05-05) flagged it as needing accounting parity to a named consumer (T-Workflow-As-Data lane #17 is that consumer).
 
 ## Disposition table — Modeling discipline
 
@@ -172,7 +188,7 @@ Compromises being made by the R2 + R3 split:
 | Lens-producer file retirement (3 files) | Requires Evaluator + PB-1 generated bin-shim emit pattern | T-LensProducer-Retirement |
 | R3 verification harness ({L4, L5, L7}; L6 reclassified to R2) | Requires Evaluator + full Grounding (Rust + Python) | T-Verification-L4-L7-Direct + T-Verification-L5-Corpus (L6 lives in R2-T-Ground-CrossTarget-Meta) |
 | Self-hosting facet 2 fixed-point | Requires SG-0 = 0 (T-LensProducer-Retirement first) | T-FixedPoint |
-| Tier 2 Int128/Word128 substrate | Self-contained substrate work; sized to fit R3 cycle | T-Int128 |
+| Tier 2 Int128/Word128 substrate (subsumed by T-Numeric-Construction reframe 2026-05-01) | Reframed as one refinement (`Int<128>`) consuming abstract `Int = AbelianGroup<Nat>` per construction chain | T-Numeric-Construction (absorbs T-Int128 + post-R3 BigInt + Float widening + UInt widening + IntLit refinement) |
 | Shape B omni-emission demos (≥2) | Needs Evaluator + Shape B emitter `.dag` programs | T-Omni-Shape-B |
 | Anthropic typed wire | Held in R2 pending OpenAI #1028 stabilization | T-Anthropic-Wire |
 
@@ -190,9 +206,9 @@ Compromises being made by the R2 + R3 split:
 
 ### Indirect / implicit claims (no dedicated lane)
 
-| Item | Why |
-|---|---|
-| Free consequences (auto-parallelism, auto-memoization, cross-language optimization) | These *fall out* from Tier 1 + Tier 2 closure; R3 L4-L7 harness exercises whether they actually do, but they're not separately deliverable |
+*No items currently — see notes below.*
+
+**Note on free consequences:** the prior "Free consequences (auto-parallelism, auto-memoization, cross-language optimization) — no dedicated lane" framing was retracted via PR #1738 follow-up: those three free consequences DO have dedicated R3 lanes per the §"Disposition table — Free consequences" above (T-Free-Consequences-Demonstration / `auto_parallelism_*` + `auto_memoization_*` + `cross_target_optimization_*` gates) following the 2026-04-30 R3 expansion (operationalized as Lane 3 demonstration deliverables per the prior **Note on "free consequences"** that immediately follows the §"Disposition table — Free consequences" above). Single-authority resolved by deleting the conflicting row — the disposition table is the single source. Same drift pattern as the 2026-04-28 concept-unifications retraction below.
 
 **Note on concept unifications:** every concept unification listed in THESIS §"Concept unifications" *does* now have a dedicated lane — see the §"Disposition table — Concept unifications" above. ("Coercion cost = complexity" → T-CostLens-Composition; "Coercion = emission" → T-Ground-Dissolve + T-Verification-L4-L7-Direct; "Target language spec = transport spec = interpreter runtime" → T-Verification-L5-Corpus; "Idempotency + cancellation + redundancy = algebraic simplification" → T-ImpossibleBugs Class 3.) The prior "no dedicated lane" framing for concept unifications was retracted 2026-04-28 per codex BLOCKING finding on `c98981634`: it split the release-control fact, since the disposition table assigned dedicated lanes while this summary said "no dedicated lane". Single-authority resolved by deleting the row — the disposition table is the single source.
 

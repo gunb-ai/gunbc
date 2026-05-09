@@ -25,6 +25,7 @@ pub mod extdeps_languages_python_types;
 pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
+pub mod generated_method_template_projection;
 pub mod rest_transport_facts;
 pub mod std_algebra;
 pub mod std_coercion;

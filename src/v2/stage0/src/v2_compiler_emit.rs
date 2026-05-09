@@ -5,6 +5,9 @@ use self::BackendCapability::*;
 use self::ExprCategory::*;
 use self::FuncBodyShape::*;
 use self::TcoExprShape::*;
+pub use crate::generated_method_template_projection::{
+    go_method_template_emit, python_method_template_emit, rust_method_template_emit,
+};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_types::{container_template_algebra, is_container_type};
@@ -1060,8 +1063,8 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
         if (value.clone() == 0) {
             break acc;
         } else {
-            let digit = (value.clone() % 10);
-            let rest = ((value.clone() - digit.clone()) / 10);
+            let rest = (value.clone() / 10);
+            let digit = (value.clone() - (rest.clone() * 10));
             let digit_chars = Rc::new(vec![
                 "0".to_string(),
                 "1".to_string(),
@@ -1100,7 +1103,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
                 None => "?".to_string(),
             };
             {
-                let __tco_0 = rest;
+                let __tco_0 = rest.clone();
                 let __tco_1 = v2_rt::concat(Rc::new(vec![ch]), acc);
                 value = __tco_0;
                 acc = __tco_1;
@@ -4858,28 +4861,36 @@ pub fn emit_typed_block_join(
     }
 }
 
+pub fn method_template_emit_for_target(
+    target: RenderTarget,
+) -> Option<Rc<HashMap<String, String>>> {
+    match target {
+        RenderTarget::Rust => Some(rust_method_template_emit()),
+        RenderTarget::Python => Some(python_method_template_emit()),
+        RenderTarget::Go => Some(go_method_template_emit()),
+        RenderTarget::Dag => None,
+    }
+}
+
 pub fn emit_algebra_method_template(
     method_name: String,
     recv_str: String,
     first_arg_str: String,
     target: RenderTarget,
 ) -> Option<String> {
-    {
-        let spec = language_spec(target);
-        match spec.method_templates.clone() {
-            Some(templates) => match v2_rt::map_get(&templates, method_name) {
-                Some(tmpl) => {
-                    let bindings = v2_rt::rc_map_insert(
-                        seed_bindings("recv".to_string(), recv_str),
-                        "arg".to_string(),
-                        first_arg_str,
-                    );
-                    Some(apply_named_template(tmpl.clone(), &bindings))
-                }
-                None => None,
-            },
+    match method_template_emit_for_target(target) {
+        Some(templates) => match v2_rt::map_get(&templates, method_name) {
+            Some(tmpl) => {
+                let bindings = v2_rt::rc_map_insert(
+                    seed_bindings("recv".to_string(), recv_str),
+                    "arg".to_string(),
+                    first_arg_str,
+                );
+                Some(apply_named_template(tmpl.clone(), &bindings))
+            }
             None => None,
-        }
+        },
+        None => None,
     }
 }
 

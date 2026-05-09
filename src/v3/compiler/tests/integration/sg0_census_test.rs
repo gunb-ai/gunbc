@@ -40,6 +40,42 @@ use v3_compiler::generated_files::GENERATED_FILES;
 // informally named in `dsl/gunbc/compiler.dag`.
 const CENSUS_ROOT: &str = "src/v3/compiler";
 
+#[test]
+fn emit_production_code_has_no_declaration_by_name_calls() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let emit_root = manifest_dir.join("src").join("emit");
+    let mut files = vec![manifest_dir.join("src").join("emit.rs")];
+    for entry in fs::read_dir(&emit_root).expect("read src/emit") {
+        let path = entry.expect("emit dir entry").path();
+        if path.extension() == Some(OsStr::new("rs")) {
+            files.push(path);
+        }
+    }
+    files.sort();
+
+    let mut offenders = Vec::new();
+    for path in files {
+        let source = fs::read_to_string(&path).expect("read emit source");
+        let production_source = source
+            .split("\n#[cfg(test)]")
+            .next()
+            .expect("split always yields a prefix");
+        if production_source.contains(".declaration_by_name(") {
+            offenders.push(
+                path.strip_prefix(manifest_dir)
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string(),
+            );
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "emit production modules must use cached DeclarationId accessors, not Dag::declaration_by_name. Offenders: {offenders:#?}"
+    );
+}
+
 // All non-test .rs files under `src/v3/compiler` that are currently
 // hand-authored. Sorted; one path per line, relative to the
 // workspace root. **Every SG-1..SG-7 PR shortens this list.**
@@ -73,10 +109,8 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // `tests/integration.rs` binary still includes them via `#[path =
 // "boundary/..."]` so the one-bootstrap compile amortization holds.
 //
-// P0-A (PR #595): bounded `repeat_string_loop` receipt — one integration
-// file `tests/integration/p0_std_render_repeat_string_test.rs` asserts
-// `dsl/std/render.dag` structure; not generated. Dissolution: fold into a
-// broader std-render harness or `.dag`-native structural test when one exists.
+// P0-A / R1C-B: `tests/integration/p0_std_render_repeat_string_test.rs` hosts the
+// v3 `TestRunner` gate suite `p0_repeat_string_correct_gate` (live v2 oracle retired).
 //
 // Stage 3b DB-1 parse/apply ratchet bump — PR #564 adds one
 // hand-authored integration file,
@@ -167,8 +201,35 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // declared unsigned range parseable by source literals. At that point
 // this helper should consume those declared rows directly or move behind
 // generated substrate accessors.
+//
+// R3 T-FixedPoint P0 / DB-8: `self_host_receipt_p0.rs` is intentionally hand-authored
+// receipt-key surface (stable JSON field names for `self_host_fixed_point` trend reads),
+// not generated output. Dissolution: fold into a `.dag` or generated authority when one
+// owns receipt schema; until then this module + census line are the bounded ratchet receipt.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
+    // R3 C1 perf-budget bench skeleton: Phase-1 Criterion harness for
+    // `tier3_mirror_dissolution_perf_within_budget` per
+    // `docs/briefs/r3-pb-tier3-perf-budget-worker.md` deliverable 0b
+    // (parent brief #1331; readiness matrix #1358; this PR #1362).
+    // Intentionally hand-authored: it measures live public mirror
+    // entrypoints (`merge_evidence`, `positive_descent_count`,
+    // `lower_call_pattern`, `type_iteration_dimension`,
+    // `lane2_workflow_idempotency_report`) before T-Tier3-Dissolution
+    // retires them — generated output cannot exist yet because the
+    // measurement target is the not-yet-dissolved Rust code.
+    // Dissolution trigger: deletes alongside the mirror-dissolution PRs
+    // per parent brief §"Phase 1 deliverables" — the bench harness has
+    // no role post-Phase-1; only the frozen `tier3_baseline.json` data
+    // survives.
+    "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
+    // R3 row 85 / PB #1560 Gap 4 build-step shim: invokes
+    // `pb_method_template_projection_dag_emit` to materialize the
+    // ephemeral v2 source-root module consumed during stage0
+    // regeneration. Dissolution trigger: delete with the v2-retirement
+    // build-step consumer path once legacy v2 method-template reads are
+    // fully retired.
+    "src/v3/compiler/src/bin/emit_method_template_projection.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
@@ -188,9 +249,12 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/diagnostics.rs",
     "src/v3/compiler/src/dimension.rs",
     "src/v3/compiler/src/emit.rs",
+    // CollectionOps `*_contract` → `MethodTemplateContract` identity gate (PR #1577 / #1602).
+    "src/v3/compiler/src/emit/collection_ops_method_contract.rs",
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
+    "src/v3/compiler/src/emit_rust_bin_shim.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/infer.rs",
@@ -200,8 +264,25 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
+    // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): transitional
+    // Rust-side OpenAPI projection receipt after the Shape A/Shape B boundary
+    // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
+    // `.dag` program owns the OpenAPI artifact projection end-to-end.
+    "src/v3/compiler/src/omni_shape_b_openapi.rs",
+    // R3 row 85 / PB #1560 Gap 4: target-keyed projection of the
+    // `MethodTemplateContract` rows from the full bootstrap `Dag` for
+    // PB-zero / v2-retirement consumers (decision in
+    // `docs/decisions/r3-row85-method-template-read-surface.md`).
+    "src/v3/compiler/src/pb_method_template_projection.rs",
+    // R3 row 85 / PB #1560 Gap 4 build-step: producer that writes the
+    // canonical `MethodTemplateContract` projection to a build-time-
+    // ephemeral `.dag` dependency root for v2 consumption via the
+    // ephemeral source-root mechanism from PR #1575.
+    "src/v3/compiler/src/pb_method_template_projection_dag_emit.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
+    // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
+    "src/v3/compiler/src/process_exit.rs",
     // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
     // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
     // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
@@ -209,6 +290,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
+    "src/v3/compiler/src/regen_tokenize.rs",
+    "src/v3/compiler/src/self_host_receipt_p0.rs",
     "src/v3/compiler/src/test_runner.rs",
     "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
@@ -219,6 +302,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // workspace root. T-PB-B owns shrinking this subset toward the
 // TESTING.md §"Post-R2 shape" residual. T-PB-A reductions must not
 // rely on this list moving.
+// Slice 1 census reconciliation (2026-05-02): this list matches the current
+// tree exactly; no additions or removals were needed.
 const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
@@ -232,6 +317,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (#1252). Hand-authored ratchet entry added per SG-0 census discipline.
     "src/v3/compiler/tests/integration/anthropic_operations_test.rs",
     "src/v3/compiler/tests/integration/anthropic_schema_lockstep_test.rs",
+    "src/v3/compiler/tests/integration/bridge_ledger_carrier_test.rs",
     // PB Tier-2 lower-helper exact-string patch class (#1014): zero-residual receipt +
     // source ratchet; see `bridge_lower_helpers_patch_zero_residual_test.rs` module docs.
     "src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs",
@@ -244,13 +330,40 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // until then, this hand-Rust ratchet IS the slice's structural gate.
     "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
     "src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs",
+    // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
+    // COMPLETE promotion against frozen v2-oracle values. Dissolves when `.dag`
+    // TestClaims can execute the same complexity summary assertions directly.
+    "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
+    // E6-G1.a Option 3 static lens mechanism (#1853 worker brief + #1857):
+    // `find_list_empty_constructor_tag` helper for opaque-`Dag` harness tags
+    // (P1/P5 compile-time brief receipts live in `e6_g1a_option3_static_lens_test.rs`).
+    "src/v3/compiler/tests/integration/common/list_variant_tags.rs",
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
+    // R3 L6 carrier slice (PR #1842; Measure-carrier precedent at #1819,
+    // Director Option 2 RATIFIED at
+    // gunbc#828 #issuecomment-4377533390): slice-active ratchet for
+    // `cross_target_coverage.dag` (six type declarations exist;
+    // `emission_path_projections == []`). Stays hand-Rust alongside
+    // `method_template_contract_test.rs` until testgen covers
+    // reflected-Dag structural assertions over std/ row authorities.
+    "src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs",
+    // E6-G1.a Option 3 — static `Lens<Int>` + `mini_report` mechanism demonstration
+    // (Director #1853 brief; witness-flow + TESTING.md split + `include_str!` brief
+    // receipts per #1857). SG-0 ratchet: new hand-authored integration test.
+    "src/v3/compiler/tests/integration/e6_g1a_option3_static_lens_test.rs",
     "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
+    // T-Substrate-Lens-Primitive Lens<EmissionProvenance> structural cementing
+    // test (PR #1928). Per Director Q1(a) RATIFIED at gunbc#1739
+    // #issuecomment-4392562911. Hand-authored entry added per SG-0 census
+    // discipline; integration-test home (matches `mini_lens` /
+    // `e6_g1a_option3_static_lens_test` precedent for fixture-bound lens
+    // instances).
+    "src/v3/compiler/tests/integration/emission_provenance_lens_test.rs",
     // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
     // Path 2): hand-Rust integration test pinning
     // `Dag::rust_pilot_primitives()` type-structure walk + the
@@ -279,6 +392,22 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
     "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
+    // T-CostLens-Composition Slice 1a.1 (#2141 ε scope per gunbc#2181 ratification):
+    // Rust integration tests exercising `lens_cost_target_realization` `.dag`-tier
+    // consumer of `declaration_by_name` (introduced by Slice 1a.0 / PR #2194).
+    // P2 same-PR-consumer-evidence per codex BLOCKING surfaced post-merge.
+    //
+    // **Dissolution trigger (P5)**: retires when T-Tests-As-Data infrastructure
+    // expresses ".dag-fn-resolution-against-bootstrap" assertions as structural
+    // `TestClaim` data instead of hand-Rust integration tests. The 6 assertions
+    // here (one per `*Realization` meta-type — `assert meta.is_some() && name ==
+    // "X"`) factor as `OutputEquals` / declaration-resolution claims under the
+    // T-Tests-As-Data umbrella (#1966 §3 ratchet predicate scope). Until that
+    // landing, hand-Rust is the consumption path for `.dag`-fn-from-Rust
+    // assertions; Mgr standing-authority approval at gunbc#2221
+    // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1
+    // window.
+    "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
     // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
@@ -295,6 +424,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/m0_acceptance.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs",
+    // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): integration receipt
+    // for same-DAG Shape B OpenAPI projection. Dissolves into TestClaim /
+    // `.dag`-native Shape B demo coverage with the OpenAPI projector above.
+    "src/v3/compiler/tests/integration/m1_5_omni_shape_b_openapi_test.rs",
     "src/v3/compiler/tests/integration/m1_5_testgen_test.rs",
     "src/v3/compiler/tests/integration/m1_5_user_authored_lens_gate_test.rs",
     "src/v3/compiler/tests/integration/m1_5_verification_test.rs",
@@ -326,7 +459,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // method-name registry in `dsl/std/methods.dag` + `MethodRef` typed
     // reference in `src/v3/std/methods.dag` + `MethodTemplateContract.
     // dag_method` refinement from bare `DeclarationRef` to `MethodRef`.
-    // Four structural claims: registry covers all 63 algebra-template
+    // Four structural claims: registry covers all 64 algebra-template
     // names (drift-detection), `MethodDeclaration` identity-only,
     // `MethodTemplateContract.dag_method` field type points at
     // `MethodRef`, `MethodRef` is a single-field decl wrapper.
@@ -335,8 +468,21 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // covers reflected-Dag structural assertions over std/ types.
     "src/v3/compiler/tests/integration/method_registry_test.rs",
     "src/v3/compiler/tests/integration/method_template_contract_test.rs",
+    // Gunbc #1982 / §1.8 gate #97 — emit-shim retirement coherence (v2 tree vs Gap-4 producer).
+    "src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs",
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
+    // R3 row 85 / PB #1560 Gap 4: focused acceptance for the
+    // `pb_method_template_projection` consumer hook. Stays hand-Rust
+    // alongside `method_template_contract_test.rs` until testgen covers
+    // reflected-Dag structural assertions over std/ row authorities.
+    // R3 row 85 / PB #1560 Gap 4 build-step: focused acceptance for the
+    // `pb_method_template_projection_dag_emit` producer (writes the
+    // ephemeral `.dag`). Stays hand-Rust alongside the projection-side
+    // tests until testgen covers reflected-Dag structural assertions
+    // over std/ row authorities.
+    "src/v3/compiler/tests/integration/pb_method_template_projection_dag_emit_test.rs",
+    "src/v3/compiler/tests/integration/pb_method_template_projection_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     // Prereq-X (call-on-field-access) blocker ratchet for fold_lens<C>
     // consumer wiring (Prereq-3b dispatch on inbox #1141; audit at
@@ -367,6 +513,31 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
+    // R3 T-Free-Consequences first batch: hand-Rust driver for five
+    // author-now/fire-later `BinaryDimensionReportEquals` TestClaims.
+    // Dissolves when generic DimensionReport<C> evaluation can execute
+    // the claims without a host-side integration harness.
+    "src/v3/compiler/tests/integration/r3_free_consequences_first_batch_test.rs",
+    // R3 T-Free-Consequences second batch: hand-Rust driver for five
+    // author-now/fire-later TestClaims over ordinary-lens loop parallelism and
+    // `BinaryDimensionReportEquals` cross-target cost optimization.
+    // Dissolves when generic runner coverage can execute the claims without a
+    // host-side integration harness.
+    "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
+    // R3 PB Row-4 corpus seeds (1)–(2): hand-Rust driver for author-now/fire-later
+    // `DifferentialEquals(pb_runtime_evaluate, r2_evaluator_evaluate, …)` TestClaims.
+    // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
+    // R2-Evaluator corpus comparison directly without this host-side harness.
+    "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
+    // R3 L4/L7/L5 skeleton + L7 enum-backed algebra-law matrix: hand-Rust receipt that Lane 1
+    // `DifferentialEquals` emit/eval pairing, Lane 2 `AlgebraicLaw::Identity`, and L5
+    // `ForAllTargets` compile but defer as `NotYetImplemented`; matrix rows pin current
+    // `Associativity` / `Commutativity` wired receipts plus `Identity` NYI receipts without adding
+    // missing-law enum variants. Dissolves when `TestRunner` can evaluate these claims directly
+    // without this host-side harness (same dissolution class as the R3 Free-Consequences batches).
+    // Retirement must also fold the L5 program-text bridge (`fixtures/r3_l5_corpus/add_then_branch_seed.v3`
+    // vs embedded `TestClaim.source` — byte equality ratchet lives only in this harness today).
+    "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
     "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
@@ -387,6 +558,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // direction ratified for #1179, comment 4341788769; mechanical checklist c4341800724;
     // cycle-5 merge hygiene gunb-ai/gunbc#1142 c4341940508).
     "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs",
+    // TC1 V1 strict-fire — §1.8 gate #11 (`tc1_eta_equivalence_executable`); Q-PAFS Path A
+    // (E6-G1.a static representative) per Director ratification cascade 2026-05-06/07.
+    "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs",
+    "src/v3/compiler/tests/integration/tc3_strong_normalization_deferred_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
@@ -955,5 +1130,9 @@ fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
     assert!(
         list.contains("\"rust_target.rs\""),
         "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
+    );
+    assert!(
+        list.contains("\"emit_rust_bin_shim.rs\""),
+        "hand_maintained_src should exclude emit_rust_bin_shim.rs (PB-1 shell helper) from recursive freshness drift"
     );
 }

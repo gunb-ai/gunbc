@@ -153,9 +153,30 @@ pub enum SymbolicCost {
     UnknownCost { _0: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct SizeVariable {
     pub source_port: PortId,
+    pub display_name: Option<String>,
+}
+
+impl PartialEq for SizeVariable {
+    fn eq(&self, other: &Self) -> bool {
+        self.source_port == other.source_port
+    }
+}
+
+impl Eq for SizeVariable {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AsymptoticClass {
+    ClassConstant,
+    ClassLog,
+    ClassLinear,
+    ClassLinearithmic,
+    ClassQuadratic,
+    ClassPolynomial { degree: PositiveDescentAmount },
+    ClassExponential,
+    ClassUnknown,
 }
 
 pub fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
@@ -187,10 +208,12 @@ pub fn max_path(paths: &[SymbolicCost]) -> SymbolicCost {
 pub fn normalize(cost: SymbolicCost) -> SymbolicCost {
     match cost {
         SymbolicCost::SumCost { _0: terms } => {
-            reduce_sum(drop_zero_terms(boxed_terms_to_vec(&terms)))
+            reduce_sum(drop_additive_zero_terms(boxed_terms_to_vec(&terms)))
         }
         SymbolicCost::ProductCost { _0: terms } => {
-            reduce_product(drop_zero_terms(boxed_terms_to_vec(&terms)))
+            reduce_product(drop_multiplicative_one(collapse_on_multiplicative_zero(
+                boxed_terms_to_vec(&terms),
+            )))
         }
         other => other,
     }
@@ -208,10 +231,28 @@ fn boxed_terms_to_vec(terms: &BoxedSymbolicCostList) -> Vec<SymbolicCost> {
     terms.iter().map(|term| term.as_ref().clone()).collect()
 }
 
-fn drop_zero_terms(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
+fn drop_additive_zero_terms(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
     terms
         .into_iter()
         .filter(|t| !matches!(t, SymbolicCost::ConstantCost { _0: 0 }))
+        .collect()
+}
+
+fn collapse_on_multiplicative_zero(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
+    if terms
+        .iter()
+        .any(|t| matches!(t, SymbolicCost::ConstantCost { _0: 0 }))
+    {
+        vec![SymbolicCost::ConstantCost { _0: 0 }]
+    } else {
+        terms
+    }
+}
+
+fn drop_multiplicative_one(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
+    terms
+        .into_iter()
+        .filter(|t| !matches!(t, SymbolicCost::ConstantCost { _0: 1 }))
         .collect()
 }
 
@@ -228,7 +269,7 @@ fn reduce_sum(mut terms: Vec<SymbolicCost>) -> SymbolicCost {
 
 fn reduce_product(terms: Vec<SymbolicCost>) -> SymbolicCost {
     match terms.len() {
-        0 => SymbolicCost::ConstantCost { _0: 0 },
+        0 => SymbolicCost::ConstantCost { _0: 1 },
         1 => terms.into_iter().next().unwrap(),
         2 => {
             let mut iter = terms.into_iter();
@@ -291,7 +332,13 @@ fn any_dominates(terms: &BoxedSymbolicCostList, b: &SymbolicCost) -> bool {
         .any(|child| dominates(child.as_ref(), b))
 }
 
-pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
+pub fn dominates<A, B>(a: A, b: B) -> bool
+where
+    A: std::borrow::Borrow<SymbolicCost>,
+    B: std::borrow::Borrow<SymbolicCost>,
+{
+    let a = a.borrow();
+    let b = b.borrow();
     match a {
         SymbolicCost::UnknownCost { .. } => true,
         SymbolicCost::ConstantCost { .. } => matches!(b, SymbolicCost::ConstantCost { .. }),
@@ -321,6 +368,21 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
             any_dominates(terms, b)
         }
+    }
+}
+
+pub fn classify_symbolic_cost<C>(cost: C) -> AsymptoticClass
+where
+    C: std::borrow::Borrow<SymbolicCost>,
+{
+    match cost.borrow() {
+        SymbolicCost::ConstantCost { .. } => AsymptoticClass::ClassConstant,
+        SymbolicCost::LinearCost { .. } => AsymptoticClass::ClassLinear,
+        SymbolicCost::LogCost { .. } => AsymptoticClass::ClassLog,
+        SymbolicCost::PolynomialCost { .. } => AsymptoticClass::ClassQuadratic,
+        SymbolicCost::ProductCost { .. }
+        | SymbolicCost::SumCost { .. }
+        | SymbolicCost::UnknownCost { .. } => AsymptoticClass::ClassUnknown,
     }
 }
 """
@@ -647,6 +709,9 @@ def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
         "String": "String",
         "Bool": "bool",
         "Int": "i64",
+        # `Nat` (`Semiring<Magnitude>`) uses the same decimal literal carrier as `Int` in the
+        # runtime mirror; narrowing is via `int_literal_ranges::integer_range_for_decl`.
+        "Nat": "i64",
         "NodeId": "NodeId",
         "PortId": "PortId",
         "ClusterId": "ClusterId",
@@ -890,6 +955,71 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
     return "\n\n".join(parts)
 
 
+def render_value_body_sum(variants: list[VariantDef]) -> str:
+    # This duplicates the substrate variant list intentionally. `ValueBody` is
+    # not a generic sum mirror: Map needs Rust-side invariant wrapping, and any
+    # new constructor must force an explicit renderer review instead of silently
+    # inheriting the generic `render_sum` path.
+    expected = [
+        ("ValueBodyUnparsed", "tuple", "SourceSpan", ()),
+        ("ValueBodyStructural", "record", None, (("fields", "List<FieldEntry>"),)),
+        ("ValueBodyScalar", "tuple", "LiteralBits", ()),
+        ("ValueBodyList", "tuple", "List<FieldValue>", ()),
+        ("ValueBodyMap", "tuple", "List<FieldEntry>", ()),
+    ]
+    actual = [
+        (variant.name, variant.kind, variant.payload, tuple(variant.fields or []))
+        for variant in variants
+    ]
+    if actual != expected:
+        raise ValueError(
+            "ValueBody substrate shape changed; update the Rust mirror renderer "
+            f"explicitly. expected={expected!r} actual={actual!r}"
+        )
+
+    variant_name_overrides = {
+        "ValueBodyUnparsed": "Unparsed",
+        "ValueBodyStructural": "Structural",
+        "ValueBodyScalar": "Scalar",
+        "ValueBodyList": "List",
+        "ValueBodyMap": "Map",
+    }
+    tuple_payload_overrides = {
+        "ValueBodyMap": "FieldMap",
+    }
+    # Structural record bodies keep their existing Vec carrier because record
+    # duplicate-field rejection is enforced during lowering; Map uses FieldMap
+    # here because string-keyed map uniqueness is a Rust-side carrier invariant.
+    record_field_overrides = {
+        ("ValueBodyStructural", "fields"): "Vec<(String, FieldValue)>",
+    }
+
+    lines = ["#[derive(Debug, Clone)]", "pub enum ValueBody {"]
+    for variant in variants:
+        variant_name = variant_name_overrides[variant.name]
+        if variant.kind == "unit":
+            lines.append(f"    {variant_name},")
+        elif variant.kind == "tuple":
+            payload_ty = tuple_payload_overrides.get(variant.name)
+            if payload_ty is None:
+                payload_ty = rust_type(variant.payload)
+            lines.append(f"    {variant_name}({payload_ty}),")
+        elif variant.kind == "record":
+            lines.append(f"    {variant_name} {{")
+            for label, ty in variant.fields or []:
+                field_ty = record_field_overrides[(variant.name, label)]
+                lines.append(f"        {label}: {field_ty},")
+            lines.append("    },")
+        else:
+            raise ValueError(f"unsupported variant kind {variant.kind}")
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def render_dag_value_body_module(sums: dict[str, list[VariantDef]]) -> str:
+    return render_value_body_sum(sums["ValueBody"])
+
+
 def render_dag_branch_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
         render_sum(
@@ -961,6 +1091,10 @@ def expected_outputs() -> dict[Path, str]:
         SRC_DIR / "dag_scalar_generated.rs": format_with_header(
             "src/v3/std/substrate.dag",
             render_dag_scalar_module(substrate_records, substrate_sums),
+        ),
+        SRC_DIR / "dag_value_body_generated.rs": format_with_header(
+            "src/v3/std/substrate.dag",
+            render_dag_value_body_module(substrate_sums),
         ),
         SRC_DIR / "dag_branch_generated.rs": format_with_header(
             "src/v3/std/substrate.dag",

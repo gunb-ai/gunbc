@@ -2,6 +2,7 @@ module v3.std.emit_model
 
 import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.methods { MethodRef }
+import v3.std.substrate { IntInterval }
 import std.list { List }
 
 // Target ownership is carried on every shared realization as a
@@ -21,6 +22,66 @@ type TypeRealization {
   fields: List<FieldBinding>
   cost: Int
 }
+
+// 🟡 SCAFFOLD (Coercion-Fold dissolution — Slice B rows, Slice C consumer).
+// Per-target integer inhabitance facts for structural emission selection; see
+// `docs/audit/scratch-int-examples-dissolution-spec.md` Slice B. Declared as
+// `data` in `src/v3/spec/{rust,python,go}.dag`. Rows are walkable substrate
+// today; Grounding selects rows via `LanguageSpecProjection::DeclaredIntegerIntents`
+// plus program-side `IntegerTargetIntent` facts (executable projection).
+//
+// **INVARIANTS.md E-6** (`docs/invariants/e-6-no-target-spec-field-without-a-same-pr-consumer.md`):
+// Full `emit_rust` / generated-emitter payload reads are still Slice C (#1133 / #1286).
+// **Bounded exception + dissolution ratchet:** rows land under an explicit scaffold marker here;
+// Declared projection consumes these rows structurally (no scratch example driver).
+//
+// **Same-PR consumer (checkpoint, not speculative metadata):** `v3-grounding-coercion-fold`
+// `fold_program_to_target` counts meta-tagged `TargetIntegerTypeInhabitance` declarations in
+// the `dag` before selection — missing
+// rows ⇒ `EmissionDiagnostic::UnderRefined { unspecified_axis: "declared_TargetIntegerTypeInhabitance_rows" }`.
+//
+// **Failing proofs:** `v3_grounding_coercion_fold::tests::declared_projection_requires_emit_model_inhabitance_rows`
+// (empty `dag` trips the row gate); `m2_substrate_inhabitance_test::target_integer_type_inhabitance_rows_are_structural_slice_b_receipt`
+// (bootstrap rows lower structurally).
+type TargetIntegerTypeInhabitance {
+  language: DeclarationRef
+  kernel_integer: DeclarationRef
+  algebra: DeclarationRef
+  bound: TargetIntegerInhabitanceBound
+  // Row field stays `DeclarationRef`; **`v3-grounding-coercion-fold`** fail-closed-refines at
+  // selection time: referenced declaration must carry `TypeRealization` meta
+  // (`dag.type_realization_meta()`) before `SelectedTargetInhabitance` is returned.
+  type_realization: DeclarationRef
+}
+
+// 🟢 TERMINAL — coproduct dissolution receipt (`feedback_coproduct_dissolution` / four-pattern check).
+// LanguageSpec carrier: how an integer inhabitance row attaches static bound facts vs leaving them
+// under-refined for Slice C grounding.
+//
+// **Pattern 1 — Fact placement.** Variants name the same field (`TargetIntegerTypeInhabitance.bound`);
+// the discriminant is KIND of bound attachment, not competing DAG slots. ✓ does not apply.
+//
+// **Pattern 2 — Variant-is-data.** `BoundUnspecified` is unit; `StaticBoundFact(IntInterval)` carries
+// substrate `Interval<Int>`; `PlatformDependentFact` is unit (kind-only target witness). Distinct
+// payloads — not label-only. ✓ does not apply.
+//
+// **Pattern 3 — Algebraic form.** Unspecified vs closed/static interval witness are different emission
+// authorities (defer vs inline Q1 interval); no shared intro/elim form. ✓ does not apply.
+//
+// **Pattern 4 — Dimensional.** Not a coordinate record with `Option` axes per variant; `IntInterval`
+// is the shared substrate bound parent when present. ✓ does not apply.
+//
+// **Conclusion:** irreducible coproduct for Slice B rows; emitters/grounding learn this sum in Slice C.
+// Design rationale (why not optional interval fields on `TargetIntegerTypeInhabitance`, why not parallel
+// top-level `BoundDeclaration` bodies): Pattern 1 at row level would erase the explicit axis; Pattern 2
+// hits DB-10 unparsed gap for those top-level data bodies (`lower_data_item`).
+type TargetIntegerInhabitanceBound
+  = BoundUnspecified
+  | StaticBoundFact(IntInterval)
+  // Target-side kind witness mirroring `BoundDeclaration::PlatformDependent`
+  // (`design-emission-model.md` §Q1): platform-sized integers (`usize`, Go `int`, …)
+  // use this variant instead of widening `StaticBoundFact` intervals.
+  | PlatformDependentFact
 
 type FieldBinding {
   dag_name: String
@@ -83,6 +144,57 @@ type CallableParameter {
 type ParameterDisposition
   = Borrowed
   | Consumed
+
+// 🟢 TERMINAL at string-family diagnostic-ordering axis scope. Ownership is a
+// target-row property for string-family candidates, distinct from callable
+// `ParameterDisposition`: it classifies the candidate carrier itself, not how a
+// callee receives one argument. Rows land in target specs later; this slice
+// only provides canonical structural values so consumers do not normalize
+// strings locally.
+type StringOwnershipAxis
+  = Owned
+  | Borrowed
+
+// 🟢 TERMINAL at string-family diagnostic-ordering axis scope. These are the R2
+// lifetime roles shared by lifetime analyzer facts and future target rows.
+// `SelfContained` avoids leaking Rust's `Self_` identifier escaping into the
+// substrate vocabulary; `Caller` names the call-frame-bounded role.
+type StringLifetimeAxis
+  = SelfContained
+  | Caller
+
+// 🟢 TERMINAL at string-family diagnostic-ordering axis scope. `NotApplicable`
+// is an explicit value, not absence: borrowed candidates and returns can say
+// the growability axis does not apply without becoming unknown.
+type StringGrowabilityAxis
+  = Growable
+  | Fixed
+  | NotApplicable
+
+// 🟢 TERMINAL at R2 string-family encoding scope. The design-doc correction
+// makes `.dag` `String` the `FreeMonoid<Char>` family; this value names the
+// UTF-8 target-row semantics consumed by the analyzer/fold bridge. Additional
+// byte or target-specific encodings belong in later LanguageSpec rows.
+type StringEncodingAxis
+  = Utf8FreeMonoidChar
+
+// 🟡 SCAFFOLD. LanguageSpec-owned sibling carrier for string-family
+// diagnostic-ordering rows. The row keeps the #1465 axis authority
+// namespaced and structural: each field references the canonical axis
+// declaration by `DeclarationRef`, and `language` points at the owning
+// `LanguageSpec` declaration. Dissolves when the follow-on row-population
+// declaration lands beside this carrier and a Grounding projection reader
+// consumes `StringFamilyInhabitanceRow` from `LanguageSpec` without a local
+// bridge. Until then, this carrier only establishes the substrate home.
+type StringFamilyInhabitanceRow {
+  language: DeclarationRef
+  target_type: DeclarationRef
+  type_realization: DeclarationRef
+  ownership: DeclarationRef
+  lifetime: DeclarationRef
+  growability: DeclarationRef
+  encoding: DeclarationRef
+}
 
 type TypeInstantiationRealization {
   language: DeclarationRef
@@ -254,11 +366,26 @@ type PatternMatchSyntax {
 }
 
 type CollectionOps {
-  concat: String
-  length: String
-  is_empty: String
-  fold: String
-  map: String
+  // Realizations of `FreeMonoid<T>.concat` / `length` / `is_empty` / `fold` and
+  // the Rust higher-order quartet — each `DeclarationRef` points at a
+  // `MethodTemplateContract` value (same carrier as per-target
+  // `*_method_template_contracts` rows). Template strings live only on those
+  // contracts; these fields are identity, not render data.
+  concat_contract: DeclarationRef
+  length_contract: DeclarationRef
+  // `FreeMonoid<T>.is_empty` — `dag_method` is `is_empty_method`; templates carry target sugar.
+  is_empty_contract: DeclarationRef
+  fold_contract: DeclarationRef
+  filter_contract: DeclarationRef
+  flat_map_contract: DeclarationRef
+  any_contract: DeclarationRef
+  all_contract: DeclarationRef
+  map_contract: DeclarationRef
+  // Legacy literal fields remain for targets/render paths not yet migrated to
+  // `MethodTemplateContract` references. Rust filter now consumes
+  // `filter_contract`'s `HigherOrderTemplates.inline_template`.
+  // Dissolution trigger: delete these legacy collection render literals once
+  // all CollectionOps render paths select templates through contract refs.
   filter: String
   contains: String
   empty_list: String

@@ -117,9 +117,109 @@ Granularity column distinguishes whether the row tracks a full lane, a sub-lane,
 | T-Ground-Coercion-Fold | lane | coercion fold | `coercion_fold_structural` | in-flight | #989, `c0cc8b260`, #1241 | Prior pilot-list / mirror-consistency footprint (#989 + `c0cc8b260` per manager brief). **#1241** — `grounding_coercion_fold` crate scaffold + algorithm-shape stub; **not** structural `green` until `coercion_fold_structural` fires. |
 | T-Ground-Lifetime-Analyzer | lane | structural lifetime/ownership derivation (replaces retracted Annotation lane) | `lifetime_analyzer_structural` | in-flight | #1177, #1206, #1218, #1220 | Brief #1177; **R2-scope (a)/(b)/(c) impl #1206**; fail-closed Dag extraction #1218; path-prefix authority staging note #1220 — gate **open** until `lifetime_analyzer_structural`. |
 | T-Ground-Diagnostic | lane | diagnostic surface | `target_primitives_diagnostic_structural` | not-started | worker brief authored ([#1216](https://github.com/gunb-ai/gunbc/pull/1216) — [`t-ground-diagnostic.md`](briefs/t-ground-diagnostic.md)) | Q6.5 Layer-1 `CompilerDiagnosticKind` authority per brief; **implementation pending** — row stays **`not-started`** per **`in-flight` vs `not-started` convention** above until first **implementation** worker PR lands (docs-only / brief-only signals are **not** `in-flight`). |
-| T-Ground-CrossTarget-Meta | lane | cross-target meta | `cross_target_meta_structural` | not-started | worker brief authored ([#1224](https://github.com/gunb-ai/gunbc/pull/1224) + anchor #1229 — [`t-ground-cross-target-meta.md`](briefs/t-ground-cross-target-meta.md)) | Lane brief + L6 form-axis **docs** anchor (#1229); **no** implementation PR yet — **`not-started`** until first impl PR opens (PR-J gate remains future). |
+| T-Ground-CrossTarget-Meta | lane | cross-target meta / L6 fold | `cross_target_meta_structural` | in-flight | #1224 brief + #1414 L6 coverage fold + closure-ledger gap ratchet | Walker + [`r2-closure-ledger.md`](r2-closure-ledger.md) L6 key block; structural gate **open** until `cross_target_meta_structural` fires. |
 | T-Ground-Tests | lane | grounding tests | `grounding_tests_structural` | not-started | worker brief authored ([#1223](https://github.com/gunb-ai/gunbc/pull/1223) — [`t-ground-tests.md`](briefs/t-ground-tests.md)) | L4 implementation **gated** Q4 (PR-I) + Coercion-Fold body — brief-only → **`not-started`** per ledger convention. |
 | T-Ground-Dissolve | lane | dissolution sweep | `grounding_dissolve_structural` | not-started | worker brief authored ([#1234](https://github.com/gunb-ai/gunbc/pull/1234) — [`t-ground-dissolve.md`](briefs/t-ground-dissolve.md)); manager brief closure sweep **#1240** | **#1240** records R2 Grounding **brief-authoring program closure** in [`r2-grounding-manager.md`](briefs/r2-grounding-manager.md) — **docs / program hygiene**, not an implementation PR; row stays **`not-started`** until dissolution implementation work opens. |
+
+#### L6 MissingEmissionPath tracked gaps (T-Ground-CrossTarget-Meta)
+
+Ratchet: `v3-grounding-cross-target-meta` compares live `check_l6_load_completeness(generated_full_bootstrap_dag()).missing` keys to the machine-readable list between markers (**exact set equality**). Keys use `Cell::ledger_key` (`FormAxis_BehaviorAxis_ShapeATarget` substrate labels). When LanguageSpec rows cover additional `(connective × behavior × target)` cells, **remove** the corresponding keys here; do not allow ledger-only rows without a matching walker gap (drift the other direction).
+
+<!-- L6_MISSING_EMISSION_PATH_KEYS_BEGIN -->
+Atom_Value_Rust
+Atom_Value_Python
+Atom_Value_Go
+Atom_Transform_Rust
+Atom_Transform_Python
+Atom_Transform_Go
+Atom_Branch_Rust
+Atom_Branch_Python
+Atom_Branch_Go
+Atom_Loop_Rust
+Atom_Loop_Python
+Atom_Loop_Go
+Atom_Bind_Rust
+Atom_Bind_Python
+Atom_Bind_Go
+Conj_Value_Rust
+Conj_Value_Python
+Conj_Value_Go
+Conj_Transform_Rust
+Conj_Transform_Python
+Conj_Transform_Go
+Conj_Branch_Rust
+Conj_Branch_Python
+Conj_Branch_Go
+Conj_Loop_Rust
+Conj_Loop_Python
+Conj_Loop_Go
+Conj_Bind_Rust
+Conj_Bind_Python
+Conj_Bind_Go
+Disj_Value_Rust
+Disj_Value_Python
+Disj_Value_Go
+Disj_Transform_Rust
+Disj_Transform_Python
+Disj_Transform_Go
+Disj_Branch_Rust
+Disj_Branch_Python
+Disj_Branch_Go
+Disj_Loop_Rust
+Disj_Loop_Python
+Disj_Loop_Go
+Disj_Bind_Rust
+Disj_Bind_Python
+Disj_Bind_Go
+Arrow_Value_Rust
+Arrow_Value_Python
+Arrow_Value_Go
+Arrow_Transform_Rust
+Arrow_Transform_Python
+Arrow_Transform_Go
+Arrow_Branch_Rust
+Arrow_Branch_Python
+Arrow_Branch_Go
+Arrow_Loop_Rust
+Arrow_Loop_Python
+Arrow_Loop_Go
+Arrow_Bind_Rust
+Arrow_Bind_Python
+Arrow_Bind_Go
+Cardinality_Value_Rust
+Cardinality_Value_Python
+Cardinality_Value_Go
+Cardinality_Branch_Rust
+Cardinality_Branch_Python
+Cardinality_Branch_Go
+Cardinality_Loop_Rust
+Cardinality_Loop_Python
+Cardinality_Loop_Go
+Cardinality_Bind_Rust
+Cardinality_Bind_Python
+Cardinality_Bind_Go
+Instantiation_Value_Rust
+Instantiation_Value_Python
+Instantiation_Value_Go
+Instantiation_Transform_Rust
+Instantiation_Transform_Python
+Instantiation_Transform_Go
+Instantiation_Branch_Rust
+Instantiation_Branch_Python
+Instantiation_Branch_Go
+Instantiation_Loop_Rust
+Instantiation_Loop_Python
+Instantiation_Loop_Go
+Instantiation_Bind_Rust
+Instantiation_Bind_Python
+Instantiation_Bind_Go
+<!-- L6_MISSING_EMISSION_PATH_KEYS_END -->
+
+##### L6 structural debt receipts (non-cell)
+
+| Identifier | Category | Dissolution trigger |
+|---|---|---|
+| `l6_method_template_per_row_projection` | structural-debt | Land per-row L6 cell projection before Branch-shaped or heterogeneous `MethodTemplateContract` rows enter per-target lists (`coverage.rs` TODO on `language_spec_emission_cells_covered`). |
 
 ### Impossible-Bugs Manager — T-ImpossibleBugs
 
@@ -127,7 +227,7 @@ Granularity column distinguishes whether the row tracks a full lane, a sub-lane,
 
 | Identifier | Granularity | Scope | Gate (demo = gate) | Status | Last signal | Notes |
 |---|---|---|---|---|---|---|
-| Nested-optional flatten | class | gated on cardinality refinement | `nested_optional_flatten_compile_error` in `t_impossiblebugs_nested_optional_flatten.dag` (runner: `t_impossiblebugs_nested_optional_flatten_suite_passes_through_runner`) | green | #890 + #962 (impl) + #1173 (class-close / structural test) | **Class closed.** Substrate work #890 + #962; audit + runner-backed TestClaim #1173. No substrate gaps surfaced. |
+| Nested-optional flatten | class | gated on cardinality refinement | `nested_optional_flatten_compile_error` in `t_impossiblebugs_nested_optional_flatten.dag` (runner: `t_impossiblebugs_nested_optional_flatten_suite_passes_through_runner`) | green | #890 + #962 (impl) + #1173 (class-close / structural test) + #1803 (codegen-bypass closure, Path B rename) | **Class closed.** Substrate work #890 + #962; audit + runner-backed TestClaim #1173. Codegen-bypass closure via #1803: `CardinalityPayload::new_unchecked` renamed to `new_unchecked_bypassing_idempotence`, making bypass-discipline visible at every call-site (per Director routing #828 #issuecomment-4383647114, brief in #1778). No substrate gaps surfaced. |
 | Unhandled diagnostic paths | class | Tier 2 substrate | `unhandled_diagnostic_paths_impossible_structural` | green | #969 + #1233 + #1249 | **Class closed.** `Int/Int` totality (#969); sibling rows by removal (#1233); `force_unwrap` regression-verify negative TestClaim (#1249). No substrate gaps surfaced for this class. |
 | Unenumerated effects | class | post-effects-design-doc per #808 | `unenumerated_effects_impossible_structural` | green | #971 (unenumerated effects lens landing) | Closed-system effects model is canonical reference. |
 

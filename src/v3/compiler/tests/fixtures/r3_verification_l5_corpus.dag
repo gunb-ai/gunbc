@@ -1,0 +1,20 @@
+// std.r3_verification_l5_corpus — R3 L5 corpus skeleton: `ForAllTargets` scaffold over a single
+// seed program (directory sibling `r3_l5_corpus/add_then_branch_seed.v3`). Runner default arm:
+// `TestPredicate::ForAllTargets is not wired in the Rust runner yet`.
+
+module std.r3_verification_l5_corpus
+
+import std.verification { ForAllTargets, TestClaim, TestSuite }
+
+data r3_verification_l5_cross_target_skeleton: TestClaim = {
+  name: "r3_verification_l5_cross_target_skeleton",
+  source: "// Program authority for `r3_verification_l5_cross_target_skeleton`: integration test requires\n// `TestClaim.source` in `r3_verification_l5_corpus.dag` to match this file exactly.\nmodule user.r3_l5_add_then_branch_seed\n\nfn add(a: Int, b: Int) -> Int = a + b\n\nlet seed_acc: Int = add(1, 2)\nlet _: Int =\n  match seed_acc == 3 {\n    True => seed_acc\n    False => 0\n  }\n",
+  file_name: "add_then_branch_seed.v3",
+  predicate: ForAllTargets("true", [], 0),
+  requires: []
+}
+
+data r3_verification_l5_corpus_suite: TestSuite = {
+  name: "r3_verification_l5_corpus_suite",
+  claims: [r3_verification_l5_cross_target_skeleton]
+}

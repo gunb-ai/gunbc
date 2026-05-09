@@ -21,6 +21,7 @@ import std.types { FilePath, NonEmptyStr }
 import v3.std.substrate { ComparisonOp }
 import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.resources { ResourceReference }
+import v3.std.bridge_ledger { BridgeLedgerRef }
 
 // R1C-A / T-TestGen PB-census predicate shape vocabulary. These are narrow
 // bootstrap-local carriers for R1C-D's census-as-TestClaim fixtures; the Rust
@@ -55,9 +56,12 @@ type DiagnosticKind
   = TokenizerError
   | ParseError
   | TypeMismatch
-  | UnitMismatch
   | ArityMismatch
   | ResolveError
+  | UnitMismatch
+  | BranchConditionNotBool
+  | MagnitudeOutOfRange
+  | MalformedIntegerRangeFact
   | NominalOpacityViolation
 
 // **🟡 Scaffold — DiagnosticDetailExpectation.** Bootstrap-local bridge
@@ -86,6 +90,12 @@ type DiagnosticReference {
 type PortStateExpectation
   = Resolved
   | Unresolved
+
+// Closed comparator for measured Tier-3 perf-budget checks. Do not reuse
+// general `ComparisonOp`: `Gt` / `Ge` would invert the budget and let a
+// regression satisfy `PerfWithinBaseline`.
+type PerfBudgetComparisonOp
+  = AtMostBudget
 
 // **🟡 Scaffold — TestPredicate.** The remaining bootstrap carrier is
 // the outer "what property are we asserting?" coproduct. The
@@ -179,6 +189,62 @@ type TestPredicate
       oracle_ref: DeclarationRef
       input_ref: DeclarationRef
     }
+  // **🟡 Scaffold — SymbolicCostExprEquals.** Apply the symbolic-cost lens
+  // to the claim's program-under-test (`TestClaim.source` for enumerated
+  // claims; `ProgramShape.source` for quantified claims once Slice 1
+  // lands), then compare the resulting `SymbolicCost` value structurally
+  // to a declared expected `data X: SymbolicCost = …`. One `DeclarationRef`
+  // payload because `actual` is implicit (program-under-test convention,
+  // mirroring `Compiles` / `OutputEquals` / `CostBounded` — every other
+  // predicate that reads from the program also relies on this convention
+  // rather than carrying a redundant `input_ref`).
+  //
+  // Why a dedicated predicate, not `LensOutputEquals(symbolic_cost_lens, …)`
+  // or `BinaryDimensionReportEquals(left, right)`:
+  //   - `LensOutputEquals` carries an explicit `input_ref: DeclarationRef`,
+  //     so it cannot project against a generated `ProgramShape` from a
+  //     `QuantifiedTestClaim`. Heuristic-cost-function-5th-gate testgen
+  //     specifically needs the per-generated-program shape.
+  //   - `BinaryDimensionReportEquals` wraps `SymbolicCost` in
+  //     `DimensionReport<SymbolicCost>`'s `Ok | Fail` partition + witnesses;
+  //     law-shape equality (the heuristic-cost-function use case) does not
+  //     need the report partition, and the existing variant is shape-only
+  //     until the generic DimensionReport producer/evaluator path lands.
+  //
+  // Runner status: shape-only until the heuristic-cost-function-5th-gate
+  // testgen dispatch authors the eval (Verification follow-up). The runner
+  // stub returns `ClaimResult::NotYetImplemented` naming the missing eval,
+  // the same pattern other shape-only scaffolds (`BinaryDimensionReportEquals`,
+  // `CensusBoundCheck`, `FixedPointConverges`, etc.) already use.
+  // Dissolution trigger: when `SymbolicCost` is reflected as a
+  // first-class substrate fact and direct expression equality can be
+  // expressed as an ordinary surfaced comparison rather than a bespoke
+  // predicate envelope.
+  | SymbolicCostExprEquals {
+      expected: DeclarationRef
+    }
+  // **🟢 TERMINAL at T-Tier3 P1 substrate scope.** Compare a measured
+  // `PerfBaselineMeasurement` declaration against a declared baseline
+  // measurement. The runner applies the ratified Tier-3 ratio budget:
+  // median uses baseline * 2 and p99 uses baseline * 5. `comparator`
+  // is a closed budget comparator, not general `ComparisonOp`.
+  | PerfWithinBaseline {
+      subject: DeclarationRef
+      comparator: PerfBudgetComparisonOp
+      baseline_ref: DeclarationRef
+    }
+  // **🟡 Scaffold — BinaryDimensionReportEquals.** Compare two declarations
+  // that produce `DimensionReport<C>` values by structural equality. This is
+  // intentionally one binary predicate for TC1 eta-equivalence, TC2 strategy
+  // order independence, and TC3 evaluation-step witness parity; per-TC
+  // interpretation belongs in the referenced report producers, not in parallel
+  // predicate variants.
+  // Runner status: shape-only until the generic DimensionReport producer/evaluator
+  // path lands. Consumers must not compare serialized reports.
+  | BinaryDimensionReportEquals {
+      left_report_ref: DeclarationRef
+      right_report_ref: DeclarationRef
+    }
   // **🟡 Scaffold — AlgebraicLaw.** Check a named algebraic law (see `AlgebraicLawKind`)
   // against a named lens (T-LensAPI composition). `Associativity` today: runner applies the
   // compiled lens on every Int triple in `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES` (D1/D3),
@@ -246,6 +312,22 @@ type TestPredicate
       deferred_gate: DeclarationRef
       target_lane: DeclarationRef
       authority_doc: DeclarationRef
+    }
+  // 🟢 TERMINAL at PR-α scope. Bridge-retirement ledger zero-residual
+  // gate. `ledger: BridgeLedgerRef` points at the canonical
+  // `bridge_ledger` declaration of type `List<BridgeLedgerRow>`
+  // (`v3.std.bridge_ledger`); the runner reads every row's `status`
+  // field and `Pass`es iff every row's status resolves to the
+  // `Retired` constructor of `BridgeStatus`. Open rows produce `Fail`
+  // with the offending names so the diagnostic surfaces the residual
+  // debt directly. The wrapped `BridgeLedgerRef` makes the ledger-
+  // target intent structural at the field-type level (mirror of
+  // `MethodRef` / `CallableRef`); the canonical-identity check
+  // (decl == `bridge_ledger`) lands at the runner boundary in
+  // `eval_bridge_ledger_zero` until refinement-typing on
+  // `DeclarationRef` retires the wrapper class.
+  | BridgeLedgerZero {
+      ledger: BridgeLedgerRef
     }
 
 // Structural runner input role for predicates whose input is the compiled

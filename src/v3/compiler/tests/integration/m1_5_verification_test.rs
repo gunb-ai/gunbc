@@ -1,5 +1,10 @@
+use std::sync::OnceLock;
+
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Dag, DeclarationId, PortState, TypeConnective};
+use v3_compiler::dag::{
+    Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective, ValueBody,
+};
+use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
@@ -84,9 +89,12 @@ fn bootstrap_loads_verification_authority_types() {
             (String::from("TokenizerError"), Vec::new()),
             (String::from("ParseError"), Vec::new()),
             (String::from("TypeMismatch"), Vec::new()),
-            (String::from("UnitMismatch"), Vec::new()),
             (String::from("ArityMismatch"), Vec::new()),
             (String::from("ResolveError"), Vec::new()),
+            (String::from("UnitMismatch"), Vec::new()),
+            (String::from("BranchConditionNotBool"), Vec::new()),
+            (String::from("MagnitudeOutOfRange"), Vec::new()),
+            (String::from("MalformedIntegerRangeFact"), Vec::new()),
             (String::from("NominalOpacityViolation"), Vec::new()),
         ]
     );
@@ -186,6 +194,25 @@ fn bootstrap_loads_verification_authority_types() {
                 ],
             ),
             (
+                String::from("SymbolicCostExprEquals"),
+                vec![String::from("expected")],
+            ),
+            (
+                String::from("PerfWithinBaseline"),
+                vec![
+                    String::from("subject"),
+                    String::from("comparator"),
+                    String::from("baseline_ref"),
+                ],
+            ),
+            (
+                String::from("BinaryDimensionReportEquals"),
+                vec![
+                    String::from("left_report_ref"),
+                    String::from("right_report_ref"),
+                ],
+            ),
+            (
                 String::from("AlgebraicLaw"),
                 vec![String::from("law"), String::from("lens_ref")],
             ),
@@ -232,6 +259,10 @@ fn bootstrap_loads_verification_authority_types() {
                     String::from("target_lane"),
                     String::from("authority_doc"),
                 ],
+            ),
+            (
+                String::from("BridgeLedgerZero"),
+                vec![String::from("ledger")],
             ),
         ]
     );
@@ -407,8 +438,10 @@ fn r2_pr_a_runtime_value_model_suite_passes() {
 }
 
 /// TC2 (Evaluator Manager): evaluation-order independence theorem shape.
-/// This is an author-now/fire-later `Compiles` fixture until PB-Runtime and
-/// T-Substrate-Lens-Primitive make strategy comparison executable.
+/// **Author-now-fire-later** `BinaryDimensionReportEquals` consumer (unified predicate
+/// PR #1318) with strategy-order role declarations; runner report equality is NYI until
+/// `DimensionReport<C>` production lands. Strict-fire still waits on a second executable
+/// strategy (PR #1316 §4 P4).
 const TC2_EVALUATION_ORDER_FIXTURE: &str =
     include_str!("../fixtures/tc2_evaluation_order_independence_deferred.dag");
 const TC2_EVALUATION_ORDER_FIXTURE_PATH: &str =
@@ -441,5 +474,156 @@ fn tc2_evaluation_order_independence_suite_passes() {
         results[0].claim_name,
         "evaluation_order_independent_lens_results"
     );
-    assert_eq!(results[0].result, ClaimResult::Pass);
+    // Predicate is `BinaryDimensionReportEquals` only; at head the runner returns NYI after
+    // shape validation. Do not assert on `reason` substrings (TESTING.md: avoid pinning message text).
+    assert!(
+        matches!(&results[0].result, ClaimResult::NotYetImplemented(_)),
+        "expected TC2 claim to stop at NYI (shape-valid `BinaryDimensionReportEquals`), got {:?}",
+        results[0].result
+    );
+}
+
+const BRIDGE_LEDGER_ZERO_SOURCE: &str =
+    include_str!("../fixtures/r3_bridge_retirement_ledger_zero.dag");
+const BRIDGE_LEDGER_ZERO_PATH: &str =
+    "src/v3/compiler/tests/fixtures/r3_bridge_retirement_ledger_zero.dag";
+
+// Performance caches only: these amortize fixture/bootstrap compilation across
+// tests and are not part of the verification model or claim authority.
+static BRIDGE_LEDGER_ZERO_DAG: OnceLock<Dag> = OnceLock::new();
+
+fn bridge_ledger_zero_dag() -> &'static Dag {
+    BRIDGE_LEDGER_ZERO_DAG.get_or_init(|| {
+        compile_to_dag(BRIDGE_LEDGER_ZERO_SOURCE, BRIDGE_LEDGER_ZERO_PATH)
+            .expect("bridge ledger zero fixture compiles")
+    })
+}
+
+const RUST_DAG_ISOMORPHISM_SOURCE: &str =
+    include_str!("../fixtures/rust_dag_isomorphism_consumer.dag");
+const RUST_DAG_ISOMORPHISM_PATH: &str =
+    "src/v3/compiler/tests/fixtures/rust_dag_isomorphism_consumer.dag";
+static RUST_DAG_ISOMORPHISM_DAG: OnceLock<Dag> = OnceLock::new();
+
+fn rust_dag_isomorphism_dag() -> &'static Dag {
+    RUST_DAG_ISOMORPHISM_DAG.get_or_init(|| {
+        compile_to_dag(RUST_DAG_ISOMORPHISM_SOURCE, RUST_DAG_ISOMORPHISM_PATH)
+            .expect("RustDagIsomorphism consumer fixture compiles")
+    })
+}
+
+static BRIDGE_LEDGER_OPEN_ROW_NAMES: OnceLock<Vec<String>> = OnceLock::new();
+/// BridgeLedgerZero open-row bound is monotone non-increasing; PRs that decrease this
+/// count retire bridges, and PRs that need to increase it must update
+/// `r3-v-bridge-ratchet-test-design.md` §Per-Bridge Gate Audit and obtain
+/// Verification-Mgr acknowledgment.
+const EXPECTED_OPEN_BOUND: usize = 4;
+
+fn bridge_ledger_open_row_names() -> &'static [String] {
+    BRIDGE_LEDGER_OPEN_ROW_NAMES.get_or_init(|| {
+        let dag = generated_full_bootstrap_dag();
+        let retired_constructor = {
+            let bridge_status = dag
+                .declaration_by_name("BridgeStatus")
+                .expect("BridgeStatus missing from full bootstrap");
+            let TypeConnective::Disj { variants } = &bridge_status.connective else {
+                panic!("BridgeStatus is not a Disj");
+            };
+            variants
+                .iter()
+                .find(|variant| variant.label == "Retired")
+                .expect("Retired variant missing")
+                .ty
+        };
+        let bridge_ledger = dag
+            .declaration_by_name("bridge_ledger")
+            .expect("bridge_ledger missing from full bootstrap");
+        let Some(ValueBody::List(rows)) = &bridge_ledger.value_body else {
+            panic!("bridge_ledger must lower as a List value body");
+        };
+
+        rows.iter()
+            .filter_map(|row| {
+                let FieldValue::Record(fields) = row else {
+                    panic!("bridge_ledger row is not a record: {row:?}");
+                };
+                let constructor = match record_field(fields, "status") {
+                    FieldValue::Variant { constructor, .. } => *constructor,
+                    other => panic!("bridge_ledger status is not a variant: {other:?}"),
+                };
+                if constructor == retired_constructor {
+                    None
+                } else {
+                    Some(string_literal(record_field(fields, "name")).to_string())
+                }
+            })
+            .collect()
+    })
+}
+
+fn record_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> &'a FieldValue {
+    fields
+        .iter()
+        .find(|(l, _)| l == label)
+        .map(|(_, value)| value)
+        .unwrap_or_else(|| panic!("record missing `{label}` field"))
+}
+
+fn string_literal(value: &FieldValue) -> &str {
+    match value {
+        FieldValue::Literal(LiteralBits::String(s)) => s.as_str(),
+        other => panic!("expected String literal, got {other:?}"),
+    }
+}
+
+#[test]
+fn r3_bridge_retirement_ledger_zero_open_row_count_ratchet() {
+    let results = TestRunner::new(bridge_ledger_zero_dag())
+        .run_suite("r3_bridge_retirement_ledger_zero_suite");
+    assert_eq!(results.len(), 1);
+    let reason = match &results[0].result {
+        ClaimResult::Fail(reason) => reason,
+        other => panic!("expected bridge ledger zero to be red at HEAD; got {other:?}"),
+    };
+
+    let open_rows = bridge_ledger_open_row_names();
+    assert!(
+        open_rows.len() <= EXPECTED_OPEN_BOUND,
+        "BridgeLedgerZero decreasing-open-count ratchet: current open-row count {} \
+         exceeds recorded bound {}; open rows: [{}]",
+        open_rows.len(),
+        EXPECTED_OPEN_BOUND,
+        open_rows.join(", ")
+    );
+    assert!(
+        !open_rows.is_empty(),
+        "when the canonical bridge ledger reaches zero open rows, re-arm this \
+         fixture expectation as a Pass ratchet in the same PR"
+    );
+    for row in open_rows {
+        assert!(
+            reason.contains(row),
+            "BridgeLedgerZero diagnostic must name open row `{row}`; got: {reason}"
+        );
+    }
+}
+
+#[test]
+fn rust_dag_isomorphism_consumer_reaches_binary_report_shape_gate() {
+    let results = TestRunner::new(rust_dag_isomorphism_dag())
+        .run_suite("rust_dag_isomorphism_consumer_suite");
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::NotYetImplemented(reason)
+                if reason.contains("BinaryDimensionReportEquals")
+                    && reason.contains("structural shape is valid")
+                    && reason.contains("RustEnumExtractionDagShapeReport")
+                    && reason.contains("DagReflectionDagShapeReport")
+        ),
+        "expected RustDagIsomorphism consumer to reach the current \
+         BinaryDimensionReportEquals shape-valid path; got {:?}",
+        results[0].result
+    );
 }

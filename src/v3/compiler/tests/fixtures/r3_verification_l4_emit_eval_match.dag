@@ -1,0 +1,88 @@
+// std.r3_verification_l4_emit_eval_match — R3 Lane 1: `DifferentialEquals(rust_emit_output,
+// dag_eval_output, ProgramOutputBind)` W1 slice (transitional name + Int stdout carve-out per
+// `docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md` / #1485). Fixture stubs
+// `rust_emit_output` / `dag_eval_output` are not executed — the runner implements both sides.
+
+module std.r3_verification_l4_emit_eval_match
+
+import std.substrate { Dag, PortId }
+import std.types { Int }
+import std.verification {
+  DifferentialEquals,
+  ProgramOutputBind,
+  TestClaim,
+  TestSuite
+}
+import v3.std.lookup { Lookup, miss_int_lookup }
+
+fn rust_emit_output(d: Dag, port_id: PortId) -> Lookup<Int> =
+  miss_int_lookup()
+
+fn dag_eval_output(d: Dag, port_id: PortId) -> Lookup<Int> =
+  miss_int_lookup()
+
+data l4_out: Int = 0
+
+data r3_l4_emit_eval_program_input: ProgramOutputBind = {
+  output_ref: l4_out
+}
+
+data l4_false_out: Int = 0
+
+data r3_l4_emit_eval_false_program_input: ProgramOutputBind = {
+  output_ref: l4_false_out
+}
+
+data l4_nested_out: Int = 0
+
+data r3_l4_emit_eval_nested_program_input: ProgramOutputBind = {
+  output_ref: l4_nested_out
+}
+
+data r3_verification_l4_emit_eval_match_skeleton: TestClaim = {
+  name: "r3_verification_l4_emit_eval_match_skeleton",
+  source: "// R3 L4 — branch-only claim program on the current eager PR-B spine (no Callable / fold lambdas) so `dag_eval_output` can use `evaluate_body` while Callable remains fail-closed.\n\nlet l4_pick: Bool = true\n\nlet l4_out: Int =\n  match l4_pick {\n    True => 3\n    False => 0\n  }\n",
+  file_name: "r3_verification_l4_emit_eval_match_skeleton.v3",
+  predicate: DifferentialEquals(
+    rust_emit_output,
+    dag_eval_output,
+    r3_l4_emit_eval_program_input
+  ),
+  requires: []
+}
+
+data r3_verification_l4_emit_eval_false_branch: TestClaim = {
+  name: "r3_verification_l4_emit_eval_false_branch",
+  source: "// R3 L4 — second W1 Rust/Int receipt inside the #1499 surface: false Bool branch, signed Int output, one named output bind.\n\nlet l4_pick: Bool = false\n\nlet l4_false_out: Int =\n  match l4_pick {\n    True => 0\n    False => -4\n  }\n",
+  file_name: "r3_verification_l4_emit_eval_false_branch.v3",
+  predicate: DifferentialEquals(
+    rust_emit_output,
+    dag_eval_output,
+    r3_l4_emit_eval_false_program_input
+  ),
+  requires: []
+}
+
+data r3_verification_l4_emit_eval_nested_branch: TestClaim = {
+  name: "r3_verification_l4_emit_eval_nested_branch",
+  source: "// R3 L4 — third W1 Rust/Int receipt inside the current Int-only ceiling: nested Bool branch, one named Int output bind.\n\nlet l4_outer_pick: Bool = true\nlet l4_inner_pick: Bool = false\n\nlet l4_nested_out: Int =\n  match l4_outer_pick {\n    True => match l4_inner_pick {\n      True => 5\n      False => 7\n    }\n    False => 0\n  }\n",
+  file_name: "r3_verification_l4_emit_eval_nested_branch.v3",
+  predicate: DifferentialEquals(
+    rust_emit_output,
+    dag_eval_output,
+    r3_l4_emit_eval_nested_program_input
+  ),
+  requires: []
+}
+
+// Declaration id is fixture-local and distinct from `r3_verification_l7_algebraic_laws.dag` so two
+// modules are never ambiguous under one loader. Lane 1 acceptance may later merge both claims into
+// one module under `r3_verification_l4_l7_direct_suite` (parent brief).
+data r3_verification_l4_emit_eval_skeleton_suite: TestSuite = {
+  name: "r3_verification_l4_emit_eval_skeleton_suite",
+  claims: [
+    r3_verification_l4_emit_eval_match_skeleton,
+    r3_verification_l4_emit_eval_false_branch,
+    r3_verification_l4_emit_eval_nested_branch
+  ]
+}

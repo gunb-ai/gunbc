@@ -27,6 +27,7 @@ use v3_compiler::dag::{CardinalityBound, Dag, DeclarationId, TypeConnective};
 use v3_compiler::generated_full_bootstrap_dag;
 
 const V2_SOURCE: &str = include_str!("../../../../../dsl/extdeps/llm/anthropic.dag");
+const V2_LLM_SOURCE: &str = include_str!("../../../../../dsl/extdeps/llm/llm.dag");
 
 // ── v3 bootstrap projections ──────────────────────────────────────────
 
@@ -80,7 +81,7 @@ fn v3_field_is_optional(dag: &Dag, owner: &str, field: &str) -> bool {
 /// Reconstruct a canonical v3 type-expression string for a declaration.
 ///
 /// Rule: a *named* declaration (`String`, `Bool`, `AnthropicStopReason`,
-/// `AnthropicMessages200TextBlock`, …) canonicalizes as its surface name
+/// `AnthropicMessages200Body`, …) canonicalizes as its surface name
 /// even when the underlying connective unfolds to `Instantiation`
 /// (e.g. `String = FreeMonoid<Int>`, `Int` refines from `Int64`); the
 /// v2 source addresses these by name and so does the v3 mirror at the
@@ -167,6 +168,14 @@ fn normalize_ty_text(raw: &str) -> String {
 /// Extract the source text of the `type <name>` block from the v2 file.
 /// Block ends at the next top-level keyword on a line, or end-of-file.
 fn v2_type_block(name: &str) -> &'static str {
+    v2_type_block_from(V2_SOURCE, "dsl/extdeps/llm/anthropic.dag", name)
+}
+
+fn v2_llm_type_block(name: &str) -> &'static str {
+    v2_type_block_from(V2_LLM_SOURCE, "dsl/extdeps/llm/llm.dag", name)
+}
+
+fn v2_type_block_from(source: &'static str, source_label: &str, name: &str) -> &'static str {
     let opens = [
         format!("type {name} {{"),
         format!("type {name}\n"),
@@ -174,22 +183,22 @@ fn v2_type_block(name: &str) -> &'static str {
     ];
     let start = opens
         .iter()
-        .find_map(|n| V2_SOURCE.find(n.as_str()))
+        .find_map(|n| source.find(n.as_str()))
         .unwrap_or_else(|| {
             panic!(
-                "v2 source `dsl/extdeps/llm/anthropic.dag` no longer declares \
+                "v2 source `{source_label}` no longer declares \
                  `type {name}` — lockstep with v3 mirror is broken."
             )
         });
     let after_keyword = start + "type ".len();
-    let rest = &V2_SOURCE[after_keyword..];
+    let rest = &source[after_keyword..];
     let stop = ["\ntype ", "\ndata ", "\nservice ", "\nfn ", "\nmodule "];
     let end_in_rest = stop
         .iter()
         .filter_map(|kw| rest.find(kw))
         .min()
         .unwrap_or(rest.len());
-    &V2_SOURCE[start..(after_keyword + end_in_rest)]
+    &source[start..(after_keyword + end_in_rest)]
 }
 
 /// Parse a v2 record block (`type X { foo: T, bar: U?, … }`) and return
@@ -287,13 +296,22 @@ fn parse_v2_brace_body_fields(body: &str) -> Vec<V2Field> {
 /// tuples in declaration order. `payload_fields` is `None` for bare
 /// variants (`EndTurn`) and `Some([(label, is_optional), ...])` for
 /// record-payload variants (`UserToolResultBlock { tool_use_id: String,
-/// content: String, is_error: Bool? }`). Handles both inline
+/// content: AnthropicToolResultContent?, is_error: Bool? }`). Handles both inline
 /// (`type X = A | B | C`) and multi-line (`type X\n  = Foo { … }\n  | Bar { … }`)
 /// shapes.
 type V2VariantPayload = Option<Vec<V2Field>>;
 
 fn v2_disj_variants(name: &str) -> Vec<(String, V2VariantPayload)> {
     let block = v2_type_block(name);
+    parse_v2_disj_block(name, block)
+}
+
+fn v2_llm_disj_variants(name: &str) -> Vec<(String, V2VariantPayload)> {
+    let block = v2_llm_type_block(name);
+    parse_v2_disj_block(name, block)
+}
+
+fn parse_v2_disj_block(name: &str, block: &str) -> Vec<(String, V2VariantPayload)> {
     let eq = block.find('=').unwrap_or_else(|| {
         panic!("v2 `type {name}` is not a disj block (no `=` in extracted text)")
     });
@@ -465,9 +483,48 @@ fn assert_record_lockstep(type_name: &str) {
 }
 
 fn assert_disj_lockstep(type_name: &str) {
+    assert_disj_lockstep_against(type_name, v2_disj_variants(type_name));
+}
+
+fn assert_llm_disj_lockstep(type_name: &str) {
+    let mut variants = v2_llm_disj_variants(type_name);
+    if type_name == "ImageSource" {
+        for (variant, payload) in &mut variants {
+            if variant == "Base64Image" {
+                if let Some(fields) = payload {
+                    for (label, _, _) in fields {
+                        if label == "data" {
+                            *label = "base64".to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_disj_lockstep_against(type_name, variants);
+}
+
+fn assert_anthropic_disj_lockstep(type_name: &str) {
+    let mut variants = v2_disj_variants(type_name);
+    if type_name == "AnthropicMessages200ContentBlock" {
+        for (variant, payload) in &mut variants {
+            if variant == "MessagesRedactedThinkingBlock" {
+                if let Some(fields) = payload {
+                    for (label, _, _) in fields {
+                        if label == "data" {
+                            *label = "redacted_data".to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_disj_lockstep_against(type_name, variants);
+}
+
+fn assert_disj_lockstep_against(type_name: &str, v2_variants: Vec<(String, V2VariantPayload)>) {
     let dag = generated_full_bootstrap_dag();
     let v3_labels: BTreeSet<String> = disj_variant_labels(&dag, type_name).into_iter().collect();
-    let v2_variants = v2_disj_variants(type_name);
     let v2_labels: BTreeSet<String> = v2_variants.iter().map(|(name, _)| name.clone()).collect();
     assert_eq!(
         v3_labels,
@@ -555,6 +612,21 @@ fn anthropic_user_content_block_lockstep() {
 }
 
 #[test]
+fn anthropic_tool_result_content_lockstep() {
+    assert_disj_lockstep("AnthropicToolResultContent");
+}
+
+#[test]
+fn shared_image_source_lockstep() {
+    assert_llm_disj_lockstep("ImageSource");
+}
+
+#[test]
+fn shared_content_block_lockstep() {
+    assert_llm_disj_lockstep("ContentBlock");
+}
+
+#[test]
 fn anthropic_assistant_content_block_lockstep() {
     assert_disj_lockstep("AnthropicAssistantContentBlock");
 }
@@ -565,8 +637,18 @@ fn anthropic_stop_reason_lockstep() {
 }
 
 #[test]
-fn anthropic_messages_200_text_block_lockstep() {
-    assert_record_lockstep("AnthropicMessages200TextBlock");
+fn anthropic_messages_200_citation_lockstep() {
+    assert_disj_lockstep("AnthropicMessages200Citation");
+}
+
+#[test]
+fn anthropic_messages_200_content_block_lockstep() {
+    assert_anthropic_disj_lockstep("AnthropicMessages200ContentBlock");
+}
+
+#[test]
+fn anthropic_server_tool_name_lockstep() {
+    assert_disj_lockstep("AnthropicServerToolName");
 }
 
 #[test]

@@ -136,6 +136,7 @@ pub fn validate_rust_primitive_type_structure(
             "Word16Carrier",
             "Word32Carrier",
             "Word64Carrier",
+            "Word128Carrier",
             "TerminalCarrier",
         ],
     )?;
@@ -453,6 +454,7 @@ fn expected_mirror_shape() -> RustPrimitiveTypeShape {
                 "Word16Carrier",
                 "Word32Carrier",
                 "Word64Carrier",
+                "Word128Carrier",
                 "TerminalCarrier",
             ],
         ),
@@ -578,6 +580,7 @@ fn pilot_carrier_name(carrier: PilotTargetCarrier) -> &'static str {
         PilotTargetCarrier::Word16 => "Word16Carrier",
         PilotTargetCarrier::Word32 => "Word32Carrier",
         PilotTargetCarrier::Word64 => "Word64Carrier",
+        PilotTargetCarrier::Word128 => "Word128Carrier",
         PilotTargetCarrier::Terminal => "TerminalCarrier",
     }
 }
@@ -766,6 +769,7 @@ fn assert_integer_primitive_payload_matches(
             "Word16Carrier",
             "Word32Carrier",
             "Word64Carrier",
+            "Word128Carrier",
             "TerminalCarrier",
         ],
         &payload[2],
@@ -840,6 +844,7 @@ fn assert_non_integer_primitive_payload_matches(
             "Word16Carrier",
             "Word32Carrier",
             "Word64Carrier",
+            "Word128Carrier",
             "TerminalCarrier",
         ],
         &payload[2],

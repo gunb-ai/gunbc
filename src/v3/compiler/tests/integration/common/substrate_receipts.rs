@@ -103,18 +103,27 @@ pub fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a BindNode {
         .unwrap_or_else(|| panic!("Bind({name}) not found"))
 }
 
-/// Receipt: `Int` instantiates to `OrderedRing`; `.add` is binary `(T,T)->T` with `NoBody`,
-/// and template substitution lines operands up with `Word64`.
+/// Receipt: the fixed-width `Int64` row instantiates to `OrderedRing`; `.add` is binary
+/// `(T,T)->T` with `NoBody`, and template substitution lines operands up with `Word64`.
+///
+/// **T-Numeric-Construction Slice 3 pivot.** Pre-Slice-3 this receipt walked the default
+/// `Int` alias (which used to be `Int = Int64`). Slice 3 pivots the default alias to the
+/// construction-chain shape `Int = AbelianGroup<GroupCompletion<Nat>>` (per
+/// `docs/audit/t-numeric-construction-group-completion-6q.md`); the fixed-width
+/// `Int64 = OrderedRing<Word64>` row stays intact at `dsl/std/integer.dag`. The
+/// `OrderedRing<Word64>` chain is now reachable through the `Int64` name directly,
+/// and that's what this receipt continues to pin. The default `Int` alias has its
+/// own ratchet (`int_default_alias_resolves_to_abelian_group_over_group_completion_of_nat`).
 pub fn assert_bootstrap_int_ordered_ring_add_arrow(dag: &Dag) {
-    let int_id = find_named(dag, "Int");
+    let int64_id = find_named(dag, "Int64");
     let word64_id = find_named(dag, "Word64");
     let ordered_ring_id = find_named(dag, "OrderedRing");
 
     let mut subst = HashMap::new();
-    let algebra_id = walk_instantiation_chain(dag, int_id, &mut subst);
+    let algebra_id = walk_instantiation_chain(dag, int64_id, &mut subst);
     assert_eq!(
         algebra_id, ordered_ring_id,
-        "Int bootstrap chain should still terminate at OrderedRing"
+        "Int64 fixed-width row must still terminate at OrderedRing (legacy storage chain stays intact in Slice 3)"
     );
 
     let ordered_ring_fields = match &dag.declaration(ordered_ring_id).connective {

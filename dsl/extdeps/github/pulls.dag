@@ -34,7 +34,7 @@ type PullRequest {
   title: String
   body: String?
   state: String
-  html_url: String
+  html_url: Url
   user: GitHubUser
   head: PullRequestRef
   base: PullRequestRef
@@ -46,7 +46,7 @@ type PullRequest {
 
 type IssueComment {
   id: Int
-  html_url: String
+  html_url: Url
   body: String
   created_at: Timestamp
 }
@@ -185,7 +185,7 @@ service github.Pulls {
     }
     output {
       id: Int from "id"
-      html_url: String from "html_url"
+      html_url: Url from "html_url"
     }
     transport rest {
       method: POST,
@@ -256,7 +256,7 @@ service github.Pulls {
     }
     output {
       id: Int from "id"
-      html_url: String from "html_url"
+      html_url: Url from "html_url"
     }
     transport rest {
       method: POST,
@@ -264,13 +264,13 @@ service github.Pulls {
       body: { commit_id: commit_id, body: body, event: event, comments: comments }
     }
     response {
-      200 => Json
+      200 => PullReview
       401 => GitHubErrorShape
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
     mock_response {
-      200 => { id: 1, html_url: "https://github.com/mock/pull/1#pullrequestreview-1" } "Review created"
+      200 => { id: 1, body: "Review created", state: "COMMENTED", commit_id: "mock", html_url: "https://github.com/mock/pull/1#pullrequestreview-1" } "Review created"
     }
   }
 
@@ -310,8 +310,12 @@ type PullReview {
   body: String
   state: String
   commit_id: String
-  html_url: String
+  html_url: Url
 }
+
+data structural_coverage_gap_github_pull_review_response_residual: List<String> = [
+  "closure:github_pull_review_response_residual|PullReview|json_pending:node_id|json_pending:user|json_pending:pull_request_url|json_pending:_links|json_pending:submitted_at|json_pending:author_association|trigger:GitHub PullReview consumer needs full review response fidelity"
+]
 
 type ReviewComment {
   id: Int
@@ -320,5 +324,5 @@ type ReviewComment {
   line: Int?
   original_line: Int?
   body: String
-  html_url: String
+  html_url: Url
 }

@@ -7,11 +7,11 @@
 // These tests lock the feature-parity surface `compiler.dag` needs. If
 // any of them regresses, the self-hosting cycle cannot close.
 
-use crate::common::cached_compile_to_dag;
+use crate::common::{cached_compile_any, cached_compile_to_dag};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, LogicalOp, OperatorKind, TransformTarget,
-    TypeConnective,
+    ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId, LogicalOp, OperatorKind,
+    TransformTarget, TypeConnective,
 };
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
@@ -24,6 +24,62 @@ fn compile_any(src: &str, file: &str) -> Dag {
         Ok(dag) => dag,
         Err(CompileError::Semantic(dag)) => dag,
         Err(other) => panic!("unexpected structural error: {other:?}"),
+    }
+}
+
+fn arrow_output_decl(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
+    let TypeConnective::Arrow { output, .. } = &dag.declaration(decl_id).connective else {
+        panic!("expected {decl_id:?} to be an Arrow declaration");
+    };
+    *output
+}
+
+fn instantiation_arg(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    expected_template: DeclarationId,
+) -> DeclarationId {
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &dag.declaration(decl_id).connective
+    else {
+        panic!("expected {decl_id:?} to be an Instantiation");
+    };
+    assert_eq!(
+        *template, expected_template,
+        "instantiation template mismatch"
+    );
+    assert_eq!(arguments.len(), 1, "expected one template argument");
+    arguments[0].value
+}
+
+fn same_instantiation_shape(dag: &Dag, lhs: DeclarationId, rhs: DeclarationId) -> bool {
+    if lhs == rhs {
+        return true;
+    }
+    match (
+        &dag.declaration(lhs).connective,
+        &dag.declaration(rhs).connective,
+    ) {
+        (
+            TypeConnective::Instantiation {
+                template: lhs_template,
+                arguments: lhs_arguments,
+            },
+            TypeConnective::Instantiation {
+                template: rhs_template,
+                arguments: rhs_arguments,
+            },
+        ) => {
+            lhs_template == rhs_template
+                && lhs_arguments.len() == rhs_arguments.len()
+                && lhs_arguments
+                    .iter()
+                    .zip(rhs_arguments.iter())
+                    .all(|(lhs, rhs)| same_instantiation_shape(dag, lhs.value, rhs.value))
+        }
+        _ => false,
     }
 }
 
@@ -341,6 +397,114 @@ fn test_3a2_record_data_lowers_function_refs_and_nested_records() {
     );
 }
 
+#[test]
+fn test_3a2_record_data_substitutes_generic_list_fields() {
+    let src = "\
+        type GenericAggregates<T> {
+          items: List<T>
+        }\n\
+        data aggregate_int: GenericAggregates<Int> = {
+          items: [1, 2]
+        }";
+    let dag = cached_compile_to_dag(src, "generic_aggregate_fields.v3");
+    let decl = dag
+        .declaration_by_name("aggregate_int")
+        .expect("aggregate_int must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "expected aggregate_int to lower structurally, got {:?}",
+            decl.value_body
+        );
+    };
+    let items = fields
+        .iter()
+        .find(|(label, _)| label == "items")
+        .map(|(_, value)| value)
+        .expect("items field");
+    let v3_compiler::dag::FieldValue::List(items) = items else {
+        panic!("items must lower as a structural list, got {items:?}");
+    };
+    assert_eq!(
+        items,
+        &vec![
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1)),
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2)),
+        ]
+    );
+}
+
+#[test]
+fn test_3a2_record_data_discovers_list_through_type_param_substitution() {
+    let src = "\
+        type GenericSlot<T> {
+          value: T
+        }\n\
+        data list_slot: GenericSlot<List<Int>> = {
+          value: [1, 2]
+        }";
+    let dag = cached_compile_to_dag(src, "generic_slot_list_field.v3");
+    let decl = dag
+        .declaration_by_name("list_slot")
+        .expect("list_slot must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "expected list_slot to lower structurally, got {:?}",
+            decl.value_body
+        );
+    };
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "value")
+        .map(|(_, value)| value)
+        .expect("value field");
+    let v3_compiler::dag::FieldValue::List(items) = value else {
+        panic!("value must lower as a structural list, got {value:?}");
+    };
+    assert_eq!(
+        items,
+        &vec![
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1)),
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2)),
+        ]
+    );
+}
+
+#[test]
+fn test_3a2_record_data_discovers_sum_through_type_param_substitution() {
+    let src = "\
+        type Maybe<T> = Some(T) | None\n\
+        type GenericSlot<T> {
+          value: T
+        }\n\
+        data maybe_slot: GenericSlot<Maybe<Int>> = {
+          value: Some(1)
+        }";
+    let dag = cached_compile_to_dag(src, "generic_slot_sum_field.v3");
+    let decl = dag
+        .declaration_by_name("maybe_slot")
+        .expect("maybe_slot must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "expected maybe_slot to lower structurally, got {:?}",
+            decl.value_body
+        );
+    };
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "value")
+        .map(|(_, value)| value)
+        .expect("value field");
+    let v3_compiler::dag::FieldValue::Variant { payload, .. } = value else {
+        panic!("value must lower as a structural variant, got {value:?}");
+    };
+    assert_eq!(
+        payload,
+        &vec![v3_compiler::dag::FieldValue::Literal(
+            v3_compiler::dag::LiteralBits::Int(1)
+        )]
+    );
+}
+
 /// Inbox #1130 / #1139 — complexity `Lens<Int>` migration readiness: Prereq-1
 /// (Arrow-typed record fields + nested `Monoid<C>`) already lowers `fn`
 /// declaration references. This shape matches `Lens<C>`'s `branch` /
@@ -424,6 +588,137 @@ fn test_3a2_lensish_int_carrier_lowers_branch_and_monoid_fn_refs() {
         .map(|(_, value)| value)
         .expect("op field");
     assert_eq!(op, &v3_compiler::dag::FieldValue::Reference(op_id));
+}
+
+#[test]
+fn test_3a2_lens_int_data_substitutes_generic_conj_fields() {
+    let src = "\
+        import std.algebra { Monoid }\n\
+        import std.substrate { Dag, Behavior, LoopBound }\n\
+        import v3.std.dimensions { Witness, OptionalDiagnostic }\n\
+        import v3.std.lens { Lens }\n\
+        fn lens_read(d: Dag, b: Behavior) -> Witness<Int> { Inhabits(1) }\n\
+        fn int_add(a: Int, b: Int) -> Int = a + b\n\
+        fn int_max(a: Int, b: Int) -> Int = if a > b then a else b\n\
+        fn lens_iterate(c: Int, bound: LoopBound) -> Int = c\n\
+        fn lens_validate(d: Dag, c: Int) -> OptionalDiagnostic { NoDiagnostic }\n\
+        data complexity_lens_seed: Lens<Int> = {\n\
+          name: \"complexity\",\n\
+          read: lens_read,\n\
+          sequential: { op: int_add, identity: 0 },\n\
+          branch: int_max,\n\
+          iterate: lens_iterate,\n\
+          validate: lens_validate\n\
+        }";
+    let dag = cached_compile_to_dag(src, "lens_int_generic_conj_substitution.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "Lens<Int> data body should compile after substituting Lens<C> and Monoid<C> fields: {:?}",
+        dag.diagnostics()
+    );
+    let read_id = dag.declaration_by_name("lens_read").unwrap().id;
+    let op_id = dag.declaration_by_name("int_add").unwrap().id;
+    let validate_id = dag.declaration_by_name("lens_validate").unwrap().id;
+    let decl = dag
+        .declaration_by_name("complexity_lens_seed")
+        .expect("complexity_lens_seed must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "expected Lens<Int> data to lower structurally, got {:?}",
+            decl.value_body
+        );
+    };
+    assert_eq!(
+        fields.len(),
+        6,
+        "Lens<Int> carrier shape must stay six-field"
+    );
+    let read = fields.iter().find(|(label, _)| label == "read").unwrap();
+    assert_eq!(read.1, v3_compiler::dag::FieldValue::Reference(read_id));
+    let validate = fields
+        .iter()
+        .find(|(label, _)| label == "validate")
+        .unwrap();
+    assert_eq!(
+        validate.1,
+        v3_compiler::dag::FieldValue::Reference(validate_id)
+    );
+    let sequential = fields
+        .iter()
+        .find(|(label, _)| label == "sequential")
+        .map(|(_, value)| value)
+        .expect("sequential field");
+    let v3_compiler::dag::FieldValue::Record(nested) = sequential else {
+        panic!("`sequential` must lower as nested Monoid<Int> record, got {sequential:?}");
+    };
+    let op = nested.iter().find(|(label, _)| label == "op").unwrap();
+    assert_eq!(op.1, v3_compiler::dag::FieldValue::Reference(op_id));
+    let identity = nested
+        .iter()
+        .find(|(label, _)| label == "identity")
+        .unwrap();
+    assert_eq!(
+        identity.1,
+        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(0))
+    );
+}
+
+#[test]
+fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
+    let src = "\
+        import std.algebra { Monoid }\n\
+        import std.substrate { Dag, Behavior, LoopBound }\n\
+        import v3.std.dimensions { Witness, OptionalDiagnostic }\n\
+        import v3.std.lens { Lens }\n\
+        fn lens_read(d: Dag, b: Behavior) -> Witness<String> { Inhabits(\"bad\") }\n\
+        fn int_add(a: Int, b: Int) -> Int = a + b\n\
+        fn int_max(a: Int, b: Int) -> Int = if a > b then a else b\n\
+        fn lens_iterate(c: Int, bound: LoopBound) -> Int = c\n\
+        fn lens_validate(d: Dag, c: Int) -> OptionalDiagnostic { NoDiagnostic }\n\
+        data bad_complexity_lens_seed: Lens<Int> = {\n\
+          name: \"complexity\",\n\
+          read: lens_read,\n\
+          sequential: { op: int_add, identity: 0 },\n\
+          branch: int_max,\n\
+          iterate: lens_iterate,\n\
+          validate: lens_validate\n\
+        }";
+    let err = compile_to_dag(src, "lens_int_generic_conj_substitution_negative.v3")
+        .expect_err("Lens<Int>.read must reject Witness<String> after substituting C := Int");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic substitution mismatch, got {err:?}");
+    };
+    let lens_read_id = dag
+        .declaration_by_name("lens_read")
+        .expect("lens_read must exist")
+        .id;
+    let expected_read_ty = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diagnostic)| match diagnostic {
+            Diagnostic::TypeMismatch {
+                expected, actual, ..
+            } if actual.declaration == lens_read_id => Some(expected.declaration),
+            _ => None,
+        })
+        .expect("read mismatch must surface as structured TypeMismatch on lens_read");
+    let witness = dag.declaration_by_name("Witness").unwrap().id;
+    let int_decl = dag.declaration_by_name("Int").unwrap().id;
+    let string_decl = dag.declaration_by_name("String").unwrap().id;
+    let actual_arg = instantiation_arg(&dag, arrow_output_decl(&dag, lens_read_id), witness);
+    let expected_arg = instantiation_arg(&dag, arrow_output_decl(&dag, expected_read_ty), witness);
+    assert!(
+        same_instantiation_shape(&dag, actual_arg, string_decl),
+        "actual read output must be Witness<String>"
+    );
+    assert!(
+        same_instantiation_shape(&dag, expected_arg, int_decl),
+        "expected substituted read output must be Witness<Int>"
+    );
+    assert_ne!(
+        expected_arg, actual_arg,
+        "expected and actual witness carriers must differ"
+    );
 }
 
 #[test]
@@ -616,9 +911,7 @@ fn test_db11_type_alias_refinement_predicate_bind_tags_alias_subject() {
         ArrowBody::UserDefined(n) => *n,
         _ => panic!("expected UserDefined pred body, got {body:?}"),
     };
-    let Behavior::Bind(b) = dag.node(bind_id) else {
-        panic!("expected predicate Bind, got {:?}", dag.node(bind_id));
-    };
+    let b = bind_id.bind(&dag);
     assert!(
         b.name.contains("PositiveInt") && b.name.contains("refinement:"),
         "expected `<refinement:PositiveInt>`-style bind tag, got {:?}",
@@ -703,26 +996,32 @@ fn test_db11_type_alias_where_comma_conjoins() {
 #[test]
 fn test_db11_type_alias_where_accepts_types_dag_constraint_spellings() {
     let f = "dsl/std/types.dag";
-    for src in [
-        "type R = Int where range(min: 1)",
-        "type S = String where non_empty, pattern(\"x\")",
-    ] {
-        let _ = cached_compile_to_dag(src, f);
-    }
+    // Per S9 Slice 2.5 Option A revised (Director RATIFIED at gunbc#828
+    // `issuecomment-4392245968`): `pattern` is structurally absent from the
+    // registry — the pre-Option-A combined spelling
+    // `String where non_empty, pattern("x")` no longer compiles cleanly.
+    // The remaining test exercises a registered predicate over an
+    // alias-friendly carrier (`Int`), which is the parse-coverage shape
+    // this test was originally locking. The full corpus coverage moves
+    // to the predicate-specific cement tests below.
+    let _ = cached_compile_to_dag("type R = Int where range(min: 1)", f);
 }
 
-/// `dsl/std/types.dag` keeps a placeholder `refinement` id (PB-1 defers `Bool` pred bodies)
-/// so the parsed `where` is not a silent `None` — `lower.rs` P3 path.
+/// Registered-predicate `where` clauses keep a placeholder `refinement` id
+/// (S9 Slice 2.5 — `KNOWN_PREDICATES` defers `Bool` pred bodies for names
+/// enrolled in the registry) so the parsed `where` is not a silent `None` —
+/// `lower.rs` P3 path. Replaces the prior PB-1 file-path-keyed behavior with
+/// name-keyed registry dispatch.
 #[test]
 fn test_types_dag_alias_refinement_is_deferred_placeholder_not_dropped() {
     let f = "dsl/std/types.dag";
-    let dag = cached_compile_to_dag("type P = Int where P > 0", f);
+    let dag = cached_compile_to_dag("type P = String where non_empty", f);
     let decl = dag
         .declaration_by_name("P")
         .expect("type alias `P` should exist");
-    let pred_id = decl
-        .refinement
-        .expect("`types.dag` `where` must not disappear from the declaration; use placeholder");
+    let pred_id = decl.refinement.expect(
+        "registered-predicate `where` must not disappear from the declaration; use placeholder",
+    );
     let pred = dag.declaration(pred_id);
     let label = pred
         .name
@@ -730,8 +1029,367 @@ fn test_types_dag_alias_refinement_is_deferred_placeholder_not_dropped() {
         .expect("placeholder should carry a diagnostic name");
     assert!(
         label.contains("predicate not lowered"),
-        "expected deferred-refinement placeholder label, got {label:?}"
+        "expected registered-refinement placeholder label, got {label:?}"
     );
+}
+
+/// S9 Slice 2.5 Path (a) cement: registered-predicate placeholder dispatch is
+/// **not** scoped to `dsl/std/types.dag` — registry-name dispatch is
+/// substrate-state-keyed, not file-path-keyed. Locks the PB-1 shim retirement
+/// per Director ratification at gunbc#828 `issuecomment-4390333451`.
+#[test]
+fn test_registered_predicate_placeholder_works_outside_types_dag() {
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_to_dag("type P = String where non_empty", f);
+    let decl = dag
+        .declaration_by_name("P")
+        .expect("type alias `P` should exist");
+    let pred_id = decl
+        .refinement
+        .expect("registered-predicate `where` must take a placeholder regardless of file path");
+    let label = dag
+        .declaration(pred_id)
+        .name
+        .as_deref()
+        .expect("placeholder should carry a diagnostic name");
+    assert!(
+        label.contains("predicate not lowered"),
+        "expected registered-refinement placeholder label, got {label:?}"
+    );
+}
+
+/// S9 Slice 2.5 Path (a) cement (openai-pro REQUEST_CHANGES at gunbc PR
+/// #1846 `79c4da09`): a mixed `where`-clause that combines a body-synthesized
+/// predicate (`gt_zero`) with a placeholder-only predicate (`range`)
+/// fails-closed via `Diagnostic::ResolveError` rather than collapsing both
+/// into a single placeholder (which would silently lose the gt_zero
+/// enforcement). Per-leaf refinement representation is the named follow-on
+/// that would let mixed clauses lower without fail-closed.
+#[test]
+fn test_mixed_synthesizable_and_placeholder_predicates_fails_closed() {
+    let f = "dsl/std/integer.dag";
+    // Use `gt_zero` (synthesized) + `brand` (placeholder) — both registered
+    // and both allowed over Nat per `KNOWN_PREDICATES`, but brand is held at
+    // placeholder pending per-leaf refinement representation.
+    let dag = cached_compile_any("type M = Nat where gt_zero, brand(\"X\")", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "mixed synthesizable + placeholder predicate clause must surface a \
+         diagnostic (synthesized facts cannot collapse into a single \
+         placeholder without losing enforcement)"
+    );
+    if let Some(decl) = dag.declaration_by_name("M") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "mixed clause should NOT take a placeholder; got label {label:?}"
+            );
+        }
+    }
+}
+
+/// S9 Slice 2.5 Path (a) cement (openai-pro REQUEST_CHANGES at gunbc PR
+/// #1846 `4a42cb1f`): nested-`And` conjunctions in `where` clauses must
+/// aggregate per-leaf synthesized/placeholder facts correctly.
+///
+/// Pre-fix bug: `leaf_predicate_name(arg)` returned `None` for an
+/// `Operator(And)` arg (it's not a leaf), so a clause like
+/// `gt_zero, gt_zero, brand` parsing as `(gt_zero, gt_zero), brand` would
+/// record only `brand` as a leaf name — outer aggregation would see an
+/// empty `synthesized_names` vector and classify the whole clause as
+/// `AllPlaceholder` instead of `Mixed`. The nested gt_zero-derived facts
+/// would silently collapse into a single placeholder.
+///
+/// Fix: `collect_leaf_predicate_names` recurses through `And` subtrees so
+/// every leaf name reaches the outer aggregator. This test cements the
+/// fail-closed Mixed diagnostic.
+#[test]
+fn test_nested_and_with_placeholder_leaf_fails_closed() {
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_any("type N = Nat where gt_zero, gt_zero, brand(\"X\")", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "nested-And clause with synthesized + placeholder leaves must \
+         surface a Mixed-fail-closed diagnostic"
+    );
+    if let Some(decl) = dag.declaration_by_name("N") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "nested-And mixed clause should NOT collapse into a \
+                 placeholder; got label {label:?}"
+            );
+        }
+    }
+}
+
+/// S9 Slice 2.5 Path (a) cement: `brand("X")` body synthesis is
+/// structurally available (reflexive `subject == subject`) but held at
+/// placeholder for this slice — re-enabling triggers the openai-pro
+/// REQUEST_CHANGES mixed-fail-closed path on the existing
+/// `Milliseconds = Int where range(min: 0), brand(...)` and
+/// `Seconds = Int where range(min: 0), brand(...)` declarations (range
+/// is placeholder-only; brand body would be synthesizable). Brand
+/// re-enables when per-leaf refinement representation lands or when
+/// range body synthesis lands. Test cements that brand currently
+/// takes a placeholder.
+#[test]
+fn test_brand_takes_placeholder_pending_mixed_clause_fix() {
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_to_dag("type B = Int where brand(\"B\")", f);
+    let decl = dag
+        .declaration_by_name("B")
+        .expect("type alias `B` should exist");
+    let pred_id = decl
+        .refinement
+        .expect("`brand` refinement must produce a `Declaration::refinement`");
+    let label = dag
+        .declaration(pred_id)
+        .name
+        .as_deref()
+        .expect("placeholder should carry a diagnostic name");
+    assert!(
+        label.contains("predicate not lowered"),
+        "`brand` currently takes a placeholder pending mixed-clause fix; \
+         got label {label:?}"
+    );
+}
+
+/// S9 Slice 2.5 Path (a) Rung 3 cement: `gt_zero` body synthesis produces a
+/// **real** refinement (not a placeholder). `synthesize_predicate_body`
+/// lowers `gt_zero` to `subject > 0`, which `build_refinement_predicate_declaration`
+/// turns into a proper `Arrow` declaration (Bool-returning predicate body) —
+/// satisfying Director Path (a) requirement that valid registered predicates
+/// must have actual refinement-body lowering, not placeholder semantics.
+#[test]
+fn test_gt_zero_lowers_to_real_refinement_body_not_placeholder() {
+    use v3_compiler::dag::{ArrowBody, Behavior, LiteralBits, TransformTarget, TypeConnective};
+    use v3_compiler::operators::{ComparisonOp, OperatorKind};
+
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_to_dag("type Pos = Nat where gt_zero", f);
+    let decl = dag
+        .declaration_by_name("Pos")
+        .expect("type alias `Pos` should exist");
+    let pred_id = decl
+        .refinement
+        .expect("`gt_zero` refinement must produce a real `Declaration::refinement`");
+    let pred = dag.declaration(pred_id);
+    if let Some(label) = pred.name.as_deref() {
+        assert!(
+            !label.contains("predicate not lowered"),
+            "`gt_zero` must lower to a real refinement body, not placeholder; \
+             got label {label:?}"
+        );
+    }
+    // openai-pro REQUEST_CHANGES at PR #1846 (`e1ec3d1a`): assert the
+    // published carrier shape, not just "non-placeholder". `PositiveInt`'s
+    // substrate contract depends on `gt_zero` being exactly `> 0`; a
+    // regression that lowered to `subject == subject` / `true` / any other
+    // real-but-wrong body would still have satisfied the prior assertion.
+    let TypeConnective::Arrow { body, .. } = &pred.connective else {
+        panic!(
+            "`gt_zero` refinement should be `Arrow`-shaped; got connective={:?}",
+            pred.connective
+        );
+    };
+    let ArrowBody::UserDefined(bind_node_id) = body else {
+        panic!("`gt_zero` Arrow body should be `UserDefined`; got {body:?}");
+    };
+    let bind = bind_node_id
+        .bind_opt(&dag)
+        .expect("Bind node id should resolve to a `Behavior::Bind`");
+    // The bind's value port is the output of the lowered predicate
+    // expression. Find the Transform whose output is the bind's value.
+    let value_port = bind.value;
+    let producer = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            Behavior::Transform(t) if t.output == value_port => Some(t),
+            _ => None,
+        })
+        .expect("`gt_zero` body should be produced by a Transform node");
+    match &producer.target {
+        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)) => {}
+        other => panic!("`gt_zero` body should be `Comparison(Gt)`; got {other:?}"),
+    }
+    // The Gt operator has 2 inputs: subject and literal 0. Find the Value
+    // node feeding one of the input ports with `LiteralBits::Int(0)`.
+    let zero_literal = producer.inputs.iter().any(|input_port| {
+        dag.nodes().iter().any(|node| match node {
+            Behavior::Value(v) => v.output == *input_port && v.data == LiteralBits::Int(0),
+            _ => false,
+        })
+    });
+    assert!(
+        zero_literal,
+        "`gt_zero` body's Gt operator should have a literal `Int(0)` input"
+    );
+}
+
+/// S9 Slice 2.5 Path (a) cement: registered predicate applied to a
+/// non-allowed carrier fails closed — either via the carrier-compatibility
+/// reject in `validate_predicate_clause` (emits `Diagnostic::ResolveError`
+/// directly) or via the fall-through to live resolution. Locks the carrier
+/// check from `788d6acb4`. `gt_zero` is allowed only over `Nat` / `Int`;
+/// applying to `String` must surface a diagnostic and must NOT take a
+/// placeholder.
+#[test]
+fn test_registered_predicate_on_disallowed_carrier_fails_closed() {
+    let f = "dsl/std/types.dag";
+    let dag = cached_compile_any("type P = String where gt_zero", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "carrier-incompatible registered predicate must surface a diagnostic"
+    );
+    if let Some(decl) = dag.declaration_by_name("P") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "carrier-incompatible registered predicate should NOT take a \
+                 placeholder; got label {label:?}"
+            );
+        }
+    }
+}
+
+/// S9 Slice 2.5 Option A revised cement (Director RATIFIED at gunbc#828
+/// `issuecomment-4392245968`): `where pattern(...)` / `where format(...)` /
+/// `where content(...)` are STRUCTURALLY ABSENT from the predicate registry
+/// — user-code authoring these where-clauses falls through to live
+/// resolution and surfaces a `Diagnostic::ResolveError`. Q-Regex-Primitive
+/// is the named substrate-fact-introduction follow-on that will re-enroll
+/// these predicates. Until then, no "named but not checked" path exists.
+#[test]
+fn test_pattern_format_content_unregistered_fails_closed() {
+    // Use cached_compile_any so we can read diagnostics for fail-closed
+    // verification (cached_compile_to_dag panics on semantic errors).
+    let f = "dsl/std/types.dag";
+    for src in [
+        "type P = Int where pattern(\"^x\")",
+        "type F = Int where format(uuid)",
+        "type C = Int where content(Text)",
+    ] {
+        let dag = cached_compile_any(src, f);
+        assert!(
+            !dag.diagnostics().is_empty(),
+            "user-code authoring of pattern/format/content predicate must surface \
+             a diagnostic (predicate is structurally absent from the registry \
+             pending Q-Regex-Primitive); src={src:?}"
+        );
+    }
+}
+
+/// S9 Slice 2.5 Path (a) cement: bare predicate with explicit empty arg
+/// list (e.g. `gt_zero()`) is rejected — bare-predicate arg-shape contract
+/// is strictly the bare-ident form, not zero-arg-call-compatible. Cements
+/// Codex BLOCKING at PR #1846 inline `lower.rs:895`.
+#[test]
+fn test_bare_predicate_with_empty_call_args_fails_closed() {
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_any("type P = Nat where gt_zero()", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "bare predicate with explicit empty call args must surface a diagnostic"
+    );
+    if let Some(decl) = dag.declaration_by_name("P") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "bare-predicate-with-empty-args should NOT take a placeholder; \
+                 got label {label:?}"
+            );
+        }
+    }
+}
+
+/// S9 Slice 2.5 Path (a) Rung 3 cement: `range` body synthesis produces a
+/// **real** refinement (not a placeholder). `synthesize_predicate_body`
+/// lowers `range(min: m)` / `range(max: M)` / `range(min: m, max: M)` to
+/// the corresponding Comparison(Ge) / Comparison(Le) / And-combination Bool
+/// body. Initial enable hit a test-fixture brittleness in
+/// `int_literal_cardinality_test::let_annotated_uint8_*` — the test used
+/// `find_map(Value(LiteralBits::Int(5)))` and matched a synthesized literal
+/// from a types.dag `range(max: 5)` declaration before the user's literal.
+/// Resolved by filtering the test's literal lookup to the user-source span
+/// (`assert_int_value_port_resolves_to_uint8_in_file`).
+#[test]
+fn test_range_lowers_to_real_refinement_body_not_placeholder() {
+    let f = "dsl/std/integer.dag";
+    for src in [
+        "type R = Int where range(min: 1)",
+        "type R = Int where range(max: 100)",
+        "type R = Int where range(min: 1, max: 100)",
+    ] {
+        let dag = cached_compile_to_dag(src, f);
+        let decl = dag
+            .declaration_by_name("R")
+            .expect("type alias `R` should exist");
+        let pred_id = decl
+            .refinement
+            .expect("`range` refinement must produce a real `Declaration::refinement`");
+        let pred = dag.declaration(pred_id);
+        if let Some(label) = pred.name.as_deref() {
+            assert!(
+                !label.contains("predicate not lowered"),
+                "`range` must lower to a real refinement body, not placeholder \
+                 (src={src:?}); got label {label:?}"
+            );
+        }
+    }
+}
+
+/// S9 Slice 2.5 Path (a) cement: registered predicate with duplicate
+/// record-shape field fails closed. `range(min: 1, min: 2)` lists `min`
+/// twice; the arg-shape validator rejects the duplicate so it cannot
+/// silently take a placeholder.
+#[test]
+fn test_registered_predicate_with_duplicate_record_field_fails_closed() {
+    let f = "dsl/std/types.dag";
+    let dag = cached_compile_any("type P = Int where range(min: 1, min: 2)", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "duplicate-field registered predicate must surface a diagnostic"
+    );
+    if let Some(decl) = dag.declaration_by_name("P") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "duplicate-field registered predicate should NOT take a \
+                 placeholder; got label {label:?}"
+            );
+        }
+    }
+}
+
+/// S9 Slice 2.5 Path (a) cement: registered predicate with malformed
+/// argument shape fails closed. `range(bogus: 1)` does not match the
+/// `range(min, max)` arg-shape contract; it must surface a
+/// `Diagnostic::ResolveError` rather than silently take a placeholder.
+#[test]
+fn test_registered_predicate_with_malformed_args_fails_closed() {
+    let f = "dsl/std/types.dag";
+    let dag = cached_compile_any("type P = Int where range(bogus: 1)", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "malformed-arg registered predicate must surface a diagnostic"
+    );
+    if let Some(decl) = dag.declaration_by_name("P") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "malformed-arg registered predicate should NOT take a \
+                 placeholder; got label {label:?}"
+            );
+        }
+    }
 }
 
 /// `call_args_open_with_named_field` is **global** call sugar (not only

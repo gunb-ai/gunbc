@@ -15,6 +15,7 @@
 //! target-private carriers stay inside their target module and no
 //! cross-target code should read them.
 
+pub(crate) mod collection_ops_method_contract;
 pub(crate) mod python_target;
 pub(crate) mod rust_target;
 
@@ -53,9 +54,11 @@ impl<T> VariantPayloadBinding<T> {
 pub use self::python_target::EmitPythonError;
 use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, CardinalityBound,
-    Declaration, DeclarationId, Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument,
-    TransformNode, TransformTarget, TypeConnective, ValueBody,
+    substrate_div_error_type_decl_suppressed_for_emit,
+    substrate_result_type_decl_suppressed_for_emit, ArrowBody, AtomPayload, Behavior, BindNode,
+    BranchNode, BranchPattern, CardinalityBound, Declaration, DeclarationId, Field, FieldValue,
+    LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    ValueBody,
 };
 use crate::infer::strip_refinement_to_base;
 use crate::operators::OperatorKind;
@@ -64,7 +67,24 @@ use crate::variant_payload::{
 };
 use crate::Dag;
 
-const ERROR_PRIMITIVES_AUTHORITY_FILE: &str = "dsl/std/error_primitives.dag";
+/// Recover `MethodEmitTemplate` sum-variant label for `constructor`.
+///
+/// Variant constructor declarations in the Dag often have `name: None`; labels
+/// live on the parent `Disj` in `emit_model`. Mirrors
+/// `pb_method_template_projection::disj_variant_label` (see comment there).
+pub(crate) fn method_emit_template_variant_label(
+    dag: &Dag,
+    constructor: DeclarationId,
+) -> Option<&str> {
+    let parent = dag.declaration(dag.method_emit_template_decl()?);
+    let TypeConnective::Disj { variants } = &parent.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.ty == constructor)
+        .map(|v| v.label.as_str())
+}
 
 /// Result port of a finished `behavior` subgraph — shared by Go and Rust emit
 /// paths for [`port_is_consumed_from`] (including `Behavior::Loop` body walks).
@@ -78,66 +98,17 @@ pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
     }
 }
 
-/// `std.error_primitives` declares canonical `Result<ok, err> = Ok { value: ok } | Err { value: err }`.
-/// Emitters lower it to a target-native `Result` / `struct { Ok; Err }` carrier and must
-/// not also emit a second substrate `type Result`.
-///
-/// Suppression keys off the **resolved structural fingerprint** of that declaration
-/// (name + type-parameter identities + `Ok`/`Err` payload wiring), not `span.file`
-/// suffixes — so unrelated modules named `errors.dag` cannot collide, and renaming
-/// the std file alone does not silently retarget suppression.
-///
-/// **Policy:** the fingerprint is **global**, not std-scoped: any other declaration
-/// named `Result` that matches this exact shape is also suppressed (intentional — the
-/// substrate owns one canonical `Result<ok, err>` carrier; a user-defined twin with
-/// the same fingerprint would not emit as a separate `type Result`).
-pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
-    dag: &Dag,
-    decl: &Declaration,
-) -> bool {
-    if decl.name.as_deref() != Some("Result") {
-        return false;
-    }
-    let [ok_param, err_param] = match decl.type_params.as_slice() {
-        [a, b] => [*a, *b],
-        _ => return false,
-    };
-    let ok_decl = dag.declaration(ok_param);
-    let err_decl = dag.declaration(err_param);
-    let ok_param_ok = matches!(
-        &ok_decl.connective,
-        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "ok"
-    );
-    let err_param_ok = matches!(
-        &err_decl.connective,
-        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "err"
-    );
-    if !ok_param_ok || !err_param_ok {
-        return false;
-    }
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        return false;
-    };
-    let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
-        return false;
-    };
-    let Some(err_field) = variants.iter().find(|v| v.label == "Err") else {
-        return false;
-    };
-    substrate_result_variant_payload_is_value_of(dag, ok_field.ty, ok_param)
-        && substrate_result_variant_payload_is_value_of(dag, err_field.ty, err_param)
-}
-
 pub(crate) fn div_prelude_reserved_name_collision<'a>(
+    dag: &Dag,
     type_decls: impl IntoIterator<Item = &'a &'a Declaration>,
     function_decls: impl IntoIterator<Item = &'a &'a Declaration>,
     top_level_binds: impl IntoIterator<Item = &'a &'a BindNode>,
     helper_name: &'static str,
 ) -> Option<&'static str> {
-    if type_decls
-        .into_iter()
-        .any(|decl| decl.name.as_deref() == Some("DivError"))
-    {
+    if type_decls.into_iter().any(|decl| {
+        decl.name.as_deref() == Some("DivError")
+            && !substrate_div_error_type_decl_suppressed_for_emit(dag, decl)
+    }) {
         return Some("DivError");
     }
     function_decls
@@ -161,7 +132,7 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
         return false;
     }
     let decl = dag.declaration(declaration);
-    if substrate_div_error_type_decl_suppressed_for_emit(decl) {
+    if substrate_div_error_type_decl_suppressed_for_emit(dag, decl) {
         return true;
     }
     match &decl.connective {
@@ -211,20 +182,6 @@ fn dag_needs_go_result_prelude(
             .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
 }
 
-pub(crate) fn substrate_div_error_type_decl_suppressed_for_emit(decl: &Declaration) -> bool {
-    if decl.span.file != ERROR_PRIMITIVES_AUTHORITY_FILE
-        || decl.name.as_deref() != Some("DivError")
-        || !decl.type_params.is_empty()
-    {
-        return false;
-    }
-    matches!(&decl.connective, TypeConnective::Disj { variants } if {
-        variants.len() == 2
-            && variants.iter().any(|variant| variant.label == "DivideByZero")
-            && variants.iter().any(|variant| variant.label == "Overflow")
-    })
-}
-
 pub(crate) fn port_uses_substrate_result_or_div_error(dag: &Dag, port: PortId) -> bool {
     let Some(ty) = dag.port(port).value_type() else {
         return false;
@@ -241,7 +198,7 @@ fn decl_uses_substrate_div_error(
         return false;
     }
     let decl = dag.declaration(declaration);
-    if substrate_div_error_type_decl_suppressed_for_emit(decl) {
+    if substrate_div_error_type_decl_suppressed_for_emit(dag, decl) {
         return true;
     }
     match &decl.connective {
@@ -291,18 +248,6 @@ pub(crate) fn dag_needs_div_error_prelude(
         || function_decls
             .iter()
             .any(|decl| decl_uses_substrate_div_error(dag, decl.id, &mut HashSet::new()))
-}
-
-fn substrate_result_variant_payload_is_value_of(
-    dag: &Dag,
-    payload_ty: DeclarationId,
-    type_param: DeclarationId,
-) -> bool {
-    let payload = dag.declaration(payload_ty);
-    let TypeConnective::Conj { children } = &payload.connective else {
-        return false;
-    };
-    children.len() == 1 && children[0].label == "value" && children[0].ty == type_param
 }
 
 /// Structural port-liveness walk. Returns true if `target` appears as any port
@@ -1248,7 +1193,10 @@ pub(crate) fn parse_pattern_strategy(
     if !payload.is_empty() {
         return Err("PatternStrategy variants must not carry payload fields");
     }
-    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList")
+    let vector_list = dag
+        .emit_model_variants()
+        .pattern_strategy
+        .vector_list
         .ok_or("PatternStrategy.VectorList declaration was not found")?;
     if *constructor != vector_list {
         return Err("PatternStrategy constructor must be VectorList");
@@ -1312,6 +1260,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| !substrate_result_type_decl_suppressed_for_emit(dag, decl))
+        .filter(|decl| !substrate_div_error_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -1385,6 +1334,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(
+            dag,
             type_decls.iter(),
             function_decls.iter(),
             top_level_binds.iter(),
@@ -1470,7 +1420,7 @@ pub(crate) fn dag_uses_arithmetic_div(
             TypeConnective::Arrow {
                 body: ArrowBody::UserDefined(body),
                 ..
-            } => port_depends_on_arithmetic_div(dag, behavior_result_port(dag.node(*body))),
+            } => port_depends_on_arithmetic_div(dag, (*body).bind(dag).value),
             _ => false,
         })
 }
@@ -2159,11 +2109,7 @@ impl<'a> Ctx<'a> {
                 "external or unparsed callable bodies are not yet supported".to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         if inputs.len() != param_bindings.len() {
             return Err(EmitError::UnsupportedBehavior(
                 "callable parameter count does not match requested bindings".to_string(),
@@ -2207,11 +2153,7 @@ impl<'a> Ctx<'a> {
                 "external Arrow bodies are not yet supported in function emission".to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         let mut locals = RenderLocals::default();
         let params = bind
             .params
@@ -2757,18 +2699,23 @@ fn parse_field_access(
             });
         }
     };
-    let direct_field = named_variant_id(dag, "FieldAccess", "DirectField").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.DirectField declaration was not found",
-        },
-    )?;
-    let accessor_method = named_variant_id(dag, "FieldAccess", "AccessorMethod").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.AccessorMethod declaration was not found",
-        },
-    )?;
+    let variants = dag.emit_model_variants();
+    let direct_field =
+        variants
+            .field_access
+            .direct_field
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.DirectField declaration was not found",
+            })?;
+    let accessor_method =
+        variants
+            .field_access
+            .accessor_method
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.AccessorMethod declaration was not found",
+            })?;
     if *constructor == direct_field {
         Ok(GoFieldAccessBinding::DirectField(name))
     } else if *constructor == accessor_method {
@@ -2969,18 +2916,23 @@ fn parse_parameter_disposition(
             detail: "ParameterDisposition variants must not carry payload fields",
         });
     }
-    let borrowed = named_variant_id(dag, "ParameterDisposition", "Borrowed").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Borrowed declaration was not found",
-        },
-    )?;
-    let consumed = named_variant_id(dag, "ParameterDisposition", "Consumed").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Consumed declaration was not found",
-        },
-    )?;
+    let variants = dag.emit_model_variants();
+    let borrowed =
+        variants
+            .parameter_disposition
+            .borrowed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Borrowed declaration was not found",
+            })?;
+    let consumed =
+        variants
+            .parameter_disposition
+            .consumed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Consumed declaration was not found",
+            })?;
     if *constructor == borrowed {
         Ok(ParameterDispositionBinding::Borrowed)
     } else if *constructor == consumed {
@@ -3067,12 +3019,14 @@ fn require_pattern_realization(
             detail: "PatternStrategy variants must not carry payload fields",
         });
     }
-    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList").ok_or(
-        EmitError::MalformedRealization {
+    let vector_list = dag
+        .emit_model_variants()
+        .pattern_strategy
+        .vector_list
+        .ok_or(EmitError::MalformedRealization {
             declaration,
             detail: "PatternStrategy.VectorList declaration was not found",
-        },
-    )?;
+        })?;
     if *constructor != vector_list {
         return Err(EmitError::MalformedRealization {
             declaration,
@@ -3119,14 +3073,27 @@ fn require_memory_model(
             detail: "MemoryModel variants must not carry payload fields",
         });
     }
-    let variants = [
-        ("ValueOnly", MemoryModelBinding::ValueOnly),
-        ("GarbageCollected", MemoryModelBinding::GarbageCollected),
-        ("RefCounted", MemoryModelBinding::RefCounted),
-        ("OwnershipBased", MemoryModelBinding::OwnershipBased),
+    let variants = dag.emit_model_variants();
+    let memory_variants = [
+        (
+            variants.memory_model.value_only,
+            MemoryModelBinding::ValueOnly,
+        ),
+        (
+            variants.memory_model.garbage_collected,
+            MemoryModelBinding::GarbageCollected,
+        ),
+        (
+            variants.memory_model.ref_counted,
+            MemoryModelBinding::RefCounted,
+        ),
+        (
+            variants.memory_model.ownership_based,
+            MemoryModelBinding::OwnershipBased,
+        ),
     ];
-    for (label, binding) in variants {
-        let Some(variant_id) = named_variant_id(dag, "MemoryModel", label) else {
+    for (variant_id, binding) in memory_variants {
+        let Some(variant_id) = variant_id else {
             return Err(EmitError::MalformedTargetSyntax {
                 declaration,
                 detail: "MemoryModel variant declaration was not found",
@@ -3172,12 +3139,19 @@ fn require_scope_model(
             detail: "ScopeModel variants must not carry payload fields",
         });
     }
-    let variants = [
-        ("LexicalScoping", ScopeModelBinding::LexicalScoping),
-        ("DynamicScoping", ScopeModelBinding::DynamicScoping),
+    let variants = dag.emit_model_variants();
+    let scope_variants = [
+        (
+            variants.scope_model.lexical_scoping,
+            ScopeModelBinding::LexicalScoping,
+        ),
+        (
+            variants.scope_model.dynamic_scoping,
+            ScopeModelBinding::DynamicScoping,
+        ),
     ];
-    for (label, binding) in variants {
-        let Some(variant_id) = named_variant_id(dag, "ScopeModel", label) else {
+    for (variant_id, binding) in scope_variants {
+        let Some(variant_id) = variant_id else {
             return Err(EmitError::MalformedTargetSyntax {
                 declaration,
                 detail: "ScopeModel variant declaration was not found",
@@ -3289,17 +3263,6 @@ fn normalize_source_filter_path(file: &str) -> String {
         }
     }
     parts.join("/")
-}
-
-fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {
-    let parent = dag.declaration_by_name(parent_name)?;
-    let TypeConnective::Disj { variants } = &parent.connective else {
-        return None;
-    };
-    variants
-        .iter()
-        .find(|variant| variant.label == variant_label)
-        .map(|variant| variant.ty)
 }
 
 fn render_named_template(template: &str, bindings: &[(&str, &str)]) -> String {
@@ -3745,6 +3708,179 @@ mod tests {
         let producer = dag.port(sum).produced_by.expect("transform port");
         let behavior = dag.node(producer);
         assert_eq!(super::behavior_result_port(behavior), sum);
+    }
+
+    #[test]
+    fn result_and_diverror_emit_suppression_are_structural_not_path_keyed() {
+        let mut dag = Dag::new();
+        let result = dag
+            .declaration_by_name("Result")
+            .expect("bootstrap Result")
+            .id;
+        let div_error = dag
+            .declaration_by_name("DivError")
+            .expect("bootstrap DivError")
+            .id;
+
+        dag.declaration_mut(result).span.file = "renamed/std/errors.dag".to_string();
+        dag.declaration_mut(div_error).span.file = "renamed/std/errors.dag".to_string();
+
+        assert!(super::substrate_result_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(result)
+        ));
+        assert!(super::substrate_div_error_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(div_error)
+        ));
+    }
+
+    #[test]
+    fn payload_bearing_diverror_is_not_emit_suppressed() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let shadow_div_error = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: shadow_div_error,
+            name: Some("DivError".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "DivideByZero".to_string(),
+                        ty: int,
+                    },
+                    Field {
+                        label: "Overflow".to_string(),
+                        ty: int,
+                    },
+                ],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/errors.dag", 0, 0),
+        });
+
+        assert!(!super::substrate_div_error_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(shadow_div_error)
+        ));
+    }
+
+    #[test]
+    fn extra_variant_result_is_not_emit_suppressed() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let ok = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: ok,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("ok".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/result_extra.dag", 0, 0),
+        });
+        let err = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: err,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("err".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/result_extra.dag", 0, 0),
+        });
+        let ok_payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: ok_payload,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: ok,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/result_extra.dag", 0, 0),
+        });
+        let err_payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: err_payload,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: err,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/result_extra.dag", 0, 0),
+        });
+        let result = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: result,
+            name: Some("Result".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Ok".to_string(),
+                        ty: ok_payload,
+                    },
+                    Field {
+                        label: "Err".to_string(),
+                        ty: err_payload,
+                    },
+                    Field {
+                        label: "Other".to_string(),
+                        ty: int,
+                    },
+                ],
+            },
+            type_params: vec![ok, err],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/result_extra.dag", 0, 0),
+        });
+
+        assert!(!super::substrate_result_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(result)
+        ));
     }
 
     #[test]

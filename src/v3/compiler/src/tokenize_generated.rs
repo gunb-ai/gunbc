@@ -77,6 +77,22 @@ pub struct Token {
     pub span: SourceSpan,
 }
 
+fn minus_prefixed_decimal_allowed(prev: Option<&TokenKind>) -> bool {
+    !matches!(
+        prev,
+        Some(
+            TokenKind::Ident(_)
+                | TokenKind::IntLit(_)
+                | TokenKind::StringLit(_)
+                | TokenKind::KwTrue
+                | TokenKind::KwFalse
+                | TokenKind::RParen
+                | TokenKind::RBracket
+                | TokenKind::RBrace
+        )
+    )
+}
+
 pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
     let bytes = source.as_bytes();
     let mut pos: usize = 0;
@@ -87,6 +103,43 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
         let byte = bytes[pos];
 
         let start = pos;
+
+        if byte == b'-'
+            && bytes
+                .get(pos + 1)
+                .is_some_and(|b| byte_matches(*b, ScannerCharClass::Digit))
+            && minus_prefixed_decimal_allowed(tokens.last().map(|t: &Token| &t.kind))
+        {
+            let mut end = pos + 1;
+            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::Digit) {
+                end += 1;
+            }
+            let literal = &source[pos + 1..end];
+            let magnitude: u128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {
+                message: format!("{}{}{}", "invalid integer literal `", literal, "`"),
+                span: SourceSpan::new(file, start as u32, end as u32),
+                fixes: Vec::new(),
+            })?;
+            const SIGNED_DECIMAL_I64_ABS_MIN: u128 = 9223372036854775808;
+            let value: i64 = match magnitude {
+                0 => 0,
+                m if m <= i64::MAX as u128 => -(m as i64),
+                m if m == SIGNED_DECIMAL_I64_ABS_MIN => i64::MIN,
+                _ => {
+                    return Err(Diagnostic::TokenizerError {
+                        message: format!("integer literal out of range for i64: `-{}`", literal),
+                        span: SourceSpan::new(file, start as u32, end as u32),
+                        fixes: Vec::new(),
+                    });
+                }
+            };
+            tokens.push(Token {
+                kind: TokenKind::IntLit(value),
+                span: SourceSpan::new(file, start as u32, end as u32),
+            });
+            pos = end;
+            continue;
+        }
 
         if byte_matches(byte, ScannerCharClass::Whitespace) {
             pos += 1;

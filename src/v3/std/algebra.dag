@@ -73,8 +73,10 @@
 
 module v3.std.algebra
 
+import std.algebra { Semiring, BoundedLattice }
 import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId, DeclarationId }
+import std.termination { PositiveDescentAmount }
 import v3.std.lookup { Lookup }
 
 // 🟡 SCAFFOLD coproduct. These are v2 per-method output-size effect facts
@@ -138,14 +140,20 @@ type MethodContract {
 // describe the SAME size; two folds over different ports do NOT,
 // even if both lists have the same declared type.
 //
-// No `name: String` field: MVP rendering pins on port equality
-// alone, and the user-facing label the DB-7 design doc sketches
-// needs an InternTable lookup the lens doesn't yet run. When a
-// render consumer pins the missing piece, `SizeVariable` grows a
-// `name` field alongside the Rust mirror in `src/v3/compiler/src/dag.rs`.
+// `display_name` is presentation only. Identity stays on `source_port`
+// so two size variables that name the same runtime value compare equal
+// even if one lacks an authored display label.
 type SizeVariable {
   source_port: PortId
+  display_name: String?
 }
+
+fn unnamed_size_variable(source_port: PortId) -> SizeVariable {
+  host unnamed_size_variable
+}
+
+fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool =
+  a.source_port == b.source_port
 
 // 🟢 TERMINAL. Polynomial degrees `>= 2` as a structural carrier, not a
 // pseudo-refinement over `Int`. `LinearCost` remains the sole degree-1 surface,
@@ -164,8 +172,20 @@ type DegreeAtLeastTwo
 
 // 🟢 TERMINAL at Stage 2d scope. The asymptotic-bound coproduct
 // DB-7 locks. See the module-level receipt for dissolution-pattern
-// evidence.
-type SymbolicCost
+// evidence. The `Semiring<SymbolicCost>` inhabitance edge is the
+// substrate prerequisite for downstream Verification law witnesses
+// (INVARIANTS §P1); it does not retire those law rows in this slice.
+// This is intentionally edge-only today: v3 can parse the imported
+// `Semiring<T>` instantiation, but class-5 structural data lowering still
+// rejects honest function-valued witness fields (`add`, `mul`, etc.). Do
+// NOT add a parallel ad-hoc witness table. Dissolution trigger:
+// `symbolic_cost_semiring_structural_witness_lands` - when function-valued
+// structural data fields lower cleanly, author the single
+// `data symbolic_cost_semiring: Semiring<SymbolicCost>` witness with
+// `add = sequential`, `zero = ConstantCost(0)`, `mul = iterate`, and
+// `one = ConstantCost(1)`, then retire this edge-only boundary note in the
+// same PR.
+type SymbolicCost inhabits Semiring<SymbolicCost>
   = ConstantCost(Int)
   | LinearCost(SizeVariable)
   | PolynomialCost { var: SizeVariable, degree: DegreeAtLeastTwo }
@@ -380,12 +400,120 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
   }
 
 fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
-  a.source_port == b.source_port
+  size_variable_eq(a, b)
+
+// Terminal asymptotic-class carrier for complexity display and budget
+// enforcement. Ordering is by asymptotic dominance:
+// ClassConstant <= ClassLog <= ClassLinear <= ClassLinearithmic <=
+// ClassQuadratic <= ClassPolynomial(k>=3) <= ClassExponential <= ClassUnknown.
+type AsymptoticClass inhabits BoundedLattice<AsymptoticClass>
+  = ClassConstant
+  | ClassLog
+  | ClassLinear
+  | ClassLinearithmic
+  | ClassQuadratic
+  | ClassPolynomial { degree: PositiveDescentAmount }
+  | ClassExponential
+  | ClassUnknown
+
+fn asymptotic_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool =
+  match a {
+    ClassUnknown => True
+    ClassExponential =>
+      match b {
+        ClassUnknown => False
+        ClassExponential => True
+        ClassPolynomial(_) => True
+        ClassQuadratic => True
+        ClassLinearithmic => True
+        ClassLinear => True
+        ClassLog => True
+        ClassConstant => True
+      }
+    ClassPolynomial(_) =>
+      match b {
+        ClassUnknown => False
+        ClassExponential => False
+        ClassPolynomial(_) => True
+        ClassQuadratic => True
+        ClassLinearithmic => True
+        ClassLinear => True
+        ClassLog => True
+        ClassConstant => True
+      }
+    ClassQuadratic =>
+      match b {
+        ClassConstant => True
+        ClassLog => True
+        ClassLinear => True
+        ClassLinearithmic => True
+        ClassQuadratic => True
+        ClassPolynomial(_) => False
+        ClassExponential => False
+        ClassUnknown => False
+      }
+    ClassLinearithmic =>
+      match b {
+        ClassConstant => True
+        ClassLog => True
+        ClassLinear => True
+        ClassLinearithmic => True
+        ClassQuadratic => False
+        ClassPolynomial(_) => False
+        ClassExponential => False
+        ClassUnknown => False
+      }
+    ClassLinear =>
+      match b {
+        ClassConstant => True
+        ClassLog => True
+        ClassLinear => True
+        ClassLinearithmic => False
+        ClassQuadratic => False
+        ClassPolynomial(_) => False
+        ClassExponential => False
+        ClassUnknown => False
+      }
+    ClassLog =>
+      match b {
+        ClassConstant => True
+        ClassLog => True
+        ClassLinear => False
+        ClassLinearithmic => False
+        ClassQuadratic => False
+        ClassPolynomial(_) => False
+        ClassExponential => False
+        ClassUnknown => False
+      }
+    ClassConstant =>
+      match b {
+        ClassConstant => True
+        ClassLog => False
+        ClassLinear => False
+        ClassLinearithmic => False
+        ClassQuadratic => False
+        ClassPolynomial(_) => False
+        ClassExponential => False
+        ClassUnknown => False
+      }
+  }
+
+fn meet_asymptotic_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass =
+  if asymptotic_dominates(a, b) then b else a
+
+fn join_asymptotic_class(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass =
+  if asymptotic_dominates(a, b) then a else b
+
+fn classify_symbolic_cost(cost: SymbolicCost) -> AsymptoticClass {
+  host classify_symbolic_cost
+}
 
 // ── Normalization ───────────────────────────────────────────────
 //
 // `normalize(c)` simplifies a SymbolicCost expression by:
-//   - dropping `ConstantCost(0)` from Sum/Product lists,
+//   - dropping `ConstantCost(0)` from Sum lists,
+//   - collapsing Product lists containing `ConstantCost(0)` to zero,
+//   - dropping `ConstantCost(1)` from Product lists,
 //   - collapsing Sums/Products whose term lists reduce to a single
 //     element,
 //   - folding a Product of two identical LinearCosts into
@@ -403,8 +531,9 @@ fn normalize(c: SymbolicCost) -> SymbolicCost =
     PolynomialCost => c
     LogCost => c
     UnknownCost => c
-    SumCost(terms) => reduce_sum(drop_zero(nsl_to_list(terms)))
-    ProductCost(terms) => reduce_product(drop_zero(nsl_to_list(terms)))
+    SumCost(terms) => reduce_sum(drop_additive_zero(nsl_to_list(terms)))
+    ProductCost(terms) =>
+      reduce_product(drop_multiplicative_one(collapse_on_multiplicative_zero(nsl_to_list(terms))))
   }
 
 fn nsl_to_list(terms: NonSingletonList<SymbolicCost>) -> List<SymbolicCost> =
@@ -413,19 +542,57 @@ fn nsl_to_list(terms: NonSingletonList<SymbolicCost>) -> List<SymbolicCost> =
 // Drops `ConstantCost(0)` terms from a list of costs. Used by
 // normalize so `SumCost([Linear, Constant(0)])` collapses to the
 // single Linear term (DB-7 acceptance test).
-fn drop_zero(terms: List<SymbolicCost>) -> List<SymbolicCost> =
+fn drop_additive_zero(terms: List<SymbolicCost>) -> List<SymbolicCost> =
   match terms {
     Empty => empty()
     Cons(payload) =>
       if is_zero_constant(payload.head) then
-        drop_zero(payload.tail)
+        drop_additive_zero(payload.tail)
       else
-        cons(payload.head, drop_zero(payload.tail))
+        cons(payload.head, drop_additive_zero(payload.tail))
+  }
+
+// Multiplicative zero is an annihilator, not a removable identity. This keeps
+// `Semiring<SymbolicCost>` honest: `O(n) * 0` collapses to `0`, while additive
+// zero remains removable only under `SumCost`.
+fn collapse_on_multiplicative_zero(terms: List<SymbolicCost>) -> List<SymbolicCost> =
+  if any_zero(terms) then
+    cons(ConstantCost(0), empty())
+  else
+    terms
+
+fn any_zero(terms: List<SymbolicCost>) -> Bool =
+  match terms {
+    Empty => False
+    Cons(payload) => is_zero_constant(payload.head) || any_zero(payload.tail)
+  }
+
+// Multiplicative one is the product identity. Once zero-annihilation has run,
+// `ConstantCost(1)` terms can be removed from products without losing work.
+fn drop_multiplicative_one(terms: List<SymbolicCost>) -> List<SymbolicCost> =
+  match terms {
+    Empty => empty()
+    Cons(payload) =>
+      if is_one_constant(payload.head) then
+        drop_multiplicative_one(payload.tail)
+      else
+        cons(payload.head, drop_multiplicative_one(payload.tail))
   }
 
 fn is_zero_constant(c: SymbolicCost) -> Bool =
   match c {
     ConstantCost(n) => n == 0
+    LinearCost(_) => False
+    PolynomialCost(_) => False
+    ProductCost(_) => False
+    SumCost(_) => False
+    LogCost(_) => False
+    UnknownCost(_) => False
+  }
+
+fn is_one_constant(c: SymbolicCost) -> Bool =
+  match c {
+    ConstantCost(n) => n == 1
     LinearCost(_) => False
     PolynomialCost(_) => False
     ProductCost(_) => False
@@ -473,7 +640,7 @@ fn wrap_sum(terms: List<SymbolicCost>) -> SymbolicCost =
 // `PolynomialCost(var, 2)`; otherwise keep the wrapper.
 fn reduce_product(terms: List<SymbolicCost>) -> SymbolicCost =
   match terms {
-    Empty => ConstantCost(0)
+    Empty => ConstantCost(1)
     Cons(payload) =>
       match payload.tail {
         Empty => payload.head

@@ -6,8 +6,10 @@
 //! the fold). This module implements only the **static** side needed for literal narrowing:
 //! substrate range facts [`range_min_inclusive` / `range_max_inclusive`](../../../../dsl/extdeps/languages/rust/primitives.dag)
 //! on [`rust_pilot_primitives`](crate::dag::Dag::rust_pilot_primitives) supply
-//! `StaticBound(Interval<Int>)` as [`IntervalInt::ExactInterval`] (decimal endpoints + host `i128`
-//! comparison). [`IntervalInt::Unbounded`] exists so Q1’s interval algebra is representable when a
+//! `StaticBound(Interval<Int>)` as [`IntervalInt::ExactInterval`] (decimal endpoints + host
+//! `BigInt` comparison; widened from `i128` per R3 Phase A so `u128::MAX` and any future wider
+//! primitive is representable structurally). [`IntervalInt::Unbounded`] exists so Q1’s interval
+//! algebra is representable when a
 //! target declares an unbounded value domain (pilot `IntegerPrimitive` rows are all exact today).
 //! [`PlatformDependent`] is out of scope for i64-bounded literal narrowing (deferred targets).
 //!
@@ -34,6 +36,8 @@
 
 use std::collections::HashSet;
 
+use num_bigint::BigInt;
+
 use crate::dag::{
     AtomPayload, Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortId, TypeConnective,
     ValueBody,
@@ -43,6 +47,13 @@ use crate::types::TypeShape;
 
 /// Q1 `Interval<Int>` instance carried from String-decimal range facts (not `LiteralBits::Int`
 /// widening — producer brief).
+///
+/// **Host repr:** `min` / `max` are arbitrary-precision `BigInt` so `u128::MAX` (and any future
+/// wider-than-i128 primitive) is representable structurally without per-width host-repr variant
+/// explosion. Per Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264 (R3 Substrate
+/// Rust-primitive-full-coverage bundled brief). The previous narrow `i128` host-repr deferred the
+/// `u128` row in `dsl/extdeps/languages/rust/primitives.dag` because `u128::MAX` exceeds `i128`
+/// range; that gap is closed by the `BigInt` host repr here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum IntervalInt {
     /// Closed interval — substrate `range_*_inclusive` facts for a fixed-width target primitive.
@@ -50,8 +61,8 @@ pub(crate) enum IntervalInt {
         target_name: String,
         min_decimal: String,
         max_decimal: String,
-        min: i128,
-        max: i128,
+        min: BigInt,
+        max: BigInt,
     },
     /// Value-domain unbounded integer (e.g. arbitrary-precision target). Universal-accept for any
     /// i64-representable literal magnitude.
@@ -85,7 +96,7 @@ impl IntervalInt {
     /// range facts may exceed `i64` (e.g. `u64::MAX`); literals above `i64::MAX` are rejected at
     /// tokenization until the deferred Int128 carrier lane lands.
     pub(crate) fn contains_i64(&self, value: i64) -> bool {
-        let value = i128::from(value);
+        let value = BigInt::from(value);
         match self {
             IntervalInt::Unbounded => true,
             IntervalInt::ExactInterval { min, max, .. } => *min <= value && value <= *max,
@@ -136,7 +147,56 @@ pub(crate) fn integer_routing_witness_for_decl(
     integer_routing_witness_walk(dag, decl, 0)
 }
 
+/// `Nat` (`dsl/std/nat.dag`: `Semiring<Magnitude>`). Decimal literals narrow like nonnegative
+/// fixed-width ints: \([0, i64::MAX]\) until a distinct magnitude literal carrier ships.
+fn type_is_nat(dag: &Dag, mut decl: DeclarationId) -> bool {
+    let Some(nat_id) = dag.declaration_by_name("Nat").map(|d| d.id) else {
+        return false;
+    };
+    let Some(semiring_template) = dag.declaration_by_name("Semiring").map(|d| d.id) else {
+        return false;
+    };
+    let Some(magnitude_id) = dag.declaration_by_name("Magnitude").map(|d| d.id) else {
+        return false;
+    };
+    for _ in 0..32 {
+        if decl == nat_id {
+            return true;
+        }
+        let declaration = dag.declaration(decl);
+        match &declaration.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if *template == semiring_template
+                && arguments.len() == 1
+                && arguments[0].value == magnitude_id =>
+            {
+                return true;
+            }
+            TypeConnective::Instantiation { template, .. } => decl = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => decl = *next,
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn nat_decimal_literal_interval() -> IntervalInt {
+    IntervalInt::ExactInterval {
+        target_name: "Nat".to_string(),
+        min_decimal: "0".to_string(),
+        max_decimal: i64::MAX.to_string(),
+        min: BigInt::from(0),
+        max: BigInt::from(i64::MAX),
+    }
+}
+
 pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> IntegerRangeLookup {
+    if type_is_nat(dag, decl) {
+        return IntegerRangeLookup::Found(nat_decimal_literal_interval());
+    }
     let Some(witness) = integer_routing_witness_walk(dag, decl, 0) else {
         return IntegerRangeLookup::Missing;
     };
@@ -284,6 +344,7 @@ fn std_word_carrier_to_target_carrier_variant_ty(
     let word16 = dag.declaration_by_name("Word16")?.id;
     let word32 = dag.declaration_by_name("Word32")?.id;
     let word64 = dag.declaration_by_name("Word64")?.id;
+    let word128 = dag.declaration_by_name("Word128")?.id;
     let label = if carrier_decl == byte {
         "ByteCarrier"
     } else if carrier_decl == word16 {
@@ -292,6 +353,8 @@ fn std_word_carrier_to_target_carrier_variant_ty(
         "Word32Carrier"
     } else if carrier_decl == word64 {
         "Word64Carrier"
+    } else if carrier_decl == word128 {
+        "Word128Carrier"
     } else {
         return None;
     };
@@ -445,14 +508,20 @@ fn malformed_integer_range_fact(message: String, span: SourceSpan) -> Diagnostic
 
 /// Bootstrap-only gate: walk **every** `IntegerPrimitive` row in
 /// `rust_pilot_primitives` and fail closed if any row is structurally
-/// ill-formed, range strings do not parse to `i128`, `min > max`, or
-/// `(algebra, carrier)` witness pairs collide.
+/// ill-formed, range strings do not parse as decimal `BigInt`, `min > max`,
+/// or `(algebra, carrier)` witness pairs collide.
 ///
 /// Call this once when constructing the extdeps-including bootstrapped `Dag`
 /// so drift or corruption in the pilot list surfaces at `Dag::new()`,
 /// not only when a particular std type is queried.
 pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
-    const EXPECTED_INTEGER_ROWS: usize = 8;
+    // R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264;
+    // Option (ii) at #issuecomment-4393145631; Phase B-1 at commit `59511503e`):
+    // pilot carries 10 IntegerPrimitive rows (i8..i64, i128, u8..u64, u128).
+    // u128 was unblocked by Phase A `IntervalInt::ExactInterval` BigInt host
+    // repr widening (commit `e7ba022c6`); the prior `T-Int128 Slice B1` /
+    // "Slice B2" deferral marker is resolved.
+    const EXPECTED_INTEGER_ROWS: usize = 10;
     const INTEGER_PRIMITIVE_FIELD_COUNT: usize = 7;
 
     enum PilotListSnapshot {
@@ -533,6 +602,7 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
         "Word16Carrier",
         "Word32Carrier",
         "Word64Carrier",
+        "Word128Carrier",
     ] {
         if let Some(c) = disj_variant_payload_ty(dag, "TargetCarrier", label) {
             allowed_carriers.insert(c);
@@ -609,7 +679,7 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
         };
         if !allowed_carriers.contains(carrier_ctor) {
             dag.attach_diagnostic(malformed_integer_range_fact(
-                "rust_pilot_primitives IntegerPrimitive `carrier` must be a word TargetCarrier (Byte/Word16/Word32/Word64) variant payload type id".to_string(),
+                "rust_pilot_primitives IntegerPrimitive `carrier` must be a word TargetCarrier (Byte/Word16/Word32/Word64/Word128) variant payload type id".to_string(),
                 default_span.clone(),
             ));
             continue;
@@ -654,12 +724,12 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
             continue;
         }
 
-        let (min_n, max_n) = match (min_s.parse::<i128>(), max_s.parse::<i128>()) {
+        let (min_n, max_n) = match (min_s.parse::<BigInt>(), max_s.parse::<BigInt>()) {
             (Ok(mn), Ok(mx)) => (mn, mx),
             _ => {
                 dag.attach_diagnostic(malformed_integer_range_fact(
                     format!(
-                        "rust_pilot_primitives IntegerPrimitive range [{min_s}, {max_s}] must parse to i128"
+                        "rust_pilot_primitives IntegerPrimitive range [{min_s}, {max_s}] must parse as a decimal integer"
                     ),
                     default_span.clone(),
                 ));
@@ -748,6 +818,75 @@ mod tests {
     fn interval_int_unbounded_accepts_all_i64_literals() {
         assert!(IntervalInt::Unbounded.contains_i64(i64::MIN));
         assert!(IntervalInt::Unbounded.contains_i64(i64::MAX));
+    }
+
+    #[test]
+    fn int128_witness_matches_i128_pilot_row_constructors() {
+        // T-Int128 Slice B1: signed Int128 -> i128 pilot row via Word128Carrier.
+        let dag = Dag::new();
+        assert!(
+            dag.diagnostics().is_empty(),
+            "bootstrap diagnostics: {:?}",
+            dag.diagnostics()
+        );
+        let int128 = dag
+            .declaration_by_name("Int128")
+            .expect("Int128 in bootstrap")
+            .id;
+        let witness = integer_routing_witness_for_decl(&dag, int128).expect("Int128 witness");
+        let pilot = dag.rust_pilot_primitives().expect("pilot");
+        let ValueBody::List(elements) = pilot.value_body.as_ref().expect("list body") else {
+            panic!("expected list");
+        };
+        let integer_primitive_ctor = rust_primitive_integer_variant_ty(&dag).expect("ctor");
+        let mut matched = 0usize;
+        for element in elements {
+            let FieldValue::Variant {
+                constructor,
+                payload,
+            } = element
+            else {
+                continue;
+            };
+            if *constructor != integer_primitive_ctor {
+                continue;
+            }
+            let FieldValue::Variant { constructor: a, .. } = &payload[1] else {
+                continue;
+            };
+            let FieldValue::Variant { constructor: c, .. } = &payload[2] else {
+                continue;
+            };
+            if *a == witness.algebra_variant_ty && *c == witness.carrier_variant_ty {
+                matched += 1;
+            }
+        }
+        assert_eq!(
+            matched, 1,
+            "exactly one pilot IntegerPrimitive row for Int128 witness"
+        );
+    }
+
+    #[test]
+    fn int128_range_lookup_accepts_all_i64_literals() {
+        // i128 row's range covers all i64 magnitudes; reconciliation passes
+        // any i64 literal through `contains_i64`.
+        let dag = Dag::new();
+        let int128 = dag
+            .declaration_by_name("Int128")
+            .expect("Int128 in bootstrap")
+            .id;
+        match integer_range_for_decl(&dag, int128) {
+            IntegerRangeLookup::Found(bound) => {
+                assert!(bound.contains_i64(i64::MIN));
+                assert!(bound.contains_i64(0));
+                assert!(bound.contains_i64(i64::MAX));
+            }
+            IntegerRangeLookup::Missing => panic!("expected Found range for Int128, got Missing"),
+            IntegerRangeLookup::Invalid(d) => {
+                panic!("expected Found range for Int128, got Invalid: {d:?}")
+            }
+        }
     }
 
     #[test]

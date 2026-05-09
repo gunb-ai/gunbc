@@ -86,6 +86,9 @@ import std.computation {
   CollectionSize, ArithmeticParam, Forever,
   tree_size_bound, positive_descent_count
 }
+import std.algebra {
+  SymbolicCost, ConstantCost, UnknownCost
+}
 
 
 
@@ -245,7 +248,7 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
 
 
 // =========================================================================
-// SubValueRelation lattice: meet/join for conservative/optimistic merge
+// SubValueRelation merge helpers
 // =========================================================================
 
 // Structural equality on shrink rates (P2 single authority for cost-relevant
@@ -276,7 +279,8 @@ fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
 // (`shrink_factor_eq`); otherwise the merge is incomparable → SubValueUnknown.
 // Different fields/params remain incomparable as before.
 //
-// Lattice ordering: SubValueUnknown < PreservedValue < {structural variants}
+// This is a fail-closed meet-oriented helper, not a bounded-lattice witness:
+// PreservedValue is a "same argument" relation, not a top element.
 
 fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   match a {
@@ -369,11 +373,11 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// SubValueRelation inhabits BoundedLattice:
-//   meet = meet_sub_value, join = join_sub_value
-//   top = PreservedValue (meet identity), bottom = SubValueUnknown
-// Data declaration deferred: compiler does not yet emit generic type
-// parameters for data constants (BoundedLattice<SubValueRelation>).
+// SubValueRelation intentionally does not claim BoundedLattice inhabitance:
+//   meet_sub_value is the conservative fail-closed merge helper.
+//   join_sub_value is an optimistic auxiliary helper.
+//   SubValueUnknown is the fail-closed sink and join identity.
+//   PreservedValue is a same-argument relation, not a meet identity/top.
 
 
 // =========================================================================
@@ -626,6 +630,42 @@ fn cost_bound_is_sum_bound(b: CostBound) -> Bool {
     ForeverBound => false
     ErrorBound => false
   }
+}
+
+// Projection from induction proof bounds to the symbolic cost algebra consumed
+// by cost/complexity lenses. CostBound is the proof authority; SymbolicCost is
+// the composition/display authority. String-named CostBound atoms cannot yet
+// mint a structural SizeVariable because the induction carrier does not carry a
+// PortId; those atoms fail closed to UnknownCost until structural param refs
+// replace the current string bridge.
+fn cost_bound_to_symbolic(bound: CostBound) -> SymbolicCost =
+  match bound {
+    ConstantBound => ConstantCost(0)
+    AtomicBound { cost: c } => atomic_cost_to_symbolic(c)
+    ProductBound { factors: fs } => product_atoms_to_symbolic(fs)
+    SumOfProductsBound { terms: ts } => sum_products_to_symbolic(ts)
+    SumBound { terms: ts } => UnknownCost("CostBound SumBound awaits non-recursive projection lowering")
+    ForeverBound => UnknownCost("forever bound")
+    ErrorBound => UnknownCost("invalid cost bound")
+  }
+
+fn atomic_cost_to_symbolic(cost: AtomicCost) -> SymbolicCost =
+  match cost {
+    PolyCost { param: p, exponent: _ } =>
+      UnknownCost("CostBound named polynomial atom lacks structural SizeVariable port")
+    LogCost { param: p } =>
+      UnknownCost("CostBound named log atom lacks structural SizeVariable port")
+  }
+
+fn product_atoms_to_symbolic(factors: List<AtomicCost>) -> SymbolicCost {
+  host product_atoms_to_symbolic
+}
+
+fn product_term_to_symbolic(factors: List<AtomicCost>) -> SymbolicCost =
+  product_atoms_to_symbolic(factors)
+
+fn sum_products_to_symbolic(terms: List<List<AtomicCost>>) -> SymbolicCost {
+  host sum_products_to_symbolic
 }
 
 fn cost_constant() -> CostBound { ConstantBound }

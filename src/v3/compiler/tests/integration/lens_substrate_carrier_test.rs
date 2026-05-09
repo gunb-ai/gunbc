@@ -8,14 +8,17 @@
 //!   shape (`name`, `read`, `sequential: Monoid<C>`, `branch`, `iterate`,
 //!   `validate`).
 //! - `Diagnostic.kind` widens from `CompilerDiagnosticKind` to
-//!   `AnyDiagnosticKind`; the Layer-1 closed sum stays unchanged.
+//!   `AnyDiagnosticKind`; the Layer-1 closed sum tracks the compiler's
+//!   native `Diagnostic` taxonomy, ratcheted via `LAYER1_DIAGNOSTIC_KIND_LABELS`.
 //! - `LensInstanceKindWitness` is decl-only (no payload value field)
 //!   until refinement/dependent typing lands; this is the explicit
 //!   substrate gap receipt.
 
 use std::collections::HashSet;
-use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
-use v3_compiler::generated_full_bootstrap_dag;
+
+use crate::common::cached_compile_to_dag;
+use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
+use v3_compiler::{generated_full_bootstrap_dag, LAYER1_DIAGNOSTIC_KIND_LABELS};
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
     let decl = dag
@@ -43,6 +46,13 @@ fn decl_id_by_name(dag: &Dag, name: &str) -> DeclarationId {
         .id
 }
 
+fn dag_shape_dag() -> Dag {
+    cached_compile_to_dag(
+        include_str!("../../../lenses/dag_shape.dag"),
+        "src/v3/lenses/dag_shape.dag",
+    )
+}
+
 #[test]
 fn lens_carrier_has_locked_six_field_shape() {
     let dag = generated_full_bootstrap_dag();
@@ -61,6 +71,34 @@ fn lens_carrier_has_locked_six_field_shape() {
     assert_eq!(
         actual, expected,
         "Lens<C> field set diverged from Director-locked 6-field shape"
+    );
+}
+
+#[test]
+fn e6_g1_stop_receipt_pins_no_bootstrap_lens_value_yet() {
+    let dag = generated_full_bootstrap_dag();
+    let lens = decl_id_by_name(&dag, "Lens");
+    let lens_values: Vec<String> = dag
+        .declarations()
+        .iter()
+        .filter(|decl| decl.value_body.is_some())
+        .filter(|decl| {
+            matches!(
+                &decl.connective,
+                TypeConnective::Instantiation { template, .. } if *template == lens
+            )
+        })
+        .map(|decl| {
+            decl.name
+                .clone()
+                .unwrap_or_else(|| format!("DeclarationId({})", decl.id.raw()))
+        })
+        .collect();
+
+    assert!(
+        lens_values.is_empty(),
+        "E6-G1 must not consume placeholder Lens<C> data values before the \
+         function-valued structural data surface lands; found {lens_values:?}"
     );
 }
 
@@ -86,28 +124,28 @@ fn diagnostic_kind_widened_to_any_diagnostic_kind() {
 }
 
 #[test]
-fn compiler_diagnostic_kind_closed_sum_unchanged() {
+fn compiler_diagnostic_kind_matches_rust_layer1_authority() {
     let dag = generated_full_bootstrap_dag();
-    let variants: HashSet<String> = disj_variant_labels(&dag, "CompilerDiagnosticKind")
-        .into_iter()
-        .collect();
-    let expected: HashSet<&str> = [
-        "TokenizerError",
-        "ParseError",
-        "TypeMismatch",
-        "UnitMismatch",
-        "ArityMismatch",
-        "ResolveError",
-        "NominalOpacityViolation",
-    ]
-    .into_iter()
-    .collect();
-    let actual: HashSet<&str> = variants.iter().map(String::as_str).collect();
+    let substrate = disj_variant_labels(&dag, "CompilerDiagnosticKind");
+    let expected: Vec<&str> = LAYER1_DIAGNOSTIC_KIND_LABELS.to_vec();
+    let actual: Vec<&str> = substrate.iter().map(String::as_str).collect();
     assert_eq!(
         actual, expected,
-        "CompilerDiagnosticKind closed sum changed — Layer-1 must stay locked; \
-         lens-instance kinds enter via Layer-2 LensInstanceKindWitness, NOT \
-         by extending this sum (anti-bridge invariant per Q6.5)"
+        "CompilerDiagnosticKind must match `LAYER1_DIAGNOSTIC_KIND_LABELS` in **declaration order** \
+         (same order as `Diagnostic` in diagnostics.rs); a HashSet-only check would miss order \
+         drift; lens-instance kinds use Layer-2 LensInstanceKindWitness (Q6.5 anti-bridge)"
+    );
+}
+
+#[test]
+fn verification_diagnostic_kind_mirrors_compiler_diagnostic_kind() {
+    let dag = generated_full_bootstrap_dag();
+    let compiler = disj_variant_labels(&dag, "CompilerDiagnosticKind");
+    let verification = disj_variant_labels(&dag, "DiagnosticKind");
+    assert_eq!(
+        compiler, verification,
+        "std.verification.DiagnosticKind must mirror std.diagnostics.CompilerDiagnosticKind \
+         (variant labels and order)"
     );
 }
 
@@ -159,5 +197,42 @@ fn lens_instance_kind_witness_payload_intentionally_absent() {
          typing trigger in `diagnostics.dag` has actually closed before \
          landing it (do not pretend payload is enforced via a free \
          TypeShape coordinate; that is the Q6.5-rejected illegal state)."
+    );
+}
+
+#[test]
+fn dag_shape_report_reuses_reflected_dag_authority() {
+    let dag = dag_shape_dag();
+    let dag_decl = dag.declaration_by_name("Dag").expect("Dag carrier exists");
+    assert!(
+        dag.declaration_by_name("DagShapeReport").is_none(),
+        "raw Dag shape producer must not duplicate std.substrate.Dag as a second report record"
+    );
+    assert_arrow_output(&dag, "dag_shape_report", dag_decl.id);
+}
+
+#[test]
+fn dag_shape_report_public_producer_returns_raw_dag() {
+    let dag = dag_shape_dag();
+    let dag_decl = dag.declaration_by_name("Dag").expect("Dag carrier exists");
+
+    assert_arrow_output(&dag, "dag_shape_report", dag_decl.id);
+    assert!(
+        dag.declaration_by_name("dag_shape_lens").is_none(),
+        "do not author fake Dag shape lens data until whole-Dag lens contract is honest"
+    );
+}
+
+fn assert_arrow_output(dag: &Dag, name: &str, expected: DeclarationId) {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("{name} declaration exists"));
+    let TypeConnective::Arrow { output, body, .. } = &decl.connective else {
+        panic!("{name} must be an Arrow");
+    };
+    assert_eq!(*output, expected, "{name} output drifted");
+    assert!(
+        matches!(body, ArrowBody::UserDefined(_)),
+        "{name} should lower to a user-defined body"
     );
 }

@@ -17,12 +17,12 @@
 //                            ┌──────────────┼──────────────┐
 //                            │              │              │
 //                        Semiring      Lattice      FreeMonoid<T>
-//                            │              │
-//                          Ring      BoundedLattice
-//                            │              │
-//                      OrderedRing   BooleanAlgebra
-//                            │
-//                         Field
+//                       ╱       ╲          │
+//        CommutativeSemiring   Ring   BoundedLattice
+//                                │          │
+//                           OrderedRing BooleanAlgebra
+//                                │
+//                              Field
 //
 // Each level adds axioms. A type that inhabits Ring automatically gets
 // all Monoid, Semigroup, and Magma operations.
@@ -36,6 +36,7 @@
 //   Monoid              | identity: op(identity, a) == a
 //   CommutativeMonoid    | commutativity: op(a, b) == op(b, a)
 //   Semiring            | add (CommMonoid) + mul (Monoid) + distribution
+//   CommutativeSemiring | Semiring + commutative multiplication
 //   Ring                | add inverse (negate, subtract)
 //   OrderedRing         | total order (compare, <, >, min, max, abs)
 //   Field               | mul inverse (reciprocal, divide)
@@ -137,6 +138,82 @@ type AbelianGroup<T> {
 }
 
 // =========================================================================
+// Algebraic constructions over existing algebras
+// =========================================================================
+
+// GroupCompletion<M>: opaque atom denoting the **carrier** of "the abelian
+// group derived from a commutative monoid M" via the Grothendieck
+// construction. Strictly a derived-carrier construction — NOT an
+// algebra-with-derived-carrier. The algebra witness is named separately at
+// each use site as `AbelianGroup<GroupCompletion<M>>` (standard parametric
+// reading: `T = GroupCompletion<M>` is the carrier; `AbelianGroup<T>` carries
+// op/identity/inverse over that carrier).
+//
+// Authority: `docs/audit/t-numeric-construction-group-completion-6q.md`
+// (Shape C — opaque atom; carrier-representation deferred to per-target
+// emission; the construction is named exactly once in std). Slice 3 (later)
+// will land `type Int = AbelianGroup<GroupCompletion<Nat>>` consuming this.
+//
+// CONSTRAINED-INHABITANCE GAP (P5 tracked scaffold):
+//   Denotationally `<M>` must inhabit `CommutativeMonoid` for the Grothendieck
+//   construction to be well-defined. The current substrate has no parametric
+//   where-clause syntax (`<M> where M : CommutativeMonoid<_>`), so this
+//   declaration accepts any type-reference for `<M>` at the parser/lower
+//   level. Slice 3's only intended consumer is `GroupCompletion<Nat>`, and
+//   `Nat = Semiring<Magnitude>` (Slice 2) carries the commutative-monoid
+//   laws via Semiring's `add`+`zero`+commutativity-on-add — denotationally
+//   the precondition holds.
+//
+//   **Dissolution trigger:** when constrained-inhabitance / parametric
+//   where-clause syntax lands in the substrate (separate substrate-feature
+//   lane, not T-Numeric-Construction's scope), tighten this declaration to
+//   require `<M> : CommutativeMonoid`. Existing call sites
+//   `AbelianGroup<GroupCompletion<Nat>>` continue to type-check.
+//
+// HARD BOUNDARIES (per dispatch on inbox #1288):
+//   - Opaque atom only — no fields, no quotient-of-pairs `(M, M) / ~`
+//     representation, no sign-magnitude `(Sign, M)` representation.
+//     Per-target representation is emission's job.
+//   - No mechanical AbelianGroup-witness derivation declared at this layer
+//     — current substrate cannot express algebra-inhabitance over a
+//     parametric carrier; the inhabitance lens is a follow-up.
+type GroupCompletion<M>
+
+// FieldOfFractions<R>: opaque atom denoting the **carrier** of "the field of
+// fractions derived from an integral domain R" via localization. Strictly a
+// derived-carrier construction — NOT an algebra-with-derived-carrier and NOT
+// a numerator/denominator pair at this layer. The algebra witness is named
+// separately at each use site as `Field<FieldOfFractions<R>>` (standard
+// parametric reading: `T = FieldOfFractions<R>` is the carrier; `Field<T>`
+// carries add/zero/negate/mul/one/reciprocal/compare over that carrier).
+//
+// Authority: `docs/audit/t-numeric-construction-field-of-fractions-6q.md`
+// (Shape C — opaque atom; carrier representation deferred to per-target
+// emission; Slice 4 introduces `type Rational = Field<FieldOfFractions<Int>>` in
+// `dsl/std/rational.dag` as the canonical Q6 form).
+//
+// CONSTRAINED-INHABITANCE GAP (P5 tracked scaffold):
+//   Denotationally `<R>` must be an integral domain for localization to be
+//   well-defined. The current substrate has no parametric where-clause syntax
+//   (`<R> where R : IntegralDomain<_>`), so this declaration accepts any
+//   type-reference for `<R>` at the parser/lower level. Slice 4's only intended
+//   consumer is `FieldOfFractions<Int>`, and `Int = AbelianGroup<GroupCompletion<Nat>>`
+//   (Slice 3) denotationally yields a commutative ring with no zero divisors —
+//   the integral-domain precondition holds for that sole consumer.
+//
+//   **Dissolution trigger:** when constrained-inhabitance / parametric
+//   where-clause syntax lands in the substrate (separate substrate-feature
+//   lane), tighten this declaration to require `<R> : IntegralDomain`. Existing
+//   call sites `Field<FieldOfFractions<Int>>` continue to type-check.
+//
+// HARD BOUNDARIES (Director dispatch + audit):
+//   - Opaque atom only — no pair/quotient representation, no NonZero/Result
+//     reciprocal plumbing at this prerequisite slice.
+//   - No mechanical Field-witness derivation declared here — same substrate gap
+//     as `GroupCompletion<M>`; inhabitance lens is follow-up.
+type FieldOfFractions<R>
+
+// =========================================================================
 // Ring-like structures (two operations: additive + multiplicative)
 // =========================================================================
 
@@ -146,6 +223,18 @@ type AbelianGroup<T> {
 // mul distributes over add: a * (b + c) == a*b + a*c
 // zero annihilates: a * zero == zero
 type Semiring<T> {
+  add: fn(T, T) -> T
+  zero: T
+  mul: fn(T, T) -> T
+  one: T
+}
+
+// CommutativeSemiring: semiring whose multiplicative monoid is commutative.
+// Adds only the law `mul(a, b) == mul(b, a)`; signatures stay identical to
+// Semiring. This is the algebra-strength surface for Nat. Sibling follow-ups
+// may add `CommutativeRing<T>` and `OrderedCommutativeRing<T>` when a consumer
+// needs those strengths; this slice intentionally lands only the semiring step.
+type CommutativeSemiring<T> {
   add: fn(T, T) -> T
   zero: T
   mul: fn(T, T) -> T
@@ -290,7 +379,7 @@ type BooleanAlgebra<T> {
 //
 // Declared surface (receiver-shaped fields — matches the record below):
 //   Monoid: concat(self, other), empty, append(element)
-//   Indexed carrier: length(), count(), slice(i, j), first() -> T?,
+//   Indexed carrier: length(), count(), is_empty() -> Bool, slice(i, j), first() -> T?,
 //     last() -> T?; element lookup is total-only via `get(collection, index) -> T?`
 //     in std/primitives.dag, not a partial algebra field.
 //   map: endomorphic fn(T) -> T -> FreeMonoid<T> (not fn(T)->U with U free)
@@ -306,6 +395,7 @@ type FreeMonoid<T> {
   // Positional access — partial direct indexing is intentionally absent.
   slice: fn(Int, Int) -> FreeMonoid<T>
   length: fn() -> Int
+  is_empty: fn() -> Bool
   count: fn() -> Int
   first: fn() -> T?
   last: fn() -> T?
@@ -386,7 +476,8 @@ type Ordering = Less | Equal | Greater
 //   xor(a, b)  = meet(join(a, b), complement(meet(a, b)))
 //
 // From FreeMonoid:
-//   length and count are declared methods (Int). contains is a declared predicate.
+//   length and count are declared methods (Int); is_empty() -> Bool;
+//   contains is a declared predicate.
 //   The record's fold is monoid-shaped on T, not a generic catamorphism init: U.
 
 // =========================================================================
@@ -398,7 +489,9 @@ type Ordering = Less | Equal | Greater
 // concat, etc.) on kernel types during build_type_env.
 //
 // Canonical source: adding algebraic enrichment for a new kernel type
-// requires one line in kernel_algebra_profile below.
+// requires one line in kernel_algebra_profile below. v3 compiler accessors
+// consume this lowered map directly; v2 parity tests remain only as transition
+// ratchets until PB retires the old stage0 comparison.
 // =========================================================================
 
 type AlgebraProfile
@@ -528,6 +621,7 @@ fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
     { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "empty", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "is_empty", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "chars", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
     { name: "split", param_types: [ReceiverSelf, ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
     { name: "join", param_types: [ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
@@ -566,7 +660,8 @@ fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
     { name: "join", param_types: [ReceiverSelf, NamedTemplate { name: "String" }], return_type: NamedTemplate { name: "String" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
     { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
     { name: "list_push", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none }
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "is_empty", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none }
   ]
 }
 

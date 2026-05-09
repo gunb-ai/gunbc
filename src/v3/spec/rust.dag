@@ -63,12 +63,23 @@ import v3.std.emit_model {
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
   TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
-  CollectionOps, ValueConstructionSyntax, RenderingModel, LanguageSpec
+  CollectionOps, ValueConstructionSyntax, RenderingModel, LanguageSpec,
+  TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound,
+  MethodTemplateContract, SingleTemplate, NamedArg
+}
+import std.methods { concat_method, fold_method, is_empty_method, length_method, map_method }
+import v3.std.rust_method_template_contracts {
+  rust_filter_method_template_contract,
+  rust_flat_map_method_template_contract,
+  rust_any_method_template_contract,
+  rust_all_method_template_contract
 }
 import v3.std.substrate {
   SubstrateAccessorRealization, SubstrateAccessorBinding,
-  port, node, resolve_producer, lane2_workflow_at, declaration_by_id
+  port, node, resolve_producer, lane2_workflow_at, declaration_by_id,
+  declaration_by_name
 }
+import std.computation { per_call_pattern_at }
 import v3.std.clean_emission {
   CleanEmissionContract,
   TargetCleanEmissionBinding,
@@ -82,7 +93,7 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
 import std.algebra { BooleanAlgebra }
-import std.integer { UInt8 }
+import std.integer { Int, UInt8, Int32, UInt32, Int128, UInt128, IntPlatform, UIntPlatform }
 import v3.std.lookup { Lookup }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
@@ -122,6 +133,157 @@ data rust_uint8: TypeRealization = {
   is_copy: true
   fields: []
   cost: 1
+}
+
+data rust_i32: TypeRealization = {
+  language: rust_language
+  target: Int32
+  carrier: "i32"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data rust_u32: TypeRealization = {
+  language: rust_language
+  target: UInt32
+  carrier: "u32"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data rust_i128: TypeRealization = {
+  language: rust_language
+  target: Int128
+  carrier: "i128"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+// R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264;
+// Option (ii) confirmed at gunbc#1761 #issuecomment-4393145631): u128
+// realization for the symmetric `UInt128` kernel integer. Unblocked by
+// Phase A `IntervalInt::ExactInterval` BigInt host repr widening.
+data rust_u128: TypeRealization = {
+  language: rust_language
+  target: UInt128
+  carrier: "u128"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+// R3 IntPlatform / UIntPlatform follow-on (Director Q1+Q2+Q3+Q4 RATIFIED at
+// gunbc#1739 #issuecomment-4393248961; inner-token rename `Platform` →
+// `PointerWidth` at gunbc#828 #issuecomment-4393616097). Pointer-width-
+// sized integer realizations: Rust `isize` / `usize` ground to the
+// `IntPlatform` / `UIntPlatform` substrate concepts via
+// `Compose<Int|UInt, MachineWidth<PointerWidth>>`.
+data rust_isize: TypeRealization = {
+  language: rust_language
+  target: IntPlatform
+  carrier: "isize"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data rust_usize: TypeRealization = {
+  language: rust_language
+  target: UIntPlatform
+  carrier: "usize"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+// ── TargetIntegerTypeInhabitance rows (design-emission-model Examples 1, 2, 5, 6, 8 family) ──
+// Bounds use `StaticBoundFact(Interval<Int>)` inline so rows lower structurally
+// (DB-10: top-level `data …: BoundDeclaration = …` stays Unparsed). Signed
+// interval lowers use decimal literals such as `-2147483648`, produced by the
+// v3 tokenizer’s `-` + digits spelling (see `tokenize_generated.rs`).
+
+data rust_integer_inhabit_u32_at_program_bound: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: UInt32
+  algebra: UInt32
+  bound: StaticBoundFact(BoundedInterval {
+    lower: 0
+    width: PositiveWidth(UnitCount { units: 4294967295 })
+  })
+  type_realization: rust_u32
+}
+
+data rust_integer_inhabit_i32_at_program_bound: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: Int32
+  algebra: Int32
+  bound: StaticBoundFact(BoundedInterval {
+    lower: -2147483648
+    width: PositiveWidth(UnitCount { units: 4294967295 })
+  })
+  type_realization: rust_i32
+}
+
+data rust_integer_inhabit_i32_bound_unspecified: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: Int32
+  algebra: Int32
+  bound: BoundUnspecified
+  type_realization: rust_i32
+}
+
+data rust_integer_inhabit_int64_bound_unspecified: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: Int
+  algebra: Int
+  bound: BoundUnspecified
+  type_realization: rust_int
+}
+
+data rust_integer_inhabit_i128_bound_unspecified: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: Int128
+  algebra: Int128
+  bound: BoundUnspecified
+  type_realization: rust_i128
+}
+
+// R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264;
+// Option (ii) confirmed at gunbc#1761 #issuecomment-4393145631): u128
+// inhabitance row consuming Phase A's BigInt-widened ExactInterval. The
+// `BoundUnspecified` shape mirrors the i128 row above; static interval
+// bound facts on u128 lower through the BigInt-backed
+// `IntervalInt::ExactInterval` once narrowing consumers exercise them.
+data rust_integer_inhabit_u128_bound_unspecified: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: UInt128
+  algebra: UInt128
+  bound: BoundUnspecified
+  type_realization: rust_u128
+}
+
+// R3 IntPlatform / UIntPlatform follow-on rows. `bound: PlatformDependentFact`
+// per Q3 ratification — pointer width is target-resolved at Grounding emit
+// time, NOT a static interval at substrate-load time. `feedback_target_agnostic_ir`:
+// substrate stays target-agnostic; per-target width (Rust 32-bit vs 64-bit
+// pointer) lands at Grounding lowering.
+data rust_integer_inhabit_isize_platform: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: IntPlatform
+  algebra: IntPlatform
+  bound: PlatformDependentFact
+  type_realization: rust_isize
+}
+
+data rust_integer_inhabit_usize_platform: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: UIntPlatform
+  algebra: UIntPlatform
+  bound: PlatformDependentFact
+  type_realization: rust_usize
 }
 
 data rust_bool: TypeRealization = {
@@ -1278,12 +1440,58 @@ data rust_patterns: PatternMatchSyntax = {
   wildcard: "_"
 }
 
+data rust_language_spec_free_monoid_concat_contract: MethodTemplateContract = {
+  dag_method: { decl: concat_method },
+  runtime_template: "{ let mut __left = {left}; __left.extend({right}); __left }",
+  emit_template: SingleTemplate { template: "{ let mut __left = {left}; __left.extend({right}); __left }" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data rust_language_spec_free_monoid_length_contract: MethodTemplateContract = {
+  dag_method: { decl: length_method },
+  runtime_template: "({recv}).len() as i64",
+  emit_template: SingleTemplate { template: "({recv}).len() as i64" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+// `FreeMonoid<T>.is_empty` → `Bool` (declared on the algebra record); templates
+// use target-native emptiness sugar (Rust `.is_empty()`, Python/Go `len(...) == 0`).
+data rust_language_spec_free_monoid_emptiness_contract: MethodTemplateContract = {
+  dag_method: { decl: is_empty_method },
+  runtime_template: "({recv}).is_empty()",
+  emit_template: SingleTemplate { template: "({recv}).is_empty()" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data rust_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
+  dag_method: { decl: fold_method },
+  runtime_template: "({recv}).iter().fold({init}, {body})",
+  emit_template: SingleTemplate { template: "({recv}).iter().fold({init}, {body})" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data rust_language_spec_map_contract: MethodTemplateContract = {
+  dag_method: { decl: map_method },
+  runtime_template: "({recv}).iter().map({body}).collect::<Vec<_>>()",
+  emit_template: SingleTemplate { template: "({recv}).iter().map({body}).collect::<Vec<_>>()" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
 data rust_collection_ops: CollectionOps = {
-  concat: "{ let mut __left = {left}; __left.extend({right}); __left }"
-  length: "({recv}).len() as i64"
-  is_empty: "({recv}).is_empty()"
-  fold: "({recv}).iter().fold({init}, {body})"
-  map: "({recv}).iter().map({body}).collect::<Vec<_>>()"
+  concat_contract: rust_language_spec_free_monoid_concat_contract
+  length_contract: rust_language_spec_free_monoid_length_contract
+  is_empty_contract: rust_language_spec_free_monoid_emptiness_contract
+  fold_contract: rust_language_spec_free_monoid_fold_contract
+  filter_contract: rust_filter_method_template_contract
+  flat_map_contract: rust_flat_map_method_template_contract
+  any_contract: rust_any_method_template_contract
+  all_contract: rust_all_method_template_contract
+  map_contract: rust_language_spec_map_contract
   filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).iter() { if {predicate} { __out.push({item_push}); } } __out }"
   contains: "({recv}).contains({item})"
   empty_list: "Vec::new()"
@@ -1482,5 +1690,33 @@ data rust_declaration_by_id_accessor: SubstrateAccessorRealization = {
 data declaration_by_id_binding_rust: SubstrateAccessorBinding = {
   accessor: declaration_by_id
   realization: rust_declaration_by_id_accessor
+  language: rust_language
+}
+
+// `declaration_by_name(d: Dag, name: String) -> Declaration?` —
+// name-keyed parity with `declaration_by_id`. Host realization is
+// `Dag::declaration_by_name(&str) -> Option<&Declaration>`; `&{p1}`
+// borrows the `String` arg as `&str`, `.cloned()` lifts the borrowed
+// `Declaration` into owned form mirroring `declaration_by_id`'s shape.
+data rust_declaration_by_name_accessor: SubstrateAccessorRealization = {
+  carrier: "({p0}).declaration_by_name({p1}).cloned()"
+}
+
+data declaration_by_name_binding_rust: SubstrateAccessorBinding = {
+  accessor: declaration_by_name
+  realization: rust_declaration_by_name_accessor
+  language: rust_language
+}
+
+// Per-call descent evidence query consumed by cost/complexity lenses.
+// `dag::per_call_pattern_at(&Dag, NodeId) -> Option<CallPattern>` takes
+// the call-site id by value, matching emitted transform input rendering.
+data rust_per_call_pattern_at_accessor: SubstrateAccessorRealization = {
+  carrier: "per_call_pattern_at({p0}, *{p1})"
+}
+
+data per_call_pattern_at_binding_rust: SubstrateAccessorBinding = {
+  accessor: per_call_pattern_at
+  realization: rust_per_call_pattern_at_accessor
   language: rust_language
 }

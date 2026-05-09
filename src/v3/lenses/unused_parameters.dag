@@ -139,7 +139,7 @@ fn loop_inputs(d: Dag, loop_node: LoopNode) -> List<PortId> =
 fn loop_bound_inputs(bound: LoopBound) -> List<PortId> =
   match bound {
     Cardinality(payload) => singleton(payload.count)
-    Descent(_) => empty()
+    Descent(payload) => singleton(payload.measure)
   }
 
 fn branch_path_outputs(paths: List<BranchPath>) -> List<PortId> =

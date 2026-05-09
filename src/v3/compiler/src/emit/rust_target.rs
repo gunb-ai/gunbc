@@ -46,10 +46,14 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    algebra_field_for_operator_shared, dag_needs_div_error_prelude,
-    div_prelude_reserved_name_collision, parse_pattern_strategy, primitive_type_id_for_port_shared,
-    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
-    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    algebra_field_for_operator_shared,
+    collection_ops_method_contract::{
+        method_template_contract_decl_emit_template, MethodTemplateContractEmitTemplate,
+    },
+    dag_needs_div_error_prelude, div_prelude_reserved_name_collision, parse_pattern_strategy,
+    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
+    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -1461,18 +1465,224 @@ fn parse_collection_ops(
     declaration: DeclarationId,
 ) -> Result<CollectionOpsBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
+
+    let concat_method_decl = dag
+        .concat_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: concat_method missing from std.methods registry",
+        })?;
+    let length_method_decl = dag
+        .length_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: length_method missing from std.methods registry",
+        })?;
+    let fold_method_decl = dag
+        .fold_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: fold_method missing from std.methods registry",
+        })?;
+    let is_empty_method_decl =
+        dag.is_empty_method_decl()
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: is_empty_method missing from std.methods registry",
+            })?;
+    let filter_method_decl = dag
+        .filter_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: filter_method missing from std.methods registry",
+        })?;
+    let flat_map_method_decl =
+        dag.flat_map_method_decl()
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: flat_map_method missing from std.methods registry",
+            })?;
+    let any_method_decl = dag
+        .any_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: any_method missing from std.methods registry",
+        })?;
+    let all_method_decl = dag
+        .all_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: all_method missing from std.methods registry",
+        })?;
+
+    let concat_contract = require_field_decl_ref(fields, "concat_contract", declaration)?;
+    let concat_template = method_template_contract_decl_emit_template(
+        dag,
+        concat_contract,
+        "concat_contract",
+        concat_method_decl,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: concat_contract,
+        detail,
+    })?;
+    let concat = require_single_template(concat_template, concat_contract)?;
+
+    let length_contract = require_field_decl_ref(fields, "length_contract", declaration)?;
+    let length_template = method_template_contract_decl_emit_template(
+        dag,
+        length_contract,
+        "length_contract",
+        length_method_decl,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: length_contract,
+        detail,
+    })?;
+    let length = require_single_template(length_template, length_contract)?;
+
+    let is_empty_contract = require_field_decl_ref(fields, "is_empty_contract", declaration)?;
+    let is_empty_template = method_template_contract_decl_emit_template(
+        dag,
+        is_empty_contract,
+        "is_empty_contract",
+        is_empty_method_decl,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: is_empty_contract,
+        detail,
+    })?;
+    let is_empty = require_single_template(is_empty_template, is_empty_contract)?;
+
+    let fold_contract = require_field_decl_ref(fields, "fold_contract", declaration)?;
+    let fold_template = method_template_contract_decl_emit_template(
+        dag,
+        fold_contract,
+        "fold_contract",
+        fold_method_decl,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: fold_contract,
+        detail,
+    })?;
+    let fold = require_single_template(fold_template, fold_contract)?;
+
+    let filter_contract = require_field_decl_ref(fields, "filter_contract", declaration)?;
+    let filter_template = method_template_contract_decl_emit_template(
+        dag,
+        filter_contract,
+        "filter_contract",
+        filter_method_decl,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: filter_contract,
+        detail,
+    })?;
+    let filter = require_higher_order_inline_template(filter_template, filter_contract)?;
+
+    let flat_map_contract = require_field_decl_ref(fields, "flat_map_contract", declaration)?;
+    let flat_map_template = method_template_contract_decl_emit_template(
+        dag,
+        flat_map_contract,
+        "flat_map_contract",
+        flat_map_method_decl,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: flat_map_contract,
+        detail,
+    })?;
+    require_higher_order_inline_template(flat_map_template, flat_map_contract)?;
+
+    let any_contract = require_field_decl_ref(fields, "any_contract", declaration)?;
+    let any_template = method_template_contract_decl_emit_template(
+        dag,
+        any_contract,
+        "any_contract",
+        any_method_decl,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: any_contract,
+        detail,
+    })?;
+    require_higher_order_inline_template(any_template, any_contract)?;
+
+    let all_contract = require_field_decl_ref(fields, "all_contract", declaration)?;
+    let all_template = method_template_contract_decl_emit_template(
+        dag,
+        all_contract,
+        "all_contract",
+        all_method_decl,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: all_contract,
+        detail,
+    })?;
+    require_higher_order_inline_template(all_template, all_contract)?;
+
+    let map_method_decl = dag
+        .map_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: map_method missing from std.methods registry",
+        })?;
+    let map_contract = require_field_decl_ref(fields, "map_contract", declaration)?;
+    let map_template = method_template_contract_decl_emit_template(
+        dag,
+        map_contract,
+        "map_contract",
+        map_method_decl,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: map_contract,
+        detail,
+    })?;
+    let map = require_single_template(map_template, map_contract)?;
+
     Ok(CollectionOpsBinding {
-        concat: syntax_field_string(fields, "concat", declaration)?,
-        length: syntax_field_string(fields, "length", declaration)?,
-        is_empty: syntax_field_string(fields, "is_empty", declaration)?,
-        fold: syntax_field_string(fields, "fold", declaration)?,
-        map: syntax_field_string(fields, "map", declaration)?,
-        filter: syntax_field_string(fields, "filter", declaration)?,
+        concat,
+        length,
+        is_empty,
+        fold,
+        map,
+        filter,
         contains: syntax_field_string(fields, "contains", declaration)?,
         empty_list: syntax_field_string(fields, "empty_list", declaration)?,
         list_literal: syntax_field_string(fields, "list_literal", declaration)?,
         cons: syntax_field_string(fields, "cons", declaration)?,
     })
+}
+
+fn require_single_template(
+    template: MethodTemplateContractEmitTemplate,
+    declaration: DeclarationId,
+) -> Result<String, EmitError> {
+    match template {
+        MethodTemplateContractEmitTemplate::SingleTemplate(template) => Ok(template),
+        MethodTemplateContractEmitTemplate::HigherOrderTemplates { .. } => {
+            Err(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "CollectionOps MethodTemplateContract must use MethodEmitTemplate.SingleTemplate",
+            })
+        }
+    }
+}
+
+fn require_higher_order_inline_template(
+    template: MethodTemplateContractEmitTemplate,
+    declaration: DeclarationId,
+) -> Result<String, EmitError> {
+    match template {
+        MethodTemplateContractEmitTemplate::HigherOrderTemplates {
+            inline_template, ..
+        } => Ok(inline_template),
+        MethodTemplateContractEmitTemplate::SingleTemplate(_) => {
+            Err(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail:
+                    "Rust CollectionOps higher-order MethodTemplateContract must use MethodEmitTemplate.HigherOrderTemplates",
+            })
+        }
+    }
 }
 
 fn parse_value_construction_syntax(
@@ -1747,18 +1957,23 @@ fn parse_rust_field_access(
             });
         }
     };
-    let direct_field = named_variant_id(dag, "FieldAccess", "DirectField").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.DirectField declaration was not found",
-        },
-    )?;
-    let accessor_method = named_variant_id(dag, "FieldAccess", "AccessorMethod").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.AccessorMethod declaration was not found",
-        },
-    )?;
+    let variants = dag.emit_model_variants();
+    let direct_field =
+        variants
+            .field_access
+            .direct_field
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.DirectField declaration was not found",
+            })?;
+    let accessor_method =
+        variants
+            .field_access
+            .accessor_method
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.AccessorMethod declaration was not found",
+            })?;
     if *constructor == direct_field {
         Ok(RustFieldAccessBinding::DirectField(name))
     } else if *constructor == accessor_method {
@@ -1974,18 +2189,23 @@ fn parse_parameter_disposition(
             detail: "ParameterDisposition variants must not carry payload fields",
         });
     }
-    let borrowed = named_variant_id(dag, "ParameterDisposition", "Borrowed").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Borrowed declaration was not found",
-        },
-    )?;
-    let consumed = named_variant_id(dag, "ParameterDisposition", "Consumed").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Consumed declaration was not found",
-        },
-    )?;
+    let variants = dag.emit_model_variants();
+    let borrowed =
+        variants
+            .parameter_disposition
+            .borrowed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Borrowed declaration was not found",
+            })?;
+    let consumed =
+        variants
+            .parameter_disposition
+            .consumed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Consumed declaration was not found",
+            })?;
     if *constructor == borrowed {
         Ok(ParameterDispositionBinding::Borrowed)
     } else if *constructor == consumed {
@@ -2115,18 +2335,22 @@ fn require_read_strategy(
             detail: "ReadStrategy variants must not carry payload fields",
         });
     }
-    let borrow_variant = named_variant_id(dag, "ReadStrategy", "Borrow").ok_or(
-        EmitError::MalformedTargetSyntax {
+    let variants = dag.emit_model_variants();
+    let borrow_variant = variants
+        .read_strategy
+        .borrow
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "ReadStrategy.Borrow declaration was not found",
-        },
-    )?;
-    let pass_variant = named_variant_id(dag, "ReadStrategy", "PassByValue").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "ReadStrategy.PassByValue declaration was not found",
-        },
-    )?;
+        })?;
+    let pass_variant =
+        variants
+            .read_strategy
+            .pass_by_value
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "ReadStrategy.PassByValue declaration was not found",
+            })?;
     if *constructor == borrow_variant {
         Ok(ReadStrategyBinding::Borrow)
     } else if *constructor == pass_variant {
@@ -2169,18 +2393,23 @@ fn require_construct_strategy(
             detail: "ConstructStrategy variants must not carry payload fields",
         });
     }
-    let copy_or_clone = named_variant_id(dag, "ConstructStrategy", "CopyOrClone").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "ConstructStrategy.CopyOrClone declaration was not found",
-        },
-    )?;
-    let pass_variant = named_variant_id(dag, "ConstructStrategy", "PassByValue").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "ConstructStrategy.PassByValue declaration was not found",
-        },
-    )?;
+    let variants = dag.emit_model_variants();
+    let copy_or_clone =
+        variants
+            .construct_strategy
+            .copy_or_clone
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "ConstructStrategy.CopyOrClone declaration was not found",
+            })?;
+    let pass_variant =
+        variants
+            .construct_strategy
+            .pass_by_value
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "ConstructStrategy.PassByValue declaration was not found",
+            })?;
     if *constructor == copy_or_clone {
         Ok(ConstructStrategyBinding::CopyOrClone)
     } else if *constructor == pass_variant {
@@ -2199,14 +2428,18 @@ fn require_source_mutability(
     declaration: DeclarationId,
 ) -> Result<SourceMutabilityBinding, EmitError> {
     let value = require_unit_variant_field(fields, "mutability", declaration)?;
-    let immutable = named_variant_id(dag, "Mutability", "Immutable").ok_or(
-        EmitError::MalformedTargetSyntax {
+    let variants = dag.emit_model_variants();
+    let immutable = variants
+        .mutability
+        .immutable
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Mutability.Immutable declaration was not found",
-        },
-    )?;
-    let mutable =
-        named_variant_id(dag, "Mutability", "Mutable").ok_or(EmitError::MalformedTargetSyntax {
+        })?;
+    let mutable = variants
+        .mutability
+        .mutable
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Mutability.Mutable declaration was not found",
         })?;
@@ -2228,12 +2461,18 @@ fn require_source_purity(
     declaration: DeclarationId,
 ) -> Result<SourcePurityBinding, EmitError> {
     let value = require_unit_variant_field(fields, "purity", declaration)?;
-    let pure = named_variant_id(dag, "Purity", "Pure").ok_or(EmitError::MalformedTargetSyntax {
-        declaration,
-        detail: "Purity.Pure declaration was not found",
-    })?;
-    let effectful =
-        named_variant_id(dag, "Purity", "Effectful").ok_or(EmitError::MalformedTargetSyntax {
+    let variants = dag.emit_model_variants();
+    let pure = variants
+        .purity
+        .pure
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "Purity.Pure declaration was not found",
+        })?;
+    let effectful = variants
+        .purity
+        .effectful
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Purity.Effectful declaration was not found",
         })?;
@@ -2255,18 +2494,21 @@ fn require_source_structure(
     declaration: DeclarationId,
 ) -> Result<SourceStructureBinding, EmitError> {
     let value = require_unit_variant_field(fields, "structure", declaration)?;
-    let explicit = named_variant_id(dag, "Structure", "ExplicitDAG").ok_or(
-        EmitError::MalformedTargetSyntax {
+    let variants = dag.emit_model_variants();
+    let explicit = variants
+        .structure
+        .explicit_dag
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Structure.ExplicitDAG declaration was not found",
-        },
-    )?;
-    let arbitrary = named_variant_id(dag, "Structure", "Arbitrary").ok_or(
-        EmitError::MalformedTargetSyntax {
+        })?;
+    let arbitrary = variants
+        .structure
+        .arbitrary
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Structure.Arbitrary declaration was not found",
-        },
-    )?;
+        })?;
     if value == explicit {
         Ok(SourceStructureBinding::ExplicitDag)
     } else if value == arbitrary {
@@ -2286,16 +2528,21 @@ fn require_source_iteration(
 ) -> Result<SourceIterationBinding, EmitError> {
     let value = require_unit_variant_field(fields, "iteration", declaration)?;
     let bounded =
-        named_variant_id(dag, "Iteration", "Bounded").ok_or(EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "Iteration.Bounded declaration was not found",
-        })?;
-    let unbounded = named_variant_id(dag, "Iteration", "Unbounded").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "Iteration.Unbounded declaration was not found",
-        },
-    )?;
+        dag.emit_model_variants()
+            .iteration
+            .bounded
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "Iteration.Bounded declaration was not found",
+            })?;
+    let unbounded =
+        dag.emit_model_variants()
+            .iteration
+            .unbounded
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "Iteration.Unbounded declaration was not found",
+            })?;
     if value == bounded {
         Ok(SourceIterationBinding::Bounded)
     } else if value == unbounded {
@@ -2314,35 +2561,34 @@ fn require_memory_model(
     declaration: DeclarationId,
 ) -> Result<MemoryModelBinding, EmitError> {
     let value = require_unit_variant_field(fields, "memory", declaration)?;
-    let variants = [
+    let variants = dag.emit_model_variants();
+    let memory_variants = [
         (
-            "ValueOnly",
+            variants.memory_model.value_only,
             MemoryModelBinding::ValueOnly,
             "MemoryModel.ValueOnly declaration was not found",
         ),
         (
-            "GarbageCollected",
+            variants.memory_model.garbage_collected,
             MemoryModelBinding::GarbageCollected,
             "MemoryModel.GarbageCollected declaration was not found",
         ),
         (
-            "RefCounted",
+            variants.memory_model.ref_counted,
             MemoryModelBinding::RefCounted,
             "MemoryModel.RefCounted declaration was not found",
         ),
         (
-            "OwnershipBased",
+            variants.memory_model.ownership_based,
             MemoryModelBinding::OwnershipBased,
             "MemoryModel.OwnershipBased declaration was not found",
         ),
     ];
-    for (variant_name, binding, detail) in variants {
-        let variant = named_variant_id(dag, "MemoryModel", variant_name).ok_or(
-            EmitError::MalformedTargetSyntax {
-                declaration,
-                detail,
-            },
-        )?;
+    for (variant, binding, detail) in memory_variants {
+        let variant = variant.ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail,
+        })?;
         if value == variant {
             return Ok(binding);
         }
@@ -2360,25 +2606,24 @@ fn require_scope_model(
     declaration: DeclarationId,
 ) -> Result<ScopeModelBinding, EmitError> {
     let value = require_unit_variant_field(fields, "scope", declaration)?;
-    let variants = [
+    let variants = dag.emit_model_variants();
+    let scope_variants = [
         (
-            "LexicalScoping",
+            variants.scope_model.lexical_scoping,
             ScopeModelBinding::LexicalScoping,
             "ScopeModel.LexicalScoping declaration was not found",
         ),
         (
-            "DynamicScoping",
+            variants.scope_model.dynamic_scoping,
             ScopeModelBinding::DynamicScoping,
             "ScopeModel.DynamicScoping declaration was not found",
         ),
     ];
-    for (variant_name, binding, detail) in variants {
-        let variant = named_variant_id(dag, "ScopeModel", variant_name).ok_or(
-            EmitError::MalformedTargetSyntax {
-                declaration,
-                detail,
-            },
-        )?;
+    for (variant, binding, detail) in scope_variants {
+        let variant = variant.ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail,
+        })?;
         if value == variant {
             return Ok(binding);
         }
@@ -2419,17 +2664,6 @@ fn require_unit_variant_field(
         });
     }
     Ok(*constructor)
-}
-
-fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {
-    let parent = dag.declaration_by_name(parent_name)?;
-    let TypeConnective::Disj { variants } = &parent.connective else {
-        return None;
-    };
-    variants
-        .iter()
-        .find(|variant| variant.label == variant_label)
-        .map(|variant| variant.ty)
 }
 
 fn derive_callable_dispositions(
@@ -2500,7 +2734,7 @@ fn analyze_user_defined_callable(
             detail: "user-defined callable does not have a UserDefined Arrow body",
         });
     };
-    let Some(bind) = dag.node(*bind_id).as_bind() else {
+    let Some(bind) = (*bind_id).bind_opt(dag) else {
         return Err(EmitError::MalformedUserDefinedCallable {
             declaration,
             detail: "user-defined callable body does not point to a Bind node",
@@ -2648,6 +2882,32 @@ fn callable_input_disposition_for_target(
 
 pub(crate) type EmitRustMode = EmitMode;
 
+/// Top-level value `Bind` nodes that participate in Rust program-mode emission, in `Dag::nodes`
+/// order. **Single selector** for `emit_rust_with_mode` and W1 (`last_emit_rust_program_top_level_value_bind_name`).
+fn program_mode_top_level_value_binds<'a>(
+    dag: &'a Dag,
+    indexes: &RealizationIndexes,
+) -> Vec<&'a crate::dag::BindNode> {
+    let callable_body_binds: std::collections::HashSet<_> = dag
+        .declarations()
+        .iter()
+        .filter_map(|decl| match &decl.connective {
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(bind_id),
+                ..
+            } => Some(bind_id.node_id()),
+            _ => None,
+        })
+        .collect();
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
+        .filter(|bind| !callable_body_binds.contains(&bind.id))
+        .filter(|b| b.params.is_empty())
+        .collect()
+}
+
 pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
     if !indexes.execution.is_lexically_scoped() {
@@ -2675,6 +2935,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         // materializes it as `::core::result::Result<…>`. Generic `Result` is not
         // emitted as a Rust `enum` (and would collide with the prelude if it were).
         .filter(|decl| !super::substrate_result_type_decl_suppressed_for_emit(dag, decl))
+        .filter(|decl| !super::substrate_div_error_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -2703,13 +2964,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
             )
         })
         .collect();
-    let top_level_binds: Vec<&crate::dag::BindNode> = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
-        .filter(|b| b.params.is_empty())
-        .collect();
+    let top_level_binds = program_mode_top_level_value_binds(dag, &indexes);
 
     if mode == EmitRustMode::Program && top_level_binds.is_empty() {
         return Err(EmitError::UnsupportedBehavior(
@@ -2759,6 +3014,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(
+            dag,
             type_decls.iter(),
             function_decls.iter(),
             top_level_binds.iter(),
@@ -2851,6 +3107,18 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
         sections.push(main_program);
     }
     Ok(join_rendered(&sections, " "))
+}
+
+/// Name of the last top-level **value** `Bind` that `emit_rust` program-mode `main` prints — uses
+/// `program_mode_top_level_value_binds` (same vector construction as `emit_rust_with_mode`). W1
+/// `rust_emit_output` consults this so the runner cannot drift from emission.
+pub(crate) fn last_emit_rust_program_top_level_value_bind_name(
+    dag: &Dag,
+) -> Result<Option<String>, EmitError> {
+    let indexes = RealizationIndexes::build(dag)?;
+    Ok(program_mode_top_level_value_binds(dag, &indexes)
+        .last()
+        .map(|b| b.name.clone()))
 }
 
 /// Bundled emission context. Carries the typed indexes, substrate
@@ -3926,12 +4194,13 @@ impl<'a> Ctx<'a> {
         Ok(scrutinee_disj == bool_disj)
     }
 
-    /// v3.std.lookup / v3.std.algebra: `miss_*_lookup` / `hit_*_lookup`
-    /// are thin monomorphized `Lookup<T>` constructors (one pair per
-    /// element type — `Int`, `SymbolicCost`, …). Emit as `Lookup::Miss`
-    /// / `Lookup::Hit(...)` so generated lens code does not call
-    /// out-of-scope shims. Runs before [`Self::render_realized_callable`]
-    /// so a registered callable strategy does not pre-empt enum lowering.
+    /// v3.std.lookup / v3.std.algebra constructor shims that are authored in
+    /// `.dag` but currently cannot be emitted through ordinary expression
+    /// syntax. `miss_*_lookup` / `hit_*_lookup` lower to `Lookup::Miss` /
+    /// `Lookup::Hit(...)`; `unnamed_size_variable` lowers the optional
+    /// display label that `.dag` cannot yet construct inside record literals.
+    /// Runs before [`Self::render_realized_callable`] so a registered callable
+    /// strategy does not pre-empt enum lowering.
     fn lookup_monomorphized_constructor_emit(
         &self,
         t: &TransformNode,
@@ -3973,6 +4242,30 @@ impl<'a> Ctx<'a> {
                 format!("Lookup::Hit({arg})")
             };
             return Ok(Some(out));
+        }
+        if name == "unnamed_size_variable" {
+            if t.inputs.len() != 1 {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "{name}(source_port) expected one argument, got {}",
+                    t.inputs.len()
+                )));
+            }
+            let arg = self.elide_explicit_borrow(&self.render_input_use(
+                InputConsumer::Transform(t),
+                InputSlot::Positional(0),
+                locals,
+            )?);
+            let source_port = if arg
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            {
+                format!("*{arg}")
+            } else {
+                arg
+            };
+            return Ok(Some(format!(
+                "SizeVariable {{ source_port: {source_port}, display_name: None }}"
+            )));
         }
         Ok(None)
     }
@@ -4267,15 +4560,10 @@ impl<'a> Ctx<'a> {
                     InputSlot::Positional(0),
                     locals,
                 )?;
-                let item_push = self.render_list_item_construct_expr(consumer.inputs[0], &item)?;
+                let iter = format!("&({list})");
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.filter,
-                    &[
-                        ("recv", &list),
-                        ("item", &item),
-                        ("predicate", &predicate),
-                        ("item_push", &item_push),
-                    ],
+                    &[("iter", &iter), ("param", &item), ("body", &predicate)],
                 ))
             }
             RustCallableStrategyBinding::ListContains => {
@@ -4478,11 +4766,7 @@ impl<'a> Ctx<'a> {
                     .to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         if inputs.len() != param_bindings.len() {
             return Err(EmitError::UnsupportedBehavior(
                 "callable parameter count does not match the requested Rust closure parameters"
@@ -4572,11 +4856,7 @@ impl<'a> Ctx<'a> {
                     .to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         let param_dispositions = self.callable_param_dispositions(declaration.id, inputs.len());
         let mut locals = RenderLocals::default();
         let mut output_callable_walk = HashSet::new();
@@ -5341,11 +5621,6 @@ impl<'a> Ctx<'a> {
         self.decl_is_copy_rec(ty.declaration, &mut visited)
     }
 
-    fn decl_is_copy(&self, declaration: DeclarationId) -> Result<bool, EmitError> {
-        let mut visited = HashSet::new();
-        self.decl_is_copy_rec(declaration, &mut visited)
-    }
-
     fn decl_is_copy_rec(
         &self,
         declaration: DeclarationId,
@@ -5414,44 +5689,6 @@ impl<'a> Ctx<'a> {
         self.dag
             .partial_function_template()
             .is_some_and(|pfun| pfun == declaration)
-    }
-
-    fn render_list_item_construct_expr(
-        &self,
-        list_port: PortId,
-        item_name: &str,
-    ) -> Result<String, EmitError> {
-        let ty = self
-            .dag
-            .port(list_port)
-            .value_type()
-            .ok_or(EmitError::UntypedPort(list_port))?;
-        let TypeConnective::Instantiation {
-            template,
-            arguments,
-        } = &self.dag.declaration(ty.declaration).connective
-        else {
-            return Err(EmitError::UnsupportedBehavior(
-                "list construct rendering expected an instantiated List type".to_string(),
-            ));
-        };
-        if !self.is_list_template(*template) {
-            return Err(EmitError::UnsupportedBehavior(
-                "list construct rendering expected the List template".to_string(),
-            ));
-        }
-        let [element] = arguments.as_slice() else {
-            return Err(EmitError::UnsupportedBehavior(
-                "List instantiation should carry exactly one element argument".to_string(),
-            ));
-        };
-        if self.decl_is_copy(element.value)? {
-            Ok(format!("(*({item_name}))"))
-        } else if self.decl_is_list(element.value)? {
-            Ok(format!("({item_name}).to_vec()"))
-        } else {
-            Ok(format!("({item_name}).clone()"))
-        }
     }
 }
 
@@ -5698,6 +5935,92 @@ not user `fn` data; must not set return-carrier / Rc on callable params (PR #676
     }
 
     #[test]
+    fn rust_collection_ops_selects_higher_order_inline_templates() {
+        let dag = Dag::new();
+        let rust_collection_ops = dag
+            .declaration_by_name("rust_collection_ops")
+            .expect("rust collection ops spec exists")
+            .id;
+
+        let binding = parse_collection_ops(&dag, rust_collection_ops)
+            .expect("rust collection ops binding parses");
+
+        assert_eq!(
+            binding.filter,
+            "{ let __filter_source = {iter}; let mut __result = Vec::new(); for {param} in __filter_source.iter() { if {body} { __result.push((*{param}).clone()); } } __result }"
+        );
+
+        let fields =
+            structural_fields_for_decl(&dag, rust_collection_ops).expect("collection ops fields");
+        for (field, method, expected) in [
+            (
+                "flat_map_contract",
+                dag.flat_map_method_decl().expect("flat_map_method"),
+                "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }",
+            ),
+            (
+                "any_contract",
+                dag.any_method_decl().expect("any_method"),
+                "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }",
+            ),
+            (
+                "all_contract",
+                dag.all_method_decl().expect("all_method"),
+                "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }",
+            ),
+        ] {
+            let contract =
+                require_field_decl_ref(fields, field, rust_collection_ops).expect("contract ref");
+            let template = method_template_contract_decl_emit_template(
+                &dag, contract, field, method,
+            )
+            .expect("higher-order contract template");
+            assert_eq!(
+                require_higher_order_inline_template(template, contract)
+                    .expect("higher-order inline template"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn rust_collection_ops_rejects_single_template_for_higher_order_selection() {
+        let dag = Dag::new();
+        let rust_collection_ops = dag
+            .declaration_by_name("rust_collection_ops")
+            .expect("rust collection ops spec exists")
+            .id;
+        let fields =
+            structural_fields_for_decl(&dag, rust_collection_ops).expect("collection ops fields");
+        let length_contract =
+            require_field_decl_ref(fields, "length_contract", rust_collection_ops)
+                .expect("length contract ref");
+        let length_method = dag
+            .declaration_by_name("length_method")
+            .expect("length method registry row exists")
+            .id;
+
+        let single = method_template_contract_decl_emit_template(
+            &dag,
+            length_contract,
+            "length_contract",
+            length_method,
+        )
+        .expect("length_contract has a SingleTemplate emit template");
+        let err = require_higher_order_inline_template(single, length_contract)
+            .expect_err("SingleTemplate must not satisfy a higher-order CollectionOps field");
+
+        assert!(matches!(
+            err,
+            EmitError::MalformedTargetSyntax {
+                declaration,
+                detail:
+                    "Rust CollectionOps higher-order MethodTemplateContract must use MethodEmitTemplate.HigherOrderTemplates",
+            } if declaration == length_contract
+        ));
+    }
+
+    #[test]
     fn render_field_project_reads_borrowed_nodes_without_cloning() {
         let mut dag = Dag::new();
         let parent_port = dag.alloc_port(None);
@@ -5877,9 +6200,15 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
         )
         .expect("compiles");
         let rendering_decl = dag.rust_rendering_spec().expect("rust_rendering cached");
-        let pass_by_value = named_variant_id(&dag, "ReadStrategy", "PassByValue")
+        let pass_by_value = dag
+            .emit_model_variants()
+            .read_strategy
+            .pass_by_value
             .expect("ReadStrategy.PassByValue exists");
-        let copy_or_clone = named_variant_id(&dag, "ConstructStrategy", "CopyOrClone")
+        let copy_or_clone = dag
+            .emit_model_variants()
+            .construct_strategy
+            .copy_or_clone
             .expect("ConstructStrategy.CopyOrClone exists");
         dag.declaration_mut(rendering_decl).value_body = Some(ValueBody::Structural {
             fields: vec![
@@ -6059,10 +6388,16 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
     fn parameter_dispositions_reject_arity_drift_and_slot_collisions() {
         let dag = compile_to_dag("fn id(x: Int) -> Int = x", "arity_drift.v3").expect("compiles");
         let bogus_decl = dag.declaration_by_name("id").expect("id decl").id;
-        let borrowed =
-            named_variant_id(&dag, "ParameterDisposition", "Borrowed").expect("Borrowed");
-        let consumed =
-            named_variant_id(&dag, "ParameterDisposition", "Consumed").expect("Consumed");
+        let borrowed = dag
+            .emit_model_variants()
+            .parameter_disposition
+            .borrowed
+            .expect("Borrowed");
+        let consumed = dag
+            .emit_model_variants()
+            .parameter_disposition
+            .consumed
+            .expect("Consumed");
         let entry = |slot: i64, ctor: DeclarationId| {
             FieldValue::Record(vec![
                 (

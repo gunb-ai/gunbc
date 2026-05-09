@@ -166,7 +166,10 @@ pub fn loop_inputs(p0: &Dag, p1: &LoopNode) -> Vec<PortId> {
 pub fn loop_bound_inputs(p0: &LoopBound) -> Vec<PortId> {
     match p0 {
         LoopBound::Cardinality { count: payload } => vec![(*(payload))],
-        LoopBound::Descent { cluster: _ } => Vec::new(),
+        LoopBound::Descent {
+            cluster: __payload_cluster,
+            measure: __payload_measure,
+        } => vec![(*(__payload_measure))],
     }
 }
 pub fn branch_path_outputs(p0: &[Path]) -> Vec<PortId> {

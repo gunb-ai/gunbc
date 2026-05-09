@@ -74,8 +74,10 @@
 // `.dag`.
 //
 // **Scan phases (spec).** After skipping ASCII whitespace, the scanner applies
-// in order: line comment (`line_comment_prefix` to newline), punctuation
-// (longest match across the shared-operator subset plus local punctuation
+// in order: signed unary `-` merged into a following decimal `IntLit` when the
+// previous token is **not** listed in `minus_infix_only_after_token_kinds`
+// (otherwise `-` is infix `Minus`), line comment (`line_comment_prefix` to newline),
+// punctuation (longest match across the shared-operator subset plus local punctuation
 // rows), ASCII digit run → decimal `IntLit`, identifier run → keyword table or
 // `Ident`, string (`string_literal_delimiter`) with `StringEscapeSpec` rows
 // after `\`, else `unexpected byte` diagnostic.
@@ -99,6 +101,21 @@ import v3.std.unicode {
 // bodies still live in `regen_tokenize` until `char_in_class` is structurally
 // executable for this path.
 data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, IdentContinue]
+
+// `TokenKind` variant labels (`src/v3/std/tokenize.dag`): when the **previous** token
+// has one of these shapes, a `-` must **not** merge into the following ASCII digit run
+// (tokenizes as infix `Minus`). `regen_tokenize` emits `minus_prefixed_decimal_allowed`
+// solely from this list — keep tokenizer facts single-authority in `tokenize.dag`.
+data minus_infix_only_after_token_kinds: List<String> = [
+  "Ident",
+  "IntLit",
+  "StringLit",
+  "KwTrue",
+  "KwFalse",
+  "RParen",
+  "RBracket",
+  "RBrace"
+]
 
 // Fixed diagnostic message bodies for tokenizer failures (C-8: errors only).
 data diagnostic_unterminated_string_escape: String = "unterminated string escape"

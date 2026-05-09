@@ -29,8 +29,6 @@
 # Keep this list narrow: every entry below exceeded 2000ms in that run,
 # and each reason points at an existing migration/paydown authority.
 
-bootstrap::tests::malformed_pipeline_stage_attaches_diagnostic  # Bootstrap fixture load remains compile-heavy on GitHub runners; test-infra bootstrap caching/paydown owns any speedup, not TM-0.
-
 db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; 5x re-emit by design.
 emit_matrix_module_go_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; module re-emit sweep.
 emit_matrix_module_python_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; module re-emit sweep.
@@ -64,17 +62,18 @@ m2_lens_idempotency_migration_test::idempotency_emitted_analyze_matches_oracle  
 m2_lens_provenance_migration_test::lens_provenance_dag_runs_end_to_end_via_rustc_harness  # Lane 2 migration harness roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
 m2_lens_unused_parameters_migration_test::unused_parameters_dag_runs_end_to_end_via_rustc_harness  # Lane 2 migration harness roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
 m2_lens_unused_parameters_migration_test::unused_parameters_dag_self_analysis_reports_zero_findings  # Lane 2 migration harness roundtrip; compile-heavy self-analysis remains explicit until lens migration paydown.
-pb1_bootstrap_full_snapshot_test::full_bootstrap_extends_std_snapshot  # PB-1 shape guard: compares two large generated bootstrap snapshots in-process; cold CI + libtest parallelism can exceed 2s wall while the structural inequality check stays explicit. Paydown trigger: same shared PB-1 compile warming; optional extra win if snapshot compare moves to mmap/streaming (PB-1 lane only).
-
 r1c_e_emit_gates_dag_test::r1c_e_emit_gates_suite_passes_through_runner  # R1C-E emit-gates `.dag` wrapper shells through the runner/binary harness and sits on the 2s CI edge (2166ms on PR #1233); paydown owned by R1C-E emit-gates runner/shared-setup work, not this impossible-bugs row-removal slice.
+r3_verification_l4_l7_l5_skeleton_test::r3_verification_l4_emit_eval_false_branch_passes_w1_emit_vs_eval  # R3-V L4 W1 direct consumer fixture runs the full emit-vs-eval suite through TestRunner and can sit just above 2s on CI (2072ms on PR #1799); paydown owned by R3-V L4/L7 direct harness shared runner setup, see docs/briefs/r3-v-l4-l7-direct-w1-consumer-spec.md.
+
+complexity_lens_behavioral_completion::literal_bind_cements_constant_complexity_summary  # R3 T-Lens-Behavioral-Parity cementing receipt: cold compile_to_dag + COMPLETE complexity lens summary assertion can exceed 2s on CI; paydown owned by lens behavioral parity shared-fixture/testgen migration.
+complexity_lens_behavioral_completion::recursive_countdown_cements_linear_work_and_span  # R3 T-Lens-Behavioral-Parity cementing receipt: recursive fixture + COMPLETE complexity lens summary assertion can exceed 2s on CI; paydown owned by lens behavioral parity shared-fixture/testgen migration.
 
 bootstrap::tests::kernel_bool_path_a_attaches_diagnostic_when_boolean_algebra_unresolvable  # Lane 1e-2b Path A regression: two `Dag::new()` paths + mutation; can exceed 2s wall on cold ubuntu-latest when compiled alongside heavy integration neighbors — keep explicit bootstrap diagnostic coverage. Paydown trigger: when the Bool/`BooleanAlgebra` kernel bootstrap bridge dissolves into `dsl/std/types.dag` (see `bootstrap.rs` + `dsl/std/types.dag` dissolution notes), collapse fixtures and/or adopt shared `Dag::new` warming; re-measure and remove if under 2s.
 
-p0_std_render_repeat_string_test::std_render_repeat_string_and_indent_text_match_interpreter  # ROADMAP P0 (`dsl/std/render.dag` `repeat_string` / `indent_text`): observed 29.7s on PR #595's merge commit. Structural blocker: v2 `compile_to_resolved` + interpreter oracle cold-compile the full resolver for every test; no shared bootstrap cache exists between v2-oracle tests and the v3 integration binary. Named paydown trigger: when a shared v2-oracle bootstrap cache lands (TM-0 shared-bootstrap lane or an earlier TESTING.md §shared-setup pass introducing a `OnceLock<ResolvedPipelineResult>`), re-measure and remove this exemption.
-
-sg1_tokenize_authority_test::tokenize_generated_module_matches_checked_in_snapshot  # SG-1 authority snapshot still regenerates/parses full tokenize projection; tokenize authority lane owns future speedup.
 sg2_parse_authority_test::parse_surface_dag_compiles_cleanly_for_regen_parse  # SG-2 parser-staging: `compile_parse_surface_std_authority_dag` + cold bootstrap work can exceed 2s wall under default libtest parallelism; ROADMAP SG-2 / TESTING.md paydown (same lane as `parse_generated_module_matches_checked_in_snapshot`).
 sg2c1_parse_tables_authority_test::parse_tables_generated_module_matches_checked_in_snapshot  # SG-2c-1 grammar-tables prototype snapshot: in-process authority compile (parse_tables.dag + tokenize.dag) + rustfmt stdout; same paydown class as SG-1 tokenize / SG-2 parse snapshot gates.
 sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift  # SG-6 regen CLI smoke intentionally shells out to regen path; CLI smoke cost is tracked in SG-6, not TM-0.
+
+t_demo_fixture_test::t_demo_canonical_suites_are_runner_visible  # ROADMAP T-Demo (Lane M): cold `compile_to_dag` on full `t_demo_fixtures.dag` + two `TestRunner::run_suite` passes; ~2.6–3.3s wall on isolated/filtered runs (above 2s Phase-0 ratchet). `compile_fixture` uses `cached_compile_to_dag`; module `OnceLock` still shares one `Dag` across sibling tests. Dissolution: delete this line and lower `TEST_TIMEOUT_MAX_EXEMPTIONS` in the same commit once `RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler t_demo_canonical_suites_are_runner_visible -- -Z unstable-options --report-time` shows <=2000ms wall on cold ubuntu-latest after fixture slimming or shared-runner warming (TESTING.md).
 
 thesis_validation_test::kf_1_structural_list_operation_ordering_holds  # KF-1 thesis validation remains compile-heavy on CI runners; TESTING.md test-shape paydown owns future decomposition, not TM-0.

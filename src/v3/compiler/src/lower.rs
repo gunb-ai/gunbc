@@ -26,11 +26,11 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
     type_connective_cardinality, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
-    BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
+    BindNodeId, BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
     Declaration, DeclarationId, Field, FieldMap, IntraClusterCall, LiteralBits, LoopBound,
     LoopNode, MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path,
     PayloadBinding, PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective, ValueNode,
+    TypeConnective, ValueNode, MAX_PEANO_MATERIALIZATION,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -41,7 +41,7 @@ use crate::int_literal_ranges::{
     IntegerRangeLookup,
 };
 use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
-use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
+use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
     SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, VariantPayload,
@@ -408,6 +408,7 @@ fn finalize_mutual_clusters(
                 body: pending_loop.body_root.unwrap_or(loop_id),
                 bound: LoopBound::Descent {
                     cluster: cluster_id,
+                    measure: pending_loop.source,
                 },
                 output: pending_loop.loop_output,
                 span: pending_loop.span.clone(),
@@ -574,7 +575,10 @@ fn build_refinement_predicate_declaration(
         connective: TypeConnective::Arrow {
             inputs: vec![base_decl_id],
             output: bool_decl_id,
-            body: ArrowBody::UserDefined(bind_id),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -589,15 +593,648 @@ fn build_refinement_predicate_declaration(
     pred_decl_id
 }
 
-/// P3 / “facts flow forward” for `dsl/std/types.dag` where predicate lowering
-/// is deferred: allocate a **non-Arrow** declaration id used only as
-/// `Declaration::refinement` for those aliases. Refinement discharge in infer
-/// requires a `Arrow` + `UserDefined` `Bind` predicate; this placeholder uses a
-/// `Conj` so it is never mistaken for a lowered `Bool` predicate, except for
-/// identity on the same `DeclarationId` (the alias matches itself at call sites).
-/// The name encodes the heuristic; see `lower_type_alias_refinements_phase`
-/// **Heuristic (PB-1)** / **Dissolution**.
-fn alloc_deferred_types_dag_refinement_placeholder(
+/// Argument-shape contract for a registered predicate. Matched against the
+/// parsed `SurfaceExpr` at the predicate's call position. See [`KNOWN_PREDICATES`]
+/// for the full registry doc + the substrate-fact-introduction receipt.
+// 🟢 TERMINAL — implementation-layer coproduct over the parsed `SurfaceExpr`
+// shapes that registered `where`-predicates may legitimately carry. Each
+// variant is anchored in a parser-fact (`Bare` ↔ `SurfaceExpr::Var`;
+// `SingleStringLiteral` ↔ `SurfaceExpr::Call { args: [Literal::String(_)] }`;
+// `NumericRecord` ↔ `Call { args: [Record { fields: [Int-literal-fields] }] }`)
+// — not a scaffold to dissolve. Variant set grows when a new predicate enters
+// `KNOWN_PREDICATES` with a different parsed-arg shape.
+#[derive(Debug, Clone, Copy)]
+enum PredicateArgShape {
+    /// Bare predicate — no argument list, must parse as `SurfaceExpr::Var`.
+    /// E.g. `non_empty`, `gt_zero`.
+    Bare,
+    /// Single string-literal argument — `SurfaceExpr::Call { args: [Literal::String(_)] }`.
+    /// E.g. `brand("…")`.
+    SingleStringLiteral,
+    /// Record-shape with named numeric-literal fields. At least one of the
+    /// listed fields must be present; all present fields must be integer
+    /// literals. E.g. `range(min: N)` / `range(min: N, max: M)`.
+    NumericRecord {
+        accepted_fields: &'static [&'static str],
+        require_at_least_one: bool,
+    },
+}
+
+struct PredicateSpec {
+    name: &'static str,
+    allowed_carriers: &'static [&'static str],
+    arg_shape: PredicateArgShape,
+}
+
+/// **Predicate registry** (S9 Slice 2.5 — Path 3 RATIFIED at gunbc#828
+/// `issuecomment-4390333451`; Path (a) extension RATIFIED at gunbc#828
+/// `issuecomment-4390760353`). Authoritative set of predicate identifiers
+/// recognized by `where`-sugar refinements. Each entry pairs the predicate
+/// name with its **allowed carrier types** (the set of base-type names a
+/// `where <predicate>(…)` clause may legitimately refine) and its
+/// **`arg_shape`** contract (the parsed `SurfaceExpr` shape the predicate's
+/// call position must match).
+///
+/// **Validation outcomes** (see [`PredicateValidation`] / [`validate_where_clause`]):
+/// - Registered name + allowed carrier + matching arg shape → placeholder
+///   refinement via [`alloc_registered_refinement_placeholder`] (refinement
+///   is *named* at the declaration level — P3 facts-flow-forward — without
+///   requiring a lowered `Bool` predicate body).
+/// - Registered name but disallowed carrier OR malformed arg shape →
+///   [`PredicateValidation::RegisteredButMalformed`]; the call site emits
+///   `Diagnostic::ResolveError` directly via `report_declaration_error`
+///   (fail-closed per Codex/openai-pro REQUEST_CHANGES at PR #1846).
+/// - Unregistered name → fall through to live resolution in
+///   [`build_refinement_predicate_declaration`] (which emits its own
+///   `Diagnostic::ResolveError` if the name does not resolve as a callable).
+///
+/// Replaces the prior PB-1 file-path special case
+/// (`span.file == "dsl/std/types.dag"`) — the asymmetry that motivated this
+/// slice. Per `feedback_no_textual_enforcement_bridges`: gating structural
+/// behavior on a textual file identifier was the anti-pattern; gating on
+/// whether the predicate name is registered AND carrier-compatible AND
+/// arg-shape-matched is the substrate-faithful authority.
+///
+/// **DFS-of-concept-DAG receipt** (proud-lynx-311 pre-flight grep at
+/// `gunbc#1746 issuecomment-4390253616` + brief `docs/briefs/r3-substrate-s9-slice-2-5-predicate-registry-worker.md`
+/// authority audit): no parallel predicate-registry exists under another
+/// name; this constant IS the substrate-fact-introduction.
+const KNOWN_PREDICATES: &[PredicateSpec] = &[
+    // Pre-existing types.dag predicates absorbed via the prior PB-1 shim.
+    // `allowed_carriers` derived from the surface usage at `dsl/std/types.dag`
+    // pre-PR; the registry now enforces structurally what the file-path shim
+    // tolerated by location.
+    //
+    // **Pattern / format / content REMOVED from the registry** per Director
+    // Option A revised RATIFIED at gunbc#828 `issuecomment-4392245968`:
+    // these predicates needed regex-primitive substrate that doesn't exist
+    // (`Q-Regex-Primitive`); rather than ride a placeholder-with-named-trigger
+    // bridge through this slice, they are structurally absent until
+    // `Q-Regex-Primitive` lands. User-code `where pattern(...)` (or
+    // format/content) now falls through to live resolution and surfaces a
+    // `Diagnostic::ResolveError` naming the unblock dependency. The 12
+    // types.dag declarations that previously used these predicates have
+    // dropped their where-clauses with inline-comment receipts pointing at
+    // the Q-Regex restoration path.
+    PredicateSpec {
+        name: "range",
+        allowed_carriers: &["Int", "Nat"],
+        arg_shape: PredicateArgShape::NumericRecord {
+            accepted_fields: &["min", "max"],
+            require_at_least_one: true,
+        },
+    },
+    PredicateSpec {
+        name: "non_empty",
+        allowed_carriers: &["String", "Secret", "List"],
+        arg_shape: PredicateArgShape::Bare,
+    },
+    PredicateSpec {
+        // `brand` is the most-frequently-applied predicate in `types.dag`;
+        // it tags any nominal carrier with a brand identity. Allowed carriers
+        // span every type that carries a brand in the existing surface.
+        name: "brand",
+        allowed_carriers: &[
+            "NonEmptyStr",
+            "String",
+            "FilePath",
+            "Unit",
+            "Int",
+            "Nat",
+            "Secret",
+        ],
+        arg_shape: PredicateArgShape::SingleStringLiteral,
+    },
+    // S9 Slice 2.5 new primitive (Director Option 2 ratification at
+    // gunbc#828 issuecomment-4390199218). `gt_zero` IS the reason for "Nat
+    // without zero" / "Nat above structural bound"; intrinsic to Nat and
+    // generalizes over Int.
+    PredicateSpec {
+        name: "gt_zero",
+        allowed_carriers: &["Nat", "Int"],
+        arg_shape: PredicateArgShape::Bare,
+    },
+];
+
+fn predicate_spec(name: &str) -> Option<&'static PredicateSpec> {
+    KNOWN_PREDICATES.iter().find(|spec| spec.name == name)
+}
+
+/// Walk an alias chain (`Atom::ResolvedByStructure` / `Atom::ResolvedByName` /
+/// `Instantiation`) collecting every *named* declaration encountered.
+/// Returns the names of every level in the chain — both the immediate alias
+/// and any transitive aliases — so a predicate like `brand` over
+/// `NonEmptyStr` matches because `NonEmptyStr` itself is allowed (alias chain
+/// doesn't need to bottom out at `String`).
+fn carrier_chain_names(dag: &Dag, decl_id: DeclarationId) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = decl_id;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        if let Some(name) = decl.name.as_deref() {
+            out.push(name.to_string());
+        }
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            _ => break,
+        }
+    }
+    out
+}
+
+/// Outcome of validating a single registered-predicate clause against
+/// [`KNOWN_PREDICATES`]. Path (a) RATIFIED at gunbc#828
+/// `issuecomment-4390760353`: registered predicates must validate carrier
+/// **and** argument shape; mismatches fail-closed via `Diagnostic::ResolveError`
+/// rather than silently take a placeholder.
+//
+// 🟢 TERMINAL — implementation-layer coproduct over the three outcomes
+// `validate_where_clause` produces: registered+valid (placeholder/synthesis
+// path), registered+malformed (fail-closed diagnostic), unregistered
+// (fall-through to live resolution). Not a scaffold; the three outcomes are
+// the structural surface of registry dispatch.
+enum PredicateValidation {
+    /// Predicate name is registered, carrier is allowed, and argument shape
+    /// matches the spec. Eligible for placeholder allocation.
+    Registered,
+    /// Predicate name is registered but the call is malformed (wrong carrier
+    /// or arg shape). Caller emits `Diagnostic::ResolveError` directly via
+    /// `report_declaration_error` and skips refinement allocation
+    /// (fail-closed; no placeholder, no live-resolution fallback).
+    RegisteredButMalformed { reason: String, span: SourceSpan },
+    /// Predicate name is not in the registry. Falls through to live
+    /// resolution unchanged (existing `build_refinement_predicate_declaration`
+    /// path emits `Diagnostic::ResolveError` if the name does not resolve).
+    NotRegistered,
+}
+
+/// Validate a single predicate-position `SurfaceExpr` against the registry.
+fn validate_predicate_clause(expr: &SurfaceExpr, carrier_chain: &[String]) -> PredicateValidation {
+    let (predicate_name, predicate_span) = match expr {
+        SurfaceExpr::Call { target, span, .. } => (target.as_str(), span.clone()),
+        SurfaceExpr::Var { name, span } => (name.as_str(), span.clone()),
+        _ => return PredicateValidation::NotRegistered,
+    };
+    let Some(spec) = predicate_spec(predicate_name) else {
+        return PredicateValidation::NotRegistered;
+    };
+    let carrier_ok = spec
+        .allowed_carriers
+        .iter()
+        .any(|allowed| carrier_chain.iter().any(|name| name == allowed));
+    if !carrier_ok {
+        return PredicateValidation::RegisteredButMalformed {
+            reason: format!(
+                "predicate `{predicate_name}` requires a carrier in {{{}}}; \
+                 base-type chain has none of those (chain: {})",
+                spec.allowed_carriers.join(", "),
+                if carrier_chain.is_empty() {
+                    "<unnamed>".to_string()
+                } else {
+                    carrier_chain.join(" → ")
+                }
+            ),
+            span: predicate_span,
+        };
+    }
+    if let Some(reason) = arg_shape_mismatch(spec, expr) {
+        return PredicateValidation::RegisteredButMalformed {
+            reason,
+            span: predicate_span,
+        };
+    }
+    PredicateValidation::Registered
+}
+
+/// Check whether the call shape at `expr` matches `spec.arg_shape`. Returns
+/// `Some(reason)` if malformed.
+fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String> {
+    let predicate_name = spec.name;
+    match (&spec.arg_shape, expr) {
+        // Bare predicates accept ONLY the bare-ident `SurfaceExpr::Var` shape.
+        // `gt_zero()` (zero-arg Call) is a different surface — explicit empty
+        // call list — and is rejected per Codex BLOCKING at PR #1846
+        // (S9 Slice 2.5 Path (a) cement: bare-predicate shape contract is
+        // strictly the bare-ident form, not zero-arg-call-compatible).
+        (PredicateArgShape::Bare, SurfaceExpr::Var { .. }) => None,
+        (PredicateArgShape::Bare, _) => Some(format!(
+            "predicate `{predicate_name}` is bare; use the bare-ident form \
+             `{predicate_name}` (no parentheses, no arguments)"
+        )),
+        (PredicateArgShape::SingleStringLiteral, SurfaceExpr::Call { args, .. })
+            if matches!(
+                args.as_slice(),
+                [SurfaceExpr::Literal {
+                    value: SurfaceLiteral::String(_),
+                    ..
+                }]
+            ) =>
+        {
+            None
+        }
+        (PredicateArgShape::SingleStringLiteral, _) => Some(format!(
+            "predicate `{predicate_name}` requires a single string-literal argument"
+        )),
+        (
+            PredicateArgShape::NumericRecord {
+                accepted_fields,
+                require_at_least_one,
+            },
+            SurfaceExpr::Call { args, .. },
+        ) => {
+            // Per `parse_type_alias_where_tail` doc-comment: `range(min: 1, max: 5)`
+            // desugars to a single `Record` argument.
+            let Some(SurfaceExpr::Record { fields, .. }) = args.first() else {
+                return Some(format!(
+                    "predicate `{predicate_name}` requires record-shaped \
+                     arguments (e.g. `{predicate_name}(min: N)`)"
+                ));
+            };
+            if args.len() != 1 {
+                return Some(format!(
+                    "predicate `{predicate_name}` accepts a single record argument; got {}",
+                    args.len()
+                ));
+            }
+            if *require_at_least_one && fields.is_empty() {
+                return Some(format!(
+                    "predicate `{predicate_name}` requires at least one of \
+                     the fields {{{}}}",
+                    accepted_fields.join(", ")
+                ));
+            }
+            let mut seen: Vec<&str> = Vec::with_capacity(fields.len());
+            for field in fields {
+                if !accepted_fields.contains(&field.name.as_str()) {
+                    return Some(format!(
+                        "predicate `{predicate_name}` does not accept field `{}` \
+                         (accepts: {})",
+                        field.name,
+                        accepted_fields.join(", ")
+                    ));
+                }
+                if seen.contains(&field.name.as_str()) {
+                    return Some(format!(
+                        "predicate `{predicate_name}` does not accept duplicate \
+                         field `{}`",
+                        field.name
+                    ));
+                }
+                seen.push(field.name.as_str());
+                if !matches!(
+                    &field.value,
+                    SurfaceExpr::Literal {
+                        value: SurfaceLiteral::Int(_),
+                        ..
+                    }
+                ) {
+                    return Some(format!(
+                        "predicate `{predicate_name}` field `{}` requires an \
+                         integer-literal value",
+                        field.name
+                    ));
+                }
+            }
+            None
+        }
+        (PredicateArgShape::NumericRecord { .. }, _) => Some(format!(
+            "predicate `{predicate_name}` requires record-shaped arguments"
+        )),
+    }
+}
+
+/// Synthesize a `Bool`-returning `SurfaceExpr` body equivalent to the
+/// registered predicate's semantic content, suitable for handing to
+/// [`build_refinement_predicate_declaration`]. Returns `None` if the
+/// predicate's body cannot yet be synthesized from existing substrate
+/// primitives (e.g. `pattern` requires regex-matching primitives that have
+/// not landed; surfacing as STOP-AND-ESCALATE per S9 Slice 2.5 brief).
+///
+/// `bind_name` is the alias being declared (the predicate's subject).
+/// `predicate` is the parsed `where`-clause predicate (e.g. the `gt_zero`
+/// `SurfaceExpr::Var` or the `range(min: 1)` `SurfaceExpr::Call`).
+///
+/// Currently implemented:
+/// - **`gt_zero`**: subject `> 0`. Equivalent for both `Nat` and `Int`
+///   carriers (Nat's structural lower bound is 0; gt_zero is "above
+///   structural bound").
+/// - **`range`**: subject `>= min` / `<= max` / both, depending on which
+///   record fields are present. Numeric primitives in scope; arg-shape
+///   validation already guaranteed Int-literal field values when reaching
+///   this point.
+///
+/// Pending substrate — STOP-AND-ESCALATE candidates per S9 Slice 2.5 brief
+/// (returns `None` — falls through to placeholder for now):
+/// - `non_empty` / `brand`: synthesizing real Bool bodies for these
+///   predicates triggers a *discharge cascade* — `scalar_literal_requires_refinement_discharge`
+///   treats any non-placeholder refinement as needing static discharge,
+///   and the existing infrastructure cannot yet evaluate `subject != ""`
+///   (non_empty) or `true` (brand) against scalar data literals like
+///   `name: "lower_helpers"`. Result: bootstrap regen emits 18+ spurious
+///   "scalar literal does not satisfy `where` refinement" diagnostics for
+///   data declarations whose fields are typed as branded/non-empty
+///   carriers (e.g. `LensRegistryEntry.name: NonEmptyStr`). Surfacing as
+///   STOP per brief — the lowerer-side discharge mechanism is the
+///   substrate-fact-introduction needed before these synthesize.
+/// - `pattern` / `format` / `content`: regex-primitive substrate-fact-introduction
+///   (Q-Regex-Primitive) has not landed.
+fn synthesize_predicate_body(
+    spec: &PredicateSpec,
+    predicate: &SurfaceExpr,
+    bind_name: &str,
+    _carrier_chain: &[String],
+) -> Option<SurfaceExpr> {
+    let span = expr_span(predicate);
+    let subject_var = || SurfaceExpr::Var {
+        name: bind_name.to_string(),
+        span: span.clone(),
+    };
+    let int_literal = |value: i64| SurfaceExpr::Literal {
+        value: SurfaceLiteral::Int(value),
+        span: span.clone(),
+    };
+    match spec.name {
+        "gt_zero" => Some(SurfaceExpr::Operator {
+            op: OperatorKind::Comparison(ComparisonOp::Gt),
+            args: vec![subject_var(), int_literal(0)],
+            span,
+        }),
+        // `brand` body synthesis is structurally available (`subject ==
+        // subject` reflexive Comparison(Eq) — references subject so the
+        // unused-parameter lens doesn't flag it; semantically `true` for
+        // every carrier value), but is held at placeholder for this slice
+        // because the existing `dsl/std/types.dag` declarations
+        //   `Milliseconds = Int where range(min: 0), brand("Milliseconds")`
+        //   `Seconds      = Int where range(min: 0), brand("Seconds")`
+        // would mix synthesizable `brand` with placeholder-only `range`,
+        // tripping the openai-pro REQUEST_CHANGES `Mixed`-fail-closed path
+        // (gunbc PR #1846 `79c4da09` finding). brand body synthesis
+        // re-enables when either (a) per-leaf refinement representation
+        // lands so mixed clauses preserve each fact, or (b) range body
+        // synthesis lands and the And combination is uniformly
+        // synthesizable.
+        // range body synthesis enabled. Note: synthesizing `subject >= min`
+        // / `subject <= max` for the existing `dsl/std/types.dag`
+        // Int-where-range declarations (RetryCount, HttpStatus, Port,
+        // EpochMs, Duration, Milliseconds, Seconds) creates additional
+        // `Value(LiteralBits::Int(N))` nodes in the DAG (one per record
+        // field). Tests that locate a value node by literal-bits alone
+        // (e.g. `int_literal_cardinality_test::let_annotated_uint8_*`)
+        // must filter by `span.file` to disambiguate the user's literal
+        // from the synthesized predicate-body literals.
+        "range" => {
+            // arg-shape validation has already confirmed:
+            //   - exactly 1 SurfaceExpr::Record arg
+            //   - each field name is in {"min", "max"} (no duplicates)
+            //   - each field value is SurfaceLiteral::Int(_)
+            // …so the extraction below is total over the validated shape.
+            let SurfaceExpr::Call { args, .. } = predicate else {
+                return None;
+            };
+            let SurfaceExpr::Record { fields, .. } = args.first()? else {
+                return None;
+            };
+            let mut min_value: Option<i64> = None;
+            let mut max_value: Option<i64> = None;
+            for field in fields {
+                let SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Int(n),
+                    ..
+                } = &field.value
+                else {
+                    return None;
+                };
+                match field.name.as_str() {
+                    "min" => min_value = Some(*n),
+                    "max" => max_value = Some(*n),
+                    _ => return None,
+                }
+            }
+            let mut clauses: Vec<SurfaceExpr> = Vec::with_capacity(2);
+            if let Some(m) = min_value {
+                clauses.push(SurfaceExpr::Operator {
+                    op: OperatorKind::Comparison(ComparisonOp::Ge),
+                    args: vec![subject_var(), int_literal(m)],
+                    span: span.clone(),
+                });
+            }
+            if let Some(m) = max_value {
+                clauses.push(SurfaceExpr::Operator {
+                    op: OperatorKind::Comparison(ComparisonOp::Le),
+                    args: vec![subject_var(), int_literal(m)],
+                    span: span.clone(),
+                });
+            }
+            match clauses.len() {
+                0 => None,
+                1 => clauses.pop(),
+                _ => {
+                    let mut iter = clauses.into_iter();
+                    let mut acc = iter.next()?;
+                    for next in iter {
+                        let combined_span = span.clone();
+                        acc = SurfaceExpr::Operator {
+                            op: OperatorKind::Logical(LogicalOp::And),
+                            args: vec![acc, next],
+                            span: combined_span,
+                        };
+                    }
+                    Some(acc)
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Result of attempting per-leaf body synthesis on a (possibly And-combined)
+/// `where`-sugar clause. The mixed case is the openai-pro REQUEST_CHANGES
+/// finding (gunbc PR #1846): if a clause combines a synthesizable predicate
+/// (e.g. `gt_zero`) with an unsynthesizable one (e.g. `range` pre-Gap-3),
+/// returning a placeholder for the whole clause silently weakens the
+/// enforceable `gt_zero` fact. Returning a mixed-result variant lets the
+/// caller fail-closed instead.
+//
+// 🟢 TERMINAL — implementation-layer coproduct over the three per-clause
+// body-synthesis outcomes (all leaves synthesized / all leaves placeholder /
+// mixed → fail-closed). Not a scaffold; preserves per-leaf facts
+// representation needed to satisfy openai-pro REQUEST_CHANGES at PR #1846.
+enum BodySynthOutcome {
+    /// Every leaf synthesized; combined body lowers via the live predicate
+    /// declaration path.
+    AllSynthesized(SurfaceExpr),
+    /// No leaf synthesized; whole clause routes through the placeholder
+    /// allocator (status quo for unsynthesized registered predicates).
+    AllPlaceholder,
+    /// Mixed: at least one leaf synthesized, at least one didn't. Caller
+    /// emits `Diagnostic::ResolveError` with the listed predicate names so
+    /// the synthesized fact isn't silently weakened by being merged into
+    /// the placeholder. Pairs with the test
+    /// `test_mixed_synthesizable_and_placeholder_predicates_fails_closed`.
+    Mixed {
+        synthesized_names: Vec<String>,
+        unsynthesized_names: Vec<String>,
+    },
+}
+
+/// Walk a (possibly And-combined) `where`-sugar refinement expression and
+/// classify per-leaf synthesizability. Single registered predicate delegates
+/// to [`synthesize_predicate_body`]. `Operator { And, [a, b, …] }` walks each
+/// leaf and aggregates outcomes; if any leaf classifies different from the
+/// rest, returns `Mixed` so the caller fails closed.
+fn registered_predicate_synthesized_body(
+    expr: &SurfaceExpr,
+    bind_name: &str,
+    carrier_chain: &[String],
+) -> BodySynthOutcome {
+    match expr {
+        SurfaceExpr::Operator {
+            op: OperatorKind::Logical(LogicalOp::And),
+            args,
+            span,
+        } => {
+            let mut synthesized: Vec<SurfaceExpr> = Vec::with_capacity(args.len());
+            let mut synthesized_names: Vec<String> = Vec::new();
+            let mut unsynthesized_names: Vec<String> = Vec::new();
+            for arg in args {
+                match registered_predicate_synthesized_body(arg, bind_name, carrier_chain) {
+                    BodySynthOutcome::AllSynthesized(body) => {
+                        synthesized.push(body);
+                        // Collect every leaf name reachable through the arg
+                        // (handles nested `And` subtrees per openai-pro
+                        // REQUEST_CHANGES at PR #1846 `4a42cb1f` —
+                        // `leaf_predicate_name` alone returns None for an
+                        // `Operator(And)` arg and would silently drop the
+                        // nested per-leaf names).
+                        synthesized_names.extend(collect_leaf_predicate_names(arg));
+                    }
+                    BodySynthOutcome::AllPlaceholder => {
+                        unsynthesized_names.extend(collect_leaf_predicate_names(arg));
+                    }
+                    BodySynthOutcome::Mixed {
+                        synthesized_names: s,
+                        unsynthesized_names: u,
+                    } => {
+                        synthesized_names.extend(s);
+                        unsynthesized_names.extend(u);
+                    }
+                }
+            }
+            match (synthesized_names.is_empty(), unsynthesized_names.is_empty()) {
+                (false, true) => BodySynthOutcome::AllSynthesized(SurfaceExpr::Operator {
+                    op: OperatorKind::Logical(LogicalOp::And),
+                    args: synthesized,
+                    span: span.clone(),
+                }),
+                (true, false) => BodySynthOutcome::AllPlaceholder,
+                (true, true) => BodySynthOutcome::AllPlaceholder,
+                (false, false) => BodySynthOutcome::Mixed {
+                    synthesized_names,
+                    unsynthesized_names,
+                },
+            }
+        }
+        SurfaceExpr::Call { target, .. } => match predicate_spec(target) {
+            Some(spec) => match synthesize_predicate_body(spec, expr, bind_name, carrier_chain) {
+                Some(body) => BodySynthOutcome::AllSynthesized(body),
+                None => BodySynthOutcome::AllPlaceholder,
+            },
+            None => BodySynthOutcome::AllPlaceholder,
+        },
+        SurfaceExpr::Var { name, .. } => match predicate_spec(name) {
+            Some(spec) => match synthesize_predicate_body(spec, expr, bind_name, carrier_chain) {
+                Some(body) => BodySynthOutcome::AllSynthesized(body),
+                None => BodySynthOutcome::AllPlaceholder,
+            },
+            None => BodySynthOutcome::AllPlaceholder,
+        },
+        _ => BodySynthOutcome::AllPlaceholder,
+    }
+}
+
+/// Extract the predicate identifier at the head of a `where`-clause leaf.
+/// Returns `None` for non-leaf expressions (e.g. `Operator(And)` itself, or
+/// shapes that aren't predicate calls). Used to attribute names in the
+/// `Mixed` synthesis-outcome diagnostic. For nested `And` subtrees, use
+/// [`collect_leaf_predicate_names`] which recurses through the conjunction
+/// structure.
+fn leaf_predicate_name(expr: &SurfaceExpr) -> Option<String> {
+    match expr {
+        SurfaceExpr::Call { target, .. } => Some(target.clone()),
+        SurfaceExpr::Var { name, .. } => Some(name.clone()),
+        _ => None,
+    }
+}
+
+/// Collect every leaf predicate name reachable from `expr` by recursing
+/// through `Operator { And, … }` conjunctions. Addresses openai-pro
+/// REQUEST_CHANGES at PR #1846 (`4a42cb1f`): nested-`And` subtrees were
+/// returning `None` from [`leaf_predicate_name`] (because the subtree itself
+/// is an `Operator`, not a leaf), causing per-leaf synthesized/placeholder
+/// names to be dropped during outer aggregation. The fix is to walk the
+/// conjunction structure and collect names at every leaf.
+fn collect_leaf_predicate_names(expr: &SurfaceExpr) -> Vec<String> {
+    match expr {
+        SurfaceExpr::Operator {
+            op: OperatorKind::Logical(LogicalOp::And),
+            args,
+            ..
+        } => {
+            let mut out = Vec::new();
+            for arg in args {
+                out.extend(collect_leaf_predicate_names(arg));
+            }
+            out
+        }
+        _ => leaf_predicate_name(expr).into_iter().collect(),
+    }
+}
+
+/// Recursively walk a `where`-sugar refinement expression. Predicates combine
+/// via `Operator { op: Logical(And), … }` (per `parse_type_alias_where_tail`
+/// / `fold_type_alias_where_parts`); the leaves are `SurfaceExpr::Call`
+/// (e.g. `range(min: 1)`, `brand("X")`) or `SurfaceExpr::Var` (bare
+/// predicates like `non_empty`). Per Path (a) RATIFIED at gunbc#828
+/// `issuecomment-4390760353`, returns the worst-case validation across all
+/// leaves: any single malformed registered predicate fails the whole clause
+/// closed; any single non-registered leaf falls through to live resolution.
+fn validate_where_clause(expr: &SurfaceExpr, carrier_chain: &[String]) -> PredicateValidation {
+    if let SurfaceExpr::Operator {
+        op: OperatorKind::Logical(LogicalOp::And),
+        args,
+        ..
+    } = expr
+    {
+        let mut all_registered = true;
+        for arg in args {
+            match validate_where_clause(arg, carrier_chain) {
+                PredicateValidation::Registered => {}
+                PredicateValidation::RegisteredButMalformed { reason, span } => {
+                    return PredicateValidation::RegisteredButMalformed { reason, span };
+                }
+                PredicateValidation::NotRegistered => all_registered = false,
+            }
+        }
+        return if all_registered {
+            PredicateValidation::Registered
+        } else {
+            PredicateValidation::NotRegistered
+        };
+    }
+    validate_predicate_clause(expr, carrier_chain)
+}
+
+/// P3 / “facts flow forward” for registered-predicate refinements: allocate
+/// a **non-Arrow** declaration id used only as `Declaration::refinement` for
+/// these aliases. Refinement discharge in infer requires a `Arrow` +
+/// `UserDefined` `Bind` predicate; this placeholder uses a `Conj` so it is
+/// never mistaken for a lowered `Bool` predicate, except for identity on the
+/// same `DeclarationId` (the alias matches itself at call sites). Successor
+/// to `alloc_deferred_types_dag_refinement_placeholder` (PB-1 file-path
+/// special-case retired in S9 Slice 2.5 Path 3).
+fn alloc_registered_refinement_placeholder(
     dag: &mut Dag,
     alias_name: &str,
     span: SourceSpan,
@@ -605,9 +1242,7 @@ fn alloc_deferred_types_dag_refinement_placeholder(
     let id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id,
-        name: Some(format!(
-            "<std/types.dag: `where` parsed, predicate not lowered: {alias_name}>"
-        )),
+        name: Some(format!("<registered predicate not lowered: {alias_name}>")),
         connective: TypeConnective::Conj { children: vec![] },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -814,21 +1449,41 @@ fn lower_parameter_refinements_phase(
 /// identifier to the refined base type `T`. Authors write the subject as the
 /// alias name; there is no separate hidden parameter symbol.
 ///
-/// **Heuristic (PB-1):** for `span.file == "dsl/std/types.dag"`, we do **not**
-/// call [`build_refinement_predicate_declaration`] (unresolved `pattern` /
-/// `range` / … would emit diagnostics in the std seed and break snapshot
-/// identity), but we **do** set [`Declaration::refinement`] to a
-/// **placeholder** (see [`alloc_deferred_types_dag_refinement_placeholder`]) so
-/// the parsed `where` is not dropped silently: downstream sees a named carrier,
-/// not `None` as if no refinement were authored.
+/// **Predicate registry (S9 Slice 2.5 — Option A revised RATIFIED at
+/// gunbc#828 `issuecomment-4392245968`, post Path 3 / Path (a) cascade).**
+/// Each `where` clause is dispatched per [`validate_where_clause`]:
+/// - **Registered + valid carrier + valid arg shape**: if
+///   [`registered_predicate_synthesized_body`] returns `Some`, the predicate
+///   lowers to a real `Bool` body via
+///   [`build_refinement_predicate_declaration`] (currently `gt_zero`).
+///   Otherwise it gets a `Conj`-shaped placeholder via
+///   [`alloc_registered_refinement_placeholder`] (P3 facts-flow-forward —
+///   alias still carries a named refinement; body synthesis is the named
+///   follow-on rung; currently `range` / `non_empty` / `brand`).
+/// - **Registered but malformed** (carrier-incompatible, arg-shape mismatch,
+///   duplicate field, bare-with-empty-call): fail-closed via
+///   `Diagnostic::ResolveError`, no refinement allocated.
+/// - **Unregistered** (e.g. `pattern`, `format`, `content` — STRUCTURALLY
+///   ABSENT from [`KNOWN_PREDICATES`] until Q-Regex-Primitive lands as a
+///   separate substrate-fact-introduction): falls through to live resolution
+///   in [`build_refinement_predicate_declaration`], which surfaces a
+///   `Diagnostic::ResolveError` since the predicate name does not resolve as
+///   a callable. The 11 `dsl/std/types.dag` declarations that previously
+///   used these predicates have dropped their where-clauses with inline
+///   restoration receipts pointing at the Q-Regex-Primitive landing.
 ///
-/// **Dissolution (delete the file gate / placeholders when one of these is
-/// true):** (1) the bootstrap supplies resolved Bool-level helpers (or
-/// realizations) for `types.dag` refinement calls so predicate lowering is
-/// diagnostic-clean; (2) a `meta_tag` (or other substrate flag) marks
-/// documentation-only refinements, replacing the string-compare; or (3) PB-1
-/// defers to a different authority file list so `types.dag` is not
-/// `compile`d in the snapshot path that must stay diagnostic-empty.
+/// Replaces the prior PB-1 file-path special case
+/// (`span.file == "dsl/std/types.dag"`). Per
+/// `feedback_no_textual_enforcement_bridges`: gating structural behavior on
+/// a textual file identifier was the anti-pattern; the registry IS the
+/// substrate-faithful authority for predicate-name resolution.
+///
+/// **Dissolution (retire the placeholder branch when):** the bootstrap
+/// supplies a body synthesis for each remaining registered predicate
+/// (Gap 1 discharge mechanism for `non_empty` / `brand`; Gap 3
+/// integer-routing fix for `range`); at that point every registered
+/// predicate routes through the live [`build_refinement_predicate_declaration`]
+/// path and the placeholder allocation can be deleted.
 fn lower_type_alias_refinements_phase(
     dag: &mut Dag,
     module: &SurfaceModule,
@@ -879,10 +1534,94 @@ fn lower_type_alias_refinements_phase(
         dag.declaration_mut(decl_id).connective =
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(base_decl_id));
 
-        if span.file == "dsl/std/types.dag" {
-            let ph = alloc_deferred_types_dag_refinement_placeholder(dag, name, span.clone());
-            dag.declaration_mut(decl_id).refinement = Some(ph);
-            continue;
+        // S9 Slice 2.5 (Path (a) RATIFIED at gunbc#828 issuecomment-4390760353)
+        // — replaces prior PB-1 file-path special case
+        // (`span.file == "dsl/std/types.dag"`) with a predicate-name registry
+        // plus carrier + arg-shape contract. See `KNOWN_PREDICATES`,
+        // `carrier_chain_names`, and `validate_where_clause`. A registered
+        // predicate applied to an allowed carrier with valid arg shape gets a
+        // placeholder refinement (P3 facts-flow-forward — alias still carries
+        // a named refinement; predicate-body lowering is the named follow-on
+        // ladder rung). A registered predicate with malformed carrier or
+        // arg-shape produces `Diagnostic::ResolveError` directly — fail-closed
+        // per Codex/openai-pro REQUEST_CHANGES at PR #1846 (`92758dd0` /
+        // `788d6acb` / `e2698434`). An unregistered predicate falls through
+        // to live resolution unchanged.
+        let carrier_chain = carrier_chain_names(dag, base_decl_id);
+        match validate_where_clause(predicate, &carrier_chain) {
+            PredicateValidation::Registered => {
+                // Path (a) Rung 3 (S9 Slice 2.5): for predicates whose body
+                // can be synthesized from existing substrate primitives,
+                // lower a real `Bool`-returning predicate body via
+                // `build_refinement_predicate_declaration` rather than
+                // allocating a `Conj`-shaped placeholder. Currently
+                // synthesizable: `gt_zero`. Pending substrate: the others
+                // (see `synthesize_predicate_body` doc-comment).
+                match registered_predicate_synthesized_body(predicate, name, &carrier_chain) {
+                    BodySynthOutcome::AllSynthesized(synthesized) => {
+                        let pred_decl_id = build_refinement_predicate_declaration(
+                            base_decl_id,
+                            &synthesized,
+                            name,
+                            symbols,
+                            dag,
+                            span.clone(),
+                        );
+                        dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
+                    }
+                    BodySynthOutcome::AllPlaceholder => {
+                        let ph = alloc_registered_refinement_placeholder(dag, name, span.clone());
+                        dag.declaration_mut(decl_id).refinement = Some(ph);
+                    }
+                    BodySynthOutcome::Mixed {
+                        synthesized_names,
+                        unsynthesized_names,
+                    } => {
+                        // openai-pro REQUEST_CHANGES at PR #1846 (`79c4da09`):
+                        // mixed clauses (synthesizable + unsynthesizable
+                        // registered predicates combined via And) cannot route
+                        // to a single placeholder without silently weakening
+                        // the synthesized facts. Fail-closed via
+                        // `Diagnostic::ResolveError` until per-leaf refinement
+                        // representation lands.
+                        report_declaration_error(
+                            dag,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "registered `where` clause mixes \
+                                     body-synthesized predicates ({}) with \
+                                     placeholder-only predicates ({}); the \
+                                     synthesized facts cannot collapse into a \
+                                     single placeholder without losing \
+                                     enforcement. Author the predicates as \
+                                     separate type aliases until per-leaf \
+                                     refinement representation lands.",
+                                    synthesized_names.join(", "),
+                                    unsynthesized_names.join(", ")
+                                ),
+                                span: span.clone(),
+                                fixes: Vec::new(),
+                            },
+                        );
+                    }
+                }
+                continue;
+            }
+            PredicateValidation::RegisteredButMalformed {
+                reason,
+                span: pred_span,
+            } => {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: reason,
+                        span: pred_span,
+                        fixes: Vec::new(),
+                    },
+                );
+                continue;
+            }
+            PredicateValidation::NotRegistered => {}
         }
         let pred_decl_id = build_refinement_predicate_declaration(
             base_decl_id,
@@ -1033,14 +1772,15 @@ fn field_value_contains_undischarged_scalar_literal(
         crate::dag::FieldValue::Variant {
             constructor,
             payload,
-        } => variant_payload_fields_for_lowering(dag, *constructor).is_some_and(|fields| {
-            payload
-                .iter()
-                .zip(fields.iter())
-                .any(|(value, (_, field_type))| {
-                    field_value_contains_undischarged_scalar_literal(dag, *field_type, value)
-                })
-        }),
+        } => variant_payload_fields_for_lowering(dag, *constructor, Some(expected_type))
+            .is_some_and(|fields| {
+                payload
+                    .iter()
+                    .zip(fields.iter())
+                    .any(|(value, (_, field_type))| {
+                        field_value_contains_undischarged_scalar_literal(dag, *field_type, value)
+                    })
+            }),
     }
 }
 
@@ -1048,9 +1788,7 @@ fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> b
     dag.declaration(refinement)
         .name
         .as_deref()
-        .is_some_and(|name| {
-            name.starts_with("<std/types.dag: `where` parsed, predicate not lowered: ")
-        })
+        .is_some_and(|name| name.starts_with("<registered predicate not lowered: "))
 }
 
 fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: DeclarationId) -> bool {
@@ -1092,7 +1830,9 @@ fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: Declar
 fn refinement_predicate_out_of_fragment(expr: &SurfaceExpr) -> Option<(&'static str, SourceSpan)> {
     match expr {
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => None,
-        SurfaceExpr::Call { args, .. } | SurfaceExpr::Operator { args, .. } => {
+        SurfaceExpr::Call { args, .. }
+        | SurfaceExpr::Operator { args, .. }
+        | SurfaceExpr::PathCall { args, .. } => {
             args.iter().find_map(refinement_predicate_out_of_fragment)
         }
         SurfaceExpr::Lambda { span, .. } => Some(("lambda", span.clone())),
@@ -1318,7 +2058,10 @@ fn build_narrowed_refinement(
         connective: TypeConnective::Arrow {
             inputs: vec![true_base_decl],
             output: bool_decl_id,
-            body: ArrowBody::UserDefined(bind_id),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -1368,9 +2111,7 @@ pub(crate) fn outer_predicate_slots(
     else {
         return None;
     };
-    let Behavior::Bind(bind) = dag.node(*bind_id) else {
-        return None;
-    };
+    let bind = (*bind_id).bind(dag);
     let param = *bind.params.first()?;
     Some((param, bind.value))
 }
@@ -1626,6 +2367,19 @@ fn collect_scope_bound_free_vars(
             // expression position.
             for entry in entries {
                 collect_scope_bound_free_vars(&entry.value, scope, out);
+            }
+        }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            // Like Path: head segment is a local-variable reference
+            // when it resolves to scope. Plus recurse into args like
+            // Call.
+            if let Some(head) = segments.first() {
+                if scope.contains_key(head) {
+                    out.insert(head.clone());
+                }
+            }
+            for arg in args {
+                collect_scope_bound_free_vars(arg, scope, out);
             }
         }
     }
@@ -2989,6 +3743,7 @@ fn lower_list_to_structural(
             "<list element>",
             element,
             element_type,
+            &LowerSubstStack::default(),
             symbols,
             dag,
             None,
@@ -3032,6 +3787,7 @@ fn lower_map_to_structural(
         name,
         entries,
         value_type,
+        &LowerSubstStack::default(),
         symbols,
         dag,
         pending_refined_function_refs,
@@ -3043,6 +3799,7 @@ fn lower_string_map_entries(
     data_name: &str,
     entries: &[crate::parse_surface::SurfaceMapEntry],
     value_type: DeclarationId,
+    subst: &LowerSubstStack,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
     pending_refined_function_refs: &HashSet<DeclarationId>,
@@ -3067,7 +3824,8 @@ fn lower_string_map_entries(
                 data_name,
                 &entry.key,
                 &entry.value,
-                value_type,
+                resolve_decl_with_subst_lower(dag, value_type, subst, 0).unwrap_or(value_type),
+                subst,
                 symbols,
                 dag,
                 None,
@@ -3138,6 +3896,31 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn walk_to_disj_decl_with_subst_lower(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut LowerSubstStack,
+) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => current = subst.lookup(current)?,
             _ => return None,
         }
     }
@@ -3233,6 +4016,102 @@ fn resolve_decl_with_subst_lower(
         | TypeConnective::Disj { .. }
         | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
         | TypeConnective::Atom(AtomPayload::Literal(_)) => Some(current),
+    }
+}
+
+fn concretize_decl_with_lower_subst(
+    dag: &mut Dag,
+    current: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> DeclarationId {
+    if depth >= 32 {
+        return current;
+    }
+    let decl = dag.declaration(current).clone();
+    match decl.connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst.lookup(current).unwrap_or(current),
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            concretize_decl_with_lower_subst(dag, next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            let specialized_arguments: Vec<TemplateArgument> = arguments
+                .into_iter()
+                .map(|arg| TemplateArgument {
+                    parameter: arg.parameter,
+                    value: concretize_decl_with_lower_subst(dag, arg.value, subst, depth + 1),
+                })
+                .collect();
+            if let Some(existing) =
+                find_equivalent_decl_instantiation_lower(dag, template, &specialized_arguments)
+            {
+                return existing;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template,
+                    arguments: specialized_arguments,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: decl.nominal_opacity,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Cardinality(payload) => {
+            let element =
+                concretize_decl_with_lower_subst(dag, payload.element(), subst, depth + 1);
+            dag.alloc_cardinality_decl(element, payload.bound(), decl.span)
+        }
+        TypeConnective::Arrow { inputs, output, .. } => {
+            let original_inputs = inputs.clone();
+            let specialized_inputs: Vec<DeclarationId> = inputs
+                .into_iter()
+                .map(|input| concretize_decl_with_lower_subst(dag, input, subst, depth + 1))
+                .collect();
+            let specialized_output =
+                concretize_decl_with_lower_subst(dag, output, subst, depth + 1);
+            if specialized_inputs == original_inputs && specialized_output == output {
+                return current;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Arrow {
+                    inputs: specialized_inputs,
+                    output: specialized_output,
+                    body: ArrowBody::NoBody,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_)) => current,
     }
 }
 
@@ -3349,7 +4228,8 @@ fn lower_record_to_structural(
     dag: &mut Dag,
     pending_refined_function_refs: &HashSet<DeclarationId>,
 ) -> Option<crate::dag::ValueBody> {
-    let Some(conj_id) = walk_to_conj_decl(dag, ty_decl_id) else {
+    let mut subst = LowerSubstStack::default();
+    let Some(conj_id) = walk_to_conj_decl_with_subst_lower(dag, ty_decl_id, &mut subst) else {
         report_declaration_error(
             dag,
             Diagnostic::ResolveError {
@@ -3365,11 +4245,31 @@ fn lower_record_to_structural(
     // Snapshot the Conj's children to avoid borrowing conflicts
     // while we walk the record literal.
     let type_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective {
-        TypeConnective::Conj { children } => {
-            children.iter().map(|f| (f.label.clone(), f.ty)).collect()
-        }
+        TypeConnective::Conj { children } => children
+            .iter()
+            .map(|f| {
+                (
+                    f.label.clone(),
+                    resolve_decl_with_subst_lower(dag, f.ty, &subst, 0).unwrap_or(f.ty),
+                )
+            })
+            .collect(),
         _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
     };
+    if let Some(record_field) = duplicate_record_field(record_fields) {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}` record body repeats field `{}`",
+                    record_field.name
+                ),
+                span: record_field.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+        return None;
+    }
     // Check no extra fields in the data body.
     for record_field in record_fields {
         if !type_fields
@@ -3424,6 +4324,7 @@ fn lower_record_to_structural(
             type_label,
             &record_field.value,
             *type_field_id,
+            &subst,
             symbols,
             dag,
             category,
@@ -3437,12 +4338,63 @@ fn lower_record_to_structural(
     })
 }
 
+fn duplicate_record_field(
+    fields: &[crate::parse::SurfaceRecordField],
+) -> Option<&crate::parse::SurfaceRecordField> {
+    let mut seen = HashSet::new();
+    fields.iter().find(|field| !seen.insert(field.name.clone()))
+}
+
+/// `PositiveIntervalWidth.UnitCount` carries a Peano-spine authoring shorthand;
+/// reject negative `units` literals so width magnitude stays nonnegative at rest.
+fn enforce_non_negative_unit_count_payload(
+    dag: &Dag,
+    variant_payload_ty: DeclarationId,
+    payload: &[crate::dag::FieldValue],
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let Some(piw_decl) = dag.declaration_by_name("PositiveIntervalWidth") else {
+        return Ok(());
+    };
+    let TypeConnective::Disj { variants } = &piw_decl.connective else {
+        return Ok(());
+    };
+    let Some(unit_variant) = variants.iter().find(|v| v.label == "UnitCount") else {
+        return Ok(());
+    };
+    if unit_variant.ty != variant_payload_ty {
+        return Ok(());
+    }
+    let Some(first) = payload.first() else {
+        return Err(Diagnostic::ResolveError {
+            name: "PositiveIntervalWidth.UnitCount payload is empty".to_string(),
+            span: span.clone(),
+            fixes: Vec::new(),
+        });
+    };
+    match first {
+        crate::dag::FieldValue::Literal(LiteralBits::Int(n)) if *n >= 0 => Ok(()),
+        crate::dag::FieldValue::Literal(LiteralBits::Int(n)) => Err(Diagnostic::ResolveError {
+            name: crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message(*n),
+            span: span.clone(),
+            fixes: Vec::new(),
+        }),
+        _ => Err(Diagnostic::ResolveError {
+            name: "PositiveIntervalWidth.UnitCount requires a literal Int `units` field"
+                .to_string(),
+            span: span.clone(),
+            fixes: Vec::new(),
+        }),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn lower_structural_field_value(
     data_name: &str,
     field_label: &str,
     expr: &SurfaceExpr,
     expected_type: DeclarationId,
+    subst: &LowerSubstStack,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
     category: Option<RealizationCategoryTag>,
@@ -3489,15 +4441,40 @@ fn lower_structural_field_value(
         }
         let referenced = dag.declaration(decl_id);
         if is_value_level_arrow_declaration(referenced)
-            && declaration_ref_types_equivalent(dag, decl_id, expected_type, 0)
+            && declaration_ref_types_equivalent_with_subst(dag, decl_id, expected_type, subst, 0)
         {
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
-        if referenced
-            .meta_tag
-            .is_some_and(|actual| declaration_ref_types_equivalent(dag, actual, expected_type, 0))
-        {
+        if is_value_level_arrow_declaration(referenced) {
+            let expected = concretize_decl_with_lower_subst(dag, expected_type, subst, 0);
+            report_declaration_error(
+                dag,
+                Diagnostic::TypeMismatch {
+                    expected: TypeShape::new(expected),
+                    actual: TypeShape::new(decl_id),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
+        }
+        if referenced.meta_tag.is_some_and(|actual| {
+            declaration_ref_types_equivalent_with_subst(dag, actual, expected_type, subst, 0)
+        }) {
             return Some(crate::dag::FieldValue::Reference(decl_id));
+        }
+        if let Some(actual) = referenced.meta_tag {
+            let expected = concretize_decl_with_lower_subst(dag, expected_type, subst, 0);
+            report_declaration_error(
+                dag,
+                Diagnostic::TypeMismatch {
+                    expected: TypeShape::new(expected),
+                    actual: TypeShape::new(actual),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
         }
     }
 
@@ -3512,7 +4489,7 @@ fn lower_structural_field_value(
         }
     }
 
-    if let Some(element_type) = list_element_type(dag, expected_type) {
+    if let Some(element_type) = list_element_type_with_subst(dag, expected_type, subst, 0) {
         let SurfaceExpr::List { elements, .. } = expr else {
             report_declaration_error(
                 dag,
@@ -3533,6 +4510,7 @@ fn lower_structural_field_value(
                 field_label,
                 element,
                 element_type,
+                subst,
                 symbols,
                 dag,
                 None,
@@ -3543,7 +4521,7 @@ fn lower_structural_field_value(
         return Some(crate::dag::FieldValue::List(lowered));
     }
 
-    if let Some(value_type) = map_value_type(dag, expected_type) {
+    if let Some(value_type) = map_value_type_with_subst(dag, expected_type, subst, 0) {
         let SurfaceExpr::Map { entries, .. } = expr else {
             report_declaration_error(
                 dag,
@@ -3561,6 +4539,7 @@ fn lower_structural_field_value(
             data_name,
             entries,
             value_type,
+            subst,
             symbols,
             dag,
             pending_refined_function_refs,
@@ -3568,7 +4547,7 @@ fn lower_structural_field_value(
         return Some(crate::dag::FieldValue::Map(lowered));
     }
 
-    if map_key_type_is_not_string(dag, expected_type) {
+    if map_key_type_is_not_string_with_subst(dag, expected_type, subst, 0) {
         report_declaration_error(
             dag,
             Diagnostic::ResolveError {
@@ -3582,7 +4561,9 @@ fn lower_structural_field_value(
         return None;
     }
 
-    if let Some(conj_id) = walk_to_conj_decl(dag, expected_type) {
+    let mut nested_subst = subst.clone();
+    if let Some(conj_id) = walk_to_conj_decl_with_subst_lower(dag, expected_type, &mut nested_subst)
+    {
         let SurfaceExpr::Record { fields, .. } = expr else {
             report_declaration_error(
                 dag,
@@ -3596,11 +4577,31 @@ fn lower_structural_field_value(
             );
             return None;
         };
+        if let Some(field) = duplicate_record_field(fields) {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` repeats nested field `{}`",
+                        field.name
+                    ),
+                    span: field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
+        }
         let expected_fields: Vec<(String, DeclarationId)> =
             match &dag.declaration(conj_id).connective {
                 TypeConnective::Conj { children } => children
                     .iter()
                     .map(|child| (child.label.clone(), child.ty))
+                    .map(|(label, ty)| {
+                        (
+                            label,
+                            resolve_decl_with_subst_lower(dag, ty, &nested_subst, 0).unwrap_or(ty),
+                        )
+                    })
                     .collect(),
                 _ => unreachable!("walk_to_conj_decl returned non-Conj"),
             };
@@ -3651,6 +4652,7 @@ fn lower_structural_field_value(
                     &label,
                     &nested.value,
                     ty,
+                    &nested_subst,
                     symbols,
                     dag,
                     None,
@@ -3662,7 +4664,8 @@ fn lower_structural_field_value(
         return Some(crate::dag::FieldValue::Record(lowered));
     }
 
-    if let Some(disj_id) = walk_to_disj_decl(dag, expected_type) {
+    let mut disj_subst = subst.clone();
+    if let Some(disj_id) = walk_to_disj_decl_with_subst_lower(dag, expected_type, &mut disj_subst) {
         let variants: Vec<(String, DeclarationId)> = match &dag.declaration(disj_id).connective {
             TypeConnective::Disj { variants } => variants
                 .iter()
@@ -3756,7 +4759,11 @@ fn lower_structural_field_value(
                     return None;
                 }
             };
-        let payload_fields = match variant_payload_fields_for_lowering(dag, variant_decl_id) {
+        let payload_fields = match variant_payload_fields_for_lowering_with_subst(
+            dag,
+            variant_decl_id,
+            &disj_subst,
+        ) {
             Some(fields) => fields,
             other => {
                 report_declaration_error(
@@ -3793,6 +4800,7 @@ fn lower_structural_field_value(
                     field_label,
                     arg,
                     *payload_field_ty,
+                    subst,
                     symbols,
                     dag,
                     None,
@@ -3801,6 +4809,20 @@ fn lower_structural_field_value(
                 )?);
             }
         } else if let Some(fields) = named_fields {
+            if let Some(field) = duplicate_record_field(fields) {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` constructor `{variant_name}` repeats payload field `{}`",
+                            field.name
+                        ),
+                        span: field.span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+                return None;
+            }
             for field in fields {
                 if !payload_fields.iter().any(|(label, _)| label == &field.name) {
                     report_declaration_error(
@@ -3839,6 +4861,7 @@ fn lower_structural_field_value(
                     field_label,
                     &field.value,
                     *payload_field_ty,
+                    subst,
                     symbols,
                     dag,
                     None,
@@ -3846,6 +4869,12 @@ fn lower_structural_field_value(
                     pending_refined_function_refs,
                 )?);
             }
+        }
+        if let Err(diag) =
+            enforce_non_negative_unit_count_payload(dag, variant_decl_id, &payload, variant_span)
+        {
+            report_declaration_error(dag, diag);
+            return None;
         }
         return Some(crate::dag::FieldValue::Variant {
             constructor: variant_decl_id,
@@ -3970,6 +4999,29 @@ fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declarat
     }
 }
 
+fn list_element_type_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            list_element_type_with_subst(dag, subst.lookup(expected_type)?, subst, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            list_element_type_with_subst(dag, *next, subst, depth + 1)
+        }
+        _ => list_element_type(dag, expected_type).map(|element| {
+            resolve_decl_with_subst_lower(dag, element, subst, 0).unwrap_or(element)
+        }),
+    }
+}
+
 fn map_value_type(dag: &Dag, expected_type: DeclarationId) -> Option<DeclarationId> {
     let map_id = dag.declaration_by_name("Map")?.id;
     let string_id = dag.declaration_by_name("String")?.id;
@@ -3985,6 +5037,43 @@ fn map_value_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declaration
         }
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => map_value_type(dag, *next),
+        _ => None,
+    }
+}
+
+fn map_value_type_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            map_value_type_with_subst(dag, subst.lookup(expected_type)?, subst, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            map_value_type_with_subst(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if dag
+            .declaration_by_name("Map")
+            .is_some_and(|decl| decl.id == *template)
+            && arguments.len() == 2 =>
+        {
+            let string_id = dag.declaration_by_name("String")?.id;
+            let key = resolve_decl_with_subst_lower(dag, arguments[0].value, subst, 0)
+                .unwrap_or(arguments[0].value);
+            walks_to(dag, key, string_id).then(|| {
+                resolve_decl_with_subst_lower(dag, arguments[1].value, subst, 0)
+                    .unwrap_or(arguments[1].value)
+            })
+        }
         _ => None,
     }
 }
@@ -4006,6 +5095,44 @@ fn map_key_type_is_not_string(dag: &Dag, expected_type: DeclarationId) -> bool {
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             map_key_type_is_not_string(dag, *next)
+        }
+        _ => false,
+    }
+}
+
+fn map_key_type_is_not_string_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> bool {
+    if depth >= 32 {
+        return false;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            subst.lookup(expected_type).is_some_and(|bound| {
+                map_key_type_is_not_string_with_subst(dag, bound, subst, depth + 1)
+            })
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            map_key_type_is_not_string_with_subst(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if dag
+            .declaration_by_name("Map")
+            .is_some_and(|decl| decl.id == *template)
+            && arguments.len() == 2 =>
+        {
+            let Some(string_id) = dag.declaration_by_name("String").map(|decl| decl.id) else {
+                return false;
+            };
+            let key = resolve_decl_with_subst_lower(dag, arguments[0].value, subst, 0)
+                .unwrap_or(arguments[0].value);
+            !walks_to(dag, key, string_id)
         }
         _ => false,
     }
@@ -4153,6 +5280,120 @@ fn declaration_ref_types_equivalent(
                     })
         }
         _ => false,
+    }
+}
+
+fn declaration_ref_types_equivalent_with_subst(
+    dag: &Dag,
+    lhs: DeclarationId,
+    rhs: DeclarationId,
+    rhs_subst: &LowerSubstStack,
+    depth: usize,
+) -> bool {
+    if lhs == rhs {
+        return true;
+    }
+    if depth >= 32 {
+        return false;
+    }
+    let lhs_decl = dag.declaration(lhs);
+    let rhs_decl = dag.declaration(rhs);
+    match (&lhs_decl.connective, &rhs_decl.connective) {
+        (
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+            _,
+        ) => declaration_ref_types_equivalent_with_subst(dag, *next, rhs, rhs_subst, depth + 1),
+        (
+            _,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+        ) => declaration_ref_types_equivalent_with_subst(dag, lhs, *next, rhs_subst, depth + 1),
+        (_, TypeConnective::Atom(AtomPayload::TypeParam(_))) => {
+            rhs_subst.lookup(rhs).is_some_and(|bound| {
+                declaration_ref_types_equivalent_with_subst(dag, lhs, bound, rhs_subst, depth + 1)
+            })
+        }
+        (
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            },
+            _,
+        ) if arguments.is_empty() => {
+            declaration_ref_types_equivalent_with_subst(dag, *template, rhs, rhs_subst, depth + 1)
+        }
+        (
+            _,
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            },
+        ) if arguments.is_empty() => {
+            declaration_ref_types_equivalent_with_subst(dag, lhs, *template, rhs_subst, depth + 1)
+        }
+        (
+            TypeConnective::Arrow {
+                inputs: lhs_inputs,
+                output: lhs_output,
+                ..
+            },
+            TypeConnective::Arrow {
+                inputs: rhs_inputs,
+                output: rhs_output,
+                ..
+            },
+        ) => {
+            lhs_inputs.len() == rhs_inputs.len()
+                && lhs_inputs.iter().zip(rhs_inputs.iter()).all(|(lhs, rhs)| {
+                    declaration_ref_types_equivalent_with_subst(
+                        dag,
+                        *lhs,
+                        *rhs,
+                        rhs_subst,
+                        depth + 1,
+                    )
+                })
+                && declaration_ref_types_equivalent_with_subst(
+                    dag,
+                    *lhs_output,
+                    *rhs_output,
+                    rhs_subst,
+                    depth + 1,
+                )
+        }
+        (
+            TypeConnective::Instantiation {
+                template: lhs_template,
+                arguments: lhs_arguments,
+            },
+            TypeConnective::Instantiation {
+                template: rhs_template,
+                arguments: rhs_arguments,
+            },
+        ) => {
+            declaration_ref_types_equivalent_with_subst(
+                dag,
+                *lhs_template,
+                *rhs_template,
+                rhs_subst,
+                depth + 1,
+            ) && lhs_arguments.len() == rhs_arguments.len()
+                && lhs_arguments
+                    .iter()
+                    .zip(rhs_arguments.iter())
+                    .all(|(lhs_arg, rhs_arg)| {
+                        lhs_arg.parameter == rhs_arg.parameter
+                            && declaration_ref_types_equivalent_with_subst(
+                                dag,
+                                lhs_arg.value,
+                                rhs_arg.value,
+                                rhs_subst,
+                                depth + 1,
+                            )
+                    })
+        }
+        _ => declaration_ref_types_equivalent(dag, lhs, rhs, depth),
     }
 }
 
@@ -4452,40 +5693,29 @@ fn lower_fn_item_expr_body(
         }
     };
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
-    let mut param_types: Vec<TypeShape> = Vec::with_capacity(params.len());
     let mut body_scope: HashMap<String, PortId> = outer_scope.clone();
     let mut callable_scope: CallableScope = CallableScope::new();
     for (param, &input_decl) in params.iter().zip(param_decl_inputs.iter()) {
         let port = dag.alloc_port(None);
-        let ty = match declaration_to_port_shape(input_decl, dag, param.ty.span()) {
-            Ok(ty) => {
-                dag.set_port_type(port, ty);
-                ty
-            }
-            Err(diag) => {
-                dag.mark_unresolved(port, diag);
-                sentinel_type_shape(dag)
-            }
-        };
+        match declaration_to_port_shape(input_decl, dag, param.ty.span()) {
+            Ok(ty) => dag.set_port_type(port, ty),
+            Err(diag) => dag.mark_unresolved(port, diag),
+        }
         body_scope.insert(param.name.clone(), port);
         if declaration_is_callable(dag, input_decl, 0) {
             callable_scope.insert(param.name.clone(), input_decl);
         }
         param_ports.push(port);
-        param_types.push(ty);
     }
 
     // 2. Compute return `TypeShape` from the seeded Arrow's output
     //    declaration (read above). Same single-construction-authority
     //    invariant as the parameter loop.
-    let return_ty = match declaration_to_port_shape(return_decl_id, dag, return_type.span()) {
-        Ok(ty) => ty,
-        Err(diag) => {
-            let err_port = dag.alloc_port(None);
-            dag.mark_unresolved(err_port, diag);
-            sentinel_type_shape(dag)
-        }
-    };
+    let (return_ty, return_type_diagnostic) =
+        match declaration_to_port_shape(return_decl_id, dag, return_type.span()) {
+            Ok(ty) => (Some(ty), None),
+            Err(diag) => (None, Some(diag)),
+        };
 
     // 3. Mutual recursion check — same as M0. Reject with an
     //    Unresolved Bind value port AND set the Arrow body to
@@ -4532,7 +5762,10 @@ fn lower_fn_item_expr_body(
         dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
             inputs: param_decl_inputs,
             output: return_decl_id,
-            body: ArrowBody::UserDefined(bind_id),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         };
         let mut outer_scope = outer_scope;
         outer_scope.insert(name.to_string(), err_port);
@@ -4541,7 +5774,7 @@ fn lower_fn_item_expr_body(
 
     // 4. Lower the body.
     let body_start_index = dag.nodes().len();
-    let body_return_port = lower_expr(
+    let lowered_body_return_port = lower_expr(
         body,
         dag,
         &body_scope,
@@ -4549,7 +5782,12 @@ fn lower_fn_item_expr_body(
         symbols,
         Some(return_decl_id),
     );
-    let body_root = dag.port(body_return_port).produced_by;
+    let body_root = dag.port(lowered_body_return_port).produced_by;
+    let body_return_port = if return_type_diagnostic.is_some() {
+        dag.alloc_port(None)
+    } else {
+        lowered_body_return_port
+    };
     let body_span = expr_span(body);
     let body_end_index = dag.nodes().len();
 
@@ -4563,7 +5801,11 @@ fn lower_fn_item_expr_body(
     let (bind_value_port, value_port) = if let Some(cluster) = mutual_cluster {
         let slot = cluster.per_member_positions[&fn_decl_id];
         let loop_output = dag.alloc_port(None);
-        dag.set_port_type(loop_output, return_ty);
+        if let Some(return_ty) = return_ty {
+            dag.set_port_type(loop_output, return_ty);
+        } else if let Some(diag) = return_type_diagnostic.clone() {
+            dag.mark_unresolved(loop_output, diag);
+        }
         pending_loop = Some(PendingMutualLoop {
             bind_id: None,
             source: param_ports[slot],
@@ -4573,7 +5815,7 @@ fn lower_fn_item_expr_body(
             span: body_span.clone(),
         });
         (body_return_port, loop_output)
-    } else if is_recursive(body, name) {
+    } else if is_recursive(body, name, dag, symbols) {
         if param_ports.is_empty() {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(
@@ -4604,6 +5846,7 @@ fn lower_fn_item_expr_body(
             name,
             &params[0].name,
             &HashMap::new(),
+            symbols,
         ) {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(
@@ -4631,7 +5874,11 @@ fn lower_fn_item_expr_body(
         } else {
             let loop_id = dag.alloc_node_id();
             let loop_output = dag.alloc_port(Some(loop_id));
-            dag.set_port_type(loop_output, return_ty);
+            if let Some(return_ty) = return_ty {
+                dag.set_port_type(loop_output, return_ty);
+            } else if let Some(diag) = return_type_diagnostic.clone() {
+                dag.mark_unresolved(loop_output, diag);
+            }
             let loop_body_node = body_root.unwrap_or(loop_id);
             dag.push_node(Behavior::Loop(LoopNode {
                 id: loop_id,
@@ -4650,9 +5897,16 @@ fn lower_fn_item_expr_body(
         (body_return_port, body_return_port)
     };
 
-    dag.set_port_type(bind_value_port, return_ty);
-    if value_port != bind_value_port {
-        dag.set_port_type(value_port, return_ty);
+    if let Some(return_ty) = return_ty {
+        dag.set_port_type(bind_value_port, return_ty);
+        if value_port != bind_value_port {
+            dag.set_port_type(value_port, return_ty);
+        }
+    } else if let Some(diag) = return_type_diagnostic {
+        dag.mark_unresolved(bind_value_port, diag.clone());
+        if value_port != bind_value_port {
+            dag.mark_unresolved(value_port, diag);
+        }
     }
     let bind_id = dag.alloc_node_id();
     dag.push_node(Behavior::Bind(BindNode {
@@ -4689,7 +5943,10 @@ fn lower_fn_item_expr_body(
     dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
         inputs: param_decl_inputs,
         output: return_decl_id,
-        body: ArrowBody::UserDefined(bind_id),
+        body: ArrowBody::UserDefined(
+            BindNodeId::from_bind_node(dag, bind_id)
+                .expect("UserDefined Arrow body bind id must point at a Bind"),
+        ),
     };
 
     let mut outer_scope = outer_scope;
@@ -4736,18 +5993,6 @@ fn declaration_to_port_shape(
         }
     }
     Ok(TypeShape::new(decl_id))
-}
-
-/// Sentinel TypeShape returned when a type annotation failed to
-/// resolve. The port it's assigned to has already been `mark_unresolved`ed
-/// with the underlying diagnostic, so the sentinel value itself is
-/// never observed by inference — it exists only to satisfy Rust's
-/// "must initialize" requirement. Uses the cached `Int` primitive
-/// shape, falling back to `DeclarationId(0)` if even the cache is
-/// empty (unreachable post-bootstrap).
-fn sentinel_type_shape(dag: &Dag) -> TypeShape {
-    dag.int_shape()
-        .unwrap_or_else(|| TypeShape::new(dag.declarations()[0].id))
 }
 
 fn declaration_callable_inputs(
@@ -4907,6 +6152,16 @@ fn collect_lambda_free_names(
                 collect_lambda_free_names(&entry.value, bound, free);
             }
         }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            if let Some(head) = segments.first() {
+                if !bound.contains(head) {
+                    free.insert(head.clone());
+                }
+            }
+            for arg in args {
+                collect_lambda_free_names(arg, bound, free);
+            }
+        }
     }
 }
 
@@ -5010,7 +6265,10 @@ fn lower_lambda_expr(
         connective: TypeConnective::Arrow {
             inputs: expected_inputs,
             output: expected_output,
-            body: ArrowBody::UserDefined(bind_id),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(ctx.dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -5598,6 +6856,73 @@ fn lower_field_path_expr(
 /// Only scalar literals terminate the walk; nested `Record` payloads
 /// admit further descent but `List`, `Map`, and `Variant` terminal
 /// reads are out of scope for 3a.2 and fall through to `None`.
+/// Prereq-X1.a: walk a sequence of structural-body field segments
+/// to a `FieldValue::Reference(decl_id)` leaf. Returns `None` if the
+/// path traverses a non-structural value body, the leaf field is
+/// missing, the leaf is a non-Reference value, or the segments are
+/// empty.
+fn resolve_field_value_reference(
+    value_body: &crate::dag::ValueBody,
+    segments: &[String],
+) -> Option<DeclarationId> {
+    let crate::dag::ValueBody::Structural { fields } = value_body else {
+        return None;
+    };
+    walk_structural_to_reference(fields, segments)
+}
+
+/// Prereq-X1.a: resolve a `PathCall.segments` slice to a leaf
+/// top-level function `DeclarationId`. Single resolution authority
+/// shared by `is_recursive`, `descent_provable`, the
+/// `ClusterDescentChecker` arm, `collect_recursive_callees`, and the
+/// `lower_expr` X1.a arm — so all five agree by construction.
+///
+/// Returns `None` when the head is not a top-level symbol, the head
+/// declaration has no compile-time value body, the path leaf is not a
+/// `FieldValue::Reference`, or the segments traverse a non-structural
+/// value body. Non-callable leaves are accepted at this layer; the
+/// lowerer enforces the Arrow check separately.
+fn resolve_path_to_function_decl(
+    segments: &[String],
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> Option<DeclarationId> {
+    let head = segments.first()?;
+    // Look up the head in the caller-supplied `symbols` map first
+    // (lowerer / is_recursive / descent_provable have the full
+    // top-level symbol table), then fall back to
+    // `Dag::declaration_by_name` so callers with narrower maps
+    // (e.g. `compute_mutually_recursive`'s `function_symbols`-only
+    // map) can still resolve `data`-binding heads.
+    let head_decl = match symbols.get(head).copied() {
+        Some(id) => id,
+        None => dag.declaration_by_name(head)?.id,
+    };
+    let value_body = dag.declaration(head_decl).value_body.as_ref()?;
+    resolve_field_value_reference(value_body, &segments[1..])
+}
+
+fn walk_structural_to_reference(
+    fields: &[(String, crate::dag::FieldValue)],
+    segments: &[String],
+) -> Option<DeclarationId> {
+    let (head, rest) = segments.split_first()?;
+    let field_value = fields
+        .iter()
+        .find(|(label, _)| label == head)
+        .map(|(_, v)| v)?;
+    if rest.is_empty() {
+        return match field_value {
+            crate::dag::FieldValue::Reference(id) => Some(*id),
+            _ => None,
+        };
+    }
+    match field_value {
+        crate::dag::FieldValue::Record(inner) => walk_structural_to_reference(inner, rest),
+        _ => None,
+    }
+}
+
 fn resolve_data_path(
     dag: &mut Dag,
     value_body: &crate::dag::ValueBody,
@@ -5709,11 +7034,147 @@ fn lower_field_projection_from_port(
     output
 }
 
+/// Pushes template argument frames from any outer `Instantiation` chain (outer → inner template)
+/// so payload fields that use type parameters from the instantiated outer type resolve correctly.
+fn push_lower_subst_instantiation_prefix(
+    dag: &Dag,
+    mut ty: DeclarationId,
+    subst: &mut LowerSubstStack,
+) {
+    for _ in 0..32 {
+        match &dag.declaration(ty).connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                ty = *template;
+            }
+            _ => break,
+        }
+    }
+}
+
 fn variant_payload_fields_for_lowering(
     dag: &Dag,
     variant_decl: DeclarationId,
+    outer_instantiated_type: Option<DeclarationId>,
 ) -> Option<Vec<(String, DeclarationId)>> {
     let mut subst = LowerSubstStack::default();
+    if let Some(outer) = outer_instantiated_type {
+        push_lower_subst_instantiation_prefix(dag, outer, &mut subst);
+    }
+    let conj_id = walk_to_conj_decl_with_subst_lower(dag, variant_decl, &mut subst)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    Some(
+        children
+            .iter()
+            .map(|child| {
+                let specialized =
+                    resolve_decl_with_subst_lower(dag, child.ty, &subst, 0).unwrap_or(child.ty);
+                (child.label.clone(), specialized)
+            })
+            .collect(),
+    )
+}
+
+/// E6-G0d: whether `variant_template` is listed as a variant arm on some
+/// substrate `TypeConnective::Disj` (membership authority for constructor
+/// execution, distinct from “walks to Conj”).
+pub(crate) fn declaration_is_disj_variant_arm(dag: &Dag, variant_template: DeclarationId) -> bool {
+    dag.declarations().iter().any(|decl| {
+        matches!(
+            &decl.connective,
+            TypeConnective::Disj { variants }
+                if variants.iter().any(|v| v.ty == variant_template)
+        )
+    })
+}
+
+/// E6-G0d: record constructor field **labels** in declaration order after the
+/// same `Instantiation` / `TypeParam` walk as `walk_to_conj_decl_with_subst_lower`.
+pub(crate) fn constructor_record_field_labels(
+    dag: &Dag,
+    record_target: DeclarationId,
+) -> Option<Vec<String>> {
+    let mut subst = LowerSubstStack::default();
+    let conj_id = walk_to_conj_decl_with_subst_lower(dag, record_target, &mut subst)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    Some(children.iter().map(|c| c.label.clone()).collect())
+}
+
+/// E6-G0d: variant constructor payload fields for runtime `RecordValue` assembly.
+///
+/// Reuses [`variant_payload_fields_for_lowering`]. When the lowerer would have
+/// threaded an outer expected type (generic sums) but the transform IR carries
+/// only the callee, fall back to trying each declaration as an outer prefix
+/// until the existing substrate walk succeeds — still a single authority
+/// (`variant_payload_fields_for_lowering`), not a parallel registry.
+///
+/// **Dissolution trigger:** delete this scan when `TransformTarget::Callable` (or
+/// adjacent transform metadata) threads the same outer expected-type
+/// `DeclarationId` the lowerer used at the constructor site, so the second
+/// argument to [`variant_payload_fields_for_lowering`] is authoritative without
+/// enumeration.
+///
+/// In `debug_assertions` builds, every successful prefix is checked to agree with
+/// the returned resolution so silent ambiguity cannot hide inconsistent payload
+/// shapes during development.
+pub(crate) fn eval_constructor_variant_payload_fields(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+) -> Option<Vec<(String, DeclarationId)>> {
+    let fields = if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, None) {
+        fields
+    } else {
+        let mut found = None;
+        for decl in dag.declarations() {
+            if let Some(fields) =
+                variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id))
+            {
+                found = Some(fields);
+                break;
+            }
+        }
+        found?
+    };
+    #[cfg(debug_assertions)]
+    debug_assert_variant_payload_prefix_scan_is_unambiguous(dag, callee_decl, &fields);
+    Some(fields)
+}
+
+#[cfg(debug_assertions)]
+fn debug_assert_variant_payload_prefix_scan_is_unambiguous(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    chosen: &[(String, DeclarationId)],
+) {
+    if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, None) {
+        debug_assert_eq!(
+            fields, chosen,
+            "eval_constructor_variant_payload_fields: None-outer payload disagrees with chosen resolution"
+        );
+    }
+    for decl in dag.declarations() {
+        if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id)) {
+            debug_assert_eq!(
+                fields, chosen,
+                "eval_constructor_variant_payload_fields: prefix-scan payload disagrees with chosen resolution"
+            );
+        }
+    }
+}
+
+fn variant_payload_fields_for_lowering_with_subst(
+    dag: &Dag,
+    variant_decl: DeclarationId,
+    outer_subst: &LowerSubstStack,
+) -> Option<Vec<(String, DeclarationId)>> {
+    let mut subst = outer_subst.clone();
     let conj_id = walk_to_conj_decl_with_subst_lower(dag, variant_decl, &mut subst)?;
     let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
         return None;
@@ -5766,6 +7227,144 @@ struct VariantRecordExprRef<'a> {
     target: &'a str,
     fields: &'a [crate::parse::SurfaceRecordField],
     span: &'a SourceSpan,
+}
+
+/// Shared static-callable invocation lowerer, parametric over the
+/// resolved callee `DeclarationId`. Both the `Call` arm and the X1.a
+/// `PathCall` arm of `lower_expr` dispatch through this helper so the
+/// resolved-decl identity flows forward without name re-resolution.
+///
+/// `callable_diagnostic_name` is the human-readable label used in
+/// callable-binding-conflict diagnostics (the bare target name for
+/// `Call`; the dotted path for `PathCall`). It is purely diagnostic —
+/// the substrate authority is always `base_target_decl`.
+#[allow(clippy::too_many_arguments)]
+fn lower_resolved_callable_invocation(
+    base_target_decl: DeclarationId,
+    callable_diagnostic_name: &str,
+    args: &[SurfaceExpr],
+    span: &SourceSpan,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+    callable_scope: &CallableScope,
+    symbols: &HashMap<String, DeclarationId>,
+    expected_decl: Option<DeclarationId>,
+) -> PortId {
+    let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
+    let mut input_ports: Vec<PortId> = Vec::new();
+    let mut template_arguments: Vec<TemplateArgument> = Vec::new();
+    if let (Some(expected_result), Some(target_output)) = (
+        expected_decl,
+        declaration_callable_output(dag, base_target_decl, 0),
+    ) {
+        let _ = bind_expected_type_to_actual(
+            dag,
+            target_output,
+            expected_result,
+            &mut template_arguments,
+            0,
+        );
+    }
+    for (idx, arg) in args.iter().enumerate() {
+        let raw_expected_input = target_inputs
+            .as_ref()
+            .and_then(|inputs| inputs.get(idx))
+            .copied();
+        let specialized_expected_input = raw_expected_input.map(|expected_decl| {
+            specialize_decl_for_lowering(dag, expected_decl, &template_arguments, 0)
+        });
+        if let Some(expected_decl) = raw_expected_input {
+            if declaration_is_callable(dag, expected_decl, 0) {
+                let specialized_expected = specialized_expected_input.unwrap_or(expected_decl);
+                let actual_callable = match arg {
+                    SurfaceExpr::Lambda { params, body, span } => {
+                        let mut lambda_ctx = LambdaLoweringContext {
+                            dag,
+                            scope,
+                            callable_scope,
+                            symbols,
+                        };
+                        match lower_lambda_expr(
+                            params,
+                            body,
+                            span,
+                            specialized_expected,
+                            &mut lambda_ctx,
+                        ) {
+                            Ok(lambda_decl_id) => lambda_decl_id,
+                            Err(diag) => {
+                                report_declaration_error(lambda_ctx.dag, diag);
+                                alloc_identifier_stub(lambda_ctx.dag, "__lambda__", span)
+                            }
+                        }
+                    }
+                    _ => resolve_callable_reference(arg, dag, callable_scope, symbols),
+                };
+                let matches_expected = push_template_argument_binding(
+                    &mut template_arguments,
+                    expected_decl,
+                    actual_callable,
+                ) && bind_expected_type_to_actual(
+                    dag,
+                    specialized_expected,
+                    actual_callable,
+                    &mut template_arguments,
+                    0,
+                );
+                if !matches_expected {
+                    let port = dag.alloc_port(None);
+                    dag.mark_unresolved(
+                        port,
+                        callable_binding_conflict_diagnostic(
+                            callable_diagnostic_name,
+                            idx,
+                            &expr_span(arg),
+                        ),
+                    );
+                    return port;
+                }
+                continue;
+            }
+        }
+        let lowered = lower_expr(
+            arg,
+            dag,
+            scope,
+            callable_scope,
+            symbols,
+            specialized_expected_input,
+        );
+        if let Some(expected_decl) = raw_expected_input {
+            if let crate::dag::PortState::Resolved(actual_ty) = dag.port(lowered).state() {
+                let _ = bind_expected_type_to_actual(
+                    dag,
+                    expected_decl,
+                    actual_ty.declaration,
+                    &mut template_arguments,
+                    0,
+                );
+            }
+        }
+        input_ports.push(lowered);
+    }
+    let retained_arguments =
+        retained_template_arguments_for_target(dag, base_target_decl, &template_arguments);
+    let target_decl = materialize_callable_target_with_retained_arguments(
+        dag,
+        base_target_decl,
+        retained_arguments,
+        span,
+    );
+    let node_id = dag.alloc_node_id();
+    let output = dag.alloc_port(Some(node_id));
+    dag.push_node(Behavior::Transform(TransformNode {
+        id: node_id,
+        target: TransformTarget::Callable(target_decl),
+        inputs: input_ports,
+        output,
+        span: span.clone(),
+    }));
+    output
 }
 
 fn lower_expr(
@@ -5850,6 +7449,8 @@ fn lower_expr(
                     .or_else(|| callable_scope.get(target).copied())
                     .or_else(|| symbols.get(target).copied())
             else {
+                // (unresolved branch — kept inline to preserve diagnostic shape;
+                // resolved branch delegates to `lower_resolved_callable_invocation`)
                 for arg in args {
                     let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
                 }
@@ -5885,118 +7486,17 @@ fn lower_expr(
                 );
                 return port;
             };
-            let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
-            let mut input_ports: Vec<PortId> = Vec::new();
-            let mut template_arguments: Vec<TemplateArgument> = Vec::new();
-            if let (Some(expected_result), Some(target_output)) = (
-                expected_decl,
-                declaration_callable_output(dag, base_target_decl, 0),
-            ) {
-                let _ = bind_expected_type_to_actual(
-                    dag,
-                    target_output,
-                    expected_result,
-                    &mut template_arguments,
-                    0,
-                );
-            }
-            for (idx, arg) in args.iter().enumerate() {
-                let raw_expected_input = target_inputs
-                    .as_ref()
-                    .and_then(|inputs| inputs.get(idx))
-                    .copied();
-                let specialized_expected_input = raw_expected_input.map(|expected_decl| {
-                    specialize_decl_for_lowering(dag, expected_decl, &template_arguments, 0)
-                });
-                if let Some(expected_decl) = raw_expected_input {
-                    if declaration_is_callable(dag, expected_decl, 0) {
-                        let specialized_expected =
-                            specialized_expected_input.unwrap_or(expected_decl);
-                        let actual_callable = match arg {
-                            SurfaceExpr::Lambda { params, body, span } => {
-                                let mut lambda_ctx = LambdaLoweringContext {
-                                    dag,
-                                    scope,
-                                    callable_scope,
-                                    symbols,
-                                };
-                                match lower_lambda_expr(
-                                    params,
-                                    body,
-                                    span,
-                                    specialized_expected,
-                                    &mut lambda_ctx,
-                                ) {
-                                    Ok(lambda_decl_id) => lambda_decl_id,
-                                    Err(diag) => {
-                                        report_declaration_error(lambda_ctx.dag, diag);
-                                        alloc_identifier_stub(lambda_ctx.dag, "__lambda__", span)
-                                    }
-                                }
-                            }
-                            _ => resolve_callable_reference(arg, dag, callable_scope, symbols),
-                        };
-                        let matches_expected = push_template_argument_binding(
-                            &mut template_arguments,
-                            expected_decl,
-                            actual_callable,
-                        ) && bind_expected_type_to_actual(
-                            dag,
-                            specialized_expected,
-                            actual_callable,
-                            &mut template_arguments,
-                            0,
-                        );
-                        if !matches_expected {
-                            let port = dag.alloc_port(None);
-                            dag.mark_unresolved(
-                                port,
-                                callable_binding_conflict_diagnostic(target, idx, &expr_span(arg)),
-                            );
-                            return port;
-                        }
-                        continue;
-                    }
-                }
-                let lowered = lower_expr(
-                    arg,
-                    dag,
-                    scope,
-                    callable_scope,
-                    symbols,
-                    specialized_expected_input,
-                );
-                if let Some(expected_decl) = raw_expected_input {
-                    if let crate::dag::PortState::Resolved(actual_ty) = dag.port(lowered).state() {
-                        let _ = bind_expected_type_to_actual(
-                            dag,
-                            expected_decl,
-                            actual_ty.declaration,
-                            &mut template_arguments,
-                            0,
-                        );
-                    }
-                }
-                input_ports.push(lowered);
-            }
-            let retained_arguments =
-                retained_template_arguments_for_target(dag, base_target_decl, &template_arguments);
-            let target_decl = materialize_callable_target_with_retained_arguments(
-                dag,
+            lower_resolved_callable_invocation(
                 base_target_decl,
-                retained_arguments,
+                target,
+                args,
                 span,
-            );
-            let node_id = dag.alloc_node_id();
-            let output = dag.alloc_port(Some(node_id));
-            dag.push_node(Behavior::Transform(TransformNode {
-                id: node_id,
-                target: TransformTarget::Callable(target_decl),
-                inputs: input_ports,
-                output,
-                span: span.clone(),
-            }));
-            output
+                dag,
+                scope,
+                callable_scope,
+                symbols,
+                expected_decl,
+            )
         }
         SurfaceExpr::VariantRecord {
             target,
@@ -6255,6 +7755,149 @@ fn lower_expr(
             segment_spans,
             span,
         } => lower_field_path_expr(segments, segment_spans, span, dag, scope, symbols),
+        SurfaceExpr::PathCall {
+            segments,
+            segment_spans: _,
+            args,
+            span,
+        } => {
+            // Prereq-X1.a: static call-on-field-access. Resolve the
+            // dotted-path callee through a `data` binding's
+            // structural value body to a top-level function decl, then
+            // dispatch through the existing `Call` lowering by
+            // constructing a synthetic `SurfaceExpr::Call` whose target
+            // is the resolved declaration's name. This reuses arity +
+            // per-argument type validation without duplicating the
+            // Call lowerer.
+            //
+            // Failure modes (each fail-closed with a typed diagnostic):
+            //
+            // - Empty path / non-`data` head / parameter-callee head:
+            //   ResolveError naming the unsupported head and pointing
+            //   at the X1.b prerequisite for parameter callees.
+            // - Missing/non-Reference field at the leaf: ResolveError.
+            // - Resolved declaration without a name: ResolveError.
+            //
+            // Parameter-callee dispatch (X1.b) is intentionally
+            // unsupported here; the diagnostic names the prerequisite.
+            let Some((head, rest)) = segments.split_first() else {
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: "empty dotted path in call expression".to_string(),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            // Parameter-callee head (X1.b): the head is a local-scope
+            // binding rather than a top-level `data` symbol. Surface a
+            // typed diagnostic naming the prerequisite — do not
+            // silently fall through.
+            if scope.contains_key(head) {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "call-on-field-access through parameter `{head}` is not yet supported (Prereq-X1.b: requires runtime-callee dispatch substrate); only static `data` binding callees are accepted in this slice"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            }
+            let Some(&head_decl) = symbols.get(head) else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "call-on-field-access head `{head}` is not a top-level `data` declaration; static call-on-field-access (Prereq-X1.a) requires a `data` binding head"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            let value_body_opt = dag.declaration(head_decl).value_body.clone();
+            let Some(value_body) = value_body_opt else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "call-on-field-access head `{head}` has no compile-time value body; static call-on-field-access requires a `data` binding with a structural value body"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            let resolved_callee_decl = resolve_field_value_reference(&value_body, rest);
+            let Some(callee_decl_id) = resolved_callee_decl else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "dotted path `{}` does not resolve to a callable function reference (expected `FieldValue::Reference` at leaf); the field may be a non-Arrow value, missing, or the path may traverse a non-structural value body",
+                            segments.join(".")
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            // Verify the resolved leaf is callable (Arrow). A
+            // FieldValue::Reference to a non-callable declaration
+            // (e.g., a typed-but-non-Arrow data binding referenced as
+            // a field) must produce a typed non-callable diagnostic
+            // here rather than relying on the synthetic Call lowerer
+            // to surface something ambiguous downstream.
+            if !declaration_is_callable(dag, callee_decl_id, 0) {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "dotted path `{}` resolves to a non-callable declaration; X1.a static call-on-field-access requires the leaf to reference a top-level function (Arrow type)",
+                            segments.join(".")
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            }
+            // Authority preserved: the resolved `callee_decl_id` flows
+            // directly into `lower_resolved_callable_invocation` —
+            // **not** re-resolved by name through the synthetic-Call
+            // detour. The dotted-path display is the diagnostic label
+            // for callable-binding-conflict messages; the substrate
+            // identity is `callee_decl_id`.
+            let diagnostic_label = segments.join(".");
+            lower_resolved_callable_invocation(
+                callee_decl_id,
+                &diagnostic_label,
+                args,
+                span,
+                dag,
+                scope,
+                callable_scope,
+                symbols,
+                expected_decl,
+            )
+        }
         SurfaceExpr::Map { span, .. } => {
             // Map literals are not lowerable as expressions in M1(2.8) —
             // the parser admits them only in top-level data-body
@@ -6428,6 +8071,19 @@ fn lower_record_literal_expr(
             .collect(),
         _ => unreachable!("walk_to_conj_decl returned non-Conj"),
     };
+    let mut seen_record_fields = HashSet::new();
+    for field in fields {
+        if !seen_record_fields.insert(field.name.clone()) {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!("record literal repeats field `{}`", field.name),
+                    span: field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+        }
+    }
     for field in fields {
         if !expected_fields
             .iter()
@@ -6494,7 +8150,9 @@ fn lower_variant_record_expr(
             },
         );
     };
-    let Some(expected_fields) = variant_payload_fields_for_lowering(dag, variant_decl) else {
+    let Some(expected_fields) =
+        variant_payload_fields_for_lowering(dag, variant_decl, expected_decl)
+    else {
         return unresolved_port(
             dag,
             Diagnostic::ResolveError {
@@ -6507,6 +8165,22 @@ fn lower_variant_record_expr(
             },
         );
     };
+    let mut seen_payload_fields = HashSet::new();
+    for field in expr.fields {
+        if !seen_payload_fields.insert(field.name.clone()) {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "named constructor `{}` repeats payload field `{}`",
+                        expr.target, field.name
+                    ),
+                    span: field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+        }
+    }
     for field in expr.fields {
         if !expected_fields
             .iter()
@@ -6689,7 +8363,19 @@ fn producer_of(dag: &Dag, port: PortId) -> Option<NodeId> {
     dag.port(port).produced_by
 }
 
-fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
+/// X1.a-aware recursive-call detection.
+///
+/// `dag` and `symbols` are required so PathCall callees that resolve to
+/// the current function (e.g. via `data fns: Fns = { rec: <self_name> };
+/// fns.rec(arg)`) are caught — without that resolution, mutual recursion
+/// through a `data`-binding indirection would bypass the decidability
+/// gate (P4).
+fn is_recursive(
+    expr: &SurfaceExpr,
+    self_name: &str,
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> bool {
     match expr {
         SurfaceExpr::Literal { .. }
         | SurfaceExpr::Var { .. }
@@ -6699,34 +8385,54 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
             if target == self_name {
                 return true;
             }
-            args.iter().any(|a| is_recursive(a, self_name))
+            args.iter()
+                .any(|a| is_recursive(a, self_name, dag, symbols))
         }
         SurfaceExpr::VariantRecord { fields, .. } => fields
             .iter()
-            .any(|field| is_recursive(&field.value, self_name)),
-        SurfaceExpr::Operator { args, .. } => args.iter().any(|a| is_recursive(a, self_name)),
+            .any(|field| is_recursive(&field.value, self_name, dag, symbols)),
+        SurfaceExpr::Operator { args, .. } => args
+            .iter()
+            .any(|a| is_recursive(a, self_name, dag, symbols)),
         SurfaceExpr::If {
             cond,
             then_branch,
             else_branch,
             ..
         } => {
-            is_recursive(cond, self_name)
-                || is_recursive(then_branch, self_name)
-                || is_recursive(else_branch, self_name)
+            is_recursive(cond, self_name, dag, symbols)
+                || is_recursive(then_branch, self_name, dag, symbols)
+                || is_recursive(else_branch, self_name, dag, symbols)
         }
         SurfaceExpr::Match {
             scrutinee, arms, ..
         } => {
-            is_recursive(scrutinee, self_name)
-                || arms.iter().any(|arm| is_recursive(&arm.body, self_name))
+            is_recursive(scrutinee, self_name, dag, symbols)
+                || arms
+                    .iter()
+                    .any(|arm| is_recursive(&arm.body, self_name, dag, symbols))
         }
-        SurfaceExpr::Lambda { body, .. } => is_recursive(body, self_name),
-        SurfaceExpr::Record { fields, .. } => {
-            fields.iter().any(|f| is_recursive(&f.value, self_name))
-        }
-        SurfaceExpr::Map { entries, .. } => {
-            entries.iter().any(|e| is_recursive(&e.value, self_name))
+        SurfaceExpr::Lambda { body, .. } => is_recursive(body, self_name, dag, symbols),
+        SurfaceExpr::Record { fields, .. } => fields
+            .iter()
+            .any(|f| is_recursive(&f.value, self_name, dag, symbols)),
+        SurfaceExpr::Map { entries, .. } => entries
+            .iter()
+            .any(|e| is_recursive(&e.value, self_name, dag, symbols)),
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            // X1.a static path-call: resolve segments[0] through symbols
+            // → data binding's ValueBody → leaf FieldValue::Reference.
+            // If the leaf decl's name equals self_name, this PathCall is
+            // a recursive self-call (mutual or direct via data-binding
+            // indirection) and must trigger the decidability gate
+            // (INVARIANTS P4).
+            if let Some(leaf_decl) = resolve_path_to_function_decl(segments, dag, symbols) {
+                if dag.declaration(leaf_decl).name.as_deref() == Some(self_name) {
+                    return true;
+                }
+            }
+            args.iter()
+                .any(|a| is_recursive(a, self_name, dag, symbols))
         }
     }
 }
@@ -6783,6 +8489,7 @@ fn descent_provable(
     self_name: &str,
     first_param: &str,
     bindings: &HashMap<String, StructuralBindingInfo>,
+    symbols: &HashMap<String, DeclarationId>,
 ) -> bool {
     match expr {
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => true,
@@ -6802,13 +8509,22 @@ fn descent_provable(
                                 self_name,
                                 first_param,
                                 bindings,
+                                symbols,
                             )
                         })
                     }
                 }
             } else {
                 args.iter().all(|a| {
-                    descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)
+                    descent_provable(
+                        a,
+                        dag,
+                        first_param_decl,
+                        self_name,
+                        first_param,
+                        bindings,
+                        symbols,
+                    )
                 })
             }
         }
@@ -6820,11 +8536,20 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
-        SurfaceExpr::Operator { args, .. } => args
-            .iter()
-            .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)),
+        SurfaceExpr::Operator { args, .. } => args.iter().all(|a| {
+            descent_provable(
+                a,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+                symbols,
+            )
+        }),
         SurfaceExpr::If {
             cond,
             then_branch,
@@ -6838,6 +8563,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             ) && descent_provable(
                 then_branch,
                 dag,
@@ -6845,6 +8571,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             ) && descent_provable(
                 else_branch,
                 dag,
@@ -6852,6 +8579,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }
         SurfaceExpr::Match {
@@ -6864,6 +8592,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             ) {
                 return false;
             }
@@ -6872,9 +8601,24 @@ fn descent_provable(
                 scrutinee.as_ref(),
                 SurfaceExpr::Var { name, .. } if name == first_param
             );
+            // Nested-match descent: an inner `match` whose scrutinee is a
+            // structural binding from an outer arm (e.g. `match xs { Cons(t1)
+            // => match t1 { Cons(t2) => f(t2) } }`) is itself unpacking a
+            // strict sub-value of the recursive type. The inner pattern's
+            // bindings are therefore also strict sub-values, so register them
+            // against the same recursive declaration the outer match did.
+            let scrutinee_is_recursive_binding = matches!(
+                scrutinee.as_ref(),
+                SurfaceExpr::Var { name, .. }
+                    if bindings
+                        .get(name)
+                        .is_some_and(|info| info.whole_payload_recursive)
+            );
+            let scrutinee_unpacks_recursive_type =
+                scrutinee_is_first_param || scrutinee_is_recursive_binding;
             arms.iter().all(|arm| {
                 let mut arm_bindings = bindings.clone();
-                if scrutinee_is_first_param {
+                if scrutinee_unpacks_recursive_type {
                     match &arm.pattern {
                         SurfacePattern::VariantWith { name, binding, .. } => {
                             if let Some(info) =
@@ -6900,6 +8644,7 @@ fn descent_provable(
                     self_name,
                     first_param,
                     &arm_bindings,
+                    symbols,
                 )
             })
         }
@@ -6910,6 +8655,7 @@ fn descent_provable(
             self_name,
             first_param,
             bindings,
+            symbols,
         ),
         SurfaceExpr::Record { fields, .. } => fields.iter().all(|f| {
             descent_provable(
@@ -6919,6 +8665,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
         SurfaceExpr::List { elements, .. } => elements.iter().all(|element| {
@@ -6929,6 +8676,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
         SurfaceExpr::Map { entries, .. } => entries.iter().all(|entry| {
@@ -6939,8 +8687,52 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            // X1.a static path-call: if the resolved leaf decl name
+            // equals `self_name`, this is a recursive self-call via
+            // data-binding indirection. Apply the same descent rule
+            // as `Call`: first arg must be strictly smaller, all
+            // other args descent-provable. Otherwise treat as
+            // non-recursive — recurse into args only.
+            let path_resolves_to_self = resolve_path_to_function_decl(segments, dag, symbols)
+                .is_some_and(|leaf| dag.declaration(leaf).name.as_deref() == Some(self_name));
+            if path_resolves_to_self {
+                match args.first() {
+                    None => false,
+                    Some(first_arg) => {
+                        if !is_strictly_smaller(first_arg, first_param, bindings) {
+                            return false;
+                        }
+                        args.iter().skip(1).all(|a| {
+                            descent_provable(
+                                a,
+                                dag,
+                                first_param_decl,
+                                self_name,
+                                first_param,
+                                bindings,
+                                symbols,
+                            )
+                        })
+                    }
+                }
+            } else {
+                args.iter().all(|a| {
+                    descent_provable(
+                        a,
+                        dag,
+                        first_param_decl,
+                        self_name,
+                        first_param,
+                        bindings,
+                        symbols,
+                    )
+                })
+            }
+        }
     }
 }
 
@@ -6964,13 +8756,21 @@ fn is_strictly_smaller(
         &args[0],
         SurfaceExpr::Var { name, .. } if name == first_param
     );
-    let rhs_is_positive = matches!(
+    // RHS must be a positive integer literal AND within the descent-evidence
+    // carrier's `positive_amount_from_i64` materialization range
+    // (`dag.rs:1031-1032`, `1..=MAX_PEANO_MATERIALIZATION`). Without the
+    // upper cap, the termination prover would accept `f(n - 257)` while
+    // the per-call descent producer fails to materialize a
+    // `PositiveDescentAmount` and falls back to `SubValueUnknown` —
+    // parallel-authority split-brain (the same single-authority discipline
+    // Slice 3's ClusterDescentChecker fix established).
+    let rhs_in_descent_range = matches!(
         &args[1],
         SurfaceExpr::Literal {
             value: SurfaceLiteral::Int(v), ..
-        } if *v > 0
+        } if (1..=MAX_PEANO_MATERIALIZATION).contains(v)
     );
-    lhs_is_param && rhs_is_positive
+    lhs_is_param && rhs_in_descent_range
 }
 
 fn is_structurally_smaller(
@@ -7098,7 +8898,13 @@ fn compute_mutually_recursive(
         let mut callees = HashSet::new();
         let mut shadowed: HashSet<String> =
             info.params.iter().map(|param| param.name.clone()).collect();
-        collect_recursive_callees(info.body, &function_symbols, &mut shadowed, &mut callees);
+        collect_recursive_callees(
+            info.body,
+            &function_symbols,
+            dag,
+            &mut shadowed,
+            &mut callees,
+        );
         let mut sorted_callees: Vec<DeclarationId> = callees.into_iter().collect();
         sorted_callees.sort_by_key(|callee| order_index.get(callee).copied().unwrap_or(usize::MAX));
         calls.insert(*decl_id, sorted_callees);
@@ -7420,13 +9226,30 @@ impl ClusterDescentChecker<'_> {
                     scrutinee.as_ref(),
                     SurfaceExpr::Var { name, .. } if name == self.current_param
                 );
+                // Same nested-match descent extension as `descent_provable`'s
+                // self-recursive arm (see comment there): an inner `match`
+                // whose scrutinee is itself a structural binding from an
+                // outer arm is unpacking a strict sub-value, so its
+                // pattern bindings inherit recursive-descent status.
+                // Without this mirror the cluster (SCC) authority enforces a
+                // stricter rule than the self-recursive authority — same
+                // termination fact, two acceptance rules.
+                let scrutinee_is_recursive_binding = matches!(
+                    scrutinee.as_ref(),
+                    SurfaceExpr::Var { name, .. }
+                        if bindings
+                            .get(name)
+                            .is_some_and(|info| info.whole_payload_recursive)
+                );
+                let scrutinee_unpacks_recursive_type =
+                    scrutinee_is_current_param || scrutinee_is_recursive_binding;
                 arms.iter().all(|arm| {
                     let mut arm_bindings = bindings.clone();
                     let mut arm_shadowed = shadowed.clone();
                     for binding in pattern_binding_names(&arm.pattern) {
                         arm_shadowed.insert(binding.to_string());
                     }
-                    if scrutinee_is_current_param {
+                    if scrutinee_unpacks_recursive_type {
                         match &arm.pattern {
                             SurfacePattern::VariantWith { name, binding, .. } => {
                                 if let Some(info) = structural_binding_info_for_variant(
@@ -7466,6 +9289,32 @@ impl ClusterDescentChecker<'_> {
             SurfaceExpr::Map { entries, .. } => entries
                 .iter()
                 .all(|entry| self.expr(&entry.value, bindings, shadowed)),
+            SurfaceExpr::PathCall { segments, args, .. } => {
+                // X1.a static path-call: resolve segments to a leaf
+                // top-level function decl. If the leaf is in this
+                // cluster's recursive-callee set, apply the same
+                // assigned-slot strict-descent check as the `Call` arm.
+                // Without this, mutual recursion via `data` indirection
+                // (e.g. `data fns: Fns = { a: f, b: g }; fn f(x) =
+                // fns.b(x); fn g(x) = fns.a(x)`) bypasses the cluster
+                // descent gate (P4).
+                if let Some(callee_decl) =
+                    resolve_path_to_function_decl(segments, self.dag, self.function_symbols)
+                {
+                    if self.recursive_callees.contains(&callee_decl) {
+                        let Some(&callee_slot) = self.assignment.get(&callee_decl) else {
+                            return false;
+                        };
+                        let Some(callee_arg) = args.get(callee_slot) else {
+                            return false;
+                        };
+                        if !is_strictly_smaller(callee_arg, self.current_param, bindings) {
+                            return false;
+                        }
+                    }
+                }
+                args.iter().all(|arg| self.expr(arg, bindings, shadowed))
+            }
         }
     }
 }
@@ -7473,6 +9322,7 @@ impl ClusterDescentChecker<'_> {
 fn collect_recursive_callees(
     expr: &SurfaceExpr,
     function_symbols: &HashMap<String, DeclarationId>,
+    dag: &Dag,
     shadowed: &mut HashSet<String>,
     out: &mut HashSet<DeclarationId>,
 ) {
@@ -7485,17 +9335,17 @@ fn collect_recursive_callees(
                 }
             }
             for a in args {
-                collect_recursive_callees(a, function_symbols, shadowed, out);
+                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::VariantRecord { fields, .. } => {
             for field in fields {
-                collect_recursive_callees(&field.value, function_symbols, shadowed, out);
+                collect_recursive_callees(&field.value, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::Operator { args, .. } => {
             for a in args {
-                collect_recursive_callees(a, function_symbols, shadowed, out);
+                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::If {
@@ -7504,40 +9354,58 @@ fn collect_recursive_callees(
             else_branch,
             ..
         } => {
-            collect_recursive_callees(cond, function_symbols, shadowed, out);
-            collect_recursive_callees(then_branch, function_symbols, shadowed, out);
-            collect_recursive_callees(else_branch, function_symbols, shadowed, out);
+            collect_recursive_callees(cond, function_symbols, dag, shadowed, out);
+            collect_recursive_callees(then_branch, function_symbols, dag, shadowed, out);
+            collect_recursive_callees(else_branch, function_symbols, dag, shadowed, out);
         }
         SurfaceExpr::Match {
             scrutinee, arms, ..
         } => {
-            collect_recursive_callees(scrutinee, function_symbols, shadowed, out);
+            collect_recursive_callees(scrutinee, function_symbols, dag, shadowed, out);
             for arm in arms {
                 let mut arm_shadowed = shadowed.clone();
                 for binding in pattern_binding_names(&arm.pattern) {
                     arm_shadowed.insert(binding.to_string());
                 }
-                collect_recursive_callees(&arm.body, function_symbols, &mut arm_shadowed, out);
+                collect_recursive_callees(&arm.body, function_symbols, dag, &mut arm_shadowed, out);
             }
         }
         SurfaceExpr::Lambda { params, body, .. } => {
             let mut lambda_shadowed = shadowed.clone();
             lambda_shadowed.extend(params.iter().cloned());
-            collect_recursive_callees(body, function_symbols, &mut lambda_shadowed, out)
+            collect_recursive_callees(body, function_symbols, dag, &mut lambda_shadowed, out)
         }
         SurfaceExpr::Record { fields, .. } => {
             for f in fields {
-                collect_recursive_callees(&f.value, function_symbols, shadowed, out);
+                collect_recursive_callees(&f.value, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::List { elements, .. } => {
             for element in elements {
-                collect_recursive_callees(element, function_symbols, shadowed, out);
+                collect_recursive_callees(element, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::Map { entries, .. } => {
             for entry in entries {
-                collect_recursive_callees(&entry.value, function_symbols, shadowed, out);
+                collect_recursive_callees(&entry.value, function_symbols, dag, shadowed, out);
+            }
+        }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            // X1.a static path-call: resolve segments through the head's
+            // `data` ValueBody to a leaf `FieldValue::Reference(decl_id)`
+            // and insert that decl into the recursive-callee set. Without
+            // this, mutual recursion via a data-binding indirection
+            // bypasses the recursive-edge graph (P4).
+            let head_shadowed = segments.first().is_some_and(|head| shadowed.contains(head));
+            if !head_shadowed {
+                if let Some(leaf_decl) =
+                    resolve_path_to_function_decl(segments, dag, function_symbols)
+                {
+                    out.insert(leaf_decl);
+                }
+            }
+            for a in args {
+                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
             }
         }
     }
@@ -7547,7 +9415,11 @@ fn collect_recursive_callees(
 mod tests {
     use super::*;
     use crate::dag::Declaration;
-    use crate::diagnostics::SourceSpan;
+    use crate::dag::Field;
+    use crate::dag::LiteralBits;
+    use crate::dag::PortState;
+    use crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
+    use crate::diagnostics::{Diagnostic, SourceSpan};
     use std::collections::HashMap;
 
     fn test_span() -> SourceSpan {
@@ -7576,6 +9448,206 @@ mod tests {
             span: test_span(),
         });
         id
+    }
+
+    fn push_anonymous_test_declaration(dag: &mut Dag, connective: TypeConnective) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: None,
+            connective,
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: test_span(),
+        });
+        id
+    }
+
+    #[test]
+    fn structural_map_field_lowers_values_with_active_substitution() {
+        let mut dag = Dag::new();
+        let int_id = dag.declaration_by_name("Int").expect("Int").id;
+        let string_id = dag.declaration_by_name("String").expect("String").id;
+        let map_id = dag.declaration_by_name("Map").expect("Map").id;
+        let map_key_param = dag.declaration(map_id).type_params[0];
+        let map_value_param = dag.declaration(map_id).type_params[1];
+        let c_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("C".to_string())),
+        );
+        let map_string_c = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: map_id,
+                arguments: vec![
+                    TemplateArgument {
+                        parameter: map_key_param,
+                        value: string_id,
+                    },
+                    TemplateArgument {
+                        parameter: map_value_param,
+                        value: c_param,
+                    },
+                ],
+            },
+        );
+        let mut subst = LowerSubstStack::default();
+        subst.push(vec![TemplateArgument {
+            parameter: c_param,
+            value: int_id,
+        }]);
+        let span = test_span();
+        let lowered = lower_structural_field_value(
+            "aggregate_int",
+            "table",
+            &SurfaceExpr::Map {
+                entries: vec![crate::parse_surface::SurfaceMapEntry {
+                    key: "one".to_string(),
+                    key_span: span.clone(),
+                    value: SurfaceExpr::Literal {
+                        value: SurfaceLiteral::Int(1),
+                        span: span.clone(),
+                    },
+                    span: span.clone(),
+                }],
+                span: span.clone(),
+            },
+            map_string_c,
+            &subst,
+            &HashMap::new(),
+            &mut dag,
+            None,
+            &span,
+            &HashSet::new(),
+        )
+        .expect("Map<String, C> value should lower under C := Int");
+        let crate::dag::FieldValue::Map(map) = lowered else {
+            panic!("expected structural map field, got {lowered:?}");
+        };
+        assert_eq!(
+            map.entries(),
+            &[(
+                "one".to_string(),
+                crate::dag::FieldValue::Literal(LiteralBits::Int(1))
+            )]
+        );
+
+        let k_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("K".to_string())),
+        );
+        let v_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("V".to_string())),
+        );
+        let map_k_v = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: map_id,
+                arguments: vec![
+                    TemplateArgument {
+                        parameter: map_key_param,
+                        value: k_param,
+                    },
+                    TemplateArgument {
+                        parameter: map_value_param,
+                        value: v_param,
+                    },
+                ],
+            },
+        );
+        let mut key_value_subst = LowerSubstStack::default();
+        key_value_subst.push(vec![
+            TemplateArgument {
+                parameter: k_param,
+                value: string_id,
+            },
+            TemplateArgument {
+                parameter: v_param,
+                value: int_id,
+            },
+        ]);
+        let lowered = lower_structural_field_value(
+            "aggregate_int",
+            "table",
+            &SurfaceExpr::Map {
+                entries: vec![crate::parse_surface::SurfaceMapEntry {
+                    key: "one".to_string(),
+                    key_span: span.clone(),
+                    value: SurfaceExpr::Literal {
+                        value: SurfaceLiteral::Int(1),
+                        span: span.clone(),
+                    },
+                    span: span.clone(),
+                }],
+                span: span.clone(),
+            },
+            map_k_v,
+            &key_value_subst,
+            &HashMap::new(),
+            &mut dag,
+            None,
+            &span,
+            &HashSet::new(),
+        )
+        .expect("Map<K, V> value should lower under K := String, V := Int");
+        let crate::dag::FieldValue::Map(map) = lowered else {
+            panic!("expected structural map field, got {lowered:?}");
+        };
+        assert_eq!(
+            map.entries(),
+            &[(
+                "one".to_string(),
+                crate::dag::FieldValue::Literal(LiteralBits::Int(1))
+            )]
+        );
+    }
+
+    #[test]
+    fn enforce_non_negative_unit_count_payload_rejects_negative_literal() {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let dag = Dag::new();
+                let piw = dag
+                    .declaration_by_name("PositiveIntervalWidth")
+                    .expect("bootstrap PositiveIntervalWidth");
+                let TypeConnective::Disj { variants } = &piw.connective else {
+                    panic!("PositiveIntervalWidth must be a sum");
+                };
+                let unit_count_payload_ty = variants
+                    .iter()
+                    .find(|v| v.label == "UnitCount")
+                    .expect("UnitCount variant")
+                    .ty;
+                let span = test_span();
+                let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int(-1))];
+                let err = enforce_non_negative_unit_count_payload(
+                    &dag,
+                    unit_count_payload_ty,
+                    &payload,
+                    &span,
+                )
+                .expect_err("negative units must be rejected");
+                let Diagnostic::ResolveError { name, .. } = err else {
+                    panic!("expected ResolveError; got {err:?}");
+                };
+                assert_eq!(
+                    name,
+                    positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
+                        -1
+                    )
+                );
+            })
+            .expect("spawn enforce_non_negative_unit_count_payload test")
+            .join()
+            .expect("enforce_non_negative_unit_count_payload test panicked");
     }
 
     fn surface_named_type(name: &str) -> SurfaceType {
@@ -7725,6 +9797,7 @@ mod tests {
                 span: span.clone(),
             },
             aliased_style,
+            &LowerSubstStack::default(),
             &symbols,
             &mut dag,
             None,
@@ -7836,6 +9909,195 @@ mod tests {
                 )
             }),
             "non-Arrow fn declarations at body lowering must fail closed with a diagnostic"
+        );
+    }
+
+    #[test]
+    fn unresolved_fn_return_annotation_leaves_bind_value_unresolved() {
+        let dag = match crate::compile_to_dag("fn bad() -> MissingType = 1", "bad_return.v3") {
+            Err(crate::CompileError::Semantic(dag)) => dag,
+            other => panic!("unknown return type must fail semantically, got {other:?}"),
+        };
+
+        let bind = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Bind(bind) if bind.name == "bad" => Some(bind),
+                _ => None,
+            })
+            .expect("lowering should still emit the function Bind for inspection");
+        let bind_port = dag.port(bind.value);
+        assert_eq!(
+            bind_port.state(),
+            &PortState::Unresolved,
+            "failed return annotation must leave the function Bind value unresolved"
+        );
+        assert_eq!(
+            bind_port.value_type(),
+            None,
+            "failed return annotation must not fabricate a TypeShape on the Bind value"
+        );
+        assert_ne!(
+            bind_port.value_type(),
+            dag.int_shape().as_ref(),
+            "failed return annotation must not expose the Int sentinel"
+        );
+        assert_ne!(
+            bind_port.value_type(),
+            Some(&TypeShape::new(dag.declarations()[0].id)),
+            "failed return annotation must not expose DeclarationId(0) as a sentinel"
+        );
+
+        let value = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Value(value) if value.data == LiteralBits::Int(1) => Some(value),
+                _ => None,
+            })
+            .expect("literal function body should still lower to a ValueNode");
+        assert_ne!(
+            value.output, bind.value,
+            "invalid return annotation must use a distinct diagnostic result port"
+        );
+
+        let diagnostic = dag
+            .diagnostics()
+            .get(bind.value)
+            .expect("Bind value unresolved state must carry the return annotation diagnostic");
+        assert!(
+            matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. } if name == "unknown type `MissingType`"
+            ),
+            "expected unknown return type diagnostic on Bind value, got {diagnostic:?}"
+        );
+    }
+
+    #[test]
+    fn unresolved_fn_return_annotation_does_not_poison_borrowed_body_port() {
+        let dag =
+            match crate::compile_to_dag("fn bad(x: Int) -> MissingType = x", "bad_return_alias.v3")
+            {
+                Err(crate::CompileError::Semantic(dag)) => dag,
+                other => panic!("unknown return type must fail semantically, got {other:?}"),
+            };
+
+        let bind = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Bind(bind) if bind.name == "bad" => Some(bind),
+                _ => None,
+            })
+            .expect("lowering should still emit the function Bind for inspection");
+        let [param_port] = bind.params.as_slice() else {
+            panic!("test function should lower exactly one parameter");
+        };
+
+        assert_ne!(
+            bind.value, *param_port,
+            "invalid return annotation must materialize a function-owned result port"
+        );
+        assert_eq!(
+            dag.port(bind.value).state(),
+            &PortState::Unresolved,
+            "failed return annotation must leave the function Bind value unresolved"
+        );
+        assert_eq!(
+            dag.port(bind.value).value_type(),
+            None,
+            "failed return annotation must not fabricate a TypeShape on the Bind value"
+        );
+
+        let int_shape = dag
+            .int_shape()
+            .expect("bootstrap should expose the Int type shape");
+        assert_eq!(
+            dag.port(*param_port).state(),
+            &PortState::Resolved(int_shape),
+            "return annotation failure must not poison the borrowed parameter port"
+        );
+        assert!(
+            dag.diagnostics().get(*param_port).is_none(),
+            "return annotation diagnostic must stay on the function result port"
+        );
+
+        let diagnostic = dag
+            .diagnostics()
+            .get(bind.value)
+            .expect("Bind value unresolved state must carry the return annotation diagnostic");
+        assert!(
+            matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. } if name == "unknown type `MissingType`"
+            ),
+            "expected unknown return type diagnostic on Bind value, got {diagnostic:?}"
+        );
+    }
+
+    #[test]
+    fn unresolved_fn_return_annotation_does_not_poison_outer_scope_body_port() {
+        let dag = match crate::compile_to_dag(
+            "let y: Int = 1\nfn bad() -> MissingType = y",
+            "bad_return_outer_alias.v3",
+        ) {
+            Err(crate::CompileError::Semantic(dag)) => dag,
+            other => panic!("unknown return type must fail semantically, got {other:?}"),
+        };
+
+        let mut bad_bind = None;
+        let mut outer_bind = None;
+        for node in dag.nodes() {
+            if let Behavior::Bind(bind) = node {
+                match bind.name.as_str() {
+                    "bad" => bad_bind = Some(bind),
+                    "y" => outer_bind = Some(bind),
+                    _ => {}
+                }
+            }
+        }
+        let bad_bind = bad_bind.expect("lowering should still emit the bad function Bind");
+        let outer_bind = outer_bind.expect("test setup should lower the outer y binding");
+
+        assert_ne!(
+            bad_bind.value, outer_bind.value,
+            "invalid return annotation must not reuse an outer binding as the function result"
+        );
+        assert_eq!(
+            dag.port(bad_bind.value).state(),
+            &PortState::Unresolved,
+            "failed return annotation must leave the function Bind value unresolved"
+        );
+        assert!(
+            dag.port(bad_bind.value).value_type().is_none(),
+            "failed return annotation must not fabricate a TypeShape on the Bind value"
+        );
+
+        let int_shape = dag
+            .int_shape()
+            .expect("bootstrap should expose the Int type shape");
+        assert_eq!(
+            dag.port(outer_bind.value).state(),
+            &PortState::Resolved(int_shape),
+            "return annotation failure must not poison the outer binding port"
+        );
+        assert!(
+            dag.diagnostics().get(outer_bind.value).is_none(),
+            "return annotation diagnostic must stay on the function result port"
+        );
+
+        let diagnostic = dag
+            .diagnostics()
+            .get(bad_bind.value)
+            .expect("Bind value unresolved state must carry the return annotation diagnostic");
+        assert!(
+            matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. } if name == "unknown type `MissingType`"
+            ),
+            "expected unknown return type diagnostic on Bind value, got {diagnostic:?}"
         );
     }
 

@@ -26,6 +26,7 @@ use std::process::{Command, Stdio};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit, EmitTarget};
+use v3_compiler::self_host_receipt_p0 as receipt_p0;
 use v3_compiler::{
     compare_stage_snapshots, compile_stage_snapshots, default_fixed_point_source, CompileError,
 };
@@ -87,13 +88,24 @@ fn run() -> Result<(), String> {
     // exit 0 — expected until v3 grammar + Lane 1e land (staged ratchet).
     let mut self_host_slice_failed: Option<String> = None;
 
+    // P0 / DB-8 `receipt.json` always-emitted keys — checked before write by
+    // `receipt_p0::validate_receipt_json_always_emitted_keys` / `top_level_property_needle`
+    // (two spaces + `"key":`). Keep these three emission anchors aligned with that helper:
+    // (1) pipeline field right after `{`, (2) `K_COMPILER_DAG_V3_PARSE` in `Ok` + `Err` arms,
+    // (3) `K_STATUS` on the closing field before `}`.
     let mut receipt = String::new();
     receipt.push_str("{\n");
-    receipt.push_str("  \"pipeline_fixed_point_default_source\": \"ok\",\n");
+    receipt.push_str(&format!(
+        "  \"{}\": \"ok\",\n",
+        receipt_p0::K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE
+    ));
 
     match compiler_parse {
         Ok(dag) => {
-            receipt.push_str("  \"compiler_dag_v3_parse\": \"ok\",\n");
+            receipt.push_str(&format!(
+                "  \"{}\": \"ok\",\n",
+                receipt_p0::K_COMPILER_DAG_V3_PARSE
+            ));
             let stage1 =
                 emit(&dag, EmitTarget::Rust).map_err(|e| format!("emit compiler.dag: {e:?}"))?;
             let stage1_path = out_dir.join("stage1.rs");
@@ -159,7 +171,8 @@ fn run() -> Result<(), String> {
         }
         Err(msg) => {
             receipt.push_str(&format!(
-                "  \"compiler_dag_v3_parse\": {},\n",
+                "  \"{}\": {},\n",
+                receipt_p0::K_COMPILER_DAG_V3_PARSE,
                 json_string(&msg)
             ));
         }
@@ -170,7 +183,16 @@ fn run() -> Result<(), String> {
     } else {
         "completed"
     };
-    receipt.push_str(&format!("  \"status\": {}\n}}\n", json_string(exit_status)));
+    receipt.push_str(&format!(
+        "  \"{}\": {}\n}}\n",
+        receipt_p0::K_STATUS,
+        json_string(exit_status)
+    ));
+
+    // Must match the three anchors documented on `self_host_receipt_p0::top_level_property_needle`.
+    receipt_p0::validate_receipt_json_always_emitted_keys(&receipt).map_err(|e| {
+        format!("self_host_fixed_point: receipt contract (P0 always-emitted keys): {e}")
+    })?;
 
     write_receipt(&receipt_path, &receipt);
     writeln!(

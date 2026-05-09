@@ -116,7 +116,10 @@ fn rust_pilot_primitives_value_body_is_structural_list() {
     let ValueBody::List(elements) = body else {
         panic!("rust_pilot_primitives.value_body must lower to ValueBody::List, got {body:?}");
     };
-    assert_eq!(elements.len(), 10);
+    // R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264):
+    // 10 IntegerPrimitive (i8..i64, i128, u8..u64, u128) + 2 NonIntegerPrimitive (bool, ()).
+    // u128 row unblocked by Phase A `IntervalInt::ExactInterval` BigInt host repr widening.
+    assert_eq!(elements.len(), 12);
     let constructors: Vec<&str> = elements
         .iter()
         .map(|element| {

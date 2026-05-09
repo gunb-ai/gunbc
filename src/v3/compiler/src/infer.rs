@@ -32,9 +32,11 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, CardinalityBound, Dag, Declaration,
-    DeclarationId, Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState,
-    TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    substrate_div_error_type_decl_suppressed_for_emit,
+    substrate_result_type_decl_suppressed_for_emit, ArithmeticOp, ArrowBody, AtomPayload, Behavior,
+    BindNode, BindNodeId, CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits,
+    Lookup, NominalOpacity, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -1191,16 +1193,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
             // User function: the call site's signature is only trustworthy
             // once the function's Bind.value port has reached Resolved.
             // Uninferred → Retry; Unresolved → fail the call site.
-            let bind_id = *bind_id;
-            match dag
-                .port(
-                    dag.node(bind_id)
-                        .as_bind()
-                        .map(|b| b.value)
-                        .unwrap_or(t.output),
-                )
-                .state()
-            {
+            match dag.port((*bind_id).bind(dag).value).state() {
                 PortState::Uninferred => return Decision::Retry,
                 PortState::Unresolved => {
                     let name = transform_target_display_name(dag, &t.target);
@@ -1771,10 +1764,9 @@ fn predicate_info(dag: &Dag, pred_decl: DeclarationId) -> Option<(PortId, PortId
         ..
     } = &dag.declaration(pred_decl).connective
     {
-        if let Behavior::Bind(bind) = dag.node(*bind_id) {
-            if let Some(param_port) = bind.params.first() {
-                return Some((*param_port, bind.value));
-            }
+        let bind = (*bind_id).bind(dag);
+        if let Some(param_port) = bind.params.first() {
+            return Some((*param_port, bind.value));
         }
     }
     None
@@ -2259,7 +2251,7 @@ fn callable_signature_context(
         ..
     } = &decl.connective
     {
-        let bind = dag.node(*bind_id).as_bind()?;
+        let bind = (*bind_id).bind(dag);
         if bind.params.len() < inputs.len() {
             return None;
         }
@@ -3056,9 +3048,7 @@ fn resolve_lambda_parameter_types(dag: &mut Dag) -> bool {
             let ArrowBody::UserDefined(bind_id) = body else {
                 continue;
             };
-            let Some(bind) = dag.node(*bind_id).as_bind() else {
-                continue;
-            };
+            let bind = (*bind_id).bind(dag);
             if bind.params.len() < expected_signature.inputs.len() {
                 continue;
             }
@@ -3094,30 +3084,23 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
         diagnostic: Diagnostic,
     }
 
-    let user_defined_arrows: Vec<(
-        DeclarationId,
-        Vec<DeclarationId>,
-        DeclarationId,
-        crate::dag::NodeId,
-    )> = dag
-        .declarations()
-        .iter()
-        .filter_map(|decl| match &decl.connective {
-            TypeConnective::Arrow {
-                inputs,
-                output,
-                body: ArrowBody::UserDefined(bind_id),
-            } => Some((decl.id, inputs.clone(), *output, *bind_id)),
-            _ => None,
-        })
-        .collect();
+    let user_defined_arrows: Vec<(DeclarationId, Vec<DeclarationId>, DeclarationId, BindNodeId)> =
+        dag.declarations()
+            .iter()
+            .filter_map(|decl| match &decl.connective {
+                TypeConnective::Arrow {
+                    inputs,
+                    output,
+                    body: ArrowBody::UserDefined(bind_id),
+                } => Some((decl.id, inputs.clone(), *output, *bind_id)),
+                _ => None,
+            })
+            .collect();
 
     let mut failures = Vec::new();
 
     'declarations: for (decl_id, inputs, output, bind_id) in user_defined_arrows {
-        let Some(bind) = dag.node(bind_id).as_bind() else {
-            continue;
-        };
+        let bind = bind_id.bind(dag);
         if matches!(dag.port(bind.value).state(), PortState::Unresolved) {
             continue;
         }
@@ -3784,7 +3767,10 @@ fn materialize_substituted_refined_decl(
         connective: TypeConnective::Arrow {
             inputs: vec![substituted_base],
             output: bool_decl_id,
-            body: ArrowBody::UserDefined(bind_id),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -4325,8 +4311,6 @@ fn resolve_field_project_targets(dag: &mut Dag) -> bool {
 }
 
 const WALK_DEPTH_LIMIT: usize = 32;
-const ERROR_PRIMITIVES_AUTHORITY_FILE: &str = "dsl/std/error_primitives.dag";
-
 /// §8.9 operator dispatch via structural algebra walk.
 ///
 /// Walks the LHS type's declaration chain (following `Instantiation`
@@ -4446,10 +4430,12 @@ fn resolve_operator_arrow(
     // discarded — see the receiver substitution rule in the doc
     // comment.
     let mut current = source_id;
+    let mut saw_algebra_conj = false;
     for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current).clone();
         match &decl.connective {
             TypeConnective::Conj { children } => {
+                saw_algebra_conj = true;
                 // Found the algebra. Look up the operator's field by
                 // name.
                 let field_name = crate::operators::algebra_field_name(op_kind);
@@ -4491,6 +4477,22 @@ fn resolve_operator_arrow(
     // output are always Bool, independent of `lhs_type`. An Int lhs
     // on `&&` / `||` must surface a type mismatch, not propagate
     // through the operand slots the way Arithmetic / Comparison do.
+    //
+    // Fail-closed for LHS that the walk never reached any Conj for:
+    // every loop exit saw a terminal connective with no `inhabits`,
+    // an Arrow / Disj / Cardinality with no `inhabits`, or depth
+    // exhaustion. The pre-fix fallback fabricated `(T,T)->T` /
+    // `(T,T)->Bool` / `(Bool,Bool)->Bool` / `(T,T)->Result<T,DivError>`
+    // for any such LHS — inventing an arrow contract for a type that
+    // declares none. Refuse synthesis here so the caller surfaces a
+    // typed unsupported-operator diagnostic. The Conj-reached-but-
+    // missing-field path (`saw_algebra_conj == true`) keeps its
+    // existing scaffold; tightening that further (distinguishing
+    // algebra carriers from arbitrary product structs) requires a
+    // structural signal beyond "is a Conj" — see PR #1329 STOP+PING.
+    if !saw_algebra_conj {
+        return None;
+    }
     let (inputs, output) = match op_kind {
         // Division leaves the class-5 scaffold: total shape matches algebra `div`.
         OperatorKind::Arithmetic(ArithmeticOp::Div) => (
@@ -4685,79 +4687,15 @@ fn substitute_receiver(
 }
 
 fn canonical_result_decl(dag: &Dag) -> Option<&Declaration> {
-    let mut matches = dag.declarations().iter().filter(|decl| {
-        decl.span.file == ERROR_PRIMITIVES_AUTHORITY_FILE
-            && substrate_result_decl_has_error_primitive_shape(dag, decl)
-    });
-    let result = matches.next()?;
-    if matches.next().is_some() {
-        return None;
-    }
-    Some(result)
-}
-
-fn substrate_result_decl_has_error_primitive_shape(dag: &Dag, decl: &Declaration) -> bool {
-    if decl.name.as_deref() != Some("Result") {
-        return false;
-    }
-    let [ok_param, err_param] = match decl.type_params.as_slice() {
-        [a, b] => [*a, *b],
-        _ => return false,
-    };
-    let ok_decl = dag.declaration(ok_param);
-    let err_decl = dag.declaration(err_param);
-    let ok_param_ok = matches!(
-        &ok_decl.connective,
-        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "ok"
-    );
-    let err_param_ok = matches!(
-        &err_decl.connective,
-        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "err"
-    );
-    if !ok_param_ok || !err_param_ok {
-        return false;
-    }
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        return false;
-    };
-    let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
-        return false;
-    };
-    let Some(err_field) = variants.iter().find(|v| v.label == "Err") else {
-        return false;
-    };
-    substrate_result_variant_payload_is_value_of(dag, ok_field.ty, ok_param)
-        && substrate_result_variant_payload_is_value_of(dag, err_field.ty, err_param)
-}
-
-fn substrate_result_variant_payload_is_value_of(
-    dag: &Dag,
-    payload_ty: DeclarationId,
-    type_param: DeclarationId,
-) -> bool {
-    let payload = dag.declaration(payload_ty);
-    let TypeConnective::Conj { children } = &payload.connective else {
-        return false;
-    };
-    children.len() == 1 && children[0].label == "value" && children[0].ty == type_param
+    dag.declarations()
+        .iter()
+        .find(|decl| substrate_result_type_decl_suppressed_for_emit(dag, decl))
 }
 
 fn canonical_div_error_decl(dag: &Dag) -> Option<&Declaration> {
-    let mut matches = dag.declarations().iter().filter(|decl| {
-        decl.span.file == ERROR_PRIMITIVES_AUTHORITY_FILE
-            && decl.name.as_deref() == Some("DivError")
-            && decl.type_params.is_empty()
-            && matches!(&decl.connective, TypeConnective::Disj { variants } if {
-                variants.len() == 2
-                    && variants.iter().any(|variant| variant.label == "DivideByZero")
-                    && variants.iter().any(|variant| variant.label == "Overflow")
-            })
-    });
-    let div_error = matches.next()?;
-    if matches.next().is_some() {
-        return None;
-    }
-    Some(div_error)
+    dag.declarations()
+        .iter()
+        .find(|decl| substrate_div_error_type_decl_suppressed_for_emit(dag, decl))
 }
 
 /// Dispatch-time invariant check on an `ExternalRealization` target:
@@ -5116,7 +5054,7 @@ fn synthetic_span() -> SourceSpan {
     SourceSpan::new("<inferred>", 0, 0)
 }
 
-fn type_shapes_equivalent(dag: &Dag, lhs: &TypeShape, rhs: &TypeShape) -> bool {
+pub(crate) fn type_shapes_equivalent(dag: &Dag, lhs: &TypeShape, rhs: &TypeShape) -> bool {
     if lhs == rhs {
         return true;
     }
@@ -5309,7 +5247,7 @@ mod bool_logical_operator_arrow_tests {
     use super::*;
     use crate::dag::PhantomParameter;
     use crate::infer_helpers::filter_non_self_template_arguments;
-    use crate::operators::ArithmeticOp;
+    use crate::operators::{ArithmeticOp, ComparisonOp};
 
     #[test]
     fn nominal_opaque_field_project_fails_closed_before_structural_descent() {
@@ -5557,6 +5495,73 @@ mod bool_logical_operator_arrow_tests {
         assert!(
             secret.nominal_opacity.is_some(),
             "Secret must consume the nominal-opacity carrier before Modeling dispatch"
+        );
+    }
+
+    #[test]
+    fn arithmetic_on_non_algebra_lhs_fails_closed_instead_of_synthesizing_arrow() {
+        // Director audit (post-merge finding): pre-fix, when the
+        // structural walk in `resolve_operator_arrow` did not encounter
+        // any algebra Conj on the LHS (e.g. an Arrow / Disj / Atom with
+        // no `inhabits` link), the fallback fabricated `(T,T)->T` for
+        // arithmetic and `(T,T)->Bool` for comparison. That invented
+        // an operator-rule arrow contract for a type that declares
+        // none. With the fail-closed check in place, the resolver
+        // returns None so the call site emits a typed
+        // unsupported-operator diagnostic.
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<non-algebra-lhs-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        // A non-algebra LHS: an anonymous Arrow declaration. No
+        // `inhabits`, no Conj on the walk path.
+        let arrow_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: arrow_decl,
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![int],
+                output: int,
+                body: ArrowBody::NoBody,
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let lhs = TypeShape::new(arrow_decl);
+
+        assert!(
+            resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Add), &lhs,)
+                .is_none(),
+            "`+` on a non-algebra LHS must fail-closed: the pre-fix \
+             fallback fabricated `(Arrow,Arrow)->Arrow` instead of \
+             surfacing an unsupported-operator diagnostic"
+        );
+        assert!(
+            resolve_operator_arrow(&mut dag, OperatorKind::Comparison(ComparisonOp::Lt), &lhs,)
+                .is_none(),
+            "`<` on a non-algebra LHS must fail-closed: the pre-fix \
+             fallback fabricated `(Arrow,Arrow)->Bool` instead of \
+             surfacing an unsupported-operator diagnostic"
+        );
+        assert!(
+            resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Div), &lhs,)
+                .is_none(),
+            "`/` on a non-algebra LHS must fail-closed: the pre-fix \
+             Div fallback synthesized `(Arrow,Arrow)->Result<Arrow,DivError>`"
+        );
+        assert!(
+            resolve_operator_arrow(&mut dag, OperatorKind::Logical(LogicalOp::And), &lhs,)
+                .is_none(),
+            "`&&` on a non-algebra LHS must fail-closed: the pre-fix \
+             logical fallback produced `(Bool,Bool)->Bool` regardless \
+             of LHS, inventing a carrier the type does not declare"
         );
     }
 
@@ -6707,6 +6712,48 @@ mod bool_logical_operator_arrow_tests {
     }
 
     #[test]
+    fn arithmetic_division_canonical_result_and_diverror_are_structural_not_path_keyed() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let result = canonical_result_decl(&dag).expect("bootstrap Result").id;
+        let div_error = canonical_div_error_decl(&dag)
+            .expect("bootstrap DivError")
+            .id;
+
+        dag.declaration_mut(result).span.file = "renamed/std/errors.dag".to_string();
+        dag.declaration_mut(div_error).span.file = "renamed/std/errors.dag".to_string();
+
+        let resolved = resolve_operator_arrow(
+            &mut dag,
+            OperatorKind::Arithmetic(ArithmeticOp::Div),
+            &TypeShape::new(int),
+        )
+        .expect("division must resolve through structural error primitives");
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &dag.declaration(resolved.output.declaration).connective
+        else {
+            panic!("division output must remain an instantiation");
+        };
+
+        assert_eq!(*template, result);
+        assert_eq!(arguments.len(), 2);
+        assert_eq!(arguments[0].value, int);
+        assert_eq!(arguments[1].value, div_error);
+        assert_eq!(
+            canonical_result_decl(&dag).expect("structural Result").id,
+            result
+        );
+        assert_eq!(
+            canonical_div_error_decl(&dag)
+                .expect("structural DivError")
+                .id,
+            div_error
+        );
+    }
+
+    #[test]
     fn arithmetic_division_ignores_user_shadowed_result_carriers() {
         let mut dag = Dag::new();
         let int = dag.int_shape().expect("bootstrap Int").declaration;
@@ -6794,6 +6841,13 @@ mod bool_logical_operator_arrow_tests {
             nominal_opacity: None,
             span,
         });
+        assert!(
+            !substrate_div_error_type_decl_suppressed_for_emit(
+                &dag,
+                dag.declaration(shadow_div_error)
+            ),
+            "payload-bearing DivError twin must not match the canonical unit-variant fingerprint",
+        );
 
         let resolved = resolve_operator_arrow(
             &mut dag,
@@ -6819,6 +6873,200 @@ mod bool_logical_operator_arrow_tests {
             arguments[1].value,
             canonical_div_error_decl(&dag).expect("std DivError").id
         );
+    }
+
+    #[test]
+    fn arithmetic_division_prefers_bootstrap_error_primitives_over_exact_twins() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let std_result = canonical_result_decl(&dag).expect("std Result").id;
+        let std_div_error = canonical_div_error_decl(&dag).expect("std DivError").id;
+        let span = synthetic_span();
+
+        let twin_ok = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_ok,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("ok".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_err = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_err,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("err".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_ok_payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_ok_payload,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: twin_ok,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_err_payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_err_payload,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: twin_err,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_result = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_result,
+            name: Some("Result".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Ok".to_string(),
+                        ty: twin_ok_payload,
+                    },
+                    Field {
+                        label: "Err".to_string(),
+                        ty: twin_err_payload,
+                    },
+                ],
+            },
+            type_params: vec![twin_ok, twin_err],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_divide_by_zero = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_divide_by_zero,
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_overflow = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_overflow,
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_div_error = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_div_error,
+            name: Some("DivError".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "DivideByZero".to_string(),
+                        ty: twin_divide_by_zero,
+                    },
+                    Field {
+                        label: "Overflow".to_string(),
+                        ty: twin_overflow,
+                    },
+                ],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span,
+        });
+
+        assert!(substrate_result_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(twin_result)
+        ));
+        assert!(substrate_div_error_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(twin_div_error)
+        ));
+        assert_eq!(canonical_result_decl(&dag).expect("Result").id, std_result);
+        assert_eq!(
+            canonical_div_error_decl(&dag).expect("DivError").id,
+            std_div_error
+        );
+
+        let resolved = resolve_operator_arrow(
+            &mut dag,
+            OperatorKind::Arithmetic(ArithmeticOp::Div),
+            &TypeShape::new(int),
+        )
+        .expect("division must resolve through bootstrap error primitives");
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &dag.declaration(resolved.output.declaration).connective
+        else {
+            panic!("division output must remain an instantiation");
+        };
+        assert_eq!(*template, std_result);
+        assert_eq!(arguments[1].value, std_div_error);
+        assert_ne!(*template, twin_result);
+        assert_ne!(arguments[1].value, twin_div_error);
     }
 
     #[test]

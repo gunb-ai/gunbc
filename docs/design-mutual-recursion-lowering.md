@@ -33,13 +33,20 @@ Mutual recursion lowers at `lower.rs` time into a `Behavior::Loop` whose `bound`
 
 ```dag
 // 🟢 TERMINAL. LoopBound distinguishes runtime-cardinality loops
-// from compile-time structural-descent (SCC) loops. Each variant
-// carries exactly the carrier it needs; illegal combinations
-// (Cardinality with members, Descent with a count port) are
-// unrepresentable. Dissolution receipt stamped in-doc below.
+// from compile-time structural-descent (SCC) loops. Descent also
+// carries the runtime measure port used by cost composition; cluster
+// topology remains in Dag.clusters. Each variant carries exactly the
+// carrier it needs; illegal combinations are unrepresentable.
+// Dissolution receipt stamped in-doc below.
 type LoopBound
   = Cardinality { count: PortId }        // existing: fold / descend-on-source
-  | Descent { cluster: ClusterId }       // new: SCC cluster descent
+  | Descent { cluster: ClusterId, measure: PortId } // new: SCC descent + cost measure
+
+fn loop_bound_measure(bound: LoopBound) -> PortId =
+  match bound {
+    Cardinality(payload) => payload.count
+    Descent(payload) => payload.measure
+  }
 
 // 🟢 TERMINAL. Handle into Dag.clusters sidecar.
 type ClusterId = Int
@@ -120,14 +127,14 @@ Per `feedback_coproduct_dissolution`, every new coproduct must pass the four-pat
 
 **Pattern 1 — Fact placement (multiple consumers, different DAG locations).** Both variants are attached to the same `LoopNode.bound` slot at the same DAG location. The variant discriminates KIND OF BOUND, not WHERE THE FACT LIVES. No fact-placement compression to dissolve. ✓ does not apply
 
-**Pattern 2 — Variant-is-data (same shape, different label).** `Cardinality { count: PortId }` and `Descent { cluster: ClusterId }` carry structurally different payloads. `PortId` is a runtime value handle; `ClusterId` is a compile-time sidecar index. They neither share a common payload shape nor differ only in label. ✓ does not apply
+**Pattern 2 — Variant-is-data (same shape, different label).** `Cardinality { count: PortId }` and `Descent { cluster: ClusterId, measure: PortId }` carry structurally different payloads. Both expose a cost/iteration measure through `loop_bound_measure`, but only `Descent` carries the `ClusterId` structural topology witness. They neither share a common payload shape nor differ only in label. ✓ does not apply
 
 **Pattern 3 — Algebraic-form (traces to intro/elim of algebraic structures).** Both variants express "evidence that a loop terminates," but the algebraic origins are genuinely distinct:
 - `Cardinality` reduces to cardinal-number bound on an iterable source (runtime port value ≤ source cardinality).
 - `Descent` reduces to structural-descent well-foundedness on an SCC (compile-time measure decreases on every intra-cluster edge).
 There is no shared algebraic form these dissolve into — they are two distinct termination authorities (runtime vs compile-time). ✓ does not apply
 
-**Pattern 4 — Dimensional (flat enum hides M-dimensional record).** The variants don't share a coordinate space. There is no `count + cluster` hidden record where one coordinate is `None` in each variant; the two fields are genuinely alternative representations of the bound, not orthogonal dimensions. ✓ does not apply
+**Pattern 4 — Dimensional (flat enum hides M-dimensional record).** The variants don't share a coordinate space beyond the projected measure. There is no `count + cluster` hidden record where one coordinate is `None` in each variant; `Descent.measure` is the measure facet and `Descent.cluster` is the structural proof facet. The accessor projects the shared measure without collapsing termination topology into cardinality. ✓ does not apply
 
 **Conclusion:** `LoopBound` is structurally irreducible. The coproduct is the correct shape. Stamp stands: `🟢 TERMINAL`.
 
@@ -176,7 +183,7 @@ Dag.nodes:
   Loop(LoopNode {
     id:          <loop_id>,
     body:        bind_a,                              // entry Bind for this call site
-    bound:       LoopBound::Descent { cluster: ClusterId(0) },
+    bound:       LoopBound::Descent { cluster: ClusterId(0), measure: <a's arg port> },
     source:      <a's arg port>,
     init:        <init port>,
     result_port: <loop result port>,
@@ -221,7 +228,7 @@ Lowering consumes this in order:
 2. For each member body, identify Transforms whose `target = Callable(decl)` where `decl ∈ cluster_members`; wrap each in a `TransformRef` (via `as_transform(node_id)`) and collect as `IntraClusterCall { transform: TransformRef }` entries.
 3. For each cluster member, construct a `MemberDescent { param: ParamRef }` via `param_of(member_node_id, slot)` using the per-member descent slot from `ClusterShape.per_member_positions`.
 4. Allocate a `ClusterId`; populate `Dag.clusters[cluster_id]` with the `Cluster` record (`NonSingletonList<MemberDescent>` + `NonEmptyList<IntraClusterCall>`).
-5. For each external call site into the cluster, emit one `Behavior::Loop` with `body = NodeId` of the entry member's Bind, `bound = LoopBound::Descent { cluster: cluster_id }`.
+5. For each external call site into the cluster, emit one `Behavior::Loop` with `body = NodeId` of the entry member's Bind, `bound = LoopBound::Descent { cluster: cluster_id, measure: pending_loop.source }`.
 
 The "mutual recursion is not yet supported in v3" rejection diagnostic at lower.rs:2293 **deletes** in the implementation PR.
 
@@ -231,7 +238,7 @@ A cluster called from N external sites produces N `Behavior::Loop` nodes, each r
 
 ### Consumers
 
-**Termination lens** (Lane 2 — `src/v3/lenses/termination.dag`, to be created): walks `Behavior::Loop`. When `bound = Descent { cluster }`, reads `Dag.clusters[cluster]` for members and builds a map `member_node → ParamRef` by querying each `MemberDescent.param`'s `member_of()` / `slot_of()` accessors.
+**Termination lens** (Lane 2 — `src/v3/lenses/termination.dag`, to be created): walks `Behavior::Loop`. When `bound = Descent { cluster, measure }`, reads `Dag.clusters[cluster]` for members and builds a map `member_node → ParamRef` by querying each `MemberDescent.param`'s `member_of()` / `slot_of()` accessors. The `measure` field is not topology; it is the runtime cost/iteration projection shared with `LoopNode.source` during migration.
 
 For each `IntraClusterCall.transform: TransformRef` in `intra_cluster_calls`, the lens resolves the edge's **caller** (the enclosing Bind of the Transform — looked up via `TransformRef` and an enclosing-Bind walk) and its **callee** (the Bind identified by `transform.target = Callable(decl)` that resolves back to one of the cluster members). It looks up **both** members' `ParamRef` entries:
 
@@ -246,7 +253,7 @@ This crosses the boundary the `ParamRef` carrier was introduced to preserve: the
 
 No SCC re-detection. Diagnostic on failure names the exact `TransformRef` (so `transform.span` points at the failing call site — two `a → b` sites diagnose distinctly) plus both `ParamRef` handles so the user can see which caller-param and which callee-param the check was keyed on.
 
-**Complexity lens** (Lane 2 — `src/v3/lenses/complexity.dag`): reads `Loop.bound × cost(body)` per the standard cost rule. When `bound = Descent`, the bound reads from the cluster's shared measure. No SCC re-detection. Matches SELF_HOSTING:708-713 verbatim.
+**Complexity lens** (Lane 2 — `src/v3/lenses/complexity.dag`): reads `Loop.bound × cost(body)` per the standard cost rule. When `bound = Descent`, the bound reads `loop_bound_measure(bound)` rather than rewalking SCC topology or rereading `LoopNode.source`. No SCC re-detection. Matches SELF_HOSTING:708-713 verbatim.
 
 **Inference pass** (`src/v3/compiler/src/infer.rs`): pure post-lowering consumer — inference runs after lowering per lib.rs:201-202. Reads cluster membership from the sidecar for bottom-up SCC-aware type inference. No separate SCC pass in inference.
 
@@ -340,7 +347,7 @@ None blocking. Two deliberately-deferred refinements for the implementation PR t
 
 **Substrate invariants:**
 - [ ] `type Behavior` in `src/v3/std/substrate.dag` still has exactly 5 variants (`Value | Transform | Branch | Loop | Bind`)
-- [ ] `type LoopBound` is a 2-variant coproduct (`Cardinality { count }`, `Descent { cluster }`)
+- [ ] `type LoopBound` is a 2-variant coproduct (`Cardinality { count }`, `Descent { cluster, measure }`)
 - [ ] `Cluster`, `MemberDescent`, `IntraClusterCall` terminal types present
 - [ ] `type Dag` in `src/v3/std/substrate.dag` carries `clusters: List<Cluster>` (matches Rust Dag sidecar; reflection FieldBinding test passes)
 - [ ] `Dag.clusters` sidecar present; write-once from lowering
@@ -381,7 +388,7 @@ None blocking. Two deliberately-deferred refinements for the implementation PR t
 
 - **Lane 3 Stage 3a.1** ([lane3-self-hosting-cycle.md](./lane3-self-hosting-cycle.md)) — approved design for that sub-stage
 - **DB-1 Correction shape** ([design-correction-shape.md](./design-correction-shape.md)) — cluster termination diagnostics emit Corrections
-- **DB-7 Symbolic cost** ([design-symbolic-cost-algebra.md](./design-symbolic-cost-algebra.md)) — reads `LoopBound::Descent.cluster` for recursion depth bound
+- **DB-7 Symbolic cost** ([design-symbolic-cost-algebra.md](./design-symbolic-cost-algebra.md)) — reads `loop_bound_measure(LoopBound)` for the cost measure and `LoopBound::Descent.cluster` only for structural recursion topology
 - **`src/v3/std/substrate.dag`** — `LoopBound` grows `Descent` variant; `Cluster`, `MemberDescent`, `IntraClusterCall` terminal types added; `type Dag` gains `clusters: List<Cluster>` field; substrate integrity primitives (`NonEmptyList<T>`, `NonSingletonList<T>`, `ParamRef`, `TransformRef`) declared here and consumed by the records above — all added together in the DB-9 Lane 3 Stage 3a.1 implementation PR
 - **ROADMAP Track 9** — substrate integrity primitives graduation ledger; `IndexedElement<T>.index` in `src/v3/std/list.dag` is the planned second consumer
 - **`src/v3/compiler/src/dag.rs`** — `Dag.clusters: Vec<Cluster>` sidecar
@@ -391,4 +398,3 @@ None blocking. Two deliberately-deferred refinements for the implementation PR t
 - **Thesis anchor** — THESIS:604-629 (five behaviors, no sixth)
 - **Invariants anchor** — INVARIANTS:555 + :665 (mutual recursion → descend over SCC — honored via lowering)
 - **SELF_HOSTING anchor** — §2.4 (lowering preserves real call topology — honored)
-

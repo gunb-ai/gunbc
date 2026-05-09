@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
+use v2_compiler::v2_std_core::CompilerDiagnostic;
 
 // ── Full DSL compilation (non-consensual: all files, no exceptions) ────
 
@@ -5675,6 +5676,250 @@ service test.Api {
     );
 }
 
+#[test]
+fn github_token_returns_typed_auth_token_from_credential_source() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/github/auth.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read github auth.dag");
+    let result = compile_dag_named("dsl/extdeps/github/auth.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_github_auth.rs");
+
+    assert!(
+        content.contains("pub use crate::extdeps_github_github::{GitHubAuthToken, GitHubScope}")
+            && content.contains("Result<Rc<GitHubAuthToken>"),
+        "ROADMAP:376: expected github_token to return the typed GitHubAuthToken carrier, got:\n{content}"
+    );
+    assert!(
+        content.contains("pub struct GitHubAuthSource")
+            && content.contains("pub token_metadata: Rc<GitHubTokenMetadataAuthority>")
+            && content.contains("pub enum GitHubTokenMetadataAuthority")
+            && content.contains("DeclaredGitHubTokenMetadata"),
+        "ROADMAP:376: expected credential source metadata to be explicitly declared/unverified, got:\n{content}"
+    );
+    assert!(
+        content.contains("structural_coverage_gap_github_token_metadata_verification")
+            && content.contains("declared_metadata:scopes")
+            && content.contains("declared_metadata:expires_at"),
+        "ROADMAP:376: expected declared token metadata verification gap to stay tracked, got:\n{content}"
+    );
+    assert!(
+        content.contains("CredentialSource::EnvVar")
+            && content.contains("GITHUB_TOKEN")
+            && content.contains("env_credential"),
+        "ROADMAP:376: expected default credential source to use EnvVar via env_credential, got:\n{content}"
+    );
+    assert!(
+        !content.contains("gunbai-secrets")
+            && !content.contains("github-token")
+            && !content.contains("SecretManagerAccessVersion"),
+        "ROADMAP:376: github_token must not hardcode the GCP Secret Manager policy, got:\n{content}"
+    );
+}
+
+#[test]
+fn github_create_review_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/github/pulls.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read github pulls.dag");
+    let result = compile_dag_named("dsl/extdeps/github/pulls.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_github_pulls.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<PullReview> = response.json().await?"),
+        "expected CreateReview 200 response to deserialize through typed PullReview, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).id.clone()")
+            && content.contains("(__rest_wire).html_url.clone()"),
+        "expected CreateReview output fields to project from typed PullReview, got:\n{content}"
+    );
+    assert!(
+        content.contains("structural_coverage_gap_github_pull_review_response_residual")
+            && content.contains("json_pending:user")
+            && content.contains("json_pending:submitted_at"),
+        "expected unmodeled GitHub review response fields to stay tracked, got:\n{content}"
+    );
+}
+
+#[test]
+fn github_create_review_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct PullReview {
+        id: i64,
+        body: String,
+        state: String,
+        commit_id: String,
+        html_url: String,
+    }
+
+    let body: PullReview = serde_json::from_value(serde_json::json!({
+        "id": 80,
+        "node_id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3ODA=",
+        "user": { "login": "octocat", "id": 1, "type": "User", "site_admin": false },
+        "body": "This is close to perfect! Please address the suggested inline change.",
+        "state": "CHANGES_REQUESTED",
+        "html_url": "https://github.com/octocat/Hello-World/pull/12#pullrequestreview-80",
+        "pull_request_url": "https://api.github.com/repos/octocat/Hello-World/pulls/12",
+        "_links": {
+            "html": { "href": "https://github.com/octocat/Hello-World/pull/12#pullrequestreview-80" },
+            "pull_request": { "href": "https://api.github.com/repos/octocat/Hello-World/pulls/12" }
+        },
+        "submitted_at": "2019-11-17T17:43:43Z",
+        "commit_id": "ecdd80bb57125d7ba9641ffaa4d7d2c19d3f3091",
+        "author_association": "COLLABORATOR"
+    }))
+    .expect("representative GitHub create-review response should fit narrow PullReview");
+
+    assert_eq!(body.id, 80);
+    assert_eq!(body.state, "CHANGES_REQUESTED");
+    assert_eq!(body.commit_id, "ecdd80bb57125d7ba9641ffaa4d7d2c19d3f3091");
+    assert_eq!(
+        body.html_url,
+        "https://github.com/octocat/Hello-World/pull/12#pullrequestreview-80"
+    );
+    assert!(body.body.contains("suggested inline change"));
+}
+
+#[test]
+fn github_oidc_get_token_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/cloud/gcp/sts.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read gcp sts.dag");
+    let result = compile_dag_named("dsl/extdeps/cloud/gcp/sts.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_cloud_gcp_sts.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<GitHubOidcToken200Body> = response.json().await?"),
+        "expected GitHub OIDC GetToken 200 response to deserialize through typed body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).value.clone()"),
+        "expected GitHub OIDC GetToken subject_token to project from typed body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/value\")"),
+        "GitHub OIDC GetToken typed 200 body must not use JSON pointer extraction, got:\n{content}"
+    );
+}
+
+#[test]
+fn github_oidc_get_token_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct GitHubOidcToken200Body {
+        value: String,
+        count: i64,
+    }
+
+    let body: GitHubOidcToken200Body = serde_json::from_value(serde_json::json!({
+        "value": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.mock-oidc-token",
+        "count": 1
+    }))
+    .expect("representative GitHub OIDC token response should fit typed body");
+
+    assert!(body.value.starts_with("eyJ"));
+    assert_eq!(body.count, 1);
+}
+
+#[test]
+fn gcp_iam_generate_access_token_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/cloud/gcp/iam.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read gcp iam.dag");
+    let result = compile_dag_named("dsl/extdeps/cloud/gcp/iam.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_cloud_gcp_iam.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<GcpGenerateAccessToken200Body> = response.json().await?"),
+        "expected IAM GenerateAccessToken 200 response to deserialize through typed body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).access_token.clone()")
+            && content.contains("(__rest_wire).expire_time.clone()"),
+        "expected IAM GenerateAccessToken outputs to project from typed body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/accessToken\")")
+            && !content.contains("json_body.pointer(\"/expireTime\")"),
+        "IAM GenerateAccessToken typed 200 body must not use JSON pointer extraction, got:\n{content}"
+    );
+}
+
+#[test]
+fn gcp_iam_generate_access_token_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct GcpGenerateAccessToken200Body {
+        #[serde(rename = "accessToken")]
+        access_token: String,
+        #[serde(rename = "expireTime")]
+        expire_time: String,
+    }
+
+    let body: GcpGenerateAccessToken200Body = serde_json::from_value(serde_json::json!({
+        "accessToken": "ya29.c.MockImpersonatedAccessToken",
+        "expireTime": "2026-01-01T01:00:00Z"
+    }))
+    .expect("representative IAM generateAccessToken response should fit typed body");
+
+    assert!(body.access_token.starts_with("ya29."));
+    assert_eq!(body.expire_time, "2026-01-01T01:00:00Z");
+}
+
+#[test]
+fn google_oauth_refresh_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/cloud/gcp/gcp.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read gcp.dag");
+    let result = compile_dag_named("dsl/extdeps/cloud/gcp/gcp.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_cloud_gcp_gcp.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<GoogleOAuth2Refresh200Body> = response.json().await?"),
+        "expected Google OAuth Refresh 200 response to deserialize through typed body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).access_token.clone()")
+            && content.contains("(__rest_wire).expires_in.clone()"),
+        "expected Google OAuth Refresh outputs to project from typed body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/access_token\")")
+            && !content.contains("json_body.pointer(\"/expires_in\")"),
+        "Google OAuth Refresh typed 200 body must not use JSON pointer extraction, got:\n{content}"
+    );
+}
+
+#[test]
+fn google_oauth_refresh_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct GoogleOAuth2Refresh200Body {
+        access_token: String,
+        expires_in: i64,
+        token_type: String,
+        scope: Option<String>,
+    }
+
+    let body: GoogleOAuth2Refresh200Body = serde_json::from_value(serde_json::json!({
+        "access_token": "ya29.a0.MockAccessToken",
+        "expires_in": 3600,
+        "token_type": "Bearer",
+        "scope": "https://www.googleapis.com/auth/cloud-platform"
+    }))
+    .expect("representative Google OAuth refresh response should fit typed body");
+
+    assert!(body.access_token.starts_with("ya29."));
+    assert_eq!(body.expires_in, 3600);
+    assert_eq!(body.token_type, "Bearer");
+    assert_eq!(
+        body.scope.as_deref(),
+        Some("https://www.googleapis.com/auth/cloud-platform")
+    );
+}
+
 // ── RE-2: review.dag compiles to Rust ───────────────────────────────────
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
 // This is the acceptance gate for RE-2.
@@ -6196,6 +6441,415 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     );
 }
 
+fn attrs_immediately_above_enum<'a>(content: &'a str, enum_decl: &str) -> Vec<&'a str> {
+    let pos = content
+        .find(enum_decl)
+        .unwrap_or_else(|| panic!("expected {enum_decl} in emitted module"));
+    let prelude = &content[..pos];
+    let mut attrs_above: Vec<&str> = Vec::new();
+    for line in prelude.lines().rev() {
+        let t = line.trim();
+        if t.is_empty() {
+            if attrs_above.is_empty() {
+                continue;
+            }
+            break;
+        }
+        if t.starts_with("#[") {
+            attrs_above.push(t);
+            continue;
+        }
+        if t.starts_with("//") {
+            continue;
+        }
+        break;
+    }
+    attrs_above
+}
+
+fn enum_block<'a>(content: &'a str, enum_decl: &str) -> &'a str {
+    let pos = content
+        .find(enum_decl)
+        .unwrap_or_else(|| panic!("expected {enum_decl} in emitted module"));
+    let next_enum = content[pos + enum_decl.len()..]
+        .find("\npub enum ")
+        .map(|i| pos + enum_decl.len() + i)
+        .unwrap_or(content.len());
+    &content[pos..next_enum]
+}
+
+#[test]
+fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
+
+    for (enum_decl, tag, renames) in [
+        (
+            "pub enum AnthropicChatMessage",
+            "#[serde(tag = \"role\")]",
+            &[
+                "#[serde(rename = \"user\")]",
+                "#[serde(rename = \"assistant\")]",
+            ][..],
+        ),
+        (
+            "pub enum AnthropicUserContentBlock",
+            "#[serde(tag = \"type\")]",
+            &[
+                "#[serde(rename = \"text\")]",
+                "#[serde(rename = \"tool_result\")]",
+            ][..],
+        ),
+        (
+            "pub enum AnthropicAssistantContentBlock",
+            "#[serde(tag = \"type\")]",
+            &[
+                "#[serde(rename = \"text\")]",
+                "#[serde(rename = \"tool_use\")]",
+            ][..],
+        ),
+    ] {
+        let attrs = attrs_immediately_above_enum(&content, enum_decl);
+        assert!(
+            attrs.contains(&tag),
+            "expected {tag} immediately above {enum_decl}; attrs: {:?}",
+            attrs
+        );
+        let block = enum_block(&content, enum_decl);
+        for rename in renames {
+            assert!(
+                block.contains(rename),
+                "expected {rename} in {enum_decl} block; got:\n{block}"
+            );
+        }
+    }
+
+    let stop_attrs = attrs_immediately_above_enum(&content, "pub enum AnthropicStopReason");
+    assert!(
+        stop_attrs.contains(&"#[serde(rename_all = \"snake_case\")]"),
+        "expected AnthropicStopReason to remain a snake-case string enum; attrs: {:?}",
+        stop_attrs
+    );
+    assert!(
+        !stop_attrs.iter().any(|attr| attr.contains("tag =")),
+        "AnthropicStopReason must not become an internally tagged object; attrs: {:?}",
+        stop_attrs
+    );
+}
+
+#[test]
+fn coproduct_wire_contract_target_must_name_local_coproduct() {
+    let source = r#"module stale_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data stale_contract: CoproductWireContract = {
+  coproduct: "MissingEnum",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "stale_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/stale_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content.contains(
+                "CoproductWireContract target does not name a local coproduct: MissingEnum"
+            ),
+        "stale CoproductWireContract target must fail closed in emitted Rust; got:\n{content}"
+    );
+}
+
+#[test]
+fn structural_coproduct_wire_contract_shape_is_not_authority() {
+    let source = r#"module structural_coproduct_wire_contract
+import std.serialization { VariantEncoding }
+
+type FakeContract {
+  coproduct: String
+  encoding: VariantEncoding
+}
+
+data fake_contract: FakeContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { tag_field: "kind", naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "structural_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/structural_coproduct_wire_contract.rs");
+    assert!(
+        !content.contains("CoproductWireContract target does not name"),
+        "structural lookalikes must not be validated as CoproductWireContract authority; got:\n{content}"
+    );
+    let attrs = attrs_immediately_above_enum(&content, "pub enum RealEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "structural lookalikes must not override the default serde contract; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
+#[test]
+fn local_same_name_coproduct_wire_contract_is_not_authority() {
+    let source = r#"module local_spoof_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+type CoproductWireContract {
+  coproduct: String
+  encoding: VariantEncoding
+}
+
+data spoof_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { tag_field: "kind", naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "local_spoof_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/local_spoof_coproduct_wire_contract.rs");
+    let attrs = attrs_immediately_above_enum(&content, "pub enum RealEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "local same-name types must not spoof std.serialization.CoproductWireContract; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
+#[test]
+fn local_alias_coproduct_wire_contract_is_not_authority() {
+    let source = r#"module local_alias_spoof_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+type LocalContractShape {
+  coproduct: String
+  encoding: VariantEncoding
+}
+
+type CoproductWireContract = LocalContractShape
+
+data spoof_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { tag_field: "kind", naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "local_alias_spoof_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/local_alias_spoof_coproduct_wire_contract.rs");
+    assert!(
+        !content.contains("use crate::std_serialization::{CoproductWireContract"),
+        "local same-name aliases must suppress the imported std.serialization.CoproductWireContract; got:\n{content}"
+    );
+    let attrs = attrs_immediately_above_enum(&content, "pub enum RealEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "local same-name aliases must not spoof std.serialization.CoproductWireContract; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
+#[test]
+fn local_decl_coproduct_wire_contract_suppresses_std_import() {
+    let source = r#"module local_decl_spoof_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+type CoproductWireContract
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "local_decl_spoof_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/local_decl_spoof_coproduct_wire_contract.rs");
+    assert!(
+        !content.contains("use crate::std_serialization::{CoproductWireContract"),
+        "local same-name declarations must suppress the imported std.serialization.CoproductWireContract; got:\n{content}"
+    );
+    let attrs = attrs_immediately_above_enum(&content, "pub enum RealEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "local same-name declarations must not affect unrelated coproduct serde; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
+#[test]
+fn coproduct_wire_contract_affix_policy_must_match_variant_names() {
+    let source = r#"module bad_affix_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data bad_affix_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixAndSnakeCase { prefix: "Usr" } }
+}
+
+type RealEnum
+  = UserText { text: String }
+"#;
+    let result = compile_dag_named(
+        "bad_affix_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/bad_affix_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content
+                .contains("variant UserText does not satisfy declared wire rename prefix: Usr"),
+        "declared affix policy must fail closed when a variant does not match; got:\n{content}"
+    );
+}
+
+#[test]
+fn coproduct_wire_contract_string_variant_requires_unit_variants() {
+    let source = r#"module fielded_string_variant_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data string_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: StringVariant { naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "fielded_string_variant_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(
+        &result,
+        "src/fielded_string_variant_coproduct_wire_contract.rs",
+    );
+    assert!(
+        content.contains("compile_error!")
+            && content.contains(
+                "CoproductWireContract StringVariant requires a nullary-only coproduct: RealEnum"
+            ),
+        "fielded coproducts must not accept plain StringVariant wire contracts; got:\n{content}"
+    );
+}
+
+#[test]
+fn internally_tagged_coproduct_wire_contract_requires_literal_tag_field() {
+    let source = r#"module malformed_internal_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data bad_internal_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "malformed_internal_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/malformed_internal_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content.contains("InternallyTaggedObject requires a literal tag_field"),
+        "malformed InternallyTaggedObject contracts must fail closed; got:\n{content}"
+    );
+}
+
+#[test]
+fn coproduct_wire_contract_requires_declared_naming_fields() {
+    let source = r#"module malformed_naming_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data missing_naming_contract: CoproductWireContract = {
+  coproduct: "MissingNamingEnum",
+  encoding: InternallyTaggedObject { tag_field: "type" }
+}
+
+data missing_prefix_contract: CoproductWireContract = {
+  coproduct: "MissingPrefixEnum",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixAndSnakeCase }
+}
+
+type MissingNamingEnum
+  = RealPayload { value: String }
+
+type MissingPrefixEnum
+  = UserText { text: String }
+"#;
+    let result = compile_dag_named(
+        "malformed_naming_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/malformed_naming_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content.contains("InternallyTaggedObject requires a naming policy")
+            && content.contains("StripPrefixAndSnakeCase requires a literal prefix"),
+        "malformed naming policies must fail closed at decode time; got:\n{content}"
+    );
+}
+
+#[test]
+fn unit_coproduct_without_wire_contract_keeps_tagged_default() {
+    let source = r#"module no_wire_contract_unit_enum
+
+type LocalUnitEnum
+  = First
+  | Second
+"#;
+    let result = compile_dag_named("no_wire_contract_unit_enum.dag", source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/no_wire_contract_unit_enum.rs");
+    let attrs = attrs_immediately_above_enum(&content, "pub enum LocalUnitEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "unit coproducts without a declared wire_contract must keep tagged-object default; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
 // Golden JSON for the narrow `OpenAiChatMessage { role, content }` row under the same
 // serde policy as emitted code (`#[serde(rename_all = "snake_case")]` on the role enum).
 // Guards Chat Completions `messages[].role` strings without provider string branching.
@@ -6257,6 +6911,555 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
     }
 }
 
+// Golden JSON for Anthropic Messages request rows under the same serde policy
+// emitted from `CoproductWireContract` rows in `dsl/extdeps/llm/anthropic.dag`.
+// Guards outer `messages[].role` and flat content-block `type` discriminators.
+#[test]
+fn anthropic_messages_request_body_json_matches_messages_wire_tags() {
+    #[derive(serde::Serialize)]
+    #[serde(tag = "role")]
+    enum AnthropicChatMessage {
+        #[serde(rename = "user")]
+        UserMessage {
+            content: Vec<AnthropicUserContentBlock>,
+        },
+        #[serde(rename = "assistant")]
+        AssistantMessage {
+            content: Vec<AnthropicAssistantContentBlock>,
+        },
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(tag = "type")]
+    enum AnthropicUserContentBlock {
+        #[serde(rename = "text")]
+        UserTextBlock { text: String },
+        #[serde(rename = "tool_result")]
+        UserToolResultBlock {
+            tool_use_id: String,
+            content: Option<AnthropicToolResultContent>,
+            is_error: Option<bool>,
+        },
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(tag = "type")]
+    enum AnthropicAssistantContentBlock {
+        #[serde(rename = "text")]
+        AssistantTextBlock { text: String },
+        #[serde(rename = "tool_use")]
+        AssistantToolUseBlock {
+            id: String,
+            name: String,
+            input: Value,
+        },
+    }
+
+    #[derive(serde::Serialize)]
+    enum AnthropicToolResultContent {
+        ToolResultText { text: String },
+    }
+
+    let body = serde_json::json!({
+        "messages": [
+            AnthropicChatMessage::UserMessage {
+                content: vec![
+                    AnthropicUserContentBlock::UserTextBlock {
+                        text: "hello".to_string(),
+                    },
+                    AnthropicUserContentBlock::UserToolResultBlock {
+                        tool_use_id: "toolu_01".to_string(),
+                        content: None,
+                        is_error: Some(false),
+                    },
+                ],
+            },
+            AnthropicChatMessage::AssistantMessage {
+                content: vec![
+                    AnthropicAssistantContentBlock::AssistantTextBlock {
+                        text: "checking".to_string(),
+                    },
+                    AnthropicAssistantContentBlock::AssistantToolUseBlock {
+                        id: "toolu_01".to_string(),
+                        name: "get_weather".to_string(),
+                        input: serde_json::json!({ "city": "SF" }),
+                    },
+                ],
+            },
+        ],
+    });
+
+    assert_eq!(
+        body["messages"][0]["role"], "user",
+        "UserMessage must serialize as Anthropic role=user"
+    );
+    assert_eq!(
+        body["messages"][0]["content"][0]["type"], "text",
+        "UserTextBlock must serialize as Anthropic type=text"
+    );
+    assert_eq!(
+        body["messages"][0]["content"][1]["type"], "tool_result",
+        "UserToolResultBlock must serialize as Anthropic type=tool_result"
+    );
+    assert_eq!(
+        body["messages"][1]["role"], "assistant",
+        "AssistantMessage must serialize as Anthropic role=assistant"
+    );
+    assert_eq!(
+        body["messages"][1]["content"][0]["type"], "text",
+        "AssistantTextBlock must serialize as Anthropic type=text"
+    );
+    assert_eq!(
+        body["messages"][1]["content"][1]["type"], "tool_use",
+        "AssistantToolUseBlock must serialize as Anthropic type=tool_use"
+    );
+}
+
+#[test]
+fn openai_chat_completion_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<OpenAiChatCompletion200Body> = response.json().await?"),
+        "expected ChatCompletion 200 response to deserialize through typed OpenAiChatCompletion200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).choices")
+            && content.contains(".message).content.clone()")
+            && content.contains("(__rest_wire).usage).prompt_tokens.clone()"),
+        "expected ChatCompletion output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/choices/0/message/content\")"),
+        "ChatCompletion content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
+    );
+}
+
+#[test]
+fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct Body {
+        choices: Vec<Choice>,
+        usage: Usage,
+        service_tier: Option<String>,
+        system_fingerprint: Option<String>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Choice {
+        message: Message,
+        logprobs: Option<Logprobs>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Message {
+        content: String,
+        refusal: Option<String>,
+        annotations: Option<Vec<Annotation>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum Annotation {
+        UrlCitation { url_citation: UrlCitation },
+    }
+
+    #[derive(serde::Deserialize)]
+    struct UrlCitation {
+        start_index: i64,
+        end_index: i64,
+        title: String,
+        url: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Logprobs {
+        content: Option<Vec<TokenLogprob>>,
+        refusal: Option<Vec<TokenLogprob>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TokenLogprob {
+        token: String,
+        bytes: Option<Vec<i64>>,
+        logprob: f64,
+        top_logprobs: Vec<TopLogprob>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TopLogprob {
+        token: String,
+        bytes: Option<Vec<i64>>,
+        logprob: f64,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Usage {
+        completion_tokens_details: Option<CompletionTokenDetails>,
+        prompt_tokens_details: Option<PromptTokenDetails>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct CompletionTokenDetails {
+        accepted_prediction_tokens: Option<i64>,
+        audio_tokens: Option<i64>,
+        reasoning_tokens: Option<i64>,
+        rejected_prediction_tokens: Option<i64>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct PromptTokenDetails {
+        audio_tokens: Option<i64>,
+        cached_tokens: Option<i64>,
+    }
+
+    let wire = serde_json::json!({
+        "choices": [{
+            "message": {
+                "content": "safety response",
+                "refusal": "safety refusal",
+                "annotations": [{
+                    "type": "url_citation",
+                    "url_citation": {
+                        "start_index": 0,
+                        "end_index": 12,
+                        "title": "reference",
+                        "url": "https://example.com/ref"
+                    }
+                }]
+            },
+            "logprobs": {
+                "content": [{
+                    "token": "Hello",
+                    "bytes": [72, 101, 108, 108, 111],
+                    "logprob": -0.01,
+                    "top_logprobs": [{
+                        "token": "Hi",
+                        "bytes": [72, 105],
+                        "logprob": -0.2
+                    }]
+                }],
+                "refusal": [{
+                    "token": "No",
+                    "bytes": null,
+                    "logprob": -0.3,
+                    "top_logprobs": []
+                }]
+            }
+        }],
+        "usage": {
+            "completion_tokens_details": {
+                "accepted_prediction_tokens": 3,
+                "audio_tokens": 0,
+                "reasoning_tokens": 2,
+                "rejected_prediction_tokens": 1
+            },
+            "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 8
+            }
+        },
+        "service_tier": "default",
+        "system_fingerprint": "fp_mock"
+    });
+
+    let body: Body = serde_json::from_value(wire).expect("representative ChatCompletion 200 wire");
+    assert_eq!(body.service_tier.as_deref(), Some("default"));
+    assert_eq!(body.system_fingerprint.as_deref(), Some("fp_mock"));
+    assert_eq!(body.choices[0].message.content, "safety response");
+    assert_eq!(
+        body.choices[0].message.refusal.as_deref(),
+        Some("safety refusal")
+    );
+    let annotation = &body.choices[0].message.annotations.as_ref().unwrap()[0];
+    match annotation {
+        Annotation::UrlCitation { url_citation } => {
+            assert_eq!(url_citation.start_index, 0);
+            assert_eq!(url_citation.end_index, 12);
+            assert_eq!(url_citation.title, "reference");
+            assert_eq!(url_citation.url, "https://example.com/ref");
+        }
+    }
+    let content_logprob = &body.choices[0]
+        .logprobs
+        .as_ref()
+        .unwrap()
+        .content
+        .as_ref()
+        .unwrap()[0];
+    assert_eq!(content_logprob.token, "Hello");
+    assert_eq!(
+        content_logprob.bytes.as_ref().unwrap(),
+        &[72, 101, 108, 108, 111]
+    );
+    assert!(content_logprob.logprob < 0.0);
+    assert_eq!(content_logprob.top_logprobs[0].token, "Hi");
+    assert_eq!(
+        content_logprob.top_logprobs[0].bytes.as_ref().unwrap(),
+        &[72, 105]
+    );
+    assert!(content_logprob.top_logprobs[0].logprob < 0.0);
+    assert_eq!(
+        body.choices[0]
+            .logprobs
+            .as_ref()
+            .unwrap()
+            .refusal
+            .as_ref()
+            .unwrap()[0]
+            .token,
+        "No"
+    );
+    let completion_details = body.usage.completion_tokens_details.unwrap();
+    assert_eq!(completion_details.accepted_prediction_tokens, Some(3));
+    assert_eq!(completion_details.audio_tokens, Some(0));
+    assert_eq!(completion_details.reasoning_tokens, Some(2));
+    assert_eq!(completion_details.rejected_prediction_tokens, Some(1));
+    let prompt_details = body.usage.prompt_tokens_details.unwrap();
+    assert_eq!(prompt_details.audio_tokens, Some(0));
+    assert_eq!(prompt_details.cached_tokens, Some(8));
+}
+
+#[test]
+fn openai_responses_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<OpenAiResponses200Body> = response.json().await?"),
+        "expected Responses 200 response to deserialize through typed OpenAiResponses200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).output")
+            && content.contains(".content")
+            && content.contains(".text.clone()")
+            && content.contains("(__rest_wire).usage).output_tokens.clone()"),
+        "expected Responses output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/output/0/content/0/text\")"),
+        "Responses content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
+    );
+}
+
+#[test]
+fn openai_responses_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct Body {
+        id: String,
+        object: String,
+        created_at: Option<i64>,
+        status: Option<String>,
+        model: String,
+        output: Vec<OutputItem>,
+        usage: Usage,
+        service_tier: Option<String>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct OutputItem {
+        id: Option<String>,
+        #[serde(rename = "type")]
+        item_type: String,
+        status: Option<String>,
+        role: Option<String>,
+        content: Vec<OutputContent>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct OutputContent {
+        #[serde(rename = "type")]
+        content_type: String,
+        text: String,
+        annotations: Option<Vec<Annotation>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum Annotation {
+        FileCitation {
+            file_id: String,
+            filename: String,
+            index: i64,
+        },
+        UrlCitation {
+            start_index: i64,
+            end_index: i64,
+            title: String,
+            url: String,
+        },
+        ContainerFileCitation {
+            container_id: String,
+            file_id: String,
+            filename: String,
+            start_index: i64,
+            end_index: i64,
+        },
+        FilePath {
+            file_id: String,
+            index: i64,
+        },
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Usage {
+        input_tokens: i64,
+        output_tokens: i64,
+        total_tokens: Option<i64>,
+        input_tokens_details: Option<InputTokenDetails>,
+        output_tokens_details: Option<OutputTokenDetails>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct InputTokenDetails {
+        cached_tokens: Option<i64>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct OutputTokenDetails {
+        reasoning_tokens: Option<i64>,
+    }
+
+    let wire = serde_json::json!({
+        "id": "resp_mock",
+        "object": "response",
+        "created_at": 1741386163,
+        "status": "completed",
+        "model": "gpt-4o",
+        "output": [{
+            "id": "msg_mock",
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [{
+                "type": "output_text",
+                "text": "hello",
+                "annotations": [
+                    {
+                        "type": "url_citation",
+                        "start_index": 0,
+                        "end_index": 5,
+                        "title": "reference",
+                        "url": "https://example.com/ref"
+                    },
+                    {
+                        "type": "file_citation",
+                        "file_id": "file_123",
+                        "filename": "notes.txt",
+                        "index": 1
+                    },
+                    {
+                        "type": "container_file_citation",
+                        "container_id": "cntr_123",
+                        "file_id": "file_456",
+                        "filename": "result.txt",
+                        "start_index": 6,
+                        "end_index": 11
+                    },
+                    {
+                        "type": "file_path",
+                        "file_id": "file_789",
+                        "index": 2
+                    }
+                ]
+            }]
+        }],
+        "usage": {
+            "input_tokens": 32,
+            "input_tokens_details": { "cached_tokens": 7 },
+            "output_tokens": 18,
+            "output_tokens_details": { "reasoning_tokens": 5 },
+            "total_tokens": 50
+        },
+        "service_tier": "default"
+    });
+
+    let body: Body = serde_json::from_value(wire).expect("representative Responses 200 wire");
+    assert_eq!(body.id, "resp_mock");
+    assert_eq!(body.object, "response");
+    assert_eq!(body.created_at, Some(1741386163));
+    assert_eq!(body.status.as_deref(), Some("completed"));
+    assert_eq!(body.model, "gpt-4o");
+    assert_eq!(body.service_tier.as_deref(), Some("default"));
+    assert_eq!(body.output[0].id.as_deref(), Some("msg_mock"));
+    assert_eq!(body.output[0].item_type, "message");
+    assert_eq!(body.output[0].status.as_deref(), Some("completed"));
+    assert_eq!(body.output[0].role.as_deref(), Some("assistant"));
+    let content = &body.output[0].content[0];
+    assert_eq!(content.content_type, "output_text");
+    assert_eq!(content.text, "hello");
+    let annotations = content.annotations.as_ref().unwrap();
+    match &annotations[0] {
+        Annotation::UrlCitation {
+            start_index,
+            end_index,
+            title,
+            url,
+        } => {
+            assert_eq!(*start_index, 0);
+            assert_eq!(*end_index, 5);
+            assert_eq!(title, "reference");
+            assert_eq!(url, "https://example.com/ref");
+        }
+        _ => panic!("expected url_citation annotation"),
+    }
+    match &annotations[1] {
+        Annotation::FileCitation {
+            file_id,
+            filename,
+            index,
+        } => {
+            assert_eq!(file_id, "file_123");
+            assert_eq!(filename, "notes.txt");
+            assert_eq!(*index, 1);
+        }
+        _ => panic!("expected file_citation annotation"),
+    }
+    match &annotations[2] {
+        Annotation::ContainerFileCitation {
+            container_id,
+            file_id,
+            filename,
+            start_index,
+            end_index,
+        } => {
+            assert_eq!(container_id, "cntr_123");
+            assert_eq!(file_id, "file_456");
+            assert_eq!(filename, "result.txt");
+            assert_eq!(*start_index, 6);
+            assert_eq!(*end_index, 11);
+        }
+        _ => panic!("expected container_file_citation annotation"),
+    }
+    match &annotations[3] {
+        Annotation::FilePath { file_id, index } => {
+            assert_eq!(file_id, "file_789");
+            assert_eq!(*index, 2);
+        }
+        _ => panic!("expected file_path annotation"),
+    }
+    assert_eq!(body.usage.input_tokens, 32);
+    assert_eq!(body.usage.output_tokens, 18);
+    assert_eq!(body.usage.total_tokens, Some(50));
+    assert_eq!(
+        body.usage.input_tokens_details.unwrap().cached_tokens,
+        Some(7)
+    );
+    assert_eq!(
+        body.usage.output_tokens_details.unwrap().reasoning_tokens,
+        Some(5)
+    );
+}
+
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {
@@ -6304,6 +7507,252 @@ service test.Llm {
         content.contains("pointer(\"/model\")"),
         "RE-4b: expected JSON pointer extraction for model, got:\n{content}"
     );
+}
+
+#[test]
+fn anthropic_messages_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<AnthropicMessages200Body> = response.json().await?"),
+        "expected Anthropic Messages 200 response to deserialize through typed AnthropicMessages200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).content")
+            && content.contains(".text.clone()")
+            && content.contains("(__rest_wire).usage).input_tokens.clone()"),
+        "expected Anthropic Messages output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/content/0/text\")"),
+        "Anthropic Messages content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
+    );
+}
+
+#[test]
+fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct Body {
+        content: Vec<TextBlock>,
+        usage: Usage,
+        container: Option<Value>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TextBlock {
+        citations: Option<Vec<Citation>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "type")]
+    enum Citation {
+        #[serde(rename = "char_location")]
+        Char {
+            cited_text: String,
+            document_index: i64,
+            document_title: Option<String>,
+            file_id: Option<String>,
+            start_char_index: i64,
+            end_char_index: i64,
+        },
+        #[serde(rename = "page_location")]
+        Page {
+            cited_text: String,
+            document_index: i64,
+            document_title: Option<String>,
+            file_id: Option<String>,
+            start_page_number: i64,
+            end_page_number: i64,
+        },
+        #[serde(rename = "content_block_location")]
+        ContentBlock {
+            cited_text: String,
+            document_index: i64,
+            document_title: Option<String>,
+            file_id: Option<String>,
+            start_block_index: i64,
+            end_block_index: i64,
+        },
+        #[serde(rename = "web_search_result_location")]
+        WebSearchResult {
+            cited_text: String,
+            encrypted_index: String,
+            title: Option<String>,
+            url: String,
+        },
+        #[serde(rename = "search_result_location")]
+        SearchResult {
+            cited_text: String,
+            source: String,
+            title: Option<String>,
+            search_result_index: i64,
+            start_block_index: i64,
+            end_block_index: i64,
+        },
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Usage {
+        cache_creation_input_tokens: Option<i64>,
+        cache_read_input_tokens: Option<i64>,
+        service_tier: Option<String>,
+    }
+
+    let wire = serde_json::json!({
+        "content": [{
+            "citations": [
+                {
+                    "type": "char_location",
+                    "cited_text": "quoted text",
+                    "document_index": 0,
+                    "document_title": "doc",
+                    "file_id": "file_123",
+                    "start_char_index": 4,
+                    "end_char_index": 15
+                },
+                {
+                    "type": "page_location",
+                    "cited_text": "page text",
+                    "document_index": 1,
+                    "document_title": null,
+                    "file_id": null,
+                    "start_page_number": 2,
+                    "end_page_number": 3
+                },
+                {
+                    "type": "content_block_location",
+                    "cited_text": "block text",
+                    "document_index": 2,
+                    "document_title": "blocks",
+                    "file_id": null,
+                    "start_block_index": 5,
+                    "end_block_index": 6
+                },
+                {
+                    "type": "web_search_result_location",
+                    "cited_text": "web text",
+                    "encrypted_index": "enc_123",
+                    "title": "web result",
+                    "url": "https://example.com/source"
+                },
+                {
+                    "type": "search_result_location",
+                    "cited_text": "search text",
+                    "source": "search_source",
+                    "title": "search result",
+                    "search_result_index": 7,
+                    "start_block_index": 8,
+                    "end_block_index": 9
+                }
+            ]
+        }],
+        "usage": {
+            "cache_creation_input_tokens": 11,
+            "cache_read_input_tokens": 22,
+            "service_tier": "standard"
+        },
+        "container": {
+            "id": "container_mock"
+        }
+    });
+
+    let body: Body = serde_json::from_value(wire).expect("representative Anthropic 200 wire");
+    let citations = body.content[0].citations.as_ref().unwrap();
+    match &citations[0] {
+        Citation::Char {
+            cited_text,
+            document_index,
+            document_title,
+            file_id,
+            start_char_index,
+            end_char_index,
+        } => {
+            assert_eq!(cited_text, "quoted text");
+            assert_eq!(*document_index, 0);
+            assert_eq!(document_title.as_deref(), Some("doc"));
+            assert_eq!(file_id.as_deref(), Some("file_123"));
+            assert_eq!(*start_char_index, 4);
+            assert_eq!(*end_char_index, 15);
+        }
+        _ => panic!("expected char_location citation"),
+    }
+    match &citations[1] {
+        Citation::Page {
+            cited_text,
+            document_index,
+            document_title,
+            file_id,
+            start_page_number,
+            end_page_number,
+        } => {
+            assert_eq!(cited_text, "page text");
+            assert_eq!(*document_index, 1);
+            assert!(document_title.is_none());
+            assert!(file_id.is_none());
+            assert_eq!(*start_page_number, 2);
+            assert_eq!(*end_page_number, 3);
+        }
+        _ => panic!("expected page_location citation"),
+    }
+    match &citations[2] {
+        Citation::ContentBlock {
+            cited_text,
+            document_index,
+            document_title,
+            file_id,
+            start_block_index,
+            end_block_index,
+        } => {
+            assert_eq!(cited_text, "block text");
+            assert_eq!(*document_index, 2);
+            assert_eq!(document_title.as_deref(), Some("blocks"));
+            assert!(file_id.is_none());
+            assert_eq!(*start_block_index, 5);
+            assert_eq!(*end_block_index, 6);
+        }
+        _ => panic!("expected content_block_location citation"),
+    }
+    match &citations[3] {
+        Citation::WebSearchResult {
+            cited_text,
+            encrypted_index,
+            title,
+            url,
+        } => {
+            assert_eq!(cited_text, "web text");
+            assert_eq!(encrypted_index, "enc_123");
+            assert_eq!(title.as_deref(), Some("web result"));
+            assert_eq!(url, "https://example.com/source");
+        }
+        _ => panic!("expected web_search_result_location citation"),
+    }
+    match &citations[4] {
+        Citation::SearchResult {
+            cited_text,
+            source,
+            title,
+            search_result_index,
+            start_block_index,
+            end_block_index,
+        } => {
+            assert_eq!(cited_text, "search text");
+            assert_eq!(source, "search_source");
+            assert_eq!(title.as_deref(), Some("search result"));
+            assert_eq!(*search_result_index, 7);
+            assert_eq!(*start_block_index, 8);
+            assert_eq!(*end_block_index, 9);
+        }
+        _ => panic!("expected search_result_location citation"),
+    }
+    assert_eq!(body.usage.cache_creation_input_tokens, Some(11));
+    assert_eq!(body.usage.cache_read_input_tokens, Some(22));
+    assert_eq!(body.usage.service_tier.as_deref(), Some("standard"));
+    assert_eq!(body.container.unwrap()["id"], "container_mock");
 }
 
 #[test]
@@ -6363,6 +7812,93 @@ fn anthropic_dag_compiles_to_rust() {
     assert!(
         !result.files.is_empty(),
         "RE-4: anthropic.dag produced no emitted files"
+    );
+}
+
+#[test]
+fn anthropic_tool_result_content_accepts_text_and_image_blocks() {
+    let source = r#"module anthropic_tool_result_content_test
+
+import extdeps.llm.anthropic
+import extdeps.llm.llm { TextContent, ImageContent, Base64Image }
+
+data tool_results: List<AnthropicChatMessage> = [
+  UserMessage {
+    content: [
+      UserToolResultBlock {
+        tool_use_id: "toolu_text",
+        content: ToolResultText { text: "15 degrees" },
+        is_error: none
+      },
+      UserToolResultBlock {
+        tool_use_id: "toolu_image",
+        content: ToolResultBlocks {
+          blocks: [
+            TextContent { text: "chart" },
+            ImageContent {
+              source: Base64Image {
+                media_type: "image/jpeg",
+                data: "/9j/4AAQSkZJRg..."
+              }
+            }
+          ]
+        },
+        is_error: none
+      },
+      UserToolResultBlock {
+        tool_use_id: "toolu_empty",
+        content: none,
+        is_error: none
+      }
+    ]
+  }
+]
+"#;
+    let result = compile_dag_named(
+        "anthropic_tool_result_content_test.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn anthropic_tool_result_content_rejects_legacy_string_slot() {
+    let source = r#"module anthropic_tool_result_content_negative_test
+
+import extdeps.llm.anthropic
+
+data legacy_content: String = "15 degrees"
+
+data tool_results: List<AnthropicChatMessage> = [
+  UserMessage {
+    content: [
+      UserToolResultBlock {
+        tool_use_id: "toolu_legacy",
+        content: legacy_content,
+        is_error: none
+      }
+    ]
+  }
+]
+"#;
+    let result = compile_dag_named(
+        "anthropic_tool_result_content_negative_test.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    let has_type_mismatch = result.diagnostics.iter().any(|diag| {
+        matches!(
+            &*diag.diagnostic,
+            CompilerDiagnostic::TypeMismatch { expected, got, .. }
+                if expected == "Coproduct(AnthropicToolResultContent)"
+                    && got == "Primitive(String)"
+        )
+    });
+    assert!(
+        has_type_mismatch,
+        "legacy string tool_result content should produce a typed diagnostic, got:\n{}",
+        diagnostic_messages(&result).join("\n")
     );
 }
 

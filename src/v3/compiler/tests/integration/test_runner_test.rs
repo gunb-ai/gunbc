@@ -661,6 +661,177 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn binary_dimension_report_equals_rejects_non_report_refs() {
+    let source = r#"
+module test.binary_dimension_report_equals_non_report
+
+import std.verification { BinaryDimensionReportEquals, TestClaim, TestSuite }
+
+fn left_report() -> Int = 0
+fn right_report() -> Int = 0
+
+data claim: TestClaim = {
+  name: "non-report refs fail closed",
+  source: "let _: Int = 0",
+  file_name: "binary_dimension_report_non_report.v3",
+  predicate: BinaryDimensionReportEquals(left_report, right_report),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    let dag = compile_clean(source, "binary_dimension_report_non_report_harness.v3");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::Fail(reason)
+                if reason.contains("BinaryDimensionReportEquals")
+                    && reason.contains("DimensionReport<C>")
+                    && reason.contains("left_report")
+        ),
+        "expected non-report refs to fail closed, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
+fn binary_dimension_report_equals_rejects_mismatched_report_carriers() {
+    let source = r#"
+module test.binary_dimension_report_equals_mismatched_carriers
+
+import std.dimensions { DimensionReport }
+import std.verification { BinaryDimensionReportEquals, TestClaim, TestSuite }
+
+type left_report = DimensionReport<Int>
+type right_report = DimensionReport<String>
+
+data claim: TestClaim = {
+  name: "mismatched report carriers fail closed",
+  source: "let _: Int = 0",
+  file_name: "binary_dimension_report_mismatched_carriers.v3",
+  predicate: BinaryDimensionReportEquals(left_report, right_report),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    let dag = compile_clean(
+        source,
+        "binary_dimension_report_mismatched_carriers_harness.v3",
+    );
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::Fail(reason)
+                if reason.contains("BinaryDimensionReportEquals")
+                    && reason.contains("same carrier C")
+                    && reason.contains("Int")
+                    && reason.contains("String")
+        ),
+        "expected mismatched report carriers to fail closed, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
+fn binary_dimension_report_equals_accepts_same_report_carrier_shape() {
+    let source = r#"
+module test.binary_dimension_report_equals_same_carrier
+
+import std.dimensions { DimensionReport }
+import std.verification { BinaryDimensionReportEquals, TestClaim, TestSuite }
+
+type left_report = DimensionReport<Int>
+type right_report = DimensionReport<Int>
+
+data claim: TestClaim = {
+  name: "same report carrier passes shape validation",
+  source: "let _: Int = 0",
+  file_name: "binary_dimension_report_same_carrier.v3",
+  predicate: BinaryDimensionReportEquals(left_report, right_report),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    let dag = compile_clean(source, "binary_dimension_report_same_carrier_harness.v3");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::NotYetImplemented(reason)
+                if reason.contains("BinaryDimensionReportEquals")
+                    && reason.contains("structural shape is valid")
+        ),
+        "expected same report carrier shape to reach NYI evaluation path, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
+fn binary_dimension_report_equals_accepts_structurally_equivalent_report_carriers() {
+    let source = r#"
+module test.binary_dimension_report_equals_structural_carriers
+
+import std.dimensions { DimensionReport }
+import std.verification { BinaryDimensionReportEquals, TestClaim, TestSuite }
+
+type LeftCarrier { value: Int }
+type RightCarrier { value: Int }
+
+type left_report = DimensionReport<LeftCarrier>
+type right_report = DimensionReport<RightCarrier>
+
+data claim: TestClaim = {
+  name: "structurally equivalent report carriers pass shape validation",
+  source: "let _: Int = 0",
+  file_name: "binary_dimension_report_structural_carriers.v3",
+  predicate: BinaryDimensionReportEquals(left_report, right_report),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    let dag = compile_clean(
+        source,
+        "binary_dimension_report_structural_carriers_harness.v3",
+    );
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::NotYetImplemented(reason)
+                if reason.contains("BinaryDimensionReportEquals")
+                    && reason.contains("structural shape is valid")
+        ),
+        "expected structurally equivalent report carriers to pass shape validation, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
 fn lens_output_equals_malformed_claim_source_fails_closed_with_literal_input() {
     // INVARIANTS P3 / TESTING: tokenize/parse failure for `TestClaim.source` must surface as
     // `Fail`, not fall back to the fixture lens (which could still `Pass` on a stub).
@@ -706,15 +877,21 @@ data suite: TestSuite = {
 }
 
 #[test]
-fn r1_canonical_complexity_lens_bytes_include_cost_of() {
+fn r1_canonical_complexity_lens_bytes_declare_complexity_of() {
     let bytes = v3_compiler::test_runner::R1_CANONICAL_COMPLEXITY_LENS;
+    // Post-PR #2271 widening: `cost_of` (int-depth adapter) renamed/widened
+    // to `complexity_of` returning `Lookup<ComplexitySummary>` per
+    // `docs/v3-lens-capability-register.md` complexity.dag row promotion.
+    // The legacy `cost_of` Rust adapter still exists per the register row,
+    // but the canonical lens-bytes (`.dag` source) now declare
+    // `complexity_of` directly.
     assert!(
-        bytes.contains("fn cost_of"),
-        "canonical lens should declare cost_of"
+        bytes.contains("fn complexity_of"),
+        "canonical lens should declare complexity_of"
     );
     assert!(
-        bytes.contains("fn compute_costs") && bytes.contains("fn seed_bind_params"),
-        "canonical `complexity.dag` bytes should include the forward-fold spine, not just the `cost_of` signature"
+        bytes.contains("fn compute_summaries") && bytes.contains("fn seed_bind_params"),
+        "canonical `complexity.dag` bytes should include the forward-fold spine, not just the `complexity_of` signature"
     );
 }
 
@@ -790,7 +967,7 @@ data spoof_suite: TestSuite = {
 }
 
 #[test]
-fn test_runner_algebraic_law_commutativity_returns_not_yet_implemented() {
+fn test_runner_algebraic_law_commutativity_passes_for_int_add() {
     let source = r#"
 module test.algebraic_law_commutativity_nyi
 
@@ -800,7 +977,7 @@ fn lens_placeholder(a: Int, b: Int) -> Int = a + b
 
 data claim_comm: TestClaim = {
   name: "algebraic law commutativity",
-  source: "let x: Int = 1",
+  source: "fn lens_placeholder(a: Int, b: Int) -> Int = a + b",
   file_name: "algebraic_law_comm.v3",
   predicate: AlgebraicLaw(Commutativity, lens_placeholder),
   requires: []
@@ -815,10 +992,67 @@ data suite: TestSuite = {
     let results = TestRunner::new(&dag).run_suite("suite");
 
     assert_eq!(results.len(), 1);
+    assert_eq!(results[0].result, ClaimResult::Pass);
+}
+
+#[test]
+fn test_runner_algebraic_law_commutativity_fails_for_subtraction() {
+    let source = r#"
+module test.algebraic_law_commutativity_fail
+
+import std.verification { AlgebraicLaw, TestClaim, TestSuite }
+
+fn lens_placeholder(a: Int, b: Int) -> Int = a - b
+
+data claim_comm: TestClaim = {
+  name: "algebraic law commutativity fails",
+  source: "fn lens_placeholder(a: Int, b: Int) -> Int = a - b",
+  file_name: "algebraic_law_comm_fail.v3",
+  predicate: AlgebraicLaw(Commutativity, lens_placeholder),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "algebraic_law_commutativity_fail_suite",
+  claims: [claim_comm]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_algebraic_law_comm_fail.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(&results[0].result, ClaimResult::Fail(_)));
+}
+
+#[test]
+fn test_runner_algebraic_law_identity_names_identity_edge_blocker() {
+    let source = r#"
+module test.algebraic_law_identity_nyi
+
+import std.verification { AlgebraicLaw, TestClaim, TestSuite }
+
+fn lens_placeholder(a: Int, b: Int) -> Int = a + b
+
+data claim_identity: TestClaim = {
+  name: "algebraic law identity",
+  source: "fn lens_placeholder(a: Int, b: Int) -> Int = a + b",
+  file_name: "algebraic_law_identity.v3",
+  predicate: AlgebraicLaw(Identity, lens_placeholder),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "algebraic_law_identity_suite",
+  claims: [claim_identity]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_algebraic_law_identity.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
     assert!(matches!(
         &results[0].result,
-        ClaimResult::NotYetImplemented(reason)
-            if reason.contains("AlgebraicLaw::Commutativity")
+        ClaimResult::NotYetImplemented(_)
     ));
 }
 

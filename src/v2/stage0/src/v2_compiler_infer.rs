@@ -86,7 +86,7 @@ use crate::v2_std_core::BinOp::{
 };
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v2_std_core::Cardinality::{CardOptional, Required};
-use crate::v2_std_core::CompilerDiagnostic::{InternalError, VariantCollision};
+use crate::v2_std_core::CompilerDiagnostic::{InternalError, TypeMismatch, VariantCollision};
 use crate::v2_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v2_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
@@ -824,6 +824,79 @@ pub fn inference_error(
         }),
         module_name,
     )
+}
+
+pub fn type_mismatch_error(
+    expected: String,
+    got: String,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<ErrorNode> {
+    make_error_node(
+        Rc::new(CompilerDiagnostic::TypeMismatch {
+            expected: expected,
+            got: got,
+            span: span,
+        }),
+        module_name,
+    )
+}
+
+pub fn rejects_string_for_optional_coproduct_field(
+    expected: &Rc<Node>,
+    got: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let expected_inner = with_required_cardinality(&expected);
+        let expected_is_optional_coproduct = ((expected.return_cardinality.clone()
+            == Cardinality::CardOptional)
+            && (expected_inner.connective.clone() == Connective::Disj));
+        let got_is_string =
+            (authored_name_at(source_indices, &got).as_str() == "String".to_string().as_str());
+        (expected_is_optional_coproduct && got_is_string)
+    }
+}
+
+pub fn record_lit_expected_fields(
+    type_name: Option<String>,
+    scope: &Rc<InferScope>,
+) -> Rc<Vec<Rc<Node>>> {
+    match type_name {
+        Some(tn) => match lookup_type_by_name(&scope.type_env.clone(), tn.clone()) {
+            Some(direct) => direct.children.clone(),
+            None => match lookup_variant_parent_enum(&scope, &tn) {
+                Some(parent_name) => {
+                    match lookup_type_by_name(&scope.type_env.clone(), parent_name.clone()) {
+                        Some(parent) => match Rc::new({
+                            let mut __result = Vec::new();
+                            for v in parent.children.clone().iter().cloned() {
+                                if (authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    &v,
+                                )
+                                .as_str()
+                                    == tn.clone().as_str())
+                                {
+                                    __result.push(v);
+                                }
+                            }
+                            __result
+                        })
+                        .first()
+                        .cloned()
+                        {
+                            Some(variant) => variant.children.clone(),
+                            None => Rc::new(vec![]),
+                        },
+                        None => Rc::new(vec![]),
+                    }
+                }
+                None => Rc::new(vec![]),
+            },
+        },
+        None => Rc::new(vec![]),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -4120,14 +4193,7 @@ pub fn infer_record_lit(
     scope: &Rc<InferScope>,
 ) -> Rc<InferResult> {
     {
-        let struct_def = match type_name.clone() {
-            Some(tn) => lookup_type_by_name(&scope.type_env.clone(), tn.clone()),
-            None => None,
-        };
-        let struct_fields = match struct_def {
-            Some(sd) => sd.children.clone(),
-            None => Rc::new(vec![]),
-        };
+        let struct_fields = record_lit_expected_fields(type_name.clone(), &scope);
         let fi_infer_results = Rc::new({
             let mut __result = Vec::new();
             for fi in field_inits.iter().cloned() {
@@ -4167,6 +4233,32 @@ pub fn infer_record_lit(
                     let ar = infer_expr(&field_init_node_value(&fi), &scope, &field_expected);
                     let ar_typed = ar.typed.clone();
                     let ar_diags = ar.diagnostics.clone();
+                    let field_type_diags = match field_expected.clone() {
+                        Some(expected_node) => {
+                            let got_node = resolved_type(ar_typed.clone());
+                            if rejects_string_for_optional_coproduct_field(
+                                &expected_node,
+                                got_node.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ) {
+                                Rc::new(vec![type_mismatch_error(
+                                    node_type_shape(
+                                        &expected_node,
+                                        &scope.type_env.clone().source_indices.clone(),
+                                    ),
+                                    node_type_shape(
+                                        &got_node,
+                                        &scope.type_env.clone().source_indices.clone(),
+                                    ),
+                                    ar_typed.span.clone(),
+                                    scope.module_name.clone(),
+                                )])
+                            } else {
+                                Rc::new(vec![])
+                            }
+                        }
+                        None => Rc::new(vec![]),
+                    };
                     Rc::new(FieldInferResult {
                         typed_field: make_field_init_node(
                             &fi_name,
@@ -4175,7 +4267,7 @@ pub fn infer_record_lit(
                             node_name_span(&fi),
                         ),
                         infer_result: ar.clone(),
-                        diagnostics: ar_diags.clone(),
+                        diagnostics: v2_rt::concat(ar_diags.clone(), field_type_diags.clone()),
                     })
                 });
             }

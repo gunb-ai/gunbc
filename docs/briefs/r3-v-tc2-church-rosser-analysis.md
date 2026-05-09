@@ -2,7 +2,7 @@
 
 **Status:** PROPOSAL — **research-only**. Does **not** assert TC2 strict-fire is dispatchable today; does **not** author substrate facts, new `TestPredicate` variants, or edits to the deferred fixture body.
 
-**Authority bundle:** TC2 sits in the absorbed formal-grounding trio ([`docs/briefs/r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) §Scope table). Slice-0 hook: [`tc2_evaluation_order_independence_deferred.dag`](../../src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag) (`evaluation_order_independent_lens_results`, predicate `Compiles` today).
+**Authority bundle:** TC2 sits in the absorbed formal-grounding trio ([`docs/briefs/r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) §Scope table). Slice-0 hook: [`tc2_evaluation_order_independence_deferred.dag`](../../src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag) (`evaluation_order_independent_lens_results`, unified `BinaryDimensionReportEquals` consumer — runner equality NYI until `DimensionReport<C>` production lands).
 
 **Unified predicate framing (Director ratification, [#828](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4356050427)):** Cross-claim coordination is **unified substrate-introduction across TC1/TC2/TC3**, **Option 2 from [PR #1309](https://github.com/gunb-ai/gunbc/pull/1309)** — generalize [`LensOutputEquals`](../../src/v3/std/verification.dag) toward **binary structural equality over `DimensionReport<C>`** with **reflection-aware modifiers** (three legs: **η** for TC1, **strategy-order** for TC2, **evaluation-step** for TC3). This brief does **not** propose a parallel TC2-only predicate; it specifies **TC2 coverage requirements** for that unified predicate’s **strategy-order** modifier. TC1 analysis is merged in spirit via #1309; TC3 coverage is queued for a separate worker. Substrate-fact-introduction still routes **INVARIANTS §P1** when the unified shape lands; deferred-claim discipline unchanged.
 
@@ -40,7 +40,7 @@ For the **body evaluator**, “strategy” must be a **closed substrate inhabita
 
 ## 3. Prerequisites on the lens / fold side
 
-TC2 is stated over **lens results** ([`tc2_evaluation_order_independence_deferred.dag`](../../src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag) L4–5, L18). **`fold_lens<C>`** yields `DimensionReport<C>` ([`src/v3/std/lens.dag`](../../src/v3/std/lens.dag) L6–8, L71–76) but is **documented, not authored** in substrate today.
+TC2 is stated over **lens results** ([`tc2_evaluation_order_independence_deferred.dag`](../../src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag) L4–5, L18). **`fold_lens<C>`** → `DimensionReport<C>` appears **only in module commentary** today ([`src/v3/std/lens.dag`](../../src/v3/std/lens.dag) L6–8; the `Lens<C>` carrier is L70–77); there is **no** substrate `fn fold_lens` yet. Workflow-root design notes also reference `fold_lens<C>` ([`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag) L503–504, L535–536).
 
 Q6/Q6.5/Q7 ([`docs/design-lens-framework.md`](../design-lens-framework.md) §Q6.5, §Q7) govern diagnostics into `DimensionFail.violations`; strategy-pair runs must not treat **diagnostic divergence** as success.
 
@@ -50,7 +50,7 @@ Q6/Q6.5/Q7 ([`docs/design-lens-framework.md`](../design-lens-framework.md) §Q6.
 
 ## 4. Dispatch-precondition map (TC2 strict-fire authorable)
 
-Rough **partial order** before the deferred claim graduates from `Compiles`:
+Rough **partial order** before TC2 strict-fire **evaluates** (beyond `BinaryDimensionReportEquals` shape validation):
 
 | # | Precondition | Concrete anchor on `main` |
 |---|----------------|---------------------------|

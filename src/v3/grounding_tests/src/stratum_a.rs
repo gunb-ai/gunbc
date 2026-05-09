@@ -34,8 +34,223 @@ const METHOD_TEMPLATE_CONTRACT_FIELDS: &[&str] = &[
 const METHOD_REF_FIELDS: &[&str] = &["decl"];
 
 /// Director-locked Phase 1 row counts (`t-ground-tests.md`; bump when `*_method_template_contracts.dag` grows).
+///
+/// **List scope only:** these counts cover `data *_method_template_contracts: List<MethodTemplateContract>`.
+/// Per-target `CollectionOps.*_contract` carriers promoted to named
+/// `MethodTemplateContract` declarations outside the per-target lists are
+/// **not** list elements — `verify_stratum_a_lockstep_all_targets` closes that
+/// receipt separately (`verify_language_spec_collection_ops_contract_wiring`).
 pub const EXPECTED_STRATUM_A_ROW_COUNTS: &[(&str, usize)] =
-    &[(RUST_LIST, 13), (PYTHON_LIST, 18), (GO_LIST, 14)];
+    &[(RUST_LIST, 13), (PYTHON_LIST, 16), (GO_LIST, 12)];
+
+/// (`CollectionOps` decl, field name, named `MethodTemplateContract` decl, expected registry method name).
+const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str)] = &[
+    (
+        "rust_collection_ops",
+        "concat_contract",
+        "rust_language_spec_free_monoid_concat_contract",
+        "concat",
+    ),
+    (
+        "rust_collection_ops",
+        "length_contract",
+        "rust_language_spec_free_monoid_length_contract",
+        "length",
+    ),
+    (
+        "rust_collection_ops",
+        "is_empty_contract",
+        "rust_language_spec_free_monoid_emptiness_contract",
+        "is_empty",
+    ),
+    (
+        "rust_collection_ops",
+        "fold_contract",
+        "rust_language_spec_free_monoid_fold_contract",
+        "fold",
+    ),
+    (
+        "rust_collection_ops",
+        "map_contract",
+        "rust_language_spec_map_contract",
+        "map",
+    ),
+    (
+        "python_collections",
+        "concat_contract",
+        "python_language_spec_free_monoid_concat_contract",
+        "concat",
+    ),
+    (
+        "python_collections",
+        "length_contract",
+        "python_language_spec_free_monoid_length_contract",
+        "length",
+    ),
+    (
+        "python_collections",
+        "is_empty_contract",
+        "python_language_spec_free_monoid_emptiness_contract",
+        "is_empty",
+    ),
+    (
+        "python_collections",
+        "fold_contract",
+        "python_language_spec_free_monoid_fold_contract",
+        "fold",
+    ),
+    (
+        "python_collections",
+        "map_contract",
+        "python_language_spec_map_contract",
+        "map",
+    ),
+    (
+        "go_collection_ops",
+        "concat_contract",
+        "go_language_spec_free_monoid_concat_contract",
+        "concat",
+    ),
+    (
+        "go_collection_ops",
+        "length_contract",
+        "go_language_spec_free_monoid_length_contract",
+        "length",
+    ),
+    (
+        "go_collection_ops",
+        "is_empty_contract",
+        "go_language_spec_free_monoid_emptiness_contract",
+        "is_empty",
+    ),
+    (
+        "go_collection_ops",
+        "fold_contract",
+        "go_language_spec_free_monoid_fold_contract",
+        "fold",
+    ),
+    (
+        "go_collection_ops",
+        "map_contract",
+        "go_language_spec_map_contract",
+        "map",
+    ),
+];
+
+/// Fail-closed witness: each target `CollectionOps.*_contract` ref resolves to the
+/// named `MethodTemplateContract` carrier with the expected `dag_method` registry name.
+fn verify_language_spec_collection_ops_contract_wiring(
+    dag: &Dag,
+) -> Result<(), GroundingTestsDiagnostic> {
+    let mtc_id = dag
+        .declaration_by_name("MethodTemplateContract")
+        .ok_or_else(|| GroundingTestsDiagnostic::StratumADagProjectionFailed {
+            step: "collection_ops_contract_witness.MethodTemplateContract",
+            detail: "MethodTemplateContract missing from Dag".to_string(),
+        })?
+        .id;
+
+    for &(collection_ops_name, field, contract_decl_name, expected_method) in
+        LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES
+    {
+        let cs_decl = dag
+            .declaration_by_name(collection_ops_name)
+            .ok_or_else(|| GroundingTestsDiagnostic::StratumADagProjectionFailed {
+                step: "collection_ops_contract_witness.collection_ops",
+                detail: format!("missing `{collection_ops_name}`"),
+            })?;
+        let vb = cs_decl.value_body.as_ref().ok_or_else(|| {
+            GroundingTestsDiagnostic::StratumADagProjectionFailed {
+                step: "collection_ops_contract_witness.collection_ops.value_body",
+                detail: format!("`{collection_ops_name}` has no value_body"),
+            }
+        })?;
+        let ValueBody::Structural { fields: cs_fields } = vb else {
+            return Err(GroundingTestsDiagnostic::StratumADagProjectionFailed {
+                step: "collection_ops_contract_witness.collection_ops.shape",
+                detail: format!("`{collection_ops_name}`: expected Structural value body"),
+            });
+        };
+        let contract_ref = row_field(cs_fields, collection_ops_name, 0, field)?;
+        let FieldValue::Reference(expected_id) = contract_ref else {
+            return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: collection_ops_name.to_string(),
+                row_index: 0,
+                detail: format!("`{field}` must be DeclarationRef, got {contract_ref:?}"),
+            });
+        };
+
+        let contract_decl = dag.declaration_by_name(contract_decl_name).ok_or_else(|| {
+            GroundingTestsDiagnostic::StratumADagProjectionFailed {
+                step: "collection_ops_contract_witness.named_decl",
+                detail: format!(
+                    "missing `{contract_decl_name}` (CollectionOps `{field}` ref {expected_id:?})"
+                ),
+            }
+        })?;
+        if contract_decl.id != *expected_id {
+            return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: collection_ops_name.to_string(),
+                row_index: 0,
+                detail: format!(
+                    "`{field}` ref {expected_id:?} does not match declaration `{contract_decl_name}` ({:?})",
+                    contract_decl.id
+                ),
+            });
+        }
+
+        let template = match &contract_decl.connective {
+            TypeConnective::Instantiation { template, .. } => *template,
+            other => {
+                return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name: contract_decl_name.to_string(),
+                    row_index: 0,
+                    detail: format!("expected MethodTemplateContract instantiation, got {other:?}"),
+                });
+            }
+        };
+        if template != mtc_id {
+            return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: contract_decl_name.to_string(),
+                row_index: 0,
+                detail: format!(
+                    "expected template MethodTemplateContract ({mtc_id:?}), got {template:?}"
+                ),
+            });
+        }
+
+        let contract_body = contract_decl.value_body.as_ref().ok_or_else(|| {
+            GroundingTestsDiagnostic::StratumADagProjectionFailed {
+                step: "collection_ops_contract_witness.named_decl.value_body",
+                detail: format!("`{contract_decl_name}` missing value_body"),
+            }
+        })?;
+        let ValueBody::Structural {
+            fields: contract_fields,
+        } = contract_body
+        else {
+            return Err(GroundingTestsDiagnostic::StratumADagProjectionFailed {
+                step: "collection_ops_contract_witness.named_decl.shape",
+                detail: format!(
+                    "`{contract_decl_name}`: expected Structural MethodTemplateContract data"
+                ),
+            });
+        };
+        let row = FieldValue::Record(contract_fields.clone());
+        let fp = row_fingerprint(dag, contract_decl_name, 0, &row)?;
+        if fp.method_name != expected_method {
+            return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: contract_decl_name.to_string(),
+                row_index: 0,
+                detail: format!(
+                    "expected dag_method registry name `{expected_method}` for `{field}`, got `{}`",
+                    fp.method_name
+                ),
+            });
+        }
+    }
+    Ok(())
+}
 
 fn list_rows<'a>(
     dag: &'a Dag,
@@ -324,18 +539,85 @@ impl RowFingerprint {
 }
 
 fn row_record<'a>(
+    dag: &'a Dag,
     row: &'a FieldValue,
     list_name: &str,
     row_index: usize,
 ) -> Result<&'a [(String, FieldValue)], GroundingTestsDiagnostic> {
-    let FieldValue::Record(fields) = row else {
-        return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+    match row {
+        FieldValue::Record(fields) => Ok(fields.as_slice()),
+        FieldValue::Reference(id) => {
+            let decl = dag.declaration(*id);
+            let body = decl.value_body.as_ref().ok_or_else(|| {
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name: list_name.to_string(),
+                    row_index,
+                    detail: format!(
+                        "referenced MethodTemplateContract `{}` has no value body",
+                        decl.name.as_deref().unwrap_or("?")
+                    ),
+                }
+            })?;
+            match body {
+                ValueBody::Structural { fields } => Ok(fields.as_slice()),
+                other => Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name: list_name.to_string(),
+                    row_index,
+                    detail: format!(
+                        "list `{list_name}` row {row_index}: MethodTemplateContract reference must be Structural, got {other:?}"
+                    ),
+                }),
+            }
+        }
+        other => Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
             list_name: list_name.to_string(),
             row_index,
-            detail: format!("row is not a record: {row:?}"),
-        });
-    };
-    Ok(fields.as_slice())
+            detail: format!("row is not a record or declaration ref: {other:?}"),
+        }),
+    }
+}
+
+/// Label-set outcome for a closed record row (duplicate labels vs allowed set mismatch vs OK).
+#[derive(Debug, PartialEq, Eq)]
+enum ClosedRecordLabelsOutcome {
+    Ok,
+    Duplicate {
+        label: String,
+    },
+    Mismatch {
+        missing: Vec<String>,
+        extra: Vec<String>,
+    },
+}
+
+/// Single source of truth for closed-record label discipline (see `enforce_closed_record_schema`).
+fn analyze_closed_record_labels(
+    fields: &[(String, FieldValue)],
+    allowed: &[&str],
+) -> ClosedRecordLabelsOutcome {
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for (label, _) in fields {
+        if !seen.insert(label.as_str()) {
+            return ClosedRecordLabelsOutcome::Duplicate {
+                label: label.clone(),
+            };
+        }
+    }
+    let expected: BTreeSet<&str> = allowed.iter().copied().collect();
+    if seen == expected {
+        return ClosedRecordLabelsOutcome::Ok;
+    }
+    let missing: Vec<String> = expected
+        .difference(&seen)
+        .copied()
+        .map(str::to_string)
+        .collect();
+    let extra: Vec<String> = seen
+        .difference(&expected)
+        .copied()
+        .map(str::to_string)
+        .collect();
+    ClosedRecordLabelsOutcome::Mismatch { missing, extra }
 }
 
 /// Fail-closed record shape: no duplicate labels, no unknown fields — every substrate key in
@@ -347,30 +629,27 @@ fn enforce_closed_record_schema(
     record_kind: &'static str,
     allowed: &[&str],
 ) -> Result<(), GroundingTestsDiagnostic> {
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
-    for (label, _) in fields {
-        if !seen.insert(label.as_str()) {
-            return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+    match analyze_closed_record_labels(fields, allowed) {
+        ClosedRecordLabelsOutcome::Ok => Ok(()),
+        ClosedRecordLabelsOutcome::Duplicate { label } => {
+            Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
                 list_name: list_name.to_string(),
                 row_index,
                 detail: format!("{record_kind}: duplicate field `{label}`"),
-            });
+            })
+        }
+        ClosedRecordLabelsOutcome::Mismatch { missing, extra } => {
+            let expected: BTreeSet<&str> = allowed.iter().copied().collect();
+            Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: format!(
+                    "{record_kind}: field set mismatch — missing {missing:?}, extra {extra:?} (expected exactly {:?})",
+                    expected.iter().collect::<Vec<_>>()
+                ),
+            })
         }
     }
-    let expected: BTreeSet<&str> = allowed.iter().copied().collect();
-    if seen != expected {
-        let missing: Vec<&str> = expected.difference(&seen).copied().collect();
-        let extra: Vec<&str> = seen.difference(&expected).copied().collect();
-        return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: format!(
-                "{record_kind}: field set mismatch — missing {missing:?}, extra {extra:?} (expected exactly {:?})",
-                expected.iter().collect::<Vec<_>>()
-            ),
-        });
-    }
-    Ok(())
 }
 
 fn row_field<'a>(
@@ -434,7 +713,7 @@ fn row_fingerprint(
     row_index: usize,
     row: &FieldValue,
 ) -> Result<RowFingerprint, GroundingTestsDiagnostic> {
-    let fields = row_record(row, list_name, row_index)?;
+    let fields = row_record(dag, row, list_name, row_index)?;
     enforce_closed_record_schema(
         fields,
         list_name,
@@ -563,6 +842,9 @@ fn assert_expected_row_count(
 /// `MethodDeclaration` registry, and verifies two independent
 /// [`v3_compiler::generated_full_bootstrap_dag`] runs produce **bit-identical** digests per
 /// list (routing projection is a pure function of the embedded snapshot).
+///
+/// Also asserts Rust/Python/Go `CollectionOps.{concat,length,is_empty,fold}_contract` wiring to the
+/// named `MethodTemplateContract` carriers (list-external authority; `is_empty_contract` pins `is_empty_method`).
 pub fn verify_stratum_a_lockstep_all_targets() -> Result<(), GroundingTestsDiagnostic> {
     let bootstrap_a = v3_compiler::generated_full_bootstrap_dag();
     let bootstrap_b = v3_compiler::generated_full_bootstrap_dag();
@@ -588,6 +870,7 @@ pub fn verify_stratum_a_lockstep_all_targets() -> Result<(), GroundingTestsDiagn
             });
         }
     }
+    verify_language_spec_collection_ops_contract_wiring(&bootstrap_a)?;
     Ok(())
 }
 
@@ -596,6 +879,16 @@ mod stratum_a_tests {
     use v3_compiler::generated_full_bootstrap_dag;
 
     use super::*;
+
+    fn method_template_contract_row_fields_with_extra_surprise() -> Vec<(String, FieldValue)> {
+        let dummy = FieldValue::Literal(LiteralBits::Bool(false));
+        let mut fields: Vec<(String, FieldValue)> = METHOD_TEMPLATE_CONTRACT_FIELDS
+            .iter()
+            .map(|&label| (label.to_string(), dummy.clone()))
+            .collect();
+        fields.push(("surprise".to_string(), dummy));
+        fields
+    }
 
     #[test]
     fn determinism_forward_vs_reverse_row_walk_before_btree_keying() {
@@ -630,6 +923,137 @@ mod stratum_a_tests {
             ),
             "unexpected diagnostic: {err}"
         );
+    }
+
+    #[test]
+    fn enforce_closed_record_schema_rejects_duplicate_method_ref_field() {
+        let fields = vec![
+            (
+                "decl".to_string(),
+                FieldValue::Literal(LiteralBits::Bool(false)),
+            ),
+            (
+                "decl".to_string(),
+                FieldValue::Literal(LiteralBits::Bool(true)),
+            ),
+        ];
+        assert_eq!(
+            analyze_closed_record_labels(&fields, METHOD_REF_FIELDS),
+            ClosedRecordLabelsOutcome::Duplicate {
+                label: "decl".to_string(),
+            }
+        );
+        let err =
+            enforce_closed_record_schema(&fields, RUST_LIST, 0, "MethodRef", METHOD_REF_FIELDS)
+                .expect_err("duplicate decl");
+        assert!(
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name,
+                    row_index,
+                    ..
+                } if list_name == RUST_LIST && *row_index == 0
+            ),
+            "unexpected diagnostic: {err:?}"
+        );
+    }
+
+    #[test]
+    fn analyze_closed_record_labels_flags_extra_surprise_with_empty_missing() {
+        let fields = method_template_contract_row_fields_with_extra_surprise();
+        assert_eq!(
+            analyze_closed_record_labels(&fields, METHOD_TEMPLATE_CONTRACT_FIELDS),
+            ClosedRecordLabelsOutcome::Mismatch {
+                missing: vec![],
+                extra: vec!["surprise".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn enforce_closed_record_schema_rejects_extra_method_template_contract_field() {
+        let fields = method_template_contract_row_fields_with_extra_surprise();
+        let err = enforce_closed_record_schema(
+            &fields,
+            RUST_LIST,
+            0,
+            "MethodTemplateContract",
+            METHOD_TEMPLATE_CONTRACT_FIELDS,
+        )
+        .expect_err("extra field");
+        assert!(
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed { .. }
+            ),
+            "unexpected diagnostic: {err:?}"
+        );
+    }
+
+    #[test]
+    fn placeholder_convention_canonical_rejects_payload_for_nullary_indexed_args() {
+        let dag = generated_full_bootstrap_dag();
+        let root = dag
+            .declaration_by_name("PlaceholderConvention")
+            .expect("PlaceholderConvention");
+        let TypeConnective::Disj { variants } = &root.connective else {
+            panic!("expected Disj, got {:?}", root.connective);
+        };
+        let indexed = variants
+            .iter()
+            .find(|v| v.label == "IndexedArgs")
+            .expect("IndexedArgs variant");
+        let ph = FieldValue::Variant {
+            constructor: indexed.ty,
+            payload: vec![FieldValue::Literal(LiteralBits::Bool(false))],
+        };
+        let err = placeholder_convention_canonical(&dag, &ph).expect_err("non-empty payload");
+        assert!(
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumADagProjectionFailed { step, .. }
+                    if *step == "placeholder_convention_canonical.arity"
+            ),
+            "unexpected diagnostic: {err:?}"
+        );
+    }
+
+    #[test]
+    fn method_registry_name_rejects_non_method_declaration_instantiation() {
+        let dag = generated_full_bootstrap_dag();
+        let decl = dag.declaration_by_name("Int").expect("Int");
+        let method_decl_template =
+            method_declaration_template_id(&dag).expect("MethodDeclaration template");
+        let int_is_not_method_declaration_instantiation = match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => *template != method_decl_template,
+            _ => true,
+        };
+        assert!(
+            int_is_not_method_declaration_instantiation,
+            "regression witness: Int must not instantiate MethodDeclaration; connective={:?}",
+            decl.connective
+        );
+        let err = method_registry_name(&dag, decl.id, RUST_LIST, 0)
+            .expect_err("Int is not MethodDeclaration");
+        assert!(
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name,
+                    row_index,
+                    ..
+                } if list_name == RUST_LIST && *row_index == 0
+            ),
+            "unexpected diagnostic: {err:?}"
+        );
+    }
+
+    #[test]
+    fn stratum_a_language_spec_collection_ops_contract_wiring_ok() {
+        let dag = generated_full_bootstrap_dag();
+        super::verify_language_spec_collection_ops_contract_wiring(&dag)
+            .unwrap_or_else(|e| panic!("CollectionOps contract witness: {e}"));
     }
 
     #[test]

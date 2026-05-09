@@ -1,0 +1,12 @@
+// Program authority for `r3_verification_l5_cross_target_skeleton`: integration test requires
+// `TestClaim.source` in `r3_verification_l5_corpus.dag` to match this file exactly.
+module user.r3_l5_add_then_branch_seed
+
+fn add(a: Int, b: Int) -> Int = a + b
+
+let seed_acc: Int = add(1, 2)
+let _: Int =
+  match seed_acc == 3 {
+    True => seed_acc
+    False => 0
+  }

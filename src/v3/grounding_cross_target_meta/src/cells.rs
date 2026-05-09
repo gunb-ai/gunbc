@@ -122,4 +122,15 @@ impl Cell {
             })
         })
     }
+
+    /// Stable key for closure-ledger gap rows (`docs/r2-closure-ledger.md`):
+    /// `Form_Behavior_Target` using substrate axis labels.
+    pub fn ledger_key(self) -> String {
+        format!(
+            "{}_{}_{}",
+            self.connective.label(),
+            self.behavior.label(),
+            self.target.label()
+        )
+    }
 }

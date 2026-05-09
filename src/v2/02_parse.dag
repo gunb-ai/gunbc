@@ -11,7 +11,7 @@
 //   &&          bp 4  (left)
 //   == != < > <= >=  bp 6  (left)
 //   + - +     bp 8  (left, +is list/string concat)
-//   * / %       bp 10 (left)
+//   * /         bp 10 (left)
 //   ! - (unary) bp 12 (prefix)
 //   . () []     bp 14 (postfix, handled separately)
 
@@ -2708,8 +2708,8 @@ fn int_to_string(value: Int) -> String {
 fn int_to_string_acc(value: Int, acc: List<String>) -> List<String> {
   if value == 0 { acc }
   else {
-    let digit = value % 10
-    let rest = (value - digit) / 10
+    let rest = value / 10
+    let digit = value - (rest * 10)
     let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
     let ch = match digit_chars |> enumerate |> filter(p => p.first == digit) |> first {
       Some { value: p } => p.second

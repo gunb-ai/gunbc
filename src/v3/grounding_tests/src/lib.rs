@@ -1,4 +1,4 @@
-//! T-Ground-Tests — L4 routing-correctness verification (Stratum A scaffold).
+//! T-Ground-Tests — L4 routing-correctness verification.
 //!
 //! See `docs/briefs/t-ground-tests.md` (lane 10 / `routing_correctness_l4_verified` gate).
 //! This crate generalizes the pilot Stratum A pattern (`src/v3/grounding_pilot/src/lib.rs:408-460`)
@@ -7,16 +7,32 @@
 //! **SG-0:** no `src/v3/compiler/` edits — consumers only.
 //!
 //! Stratum A routing-parity tests live in the `stratum_a` module’s `stratum_a_tests` section so
-//! they exercise the module’s fail-closed API without reaching private helpers from here.
+//! they exercise the module’s fail-closed API without reaching private helpers from here. Stratum B
+//! currently exposes a readiness/checklist scaffold only; it does not assert production fold
+//! outputs until the declared projection substrate gates named in the audit stack land.
 
 pub mod diagnostic;
 mod stratum_a;
+mod stratum_b;
 
 pub use diagnostic::GroundingTestsDiagnostic;
 pub use stratum_a::{
     stratum_a_list_digest, verify_stratum_a_lockstep_all_targets, RowFingerprint,
     EXPECTED_STRATUM_A_ROW_COUNTS,
 };
+pub use stratum_b::{
+    stratum_b_missing_prerequisites, stratum_b_readiness, StratumBPrerequisite,
+    StratumBPrerequisiteState, StratumBReadinessEntry,
+};
+
+#[cfg(test)]
+mod emission_diagnostic_lockstep;
+
+#[cfg(test)]
+mod integer_diagnostic_order;
+
+#[cfg(test)]
+mod string_axes_lockstep;
 
 #[cfg(test)]
 mod tests {
@@ -58,5 +74,11 @@ mod tests {
             detail: "detail".to_string(),
         };
         assert!(!e3.to_string().is_empty());
+
+        let e4 = GroundingTestsDiagnostic::StratumBPrerequisiteMissing {
+            prerequisite: "program-bound lowering",
+            detail: "detail".to_string(),
+        };
+        assert!(!e4.to_string().is_empty());
     }
 }

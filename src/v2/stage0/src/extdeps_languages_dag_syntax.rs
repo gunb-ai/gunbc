@@ -52,15 +52,6 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         body_kind: BodyKind::BlockBody,
     }), Rc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
-        keyword: "service".to_string(),
-        has_type_params: false,
-        has_params: false,
-        has_return_type: false,
-        return_required: false,
-        has_uses: false,
-        body_kind: BodyKind::ServiceBody,
-    }), Rc::new(ItemForm {
-        kind: ItemFormKind::OtherForm,
         keyword: "resource".to_string(),
         has_type_params: false,
         has_params: false,
@@ -68,6 +59,15 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::ResourceBody,
+    }), Rc::new(ItemForm {
+        kind: ItemFormKind::OtherForm,
+        keyword: "service".to_string(),
+        has_type_params: false,
+        has_params: false,
+        has_return_type: false,
+        return_required: false,
+        has_uses: false,
+        body_kind: BodyKind::ServiceBody,
     }), Rc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "data".to_string(),
@@ -128,8 +128,8 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
             __m.insert("type".to_string(), true);
             __m.insert("fn".to_string(), true);
             __m.insert("func".to_string(), true);
-            __m.insert("service".to_string(), true);
             __m.insert("resource".to_string(), true);
+            __m.insert("service".to_string(), true);
             __m.insert("data".to_string(), true);
             __m.insert("interface".to_string(), true);
             __m.insert("pipeline".to_string(), true);
@@ -184,12 +184,6 @@ pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {
                 Rc::new(vec![Rc::new(OperatorSpec {
-        symbol: "??".to_string(),
-        left_bp: 3,
-        right_bp: 4,
-        binop: Some(BinOp::NullCoalesce),
-        algebra_field: None,
-    }), Rc::new(OperatorSpec {
         symbol: "||".to_string(),
         left_bp: 5,
         right_bp: 6,
@@ -200,6 +194,12 @@ pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
         left_bp: 7,
         right_bp: 8,
         binop: Some(BinOp::And),
+        algebra_field: None,
+    }), Rc::new(OperatorSpec {
+        symbol: "??".to_string(),
+        left_bp: 8,
+        right_bp: 9,
+        binop: Some(BinOp::NullCoalesce),
         algebra_field: None,
     }), Rc::new(OperatorSpec {
         symbol: "==".to_string(),
@@ -282,6 +282,30 @@ pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("||".to_string(), true);
+            __m.insert("&&".to_string(), true);
+            __m.insert("==".to_string(), true);
+            __m.insert("!=".to_string(), true);
+            __m.insert("<".to_string(), true);
+            __m.insert(">".to_string(), true);
+            __m.insert("<=".to_string(), true);
+            __m.insert(">=".to_string(), true);
+            __m.insert("+".to_string(), true);
+            __m.insert("-".to_string(), true);
+            __m.insert("*".to_string(), true);
+            __m.insert("/".to_string(), true);
+            __m.insert("|>".to_string(), true);
+            __m.insert(".".to_string(), true);
+            Rc::new(__m)
+        };
+    }
     CACHED.with(|c| c.clone())
 }
 

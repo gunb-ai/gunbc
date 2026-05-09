@@ -68,9 +68,30 @@ pub enum SymbolicCost {
     UnknownCost { _0: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct SizeVariable {
     pub source_port: PortId,
+    pub display_name: Option<String>,
+}
+
+impl PartialEq for SizeVariable {
+    fn eq(&self, other: &Self) -> bool {
+        self.source_port == other.source_port
+    }
+}
+
+impl Eq for SizeVariable {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AsymptoticClass {
+    ClassConstant,
+    ClassLog,
+    ClassLinear,
+    ClassLinearithmic,
+    ClassQuadratic,
+    ClassPolynomial { degree: PositiveDescentAmount },
+    ClassExponential,
+    ClassUnknown,
 }
 
 pub fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
@@ -102,10 +123,12 @@ pub fn max_path(paths: &[SymbolicCost]) -> SymbolicCost {
 pub fn normalize(cost: SymbolicCost) -> SymbolicCost {
     match cost {
         SymbolicCost::SumCost { _0: terms } => {
-            reduce_sum(drop_zero_terms(boxed_terms_to_vec(&terms)))
+            reduce_sum(drop_additive_zero_terms(boxed_terms_to_vec(&terms)))
         }
         SymbolicCost::ProductCost { _0: terms } => {
-            reduce_product(drop_zero_terms(boxed_terms_to_vec(&terms)))
+            reduce_product(drop_multiplicative_one(collapse_on_multiplicative_zero(
+                boxed_terms_to_vec(&terms),
+            )))
         }
         other => other,
     }
@@ -123,10 +146,28 @@ fn boxed_terms_to_vec(terms: &BoxedSymbolicCostList) -> Vec<SymbolicCost> {
     terms.iter().map(|term| term.as_ref().clone()).collect()
 }
 
-fn drop_zero_terms(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
+fn drop_additive_zero_terms(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
     terms
         .into_iter()
         .filter(|t| !matches!(t, SymbolicCost::ConstantCost { _0: 0 }))
+        .collect()
+}
+
+fn collapse_on_multiplicative_zero(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
+    if terms
+        .iter()
+        .any(|t| matches!(t, SymbolicCost::ConstantCost { _0: 0 }))
+    {
+        vec![SymbolicCost::ConstantCost { _0: 0 }]
+    } else {
+        terms
+    }
+}
+
+fn drop_multiplicative_one(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
+    terms
+        .into_iter()
+        .filter(|t| !matches!(t, SymbolicCost::ConstantCost { _0: 1 }))
         .collect()
 }
 
@@ -143,7 +184,7 @@ fn reduce_sum(mut terms: Vec<SymbolicCost>) -> SymbolicCost {
 
 fn reduce_product(terms: Vec<SymbolicCost>) -> SymbolicCost {
     match terms.len() {
-        0 => SymbolicCost::ConstantCost { _0: 0 },
+        0 => SymbolicCost::ConstantCost { _0: 1 },
         1 => terms.into_iter().next().unwrap(),
         2 => {
             let mut iter = terms.into_iter();
@@ -206,7 +247,13 @@ fn any_dominates(terms: &BoxedSymbolicCostList, b: &SymbolicCost) -> bool {
         .any(|child| dominates(child.as_ref(), b))
 }
 
-pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
+pub fn dominates<A, B>(a: A, b: B) -> bool
+where
+    A: std::borrow::Borrow<SymbolicCost>,
+    B: std::borrow::Borrow<SymbolicCost>,
+{
+    let a = a.borrow();
+    let b = b.borrow();
     match a {
         SymbolicCost::UnknownCost { .. } => true,
         SymbolicCost::ConstantCost { .. } => matches!(b, SymbolicCost::ConstantCost { .. }),
@@ -236,5 +283,20 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
             any_dominates(terms, b)
         }
+    }
+}
+
+pub fn classify_symbolic_cost<C>(cost: C) -> AsymptoticClass
+where
+    C: std::borrow::Borrow<SymbolicCost>,
+{
+    match cost.borrow() {
+        SymbolicCost::ConstantCost { .. } => AsymptoticClass::ClassConstant,
+        SymbolicCost::LinearCost { .. } => AsymptoticClass::ClassLinear,
+        SymbolicCost::LogCost { .. } => AsymptoticClass::ClassLog,
+        SymbolicCost::PolynomialCost { .. } => AsymptoticClass::ClassQuadratic,
+        SymbolicCost::ProductCost { .. }
+        | SymbolicCost::SumCost { .. }
+        | SymbolicCost::UnknownCost { .. } => AsymptoticClass::ClassUnknown,
     }
 }

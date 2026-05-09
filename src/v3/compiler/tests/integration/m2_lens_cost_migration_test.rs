@@ -95,8 +95,14 @@ fn build_roundtrip_harness(module_source: &str) -> PathBuf {
              v3_compiler::dag::Behavior::Bind(bind) if bind.name == bind_name => Some(bind.clone()), \
              _ => None \
            }}).expect(\"bind\"); \
-           match emitted::cost_of(&dag, &bind.value) {{ \
-             v3_compiler::dag::Lookup::Hit(cost) => println!(\"{{}}\", cost), \
+           match emitted::complexity_of(&dag, &bind.value) {{ \
+             v3_compiler::dag::Lookup::Hit(summary) => {{ \
+               let positive_work = match &summary.work {{ \
+                 v3_compiler::dag::SymbolicCost::ConstantCost {{ _0 }} => *_0 > 0, \
+                 _ => true, \
+               }}; \
+               println!(\"{{}}\", positive_work); \
+             }} \
              v3_compiler::dag::Lookup::Miss => panic!(\"complexity lens returned Miss for bind `{{}}` — malformed DAG\", bind.name), \
            }} \
          }}"
@@ -104,7 +110,12 @@ fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     harness().compile(&wrapped, "main_bin", HarnessLinkMode::WithV3Compiler)
 }
 
-fn roundtrip_cost(bin_path: &Path, program_source: &str, file_name: &str, bind_name: &str) -> i64 {
+fn roundtrip_positive_work(
+    bin_path: &Path,
+    program_source: &str,
+    file_name: &str,
+    bind_name: &str,
+) -> bool {
     let run = Command::new(bin_path)
         .arg(program_source)
         .arg(file_name)
@@ -119,7 +130,7 @@ fn roundtrip_cost(bin_path: &Path, program_source: &str, file_name: &str, bind_n
     String::from_utf8_lossy(&run.stdout)
         .trim()
         .parse()
-        .expect("printed cost should be i64")
+        .expect("printed positive-work flag should be bool")
 }
 
 #[test]
@@ -180,14 +191,14 @@ fn complexity_generated_module_matches_checked_in_snapshot() {
 fn complexity_dag_runs_end_to_end_via_rustc_harness() {
     let module = emit_lens_module();
     let bin_path = build_roundtrip_harness(&module);
-    let cost = roundtrip_cost(
+    let positive_work = roundtrip_positive_work(
         &bin_path,
         "let total: Int = fold(map(singleton(1), |x| x + 1), 0, |acc, x| acc + x)",
         "nested_fold.v3",
         "total",
     );
     assert!(
-        cost > 0,
-        "nested fold fixture should report positive cost; got {cost}"
+        positive_work,
+        "nested fold fixture should report positive work"
     );
 }
