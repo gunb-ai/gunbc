@@ -4701,6 +4701,23 @@ impl<'a> Ctx<'a> {
         // there. Until variant payload positionality is DAG-carried, keep narrow.
         if children.len() == 1
             && children[0].label == "_0"
+            && enum_name == "Witness"
+            && variant_name == "Inhabits"
+        {
+            let value = self.elide_explicit_borrow(&self.render_input_use(
+                InputConsumer::Transform(consumer),
+                InputSlot::Positional(0),
+                locals,
+            )?);
+            let out = if value.starts_with('(') {
+                format!("{qualified_name}{value}")
+            } else {
+                format!("{qualified_name}({value})")
+            };
+            return Ok(Some(out));
+        }
+        if children.len() == 1
+            && children[0].label == "_0"
             && enum_name == "Lookup"
             && variant_name == "Hit"
         {

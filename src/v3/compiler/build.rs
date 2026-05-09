@@ -362,7 +362,6 @@ fn main() {
     // Tell Cargo to re-run the script if any staged std/spec/compiler file
     // changes. Without this, adding a new file wouldn't trigger a
     // rebuild and bootstrap would silently miss it.
-    println!("cargo:rerun-if-changed={}", std_dir.display());
     println!("cargo:rerun-if-changed={}", spec_dir.display());
     println!("cargo:rerun-if-changed={}", compiler_dir.display());
     println!("cargo:rerun-if-changed={}", extdeps_dir.display());

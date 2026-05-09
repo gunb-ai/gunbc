@@ -24,10 +24,11 @@
 module lenses.complexity
 
 import std.list { List, empty, fold, cons, concat }
-import std.substrate { Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, node }
+import std.substrate { Dag, Behavior, BranchPath, LoopNode, LoopBound, NodeId, PortId, node }
 import std.algebra {
   SymbolicCost,
   AsymptoticClass,
+  Monoid,
   unnamed_size_variable,
   classify_symbolic_cost,
   dominates,
@@ -55,6 +56,9 @@ import std.computation {
   per_call_pattern_at
 }
 import v3.std.lookup { Lookup }
+import v3.std.dimensions { Witness, OptionalDiagnostic }
+import v3.std.lens { Lens }
+import v3.std.lens_application { LensEnforcement, EnforceableLens, EnforcedApplication }
 
 // Certainty: how tight is the bound?
 // Proven means the bound is exact for that coordinate; Conservative means it
@@ -386,6 +390,69 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
     Proven => b
     Conservative => Conservative
   }
+
+// ── T-LAS — canonical `EnforceableLens` for complexity contracts (gate #92) ──
+//
+// `complexity_lens` is a nominal `Lens<ComplexitySummary>` carrier so
+// `EnforceableLens` can land structurally. The behavioral fold remains
+// `complexity_of` / `compute_summaries`; enforcement reads that fold, not
+// these nominal `read`/`monoid` stubs.
+
+// Nominal enforcement pair for `EnforceableLens` substrate: behavioral checking
+// lives in `v3_compiler::enforced_lens_application` + `complexity_of` (gate #92).
+// Stubs keep bootstrap/infer from descending through `match` on `ComplexitySummary`.
+fn complexity_enforcement_project(_summary: ComplexitySummary) -> AsymptoticClass =
+  ClassConstant
+
+fn complexity_enforcement_violates(_declared: AsymptoticClass, _observed: AsymptoticClass) -> Bool =
+  0 == 1
+
+fn complexity_lens_read_stub(d: Dag, b: Behavior) -> Witness<ComplexitySummary> =
+  Inhabits(zero_summary())
+
+fn complexity_lens_iterate_stub(c: ComplexitySummary, bound: LoopBound) -> ComplexitySummary =
+  c
+
+fn complexity_lens_validate_stub(d: Dag, c: ComplexitySummary) -> OptionalDiagnostic =
+  NoDiagnostic
+
+fn complexity_lens_monoid_op_stub(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary =
+  b
+
+fn complexity_lens_branch_stub(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary =
+  a
+
+data complexity_lens_monoid: Monoid<ComplexitySummary> = {
+  op: complexity_lens_monoid_op_stub
+  identity: {
+    work: ConstantCost(0)
+    span: ConstantCost(0)
+    asymptotic_class: ClassConstant
+    work_certainty: Proven
+    span_certainty: Proven
+  }
+}
+
+data complexity_lens: Lens<ComplexitySummary> = {
+  name: "complexity"
+  read: complexity_lens_read_stub
+  sequential: complexity_lens_monoid
+  branch: complexity_lens_branch_stub
+  iterate: complexity_lens_iterate_stub
+  validate: complexity_lens_validate_stub
+}
+
+data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {
+  project: complexity_enforcement_project
+  violates: complexity_enforcement_violates
+}
+
+data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass> = {
+  lens: complexity_lens
+  enforcement: complexity_enforcement
+}
+
+type ComplexityEnforcedApplication = EnforcedApplication<ComplexitySummary, AsymptoticClass>
 
 // CostBound projection authority lives in `std.induction::cost_bound_to_symbolic`.
 // This lens consumes the live CallPattern query directly because structural

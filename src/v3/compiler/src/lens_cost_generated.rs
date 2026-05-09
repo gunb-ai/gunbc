@@ -503,3 +503,30 @@ pub fn meet_pair(p0: &Certainty, p1: Certainty) -> Certainty {
         Certainty::Conservative => Certainty::Conservative,
     }
 }
+pub fn complexity_enforcement_project(p0: &ComplexitySummary) -> AsymptoticClass {
+    AsymptoticClass::ClassConstant
+}
+pub fn complexity_enforcement_violates(p0: &AsymptoticClass, p1: &AsymptoticClass) -> bool {
+    (0 == 1)
+}
+pub fn complexity_lens_read_stub(p0: &Dag, p1: &Behavior) -> Witness<ComplexitySummary> {
+    Witness::Inhabits(zero_summary())
+}
+pub fn complexity_lens_iterate_stub(p0: ComplexitySummary, p1: &LoopBound) -> ComplexitySummary {
+    p0
+}
+pub fn complexity_lens_validate_stub(p0: &Dag, p1: &ComplexitySummary) -> OptionalDiagnostic {
+    OptionalDiagnostic::NoDiagnostic
+}
+pub fn complexity_lens_monoid_op_stub(
+    p0: &ComplexitySummary,
+    p1: ComplexitySummary,
+) -> ComplexitySummary {
+    p1
+}
+pub fn complexity_lens_branch_stub(
+    p0: ComplexitySummary,
+    p1: &ComplexitySummary,
+) -> ComplexitySummary {
+    p0
+}

@@ -23,7 +23,7 @@ src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
 src/v3/compiler/tokenize.dag	30	64719	286ece4c5bb39038
 src/v3/spec/go.dag	131	1170580	2ddf8468392612ee
 src/v3/spec/python.dag	93	602105	4ec88ac58c60fe63
-src/v3/spec/rust.dag	173	1362962	64a65693efe959ef
+src/v3/spec/rust.dag	181	1384808	3b5879ad21dd72ba
 src/v3/spec/v3_l1.dag	8	2246	57294d687b4753f4
 src/v3/std/algebra.dag	55	441449	1883ff29ff2c041d
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b

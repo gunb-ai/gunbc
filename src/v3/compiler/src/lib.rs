@@ -17,6 +17,8 @@
 
 pub mod dag;
 pub mod diagnostics;
+mod enforced_lens_application;
+pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
 pub mod pb_method_template_projection_dag_emit;
 mod regen_bootstrap_emit;
@@ -3346,6 +3348,10 @@ pub mod lens_cost {
         // drops one stable layer of grouping.
         use crate::dag::*;
         use crate::diagnostics::*;
+        use crate::lens_t_las_carrier::{
+            EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
+        };
+        use crate::Witness;
 
         include!("lens_cost_generated.rs");
     }
@@ -4461,11 +4467,40 @@ pub enum CompileError {
 // payload is on the cold failure path where the indirection would
 // matter less than the API churn. Targeted `allow` on the function
 // signature only — the rest of the crate keeps the lint enforced.
+fn is_lenses_complexity_authority_module(module: &parse::SurfaceModule) -> bool {
+    use crate::parse::SurfaceItem;
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Module { path, .. }
+                if path.len() >= 2 && path[0] == "lenses" && path[1] == "complexity"
+        )
+    })
+}
+
+fn needs_complexity_lens_authority_prepended(module: &parse::SurfaceModule) -> bool {
+    use crate::parse::SurfaceItem;
+    if is_lenses_complexity_authority_module(module) {
+        return false;
+    }
+    module.items.iter().any(|item| {
+        matches!(
+            item,
+            SurfaceItem::Import { path, .. }
+                if path.len() >= 2 && path[0] == "lenses" && path[1] == "complexity"
+        )
+    })
+}
+
 #[allow(clippy::result_large_err)]
 pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
-    let mut dag = lower::lower(&surface);
+    let mut dag = if needs_complexity_lens_authority_prepended(&surface) {
+        lower::lower_prepending_complexity_lens_authority(&surface)
+    } else {
+        lower::lower(&surface)
+    };
     infer::infer(&mut dag);
     if dag.diagnostics().is_empty() {
         Ok(dag)

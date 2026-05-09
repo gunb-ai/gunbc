@@ -258,9 +258,11 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit_rust_bin_shim.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
+    "src/v3/compiler/src/enforced_lens_application.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
     "src/v3/compiler/src/lens_apply.rs",
+    "src/v3/compiler/src/lens_t_las_carrier.rs",
     // T-PB-A: `lens_depth.rs` retired — unused observational lens (no in-tree consumer).
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lib.rs",
@@ -559,6 +561,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/shape_a_target_source_filtering_authority_test.rs",
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
+    "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
     "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs",

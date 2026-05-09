@@ -275,6 +275,8 @@ pub fn infer(dag: &mut Dag) {
             },
         );
     }
+
+    crate::enforced_lens_application::check_enforced_lens_applications(dag);
 }
 
 /// Walk a declaration through `Instantiation` / `ResolvedIdentifier`
