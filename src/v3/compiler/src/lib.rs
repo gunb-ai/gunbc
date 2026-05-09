@@ -144,6 +144,9 @@ pub mod realization_cost {
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum RealizationCostError {
         MissingMeta(&'static str),
+        NotLanguageSpec {
+            declaration: DeclarationId,
+        },
         MalformedRealization {
             declaration: DeclarationId,
             detail: String,
@@ -164,6 +167,15 @@ pub mod realization_cost {
             language: DeclarationId,
         ) -> Result<Self, RealizationCostError> {
             let metas = RealizationMetas::read(dag)?;
+            let language_spec_meta = dag
+                .declaration_by_name("LanguageSpec")
+                .map(|decl| decl.id)
+                .ok_or(RealizationCostError::MissingMeta("LanguageSpec"))?;
+            if dag.declaration(language).meta_tag != Some(language_spec_meta) {
+                return Err(RealizationCostError::NotLanguageSpec {
+                    declaration: language,
+                });
+            }
             let mut entries = HashMap::new();
 
             for decl in dag.declarations() {
@@ -354,6 +366,22 @@ pub mod realization_cost {
                 RealizationCostError::NegativeRealizationCost {
                     declaration: rust_int,
                     cost: -1,
+                }
+            );
+        }
+
+        #[test]
+        fn realization_cost_table_rejects_non_language_spec_context() {
+            let dag = bootstrap_dag();
+            let not_language = named_id(&dag, "Int");
+
+            let err = RealizationCostTable::for_language(&dag, not_language)
+                .expect_err("non-LanguageSpec context should fail closed");
+
+            assert_eq!(
+                err,
+                RealizationCostError::NotLanguageSpec {
+                    declaration: not_language,
                 }
             );
         }
