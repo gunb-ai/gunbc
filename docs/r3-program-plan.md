@@ -83,7 +83,18 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 **Total R3 closure gates** (post-Q1 + Q2 ratification + codex BLOCKING fix 2026-05-06 on PR #1809 + Q-ValueBody-Isomorphism RATIFIED 2026-05-08 + Q-V2-Retirement-Boundary-Matrix #97 RATIFIED 2026-05-08): **97 gate IDs** enumerated at this commit per `r3-structure.md` §"Acceptance" (**94** are **R3 thesis-load-bearing**; **#81**/**#82**/**#95** are **R4-carved** — see carve paragraph immediately below + `r4-carve-out-routing.md`). Composition: existing R3 lane gates across 18 lanes (`T-Tier3-Dissolution` 4, `T-LensProducer-Retirement` 4, `T-V-L4-L7-Direct` 2 + 4 NEW Pattern-A executable + 1 ValueBody isomorphism = 7, `T-V-L5-Corpus` 1, `T-FixedPoint` 1, `T-Numeric-Construction` 8, `T-Omni-Shape-B` 4, `T-Anthropic-Wire` 2, `T-Bridge-Retirement` 6, `T-CostLens-Composition` 3 + 1 NEW = 4, `T-V2-Retirement` 2, `T-Free-Consequences-Demonstration` 10, `T-E-P-Producer-Broadening` 3, `T-Lens-Behavioral-Parity` 5, `T-Tests-As-Data-Completeness` 4, `T-Lens-Application-Surface` 8, `T-Workflow-As-Data` 4, `T-Lens-Self-Application` 3) = 80 lane gates; **+ Gate #97** (`method_template_projection_emit_shim_retirement_coherence`, R2-Grounding-Rust / Gunbc **#1982**) = **81** lane-aligned gate rows; plus 5 substrate-gap-class gates + 10 demonstration gates + 1 PR-anticipation-discipline gate = 16 gates added 2026-05-06. Total: 81 + 16 = **97** across 18 lanes + 1 standing program.
 
-**Gate-count canonicalization (per Director audit 2026-05-09 — ask 9)**: `97 - 3 R4-carved (#81/#82/#95) = 94 R3-load-bearing`. Gate **#97** IS part of the 94 R3-load-bearing set (not in {#81, #82, #95}); not additive to the 94. The "94" count is post-R4-carve subtraction across the full 97 enumeration. Future closure-arithmetic citations must use this canonical breakdown to avoid +/-1 drift between {97 enumerated, 94 load-bearing, 81 lane-aligned}.
+**Gate-count canonicalization (per Director audit 2026-05-09 — ask 9, refined post-openai-pro REQUEST_CHANGES on PR #2361)**:
+
+- **97 enumerated** total
+- **3 R4-carved**: {#81, #82, #95} — `docs/r4-carve-out-routing.md` C1/C2/C1
+- **1 post-R3-canvas-deferred**: {#11} — TC1 V1 strict-fire; cannot reach PASSING absent #1972 substrate canvas-tier work which is HELD-CANVAS-DEFERRED past R3 per Director (a)-disposition 2026-05-09 (decision id `473b99fb...`); effectively removed from R3-thesis-load-bearing arithmetic
+- **93 R3-thesis-honest-load-bearing**: `97 − 3 (R4-carved) − 1 (post-R3-canvas-deferred) = 93`. R3 close = all 93 GREEN + `r3_debt_paydown_zero_remaining` GREEN.
+
+Gate **#97** IS part of the 93 R3-thesis-honest-load-bearing set (not in {#81, #82, #95, #11}); not additive. The breakdown sequence `{97 enumerated → 94 post-R4-carve → 93 post-canvas-deferral}` must be cited explicitly to avoid +/-1 drift across closure-arithmetic citations.
+
+Prior framing "94 R3-load-bearing" (in this paragraph + several §1.8 / §10 references) is RETAINED for R4-carve-only arithmetic (97 - 3 carved); the "93" subtracts the additional #11 canvas-deferral. Both numbers are canonical for different purposes:
+- **94** = "post-R4-carve enumeration count" (used when discussing R4 boundary)
+- **93** = "R3-thesis-honest-close conjunction count" (used when discussing actual R3 close gate-count requirement)
 
 **Per codex BLOCKING 2026-05-06 (relayed via PR #1808 inline; PR #1808 already merged so fix lands on PR #1809)**: prior 75-count omitted 20 gate IDs from 4 lanes (T-E-P-Producer-Broadening 3 + T-Lens-Behavioral-Parity 5 + T-Tests-As-Data-Completeness 4 + T-Lens-Application-Surface 8) which were declared in `r3-structure.md` §"Lane structure" prose but never landed in §"Acceptance" canonical authority. Both gaps closed 2026-05-06 on PR #1809 — single-authority restored across all 18 lanes.
 

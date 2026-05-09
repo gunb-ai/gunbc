@@ -8,7 +8,7 @@
 
 ## §0. What this tracks
 
-Daily/per-cycle snapshot of `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST` counts in `src/v3/compiler/tests/integration/sg0_census_test.rs`, against the R3-close target of **0 + 0** for §1.8 gates **#8** + **#84** (Pure-Bootstrap-Zero closure).
+Daily/per-cycle snapshot of `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS` counts in `src/v3/compiler/tests/integration/sg0_census_test.rs`, against the R3-close target of **0 + 0 + 0** for §1.8 gates **#8** + **#84** (Pure-Bootstrap-Zero closure). Per ROADMAP.md:177 the SG-0 PR-window discipline names the delta surface as `EXPECTED_HAND_AUTHORED_*` ∪ fragments — fragments included in this tracker post-openai-pro REQUEST_CHANGES on PR #2361 (fragments are part of T-PB-A's non-test ratchet per `sg0_census_test.rs:597-598`).
 
 ## §1. Schema (per-snapshot row)
 
@@ -18,7 +18,8 @@ Daily/per-cycle snapshot of `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_A
 | `sha` | `git short-sha` | `origin/main` HEAD at snapshot time |
 | `non_test` | `int` | `EXPECTED_HAND_AUTHORED_NON_TEST` count (gate #8 target=0) |
 | `test` | `int` | `EXPECTED_HAND_AUTHORED_TEST` count (gate #84 target=0) |
-| `total` | `int` | `non_test + test` |
+| `fragments` | `int` | `EXPECTED_HAND_AUTHORED_FRAGMENTS` count (T-PB-A non-test ratchet; gate #8 also gates this to 0) |
+| `total` | `int` | `non_test + test + fragments` |
 | `delta_vs_prev` | `int` | Net change vs prior snapshot |
 | `bulk_events_landed` | `string[]` | Named bulk-dissolution events landed since prior snapshot (e.g., "Cluster M Phase 1 #85") |
 | `notes` | `string` | One-line context (drift, stable, anomaly) |
@@ -33,19 +34,21 @@ non_test=$(git show origin/main:src/v3/compiler/tests/integration/sg0_census_tes
   awk '/^const EXPECTED_HAND_AUTHORED_NON_TEST/,/^\];/' | grep -E '"src/v3/' | wc -l)
 test=$(git show origin/main:src/v3/compiler/tests/integration/sg0_census_test.rs | \
   awk '/^const EXPECTED_HAND_AUTHORED_TEST/,/^\];/' | grep -E '"src/v3/' | wc -l)
-total=$((non_test + test))
-echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test total=$total"
+fragments=$(git show origin/main:src/v3/compiler/tests/integration/sg0_census_test.rs | \
+  awk '/^const EXPECTED_HAND_AUTHORED_FRAGMENTS/,/^\];/' | grep -E '"src/v3/' | wc -l)
+total=$((non_test + test + fragments))
+echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test fragments=$fragments total=$total"
 ```
 
 ## §3. Snapshot history
 
-| Date | sha | non_test | test | total | delta | bulk events | notes |
-|---|---|---|---|---|---|---|---|
-| 2026-04-30 | (HEAD~500) | 38 | 81 | 119 | — | — | retroactive baseline |
-| 2026-05-02 | (HEAD~300) | 40 | 87 | 127 | +8 | — | retroactive |
-| 2026-05-06 | (HEAD~150) | 46 | 89 | 135 | +8 | — | retroactive |
-| 2026-05-07 | (HEAD~50) | 47 | 95 | 142 | +7 | — | retroactive |
-| **2026-05-09** | **c25b2d8df** | **48** | **101** | **149** | **+7 (9-day total: +30)** | (none — Cluster M cold) | velocity-walk audit landed PR #2358; remediation program in flight |
+| Date | sha | non_test | test | fragments | total | delta | bulk events | notes |
+|---|---|---|---|---|---|---|---|---|
+| 2026-04-30 | (HEAD~500) | 38 | 81 | 1 | 120 | — | — | retroactive baseline (fragments column added 2026-05-09 schema-fix; assumed 1 entry `parse_parser_body.txt` since landing) |
+| 2026-05-02 | (HEAD~300) | 40 | 87 | 1 | 128 | +8 | — | retroactive |
+| 2026-05-06 | (HEAD~150) | 46 | 89 | 1 | 136 | +8 | — | retroactive |
+| 2026-05-07 | (HEAD~50) | 47 | 95 | 1 | 143 | +7 | — | retroactive |
+| **2026-05-09** | **c25b2d8df** | **48** | **101** | **1** | **150** | **+7 (9-day total: +30)** | (none — Cluster M cold) | velocity-walk audit landed PR #2358; remediation program in flight |
 
 ## §4. Velocity-to-zero math
 
