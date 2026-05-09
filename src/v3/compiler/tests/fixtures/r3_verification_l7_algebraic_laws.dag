@@ -35,7 +35,7 @@ fn r3_l7_free_monoid_identity_op(a: Int, b: Int) -> Int = a + b
 
 data r3_verification_l7_algebraic_laws_skeleton: TestClaim = {
   name: "r3_verification_l7_algebraic_laws_skeleton",
-  source: "let _: Int = 1\n",
+  source: "fn r3_l7_identity_placeholder_op(a: Int, b: Int) -> Int = a + b\n",
   file_name: "r3_verification_l7_algebraic_laws_skeleton.v3",
   predicate: AlgebraicLaw(Identity, r3_l7_identity_placeholder_op),
   requires: []
