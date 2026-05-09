@@ -45,6 +45,12 @@ fn second_batch_dag() -> &'static Dag {
 
 #[test]
 fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes() {
+    run_on_larger_stack(|| {
+        r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner()
+    });
+}
+
+fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
     let results = TestRunner::new(second_batch_dag()).run_suite(SUITE_NAME);
     assert_eq!(results.len(), EXPECTED_CLAIMS.len());
 
@@ -64,4 +70,16 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes() {
             );
         }
     }
+}
+
+fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
+where
+    T: Send + 'static,
+{
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(f)
+        .expect("spawn larger-stack integration thread")
+        .join()
+        .expect("larger-stack integration thread panicked")
 }

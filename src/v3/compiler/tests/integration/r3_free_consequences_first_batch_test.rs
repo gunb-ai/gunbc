@@ -22,6 +22,12 @@ const EXPECTED_CLAIMS: [&str; 5] = [
 
 #[test]
 fn r3_free_consequences_first_batch_reaches_unified_predicate_shape() {
+    run_on_larger_stack(|| {
+        r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner()
+    });
+}
+
+fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
     let dag = match compile_to_dag(FIXTURE_SOURCE, FIXTURE_PATH) {
         Ok(dag) => {
             assert!(
@@ -68,4 +74,16 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape() {
             );
         }
     }
+}
+
+fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
+where
+    T: Send + 'static,
+{
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(f)
+        .expect("spawn larger-stack integration thread")
+        .join()
+        .expect("larger-stack integration thread panicked")
 }
