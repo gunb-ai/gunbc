@@ -12,15 +12,19 @@
 
 ## §0. TL;DR — load-bearing finding
 
-**The SG-0 census is growing, not shrinking.** Over the last 9 days the ratchet went from 119 entries (2026-04-30) to **149 entries (2026-05-09)** — net **+30 entries**, **+3.3/day** average. R3 close requires this number to reach **0** (gate #8 non-test = 0 + gate #84 test = 0).
+**The SG-0 census is growing, not shrinking.** Over the last 9 days the ratchet went from 119 entries (2026-04-30) to **149 entries (2026-05-09 audit-time snapshot)** — net **+30 entries**, **+3.3/day** average. R3 close requires this number to reach **0** (gate #8 non-test = 0 + gate #84 test = 0).
 
-| Date | non-test (#8 target=0) | test (#84 target=0) | total |
-|---|---|---|---|
-| 2026-04-30 (HEAD~500) | 38 | 81 | 119 |
-| 2026-05-02 (HEAD~300) | 40 | 87 | 127 |
-| 2026-05-06 (HEAD~150) | 46 | 89 | 135 |
-| 2026-05-07 (HEAD~50) | 47 | 95 | 142 |
-| **2026-05-09 (HEAD)** | **48** | **101** | **149** |
+> **Snapshot scope (added 2026-05-09 post-codex BLOCKING review)**: numbers below are **audit-time snapshots** at indicated git sha; not refreshed as `origin/main` advances. Live source-of-truth for SG-0 trajectory is [`docs/audit/r3-sg0-trajectory-tracker.md`](r3-sg0-trajectory-tracker.md) — that artifact is updated daily/per-cycle with fragments-inclusive counts. The trajectory finding (growth rate ≥ +3.3/day; gates cannot reach zero at observed velocity) is **structural** and remains valid regardless of point-in-time count drift; specific count cells below should be read as "as of the audit window" not "as of HEAD now."
+
+| Date | non-test (#8 target=0) | test (#84 target=0) | total | Note |
+|---|---|---|---|---|
+| 2026-04-30 (HEAD~500) | 38 | 81 | 119 | retroactive baseline (excludes 1 fragment entry) |
+| 2026-05-02 (HEAD~300) | 40 | 87 | 127 | retroactive |
+| 2026-05-06 (HEAD~150) | 46 | 89 | 135 | retroactive |
+| 2026-05-07 (HEAD~50) | 47 | 95 | 142 | retroactive |
+| **2026-05-09 (audit-time ~`c25b2d8df`)** | **48** | **101** | **149** | **audit-time** snapshot (excluding fragments); 150 fragments-inclusive |
+
+**Numbers in this audit are point-in-time at the audit window**; main has advanced since (see tracker for live numbers). Per [`r3-sg0-trajectory-tracker.md`](r3-sg0-trajectory-tracker.md) §3 history table for live counts.
 
 **At current trajectory the gates never close.** The path to zero is structural — not per-file dissolution at observed velocity. It depends on **single bulk-dissolution events** firing.
 
