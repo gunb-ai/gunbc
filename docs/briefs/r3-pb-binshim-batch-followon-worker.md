@@ -30,22 +30,31 @@ Each retirement contributes one decrement to the `BinShimFilesSubsetPredicate` c
 
 ## Dispatch staging
 
-**Hard prerequisite (do not author against missing carriers)**:
-- **Stage A landing on main**: smart-tern-649's substrate landings (the 4 strict-mirror artifacts at `r3-pb-binshim-retirement-worker.md` §"Substrate landings"). Per `feedback_substrate_grep_before_authoring`, worker MUST grep main at dispatch time to confirm `BinShimFilesSubsetPredicate` type + `bin_shim_files_subset_predicate` data declaration + `is_bin_shim_census_path` runtime helper + `eval_census_subset_count_shape` dispatch branch are present. If missing, STOP-AND-PING PB Mgr.
-- **Recommended precedent**: warm-crab-600's gate #7 first-cut PR for `regen_lens.rs` retired. Inspect the merged PR at dispatch time for the exact emit-via-`.dag` pattern + `// AUTO-GENERATED` header + `REGEN_OUTPUTS` build.rs update + SG-0 census decrement shape.
+**Full readiness prerequisite — inherited verbatim from parent brief** [`r3-pb-binshim-retirement-worker.md` §"Dispatch preconditions"](r3-pb-binshim-retirement-worker.md):
+
+1. **R2 close signal** — R2 Release Manager closure ledger; same precondition as the other 7 Evaluator-gated R3 lanes per `docs/r3-structure.md` §"R3 worker dispatch precondition".
+2. **R2-Evaluator landed and stable**.
+3. **Item 4 PB-Runtime sub-gate green** — `pb_runtime_equivalent_to_evaluator_on_corpus` (§7.1) evaluates true on main (smart-tern-649 Stage B authoring).
+4. **Substrate-owned `BinShim` carrier type live on main** — `type BinShim { entrypoint_name, description, entry }` per `docs/design-pb-runtime-interpreter.md:200-204`; verify by grep at dispatch time.
+5. **§7.3 substrate disposition** — RESOLVED 2026-05-09 per [#2068 c#4411574142](https://github.com/gunb-ai/gunbc/issues/2068#issuecomment-4411574142); locked-shape carriers + consumer wire-up at parent brief §"Substrate landings (locked shape)".
+
+**Per `feedback_substrate_grep_before_authoring`**, the worker MUST grep main at dispatch time to confirm ALL FIVE preconditions hold. If any is missing, STOP-AND-PING PB Mgr — do NOT proceed under reduced-readiness state. P5 fail-closed dispatch discipline is non-negotiable.
+
+**Additional follow-on-specific recommendation** (NOT a precondition reduction): inspect the merged warm-crab-600 gate #7 PR for `regen_lens.rs` retirement as the canonical first-cut precedent — emit-via-`.dag` pattern + `// AUTO-GENERATED` header + `REGEN_OUTPUTS` build.rs update + SG-0 census decrement shape. This is implementation-pattern reference, not a gate.
 
 ## Per-shim retirement template
 
 For each of the 8 shim files, the worker:
 
-1. **Author per-shim instance declaration** at `dsl/std/runtime/bin_shims/<shim_name>.dag`:
+1. **Author per-shim instance declaration** at `dsl/std/runtime/bin_shims/<shim_name>.dag` per the locked `BinShim` carrier shape at `docs/design-pb-runtime-interpreter.md:200-204` (`entrypoint_name`, `description`, `entry`):
    ```dag
    data <shim_name>_shim: BinShim = {
-     name: "<shim_name>",
-     entry: <existing_lib_fn_for_this_shim>,
-     ...  // shape per BinShim carrier (Substrate-locked per design-pb-runtime-interpreter.md §4.2)
+     entrypoint_name: "<shim_name>",  // becomes [[bin]] target name in Cargo.toml
+     description: "<one-line doc-comment for the emitted Rust file>",
+     entry: <fn_ref>,                  // DeclarationRef → .dag fn () -> std.process.ProcessExit
    }
    ```
+   Worker MUST NOT introduce additional fields or rename existing ones — that's a P1 substrate-fact-introduction escalation back to Substrate Mgr per parent brief §"STOP conditions".
 2. **Wire into bin-shim emitter** so the emitter generates `src/v3/compiler/src/bin/<shim_name>.rs` from the `.dag` declaration with `// AUTO-GENERATED from <path> — DO NOT EDIT.` header.
 3. **Verify behavioral equivalence** vs the current hand-Rust shim per parent brief §7.2 fixture (NOT byte-identity; emitted form may differ in formatting / comment shape).
 4. **Atomic update**:
@@ -95,11 +104,11 @@ Worker MUST STOP and ping PB Mgr (#2074) when:
 
 ## Worker dispatch posture
 
-**PROPOSAL** — dispatch held until Stage A landing + gate #7 first-cut PR observable on main. Worker spawns under PM #846 (queue position TBD per Director cross-Mgr cadence). At dispatch time, worker:
+**PROPOSAL** — dispatch held until ALL FIVE preconditions per §"Dispatch staging" hold on main (R2 close + R2-Evaluator landed + Item 4 sub-gate green + `BinShim` carrier live + §7.3 disposition resolved). Worker spawns under PM #846 (queue position TBD per Director cross-Mgr cadence). At dispatch time, worker:
 
-1. Greps main for `BinShimFilesSubsetPredicate` type/data + `is_bin_shim_census_path` predicate.
-2. Inspects gate #7 first-cut PR (warm-crab-600's `regen_lens.rs` retirement) for emit-pattern precedent.
+1. Greps main for ALL FIVE preconditions; STOP-AND-PING if any is missing (do NOT proceed under reduced-readiness).
+2. Inspects gate #7 first-cut PR (warm-crab-600's `regen_lens.rs` retirement) for emit-pattern precedent (recommended, not gating).
 3. Picks staging shape (a/b/c per §"Dispatch sequencing") and proceeds.
-4. Pings PB Mgr at first PR-open with chosen staging + scope manifest.
+4. Pings PB Mgr at first PR-open with chosen staging + scope manifest + the substrate-grep evidence confirming all 5 preconditions held at dispatch time.
 
 — Authored by warm-dove-618 (PB Mgr, inbox #2074); reply at #2074
