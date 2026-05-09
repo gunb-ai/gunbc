@@ -3687,7 +3687,10 @@ pub mod lens_cost_symbolic {
         include!("lens_cost_symbolic_generated.rs");
     }
 
-    pub use generated::{symbolic_cost_of, SymbolicCostEntry};
+    pub use generated::{
+        compute_symbolic_costs, symbolic_cost_of, transform_cost_for_target, CostBasisDeclaration,
+        CostBasisKind, SymbolicCostEntry,
+    };
     /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
     /// at `SymbolicCost`. Alias (not a second sum type) — the lens now
     /// returns `Lookup<SymbolicCost>` directly; this name stays for
@@ -4095,6 +4098,7 @@ pub use bootstrap_regen_fresh::{
     compile_full_bootstrap_without_parse_surface_dag_from_std_seed, compile_std_bootstrap_dag,
 };
 
+mod cost_basis_declaration;
 mod dimension;
 mod infer;
 
@@ -4306,6 +4310,9 @@ pub(crate) mod variant_payload {
 pub(crate) mod workflow_idempotency;
 pub(crate) mod workflow_parallelism;
 
+pub use cost_basis_declaration::{
+    try_build_per_write_log_cost_basis_declaration, CostBasisDeclarationBuildError,
+};
 pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan, LAYER1_DIAGNOSTIC_KIND_LABELS};
 pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
