@@ -13,12 +13,17 @@ module v3.std.timing_lens
 
 import std.list { List, is_empty }
 import std.nat { Nat }
-import std.types { Bool, ContentHash, WorkflowProducerId, WorkflowObserverId, WorkflowProverId, WorkflowRunId }
+import std.types { Bool, ContentHash, FilePath, WorkflowProducerId, WorkflowObserverId, WorkflowProverId, WorkflowRunId }
 import std.substrate { Dag, Behavior, LoopBound, NodeId }
 import v3.std.substrate { SourceSpan }
 import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.workflows { behavior_spine }
+
+// Module-authority `FilePath` witness for diagnostics when `behavior_spine(d)` is
+// empty (no `Behavior` span to borrow). Checked at `data` load time (DB-11).
+data timing_lens_module_authority_file: FilePath =
+  "src/v3/std/timing_lens.dag"
 
 // PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — nominal SI-nanosecond coordinate for
 // durations and POSIX-epoch instants at this substrate layer. **Magnitude**
@@ -173,6 +178,9 @@ fn timing_lens_behavior_span(b: Behavior) -> SourceSpan =
     Bind(bind) => bind.span
   }
 
+fn timing_lens_empty_spine_diagnostic_span() -> SourceSpan =
+  SourceSpan { file: timing_lens_module_authority_file, start: 0, end: 0 }
+
 // Placeholder `Diagnostic` for scaffold validate: non-`Observed` carriers are
 // not admissible as validated evidence until runner-backed observation wiring
 // lands (`ResolveError` is the closest Layer-1 kind for “evidence not resolved”).
@@ -185,11 +193,18 @@ fn timing_lens_scaffold_non_evidence_diagnostic(text: String, at: SourceSpan) ->
   }
 
 // Threads `d` through `behavior_spine` so `lenses.unused_parameters` stays
-// clean. Uses the first spine node's substrate `span` so `SourceSpan.file`
-// carries a checked `FilePath` (DB-11); empty `d.nodes` has no witness site.
+// clean. Non-`Observed` validation is fail-closed (P3): always `SomeDiagnostic`.
+// With a non-empty spine, attach the first node's reflected `span`; when the
+// spine is empty, attach the module-authority placeholder span (DB-11).
 fn timing_lens_validate_non_observed(d: Dag, text: String) -> OptionalDiagnostic =
   match behavior_spine(d) {
-    Empty => NoDiagnostic
+    Empty =>
+      SomeDiagnostic {
+        value: timing_lens_scaffold_non_evidence_diagnostic(
+          text,
+          timing_lens_empty_spine_diagnostic_span()
+        )
+      }
     Cons(payload) =>
       SomeDiagnostic {
         value: timing_lens_scaffold_non_evidence_diagnostic(

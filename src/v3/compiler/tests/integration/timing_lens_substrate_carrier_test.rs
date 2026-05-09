@@ -372,6 +372,14 @@ fn timing_lens_validate_surfaces_diagnostic_for_non_observed_states() {
         helper_window.contains("SomeDiagnostic"),
         "timing_lens_validate_non_observed must construct SomeDiagnostic; got: {helper_window:?}"
     );
+    assert!(
+        !src.contains("Empty => NoDiagnostic"),
+        "timing_lens_validate_non_observed must not fail-open non-evidence on empty behavior_spine (P3); remove Empty => NoDiagnostic"
+    );
+    assert!(
+        src.contains("timing_lens_empty_spine_diagnostic_span"),
+        "empty spine path must still attach a DB-11 SourceSpan via timing_lens_empty_spine_diagnostic_span"
+    );
 }
 
 /// openai-pro / PR #2360 (REQUEST_CHANGES): `timing_measurement_iterate` must not
