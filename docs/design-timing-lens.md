@@ -24,12 +24,18 @@ Wall-clock durations and POSIX-style epoch coordinates are carried by a dedicate
 
 The carrier uses `Unobserved` (not the bare label `Missing`) so witness sites avoid ambiguous resolution against other `Missing`-shaped substrate names; it denotes the same external “missing timing evidence” state described in program gates.
 
+### 1.3 `Witness<TimingMeasurement>` vs. `Violates` (DB-3 / P3)
+
+Some reviews map “no external timing row yet” to `Witness::Violates`. **That is the wrong partition for this scaffold.**
+
+Per `src/v3/std/dimensions.dag`, `Witness<Carrier> = Inhabits(Carrier) | Violates {…}`: `Inhabits(c)` means the witness extracted **carrier value `c`**; `Violates` is for **dimension / policy violations** once `read` / `break_diagnostic` rules exist at those sites. Here **`Unobserved` is the typed report outcome** for absent runner/CI wiring — it is **not** a silent upgrade to `Observed { duration: … }` and does **not** invent `Nat` magnitudes. **P3 fail-closed** is satisfied by (a) **explicit sum arms** instead of coercing absent data to scalars (§2.5), (b) **§2.6** enforcement on consumers, and (c) future **`timing_lens_validate` / `break_diagnostic`** bodies — not by pretending missing evidence is a `Violates` while the carrier already has a dedicated **missing-evidence** arm. Withholding `timing_lens_read` entirely is blocked on **E6** (no `data` lens rows yet); the hook stays as an honest **🟡 fail-open** receipt until observation wiring lands.
+
 Supporting carriers:
 
 - `TimingObservationSet` — batched `(subject_stable_id, measurement)` entries for correlating external timing rows with workflow subjects.
 - `TimingBudget` — `max: Nanoseconds` budget fact paired with enforcement / demo lanes (`LensEnforcement`-shaped consumption is out of scope for this substrate-only slice).
 
-Scaffold functions in `timing_lens.dag` (`timing_sequential_op`, `timing_branch_op`, `timing_measurement_iterate`, `timing_lens_read`, `timing_lens_validate`) are the hooks where a future `data … : Lens<TimingMeasurement>` instance will attach; **E6 / bootstrap policy** still forbids registering concrete `Lens<…>` data rows until the function-valued structural data surface closes. `timing_lens_read` uses `Inhabits(timing_measurement_unobserved())` so the witness payload is constructed through a `TimingMeasurement` arrow (mirrors the `Inhabits(_seed_list_provenance_empty())` pattern in `emission_provenance.dag`).
+Scaffold functions in `timing_lens.dag` (`timing_sequential_op`, `timing_branch_op`, `timing_measurement_iterate`, `timing_lens_read`, `timing_lens_validate`) are the hooks where a future `data … : Lens<TimingMeasurement>` instance will attach; **E6 / bootstrap policy** still forbids registering concrete `Lens<…>` data rows until the function-valued structural data surface closes. `timing_lens_read` ends in `Inhabits(timing_measurement_unobserved())` on every `Behavior` arm (today via `match b { … }` plus `behavior_spine(d)` / `is_empty` so `lenses.unused_parameters` stays clean on `Dag::new()`), so the witness payload is always constructed through a **`TimingMeasurement` arrow**, not a bare `Unobserved` atom at witness sites (same hygiene class as `Inhabits(_seed_list_provenance_empty())` in `emission_provenance.dag`).
 
 ## 2. Shared External Attachment — six invariants
 
@@ -41,6 +47,8 @@ Scaffold functions in `timing_lens.dag` (`timing_sequential_op`, `timing_branch_
 4. **Attachment time and run context** — `attached_at_ns: Nanoseconds` plus `workflow_run_id` tie the fact to a concrete run; `Nanoseconds` is the same nominal coordinate used for durations (SI-nanosecond magnitude as `Nat`; signed-epoch / range refinements deferred per §1.1).
 5. **Report states, not silent scalars** — timing outcomes use `TimingMeasurement`’s `Observed | Unobserved | Ambiguous | Stale` sum; consumers must branch on the state instead of coercing absent data to zero.
 6. **Fail-closed on non-observed / non-valid states** — enforcement and lens application surfaces treat `Unobserved`, `Ambiguous`, and `Stale` as non-evidence unless a named consumer explicitly documents widening; the substrate vocabulary does not fabricate `Observed` from thin air.
+
+**Observation row ↔ anchor correlation (slice-2 scaffold):** `TimingObservationEntry` and `WorkflowObservationAnchor` are **two nominal records** on purpose: each stays a small POD shape for bootstrap + integration ratchets. **Correlation is structural, not an embedded product yet:** align on **`subject_stable_id`**, then pair **`workflow_run_id`**, **`artifact_digest`**, and `attached_at_ns` when the producer emits a matched bundle (same six-invariant coordinates §2.1–§2.4). Folding the anchor **inside** every `TimingObservationEntry` (or replacing both with a single generic parametric anchor) is **Q-WAD-S2-Anchor / Director canvas** work (#828 / `docs/briefs/r3-substrate-t-wad-slice-2-timing-lens-canvas.md`); landing a product edge before ratification would pre-empt Mgr/Director disposition.
 
 Promotion to a generic `ExternalDataAnchor<Subject, Source>` waits on a second concrete consumer (Substrate Mgr disposition).
 
