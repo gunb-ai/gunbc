@@ -3352,8 +3352,7 @@ pub mod lens_cost {
         use crate::dag::*;
         use crate::diagnostics::*;
         use crate::lens_t_las_carrier::{
-            EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic,
-            ProjectionFailure,
+            EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic, ProjectionFailure,
         };
         use crate::Witness;
 
