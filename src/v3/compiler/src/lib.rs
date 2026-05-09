@@ -15,6 +15,7 @@
 //   on CompileError — type errors live on the Dag, not in the Err
 //   payload.
 
+pub mod complexity_lattice;
 pub mod dag;
 pub mod diagnostics;
 mod enforced_lens_application;
@@ -3340,12 +3341,14 @@ pub mod lens_cost {
         clippy::clone_on_copy,
         clippy::collapsible_else_if,
         clippy::double_parens,
+        clippy::eq_op,
         clippy::large_enum_variant
     )]
     mod generated {
         // Regen can emit a redundant paren around some `Hit(...)` payload
         // subexpressions (`Hit((1 + n))` vs `Hit(1 + n)`) — relax until emission
         // drops one stable layer of grouping.
+        use crate::complexity_lattice::asymptotic_dominates;
         use crate::dag::*;
         use crate::diagnostics::*;
         use crate::lens_t_las_carrier::{
@@ -3357,7 +3360,8 @@ pub mod lens_cost {
     }
 
     pub use generated::{
-        complexity_of, Certainty, ComplexityEntry, ComplexitySummary, DominanceOutcome,
+        complexity_enforcement_project, complexity_enforcement_violates, complexity_of, Certainty,
+        ComplexityEntry, ComplexitySummary, DominanceOutcome,
     };
     pub type ComplexityLookup = crate::dag::Lookup<ComplexitySummary>;
 

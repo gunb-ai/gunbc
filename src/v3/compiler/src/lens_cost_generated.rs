@@ -504,10 +504,18 @@ pub fn meet_pair(p0: &Certainty, p1: Certainty) -> Certainty {
     }
 }
 pub fn complexity_enforcement_project(p0: &ComplexitySummary) -> AsymptoticClass {
-    AsymptoticClass::ClassConstant
+    ((p0).asymptotic_class).clone()
 }
 pub fn complexity_enforcement_violates(p0: &AsymptoticClass, p1: &AsymptoticClass) -> bool {
-    (0 == 1)
+    if asymptotic_dominates(p1, p0) {
+        if asymptotic_dominates(p0, p1) {
+            (0 == 1)
+        } else {
+            (0 == 0)
+        }
+    } else {
+        (0 == 1)
+    }
 }
 pub fn complexity_lens_read_stub(p0: &Dag, p1: &Behavior) -> Witness<ComplexitySummary> {
     Witness::Inhabits(zero_summary())

@@ -31,6 +31,7 @@ import std.algebra {
   Monoid,
   unnamed_size_variable,
   classify_symbolic_cost,
+  asymptotic_dominates,
   dominates,
   sequential,
   iterate,
@@ -395,17 +396,24 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
 //
 // `complexity_lens` is a nominal `Lens<ComplexitySummary>` carrier so
 // `EnforceableLens` can land structurally. The behavioral fold remains
-// `complexity_of` / `compute_summaries`; enforcement reads that fold, not
-// these nominal `read`/`monoid` stubs.
+// `complexity_of` / `compute_summaries`.
+//
+// **LensEnforcement authority:** `project` / `violates` below are the substrate
+// source of truth for budget comparison. The compiler consumer
+// (`enforced_lens_application`) calls the same behavior via
+// `lens_cost_generated` (emit of these fns) — not a parallel lattice.
 
-// Nominal enforcement pair for `EnforceableLens` substrate: behavioral checking
-// lives in `v3_compiler::enforced_lens_application` + `complexity_of` (gate #92).
-// Stubs keep bootstrap/infer from descending through `match` on `ComplexitySummary`.
-fn complexity_enforcement_project(_summary: ComplexitySummary) -> AsymptoticClass =
-  ClassConstant
+fn complexity_enforcement_project(summary: ComplexitySummary) -> AsymptoticClass =
+  summary.asymptotic_class
 
-fn complexity_enforcement_violates(_declared: AsymptoticClass, _observed: AsymptoticClass) -> Bool =
-  0 == 1
+// Strict excess: observed strictly dominates declared budget under `asymptotic_dominates`
+// (`algebra.dag`), and not conversely. Bool via `0 == 0` / `0 == 1` so rust emit
+// stays valid Rust `bool` (Classical `True`/`False` lowers poorly for `-> Bool` targets).
+fn complexity_enforcement_violates(declared: AsymptoticClass, observed: AsymptoticClass) -> Bool =
+  if asymptotic_dominates(observed, declared) then
+    if asymptotic_dominates(declared, observed) then 0 == 1 else 0 == 0
+  else
+    0 == 1
 
 fn complexity_lens_read_stub(d: Dag, b: Behavior) -> Witness<ComplexitySummary> =
   Inhabits(zero_summary())

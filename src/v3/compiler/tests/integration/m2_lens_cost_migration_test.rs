@@ -85,6 +85,7 @@ fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     let wrapped = format!(
         "#[allow(warnings, clippy::all)] \
          mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; \
+         use v3_compiler::complexity_lattice::asymptotic_dominates; \
          use v3_compiler::Witness; \
          use v3_compiler::lens_t_las_carrier::{{EnforceableLens, Lens, LensEnforcement, Monoid, OptionalDiagnostic}}; \
          {module_source} }} \
@@ -151,10 +152,10 @@ fn complexity_dag_compiles_cleanly() {
 /// iterate-shaped migration names; no L-8-violating emitted primitive helpers.
 ///
 /// Gate #92 lands nominal `data complexity_lens` as a **T-LAS substrate stub**
-/// (behavioral enforcement is host-side in `enforced_lens_application`); this is
-/// intentionally **not** the pre-migration `Witness`/read honest lens surface
-/// the original STOP comment targeted — update the ratchet when that surface
-/// ships, without forbidding the nominal carrier outright.
+/// (read/validate remain stubs). **Enforcement** (`project` / `violates`) is
+/// authoritative in `complexity.dag` and executed via `lens_cost_generated` +
+/// `v3_compiler::complexity_lattice::asymptotic_dominates` — not a divergent
+/// host-only lattice.
 #[test]
 fn complexity_lens_migration_stop_surface_ratchet() {
     let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())

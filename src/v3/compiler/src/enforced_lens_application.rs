@@ -2,8 +2,10 @@
 //!
 //! Gate #92 (`complexity_violation_compile_error_demonstrated`): when a program
 //! authors `EnforcedApplication<ComplexitySummary, AsymptoticClass>` referencing
-//! `complexity_enforceable`, infer checks the named section's asymptotic class
-//! against the declared budget and attaches a compile diagnostic on violation.
+//! `complexity_enforceable`, infer checks the named section using the **same**
+//! `LensEnforcement` projection + violation relation as `complexity.dag`
+//! (`complexity_enforcement_project` / `complexity_enforcement_violates`, surfaced
+//! through `lens_cost_generated`) and attaches a compile diagnostic on violation.
 
 use std::collections::HashMap;
 
@@ -12,7 +14,9 @@ use crate::dag::{
     PositiveDescentAmount, TypeConnective, ValueBody,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::lens_cost::complexity_of;
+use crate::lens_cost::{
+    complexity_enforcement_project, complexity_enforcement_violates, complexity_of,
+};
 
 /// Fail-closed check for landed complexity enforcement applications.
 pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
@@ -134,7 +138,7 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         .unwrap_or_else(|| decl.span.clone());
 
         let observed = match complexity_of(dag, &port) {
-            Lookup::Hit(s) => s.asymptotic_class,
+            Lookup::Hit(s) => complexity_enforcement_project(&s),
             Lookup::Miss => {
                 violations.push(Diagnostic::ParseError {
                     message: "lens enforcement: complexity lens returned Miss for section — \
@@ -146,7 +150,7 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
                 continue;
             }
         };
-        if !asymptotic_violates(&budget_class, &observed) {
+        if !complexity_enforcement_violates(&budget_class, &observed) {
             continue;
         }
         violations.push(Diagnostic::ParseError {
@@ -360,72 +364,5 @@ fn decode_positive_descent_variant(
             })
         }
         _ => None,
-    }
-}
-
-/// Strict violation: observed asymptotic class is strictly worse than the user's budget.
-fn asymptotic_violates(budget: &AsymptoticClass, observed: &AsymptoticClass) -> bool {
-    asymptotic_dominates(observed, budget) && !asymptotic_dominates(budget, observed)
-}
-
-/// Mirrors `asymptotic_dominates` in `src/v3/std/algebra.dag` (dominance lattice).
-fn asymptotic_dominates(a: &AsymptoticClass, b: &AsymptoticClass) -> bool {
-    use AsymptoticClass::*;
-    match a {
-        ClassUnknown => true,
-        ClassExponential => match b {
-            ClassUnknown => false,
-            ClassExponential
-            | ClassPolynomial { .. }
-            | ClassQuadratic
-            | ClassLinearithmic
-            | ClassLinear
-            | ClassLog
-            | ClassConstant => true,
-        },
-        ClassPolynomial { .. } => match b {
-            ClassUnknown | ClassExponential => false,
-            ClassPolynomial { .. }
-            | ClassQuadratic
-            | ClassLinearithmic
-            | ClassLinear
-            | ClassLog
-            | ClassConstant => true,
-        },
-        ClassQuadratic => match b {
-            ClassConstant | ClassLog | ClassLinear | ClassLinearithmic | ClassQuadratic => true,
-            ClassPolynomial { .. } | ClassExponential | ClassUnknown => false,
-        },
-        ClassLinearithmic => match b {
-            ClassConstant | ClassLog | ClassLinear | ClassLinearithmic => true,
-            ClassQuadratic | ClassPolynomial { .. } | ClassExponential | ClassUnknown => false,
-        },
-        ClassLinear => match b {
-            ClassConstant | ClassLog | ClassLinear => true,
-            ClassLinearithmic
-            | ClassQuadratic
-            | ClassPolynomial { .. }
-            | ClassExponential
-            | ClassUnknown => false,
-        },
-        ClassLog => match b {
-            ClassConstant | ClassLog => true,
-            ClassLinear
-            | ClassLinearithmic
-            | ClassQuadratic
-            | ClassPolynomial { .. }
-            | ClassExponential
-            | ClassUnknown => false,
-        },
-        ClassConstant => match b {
-            ClassConstant => true,
-            ClassLog
-            | ClassLinear
-            | ClassLinearithmic
-            | ClassQuadratic
-            | ClassPolynomial { .. }
-            | ClassExponential
-            | ClassUnknown => false,
-        },
     }
 }
