@@ -127,6 +127,14 @@ This corrects the audit's prior framing. C2's gate #82 #issuecomment-needed-disp
 - **Slice B pending**: per [`docs/r3-structure.md`](../r3-structure.md):157-164 (T-Lens-Application-Surface lane gates) — `lens_enforcement_carrier_landed` (#91; per-lens `LensEnforcement<Output, Budget>` projection + violation-relation declarations co-located with each lens) + `enforce_violation_routing_landed` are NOT yet landed. These are required for the demonstration cascade per design [`docs/design-lens-application-surface.md`](../design-lens-application-surface.md) §10 step 2.
 - **Cascade chain for #95** per `r3-structure.md`:164: "Pass requires parallelism lens BEHAVIORALLY COMPLETE (design §7 / §9 substantive-semantics cascade)." Plus T-LAS Slice B landing.
 
+**Lane-level dependency** (refined 2026-05-09 per codex BLOCKING on `c3a4b110` line 112): per [`r3-structure.md`](../r3-structure.md):61, the **T-Lens-Application-Surface lane** depends on **T-Lens-Behavioral-Parity COMPLETE** (lenses must be COMPLETE to produce useful structural facts on application sections), NOT only on parallelism (#81). T-LBP COMPLETE = complexity (#79) + cost (#80) + parallelism (#81 post-carve-promotion) + effect_enum (#82 post-carve-promotion). The Slice B authoring closure (per-lens enforcement projections for all in-R3 lenses + violation routing) gates on full T-LBP COMPLETE.
+
+**Distinction**: lane-level vs gate-level dependencies for #95 specifically:
+- **Lane-level (T-LAS Slice B substrate authoring complete)**: gates on T-LBP COMPLETE (all 4 in-R3 lenses).
+- **Gate-level (#95 specific demo)**: gates on parallelism-lens projection within Slice B + parallelism BEHAVIORALLY COMPLETE (C1).
+
+For #95 to fire as a demonstration gate, the parallelism slice of Slice B + parallelism behavioral completion are the load-bearing prerequisites. For the full T-LAS lane to close (all #88-#94 + #95), full T-LBP COMPLETE is required.
+
 ### §3.2 Substrate readiness — corrected scope
 
 C3's gate #95 is a **demonstration gate** under the T-Lens-Application-Surface lane (per `r3-structure.md`:164 — "fourth worked example (design §4.4): opt-in cross-iteration parallelism via `Lens<Iteration-Independence>`"). Not a separate substrate carve — it's a worked-example demo of the shared lens-application surface lane.
