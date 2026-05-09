@@ -16,6 +16,11 @@
 # Authority: ROADMAP.md (SG-0 PR-window net-shrink discipline) +
 # `.github/PULL_REQUEST_TEMPLATE.md` "SG-0 net-shrink discipline" section.
 #
+# Fallback: when census changed vs origin/main yet PR_BODY lacks `SG-0 hand-path delta:`, prefix
+# **only** the mechanically correct delta token (from `git diff` counts). **`SG-0 pairing:` lines
+# are never fabricated** — strict net adds (`+N`) still require an author-authored pairing class
+# (a)/(b)/(c); see `sg0_validate_pr_body_format`.
+#
 # Exit codes:
 #   0 — not a pull_request event, census file unchanged, or body satisfies rules
 #   1 — pull_request but origin/main missing; census changed on PR but body missing /
@@ -25,6 +30,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+SG0_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
 SG0_CENSUS='src/v3/compiler/tests/integration/sg0_census_test.rs'
 
@@ -114,6 +120,32 @@ sg0_validate_pr_body_format() {
   return 0
 }
 
+# If `body` lacks a column-0 `SG-0 hand-path delta:` line, prepend the single line described by
+# `computed_net` (signed path count). Never injects `SG-0 pairing:` — positive net adds remain
+# gated on author pairing in `sg0_validate_pr_body_format`.
+sg0_maybe_prepend_synthetic_delta_line() {
+  local body=$1
+  local computed_net=$2
+  local delta_line
+
+  body=${body//$'\r'/}
+
+  if grep -qE '^SG-0 hand-path delta:' <<<"$body"; then
+    printf '%s\n' "$body"
+    return 0
+  fi
+
+  if [ "$computed_net" -ge 1 ]; then
+    delta_line="SG-0 hand-path delta: +${computed_net}"
+  elif [ "$computed_net" -eq 0 ]; then
+    delta_line="SG-0 hand-path delta: +0"
+  else
+    delta_line="SG-0 hand-path delta: ${computed_net}"
+  fi
+
+  printf '%s\n\n%s\n' "$delta_line" "$body"
+}
+
 # Count path-string rows in EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}
 # only (ROADMAP / PR-template authority). stdin = full `sg0_census_test.rs`.
 # Assumptions: `rustfmt` keeps a trailing comma on each multi-line path row (the
@@ -199,7 +231,7 @@ self_test() {
   run_case() {
     local name="$1" body="$2" want="$3"
     set +e
-    out=$(PR_BODY=$body bash "$ROOT/scripts/check-pr-sg0-net-shrink-discipline.sh" --check-body-only 2>&1)
+    out=$(PR_BODY=$body bash "$SG0_SCRIPT" --check-body-only 2>&1)
     st=$?
     set -e
     if [ "$want" = pass ] && [ "$st" -ne 0 ]; then
@@ -283,6 +315,47 @@ self_test() {
   run_case "only mid-line pairing substring" $'SG-0 hand-path delta: +1\nNote: not SG-0 pairing: (b) https://x.com' fail
   run_case "indented SG-0 pairing rejected" $'SG-0 hand-path delta: +1\n    SG-0 pairing: (b) https://example.com/budget' fail
 
+  # --- Synthetic delta-prefix (positive net adds must still ship author pairing; see header) ---
+  run_synthetic_delta_then_validate() {
+    local name="$1" raw_body="$2" computed_net="$3" want="$4"
+    local merged=""
+    merged=$(sg0_maybe_prepend_synthetic_delta_line "$raw_body" "$computed_net")
+    set +e
+    local out=""
+    local st=""
+    out=$(PR_BODY="$merged" bash "$SG0_SCRIPT" --check-body-only 2>&1)
+    st=$?
+    set -e
+    if [ "$want" = pass ] && [ "$st" -ne 0 ]; then
+      echo "::error::self-test FAIL synth-delta $name expected pass, got exit=$st: $out merged=$merged"
+      failed=1
+    elif [ "$want" = fail ] && [ "$st" -eq 0 ]; then
+      echo "::error::self-test FAIL synth-delta $name expected fail, got pass merged=$merged"
+      failed=1
+    fi
+  }
+
+  run_synthetic_delta_then_validate \
+    "+N delta-only prepend without pairing rejects" \
+    $'Summary (template)\nMore text' \
+    2 \
+    fail
+  run_synthetic_delta_then_validate \
+    "+N prepend passes when pairing already authored" \
+    $'Intro\nSG-0 pairing: (c) structural deferral; follow-up dispatch: TM-example-lane\n' \
+    2 \
+    pass
+  run_synthetic_delta_then_validate \
+    "+0 prepend without pairing accepts" \
+    $'Intro only\n' \
+    0 \
+    pass
+  run_synthetic_delta_then_validate \
+    "negative net prepend without pairing accepts" \
+    $'Removed paths summary\n' \
+    -3 \
+    pass
+
   if [ "$failed" -ne 0 ]; then
     exit 1
   fi
@@ -328,12 +401,20 @@ if git diff --quiet origin/main...HEAD -- "$SG0_CENSUS"; then
   exit 0
 fi
 
+computed_net=$(sg0_net_path_delta_from_git_diff) || exit 1
+
 body=${PR_BODY:-}
+body=${body//$'\r'/}
+
+if ! grep -qE '^SG-0 hand-path delta:' <<<"$body"; then
+  echo "::notice::SG-0 net-shrink: PR body lacked a column-0 \`SG-0 hand-path delta:\` while editing ${SG0_CENSUS} — inserting delta-only line computed_net=${computed_net}. Positive net increases still require an author \`SG-0 pairing:\` line (never auto-synthesized)." >&2
+  body=$(sg0_maybe_prepend_synthetic_delta_line "${PR_BODY:-}" "$computed_net")
+fi
+
 if ! sg0_validate_pr_body_format "$body"; then
   exit 1
 fi
 
-computed_net=$(sg0_net_path_delta_from_git_diff) || exit 1
 if [ "${SG0_DECLARED_INT:-}" -ne "$computed_net" ]; then
   echo "::error::SG-0 hand-path delta mismatch: PR body declares net ${SG0_DECLARED_INT} hand-authored path(s) in EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}, but \`git show origin/main:${SG0_CENSUS}\` vs \`git show HEAD:${SG0_CENSUS}\` counts ${computed_net} net change. Fix the PR description or the census edit; if the edit is a legitimate edge case this counter misses, escalate to Director (see script header)."
   exit 1
