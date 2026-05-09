@@ -4346,8 +4346,7 @@ fn real_default_alias_resolves_to_approximate_field_over_field_of_fractions_of_i
             .declaration_by_name("Real")
             .expect("`Real` abstract carrier missing from full bootstrap (R3 gate #17)");
         assert_eq!(
-            real.span.file,
-            "dsl/std/float.dag",
+            real.span.file, "dsl/std/float.dag",
             "Real must live in dsl/std/float.dag (single authority)"
         );
 
@@ -4380,9 +4379,7 @@ fn real_default_alias_resolves_to_approximate_field_over_field_of_fractions_of_i
                 template,
                 arguments,
             } => (*template, arguments),
-            other => panic!(
-                "Real must lower to an ApproximateField instantiation; got {other:?}"
-            ),
+            other => panic!("Real must lower to an ApproximateField instantiation; got {other:?}"),
         };
 
         assert_eq!(
@@ -4393,19 +4390,16 @@ fn real_default_alias_resolves_to_approximate_field_over_field_of_fractions_of_i
         );
 
         let mut resolved_template = template_id;
-        loop {
-            match &dag.declaration(resolved_template).connective {
-                TypeConnective::Atom(AtomPayload::ResolvedByName(next))
-                | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => {
-                    resolved_template = *next;
-                }
+        while let TypeConnective::Atom(atom) = &dag.declaration(resolved_template).connective {
+            match atom {
+                AtomPayload::ResolvedByName(next) => resolved_template = *next,
+                AtomPayload::ResolvedByStructure(next) => resolved_template = *next,
                 _ => break,
             }
         }
 
         assert_eq!(
-            resolved_template,
-            approx.id,
+            resolved_template, approx.id,
             "Real must instantiate imported `ApproximateField<F>` (resolve import stubs)"
         );
 

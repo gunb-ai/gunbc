@@ -3525,11 +3525,10 @@ fn template_param_id(dag: &Dag, template: DeclarationId, idx: usize) -> Option<D
 /// (e.g. `ApproximateField<F>` in `src/v3/std/approximate_field.dag`), not the
 /// import stub — otherwise `Foo<Bar>` lowers as arity-0 and drops arguments.
 fn resolve_template_for_type_parameters(dag: &Dag, mut template: DeclarationId) -> DeclarationId {
-    loop {
-        match &dag.declaration(template).connective {
-            TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => template = *next,
-            _ => break,
-        }
+    while let TypeConnective::Atom(AtomPayload::ResolvedByName(next)) =
+        &dag.declaration(template).connective
+    {
+        template = *next;
     }
     template
 }

@@ -3,7 +3,7 @@
 # path\titems\tdebug_bytes\tfnv1a64
 dsl/std/algebra.dag	37	165680	20af3b3ea1ec59df
 dsl/std/bit.dag	9	7787	09279906a3939377
-dsl/std/float.dag	6	3350	3c45f61f17751329
+dsl/std/float.dag	9	5464	10ec530cbe552479
 dsl/std/integer.dag	27	27909	5e88da293ecf6dd5
 dsl/std/logic.dag	5	5614	bb0fc43f94c4374f
 dsl/std/machine_constraints.dag	4	1682	ac8d7987ef5489c2
@@ -29,7 +29,7 @@ src/v3/std/algebra.dag	55	445255	9fe90dec9bc5a51f
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
 src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	13	69184	3115dc7ce99d10ff
-src/v3/std/approximate_field.dag	11	16864	fb342d17eec1c8ac
+src/v3/std/approximate_field.dag	11	16864	ccbe4826dc31c636
 src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
 src/v3/std/bootstrap_authority.dag	4	70609	e228bb8bb2449ece
 src/v3/std/bridge_ledger.dag	7	31662	ec3b4ea8c0455eb7
