@@ -5,12 +5,19 @@
 //! stand-in for cost `LensEnforcement::violates` until `apply_lens(cost, …)` lowers
 //! through the compiler fold.
 //!
+//! **Normalized root cost:** the dimension report’s `composed` carrier is
+//! algebra-normalized at the workflow root. For this fixture it is often
+//! `LinearCost(num_writes)` even though each per-write step lowers from division on
+//! `replicas` (`LogCost` in the cost lens). The gate still witnesses §4.2 via
+//! `dominates(composed, per_op)` for `per_op = LogCost(replicas)` — the composed bound
+//! majorizes the per-op O(log replicas) budget after loop multiplication.
+//!
 //! Fixture companion: `src/v3/compiler/tests/fixtures/t_las_crdt_cost_basis_demo.dag`.
 //! Design: `docs/design-lens-application-surface.md` §4.2 + cost-basis audit
 //! `docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{dominates, Behavior, SizeVariable, SymbolicCost};
+use v3_compiler::dag::{dominates, Behavior, PortId, SizeVariable, SymbolicCost};
 use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport};
 
 use crate::common::cached_compile_to_dag;
@@ -60,7 +67,7 @@ fn find_bind<'a>(dag: &'a v3_compiler::dag::Dag, name: &str) -> &'a v3_compiler:
 /// Declared per-op O(log replicas) budget from §4.2 (`O_log_replicas`), keyed to the
 /// `replicas` parameter port. The cost lens uses this same size variable for
 /// `ArithmeticDivideCall` on `replicas` inside `crdt_merge_step`.
-fn per_write_log_replicas_budget(replicas_port: v3_compiler::dag::PortId) -> SymbolicCost {
+fn per_write_log_replicas_budget(replicas_port: PortId) -> SymbolicCost {
     SymbolicCost::LogCost {
         _0: SizeVariable {
             source_port: replicas_port,
