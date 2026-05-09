@@ -3695,6 +3695,8 @@ pub mod lens_cost_symbolic {
     pub type SymbolicCostLookup = crate::dag::Lookup<crate::dag::SymbolicCost>;
 }
 
+pub mod memory_peak_cost;
+
 /// `cost_target_realization.dag` `.dag`-tier consumer of the
 /// `declaration_by_name` substrate accessor (T-CostLens-Composition
 /// Slice 1a.1; gunb-ai/gunbc#2141 ε scope per gunbc#2181 ratification).
