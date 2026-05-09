@@ -5469,8 +5469,8 @@ mod perf_within_baseline_tests {
     /// AND `p99 ≤ 5× baseline`. The substrate `PerfBudgetComparisonOp`
     /// carries a closed budget comparator so inverted general comparisons
     /// cannot be authored into the gate. This test reads its variant set
-    /// from `std.verification` (substrate-source-of-truth, not a hardcoded
-    /// list) and asserts the runtime guard classifies every variant:
+    /// from the generated full bootstrap DAG consumed by the runner (not a
+    /// hardcoded list) and asserts the runtime guard classifies every variant:
     /// `AtMostBudget` alone passes, every other variant fails-closed.
     #[test]
     fn runtime_classifies_every_perf_budget_comparison_op_variant_at_most_only() {
@@ -5485,10 +5485,11 @@ mod perf_within_baseline_tests {
             .expect("spawn generated_full_bootstrap_dag helper")
             .join()
             .expect("generated_full_bootstrap_dag helper panicked");
-        let comparison_op = dag
-            .declaration_by_name("PerfBudgetComparisonOp")
-            .expect("PerfBudgetComparisonOp must exist in bootstrap (src/v3/std/verification.dag)");
-        let TypeConnective::Disj { variants } = &comparison_op.connective else {
+        let perf_budget_comparison_op = dag.declaration_by_name("PerfBudgetComparisonOp").expect(
+            "PerfBudgetComparisonOp must exist in generated bootstrap DAG \
+                 (src/v3/std/verification.dag)",
+        );
+        let TypeConnective::Disj { variants } = &perf_budget_comparison_op.connective else {
             panic!("PerfBudgetComparisonOp must be a coproduct (Disj)");
         };
         let mut variant_labels: Vec<&str> = variants.iter().map(|v| v.label.as_str()).collect();
