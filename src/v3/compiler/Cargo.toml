@@ -18,6 +18,10 @@ bootstrap-regen-fresh = []
 # cannot construct this substrate-invalid state without opting in.
 empty-substrate-for-tests = []
 
+# Opt-in DeclarationId witness constructor (`declaration_id_raw_for_testing`)
+# for dependent crate tests that bail before dereferencing substrate ids (see `declaration_id_raw_for_testing`).
+declaration-id-raw-test-witness = []
+
 # M0: the smallest v3 pipeline that exercises the full substrate.
 # parse -> lower to L1 behaviors -> infer types through Ports ->
 # emit diagnostics via the enforced mark_unresolved API -> one lens.
