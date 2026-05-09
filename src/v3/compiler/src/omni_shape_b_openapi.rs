@@ -250,6 +250,101 @@ pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenAp
     Ok(out)
 }
 
+pub fn project_rust_backend_service(dag: &Dag) -> Result<String, ProjectOpenApiError> {
+    let routes = extract_rest_routes(dag)?;
+    let mut out = String::from(
+        r#"const ROUTES: &[(&str, &str)] = &[
+"#,
+    );
+    for route in &routes {
+        out.push_str("    (");
+        out.push_str(&rust_string_literal(&route.method));
+        out.push_str(", ");
+        out.push_str(&rust_string_literal(&route.path));
+        out.push_str("),\n");
+    }
+    out.push_str(
+        r#"];
+
+fn main() {
+    let mut args = std::env::args().skip(1);
+    let Some(method) = args.next() else {
+        print_routes();
+        return;
+    };
+    let Some(path) = args.next() else {
+        print_routes();
+        return;
+    };
+
+    for (route_method, route_template) in ROUTES {
+        if method.eq_ignore_ascii_case(route_method) && path_matches(route_template, &path) {
+            println!("200 {} {}", route_method, route_template);
+            return;
+        }
+    }
+    println!("404 {} {}", method.to_ascii_uppercase(), path);
+}
+
+fn print_routes() {
+    for (method, route_template) in ROUTES {
+        println!("{} {}", method, route_template);
+    }
+}
+
+fn path_matches(template: &str, candidate: &str) -> bool {
+    let template = template.as_bytes();
+    let candidate = candidate.as_bytes();
+    let mut t = 0;
+    let mut c = 0;
+    while t < template.len() {
+        if template[t] == b'{' {
+            let Some(close_offset) = template[t + 1..].iter().position(|byte| *byte == b'}') else {
+                return false;
+            };
+            let close = t + 1 + close_offset;
+            let after_param = close + 1;
+            if after_param == template.len() {
+                return c < candidate.len();
+            }
+            let next_param = template[after_param..]
+                .iter()
+                .position(|byte| *byte == b'{')
+                .map(|offset| after_param + offset)
+                .unwrap_or(template.len());
+            let literal = &template[after_param..next_param];
+            let Some(next_match) = find_subslice(&candidate[c..], literal) else {
+                return false;
+            };
+            if next_match == 0 {
+                return false;
+            }
+            c += next_match;
+            t = after_param;
+        } else {
+            if candidate.get(c) != Some(&template[t]) {
+                return false;
+            }
+            t += 1;
+            c += 1;
+        }
+    }
+    c == candidate.len()
+}
+
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+"#,
+    );
+    Ok(out)
+}
+
 fn append_path_parameter_yaml(out: &mut String, parameter: &str) {
     out.push_str("        - name: ");
     out.push_str(&yaml_double_quoted(parameter));
@@ -468,6 +563,25 @@ fn yaml_plain_operation_id(method: &str, path: &str) -> String {
     format!("{}_{}", method.to_ascii_lowercase(), suffix)
 }
 
+fn rust_string_literal(value: &str) -> String {
+    let mut literal = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => literal.push_str("\\\\"),
+            '"' => literal.push_str("\\\""),
+            '\n' => literal.push_str("\\n"),
+            '\r' => literal.push_str("\\r"),
+            '\t' => literal.push_str("\\t"),
+            other if other.is_control() => {
+                write!(&mut literal, "\\u{{{:X}}}", other as u32).expect("write to String");
+            }
+            other => literal.push(other),
+        }
+    }
+    literal.push('"');
+    literal
+}
+
 fn markdown_table_cell(value: &str) -> String {
     value.replace('\\', "\\\\").replace('|', "\\|")
 }
@@ -612,5 +726,10 @@ data service_operations: List<DemoOperation> = [
         assert_eq!(markdown_code_span_table_cell("\\path"), "`\\path`");
         assert_eq!(markdown_code_span_table_cell("`x"), "`` `x ``");
         assert_eq!(markdown_code_span_table_cell("x`"), "`` x` ``");
+    }
+
+    #[test]
+    fn rust_backend_projection_escapes_route_literals() {
+        assert_eq!(rust_string_literal("/a\"b\\c\n"), "\"/a\\\"b\\\\c\\n\"");
     }
 }
