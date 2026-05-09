@@ -52,9 +52,9 @@ echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test fragments=$fra
 
 ## §4. Velocity-to-zero math
 
-**Current state** (2026-05-09): 149 entries, growing +3.3/day.
+**Current state** (2026-05-09): 150 entries (48 non_test + 101 test + 1 fragments), growing +3.3/day.
 
-**Required for R3 close**: 0 + 0.
+**Required for R3 close**: 0 + 0 + 0.
 
 **Bulk-dissolution events on critical path** (per `r3-cluster-m-sequencing-plan-2026-05-09.md`):
 1. **Cluster M Phase 1** (#85 + #86 substrate carriers) — ~0 immediate drop, enables Phase 2
@@ -84,7 +84,7 @@ When Alarm 1 or 2 trips, surface to Director cycle absorption + r3-program-plan 
 ## §7. Relationship to R3 progress bars
 
 When Director authors new R3-close progress bars (per operator ask 2026-05-09), this tracker becomes the data source for the SG-0 axis. The progress-bar visualization should reflect:
-- Current count vs target (149 → 0)
+- Current count vs target (150 → 0)
 - Recent delta direction (growing / shrinking)
 - Named bulk-dissolution events queued + landed
 - Velocity-to-zero projection vs R3-close window

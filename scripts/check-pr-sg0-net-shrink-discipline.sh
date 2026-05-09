@@ -110,14 +110,14 @@ sg0_validate_pr_body_format() {
     elif grep -qE '^SG-0 pairing:[[:space:]]*\(c\)' <<<"$pairing_block"; then
       # Tightened 2026-05-09 per PB-0 velocity walk (PR #2358 / docs/audit/r3-pb0-velocity-walk-2026-05-09.md):
       # SG-0 census grew +30/9days because (c) deferrals were paper-trailed without dispatch enforcement.
-      # (c) now requires concrete dispatch evidence: an issue ref (gunbc#NNNN or #NNNN) OR a brief path
-      # (docs/briefs/*.md). Generic "dispatch" word alone no longer satisfies the discipline.
+      # (c) now requires concrete dispatch evidence: an issue ref (gunbc#NNNN or #NNNN), a full GitHub
+      # issue URL, OR a brief path (docs/briefs/*.md). Generic "dispatch" word alone no longer satisfies.
       if ! grep -qiE '\(c\).*dispatch' <<<"$pairing_flat"; then
         echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
         return 1
       fi
-      if ! grep -qE '(gunbc#|gunb-ai/gunbc#|^#|[[:space:]]#)[0-9]+|docs/briefs/[[:alnum:]_./-]+\.md' <<<"$pairing_flat"; then
-        echo "::error::SG-0 pairing (c) must cite concrete dispatch evidence — a tracker issue ref (gunbc#NNNN or #NNNN) OR a queued brief path (docs/briefs/*.md). Tightened 2026-05-09 per PB-0 velocity walk."
+      if ! grep -qE '(gunbc#|gunb-ai/gunbc#|^#|[[:space:]]#)[0-9]+|docs/briefs/[[:alnum:]_./-]+\.md|https?://github\.com/[[:alnum:]_./-]+/issues/[0-9]+' <<<"$pairing_flat"; then
+        echo "::error::SG-0 pairing (c) must cite concrete dispatch evidence — a tracker issue ref (gunbc#NNNN or #NNNN), a full GitHub issue URL, OR a queued brief path (docs/briefs/*.md). Tightened 2026-05-09 per PB-0 velocity walk."
         return 1
       fi
     else
@@ -307,6 +307,7 @@ self_test() {
   run_case "(a) pairing" $'SG-0 hand-path delta: +3\nSG-0 pairing: (a) removed foo.rs bar.rs' pass
   run_case "(c) pairing with brief path" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via docs/briefs/r3-example-worker.md' pass
   run_case "(c) pairing with issue ref" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via gunbc#1234' pass
+  run_case "(c) pairing with full GitHub issue URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch via https://github.com/gunb-ai/gunbc/issues/1234' pass
   run_case "(c) without dispatch evidence (tightened 2026-05-09)" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch: vague-lane-name' fail
   run_case "missing delta line" $'Summary only\nSG-0 pairing: (a) x' fail
   run_case "malformed negative delta token" $'SG-0 hand-path delta: -not-a-number' fail
