@@ -106,6 +106,12 @@ jobs:
           fi
           PR_BODY="${body}" bash scripts/check-pr-sg0-net-shrink-discipline.sh
 
+      - name: R4-carve dissolution discipline (self-test)
+        run: bash scripts/check-r4-carve-dissolution-discipline.sh --self-test
+
+      - name: R4-carve dissolution discipline
+        run: bash scripts/check-r4-carve-dissolution-discipline.sh
+
       - name: Fabrication sentinel ratchet (P0-C)
         run: bash scripts/check-fabrication-sentinels.sh
 
