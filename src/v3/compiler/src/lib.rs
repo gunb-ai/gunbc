@@ -98,15 +98,19 @@ pub mod realization_cost {
     }
 
     /// 🟢 GREEN (terminal): fail-closed error taxonomy for this walker.
-    /// The variants distinguish missing meta-type substrate, malformed
-    /// structural row payload, and duplicate realization keys; these are
+    /// The variants distinguish missing meta-type substrate, malformed row
+    /// payload, negative cost facts, and duplicate realization keys; these are
     /// different repair surfaces.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum RealizationCostError {
         MissingMeta(&'static str),
         MalformedRealization {
             declaration: DeclarationId,
-            detail: &'static str,
+            detail: String,
+        },
+        NegativeRealizationCost {
+            declaration: DeclarationId,
+            cost: i64,
         },
         DuplicateRealization {
             declaration: DeclarationId,
@@ -132,7 +136,7 @@ pub mod realization_cost {
                 let Some(ValueBody::Structural { fields }) = &decl.value_body else {
                     return Err(RealizationCostError::MalformedRealization {
                         declaration: decl.id,
-                        detail: "realization data item has no Structural value_body",
+                        detail: "realization data item has no Structural value_body".to_string(),
                     });
                 };
                 let row_language = require_decl_ref(fields, "language", decl.id)?;
@@ -158,7 +162,7 @@ pub mod realization_cost {
                     language,
                     category,
                     key,
-                    cost: require_int(fields, "cost", decl.id)?,
+                    cost: require_nonnegative_int(fields, "cost", decl.id)?,
                 };
                 if entries.insert(key, entry).is_some() {
                     return Err(RealizationCostError::DuplicateRealization {
@@ -254,7 +258,7 @@ pub mod realization_cost {
             .find_map(|(field_label, value)| (field_label == label).then_some(value))
             .ok_or(RealizationCostError::MalformedRealization {
                 declaration,
-                detail: "realization data item is missing a required field",
+                detail: format!("realization data item is missing required field `{label}`"),
             })
     }
 
@@ -267,21 +271,27 @@ pub mod realization_cost {
             FieldValue::Reference(id) => Ok(*id),
             _ => Err(RealizationCostError::MalformedRealization {
                 declaration,
-                detail: "realization data item field should be a DeclarationRef",
+                detail: format!("realization data item field `{label}` should be a DeclarationRef"),
             }),
         }
     }
 
-    fn require_int(
+    fn require_nonnegative_int(
         fields: &[(String, FieldValue)],
         label: &str,
         declaration: DeclarationId,
     ) -> Result<i64, RealizationCostError> {
         match require_field(fields, label, declaration)? {
-            FieldValue::Literal(LiteralBits::Int(value)) => Ok(*value),
+            FieldValue::Literal(LiteralBits::Int(value)) if *value >= 0 => Ok(*value),
+            FieldValue::Literal(LiteralBits::Int(cost)) => {
+                Err(RealizationCostError::NegativeRealizationCost {
+                    declaration,
+                    cost: *cost,
+                })
+            }
             _ => Err(RealizationCostError::MalformedRealization {
                 declaration,
-                detail: "realization data item field should be an Int literal",
+                detail: format!("realization data item field `{label}` should be an Int literal"),
             }),
         }
     }
