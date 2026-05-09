@@ -162,9 +162,14 @@ fn timing_budget_shape_locked() {
 fn timing_lens_sequential_and_branch_delegate_to_shared_combine() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../std/timing_lens.dag");
     let src = std::fs::read_to_string(&path).expect("read src/v3/std/timing_lens.dag");
-    let seq = src.find("fn timing_sequential_op").expect("timing_sequential_op");
+    let seq = src
+        .find("fn timing_sequential_op")
+        .expect("timing_sequential_op");
     let br = src.find("fn timing_branch_op").expect("timing_branch_op");
-    assert!(seq < br, "expected sequential_op before branch_op in source order");
+    assert!(
+        seq < br,
+        "expected sequential_op before branch_op in source order"
+    );
     let seq_window = &src[seq..(seq + 220).min(src.len())];
     assert!(
         seq_window.contains("timing_measurement_lens_combine(a, b, true)"),
