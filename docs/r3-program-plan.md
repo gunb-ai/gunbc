@@ -91,15 +91,13 @@ Composition: existing R3 lane gates across 18 lanes (`T-Tier3-Dissolution` 4, `T
 **Gate-count canonicalization (per Director audit 2026-05-09 — ask 9, refined post-openai-pro REQUEST_CHANGES on PR #2361)**:
 
 - **97 enumerated** total
-- **3 R4-carved**: {#81, #82, #95} — `docs/r4-carve-out-routing.md` C1/C2/C1
+- **0 R4-carved at R3 close** (per Director ratification 2026-05-09 at gunbc#846 c#4412330468 + operator framing "0 hand-Rust including tests AND stage0; bootstrap is data + self-generated"). R4 carves C1 / C2 / C3 (gates #81 / #82 / #95) are **PROMOTED-IN-R3** as lens-producer-retirement work folded into Cluster F. `docs/r4-carve-out-routing.md` will be amended in a follow-up carve-promotion PR (PM substrate-readiness audit at PR #2363) to remove C1/C2/C3 entries.
 - **1 post-R3-canvas-deferred**: {#11} — TC1 V1 strict-fire; cannot reach PASSING absent #1972 substrate canvas-tier work which is HELD-CANVAS-DEFERRED past R3 per Director (a)-disposition 2026-05-09 (decision id `473b99fb...`); effectively removed from R3-thesis-load-bearing arithmetic
-- **93 R3-thesis-honest-load-bearing**: `97 − 3 (R4-carved) − 1 (post-R3-canvas-deferred) = 93`. R3 close = all 93 GREEN + `r3_debt_paydown_zero_remaining` GREEN.
+- **96 R3-thesis-load-bearing** = `97 − 1 (post-R3-canvas-deferred {#11}) = 96`. R3 close = all 96 GREEN + `r3_debt_paydown_zero_remaining` GREEN.
 
-Gate **#97** IS part of the 93 R3-thesis-honest-load-bearing set (not in {#81, #82, #95, #11}); not additive. The breakdown sequence `{97 enumerated → 94 post-R4-carve → 93 post-canvas-deferral}` must be cited explicitly to avoid +/-1 drift across closure-arithmetic citations.
+**R3 close target = 96 R3-load-bearing gates green** (no carves). Gate **#97** is the 97th canonical entry, **not additive**. Gates **#81 / #82 / #95** (formerly R4-carved) are **R3-load-bearing** within Cluster F (lens-producer-retirement framing) per Director carve-promotion ratification.
 
-Prior framing "94 R3-load-bearing" (in this paragraph + several §1.8 / §10 references) is RETAINED for R4-carve-only arithmetic (97 - 3 carved); the "93" subtracts the additional #11 canvas-deferral. Both numbers are canonical for different purposes:
-- **94** = "post-R4-carve enumeration count" (used when discussing R4 boundary)
-- **93** = "R3-thesis-honest-close conjunction count" (used when discussing actual R3 close gate-count requirement)
+Per PR #2358 §8 meta-finding (closure-claims-vs-HEAD drift): the prior "94 R3-load-bearing" framing was about to drift the moment Director ratified carve-promotion-IN-R3. Forward-looking framing here avoids the drift instance. **This change dissolves expansion Ask 10** (gate #95 carve cross-ref) — there is no longer a need to cross-reference a carve doc that's about to remove the entries; the Cluster F carve-promotion follow-up PR handles `r4-carve-out-routing.md` amendment + Cluster F sequencing folder.
 
 **Per codex BLOCKING 2026-05-06 (relayed via PR #1808 inline; PR #1808 already merged so fix lands on PR #1809)**: prior 75-count omitted 20 gate IDs from 4 lanes (T-E-P-Producer-Broadening 3 + T-Lens-Behavioral-Parity 5 + T-Tests-As-Data-Completeness 4 + T-Lens-Application-Surface 8) which were declared in `r3-structure.md` §"Lane structure" prose but never landed in §"Acceptance" canonical authority. Both gaps closed 2026-05-06 on PR #1809 — single-authority restored across all 18 lanes.
 
