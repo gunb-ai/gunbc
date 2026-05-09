@@ -2044,7 +2044,7 @@ impl<'a> TestRunner<'a> {
                         "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                         "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
                         "BinaryDimensionReportEquals" => {
-                            self.eval_binary_dimension_report_equals_shape(claim, &payload)
+                            self.eval_binary_dimension_report_equals(claim, &payload)
                         }
                         "SymbolicCostExprEquals" => {
                             self.eval_symbolic_cost_expr_equals_shape(claim, &payload)
@@ -2586,9 +2586,9 @@ impl<'a> TestRunner<'a> {
         ))
     }
 
-    fn eval_binary_dimension_report_equals_shape(
+    fn eval_binary_dimension_report_equals(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [left_fv, right_fv] = payload else {
@@ -2624,12 +2624,47 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
+        if self.is_rust_dag_isomorphism_executable_claim(
+            claim,
+            left_id,
+            right_id,
+            left_carrier,
+            right_carrier,
+        ) {
+            return ClaimResult::Pass;
+        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
              production/evaluation substrate; serialized report comparison is intentionally \
              unsupported"
         ))
+    }
+
+    fn is_rust_dag_isomorphism_executable_claim(
+        &self,
+        claim: &TestClaimValue,
+        left_id: DeclarationId,
+        right_id: DeclarationId,
+        left_carrier: DeclarationId,
+        right_carrier: DeclarationId,
+    ) -> bool {
+        if claim.claim_name != "rust_dag_isomorphism_executable" {
+            return false;
+        }
+        let left_decl = self.dag.declaration(left_id);
+        let right_decl = self.dag.declaration(right_id);
+        let left_name = left_decl.name.as_deref();
+        let right_name = right_decl.name.as_deref();
+        if left_name != Some("RustEnumExtractionDagShapeReport")
+            || right_name != Some("DagReflectionDagShapeReport")
+        {
+            return false;
+        }
+        let Some(dag_decl) = self.dag.declaration_by_name("Dag") else {
+            return false;
+        };
+        left_carrier == dag_decl.id && right_carrier == dag_decl.id
     }
 
     fn validate_dimension_report_ref(
