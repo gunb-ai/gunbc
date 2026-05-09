@@ -28,6 +28,11 @@ import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.workflows { behavior_spine }
 
+// Module-authority `FilePath` for the degenerate no-declaration DAG case in
+// `timing_lens_validate_non_observed` (DB-11 witness at `data` load time).
+data timing_lens_module_file_for_diagnostics: FilePath =
+  "src/v3/std/timing_lens.dag"
+
 // PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — nominal SI-nanosecond coordinate for
 // durations and POSIX-epoch instants at this substrate layer. **Magnitude**
 // uses `Nat` (non-negative; same counting authority as `PerfBaselineMeasurement`
@@ -192,18 +197,42 @@ fn timing_lens_scaffold_non_evidence_diagnostic(text: String, at: SourceSpan) ->
     fixes: timing_lens_empty_corrections()
   }
 
+// Degenerate DAG case: no declarations (cannot borrow a declaration `span`).
+// Isolated as an arrow body so the `SourceSpan` record literal is typed under
+// an expected `SourceSpan` return (DB-11 / refinement discharge at literals).
+fn timing_lens_degenerate_empty_dag_span() -> SourceSpan =
+  {
+    file: timing_lens_module_file_for_diagnostics
+    start: 0
+    end: 0
+  }
+
 // Threads `d` through `behavior_spine` so `lenses.unused_parameters` stays
 // clean. Non-`Observed` validation is fail-closed (P3): always `SomeDiagnostic`.
 // With a non-empty spine, attach the first node's reflected `span`; when the
-// spine is empty, attach the module-authority placeholder span (DB-11).
+// spine is empty, attach the first declaration's substrate `span` (still a
+// real `SourceSpan` witness). The inner `Empty` arm covers the degenerate
+// no-declaration DAG case; it reuses the module `FilePath` witness plus a
+// zero-width range on this file (type-directed `std.types::SourceSpan`).
 fn timing_lens_validate_non_observed(d: Dag, text: String) -> OptionalDiagnostic =
   match behavior_spine(d) {
     Empty =>
-      SomeDiagnostic {
-        value: timing_lens_scaffold_non_evidence_diagnostic(
-          text,
-          timing_lens_empty_spine_diagnostic_span
-        )
+      match d.declarations {
+        Cons(dd) =>
+          SomeDiagnostic {
+            value: timing_lens_scaffold_non_evidence_diagnostic(text, dd.head.span)
+          }
+        Empty =>
+          SomeDiagnostic {
+            value: timing_lens_scaffold_non_evidence_diagnostic(
+              text,
+              {
+                file: timing_lens_module_file_for_diagnostics
+                start: 0
+                end: 0
+              }
+            )
+          }
       }
     Cons(payload) =>
       SomeDiagnostic {
