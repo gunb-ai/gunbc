@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Extract SG-0 census entries from sg0_census_test.rs and produce per-entry
+Class A-G/P classification proposals.
+
+Authority: PM dispatch at gunb-ai/gunbc#846 c#4413701937 (Brian operator
+directive 2026-05-09; Debt-Paydown Mgr standing authority Phase 2 (3)).
+
+Output: docs/audit/sg0-census-classification-2026-05-09.md — per-entry table:
+  | Path | Comment-block | Class candidate | Dissolution trigger | Notes |
+
+Heuristic classification:
+  - Comment cites "T-Tier3-Dissolution" / "tier3_*_dissolved" → Class E
+  - Comment cites "v2-retirement" / "v2 retire" → Class E
+  - Comment cites "T-LensProducer" / "PB-Runtime" → Class E (gates #5/#6/#7)
+  - Comment cites "substrate-gap" / "substrate-capability" → Class A
+  - Comment cites "Pattern-A" / "NotYetImplemented" → Class B
+  - Comment cites "Rust mirror" / "typed-carrier" / "EmissionDiagnostic" → Class C
+  - Comment cites "freshness gate" / "regenerated" / "bootstrap" → Class D
+  - Comment cites "operator/algebra ontology" / "duplicate authority" → Class F
+  - No comment OR generic dissolution → Class G (Mgr review)
+  - Bench / measurement infrastructure → STRUCTURAL (out-of-class per §3.A)
+
+Entries WITHOUT preceding comment-blocks are flagged as "untagged" — these are
+the 113 of 159 entries the audit specifically calls out.
+"""
+import re
+import sys
+from pathlib import Path
+
+CENSUS_FILE = Path("src/v3/compiler/tests/integration/sg0_census_test.rs")
+OUTPUT = Path("docs/audit/sg0-census-classification-2026-05-09.md")
+
+ARRAY_RE = re.compile(
+    r'const\s+(EXPECTED_HAND_AUTHORED_NON_TEST|EXPECTED_HAND_AUTHORED_TEST|EXPECTED_HAND_AUTHORED_FRAGMENTS)'
+    r':\s*&\[&str\]\s*=\s*&\[(.*?)\];',
+    re.DOTALL,
+)
+
+ENTRY_RE = re.compile(r'((?:[ \t]*//[^\n]*\n)*)\s*"([^"]+)"', re.MULTILINE)
+
+CLASS_RULES = [
+    (re.compile(r'tier3|Tier3|tier3_.*_dissolved|T-Tier3-Dissolution', re.I), 'E', 'Tier3 mirror dissolution'),
+    (re.compile(r'v2[- ]retire|v2-retirement|src/v2/|v2 fully', re.I), 'E', 'v2-retirement'),
+    (re.compile(r'T-LensProducer|PB-Runtime|lens_apply\.rs|lens_testgen|regen_lens|bin-shim', re.I), 'E', 'T-LensProducer-Retirement'),
+    (re.compile(r'substrate[- ]gap|substrate-capability|Class\s*[2-6]\s*Gap', re.I), 'A', 'Substrate-gap-blocked'),
+    (re.compile(r'Pattern-A|NotYetImplemented|TC1|TC2|TC3|RustDagIsomorphism|BridgeLedgerZero|SymbolicCostExprEquals', re.I), 'B', 'Pattern-A NYI'),
+    (re.compile(r'Rust mirror|typed[- ]carrier|EmissionDiagnostic|EvalStrategy|target-primitive', re.I), 'C', 'typed-carrier+Rust-mirror'),
+    (re.compile(r'freshness gate|regenerat|bootstrap|generated.*ratchet', re.I), 'D', 'Generated bridge with freshness gate'),
+    (re.compile(r'operator.*ontology|OperatorSpec|OperatorKind|BinaryOpRow|duplicate authority', re.I), 'F', 'Operator/algebra ontology duplication'),
+    (re.compile(r'bench|measurement|perf.*budget|Criterion harness|measur', re.I), 'STRUCTURAL', 'Measurement infrastructure (§3.A grandfathered)'),
+]
+
+# Path-based fallback rules — fire only when comment-based rules miss + path matches.
+# Stronger signals than default-G; refines untagged entries via canonical compiler-Rust-mirror locations.
+PATH_RULES = [
+    (re.compile(r'src/v3/compiler/benches/|/bench[^/]*\.rs$', re.I), 'STRUCTURAL', 'Measurement infrastructure (path: bench)'),
+    (re.compile(r'src/v3/compiler/src/bin/regen_|src/v3/compiler/src/bootstrap', re.I), 'D', 'Generated bridge — bootstrap/regen binary (path)'),
+    (re.compile(r'src/v3/compiler/src/(dag|lower|infer|emit|value|diagnostics|eval)\.rs|src/v3/compiler/src/(emit|dag|eval)/', re.I), 'C', 'Compiler Rust mirror of .dag substrate (path)'),
+    (re.compile(r'src/v3/compiler/src/(parse|tokenize|test_runner)', re.I), 'A', 'Substrate-gap (parser/grammar/predicate) — path'),
+    (re.compile(r'src/v3/compiler/src/(complexity|cost|dimension|cardinality)', re.I), 'C', 'Compiler Rust mirror — algebra/typed-carrier (path)'),
+    (re.compile(r'src/v3/grounding_pilot/|src/v3/grounding_cross_target', re.I), 'C', 'Grounding-pilot / cross-target Rust mirror (path)'),
+    (re.compile(r'src/v3/lenses/', re.I), 'E', 'Lens producer (Class E v2↔v3 transition / T-LensProducer)'),
+    (re.compile(r'src/v3/spec/', re.I), 'C', 'Target spec Rust mirror (path)'),
+    (re.compile(r'src/v3/std/', re.I), 'C', 'std/ Rust mirror (path)'),
+]
+
+def classify(comment_block: str, path: str) -> tuple[str, str]:
+    # First pass: comment-based rules (highest signal)
+    for pattern, cls, label in CLASS_RULES:
+        if comment_block.strip() and pattern.search(comment_block):
+            return (cls, label)
+        if pattern.search(path):
+            return (cls, label)
+    # Second pass: path-based fallback rules
+    for pattern, cls, label in PATH_RULES:
+        if pattern.search(path):
+            tag = '' if comment_block.strip() else ' [UNTAGGED]'
+            return (cls, label + tag)
+    # Default
+    if not comment_block.strip():
+        return ('G', '(no comment — untagged; Mgr review needed)')
+    return ('G', 'Local/small bridge (default)')
+
+def parse_entries(text: str) -> dict[str, list[tuple[str, str]]]:
+    out = {}
+    for m in ARRAY_RE.finditer(text):
+        name = m.group(1)
+        body = m.group(2)
+        entries = []
+        for em in ENTRY_RE.finditer(body):
+            comment = em.group(1).strip()
+            path = em.group(2)
+            entries.append((path, comment))
+        out[name] = entries
+    return out
+
+def main():
+    text = CENSUS_FILE.read_text()
+    arrays = parse_entries(text)
+
+    counts = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0, 'F': 0, 'G': 0, 'STRUCTURAL': 0}
+    untagged = 0
+
+    lines = [
+        '# SG-0 Census Per-Entry Classification — 2026-05-09',
+        '',
+        '> **Single source for SG-0 untagged-count**: this document\'s §Summary is the canonical live count (regenerated by `scripts/classify-sg0-census.py` from `src/v3/compiler/tests/integration/sg0_census_test.rs`). Sweep doc + audit prose link here rather than repeat numbers — fixes codex BLOCKING on PR #2437 sha `03a88309`.',
+        '',
+        '**Authority**: PM dispatch at gunb-ai/gunbc#846 c#4413701937; Brian operator directive 2026-05-09 active posture; Debt-Paydown Mgr Phase 2 (3) standing authority.',
+        '',
+        '**Methodology**: heuristic regex classification on preceding-comment-block + path; Mgr review converts heuristic → ratified classification + dissolution-trigger comment in `sg0_census_test.rs`.',
+        '',
+        '**Heuristic rules** (in priority order): see `scripts/classify-sg0-census.py` `CLASS_RULES`.',
+        '',
+        '---',
+        '',
+    ]
+
+    for name, entries in arrays.items():
+        lines.append(f'## {name} ({len(entries)} entries)')
+        lines.append('')
+        lines.append('| # | Path | Class | Heuristic basis | Comment present? |')
+        lines.append('|---|---|---|---|---|')
+        for i, (path, comment) in enumerate(entries, 1):
+            cls, basis = classify(comment, path)
+            counts[cls] += 1
+            has_comment = '✓' if comment.strip() else '— UNTAGGED'
+            if not comment.strip():
+                untagged += 1
+            short_path = path if len(path) <= 60 else '…' + path[-58:]
+            lines.append(f'| {i} | `{short_path}` | {cls} | {basis} | {has_comment} |')
+        lines.append('')
+
+    lines.append('---')
+    lines.append('')
+    lines.append('## Summary')
+    lines.append('')
+    total = sum(counts.values())
+    for cls in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'STRUCTURAL']:
+        pct = (counts[cls] / total * 100) if total else 0
+        lines.append(f'- **Class {cls}**: {counts[cls]} ({pct:.1f}%)')
+    lines.append(f'- **Total entries**: {total}')
+    lines.append(f'- **Untagged (no preceding comment)**: {untagged} ({untagged/total*100:.1f}%)')
+    lines.append('')
+    lines.append('## Mgr next-action')
+    lines.append('')
+    lines.append('1. Review heuristic classifications (especially Class G default + STRUCTURAL grandfathering).')
+    lines.append('2. For each Class A-F entry: confirm dissolution-trigger comment matches lane gate; surface drift to lane-Mgr if mismatch.')
+    lines.append('3. For each untagged entry: add explicit dissolution-trigger comment per option-(c) discipline OR escalate as "no clear path" to Director.')
+    lines.append('4. Classifications fold back into `docs/audit/r3-debt-sweep-2026-05-06.md` §1 Class A-G rows as per-entry sub-rows or row-aggregation.')
+    lines.append('')
+
+    OUTPUT.write_text('\n'.join(lines) + '\n')
+    print(f'wrote {OUTPUT} ({total} entries; {untagged} untagged)', file=sys.stderr)
+    print(f'class breakdown: {counts}', file=sys.stderr)
+
+if __name__ == '__main__':
+    main()
