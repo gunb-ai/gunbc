@@ -18,6 +18,24 @@ worker assignment: tidy-raven-610 / #2359 (#1955 carrier authoring)
 
 # R3 Substrate canvas — T-WAD Slice 2 timing-lens substrate shape
 
+## Ratified final shape (AUTHORITATIVE — supersedes all sections below)
+
+After 6+ Director ratification iterations 2026-05-09, the locked substrate-shape disposition is:
+
+| Question | Final ratified shape | Director comment |
+|---|---|---|
+| **Q-WAD-S2-LensC** | per-observation `Lens<TimingMeasurement>` (worker shape; NOT canvas (b) per-set) | #828 c#4412301889 + c#4413322671 |
+| **Q-WAD-S2-Anchor** | (a) timing-specific concrete fields on `WorkflowObservationAnchor` (NOT (b) generic parametric) — 4 invariants on anchor (subject_stable_id / artifact_digest / producer-observer-prover / attached_at + run_id); promotion to ProofReceipt-second-consumer is bounded refactor | #828 c#4412301889 + c#4413322671 |
+| **Q-WAD-S2-Output** | folded carrier `TimingMeasurement = Observed { nanoseconds: Int } \| Missing \| Ambiguous \| Stale` (NOT separate-projection sum, NOT Result-typed). Carrier IS the report-state. Invariant 5 lives on TimingMeasurement variants. | #828 c#4412301889 + c#4413322671 (A-modified) |
+| **Q-WAD-S2-Placement** | `src/v3/std/timing_lens.dag` per `src/v3/std/lens.dag:17-21` v3-only-carriers convention (NOT `dsl/std/`) | #828 c#4413159089 |
+| **Q3 sub-disposition (LensEnforcement extension)** | **(a)(iii)-β-simplified-with-(β)-bespoke**: `project: fn(Output) -> ProjectionResult<Budget>` where `ProjectionResult<Budget> = ProjectedBudget { value: Budget } \| ProjectionFailed { failure: ProjectionFailure }` (bespoke sum, NOT DSL stdlib `Result`). `violates` signature unchanged. (NOTE: prior (a)(ii) at c#4413284764 was reversed → (a)(iii)-β at c#4413567822 → (a)(iii)-β-simplified-with-(β)-bespoke at c#4413663658.) | #828 c#4413663658 |
+
+**Gate #55 split**:
+- **#55a** — worker scope: anchor invariants 1-4 + carrier landing (PR #2360 folded-carrier MERGED 2026-05-09).
+- **#55b** — Substrate Mgr scope: **(a)(iii)-β-simplified-with-(β)-bespoke** `LensEnforcement` extension PR (PR #2400 in flight; bespoke `ProjectionResult<Budget> = ProjectedBudget { value: Budget } | ProjectionFailed { failure: ProjectionFailure }` per top-table lock — NOT DSL stdlib `Result`; lens-rust-emit MissingTypeRealization gating per #828 c#4413692695 → Path 1 canvas-tier scope assessment ratified at c#4413702193). #55a + #55b co-close once PR #2400 lands (post lens-rust-emit canvas resolution).
+
+**Sections below are RETAINED for the design-question history + reasoning trail** (Mgr-tier preliminary recommendations + reviewer-corrections + Director ratification iterations). Worker brief authoring should consume the table above as the binding shape; the per-question Pro/Con sections show how the shape was reached, not what to author.
+
 ## Why canvas
 
 Slice 2 of T-Workflow-As-Data (per `r3-substrate-t-workflow-as-data-slice-1-worker.md` §"Slice scope") introduces an **observation-driven lens-shape class** parallel to the existing **structural-static** `Lens<C>` instances (complexity, cost). This is a substrate-shape novelty that warrants Director disposition before worker carrier-authoring locks shapes:
@@ -29,15 +47,18 @@ Slice 2 of T-Workflow-As-Data (per `r3-substrate-t-workflow-as-data-slice-1-work
 
 Worker dispatch is in flight (tidy-raven-610 spawned 2026-05-09); canvas surfaces the shape decisions so worker can grep against locked authority rather than re-derive.
 
-## Carrier inventory (binding per #1955 brief + r3-structure.md:168-169)
+## Carrier inventory (binding per #1955 brief + r3-structure.md:168-169 + Director ratification at #828 c#4412301889)
 
-Four substrate carriers gate-named:
-1. **`TimingMeasurement`** — single observation: subject identity + observed timing payload + observer attestation.
-2. **`TimingObservationSet`** — collection of `TimingMeasurement` over a workflow run; the data the lens folds over.
-3. **`WorkflowObservationAnchor`** — generic external-data attachment carrier (factored separately; six invariants below).
-4. **`TimingBudget`** — declared budget for `Enforce`-mode lens application (parallel to `AsymptoticClass` in complexity, `SymbolicCost` in cost).
+**Director ratified worker tidy-raven-610's shape as-shipped on PR #2360** (re-ratification at #828 c#4412301889) — reversing this canvas's prior (b)/(b)/(a) preliminary recommendations on Q1/Q2/Q3. Final ratified carrier shape:
 
-Lens declaration: `Lens<TimingMeasurement>` (or `Lens<TimingObservationSet>` if `C` is the fold-input collection — Question 1 below).
+- **`TimingMeasurement = Observed { nanoseconds: Int } | Missing | Ambiguous | Stale`** — fused carrier-as-report-state. Per Director's reasoning (`feedback_no_rejected_patterns` + `feedback_state_space_vs_behavioral_invariants`): the carrier admits exactly the legal states; folding the 4 variants into the carrier dissolves the artificial separation between "value carrier" and "outcome projection." Owns invariant 5 (report state) as variant-level structure.
+- **`WorkflowObservationAnchor`** — timing-specific concrete-field carrier (Q-WAD-S2-Anchor (a) ratified, NOT generic parametric (b)): `subject_stable_id` + `artifact_digest` + `producer_id` + `observer_id` + `prover_id` + `attached_at_epoch_ns` + `workflow_run_id`. Owns invariants 1-4 (subject identity / artifact digest / producer-observer-prover identity / attachment timestamp + run id). Promotion-to-generic on second-consumer (ProofReceipt per ctrl#369) landing is bounded refactor (rename + add `<Subject, Source>` parameters); per `feedback_strict_mirror_vs_novel_substrate_fact` defer-shape pattern is correct here.
+- **`TimingObservationSet`** — collection-typed carrier; aggregation surface separate from per-observation `Lens<TimingMeasurement>`.
+- **`TimingBudget`** — declared budget for `Enforce`-mode lens application (parallel to `AsymptoticClass`, `SymbolicCost`).
+
+Lens declaration per Q-WAD-S2-LensC ratification: `Lens<TimingMeasurement>` (per-observation; aggregation handled by `TimingObservationSet` separately).
+
+**Invariant 6 (fail-closed) carriage**: structurally NOT on either anchor or `TimingMeasurement`; lives at `LensEnforcement.violates` layer. Worker scope (gate #55a) lands invariants 1-5 on anchor + TimingMeasurement; **gate #55b** (LensEnforcement substrate-extension for fail-closed-correct enforcement on non-Observed variants) is separate Substrate-Mgr-scope dispatch (see Gate #55 closure-predicate split section below). The `LensEnforcement<Output, Budget>.violates: fn(Budget, Budget) -> Bool` signature per `src/v3/std/lens_application.dag:99-101` cannot pattern-match `TimingMeasurement` variants; substrate-extension is required for fail-closed-correct observation-driven lens classes (timing first; ProofReceipt second).
 
 ## Question 1 (Q-WAD-S2-LensC) — `Lens<C>` instantiation: per-measurement vs per-set
 
@@ -72,12 +93,34 @@ Author `WorkflowObservationAnchor` with timing-shaped fields directly (e.g., `su
 
 ### Option (b) — Generic from authoring; timing is first instantiation
 
-Author `WorkflowObservationAnchor<Subject, Source>` (or `ExternalDataAnchor<Subject, Source>` directly) parametrically; timing is `WorkflowObservationAnchor<BehaviorId, TimingMeasurement>` instantiation.
+Author parametrically with the six invariant fields as concrete fields on the carrier and `Subject` + `Source` as type parameters for the variable identity / payload parts:
 
-- **Pro**: gate #55 closure predicate ("`WorkflowObservationAnchor` factored separately as reusable external-data attachment primitive") is naturally satisfied; second-consumer promotion is zero-substrate-edit.
-- **Con**: novel-substrate authoring at first consumer; per `feedback_strict_mirror_vs_novel_substrate_fact` this needs canvas justification (which this canvas provides).
+```
+type WorkflowObservationAnchor<Subject, Source> {
+  subject:               Subject              // invariant 1: stable subject identity (NOT span)
+  artifact_digest:       ContentDigest        // invariant 2: observed-artifact identity/digest
+  producer_id:           ProducerIdentity     // invariant 3a: producer identity
+  observer_id:           ObserverIdentity     // invariant 3b: observer identity
+  prover_id:             ProverIdentity       // invariant 3c: prover identity
+  attached_at:           Timestamp            // invariant 4a: attachment timestamp
+  workflow_run_id:       RunId                // invariant 4b: run id
+  observation_outcome:   ObservationOutcome<Source>  // invariant 5: report state (Observed/Missing/Ambiguous/Stale)
+  // invariant 6 (fail-closed) lives at the LensEnforcement.violates layer, not here
+}
+```
 
-**Recommended (Mgr-tier preliminary)**: **(b)** — gate #55 acceptance language ("factored separately as reusable") points to (b); the six invariants are intrinsically anchor-generic; second-consumer scenario is named (ctrl#369 `ProofReceipt`); zero-substrate-edit promotion is materially better than rename-on-second-consumer.
+**[SUPERSEDED — see top-of-canvas authoritative table; (a)(ii) was reversed → (a)(iii)-β-simplified-with-(β)-bespoke locked at c#4413663658]** Timing instantiation: `WorkflowObservationAnchor<BehaviorId, TimingPayload>` with `TimingPayload = { nanoseconds: Int }`. Subject identity owned solely by the anchor's `subject` field (P2 single-authority); observation payloads carry observed values only, not subject facts. Historical narrative: 5 of 6 gate #55 invariants are concrete fields on the anchor (1-5); invariant 6 (fail-closed enforcement on non-Observed) is NOT an anchor field — it lives at the `LensEnforcement` layer; satisfied per (a)(iii)-β-simplified-with-(β)-bespoke project-Result substrate-extension (top table).
+
+- **Pro**: gate #55 closure predicate ("`WorkflowObservationAnchor` factored separately as reusable external-data attachment primitive") is satisfied; second-consumer promotion (ProofReceipt per ctrl#369) is zero-substrate-edit (rebind type parameters); six invariants are explicitly carried on the anchor (not abstracted away).
+- **Con**: novel-substrate authoring at first consumer; per `feedback_strict_mirror_vs_novel_substrate_fact` this needs canvas justification (which this canvas provides). `ProducerIdentity` / `ObserverIdentity` / `ProverIdentity` / `ContentDigest` / `RunId` types may need substrate sub-carriers if not already declared (worker grep at dispatch).
+
+**RATIFIED (Director #828 c#4412301889 + re-confirmed at c#4413322671)**: **(a) timing-specific concrete fields**. Director's reasoning per `feedback_strict_mirror_vs_novel_substrate_fact` + `feedback_construction_over_ratchets`: introducing parametric novel substrate NOW (when ProofReceipt's actual substrate shape hasn't been authored yet) risks parameterization that doesn't fit second-consumer needs. Worker tidy-raven-610 PR #2360's flat shape is the ratified posture; promotion-to-generic on ProofReceipt landing is bounded refactor (rename + add `<Subject, Source>` parameters; no field redesign).
+
+Mgr-tier preliminary (b) recommendation was over-engineered — chasing hypothetical second-consumer parameterization. Discipline lesson: defer-shape pattern is structurally appropriate when (1) field-level reusability is satisfied (worker's anchor fields are already generic external-data-attachment fields modulo type-rename) + (2) promotion is bounded refactor + (3) second consumer is named-but-not-authored.
+
+**[SUPERSEDED — top table is authoritative; (a)(ii) was reversed]** Invariant 5 (report state) NOT on anchor — RATIFIED posture. Director's (a) ratification accepts that invariant 5 lives on the lens Output type (`TimingMeasurement` variants in worker's PR #2360), not as an `observation_outcome` field on the anchor. **Final resolution per top table**: single-authority resolved at LensEnforcement via (a)(iii)-β-simplified-with-(β)-bespoke `project: fn(Output) -> ProjectionResult<Budget>` (NOT (a)(ii) violates-signature-extension as historically explored).
+
+**Historical reasoning trail (SUPERSEDED by Director ratification — see top-of-canvas authoritative table)**: this section explored an anchor-side `ObservationOutcome<Source>` field that would carry invariant 5 as a separate projection wrapper on the anchor. Director rejected this path at #828 c#4413322671 — invariant 5 lives on the lens Output type (`TimingMeasurement` variants), not on the anchor. The fail-closed concern that motivated anchor-side wrapping is resolved at the LensEnforcement layer via (a)(ii) signature extension (c#4413284764). Folded `TimingMeasurement = Observed | Missing | Ambiguous | Stale` IS the substrate; no separate `ObservationOutcome` type, no anchor-side `observation_outcome` field. Worker brief authoring binds against the top-of-canvas ratified shape, NOT this convergence-path narrative.
 
 ## Question 3 (Q-WAD-S2-Output) — Output projection shape
 
@@ -85,10 +128,15 @@ Per r3-structure.md:168, `Output` is "projection/report distinguishing `Observed
 
 ### Option (a) — Sum type: `TimingObservationOutcome = Observed | Missing | Ambiguous | Stale`
 
-Direct sum-type encoding. Each variant carries shape-appropriate payload (`Observed { value: TimingMeasurement }`, `Missing { reason }`, `Ambiguous { candidates }`, `Stale { observed_at, expired_after }`).
+Direct sum-type encoding. Each variant carries shape-appropriate payload (`Observed { value: Source }`, `Missing { reason }`, `Ambiguous { candidates }`, `Stale { observed_at, expired_after }`). For timing instantiation, `Source = TimingPayload { nanoseconds: Int }` — the **payload-only** observed value, NOT the full `TimingMeasurement` (which would re-introduce the variants and split P2 single-authority for invariant 5). Per Q-WAD-S2-Anchor revised convergence: subject identity / attestation / report-state all live on the anchor; payload carries only the observed-value-when-present.
 
-- **Pro**: direct match to gate #55 invariant 5 ("stale/ambiguous/missing/observed report states"); fail-closed is straightforward (`LensEnforcement.violates = Output != Observed`).
-- **Con**: none material.
+**Dissolution classification (INVARIANTS P5 / modeling-discipline.md §coproduct dissolution): 🟢 GREEN (terminal).** No richer source exists at the workflow-observation boundary. The four variants exhaust the externally-attested observation states: a fact was attached cleanly (Observed), no fact attached (Missing), multiple conflicting facts attached (Ambiguous), a previously-attached fact has expired its validity window (Stale). All variants trace to the substrate's external-data attachment surface (six invariants per gate #55); none has a richer-source-extraction path that would dissolve to a finer coproduct. Worker `.dag` declarations MUST carry the 🟢 marker comment per modeling-discipline.md:132 checkpoint discipline.
+
+- **Pro**: direct match to gate #55 invariant 5 ("stale/ambiguous/missing/observed report states").
+- **Con**: `LensEnforcement<Output, Budget>.violates: fn(Budget, Budget) -> Bool` (per `src/v3/std/lens_application.dag:100`) does NOT see raw Output — it sees projected Budget values. Three sub-options:
+  - **(i) Projection fabricates a violating Budget** for non-Observed variants. **REJECTED per INVARIANTS P3/C-8 fail-closed discipline**: erases the typed report-state failure evidence (Missing / Ambiguous / Stale) into a plausible-looking Budget value. Consumers downstream of `violates` cannot distinguish "budget was exceeded by an observed value" from "no observation existed" — failure-cause introspection is destroyed at the projection boundary. Per PR #2333 inline review at canvas:118.
+  - **(ii) Substrate-extend `violates` signature** to `fn(Output, Budget, Budget) -> Bool` so the per-lens body can pattern-match on Output report-state and return true (violate) for any non-Observed variant with the typed evidence preserved up to the call site. Canvas-tier substrate change to `LensEnforcement` carrier — cascades across all lens consumers (T-LBP / T-CostLens / T-LAS). **Director-tier disposition required** if this is the chosen path.
+  - **(iii) Result-typed projection**: projection step returns `Result<Budget, ObservationFailure>` and the lens framework adds an `auto_violate_on_left: Bool` bit (or equivalent fail-closed-by-construction wiring) so non-Observed Result-Left automatically counts as violate without a Budget value. Smaller substrate change than (ii) — adds one bit to `LensEnforcement` rather than changing `violates` signature.
 
 ### Option (b) — `Result<TimingMeasurement, ObservationFailure>` with `ObservationFailure` enum
 
@@ -97,20 +145,32 @@ Two-level: outcome is `Result`, failure is enum. Shifts the ambiguous/stale/miss
 - **Pro**: matches stdlib-Result-style intuition.
 - **Con**: extra indirection; gate #55 acceptance language reads as flat-sum (Observed *and* the failure variants are peer report states); fail-closed is more verbose to express.
 
-**Recommended (Mgr-tier preliminary)**: **(a)** — direct match to gate language; flat sum is simpler.
+**[SUPERSEDED — top table locks (a)(iii)-β-simplified-with-(β)-bespoke]** Historical Mgr-tier preliminary: pending Director disposition between (a)(ii)/(a)(iii) sub-options. (a)(i) Budget fabrication REJECTED per P3/C-8. Final ratification at #828 c#4413663658 chose (a)(iii)-β-simplified-with-(β)-bespoke ProjectionResult.
 
-## Question 4 (Q-WAD-S2-Placement) — Carrier placement: `dsl/std/` vs `dsl/extdeps/`
+### Option (c) — Output-folded-into-carrier (worker tidy-raven-610 PR #2360 shape)
+
+Worker authored `TimingMeasurement = Observed { nanoseconds: Int } | Missing | Ambiguous | Stale` directly — the carrier IS the report state, no separate Output projection.
+
+**Dissolution classification: 🟢 GREEN (terminal)** — the four variants exhaust the externally-attested observation states. Worker `.dag` MUST carry the 🟢 marker comment. `Lens<TimingMeasurement>` is per-observation; `TimingObservationSet` is separate aggregation.
+
+- **Pro**: state-space discipline — carrier admits exactly the legal states (no illegal-state-via-projection-mismatch surface). Substrate carrier count is lower (no separate Output projection type). Per Director ratification reasoning (`feedback_no_rejected_patterns` + `feedback_state_space_vs_behavioral_invariants`): the carrier IS the coordinates the projection would have produced; folding dissolves an artificial separation.
+- **Con (fail-closed structural)**: does NOT sidestep the `violates: fn(Budget, Budget) -> Bool` signature collision. `TimingMeasurement` variants reach `LensEnforcement.project: fn(Output) -> Budget` first; `violates` body cannot pattern-match the variants because the signature only sees the projected Budget. Per P3/C-8 fail-closed: non-Observed variants need typed-evidence preservation through to the violation-decision boundary, NOT Budget fabrication. **Therefore (c) STILL requires a substrate-extension path** — either (a)(ii) violates-signature extension or (a)(iii) auto-violate-bit on `LensEnforcement` — for fail-closed-correct enforcement on non-Observed.
+- **Status [SUPERSEDED]**: (c) folded-carrier ratified by Director at #828 c#4412301889. **Q3 sub-disposition** went through reversals: (a)(ii) at c#4413284764 → REVERSED → (a)(iii)-β at c#4413567822 → SUPERSEDED → **(a)(iii)-β-simplified-with-(β)-bespoke ProjectionResult at c#4413663658 (FINAL LOCK)**. See top-of-canvas authoritative table for binding shape.
+
+## Question 4 (Q-WAD-S2-Placement) — Carrier placement: `src/v3/std/` vs `dsl/extdeps/`
 
 Per Director STOP-and-PING standby (#828 c#4411989488): "carrier-placement decisions are well-precedented (compare T-LBP / T-CostLens / T-LAS history); no pre-ratification needed."
 
+**Critical convention** (per `src/v3/std/lens.dag:17-21`): v3-only carriers stay under **`src/v3/std/`**, NOT `dsl/std/`, until substrate graduation. The lens-framework carrier `Lens<C>` itself lives at `src/v3/std/lens.dag` for this reason. T-LBP / T-CostLens / T-LAS lens substrate live in `src/v3/std/` (e.g., `src/v3/std/lens_application.dag`, `src/v3/lenses/cost.dag`). The earlier canvas claim that "T-LBP / T-CostLens / T-LAS lens carriers all live in `dsl/std/`" was **wrong** — they live in `src/v3/std/` and `src/v3/lenses/`.
+
 Two options:
 
-### Option (a) — `dsl/std/timing_lens.dag` (cross-provider universal)
+### Option (a) — `src/v3/std/timing_lens.dag` (correct v3 layer)
 
-Place all four carriers (`TimingMeasurement`, `TimingObservationSet`, `WorkflowObservationAnchor`, `TimingBudget`) + lens declaration in a new `dsl/std/timing_lens.dag` file.
+Place all four carriers (`TimingMeasurement`, `TimingObservationSet`, `WorkflowObservationAnchor`, `TimingBudget`) + lens declaration in a new `src/v3/std/timing_lens.dag` file.
 
-- **Pro**: timing-as-observation is a substrate-universal concept (any workflow runner produces timing observations); not provider-specific. T-LBP / T-CostLens / T-LAS lens carriers all live in `dsl/std/`. Promotes the "lens framework is cross-provider" claim.
-- **Con**: WorkflowObservationAnchor's first concrete *workflow* is GitHub Actions CI (per Slice 1 placement at `dsl/extdeps/github/actions.dag`); having anchor in `dsl/std/` while workflow grammar lives in `dsl/extdeps/` could feel split.
+- **Pro**: matches the explicit v3-only-carriers convention at `src/v3/std/lens.dag:17-21`; precedent from T-LBP / T-CostLens / T-LAS lens substrate location. Substrate-graduation trigger (when v3 substrate types graduate into shared `dsl/std/`) is the future move-to-dsl-std event, not Slice 2's call.
+- **Con**: WorkflowObservationAnchor's first concrete *workflow* is GitHub Actions CI (per Slice 1 placement at `dsl/extdeps/github/actions.dag`); split between substrate (v3) and workflow grammar (extdeps) is structural — workflow grammar IS provider-specific, lens substrate is NOT.
 
 ### Option (b) — `dsl/extdeps/github/actions.dag` (extends Slice 1 placement)
 
@@ -119,18 +179,27 @@ Fold the four carriers into the existing `dsl/extdeps/github/actions.dag` adjace
 - **Pro**: workflow-coherent; all workflow-related substrate in one file.
 - **Con**: timing-lens carriers are NOT GitHub-Actions-specific; placing in `dsl/extdeps/github/` would require a future migration when second runner (e.g., GitLab CI, Buildkite) lands.
 
-**Recommended (Mgr-tier preliminary)**: **(a)** — `dsl/std/timing_lens.dag`. Lens carriers are cross-provider universal per existing T-LBP / T-CostLens / T-LAS precedent. WorkflowObservationAnchor is anchor-generic (per Q-WAD-S2-Anchor (b)), not GitHub-specific. Workflow grammar (GitHub-specific) staying at `dsl/extdeps/github/actions.dag` is correct; lens substrate (cross-provider) belongs in `dsl/std/`.
+**Recommended (Mgr-tier — corrected per PR #2333 inline review)**: **(a)** — `src/v3/std/timing_lens.dag`. Matches the v3-only-carriers convention at `src/v3/std/lens.dag:17-21` and existing T-LBP / T-CostLens / T-LAS lens substrate placement. Workflow grammar (GitHub-specific) staying at `dsl/extdeps/github/actions.dag` remains correct; lens substrate (v3-internal) belongs in `src/v3/std/`. Worker tidy-raven-610 PR #2360 already placed at `src/v3/std/timing_lens.dag` ✓ — matches corrected recommendation.
 
 ## Six invariants (gate #55 acceptance — `WorkflowObservationAnchor`)
 
 Per r3-structure.md:169 (verbatim, for worker brief reference):
 
-1. **Stable subject identity** — not span-based; identity is structural (`NodeId` / substrate node-table key in landed carriers), not source-position or free-form path text.
-2. **Observed-artifact identity/digest** — content-addressed via landed `artifact_digest: ContentHash` (`std.types`); stale detection works against digest, not timestamp alone.
-3. **Producer/observer/prover identity** — three **distinct branded roles** (`WorkflowProducerId` / `WorkflowObserverId` / `WorkflowProverId`); producer = workflow runner, observer = measurement-capture process, prover = signature/attestation source.
-4. **Attachment timestamp + run id** — both fields required; **`WorkflowRunId`** scopes the attachment to a workflow run; timestamp provides ordering.
+1. **Stable subject identity** — not span-based; identity is structural (e.g., BehaviorId), not source-position.
+2. **Observed-artifact identity/digest** — content-addressed; stale detection works against digest, not timestamp alone.
+3. **Producer/observer/prover identity** — three roles distinguishable; producer = workflow runner, observer = measurement-capture process, prover = signature/attestation source.
+4. **Attachment timestamp + run id** — both fields required; run id provides workflow-scope, timestamp provides ordering.
 5. **Stale/ambiguous/missing/observed report states** — per Q-WAD-S2-Output (a) above; flat sum.
-6. **Fail-closed enforcement on non-observed/non-valid states** — `LensEnforcement.violates = Output != Observed` per `feedback_fail_closed_discipline` + INVARIANTS C-8.
+6. **Fail-closed enforcement on non-observed/non-valid states** — does NOT live on the anchor; lives at the `LensEnforcement` layer per Q-WAD-S2-Output **(a)(iii)-β-simplified-with-(β)-bespoke ProjectionResult** substrate-extension (final lock per top table). Per `feedback_fail_closed_discipline` + INVARIANTS C-8.
+
+## Gate #55 closure-predicate split
+
+Per PR #2333 inline review at canvas (b526a26f finding 1): gate #55 mixes anchor-fact-carriage with fail-closed semantics. Split:
+
+- **Gate #55a** (anchor-fact-carriage): `WorkflowObservationAnchor` declared with invariants 1-4 as concrete fields (subject identity / artifact digest / producer-observer-prover identity / attachment timestamp + run id) per Director-ratified (a) timing-specific shape. Invariant 5 (report state Observed/Missing/Ambiguous/Stale) lives on the lens Output type `TimingMeasurement` variants, NOT on the anchor — single-authority preserved at the lens layer (consumed by `project` per (a)(iii)-β-simplified-with-(β)-bespoke locked at top table). Closes when worker carrier lands per PR #2360 (MERGED 2026-05-09).
+- **Gate #55b** (fail-closed enforcement) — **PENDING**: `LensEnforcement` substrate-extension to land per Q-WAD-S2-Output **(a)(iii)-β-simplified-with-(β)-bespoke** Director ratification at #828 c#4413663658 (final lock; prior reversal trail c#4413284764 → c#4413567822 → c#4413663658). Shape: `project: fn(Output) -> ProjectionResult<Budget>` where `ProjectionResult<Budget> = ProjectedBudget { value: Budget } | ProjectionFailed { failure: ProjectionFailure }` (bespoke sum, NOT DSL stdlib `Result` — DSL stdlib Result emit-mismatch escalated at c#4413661418 prompted (β) bespoke at c#4413663658); `violates` signature unchanged. Existing complexity_enforcement_project body wraps in `ProjectedBudget { value: ... }`; observation-driven lenses return `ProjectionFailed { failure: ProjectionFailure::* }` on non-Observed report-state variants. Framework apply: `match project(output) { ProjectionFailed { _ } => fail-closed; ProjectedBudget { value } => violates(declared, value) }` — preserves typed report-state evidence per P3/C-8 without Budget fabrication. Substrate-extension lives in Mgr-scope PR (currently PR #2400 in flight; CI-blocked on lens-rust-emit MissingTypeRealization for parametric sums per c#4413692695 → Path 1 canvas-tier scope assessment ratified at c#4413702193).
+
+Per Director (A)-modified disposition at #828 c#4413322671: gates #55a + #55b co-close in the LensEnforcement (a)(iii)-β-simplified-with-(β)-bespoke extension PR (Substrate Mgr scope). Worker scope = #55a anchor + carrier landing (PR #2360 MERGED 2026-05-09); Mgr-tier extension PR adds bespoke `ProjectionResult<Budget>` substrate-type + project bespoke-Result signature. **#55b state**: PENDING extension PR merge to main.
 
 ## Acceptance gates (worker dispatch — same-canvas)
 
