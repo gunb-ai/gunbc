@@ -69,3 +69,5 @@ Close this STOP when:
 2. A substrate ratchet test asserts the `ApproximateField` parameter binds to the
    chosen carrier (or the revised carrier convention), analogous to Slice 4’s
    two-step `Rational` witness ratchet.
+
+**Resolution (2026-05-09):** (1) [`docs/design-numeric-construction.md`](../design-numeric-construction.md) §"The construction chain" + [`docs/r3-structure.md`](../r3-structure.md) §T-Numeric-Construction gate `numeric_abstract_carriers_landed` now record Option **A** (`Real = ApproximateField<FieldOfFractions<Int>>`). (2) `v3-compiler` integration `real_default_alias_resolves_to_approximate_field_over_field_of_fractions_of_int` ratchets the carrier binding. **This STOP header may remain** as audit history; the dissolution predicates above are structurally satisfied at HEAD.

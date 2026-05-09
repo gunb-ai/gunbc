@@ -30,6 +30,11 @@ const MACHINE_CONSTRAINTS_DAG: &str = include_str!("../../../../dsl/std/machine_
 const NAT_DAG: &str = include_str!("../../../../dsl/std/nat.dag");
 const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
 const RATIONAL_DAG: &str = include_str!("../../../../dsl/std/rational.dag");
+/// Loaded before `dsl/std/float.dag` so `ApproximateField<F>` exists while lowering
+/// `type Real = ApproximateField<FieldOfFractions<Int>>` (import resolves to a real
+/// template, not an identifier stub — otherwise generic args drop).
+const APPROXIMATE_FIELD_BOOTSTRAP_PATH: &str = "src/v3/std/approximate_field.dag";
+const APPROXIMATE_FIELD_DAG: &str = include_str!("../../../../src/v3/std/approximate_field.dag");
 const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
 const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
 const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
@@ -100,7 +105,8 @@ fn load_runtime_bootstrap_authorities(
     let staged_iter = STAGED_FILES
         .iter()
         .copied()
-        .filter(|(path, _)| !excluded_staged_paths.contains(path));
+        .filter(|(path, _)| !excluded_staged_paths.contains(path))
+        .filter(|(path, _)| *path != APPROXIMATE_FIELD_BOOTSTRAP_PATH);
     let compiler_iter = COMPILER_FILES
         .iter()
         .copied()
@@ -145,6 +151,7 @@ fn std_fixtures() -> &'static [(&'static str, &'static str)] {
         ("dsl/std/nat.dag", NAT_DAG),
         ("dsl/std/integer.dag", INTEGER_DAG),
         ("dsl/std/rational.dag", RATIONAL_DAG),
+        (APPROXIMATE_FIELD_BOOTSTRAP_PATH, APPROXIMATE_FIELD_DAG),
         ("dsl/std/float.dag", FLOAT_DAG),
         ("dsl/std/types.dag", TYPES_DAG),
         ("dsl/std/string_type.dag", STRING_TYPE_DAG),
