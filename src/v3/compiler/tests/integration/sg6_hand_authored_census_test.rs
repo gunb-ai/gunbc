@@ -340,7 +340,7 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
         (
             "cost",
             "src/v3/lenses/complexity.dag",
-            "src/v3/compiler/src/lens_cost_generated.rs",
+            "src/v3/compiler/src/complexity_lens_generated.rs",
         ),
         (
             "cost_symbolic",

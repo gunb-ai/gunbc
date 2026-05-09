@@ -76,7 +76,7 @@ fn lane_e_host_forward_cost_of(dag: &Dag, port: &PortId) -> CostLookup {
 }
 
 fn lane_e_host_compute_costs(nodes: &[Behavior]) -> LaneEHostCostAcc {
-    // Prepend via `insert(0, …)` matches `lens_cost_generated` cons order so `lane_e_host_lookup_cost`
+    // Prepend via `insert(0, …)` matches `complexity_lens_generated` cons order so `lane_e_host_lookup_cost`
     // agrees with emit (first match wins; order only matters if duplicate ports shadow). Do not
     // reorder without a parity check — delete this receipt once D1 runs canonical `cost_of`.
     let mut acc = lane_e_host_seed_bind_params(nodes);
@@ -199,7 +199,7 @@ fn lane_e_host_max_cost(a: &CostLookup, b: &CostLookup) -> CostLookup {
 }
 
 /// T-LaneE `DifferentialEquals` cost lineage: **v3** = host forward fold (spec mirror above);
-/// **v2** = Rust-generated [`cost_of`] (`lens_cost_generated`).
+/// **v2** = Rust-generated [`cost_of`] (`complexity_lens_generated`).
 fn eval_lane_e_differential_cost_lineage(
     lineage_name: &str,
     program_dag: &Dag,

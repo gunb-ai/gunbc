@@ -44,7 +44,7 @@ type LensRegistryEntry {
 data lens_cost_entry: LensRegistryEntry = {
   name: "cost"
   lens_file: "src/v3/lenses/complexity.dag"
-  generated_file: "src/v3/compiler/src/lens_cost_generated.rs"
+  generated_file: "src/v3/compiler/src/complexity_lens_generated.rs"
 }
 
 data lens_cost_symbolic_entry: LensRegistryEntry = {
