@@ -580,6 +580,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // strategy-order `BinaryDimensionReportEquals` pairing per `r3-v-pattern-a-tc2-v1-worker.md`.
     "src/v3/compiler/tests/integration/tc2_church_rosser_strict_fire_test.rs",
     "src/v3/compiler/tests/integration/tc3_strong_normalization_deferred_test.rs",
+    // TC3 strict-fire — §1.8 gate #13 (`tc3_pattern_a_second_mover_executable`); strong-
+    // normalization / Pattern-A second-mover `BinaryDimensionReportEquals` pairing per
+    // `r3-v-pattern-a-tc3-v1-worker.md` (two-stage gate; PASSING gated on T-FixedPoint stage (b)).
+    "src/v3/compiler/tests/integration/tc3_strong_normalization_strict_fire_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
