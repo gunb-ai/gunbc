@@ -2624,9 +2624,6 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
-        if self.is_rust_dag_isomorphism_shape_report_pair(left_id, right_id, left_carrier) {
-            return ClaimResult::Pass;
-        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
@@ -2666,29 +2663,6 @@ impl<'a> TestRunner<'a> {
                 &TypeShape::new(left_carrier),
                 &TypeShape::new(right_carrier),
             )
-    }
-
-    fn is_rust_dag_isomorphism_shape_report_pair(
-        &self,
-        left_id: DeclarationId,
-        right_id: DeclarationId,
-        carrier_id: DeclarationId,
-    ) -> bool {
-        if self.dag.declaration(carrier_id).name.as_deref() != Some("Dag") {
-            return false;
-        }
-        let left_name = self.dag.declaration(left_id).name.as_deref();
-        let right_name = self.dag.declaration(right_id).name.as_deref();
-        matches!(
-            (left_name, right_name),
-            (
-                Some("RustEnumExtractionDagShapeReport"),
-                Some("DagReflectionDagShapeReport")
-            ) | (
-                Some("DagReflectionDagShapeReport"),
-                Some("RustEnumExtractionDagShapeReport")
-            )
-        )
     }
 
     fn dimension_report_carrier(&self, mut current: DeclarationId) -> Option<DeclarationId> {
