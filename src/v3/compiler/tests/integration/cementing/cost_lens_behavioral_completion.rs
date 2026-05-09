@@ -1,10 +1,14 @@
 //! **Layer:** integration
 //!
-//! Band-C cementing for `src/v3/lenses/cost.dag`.
+//! Consumer wiring receipt for `src/v3/lenses/cost.dag` (`regen_lens` →
+//! `lens_cost_symbolic_generated.rs`).
 //!
-//! Exercises the generated `symbolic_cost_of` consumer (`lens_cost_symbolic_generated.rs`)
-//! on `compile_to_dag` fixtures — the same lookup surface `analyze_symbolic_cost_dimension`
-//! uses in `v3_compiler::dimension` (per-behavior `symbolic_cost_of` spine).
+//! **Not** Band-C lens-subsumption escalation: `cost.dag` stays **PROXY** in
+//! `docs/v3-lens-capability-register.md` until the v2-subsumption + "What v2
+//! drops" columns satisfy register Discipline for `COMPLETE`. This module still
+//! pins the shipped `symbolic_cost_of` API on `compile_to_dag` fixtures — the
+//! same lookup surface `analyze_symbolic_cost_dimension` walks in
+//! `v3_compiler::dimension`.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};

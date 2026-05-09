@@ -102,10 +102,8 @@ fn expected_origin_from_producer_behavior(behavior: &Behavior) -> Origin {
 /// not `N/A` per `TESTING.md` Band-C). Land the new
 /// `cementing/<stem>.rs` module and a `#[path = ...]` line in
 /// `tests/integration.rs` in the same PR.
-const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] = &[
-    ("cost", "complexity_lens_behavioral_completion"),
-    ("cost_symbolic", "cost_lens_behavioral_completion"),
-];
+const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] =
+    &[("cost", "complexity_lens_behavioral_completion")];
 
 fn run_with_cementing_stack(f: impl FnOnce() + Send + 'static) {
     std::thread::Builder::new()
