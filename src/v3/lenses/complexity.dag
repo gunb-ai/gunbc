@@ -518,6 +518,9 @@ data complexity_lens: Lens<ComplexitySummary> = {
 data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {
   project: complexity_enforcement_project
   violates: complexity_enforcement_violates
+  // Structural-static lens; Output is not Result-typed. Bit is inert.
+  // See lens_application.dag LensEnforcement.auto_violate_on_left comment.
+  auto_violate_on_left: false
 }
 
 data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass> = {
