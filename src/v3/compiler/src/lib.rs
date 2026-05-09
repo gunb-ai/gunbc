@@ -134,7 +134,7 @@ pub mod evaluator {
 
     /// Rust mirror of the PR-A.3 / TC2 eager strategy carrier.
     ///
-    /// **Dissolution receipt: TERMINAL at PR-A.3 eager-baseline scope.** The
+    /// **Dissolution receipt: TERMINAL at PR-A.3 / TC2 input-order scope.** The
     /// public evaluator boundary carries strategy now so downstream slices
     /// cannot erase it. TC2 adds a second executable input order under the same
     /// applicative/eager skeleton; additional strategy families must land with
@@ -144,6 +144,9 @@ pub mod evaluator {
         ApplicativeOrder { input_order: InputEvaluationOrder },
     }
 
+    /// 🟢 TERMINAL: Rust mirror of `std.runtime::InputEvaluationOrder`. Both
+    /// variants have executable eager evaluator behavior and key TC2
+    /// strategy-paired report producers through `EvalStrategy`.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum InputEvaluationOrder {
         LeftFirst,
