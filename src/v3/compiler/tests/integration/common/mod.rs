@@ -43,6 +43,25 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+/// Run deep verification fixtures on a larger stack.
+///
+/// R3 author-now/fire-later verification fixtures currently recurse deeply
+/// through full bootstrap lowering plus `TestRunner` claim evaluation inside the
+/// consolidated integration test binary. Keep the workaround centralized and
+/// remove call sites once those verification paths no longer overflow the
+/// default test-thread stack.
+pub fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
+where
+    T: Send + 'static,
+{
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(f)
+        .expect("spawn larger-stack integration thread")
+        .join()
+        .expect("larger-stack integration thread panicked")
+}
+
 /// Handle into the current test binary's `target/debug/deps` directory.
 /// All `--extern v3_compiler=...` flags resolve against this.
 pub fn deps_dir() -> PathBuf {

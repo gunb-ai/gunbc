@@ -9,6 +9,8 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
+use crate::common::run_on_larger_stack;
+
 const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_free_consequences_first_batch.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_free_consequences_first_batch.dag";
 const SUITE_NAME: &str = "r3_free_consequences_first_batch_suite";
@@ -22,6 +24,12 @@ const EXPECTED_CLAIMS: [&str; 5] = [
 
 #[test]
 fn r3_free_consequences_first_batch_reaches_unified_predicate_shape() {
+    run_on_larger_stack(|| {
+        r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner()
+    });
+}
+
+fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
     let dag = match compile_to_dag(FIXTURE_SOURCE, FIXTURE_PATH) {
         Ok(dag) => {
             assert!(

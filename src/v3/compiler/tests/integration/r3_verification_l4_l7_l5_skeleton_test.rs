@@ -14,6 +14,8 @@ use v3_compiler::dag::Dag;
 use v3_compiler::test_runner::{ClaimEvaluation, ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
+use crate::common::run_on_larger_stack;
+
 const L4_FIXTURE: &str = include_str!("../fixtures/r3_verification_l4_emit_eval_match.dag");
 const L4_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag";
@@ -88,18 +90,6 @@ fn l4_run_named_claim(claim_name: &'static str) -> ClaimEvaluation {
         });
         TestRunner::new(dag).run_claim(&claim)
     })
-}
-
-fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
-where
-    T: Send + 'static,
-{
-    std::thread::Builder::new()
-        .stack_size(32 * 1024 * 1024)
-        .spawn(f)
-        .expect("spawn larger-stack integration thread")
-        .join()
-        .expect("larger-stack integration thread panicked")
 }
 
 #[test]
