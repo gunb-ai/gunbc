@@ -52,6 +52,9 @@ pub mod realization_cost {
 
     use crate::dag::{Dag, DeclarationId, FieldValue, LiteralBits, ValueBody};
 
+    /// 🟢 GREEN (terminal): closed mirror of the six `*Realization`
+    /// meta-types in `src/v3/std/emit_model.dag`; each variant selects a
+    /// distinct row shape with different key fields.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum RealizationCostCategory {
         Type,
@@ -62,6 +65,10 @@ pub mod realization_cost {
         Pattern,
     }
 
+    /// 🟢 GREEN (terminal): lookup key shape is determined by the realization
+    /// row category. Five categories key by `target`; operator rows key by
+    /// `(target, op)`, so collapsing to one record would make absent fields
+    /// meaningful for non-operator rows.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum RealizationCostKey {
         Type(DeclarationId),
@@ -90,6 +97,10 @@ pub mod realization_cost {
         entries: HashMap<RealizationCostKey, RealizationCostEntry>,
     }
 
+    /// 🟢 GREEN (terminal): fail-closed error taxonomy for this walker.
+    /// The variants distinguish missing meta-type substrate, malformed
+    /// structural row payload, and duplicate realization keys; these are
+    /// different repair surfaces.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum RealizationCostError {
         MissingMeta(&'static str),
