@@ -50,8 +50,10 @@ use crate::infer_helpers::{
     template_argument_value as generated_template_argument_value, NormalizedInstantiationArgs,
     TemplateArgumentBinding, TemplateArgumentsMatch,
 };
+use num_bigint::BigInt;
+
 use crate::int_literal_ranges::{
-    int_literal_fits_expected_type, integer_range_for_decl, literal_int_at,
+    int_literal_fits_expected_type, integer_range_for_decl, literal_bigint_at,
     magnitude_out_of_range_for_interval, IntegerRangeLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
@@ -79,9 +81,9 @@ fn try_reconcile_int_literal_decision_set(
     ty: TypeShape,
 ) -> Option<IntLiteralSetReconciliation> {
     let default_int = dag.int_shape()?;
-    let literal = literal_int_at(dag, port)?;
+    let literal = literal_bigint_at(dag, port)?;
     if type_shapes_equivalent(dag, &ty, &default_int) {
-        match int_literal_fits_expected_type(dag, literal, existing.declaration) {
+        match int_literal_fits_expected_type(dag, &literal, existing.declaration) {
             Ok(Some(true)) => Some(IntLiteralSetReconciliation::Keep),
             Ok(Some(false)) => {
                 if let IntegerRangeLookup::Found(range) =
@@ -90,7 +92,7 @@ fn try_reconcile_int_literal_decision_set(
                     let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
                     dag.mark_unresolved(
                         port,
-                        magnitude_out_of_range_for_interval(literal, existing, range, span),
+                        magnitude_out_of_range_for_interval(&literal, existing, range, span),
                     );
                     Some(IntLiteralSetReconciliation::Marked)
                 } else {
@@ -106,7 +108,7 @@ fn try_reconcile_int_literal_decision_set(
             }
         }
     } else if type_shapes_equivalent(dag, &existing, &default_int) {
-        match int_literal_fits_expected_type(dag, literal, ty.declaration) {
+        match int_literal_fits_expected_type(dag, &literal, ty.declaration) {
             Ok(Some(true)) => {
                 dag.set_port_type(port, ty);
                 Some(IntLiteralSetReconciliation::SetNarrow)
@@ -118,7 +120,7 @@ fn try_reconcile_int_literal_decision_set(
                     let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
                     dag.mark_unresolved(
                         port,
-                        magnitude_out_of_range_for_interval(literal, ty, range, span),
+                        magnitude_out_of_range_for_interval(&literal, ty, range, span),
                     );
                     Some(IntLiteralSetReconciliation::Marked)
                 } else {

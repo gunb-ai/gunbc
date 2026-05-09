@@ -526,6 +526,12 @@ pub enum FieldValue {
 // from `std/substrate.dag`; keep the substrate authority there, not here.
 include!("dag_scalar_generated.rs");
 
+/// Construct [`LiteralBits::Int`] from a host `i64` (tests, staging, internal seeds).
+#[inline]
+pub fn literal_bits_int(i: i64) -> LiteralBits {
+    LiteralBits::Int(i.to_string())
+}
+
 impl CardinalityBound {
     pub fn interval(self) -> Interval<u32> {
         match self {
@@ -1933,13 +1939,14 @@ fn arithmetic_descent_relation(
 }
 
 fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
-    match dag.resolve_producer_opt(&port)? {
+    let s = match dag.resolve_producer_opt(&port)? {
         Behavior::Value(value) => match &value.data {
-            LiteralBits::Int(n) => Some(*n),
-            _ => None,
+            LiteralBits::Int(s) => s.as_str(),
+            _ => return None,
         },
-        _ => None,
-    }
+        _ => return None,
+    };
+    s.parse().ok()
 }
 
 /// 🟡 SCAFFOLD. `BindNode` currently carries parameter ports but not parameter
