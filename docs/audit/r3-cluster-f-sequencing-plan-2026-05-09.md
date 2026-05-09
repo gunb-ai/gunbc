@@ -18,9 +18,12 @@ Cluster F (T-LP-Retirement) framework absorbs C1/C2/C3 carve-promotion per Direc
 |---|---|---|---|---|
 | **F-α** | C1 | #81 parallelism | walker port from `workflow_parallelism.rs` → `.dag`; rewire via `lane2_workflow_at` / `std.effects` | substrate-ready (M-sized port) |
 | **F-β** | C2 | #82 effect_enum | **atomic migration** using existing `services.dag::Operation` carrier per locked design `docs/design-effect-enumeration-resource-threading.md` §3.2 + §6.2; lens body change (kind-classification dispatch) + 4a/4b/4d bounded migration | substrate-ready (no canvas needed; same shape as F-α port) |
-| **F-γ** | C3 | #95 demo + #83 register | opt-in iteration parallelism demo + register status update for all 4 lenses | cascade post-F-α + T-LAS Slice B |
+| **F-γ.1** | (was C3) | #95 demo | opt-in iteration parallelism worked-example demo via `apply_lens(parallelism, fn, Enforce { ... })` | cascade post-F-α (parallelism BEHAVIORALLY COMPLETE) + T-LAS Slice B landing (#91 per-lens LensEnforcement projection) |
+| **F-γ.2** | (#83 narrowing dissolution) | #83 register full-scope | register status update — fires for all 4 in-R3 lenses (complexity + cost + parallelism + effect_enum) at R3 close | cascade post-**all 4 lenses BEHAVIORALLY COMPLETE** = F-α (#81 parallelism) + F-β (#82 effect_enum) + #79 (complexity, T-LBP existing) + #80 (cost, T-LBP existing) |
 
-F-α + F-β **parallel-dispatchable** (both substrate-ready, no canvas-tier blocker). F-γ cascade-gates on F-α completion + T-LAS Slice B landing.
+F-α + F-β **parallel-dispatchable** (both substrate-ready, no canvas-tier blocker). F-γ split into F-γ.1 + F-γ.2 per codex BLOCKING on PR #2364 sha `14e4d8ff6` line 22 — the two gates have different prerequisite sets and were collapsed prior; one canonical close predicate per phase per INVARIANTS P2:
+- **F-γ.1 (#95)**: cascade post-F-α + T-LAS Slice B (only parallelism + apply_lens prereqs)
+- **F-γ.2 (#83)**: cascade post-all-4-lenses BEHAVIORALLY COMPLETE (F-α + F-β + #79 + #80) — full-scope register cannot fire if any of the 4 lenses is incomplete
 
 Per Director (a-corrected) ratification at gunbc#846 #issuecomment-4412433924 (refining the initial (a) at #issuecomment-4412380947 against locked design doc): F-β collapses from prior 2-phase (canvas + implementation) to single-phase atomic migration. No new substrate canvas required. Director cited PM round-1 audit fix at sha `530376d50` as structurally correct; (a-as-stated) would have authored parallel 4c carrier alongside existing `Operation` — `feedback_parallel_representation_debt` violation.
 
@@ -72,19 +75,35 @@ Single-PR shippable per design §6.2 "Why atomic is feasible (not aspirational).
 - Gate #82 status: DECLARED → CONSUMER_LANDED → PASSING.
 - ~3 entries dissolve from SG-0 census.
 
-### §1.3 F-γ — C3 #95 demo + #83 register status
+### §1.3 F-γ — split into F-γ.1 (#95 demo) + F-γ.2 (#83 register)
 
-**Owner**: Verification Mgr (wise-bear-525 / gunbc#2075) for #95; cross-program with Substrate for #83 register update.
+**Split rationale (per codex BLOCKING on PR #2364 sha `14e4d8ff6` line 22)**: prior single-phase F-γ collapsed two gates with different prerequisite sets — #95 cascades on F-α + T-LAS Slice B (parallelism + apply_lens only), while #83 register cascades on ALL 4 lenses BEHAVIORALLY COMPLETE. Each gate gets one canonical close predicate per INVARIANTS P2.
 
-**Scope (corrected per audit §3)**:
-- **#95 demo**: opt-in cross-iteration parallelism via lens application — worked example via `apply_lens(parallelism, fn, Enforce { ... })`. Cascade-gates on:
-  - F-α completion (parallelism BEHAVIORALLY COMPLETE)
-  - T-LAS Slice B landing (per-lens LensEnforcement projection #91 + violation routing)
-- **#83 register**: dissolves "scope narrowing" framing (formerly C3 in carve doc); register fires for ALL 4 in-R3 lenses (complexity + cost + parallelism + effect_enum) at R3 close.
+#### §1.3.1 F-γ.1 — C3 #95 demo
 
-**Receipt**:
-- #95 status: DECLARED → CONSUMER_LANDED → PASSING (worked-example demo).
-- #83 status: DECLARED → CONSUMER_LANDED → PASSING (register zero-proxy/zero-stub for all 4 lenses).
+**Owner**: Verification Mgr (wise-bear-525 / gunbc#2075).
+
+**Scope**: opt-in cross-iteration parallelism via lens application — worked example via `apply_lens(parallelism, fn, Enforce { ... })`.
+
+**Cascade prerequisites**:
+- F-α completion (parallelism BEHAVIORALLY COMPLETE)
+- T-LAS Slice B landing (per-lens LensEnforcement projection #91 + violation routing)
+
+**Receipt**: #95 status DECLARED → CONSUMER_LANDED → PASSING (worked-example demo).
+
+#### §1.3.2 F-γ.2 — #83 register full-scope
+
+**Owner**: Substrate Mgr (warm-wolf-698 / gunbc#2068) for register state update; cross-program with Verification.
+
+**Scope**: dissolution of prior "scope narrowing" framing (formerly C3 in carve doc); register fires for ALL 4 in-R3 lenses (complexity + cost + parallelism + effect_enum) at R3 close.
+
+**Cascade prerequisites** (all 4 lenses BEHAVIORALLY COMPLETE):
+- F-α completion (#81 parallelism)
+- F-β completion (#82 effect_enum)
+- #79 (complexity lens BEHAVIORALLY COMPLETE — existing T-LBP scope)
+- #80 (cost lens BEHAVIORALLY COMPLETE — existing T-LBP scope)
+
+**Receipt**: #83 status DECLARED → CONSUMER_LANDED → PASSING (register reports ZERO PROXY / ZERO STUB for all 4 in-R3 lenses).
 
 ---
 
