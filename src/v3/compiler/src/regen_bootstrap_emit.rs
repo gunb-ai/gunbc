@@ -913,7 +913,7 @@ fn render_optional_match_disjs(dag: &Dag) -> String {
 
 fn render_literal_bits(bits: &LiteralBits) -> String {
     match bits {
-        LiteralBits::Int(value) => format!("LiteralBits::Int({value})"),
+        LiteralBits::Int(value) => format!("LiteralBits::Int({value:?}.to_string())"),
         LiteralBits::Bool(value) => format!("LiteralBits::Bool({value})"),
         LiteralBits::String(value) => format!("LiteralBits::String({value:?}.to_string())"),
     }

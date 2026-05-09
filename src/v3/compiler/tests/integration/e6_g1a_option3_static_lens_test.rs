@@ -25,8 +25,8 @@
 
 use crate::common::{cached_compile_to_dag, find_list_empty_constructor_tag};
 use v3_compiler::dag::{
-    AtomPayload, Behavior, CardinalityBound, DeclarationId, LiteralBits, TransformTarget,
-    TypeConnective, ValueNode,
+    literal_bits_int, AtomPayload, Behavior, CardinalityBound, DeclarationId, LiteralBits,
+    TransformTarget, TypeConnective, ValueNode,
 };
 use v3_compiler::diagnostics::SourceSpan;
 use v3_compiler::evaluator::{
@@ -257,7 +257,7 @@ fn behavior_value_variant(dag: &v3_compiler::dag::Dag, v: &ValueNode) -> Value {
     let inner = Value::RecordValue(vec![
         NamedField {
             label: "id".to_string(),
-            value: Value::LiteralValue(LiteralBits::Int(0)),
+            value: Value::LiteralValue(literal_bits_int(0)),
         },
         NamedField {
             label: "payload".to_string(),
@@ -265,7 +265,7 @@ fn behavior_value_variant(dag: &v3_compiler::dag::Dag, v: &ValueNode) -> Value {
         },
         NamedField {
             label: "result_port".to_string(),
-            value: Value::LiteralValue(LiteralBits::Int(i64::from(v.output.raw()))),
+            value: Value::LiteralValue(literal_bits_int(i64::from(v.output.raw()))),
         },
         NamedField {
             label: "span".to_string(),
@@ -276,11 +276,11 @@ fn behavior_value_variant(dag: &v3_compiler::dag::Dag, v: &ValueNode) -> Value {
                 },
                 NamedField {
                     label: "start".to_string(),
-                    value: Value::LiteralValue(LiteralBits::Int(i64::from(span.byte_start))),
+                    value: Value::LiteralValue(literal_bits_int(i64::from(span.byte_start))),
                 },
                 NamedField {
                     label: "end".to_string(),
-                    value: Value::LiteralValue(LiteralBits::Int(i64::from(span.byte_end))),
+                    value: Value::LiteralValue(literal_bits_int(i64::from(span.byte_end))),
                 },
             ]),
         },
@@ -401,7 +401,7 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
         .expect("composed");
     assert_eq!(
         composed,
-        &Value::LiteralValue(LiteralBits::Int(1)),
+        &Value::LiteralValue(literal_bits_int(1)),
         "`composed` must carry the Inhabits witness payload `c` (= 1 from mini_read)"
     );
     let dim_name = fields
@@ -477,7 +477,7 @@ fn e6_g1a_option3_fixture_lowers_mini_validate_as_callable_transform() {
 
 fn value_contains_int_literal(v: &Value, needle: i64) -> bool {
     match v {
-        Value::LiteralValue(LiteralBits::Int(i)) => *i == needle,
+        Value::LiteralValue(LiteralBits::Int(i)) => i.parse::<i64>().ok() == Some(needle),
         Value::RecordValue(fs) => fs
             .iter()
             .any(|f| value_contains_int_literal(&f.value, needle)),
