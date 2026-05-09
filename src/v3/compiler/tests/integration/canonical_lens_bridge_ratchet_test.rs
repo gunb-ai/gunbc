@@ -1,14 +1,11 @@
-//! Ratchet for the canonical lens-name dispatch bridge in `test_runner.rs`.
+//! Zero-residual ratchet for the retired canonical lens-name dispatch bridge in `test_runner.rs`.
 //!
-//! Pins the current bridge surface so any growth fails CI, and any reduction
-//! can lower the pin in the same PR. Per `feedback_ratchet_only_down`: never
-//! raise these constants.
+//! Pins the retired bridge surface at zero so any reintroduction fails CI.
 //!
-//! The bridge is described in `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`
+//! The bridge was described in `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`
+//! and closed by `docs/briefs/r3-pb-bridge-canonical-lens-name-dispatch-closure.md`
 //! (gate `bridge_canonical_lens_name_dispatch_retired`, R3 T-Bridge-Retirement
-//! distributed bridge #3). Full retirement is gated on PB-Runtime
-//! interpreter-as-data OR a typed lens-registry carrier substrate-introduction;
-//! both are outside this PR's scope.
+//! distributed bridge #3).
 //!
 //! Three categories are pinned:
 //!   A. `include_str!("…/lenses/<name>.dag")` calls.
@@ -288,9 +285,9 @@ fn count_lens_name_lookups(src: &str) -> usize {
         .count()
 }
 
-const EXPECTED_INCLUDE_STR_LENS_BYTES: usize = 2;
-const EXPECTED_NAME_EQ_DISPATCH_ARMS: usize = 2;
-const EXPECTED_GENERIC_NAME_LOOKUPS: usize = 2;
+const EXPECTED_INCLUDE_STR_LENS_BYTES: usize = 0;
+const EXPECTED_NAME_EQ_DISPATCH_ARMS: usize = 0;
+const EXPECTED_GENERIC_NAME_LOOKUPS: usize = 0;
 
 #[test]
 fn canonical_lens_include_str_bridges_pinned() {

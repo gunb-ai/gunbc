@@ -22,28 +22,6 @@ use crate::{
     CompileError,
 };
 
-/// Same on-disk lens as `v3-compiler/build.rs` splices into `user_authored_lens_compiles_gate`
-/// (`emit_r1_gates_fixture`). `LensOutputEquals` applies this program for `named_function_count`
-/// so evaluation cannot drift from the fixture-local stub (`INVARIANTS.md` P2).
-///
-/// **Dissolution:** remove this `include_str!` bridge when `DeclarationRef` (or an equivalent
-/// substrate edge) resolves executable lens bodies from `program_dag` / `TestClaim.source` so the
-/// runner does not key a second `Dag` on fixture declaration spelling.
-pub const R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../lenses/named_function_count.dag"
-));
-
-/// Same on-disk lens as `src/v3/lenses/complexity.dag`. `LensOutputEquals(cost_of, …)` applies
-/// [`crate::lens_cost::cost_of`] (emit from these bytes) on the compiled claim program — not
-/// `apply_lens_declaration` on this text (D1 `cost_of` blocks on lens-internal `Loop`). Bytes are
-/// still ratcheted in integration tests so the include stays aligned with the lens file.
-/// Fixture-local `fn cost_of` stubs are unrelated (`INVARIANTS.md` P2).
-pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../lenses/complexity.dag"
-));
-
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/integration/sg0_census_test.rs"
@@ -2307,17 +2285,10 @@ impl<'a> TestRunner<'a> {
             ));
         }
 
-        // INVARIANTS P2 (executable single authority): `DeclarationRef` for `lens_ref` still
-        // resolves against the fixture `Dag` for lowering, but for `named_function_count` the
-        // runner compiles `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` (same file as `build.rs` splices
-        // for `user_authored_lens_compiles_gate`) for `apply_lens_declaration` — not the
-        // fixture-local stub body. Other lens names: if `TestClaim.source` exports the same
-        // declaration name, apply that program; else fall back to the fixture graph.
-        //
-        // **Dissolution trigger (name-keyed bridge):** delete the `lens_decl.name ==
-        // Some("named_function_count")` arm and this entire parallel authority when
-        // `DeclarationRef` resolves lens executable identity from `program_dag` (or structured
-        // `TestClaim` metadata) without fixture-local stub bodies.
+        // INVARIANTS P2 (executable single authority): `lens_ref` is the runner's lens identity.
+        // The lens body is applied from the same fixture Dag that resolved the `DeclarationRef`;
+        // reflected `FieldValue` List / Behavior variant ids therefore come from that Dag as well.
+        // `TestClaim.source` is the program under test, not a second lens-body authority.
         // INVARIANTS P3 / TESTING: `TestClaim.source` must lower cleanly — never ignore
         // tokenize/parse failures and fall back to the fixture graph (that would let malformed
         // programs `Pass` when inputs/lens resolve only from the fixture).
@@ -2340,7 +2311,7 @@ impl<'a> TestRunner<'a> {
 
         // T-LaneE (`cost_of`): structural `Lookup<Int>` from the Rust-generated lens on the claim
         // program's `merge_sort_out` bind vs a fixture `Lookup<Int>` expected value.
-        if lens_decl.name.as_deref() == Some("cost_of") {
+        if self.declaration_ref_resolves_to_name(lens_id, "cost_of") {
             let Some(cost_bind) = program_input
                 .as_ref()
                 .and_then(ProgramInputRole::output_bind_name)
@@ -2384,34 +2355,6 @@ impl<'a> TestRunner<'a> {
             };
         }
 
-        // INVARIANTS P2: reflected `FieldValue` List / `Behavior` variant ids must come from the
-        // same `Dag` as `apply_lens_declaration` (canonical `named_function_count` vs claim).
-        let canonical_named_function_count_dag: Option<Dag> = if lens_decl.name.as_deref()
-            == Some("named_function_count")
-        {
-            Some(
-                match compile_to_dag(
-                    R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS,
-                    "src/v3/lenses/named_function_count.dag",
-                ) {
-                    Ok(dag) => dag,
-                    Err(CompileError::Semantic(dag)) => {
-                        return ClaimResult::Fail(format!(
-                            "LensOutputEquals: canonical `named_function_count` lens failed inference: {:?}",
-                            dag.diagnostics().iter().collect::<Vec<_>>()
-                        ));
-                    }
-                    Err(err) => {
-                        return ClaimResult::Fail(format!(
-                            "LensOutputEquals: canonical `named_function_count` lens did not compile: {err:?}"
-                        ));
-                    }
-                },
-            )
-        } else {
-            None
-        };
-
         if matches!(
             program_input,
             Some(ProgramInputRole::ProgramOutputBind { .. })
@@ -2424,21 +2367,10 @@ impl<'a> TestRunner<'a> {
             .as_ref()
             .is_some_and(ProgramInputRole::is_program_input);
         let input_field = if reflects_claim_program {
-            // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the lens
-            // (canonical compile, claim `program_dag`, or merged fixture `self.dag`) so reflected
-            // `List` / `Behavior` variant `DeclarationId`s are not mixed across graphs.
-            let id_space: &Dag = if let Some(ref cld) = canonical_named_function_count_dag {
-                cld
-            } else if let Some(name) = lens_decl.name.as_deref() {
-                if program_dag.declaration_by_name(name).is_some() {
-                    &program_dag
-                } else {
-                    self.dag
-                }
-            } else {
-                self.dag
-            };
-            match reflect_program_dag_nodes_in_file(&program_dag, &claim.file_name, id_space) {
+            // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the
+            // lens, so reflected `List` / `Behavior` variant `DeclarationId`s are not mixed across
+            // graphs.
+            match reflect_program_dag_nodes_in_file(&program_dag, &claim.file_name, self.dag) {
                 Ok(v) => v,
                 Err(err) => {
                     return ClaimResult::Fail(format!(
@@ -2476,27 +2408,9 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        let (lens_program, lens_apply_id) =
-            if let Some(ref cld) = canonical_named_function_count_dag {
-                let Some(d) = cld.declaration_by_name("named_function_count") else {
-                    return ClaimResult::Fail(
-                    "LensOutputEquals: canonical named_function_count lens missing root declaration"
-                        .to_string(),
-                );
-                };
-                (cld, d.id)
-            } else if let Some(name) = lens_decl.name.as_deref() {
-                match program_dag.declaration_by_name(name) {
-                    Some(d) => (&program_dag, d.id),
-                    None => (self.dag, lens_id),
-                }
-            } else {
-                (self.dag, lens_id)
-            };
-
         let computed = match apply_lens_declaration(
-            lens_program,
-            lens_apply_id,
+            self.dag,
+            lens_id,
             std::slice::from_ref(&input_field),
         ) {
             Ok(v) => v,
@@ -2739,6 +2653,12 @@ impl<'a> TestRunner<'a> {
                  for a DeclarationRef edge, got {other:?}"
             )),
         }
+    }
+
+    fn declaration_ref_resolves_to_name(&self, decl_id: DeclarationId, expected: &str) -> bool {
+        self.dag
+            .declaration_by_name(expected)
+            .is_some_and(|decl| decl.id == decl_id)
     }
 
     fn program_input_role(&self, decl: &Declaration) -> Result<Option<ProgramInputRole>, String> {

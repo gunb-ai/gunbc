@@ -878,7 +878,7 @@ data suite: TestSuite = {
 
 #[test]
 fn r1_canonical_complexity_lens_bytes_declare_complexity_of() {
-    let bytes = v3_compiler::test_runner::R1_CANONICAL_COMPLEXITY_LENS;
+    let bytes = include_str!("../../../lenses/complexity.dag");
     // Post-PR #2271 widening: `cost_of` (int-depth adapter) renamed/widened
     // to `complexity_of` returning `Lookup<ComplexitySummary>` per
     // `docs/v3-lens-capability-register.md` complexity.dag row promotion.
