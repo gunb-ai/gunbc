@@ -263,7 +263,7 @@ These are deferred to Substrate Mgr 6Q audits + worker brief authoring:
 2. **Per-target IntegerPrimitive row schema** — extension of existing `dsl/extdeps/languages/{rust,python,go}/primitives.dag` rows
 3. **IntLit pipeline reshape** at parser/tokenizer level — separate slice; coordinates with T-V2-Retirement
 4. **Cost-lens witness construction for ApproximateField** — T-CostLens-Composition lane consumer
-5. **String audit** (separate Director-added scope) — Substrate Mgr task in same audit pass; folds into T-Numeric-Construction OR documents structural honesty per `dsl/std/string_type.dag` audit findings
+5. **String audit** (separate Director-added scope) — closed by [`docs/audit/t-numeric-construction-string-audit-receipt.md`](audit/t-numeric-construction-string-audit-receipt.md): documented-no-change for `String` itself because `dsl/std/string_type.dag` already declares `String = FreeMonoid<Char>`; only `Char` remains in the inherited numeric-refinement scope.
 
 ## Cross-refs
 
