@@ -10,10 +10,11 @@
 //! Slice 1a.1 landing).
 //!
 //! **R3 §1.8 gate #37** (`cost_lens_reads_target_realization`, ε path per
-//! Q-Cost-Composition-Layering / PR #2181): demonstrates Rust-side reading of
-//! (a) abstract `SymbolicCost` from `symbolic_cost_of` on a compiled program
-//! and (b) the target language spec's `TypeRealization.cost` int field on a
-//! bootstrap `rust_*` row, composed via `Semiring<SymbolicCost>` `sequential`.
+//! Q-Cost-Composition-Layering / PR #2181): **partial integration receipt**
+//! (`docs/r3-program-plan.md` — not full emit-time `LanguageSpec` consumer;
+//! that remains gates **#40** / **#70**). Proves Rust-side `symbolic_cost_of`
+//! × lowered realization row `cost` on bootstrap `rust_*` declarations,
+//! composed via `Semiring<SymbolicCost>` `sequential`.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{

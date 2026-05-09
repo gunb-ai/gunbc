@@ -17,15 +17,13 @@
 // INVARIANTS P2 (codex BLOCKING surfaced post-merge at PR #2194
 // #issuecomment-4404079935).
 //
-// **Slice 1a.1b (gate #37 ε-slice)**: `realization_row_cost_int` /
-// `declaration_realization_cost_by_name` read the authoritative `cost: Int`
-// field from lowered `ValueBodyStructural` realization rows (`emit_model.dag`
-// + `spec/{lang}.dag`). Emit-time / `LanguageSpec`-indexed tables remain
-// follow-on (gates #40 / #70); this is the declared substrate query surface
-// for per-row cost facts, regenerated to `lens_cost_target_realization_generated.rs`.
-//
-// **Out of scope** (later sub-slices): `d.declarations` fold +
-// `meta_tag`-filtering table build (Slice 1a.2+).
+// **Out of scope** (later sub-slices): full realization-row walking via
+// `d.declarations` fold + `meta_tag`-filtering + `ValueBody.Structural.fields`
+// extraction → folds into a Slice 1a.2 once the realization-row walking
+// expressivity is grep-confirmed against existing `.dag` precedents
+// (\`structural_resolution.dag:50,93\` is the closest precedent for
+// `d.declarations` fold). The composition of abstract `SymbolicCost`
+// shape × per-target realization-cost remains the ε-ratified target.
 //
 // **ε factoring** (per `docs/proposals/q-cost-composition-layering-canvas.md`):
 //   - Layer 1 (target-agnostic abstract shape): `SymbolicCost` algebra at
@@ -37,11 +35,7 @@
 
 module lenses.cost_target_realization
 
-import std.types { Int }
-import std.list { List, fold }
-import std.substrate {
-  Dag, Declaration, FieldEntry, FieldValue, LiteralBits, ValueBody, declaration_by_name
-}
+import std.substrate { Dag, Declaration, declaration_by_name }
 
 // Acquire the `DeclarationId` of the `TypeRealization` meta-type by
 // name. The returned `Declaration?` carries the meta-type's full
@@ -70,54 +64,3 @@ fn type_instantiation_realization_meta(d: Dag) -> Declaration? =
 // Same shape for `PatternRealization`.
 fn pattern_realization_meta(d: Dag) -> Declaration? =
   declaration_by_name(d, "PatternRealization")
-
-// ── Per-row `cost: Int` on lowered realization data bodies ───────────────
-
-fn literal_bits_as_cost_int(bits: LiteralBits) -> Int? =
-  match bits {
-    LitInt(n) => Some { value: n }
-    LitBool(b) => none
-    LitString(s) => none
-  }
-
-fn field_value_as_realization_cost_int(v: FieldValue) -> Int? =
-  match v {
-    Literal(bits) => literal_bits_as_cost_int(bits)
-    Reference(r) => none
-    Record(rec) => none
-    List(xs) => none
-    Map(m) => none
-    Variant { constructor: c, payload: p } => none
-  }
-
-fn cost_int_from_field_entries(entries: List<FieldEntry>) -> Int? =
-  fold(entries, none, |acc, entry|
-    match acc {
-      Some { value: found } => acc
-      None =>
-        if entry.label == "cost" then field_value_as_realization_cost_int(entry.value)
-        else none
-    }
-  )
-
-fn realization_row_cost_from_value_body(body: ValueBody) -> Int? =
-  match body {
-    ValueBodyUnparsed(span) => none
-    ValueBodyStructural { fields: f } => cost_int_from_field_entries(f)
-    ValueBodyScalar(bits) => none
-    ValueBodyList(xs) => none
-    ValueBodyMap(entries) => none
-  }
-
-// Fail-closed `none` when missing / non-structural / no `cost` Int literal.
-fn realization_row_cost_int(decl: Declaration) -> Int? =
-  match decl.value_body {
-    None => none
-    Some(body) => realization_row_cost_from_value_body(body)
-  }
-
-fn declaration_realization_cost_by_name(d: Dag, row_name: String) -> Int? =
-  match declaration_by_name(d, row_name) {
-    None => none
-    Some(decl) => realization_row_cost_int(decl)
-  }
