@@ -1,10 +1,10 @@
-//! Shape B OpenAPI demonstration helpers.
+//! Shape B OpenAPI and documentation demonstration helpers.
 //!
-//! OpenAPI is deliberately not a compiler emit target: Shape B artifacts are
-//! user-program outputs derived from a compiled DAG, while `emit.rs` remains
-//! scoped to Shape A programming-language targets. This module provides the
-//! narrow Rust-side receipt used by the R3 demo until the equivalent `.dag`
-//! program can own the artifact projection.
+//! OpenAPI and Markdown are deliberately not compiler emit targets: Shape B
+//! artifacts are user-program outputs derived from a compiled DAG, while
+//! `emit.rs` remains scoped to Shape A programming-language targets. This
+//! module provides the narrow Rust-side receipt used by the R3 demo until the
+//! equivalent `.dag` programs can own the artifact projections.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -216,6 +216,38 @@ pub fn project_openapi_yaml(dag: &Dag) -> Result<String, ProjectOpenApiError> {
             }
             out.push_str("\n      responses:\n        '200':\n          description: OK\n");
         }
+    }
+    Ok(out)
+}
+
+pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenApiError> {
+    let routes = extract_rest_routes(dag)?;
+    let mut out = String::from(
+        "# GunBC generated service\n\n| Method | Path | Path parameters |\n| --- | --- | --- |\n",
+    );
+    if routes.is_empty() {
+        out.push_str("| _none_ | _none_ | _none_ |\n");
+        return Ok(out);
+    }
+    for route in routes {
+        out.push_str("| ");
+        out.push_str(&markdown_table_cell(&route.method));
+        out.push_str(" | `");
+        out.push_str(&markdown_code(&route.path));
+        out.push_str("` | ");
+        if route.path_parameters.is_empty() {
+            out.push_str("_none_");
+        } else {
+            for (index, parameter) in route.path_parameters.iter().enumerate() {
+                if index > 0 {
+                    out.push_str(", ");
+                }
+                out.push('`');
+                out.push_str(&markdown_code(parameter));
+                out.push('`');
+            }
+        }
+        out.push_str(" |\n");
     }
     Ok(out)
 }
@@ -436,6 +468,14 @@ fn yaml_plain_operation_id(method: &str, path: &str) -> String {
         }
     }
     format!("{}_{}", method.to_ascii_lowercase(), suffix)
+}
+
+fn markdown_table_cell(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('|', "\\|")
+}
+
+fn markdown_code(value: &str) -> String {
+    value.replace('`', "\\`")
 }
 
 #[cfg(test)]
