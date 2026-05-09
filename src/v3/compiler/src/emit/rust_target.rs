@@ -4709,12 +4709,14 @@ impl<'a> Ctx<'a> {
                 InputSlot::Positional(0),
                 locals,
             )?);
-            let out = if value.starts_with('(') {
-                format!("{qualified_name}{value}")
+            // `render_input_use` may already clone when moving out of a match arm
+            // binding; avoid `((x).clone()).clone()` noise (and clone side effects).
+            let payload = if value.contains(".clone()") {
+                value
             } else {
-                format!("{qualified_name}({value})")
+                format!("({value}).clone()")
             };
-            return Ok(Some(out));
+            return Ok(Some(format!("{qualified_name}({payload})")));
         }
         if children.len() == 1
             && children[0].label == "_0"

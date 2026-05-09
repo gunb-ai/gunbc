@@ -394,15 +394,20 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
 
 // ── T-LAS — canonical `EnforceableLens` for complexity contracts (gate #92) ──
 //
-// `complexity_lens` is a nominal `Lens<ComplexitySummary>` carrier so
-// `EnforceableLens` can land structurally. The behavioral fold remains
-// `complexity_of` / `compute_summaries`.
+// `data complexity_lens` is substrate `Lens<ComplexitySummary>`. **read** runs the
+// same `complexity_of` catamorphism as the enforcement consumer; **monoid op** /
+// **branch** / **iterate** delegate to the same `compose_*` helpers as
+// `compute_summaries` (thin wrapper fns keep `Monoid`/`Lens` `data` bodies
+// M1(2.8)-structural — avoid wiring `compose_*` fields directly in records).
 //
-// **LensEnforcement authority:** `project` / `violates` below are the substrate
-// source of truth for budget comparison. The compiler consumer
-// (`enforced_lens_application`) calls the same behavior via
-// `complexity_lens_generated` (emit of these fns) — not a parallel lattice.
-
+// **validate** — predicate `complexity_summary_work_class_consistent` is exported
+// for callers/folds; this hook stays `NoDiagnostic` until `SomeDiagnostic` can be
+// lowered from `lenses.*` (DB-11 `SourceSpan`/`FilePath` narrowing + M1(2.8) opaque
+// `data Diagnostic` bodies). Dissolution: class-5 `Diagnostic` authorship in lens
+// modules / span witnesses (program-plan gate #92 closure).
+//
+// **LensEnforcement authority:** `project` / `violates` remain substrate truth;
+// `enforced_lens_application` consumes the generated `complexity_enforcement_*` fns.
 fn complexity_enforcement_project(summary: ComplexitySummary) -> AsymptoticClass =
   summary.asymptotic_class
 
@@ -415,23 +420,59 @@ fn complexity_enforcement_violates(declared: AsymptoticClass, observed: Asymptot
   else
     0 == 1
 
-fn complexity_lens_read_stub(d: Dag, b: Behavior) -> Witness<ComplexitySummary> =
-  Inhabits(zero_summary())
+// Match on owned `Lookup` (not `&Lookup`) so Rust emit binds an owned summary in
+// `Hit(summary)` for `Witness::Inhabits` (see `m2_lens_cost_migration_test` / regen).
+fn witness_from_complexity_lookup(s: Lookup<ComplexitySummary>, at: Behavior) -> Witness<ComplexitySummary> =
+  match s {
+    Hit(summary) => Inhabits(summary)
+    Miss =>
+      Violates {
+        reason: "complexity_of: missing ComplexitySummary for behavior result port"
+        at: at
+      }
+  }
 
-fn complexity_lens_iterate_stub(c: ComplexitySummary, bound: LoopBound) -> ComplexitySummary =
-  c
+fn complexity_lens_read(d: Dag, b: Behavior) -> Witness<ComplexitySummary> =
+  witness_from_complexity_lookup(complexity_of(d, behavior_result_port(b)), b)
 
-fn complexity_lens_validate_stub(d: Dag, c: ComplexitySummary) -> OptionalDiagnostic =
+fn complexity_lens_sequential_op(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary =
+  compose_summary_sequential(a, b)
+
+fn complexity_lens_branch_op(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary =
+  compose_summary_branch_pair(a, b)
+
+fn complexity_lens_iterate_op(body: ComplexitySummary, bound: LoopBound) -> ComplexitySummary =
+  match bound {
+    Cardinality(payload) =>
+      compose_summary_iterate(
+        summary_from_costs(
+          LinearCost(unnamed_size_variable(payload.count)),
+          LinearCost(unnamed_size_variable(payload.count)),
+          Proven,
+          Proven
+        ),
+        body
+      )
+    Descent(payload) =>
+      compose_summary_iterate(
+        summary_from_costs(
+          LinearCost(unnamed_size_variable(payload.measure)),
+          LinearCost(unnamed_size_variable(payload.measure)),
+          Proven,
+          Proven
+        ),
+        body
+      )
+  }
+
+fn complexity_summary_work_class_consistent(c: ComplexitySummary) -> Bool =
+  asymptotic_dominates(classify_symbolic_cost(c.work), c.asymptotic_class)
+
+fn complexity_lens_validate(d: Dag, c: ComplexitySummary) -> OptionalDiagnostic =
   NoDiagnostic
 
-fn complexity_lens_monoid_op_stub(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary =
-  b
-
-fn complexity_lens_branch_stub(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary =
-  a
-
 data complexity_lens_monoid: Monoid<ComplexitySummary> = {
-  op: complexity_lens_monoid_op_stub
+  op: complexity_lens_sequential_op
   identity: {
     work: ConstantCost(0)
     span: ConstantCost(0)
@@ -443,11 +484,11 @@ data complexity_lens_monoid: Monoid<ComplexitySummary> = {
 
 data complexity_lens: Lens<ComplexitySummary> = {
   name: "complexity"
-  read: complexity_lens_read_stub
+  read: complexity_lens_read
   sequential: complexity_lens_monoid
-  branch: complexity_lens_branch_stub
-  iterate: complexity_lens_iterate_stub
-  validate: complexity_lens_validate_stub
+  branch: complexity_lens_branch_op
+  iterate: complexity_lens_iterate_op
+  validate: complexity_lens_validate
 }
 
 data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {

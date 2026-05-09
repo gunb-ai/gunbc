@@ -151,15 +151,31 @@ fn complexity_dag_compiles_cleanly() {
 /// Inbox #1130 / #1139 — STOP ratchet: production `complexity.dag` must not ship
 /// iterate-shaped migration names; no L-8-violating emitted primitive helpers.
 ///
-/// Gate #92 lands nominal `data complexity_lens` as a **T-LAS substrate stub**
-/// (read/validate remain stubs). **Enforcement** (`project` / `violates`) is
-/// authoritative in `complexity.dag` and executed via `complexity_lens_generated` +
-/// `v3_compiler::complexity_lattice::asymptotic_dominates` — not a divergent
-/// host-only lattice.
+/// Gate #92 — `data complexity_lens` must wire **read** to `complexity_of` and
+/// **monoid/branch/iterate** to the same `compose_*` spine as `compute_summaries`
+/// (see `complexity.dag`). **Enforcement** (`project` / `violates`) stays substrate
+/// authority; execution is via `complexity_lens_generated` +
+/// `v3_compiler::complexity_lattice::asymptotic_dominates`.
 #[test]
 fn complexity_lens_migration_stop_surface_ratchet() {
     let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
         .expect("complexity.dag should compile cleanly");
+    assert!(
+        dag.declaration_by_name("complexity_lens_read_stub").is_none(),
+        "`complexity_lens_read_stub` retired: read must delegate to `complexity_of`"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_lens_read").is_some(),
+        "expected `complexity_lens_read` (authoritative read spine)"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_lens_validate").is_some(),
+        "expected `complexity_lens_validate` (aggregate hook; see substrate limitation notes in complexity.dag)"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_summary_work_class_consistent").is_some(),
+        "expected `complexity_summary_work_class_consistent` export for fold consumers"
+    );
     assert!(
         dag.declaration_by_name("complexity_iterate").is_none(),
         "`Lens<Int>.iterate` must not ship as `complexity_iterate` until fold_lens owns loop-bound semantics (no LoopBound-ignoring stub)"
