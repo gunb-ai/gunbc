@@ -39,7 +39,7 @@ pub enum TokenKind {
     KwTrue,
     KwFalse,
     Ident(String),
-    IntLit(i64),
+    IntLit(String),
     StringLit(String),
     Eq,
     EqEq,
@@ -120,18 +120,18 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 span: SourceSpan::new(file, start as u32, end as u32),
                 fixes: Vec::new(),
             })?;
-            const SIGNED_DECIMAL_I64_ABS_MIN: u128 = 9223372036854775808;
-            let value: i64 = match magnitude {
-                0 => 0,
-                m if m <= i64::MAX as u128 => -(m as i64),
-                m if m == SIGNED_DECIMAL_I64_ABS_MIN => i64::MIN,
-                _ => {
-                    return Err(Diagnostic::TokenizerError {
-                        message: format!("integer literal out of range for i64: `-{}`", literal),
-                        span: SourceSpan::new(file, start as u32, end as u32),
-                        fixes: Vec::new(),
-                    });
-                }
+            const MAX_SIGNED_ABS: u128 = 1u128 << 127;
+            if magnitude > MAX_SIGNED_ABS {
+                return Err(Diagnostic::TokenizerError {
+                    message: format!("integer literal out of range for signed decimal literal: `-{}` (|m| > 2^127)", literal),
+                    span: SourceSpan::new(file, start as u32, end as u32),
+                    fixes: Vec::new(),
+                });
+            }
+            let value = if magnitude == 0 {
+                "0".to_string()
+            } else {
+                format!("-{}", magnitude)
             };
             tokens.push(Token {
                 kind: TokenKind::IntLit(value),
@@ -152,11 +152,12 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 end += 1;
             }
             let literal = &source[start..end];
-            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {
+            let magnitude: u128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {
                 message: format!("{}{}{}", "invalid integer literal `", literal, "`"),
                 span: SourceSpan::new(file, start as u32, end as u32),
                 fixes: Vec::new(),
             })?;
+            let value = magnitude.to_string();
             tokens.push(Token {
                 kind: TokenKind::IntLit(value),
                 span: SourceSpan::new(file, start as u32, end as u32),
