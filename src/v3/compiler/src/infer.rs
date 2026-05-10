@@ -1129,11 +1129,11 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
     // `resolve_arrow` through any Instantiation / ResolvedIdentifier
     // chain to recover the concrete Arrow signature.
     let signature = match &t.target {
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => {
-            return decide_field_project(dag, t, field_label, *field_child);
+        TransformTarget::UnresolvedFieldProject { field_label } => {
+            return decide_field_project(dag, t, field_label);
+        }
+        TransformTarget::ResolvedFieldProject { field_label } => {
+            return decide_field_project(dag, t, field_label);
         }
         TransformTarget::Operator(op_kind) => {
             let lhs_type = match t.inputs.first() {
@@ -1842,13 +1842,19 @@ fn refinement_targets_equal(dag: &Dag, lhs: &TransformTarget, rhs: &TransformTar
         }
         (TransformTarget::Operator(a), TransformTarget::Operator(b)) => a == b,
         (
-            TransformTarget::FieldProject {
+            TransformTarget::UnresolvedFieldProject {
                 field_label: a_label,
-                ..
             },
-            TransformTarget::FieldProject {
+            TransformTarget::UnresolvedFieldProject {
                 field_label: b_label,
-                ..
+            },
+        ) => a_label == b_label,
+        (
+            TransformTarget::ResolvedFieldProject {
+                field_label: a_label,
+            },
+            TransformTarget::ResolvedFieldProject {
+                field_label: b_label,
             },
         ) => a_label == b_label,
         _ => false,
@@ -2203,23 +2209,10 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
                     subst,
                 })
             }
-            TransformTarget::FieldProject {
-                field_child: Some(field_child),
-                ..
-            } => {
-                let decl = if is_retryable_generic_decl(dag, *field_child) {
-                    resolved_decl
-                } else {
-                    *field_child
-                };
-                Some(PortTypeContext {
-                    decl,
-                    subst: SubstStack::new(),
-                })
+            TransformTarget::UnresolvedFieldProject { field_label }
+            | TransformTarget::ResolvedFieldProject { field_label } => {
+                field_project_port_type_context(dag, t, field_label)
             }
-            TransformTarget::FieldProject {
-                field_child: None, ..
-            } => None,
             TransformTarget::Operator(_) => Some(PortTypeContext {
                 decl: resolved_decl,
                 subst: SubstStack::new(),
@@ -2230,6 +2223,33 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
             subst: SubstStack::new(),
         }),
     }
+}
+
+fn field_project_port_type_context(
+    dag: &Dag,
+    t: &TransformNode,
+    field_label: &str,
+) -> Option<PortTypeContext> {
+    if t.inputs.len() != 1 {
+        return None;
+    }
+    let input_ty = match dag.port(t.inputs[0]).state() {
+        PortState::Resolved(ty) => *ty,
+        PortState::Uninferred | PortState::Unresolved => return None,
+    };
+    let mut subst = SubstStack::new();
+    let conj_id = walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    let field_decl = children
+        .iter()
+        .find(|field| field.label == field_label)
+        .map(|field| field.ty)?;
+    Some(PortTypeContext {
+        decl: field_decl,
+        subst,
+    })
 }
 
 fn resolve_binding_decl(
@@ -3974,26 +3994,21 @@ fn transform_targets_equal_under_subst(
             callable_decls_equal_under_subst(dag, *cand_id, *template_id, subst)
         }
         (
-            TransformTarget::FieldProject {
+            TransformTarget::UnresolvedFieldProject {
                 field_label: cand_label,
-                field_child: cand_child,
             },
-            TransformTarget::FieldProject {
+            TransformTarget::UnresolvedFieldProject {
                 field_label: template_label,
-                field_child: template_child,
             },
-        ) => {
-            if cand_label != template_label {
-                return false;
-            }
-            match (cand_child, template_child) {
-                (None, None) => true,
-                (Some(cand), Some(template)) => {
-                    callable_decls_equal_under_subst(dag, *cand, *template, subst)
-                }
-                _ => false,
-            }
-        }
+        ) => cand_label == template_label,
+        (
+            TransformTarget::ResolvedFieldProject {
+                field_label: cand_label,
+            },
+            TransformTarget::ResolvedFieldProject {
+                field_label: template_label,
+            },
+        ) => cand_label == template_label,
         _ => false,
     }
 }
@@ -4152,10 +4167,7 @@ fn find_equivalent_anonymous_cardinality(
 enum FieldProjectResolution {
     Retry,
     Fail(Diagnostic),
-    Resolved {
-        field_child: DeclarationId,
-        output_ty: TypeShape,
-    },
+    Resolved { output_ty: TypeShape },
 }
 
 fn resolve_field_project(
@@ -4211,38 +4223,29 @@ fn resolve_field_project(
         TypeConnective::Conj { children } => children,
         _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
     };
-    let field_decl_id = if let TransformTarget::FieldProject {
-        field_child: Some(field_child),
-        ..
-    } = &t.target
-    {
-        *field_child
-    } else {
-        let Some(field_decl_id) = children
+    let Some(field_decl_id) = children
+        .iter()
+        .find(|field| field.label == field_label)
+        .map(|field| field.ty)
+    else {
+        let field_start = t.span.byte_end.saturating_sub(field_label.len() as u32);
+        let fixes = children
             .iter()
-            .find(|field| field.label == field_label)
-            .map(|field| field.ty)
-        else {
-            let field_start = t.span.byte_end.saturating_sub(field_label.len() as u32);
-            let fixes = children
-                .iter()
-                .take(5)
-                .map(|field| Correction {
-                    description: format!("did you mean field `{}`?", field.label),
-                    span: SourceSpan::new(t.span.file.clone(), field_start, t.span.byte_end),
-                    new_source: field.label.clone(),
-                })
-                .collect();
-            return FieldProjectResolution::Fail(Diagnostic::ResolveError {
-                name: format!(
-                    "field `{field_label}` does not exist on `{}`",
-                    target_display_name(dag, input_ty.declaration),
-                ),
-                span: t.span.clone(),
-                fixes,
-            });
-        };
-        field_decl_id
+            .take(5)
+            .map(|field| Correction {
+                description: format!("did you mean field `{}`?", field.label),
+                span: SourceSpan::new(t.span.file.clone(), field_start, t.span.byte_end),
+                new_source: field.label.clone(),
+            })
+            .collect();
+        return FieldProjectResolution::Fail(Diagnostic::ResolveError {
+            name: format!(
+                "field `{field_label}` does not exist on `{}`",
+                target_display_name(dag, input_ty.declaration),
+            ),
+            span: t.span.clone(),
+            fixes,
+        });
     };
     let Some(output_ty) = walk_to_type_shape(dag, field_decl_id, &subst, 0) else {
         return FieldProjectResolution::Fail(Diagnostic::ResolveError {
@@ -4255,10 +4258,7 @@ fn resolve_field_project(
         });
     };
 
-    FieldProjectResolution::Resolved {
-        field_child: field_decl_id,
-        output_ty,
-    }
+    FieldProjectResolution::Resolved { output_ty }
 }
 
 fn first_nominal_opaque_on_conj_walk(
@@ -4273,12 +4273,7 @@ fn first_nominal_opaque_on_conj_walk(
     }
 }
 
-fn decide_field_project(
-    dag: &Dag,
-    t: &TransformNode,
-    field_label: &str,
-    _field_child: Option<DeclarationId>,
-) -> Decision {
+fn decide_field_project(dag: &Dag, t: &TransformNode, field_label: &str) -> Decision {
     match resolve_field_project(dag, t, field_label) {
         FieldProjectResolution::Retry => Decision::Retry,
         FieldProjectResolution::Fail(diag) => Decision::Fail(t.output, diag),
@@ -4287,41 +4282,32 @@ fn decide_field_project(
 }
 
 fn resolve_field_project_targets(dag: &mut Dag) -> bool {
-    let mut rewrites: Vec<(usize, DeclarationId)> = Vec::new();
+    let mut rewrites: Vec<(usize, String)> = Vec::new();
     for (node_index, node) in dag.nodes().iter().enumerate() {
         let Behavior::Transform(t) = node else {
             continue;
         };
-        let TransformTarget::FieldProject {
-            field_label,
-            field_child: None,
-        } = &t.target
+        let TransformTarget::UnresolvedFieldProject { field_label } = &t.target else {
+            continue;
+        };
+        let FieldProjectResolution::Resolved { .. } = resolve_field_project(dag, t, field_label)
         else {
             continue;
         };
-        let FieldProjectResolution::Resolved { field_child, .. } =
-            resolve_field_project(dag, t, field_label)
-        else {
-            continue;
-        };
-        rewrites.push((node_index, field_child));
+        rewrites.push((node_index, field_label.clone()));
     }
 
     let mut changed = false;
-    for (node_index, field_child) in rewrites {
+    for (node_index, field_label) in rewrites {
         let Behavior::Transform(t) = &mut dag.nodes_mut()[node_index] else {
             continue;
         };
-        let TransformTarget::FieldProject {
-            field_child: slot, ..
-        } = &mut t.target
-        else {
+        let target = &mut t.target;
+        let TransformTarget::UnresolvedFieldProject { .. } = target else {
             continue;
         };
-        if slot.is_none() {
-            *slot = Some(field_child);
-            changed = true;
-        }
+        *target = TransformTarget::ResolvedFieldProject { field_label };
+        changed = true;
     }
     changed
 }
@@ -5055,7 +5041,8 @@ fn target_display_name(dag: &Dag, target: DeclarationId) -> String {
 fn transform_target_display_name(dag: &Dag, target: &TransformTarget) -> String {
     match target {
         TransformTarget::Callable(id) => target_display_name(dag, *id),
-        TransformTarget::FieldProject { field_label, .. } => format!(".{field_label}"),
+        TransformTarget::UnresolvedFieldProject { field_label } => format!(".{field_label}"),
+        TransformTarget::ResolvedFieldProject { field_label } => format!(".{field_label}"),
         TransformTarget::Operator(op_kind) => crate::operators::symbol(*op_kind),
     }
 }
@@ -5312,9 +5299,8 @@ mod bool_logical_operator_arrow_tests {
 
         let input = dag.alloc_port_with_shape(TypeShape::new(opaque));
         let output = dag.push_transform(
-            TransformTarget::FieldProject {
+            TransformTarget::UnresolvedFieldProject {
                 field_label: "value".to_string(),
-                field_child: None,
             },
             vec![input],
             span,
@@ -5433,9 +5419,8 @@ mod bool_logical_operator_arrow_tests {
 
         let input = dag.alloc_port_with_shape(TypeShape::new(boxed_secret));
         let output = dag.push_transform(
-            TransformTarget::FieldProject {
+            TransformTarget::UnresolvedFieldProject {
                 field_label: "value".to_string(),
-                field_child: None,
             },
             vec![input],
             span,
@@ -5482,9 +5467,8 @@ mod bool_logical_operator_arrow_tests {
 
         let input = dag.alloc_port_with_shape(TypeShape::new(record));
         let output = dag.push_transform(
-            TransformTarget::FieldProject {
+            TransformTarget::UnresolvedFieldProject {
                 field_label: "value".to_string(),
-                field_child: None,
             },
             vec![input],
             span,

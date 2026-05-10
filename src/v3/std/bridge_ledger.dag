@@ -58,13 +58,15 @@ import v3.spec.v3_l1 { DeclarationRef }
 //     lowers as `ArrowBody::Unparsed`; the retired row therefore means
 //     no source-text side channel remains for this authority path, not
 //     that compile-body drift is structurally checkable.
-//   - `bridge_exact_string_patching_residual_retired` — Open. Per
-//     `r3-structure.md:83`: PB lower-helper slice (Tier-2 / #1014
-//     lineage) is pinned at zero, BUT "Other exact-string patching
-//     classes (outside this retired lower-helper post-process bridge)
-//     remain out of scope for this receipt and keep their own
-//     dissolution triggers" — the umbrella row stays Open until those
-//     other classes land their own retirement receipts.
+//   - `bridge_exact_string_patching_residual_retired` — Retired. PB
+//     Tier-2 lower-helper generated-Rust exact-string patch class
+//     (#1014 / #1192 lineage): zero residual ratcheted by
+//     `bridge_lower_helpers_patch_zero_residual_test.rs`.
+//   - `bridge_exact_string_semantic_patching_residual` — Open. Row-4
+//     semantic exact-string patching outside the retired lower-helper
+//     slice (e.g. bootstrap `Bool` inhabits patch class, BR-06 sentinel
+//     splice, infer-helper-driven rewrite classes per
+//     `docs/briefs/r3-v-bridge-row-4-exact-string-deeper-detail-receipt.md`).
 
 // 🟢 TERMINAL. Closed retirement-state coproduct for ledger rows. Two
 // states are sufficient at this scope: a bridge has either landed its
@@ -157,17 +159,13 @@ data bridge_ledger: List<BridgeLedgerRow> = [
   {
     name:      "bridge_exact_string_patching_residual_retired",
     owner:     "PB-Tier-2",
+    status:    Retired,
+    authority: "src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs"
+  },
+  {
+    name:      "bridge_exact_string_semantic_patching_residual",
+    owner:     "PB-Runtime",
     status:    Open,
-    // Umbrella row — `bridge_lower_helpers_patch_zero_residual_test.rs`
-    // ratchets only the retired sub-slice (PR #1014 lineage); the row
-    // stays Open because *other* exact-string patching classes remain
-    // outside that receipt's scope. Point `authority` at the prose
-    // row where the umbrella's open-scope framing is defined,
-    // not at the closed sub-slice's ratchet (the residual debt the
-    // open status tracks is exactly the "other classes" the prose
-    // row names — those classes' own dissolution triggers cover the
-    // remaining scope, and the umbrella retires when those triggers
-    // all fire).
-    authority: "docs/r3-structure.md:83"
+    authority: "docs/briefs/r3-v-bridge-row-4-exact-string-deeper-detail-receipt.md"
   }
 ]
