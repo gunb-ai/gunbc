@@ -411,15 +411,20 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // P2 same-PR-consumer-evidence per codex BLOCKING surfaced post-merge.
     //
     // **Dissolution trigger (P5)**: retires when T-Tests-As-Data infrastructure
-    // expresses ".dag-fn-resolution-against-bootstrap" assertions as structural
-    // `TestClaim` data instead of hand-Rust integration tests. The 6 assertions
-    // here (one per `*Realization` meta-type — `assert meta.is_some() && name ==
-    // "X"`) factor as `OutputEquals` / declaration-resolution claims under the
-    // T-Tests-As-Data umbrella (#1966 §3 ratchet predicate scope). Until that
-    // landing, hand-Rust is the consumption path for `.dag`-fn-from-Rust
-    // assertions; Mgr standing-authority approval at gunbc#2221
-    // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1
-    // window.
+    // expresses ".dag-fn-resolution-against-bootstrap" assertions and
+    // `cost_lens_demonstration` as structural `TestClaim` data instead of
+    // hand-Rust integration tests. The 6 resolver assertions here (one per
+    // `*Realization` meta-type — `assert meta.is_some() && name == "X"`) factor
+    // as `OutputEquals` / declaration-resolution claims under the T-Tests-As-Data
+    // umbrella (#1966 §3 ratchet predicate scope). Gate #70 additionally factors
+    // into TestClaims over the representative recursive fixture: emitted target
+    // program contains the recursive call, lowered DAG has >=2 algebra-instance
+    // operator transforms, `per_call_descent_evidence` observes the self-call, and
+    // the Rust-side cost composition preserves the observable linear
+    // `SymbolicCost` bound. Until that landing, hand-Rust is the consumption path
+    // for `.dag`-fn-from-Rust and emitted-target cost-composition assertions; Mgr
+    // standing-authority approval at gunbc#2221 #issuecomment-4404395097 ratifies
+    // this bridge for the Slice 1a.1 / gate #70 window.
     "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
