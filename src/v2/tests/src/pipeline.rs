@@ -6424,12 +6424,72 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
         .map(|i| open_brace + 1 + i)
         .expect("OpenAiChatMessageRole enum closing brace");
     let enum_body = &content[open_brace..=close_brace];
-    for needle in ["System,", "Developer,", "User,", "Assistant,"] {
+    for needle in [
+        "System,",
+        "Developer,",
+        "User,",
+        "Assistant,",
+        "Tool,",
+        "Function,",
+    ] {
         assert!(
             enum_body.contains(needle),
             "expected variant {needle} in OpenAiChatMessageRole; got:\n{enum_body}"
         );
     }
+
+    let message_attrs = attrs_immediately_above_enum(&content, "pub enum OpenAiChatMessage {");
+    assert!(
+        message_attrs.contains(&"#[serde(tag = \"role\")]"),
+        "expected OpenAiChatMessage to serialize as an OpenAI role-tagged object; attrs: {:?}",
+        message_attrs
+    );
+    let message_block = enum_block(&content, "pub enum OpenAiChatMessage {");
+    for rename in [
+        "#[serde(rename = \"system\")]",
+        "#[serde(rename = \"developer\")]",
+        "#[serde(rename = \"user\")]",
+        "#[serde(rename = \"assistant\")]",
+        "#[serde(rename = \"tool\")]",
+        "#[serde(rename = \"function\")]",
+    ] {
+        assert!(
+            message_block.contains(rename),
+            "expected {rename} in OpenAiChatMessage block; got:\n{message_block}"
+        );
+    }
+
+    let part_attrs = attrs_immediately_above_enum(&content, "pub enum OpenAiChatMessagePart");
+    assert!(
+        part_attrs.contains(&"#[serde(tag = \"type\")]"),
+        "expected OpenAiChatMessagePart to serialize as a type-tagged content part; attrs: {:?}",
+        part_attrs
+    );
+    let part_block = enum_block(&content, "pub enum OpenAiChatMessagePart");
+    for rename in [
+        "#[serde(rename = \"text\")]",
+        "#[serde(rename = \"image_url\")]",
+    ] {
+        assert!(
+            part_block.contains(rename),
+            "expected {rename} in OpenAiChatMessagePart block; got:\n{part_block}"
+        );
+    }
+
+    let content_attrs = attrs_immediately_above_enum(&content, "pub enum OpenAiChatMessageContent");
+    assert!(
+        content_attrs.contains(&"#[serde(untagged)]"),
+        "expected OpenAiChatMessageContent to serialize as OpenAI's untagged string-or-array content field; attrs: {:?}",
+        content_attrs
+    );
+    let content_block = enum_block(&content, "pub enum OpenAiChatMessageContent");
+    assert!(
+        content_block.contains("OpenAiChatMessageText(String),")
+            && content_block.contains(
+                "OpenAiChatMessageParts(Rc<Vec<Rc<OpenAiChatMessagePart>>>),"
+            ),
+        "untagged OpenAiChatMessageContent variants must emit as newtype variants so `content` serializes as a string or content-part array; got:\n{content_block}"
+    );
 
     assert!(
         content.contains("\"messages\": messages"),
@@ -6870,9 +6930,10 @@ type LocalUnitEnum
     );
 }
 
-// Golden JSON for the narrow `OpenAiChatMessage { role, content }` row under the same
-// serde policy as emitted code (`#[serde(rename_all = "snake_case")]` on the role enum).
-// Guards Chat Completions `messages[].role` strings without provider string branching.
+// Golden JSON for the `OpenAiChatMessage` request coproduct under the same serde
+// policy as emitted code (`#[serde(tag = "role")]` with per-variant renames).
+// Guards Chat Completions role tags, tool_call_id, function rows, and typed
+// content-part discriminators without provider string branching.
 #[test]
 fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
     #[derive(Copy, Clone, serde::Serialize)]
@@ -6882,12 +6943,53 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
         Developer,
         User,
         Assistant,
+        Tool,
+        Function,
     }
 
     #[derive(serde::Serialize)]
-    struct OpenAiChatMessage {
-        role: OpenAiChatMessageRole,
-        content: String,
+    #[serde(tag = "type")]
+    enum OpenAiChatMessagePart {
+        #[serde(rename = "text")]
+        Text { text: String },
+        #[serde(rename = "image_url")]
+        ImageUrl {
+            image_url: OpenAiChatMessageImageUrl,
+        },
+    }
+
+    #[derive(serde::Serialize)]
+    struct OpenAiChatMessageImageUrl {
+        url: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(untagged)]
+    enum OpenAiChatMessageContent {
+        Text(String),
+        Parts(Vec<OpenAiChatMessagePart>),
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(tag = "role")]
+    enum OpenAiChatMessage {
+        #[serde(rename = "system")]
+        System { content: OpenAiChatMessageContent },
+        #[serde(rename = "developer")]
+        Developer { content: OpenAiChatMessageContent },
+        #[serde(rename = "user")]
+        User { content: OpenAiChatMessageContent },
+        #[serde(rename = "assistant")]
+        Assistant { content: OpenAiChatMessageContent },
+        #[serde(rename = "tool")]
+        Tool {
+            content: OpenAiChatMessageContent,
+            tool_call_id: String,
+        },
+        #[serde(rename = "function")]
+        Function { content: String, name: String },
     }
 
     let cases: &[(&str, OpenAiChatMessageRole)] = &[
@@ -6895,12 +6997,32 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
         ("developer", OpenAiChatMessageRole::Developer),
         ("user", OpenAiChatMessageRole::User),
         ("assistant", OpenAiChatMessageRole::Assistant),
+        ("tool", OpenAiChatMessageRole::Tool),
+        ("function", OpenAiChatMessageRole::Function),
     ];
 
     for &(wire_tag, role) in cases {
-        let msg = OpenAiChatMessage {
-            role,
-            content: "x".to_string(),
+        let msg = match role {
+            OpenAiChatMessageRole::System => OpenAiChatMessage::System {
+                content: OpenAiChatMessageContent::Text("x".to_string()),
+            },
+            OpenAiChatMessageRole::Developer => OpenAiChatMessage::Developer {
+                content: OpenAiChatMessageContent::Text("x".to_string()),
+            },
+            OpenAiChatMessageRole::User => OpenAiChatMessage::User {
+                content: OpenAiChatMessageContent::Text("x".to_string()),
+            },
+            OpenAiChatMessageRole::Assistant => OpenAiChatMessage::Assistant {
+                content: OpenAiChatMessageContent::Text("x".to_string()),
+            },
+            OpenAiChatMessageRole::Tool => OpenAiChatMessage::Tool {
+                content: OpenAiChatMessageContent::Text("x".to_string()),
+                tool_call_id: "call_123".to_string(),
+            },
+            OpenAiChatMessageRole::Function => OpenAiChatMessage::Function {
+                content: "x".to_string(),
+                name: "legacy_fn".to_string(),
+            },
         };
         let v = serde_json::to_value(&msg).expect("serialize OpenAiChatMessage");
         assert_eq!(
@@ -6917,9 +7039,27 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
 
     let messages: Vec<OpenAiChatMessage> = cases
         .iter()
-        .map(|&(wire_tag, role)| OpenAiChatMessage {
-            role,
-            content: wire_tag.to_string(),
+        .map(|&(wire_tag, role)| match role {
+            OpenAiChatMessageRole::System => OpenAiChatMessage::System {
+                content: OpenAiChatMessageContent::Text(wire_tag.to_string()),
+            },
+            OpenAiChatMessageRole::Developer => OpenAiChatMessage::Developer {
+                content: OpenAiChatMessageContent::Text(wire_tag.to_string()),
+            },
+            OpenAiChatMessageRole::User => OpenAiChatMessage::User {
+                content: OpenAiChatMessageContent::Text(wire_tag.to_string()),
+            },
+            OpenAiChatMessageRole::Assistant => OpenAiChatMessage::Assistant {
+                content: OpenAiChatMessageContent::Text(wire_tag.to_string()),
+            },
+            OpenAiChatMessageRole::Tool => OpenAiChatMessage::Tool {
+                content: OpenAiChatMessageContent::Text(wire_tag.to_string()),
+                tool_call_id: "call_123".to_string(),
+            },
+            OpenAiChatMessageRole::Function => OpenAiChatMessage::Function {
+                content: wire_tag.to_string(),
+                name: "legacy_fn".to_string(),
+            },
         })
         .collect();
     let body = serde_json::json!({ "messages": messages });
@@ -6929,6 +7069,33 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
         assert_eq!(arr[i]["role"], wire_tag);
         assert_eq!(arr[i]["content"], wire_tag);
     }
+
+    assert_eq!(arr[4]["tool_call_id"], "call_123");
+    assert_eq!(arr[5]["name"], "legacy_fn");
+
+    let multimodal = OpenAiChatMessage::User {
+        content: OpenAiChatMessageContent::Parts(vec![
+            OpenAiChatMessagePart::Text {
+                text: "look".to_string(),
+            },
+            OpenAiChatMessagePart::ImageUrl {
+                image_url: OpenAiChatMessageImageUrl {
+                    url: "https://example.test/image.png".to_string(),
+                    detail: Some("high".to_string()),
+                },
+            },
+        ]),
+    };
+    let v = serde_json::to_value(&multimodal).expect("serialize multimodal message");
+    assert_eq!(v["role"], "user");
+    assert_eq!(v["content"][0]["type"], "text");
+    assert_eq!(v["content"][0]["text"], "look");
+    assert_eq!(v["content"][1]["type"], "image_url");
+    assert_eq!(
+        v["content"][1]["image_url"]["url"],
+        "https://example.test/image.png"
+    );
+    assert_eq!(v["content"][1]["image_url"]["detail"], "high");
 }
 
 // Golden JSON for Anthropic Messages request rows under the same serde policy
