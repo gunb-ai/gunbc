@@ -321,22 +321,26 @@ let demo: Int = countdown(3) + 1
             "emitted Rust should realize the recursive countdown target program:\n{emitted}"
         );
 
-        let algebra_instances = user
-            .nodes()
-            .iter()
-            .filter_map(Behavior::as_transform)
-            .filter(|transform| {
-                matches!(
-                    transform.target,
-                    TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add))
-                        | TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub))
-                        | TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq))
-                )
-            })
-            .count();
+        let mut saw_add = false;
+        let mut saw_sub = false;
+        let mut saw_eq = false;
+        for transform in user.nodes().iter().filter_map(Behavior::as_transform) {
+            match transform.target {
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => {
+                    saw_add = true;
+                }
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)) => {
+                    saw_sub = true;
+                }
+                TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => {
+                    saw_eq = true;
+                }
+                _ => {}
+            }
+        }
         assert!(
-            algebra_instances >= 3,
-            "gate #70 fixture should expose Add/Sub/Eq algebra instances; got {algebra_instances}"
+            saw_add && saw_sub && saw_eq,
+            "gate #70 fixture should expose Add/Sub/Eq algebra instances; got add={saw_add}, sub={saw_sub}, eq={saw_eq}"
         );
 
         let descent_entries = per_call_descent_evidence(&user);
