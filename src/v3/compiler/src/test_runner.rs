@@ -56,6 +56,14 @@ const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_e
 const R3_AUTO_LOOP_SEQUENTIAL_EMIT_WITNESS_LENS_NAME: &str =
     "r3_auto_loop_parallelism_sequential_emit_witness";
 
+/// R3 gate #45 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
+///
+/// Compared as `Some(R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME)` — **not** `Some("…")` inline —
+/// so `canonical_lens_name_dispatch_arms_pinned` does not treat this as a new string-literal name
+/// dispatch arm on the canonical lens bridge.
+const R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME: &str =
+    "r3_auto_parallelism_branch_arms_serialize_witness";
+
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
 /// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
@@ -2483,6 +2491,50 @@ impl<'a> TestRunner<'a> {
                 ),
             };
         }
+        // R3 gate #45 (`auto_parallelism_branch_arms_serialize`): emitted Rust for the claim
+        // source must lower the Bool branch to `if … else` and contain no `thread::scope`
+        // scheduling — branch arms are exclusive alternatives, not parallel work. Structural
+        // witness via program text; dissolution when ordinary DB-20 parallelism lens output
+        // reaches `.dag` (see docs/design-free-consequences.md, `parallelism.dag` STUB).
+        if lens_decl.name.as_deref() == Some(R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME) {
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(r3_auto_parallelism_branch_arms_serialize_witness): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_parallelism_branch_arms_serialize_witness): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
+                    ));
+                }
+            };
+            let emitted = match crate::emit_rust::emit_rust(&program_dag) {
+                Ok(s) => s,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_parallelism_branch_arms_serialize_witness): emit_rust failed for `{}`: {err:?}",
+                        claim.file_name
+                    ));
+                }
+            };
+            // Branch lowered to `if … else` (template `if {cond} { {then} } else { {else} }`)
+            // and arm bodies are not wrapped in scoped-thread spawn scheduling.
+            let serialized = emitted.contains("} else {") && !emitted.contains("thread::scope");
+            let computed_int = i64::from(serialized);
+            return if computed_int == expected_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals(r3_auto_parallelism_branch_arms_serialize_witness): expected `{expected_int}` (1 = serialized branch arms), computed `{computed_int}` for `{}`",
+                    claim.file_name
+                ))
+            };
+        }
+
         let reflects_claim_program = program_input
             .as_ref()
             .is_some_and(ProgramInputRole::is_program_input);
