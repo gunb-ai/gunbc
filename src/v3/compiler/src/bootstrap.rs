@@ -105,20 +105,20 @@ pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
 
 /// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
 ///
-/// `dsl/std/types.dag` must stay free of `inhabits` so v2 can parse every
-/// `dsl/` file. After the std fixtures lower, wire `Bool` to
-/// `BooleanAlgebra<Bool>` the same way surface `inhabits` lowering would,
-/// without shadowing `Bool` (which would reallocate sum variants and break
-/// `src/v3/std/algebra.dag` pattern wiring).
+/// `dsl/std/types.dag` must stay free of `type … inhabits … =` so v2 can parse
+/// every `dsl/` file on the stage0 / gist dependency surfaces (see
+/// `v2-compiler-tests::parse::gist_transitive_closure_parse`). After the std
+/// fixtures lower, wire `Bool` to `BooleanAlgebra<Bool>` the same way surface
+/// `inhabits` lowering would, without shadowing `Bool` (which would reallocate
+/// sum variants and break `src/v3/std/algebra.dag` pattern wiring).
 ///
 /// Preconditions are checked: any failure attaches a bootstrap
 /// `Diagnostic::ResolveError` via `Dag::attach_diagnostic` so compilation
 /// fails closed instead of silently omitting `inhabits`.
 ///
-/// **Dissolution:** remove this patch once the v2 compiler surface accepts
-/// `type … inhabits … =` in `dsl/` (then express
-/// `type Bool inhabits BooleanAlgebra<Bool> = True | False` in
-/// `dsl/std/types.dag` and delete `patch_kernel_bool_boolean_algebra_inhabits`).
+/// **Dissolution:** remove this patch once v2 accepts `inhabits` on sum types in
+/// `dsl/` (then express `type Bool inhabits BooleanAlgebra<Bool> = True | False`
+/// in `dsl/std/types.dag` and delete this helper).
 #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
     // Audit row #2 retirement (bootstrap.rs slice 1 of 2):
