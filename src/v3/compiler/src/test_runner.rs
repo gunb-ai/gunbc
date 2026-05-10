@@ -2823,53 +2823,74 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        if let Err(err) = emit_rust(&program_dag) {
-            return ClaimResult::Fail(format!(
-                "BinaryDimensionReportEquals(r3 cross-target cost): Rust emission failed: {err:?}"
-            ));
-        }
+        let boot = generated_full_bootstrap_dag();
+        for target in [
+            R3CostTarget::new("rust", "rust_language"),
+            R3CostTarget::new("go", "go_language"),
+            R3CostTarget::new("python", "python_language"),
+        ] {
+            if target.label == "rust" {
+                if let Err(err) = emit_rust(&program_dag) {
+                    return ClaimResult::Fail(format!(
+                        "BinaryDimensionReportEquals(r3 cross-target cost): Rust emission failed: {err:?}"
+                    ));
+                }
+            }
+            let observed = match self.r3_observed_cost_report_from_source_structure(
+                &boot,
+                &program_dag,
+                target,
+            ) {
+                Ok(cost) => cost,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "BinaryDimensionReportEquals(r3 cross-target cost): {err}"
+                    ));
+                }
+            };
+            let expected = match self.r3_expected_cost_report_from_source_dag(
+                &boot,
+                &program_dag,
+                claim,
+                target,
+            ) {
+                Ok(cost) => cost,
+                Err(reason) => return ClaimResult::Fail(reason),
+            };
 
-        let observed = match self.r3_observed_cost_report_from_source_structure(&program_dag) {
-            Ok(cost) => cost,
-            Err(err) => {
+            if observed != expected {
                 return ClaimResult::Fail(format!(
-                    "BinaryDimensionReportEquals(r3 cross-target cost): {err}"
+                    "BinaryDimensionReportEquals(r3 cross-target cost): target `{}` observed structural report {observed:?} did not equal expected structural report {expected:?}",
+                    target.label
                 ));
             }
-        };
-        let expected = match self.r3_expected_cost_report_from_source_dag(&program_dag, claim) {
-            Ok(cost) => cost,
-            Err(reason) => return ClaimResult::Fail(reason),
-        };
-
-        if observed == expected {
-            ClaimResult::Pass
-        } else {
-            ClaimResult::Fail(format!(
-                "BinaryDimensionReportEquals(r3 cross-target cost): observed structural report {observed:?} did not equal expected structural report {expected:?}"
-            ))
         }
+        ClaimResult::Pass
     }
 
     fn r3_observed_cost_report_from_source_structure(
         &self,
+        boot: &Dag,
         program_dag: &Dag,
+        target: R3CostTarget,
     ) -> Result<SymbolicCost, String> {
-        let boot = generated_full_bootstrap_dag();
-        let rust_language = boot
-            .declaration_by_name("rust_language")
+        let language = boot
+            .declaration_by_name(target.language_decl)
             .map(|decl| decl.id)
-            .ok_or_else(|| "missing rust_language LanguageSpec".to_string())?;
+            .ok_or_else(|| format!("missing {} LanguageSpec", target.language_decl))?;
         let int_decl = boot
             .declaration_by_name("Int")
             .map(|decl| decl.id)
             .ok_or_else(|| "missing Int declaration".to_string())?;
-        let table = RealizationCostTable::for_language(&boot, rust_language).map_err(|err| {
-            format!("could not read Rust LanguageSpec realization table: {err:?}")
+        let table = RealizationCostTable::for_language(boot, language).map_err(|err| {
+            format!(
+                "could not read {} LanguageSpec realization table: {err:?}",
+                target.label
+            )
         })?;
         let int_cost = table
             .cost(&RealizationCostKey::Type(int_decl))
-            .ok_or_else(|| "missing Rust Int TypeRealization cost".to_string())?
+            .ok_or_else(|| format!("missing {} Int TypeRealization cost", target.label))?
             .value();
         let mut composed = SymbolicCost::ConstantCost { _0: 0 };
         composed = sequential(composed, SymbolicCost::ConstantCost { _0: int_cost });
@@ -2884,7 +2905,12 @@ impl<'a> TestRunner<'a> {
             };
             let op_cost = table
                 .cost(&key)
-                .ok_or_else(|| format!("missing Rust operator realization cost for {key:?}"))?
+                .ok_or_else(|| {
+                    format!(
+                        "missing {} operator realization cost for {key:?}",
+                        target.label
+                    )
+                })?
                 .value();
             composed = sequential(composed, SymbolicCost::ConstantCost { _0: 1 });
             composed = sequential(composed, SymbolicCost::ConstantCost { _0: op_cost });
@@ -2894,8 +2920,10 @@ impl<'a> TestRunner<'a> {
 
     fn r3_expected_cost_report_from_source_dag(
         &self,
+        boot: &Dag,
         program_dag: &Dag,
         claim: &TestClaimValue,
+        target: R3CostTarget,
     ) -> Result<SymbolicCost, String> {
         let bind_name = last_emit_rust_program_top_level_value_bind_name(program_dag)
             .map_err(|err| {
@@ -2922,13 +2950,14 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        let boot = generated_full_bootstrap_dag();
-        let rust_language = boot
-            .declaration_by_name("rust_language")
+        let language = boot
+            .declaration_by_name(target.language_decl)
             .map(|decl| decl.id)
             .ok_or_else(|| {
-                "BinaryDimensionReportEquals(r3 cross-target cost): missing rust_language LanguageSpec"
-                    .to_string()
+                format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): missing {} LanguageSpec",
+                    target.language_decl
+                )
             })?;
         let int_decl = boot
             .declaration_by_name("Int")
@@ -2937,27 +2966,31 @@ impl<'a> TestRunner<'a> {
                 "BinaryDimensionReportEquals(r3 cross-target cost): missing Int declaration"
                     .to_string()
             })?;
-        let table = RealizationCostTable::for_language(&boot, rust_language).map_err(|err| {
+        let table = RealizationCostTable::for_language(boot, language).map_err(|err| {
             format!(
-                "BinaryDimensionReportEquals(r3 cross-target cost): could not read Rust LanguageSpec realization table: {err:?}"
+                "BinaryDimensionReportEquals(r3 cross-target cost): could not read {} LanguageSpec realization table: {err:?}",
+                target.label
             )
         })?;
 
         let int_cost = table
             .cost(&RealizationCostKey::Type(int_decl))
             .ok_or_else(|| {
-                "BinaryDimensionReportEquals(r3 cross-target cost): missing Rust Int TypeRealization cost"
-                    .to_string()
+                format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): missing {} Int TypeRealization cost",
+                    target.label
+                )
             })?
             .value();
         composed = sequential(composed, SymbolicCost::ConstantCost { _0: int_cost });
 
-        for op in r3_operator_realization_keys(&boot, program_dag)? {
+        for op in r3_operator_realization_keys(boot, program_dag)? {
             let op_cost = table
                 .cost(&op)
                 .ok_or_else(|| {
                     format!(
-                        "BinaryDimensionReportEquals(r3 cross-target cost): missing Rust operator realization cost for {op:?}"
+                        "BinaryDimensionReportEquals(r3 cross-target cost): missing {} operator realization cost for {op:?}",
+                        target.label
                     )
                 })?
                 .value();
@@ -4979,6 +5012,21 @@ fn find_bind<'a>(
         }
         _ => None,
     })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct R3CostTarget {
+    label: &'static str,
+    language_decl: &'static str,
+}
+
+impl R3CostTarget {
+    const fn new(label: &'static str, language_decl: &'static str) -> Self {
+        Self {
+            label,
+            language_decl,
+        }
+    }
 }
 
 fn r3_operator_realization_keys(

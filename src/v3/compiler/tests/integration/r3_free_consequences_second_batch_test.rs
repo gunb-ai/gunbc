@@ -13,8 +13,8 @@
 //! path, not only carried as inert text. The first cross-target-optimization claim (#51) is
 //! executable through the symbolic-cost lens: the host test proves a constant arithmetic subtree has
 //! cost `1` before the folded literal target (`3`) is applied. Gate #52 executes a structural
-//! cost comparison over claim-program operator transforms, the symbolic-cost lens, and Rust
-//! `LanguageSpec` realization rows.
+//! cost comparison over claim-program operator transforms, the symbolic-cost lens, and Rust / Go /
+//! Python `LanguageSpec` realization rows.
 
 use std::sync::OnceLock;
 
