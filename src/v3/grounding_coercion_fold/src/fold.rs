@@ -22,6 +22,7 @@
 use std::collections::BTreeMap;
 
 use v3_compiler::dag::{
+    literal_decimal_i64,
     Dag, Declaration, DeclarationId, FieldValue, Interval, IntervalWidth, LiteralBits,
     PositiveIntervalWidth, TypeConnective, ValueBody,
 };
@@ -151,7 +152,7 @@ fn reference_field(fields: &[(String, FieldValue)], label: &str) -> Option<Decla
 
 fn int_literal_field(fields: &[(String, FieldValue)], label: &str) -> Option<i64> {
     match field(fields, label)? {
-        FieldValue::Literal(LiteralBits::Int(value)) => Some(*value),
+        FieldValue::Literal(LiteralBits::Int(value)) => literal_decimal_i64(value.as_str()),
         _ => None,
     }
 }
