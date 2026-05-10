@@ -92,10 +92,23 @@ fn expected_origin_from_producer_behavior(behavior: &Behavior) -> Origin {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum CementingReceiptKind {
+    // 🟢 GREEN (terminal): `.dag` TestClaim/TestSuite harnesses are the target
+    // tests-as-data receipt shape for Band-C cementing.
     DagHarness,
+    // 🟡 YELLOW (scaffold): Rust receipts dissolve when TestPredicate data can
+    // express the published carrier shape named by the receipt's blocker.
     TemporaryRustModule,
+}
+
+impl CementingReceiptKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::DagHarness => "dag",
+            Self::TemporaryRustModule => "temporary-rust",
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -483,6 +496,17 @@ fn cementing_escalation_slice_matches_capability_register() {
             .iter()
             .map(|receipt| receipt.registry_name)
             .collect();
+        let declared_receipts: BTreeSet<(&str, &str, &str)> =
+            CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
+                .iter()
+                .map(|receipt| (receipt.registry_name, receipt.stem, receipt.kind.as_str()))
+                .collect();
+        assert_eq!(
+            declared_receipts.len(),
+            CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS.len(),
+            "`CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` contains duplicate receipt identities; \
+             each `(registry_name, stem, kind)` must be unique."
+        );
         let expected_refs: BTreeSet<&str> = expected.iter().map(String::as_str).collect();
         assert_eq!(
             declared, expected_refs,
@@ -493,6 +517,27 @@ fn cementing_escalation_slice_matches_capability_register() {
              blockers) in the same PR as the register promotion."
         );
     });
+}
+
+#[test]
+fn cementing_cost_receipt_pair_stays_explicit_until_complexity_summary_claim_lands() {
+    let cost_receipts: BTreeSet<(&str, &str)> = CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
+        .iter()
+        .filter(|receipt| receipt.registry_name == "cost")
+        .map(|receipt| (receipt.stem, receipt.kind.as_str()))
+        .collect();
+
+    let expected = BTreeSet::from([
+        ("t_r3_gate_87_cementing_regen_cost", "dag"),
+        ("complexity_lens_behavioral_completion", "temporary-rust"),
+    ]);
+    assert_eq!(
+        cost_receipts, expected,
+        "`cost` currently needs both the gate #87 `.dag` harness and the temporary \
+         `ComplexitySummary` Rust receipt. Remove the Rust receipt only when the named \
+         TestPredicate/substrate blocker has landed and the replacement `.dag` claim \
+         covers the published `complexity_of` carrier."
+    );
 }
 
 #[test]
