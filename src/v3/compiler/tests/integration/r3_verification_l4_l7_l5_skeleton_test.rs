@@ -18,6 +18,7 @@
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
+use v3_compiler::dag::LiteralBits;
 use v3_compiler::dag::{Dag, FieldValue};
 use v3_compiler::test_runner::{ClaimEvaluation, ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
@@ -325,6 +326,24 @@ fn l5_cross_target_consistency_passes_seed_corpus_for_all_targets() {
     assert_eq!(
         claim.source, L5_AUTHORITY_PROGRAM,
         "`TestClaim.source` must equal `add_then_branch_seed.v3` bytes (single program authority)"
+    );
+    let FieldValue::Variant { payload, .. } = &claim.predicate else {
+        panic!("L5 predicate must lower to a structural ForAllTargets variant");
+    };
+    let [FieldValue::Literal(LiteralBits::String(command)), FieldValue::List(args), FieldValue::Literal(LiteralBits::Int(expect_exit_code)), FieldValue::Reference(input_ref)] =
+        payload.as_slice()
+    else {
+        panic!(
+            "L5 ForAllTargets must carry inert command triple plus ProgramOutputBind input_ref, got {payload:?}"
+        );
+    };
+    assert_eq!(command, "true");
+    assert!(args.is_empty());
+    assert_eq!(expect_exit_code, "0");
+    assert_eq!(
+        dag.declaration(*input_ref).name.as_deref(),
+        Some("r3_l5_program_output"),
+        "L5 ForAllTargets must structurally select the l5_out ProgramOutputBind"
     );
     let required_toolchains: Vec<_> = claim
         .requires

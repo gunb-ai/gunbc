@@ -182,8 +182,6 @@ jobs:
     # Revert when the OnceLock/module-cache structural fix brings warmed runs below 1200s;
     # keep job timeout above the in-step budget so Actions does not cancel final steps first.
     timeout-minutes: 60
-    env:
-      RUSTFLAGS: -D warnings -C linker=rust-lld
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -197,6 +195,20 @@ jobs:
           components: rustfmt, clippy
           cache: false
           rustflags: ""
+
+      - name: Setup Zig C toolchain
+        uses: goto-bus-stop/setup-zig@v2
+
+      - name: Configure user-space C linker
+        run: |
+          mkdir -p "${RUNNER_TEMP}/gunbc-bin"
+          cat > "${RUNNER_TEMP}/gunbc-bin/zig-cc" <<'EOF'
+          #!/usr/bin/env bash
+          exec zig cc "$@"
+          EOF
+          chmod +x "${RUNNER_TEMP}/gunbc-bin/zig-cc"
+          echo "CC=${RUNNER_TEMP}/gunbc-bin/zig-cc" >> "${GITHUB_ENV}"
+          echo "RUSTFLAGS=-D warnings -C linker=${RUNNER_TEMP}/gunbc-bin/zig-cc" >> "${GITHUB_ENV}"
 
       - name: Setup Python
         uses: actions/setup-python@v6

@@ -4063,9 +4063,11 @@ impl<'a> TestRunner<'a> {
                     .to_string(),
             );
         };
-        let Some((command, args, expect_exit_code)) =
-            parse_execute_command_fields(&[command_fv.clone(), args_fv.clone(), expect_exit_code_fv.clone()])
-        else {
+        let Some((command, args, expect_exit_code)) = parse_execute_command_fields(&[
+            command_fv.clone(),
+            args_fv.clone(),
+            expect_exit_code_fv.clone(),
+        ]) else {
             return ClaimResult::Fail(
                 "ForAllTargets payload should begin with (String, List<String>, Int) — see verification.dag"
                     .to_string(),
