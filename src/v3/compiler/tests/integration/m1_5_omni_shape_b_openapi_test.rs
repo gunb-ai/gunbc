@@ -121,6 +121,14 @@ data same_shape_non_service_rows: List<MimicServiceOperation> = [
 ]
 "#;
 
+const EMPTY_OMNI_SERVICE_FIXTURE: &str = r#"
+module t.openapi_empty_demo
+
+import std.types { Int }
+
+let omni_emit_anchor: Int = 0
+"#;
+
 fn compile_omni_service_fixture() -> v3_compiler::Dag {
     std::thread::Builder::new()
         .name("m1_5_openapi_fixture_compile".to_string())
@@ -131,6 +139,22 @@ fn compile_omni_service_fixture() -> v3_compiler::Dag {
                 "m1_5_omni_shape_b_openapi_fixture.dag",
             )
             .expect("Shape B OpenAPI demo fixture compiles")
+        })
+        .expect("spawn larger-stack compile thread")
+        .join()
+        .expect("larger-stack compile thread completes")
+}
+
+fn compile_empty_omni_service_fixture() -> v3_compiler::Dag {
+    std::thread::Builder::new()
+        .name("m1_5_empty_openapi_fixture_compile".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            compile_to_dag(
+                EMPTY_OMNI_SERVICE_FIXTURE,
+                "m1_5_omni_shape_b_empty_fixture.dag",
+            )
+            .expect("empty Shape B demo fixture compiles")
         })
         .expect("spawn larger-stack compile thread")
         .join()
@@ -596,6 +620,22 @@ fn omni_sql_ddl_alternative_demo_generates_schema_matching_backend() {
             concrete_path
         );
     }
+}
+
+#[test]
+fn sql_ddl_projection_emits_valid_empty_schema_without_insert_values() {
+    let dag = compile_empty_omni_service_fixture();
+
+    let ddl = project_sql_ddl_schema(&dag).expect("SQL DDL projects for an empty route set");
+
+    assert!(ddl.contains("CREATE TABLE omni_service_routes (\n"));
+    assert!(ddl.contains("  PRIMARY KEY (method, path_template)\n"));
+    assert!(ddl.contains("-- no routes declared\n"));
+    assert!(
+        !ddl.contains("INSERT INTO omni_service_routes"),
+        "empty-route DDL must not emit a dangling INSERT ... VALUES statement"
+    );
+    assert!(sql_ddl_routes(&ddl).is_empty());
 }
 
 #[test]

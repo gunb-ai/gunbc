@@ -283,13 +283,13 @@ pub fn project_sql_ddl_schema(dag: &Dag) -> Result<String, ProjectOpenApiError> 
     }
     out.push_str(
         "  PRIMARY KEY (method, path_template)\n\
-         );\n\n\
-         INSERT INTO omni_service_routes (method, path_template) VALUES\n",
+         );\n",
     );
     if routes.is_empty() {
-        out.push_str("  -- no routes declared\n");
+        out.push_str("\n-- no routes declared\n");
         return Ok(out);
     }
+    out.push_str("\nINSERT INTO omni_service_routes (method, path_template) VALUES\n");
     for (index, route) in routes.iter().enumerate() {
         out.push_str("  (");
         out.push_str(&sql_string_literal(&route.method));
