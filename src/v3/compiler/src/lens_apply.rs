@@ -292,7 +292,7 @@ fn try_apply_lens_via_evaluator_literals_only(
     let bindings: Vec<(PortId, Value)> = root_bind
         .params
         .iter()
-        .zip(runtime_inputs.into_iter())
+        .zip(runtime_inputs)
         .map(|(p, v)| (*p, v))
         .collect();
     let frame = EvalFrame::from_bindings(bindings).ok()?;
