@@ -5,9 +5,9 @@
 //! `src/v3/compiler/src/lib.rs::lens_cost::tests`, where the
 //! `pub(crate)` Dag builder is reachable. This suite is the
 //! cross-process receipt: it verifies that the `.dag` authority
-//! compiles cleanly, that the checked-in generated module is in sync
-//! with what `emit_rust_module(complexity.dag)` produces, and that the
-//! emitted module links and runs end-to-end via rustc on one
+//! compiles cleanly, that the checked-in generated module is byte-for-byte in sync
+//! with what `emit_rust_module(complexity.dag)` produces, and
+//! that the emitted module links and runs end-to-end via rustc on one
 //! representative fixture.
 
 use std::io::Write;
@@ -232,10 +232,10 @@ fn complexity_lens_migration_stop_surface_ratchet() {
 #[test]
 fn complexity_generated_module_matches_checked_in_snapshot() {
     let fresh = emit_lens_module();
+    let checked = checked_in_generated_module();
     assert_eq!(
-        fresh.trim(),
-        checked_in_generated_module().trim(),
-        "checked-in generated module is stale; regenerate complexity_lens_generated.rs from complexity.dag"
+        fresh, checked,
+        "checked-in complexity lens module must match emit_rust_module(complexity.dag)"
     );
 }
 

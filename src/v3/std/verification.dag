@@ -115,6 +115,23 @@ type AlgebraicLawKind
   | Commutativity
   | Identity
 
+// Structural reference to a declaration whose body produces generated
+// `ProgramShape` values. The referenced declaration is the family authority;
+// new program families are new declarations, not new variants in a closed
+// roster.
+type ProgramGenerator {
+  generator: DeclarationRef
+}
+
+// A generated program's shape. Bootstrap starts with the literal source form
+// that matches `TestClaim.source` / `TestClaim.file_name`; richer shape
+// variants attach here only when a new primitive generated-program form lands.
+type ProgramShape
+  = LiteralProgram {
+      source: String
+      file_name: String
+    }
+
 type TestPredicate
   = Compiles
   | FailsWithDiagnostic(DiagnosticReference)
@@ -356,14 +373,6 @@ type TestClaim {
   file_name: String
   predicate: TestPredicate
   requires: List<ResourceReference>
-}
-
-// A quantified claim ranges over a generated family instead of one
-// enumerated `source` / `file_name` pair. The generator declaration is
-// the authority for that family; richer generated program-shape carriers
-// land with the ProgramGenerator lane.
-type ProgramGenerator {
-  generator: DeclarationRef
 }
 
 // Closed quantifier over a generated program family. This lives at the
