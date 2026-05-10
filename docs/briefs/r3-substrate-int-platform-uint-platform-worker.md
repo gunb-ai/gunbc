@@ -32,7 +32,7 @@ This brief lands the substrate concepts.
 - **Q1 — Naming: `IntPlatform` / `UIntPlatform`** per `feedback_reason_not_label` ("encode the stable reason"). Platform-dependence is the structural distinction; size alone doesn't distinguish (Int<32> also has size).
 - **Q2 — Algebra: same Int / UInt; platform-axis on MachineConstraint**:
   - `IntPlatform` = `Compose<Int, MachineWidth<PointerWidth>>` where `Int = AbelianGroup<GroupCompletion<Nat>>` (per Slice 3 #1466)
-  - `UIntPlatform` = `Compose<UInt, MachineWidth<PointerWidth>>` where `UInt = CommutativeSemiring<Nat>` (per #1818)
+  - `UIntPlatform` = `Compose<UInt, MachineWidth<PointerWidth>>` where `UInt = Nat` (per #1818)
   - `PointerWidth` is itself a substrate token (NOT a fixed numeric width); targets ground at emit time
 - **Q3 — Substrate-concept layer (NOT target-only)** per `feedback_target_agnostic_ir`. Multiple targets have platform-sized integers; modeling them at substrate-concept layer keeps substrate target-agnostic
 - **Q4 — Worker pin valiant-ibex-312** post-PR-#1914 close
