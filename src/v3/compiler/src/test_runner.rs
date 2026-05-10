@@ -10,7 +10,7 @@ use crate::dag::{
 use crate::diagnostics::Diagnostic;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
 use crate::evaluator::{
-    evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
+    evaluate_body, EvalError, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
 };
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
@@ -24,7 +24,7 @@ use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use crate::types::TypeShape;
 use crate::{
     compare_stage_snapshots, compile_stage_snapshots, compile_to_dag, default_fixed_point_source,
-    CompileError,
+    CompileError, DimensionReport,
 };
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
@@ -40,6 +40,15 @@ const INFER_HELPERS_SOURCE: &str = include_str!(concat!(
 /// The runner fail-closes unless the `TestClaim` is declared in this fixture file.
 const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
     "src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag";
+
+/// R3 gate #12 strict-fire (`tc2_church_rosser_strict_fire.dag`): `BinaryDimensionReportEquals`
+/// payload must reference these **fixture-local** `DimensionReport<Dag>` role declarations (not
+/// the deferred `tc2_leftfirst_strategy_dimension_report` names) so routing is keyed off declared
+/// predicate edges per INVARIANTS P2.
+const TC2_CHURCH_ROSSER_STRICT_FIRE_LEFT_REPORT: &str =
+    "tc2_church_rosser_strict_fire_left_dimension_report";
+const TC2_CHURCH_ROSSER_STRICT_FIRE_RIGHT_REPORT: &str =
+    "tc2_church_rosser_strict_fire_right_dimension_report";
 
 /// R3 gate #43 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
 ///
