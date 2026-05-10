@@ -264,8 +264,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/int_literal_ranges.rs",
     "src/v3/compiler/src/lens_apply.rs",
     "src/v3/compiler/src/lens_t_las_carrier.rs",
-    // T-PB-A: `lens_depth.rs` retired — unused observational lens (no in-tree consumer).
-    "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
     // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
@@ -635,7 +633,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
 // itself `foo.txt` would silently escape the ratchet otherwise.
 // Every entry here names a dissolution trigger in its own file header.
 // Sorted; one path per line, relative to the workspace root.
-const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/parse_parser_body.txt"];
+const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[
+    "src/v3/compiler/parse_parser_body.txt",
+    "src/v3/compiler/src/lens_testgen_body.txt",
+];
 
 // Non-`.rs` files under `src/v3/compiler/` whose content is produced
 // by a named generator (an `#[ignore]`'d refresh test, a `regen_*`
