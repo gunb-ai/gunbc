@@ -64,5 +64,5 @@ src/v3/std/t_ci_workflow_as_data_demo.dag	27	181014	161732a2a68f8a4d
 src/v3/std/termination.dag	26	47001	93f2a888194f9e4f
 src/v3/std/timing_lens.dag	29	150036	da5486c85292dc0e
 src/v3/std/tokenize.dag	8	38837	d12814269ec09247
-src/v3/std/verification.dag	31	71113	59dc6342c1e30aa8
+src/v3/std/verification.dag	33	73648	46a0842f5635825f
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6
