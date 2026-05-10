@@ -4,9 +4,9 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::dag::{
-    ArithmeticOp, AtomPayload, Behavior, BindNode, ComparisonOp, Dag, Declaration, DeclarationId,
-    FieldValue, LiteralBits, OperatorKind, Path, PortId, PortState, SymbolicCost, TransformTarget,
-    TypeConnective, ValueBody, sequential,
+    sequential, ArithmeticOp, AtomPayload, Behavior, BindNode, ComparisonOp, Dag, Declaration,
+    DeclarationId, FieldValue, LiteralBits, OperatorKind, Path, PortId, PortState, SymbolicCost,
+    TransformTarget, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
@@ -4952,11 +4952,14 @@ fn r3_operator_realization_keys(
         .declaration_by_name("Int")
         .map(|decl| decl.id)
         .ok_or_else(|| {
-            "BinaryDimensionReportEquals(r3 cross-target cost): missing Int declaration"
-                .to_string()
+            "BinaryDimensionReportEquals(r3 cross-target cost): missing Int declaration".to_string()
         })?;
     let mut keys = Vec::new();
-    for transform in program_dag.nodes().iter().filter_map(Behavior::as_transform) {
+    for transform in program_dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_transform)
+    {
         let op_decl = match transform.target {
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => {
                 "rust_int_add"
@@ -4970,24 +4973,12 @@ fn r3_operator_realization_keys(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)) => {
                 "rust_int_div"
             }
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => {
-                "rust_int_eq"
-            }
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ne)) => {
-                "rust_int_ne"
-            }
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)) => {
-                "rust_int_lt"
-            }
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)) => {
-                "rust_int_le"
-            }
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)) => {
-                "rust_int_gt"
-            }
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)) => {
-                "rust_int_ge"
-            }
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => "rust_int_eq",
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ne)) => "rust_int_ne",
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)) => "rust_int_lt",
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)) => "rust_int_le",
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)) => "rust_int_gt",
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)) => "rust_int_ge",
             _ => continue,
         };
         let op = match field_value(boot, op_decl, "op") {
