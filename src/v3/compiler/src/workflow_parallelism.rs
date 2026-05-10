@@ -235,11 +235,21 @@ fn bind_rhs_reaches_node(d: &Dag, bind: &BindNode, target: NodeId) -> bool {
 /// check fails. Side-effect / commutativity certification is **not** performed
 /// here — pair with future `Lens<Effect-Commutativity>` before widening beyond
 /// pure-looking programs.
-pub fn register_independent_bind_parallelism(dag: &mut Dag) {
-    let binds: Vec<&BindNode> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
+///
+/// `user_source_file` must match [`BindNode::span`].`file` for user-authored
+/// binds (the `file` argument to [`crate::compile_to_dag`]) so bootstrap/std
+/// binds are excluded from the independence walk.
+pub fn register_independent_bind_parallelism(dag: &mut Dag, user_source_file: &str) {
+    let mut binds: Vec<&BindNode> = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .filter(|b| b.span.file == user_source_file)
+        .collect();
     if binds.len() < 2 {
         return;
     }
+    binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
     if binds.iter().any(|b| b.lane2_workflow().is_some()) {
         return;
     }
@@ -273,9 +283,15 @@ mod register_parallelism_tests {
     #[test]
     fn independent_binds_register_parallel_on_last_bind() {
         let dag = compile_to_dag("let a: Int = 1\nlet b: Int = 2", "t.v3").expect("compile");
-        let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
+        let mut binds: Vec<_> = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .filter(|b| b.span.file == "t.v3")
+            .collect();
+        binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
         assert_eq!(binds.len(), 2);
-        let last = binds[1].id();
+        let last = binds.last().expect("two binds").id;
         let wf = dag
             .lane2_workflow_effect_at(&last)
             .expect("parallelism registered");
@@ -285,8 +301,14 @@ mod register_parallelism_tests {
     #[test]
     fn dependent_binds_do_not_register_parallel() {
         let dag = compile_to_dag("let a: Int = 1\nlet b: Int = a + 1", "t.v3").expect("compile");
-        let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
-        let last = binds[1].id();
+        let mut binds: Vec<_> = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .filter(|b| b.span.file == "t.v3")
+            .collect();
+        binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
+        let last = binds.last().expect("two binds").id;
         assert!(dag.lane2_workflow_effect_at(&last).is_none());
     }
 }
