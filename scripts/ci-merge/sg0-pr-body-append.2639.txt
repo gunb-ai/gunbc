@@ -1,0 +1,3 @@
+SG-0 hand-path delta: +1
+
+SG-0 pairing: (b) https://github.com/gunb-ai/gunbc/issues/2609
