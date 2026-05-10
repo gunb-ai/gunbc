@@ -1,7 +1,7 @@
 //! **Layer:** integration
 //!
 //! §1.8 / gate #92 `complexity_violation_compile_error_demonstrated`: a concrete
-//! O(n²) program whose `complexity_of` asymptotic class strictly exceeds a
+//! O(n^2) program whose `complexity_of` asymptotic class strictly exceeds a
 //! `ClassLog` budget under an `EnforcedApplication` must fail closed with an
 //! Error/`ParseError` diagnostic at the lens-application site.
 
@@ -24,8 +24,9 @@ fn complexity_violation_compile_error_demonstrated() {
         .name("t-las-complexity-demo-compile".into())
         .stack_size(64 * 1024 * 1024)
         .spawn(move || {
-            let err = compile_to_dag(&source, DEMO_FILE_NAME)
-                .expect_err("O(n²) witness asymptotic class exceeds ClassLog — compile must fail");
+            let err = compile_to_dag(&source, DEMO_FILE_NAME).expect_err(
+                "O(n^2) witness asymptotic class exceeds ClassLog - compile must fail",
+            );
             let CompileError::Semantic(dag) = err else {
                 panic!("expected Semantic(Dag) after violation, got {err:?}");
             };
