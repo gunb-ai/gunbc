@@ -63,7 +63,7 @@ data auto_loop_parallelism_provable_independence_emits_parallel: TestClaim = {
 
 data auto_loop_parallelism_unproven_falls_back_sequential: TestClaim = {
   name: "auto_loop_parallelism_unproven_falls_back_sequential",
-  source: "// free-consequences fixture: map iteration without Iteration-Independence opt-in — emit_rust must not use parallel thread::scope scheduling (sequential fallback).\nlet ys = map(singleton(1), |x| x + 1)\n",
+  source: "// free-consequences fixture: multi-element map without Iteration-Independence opt-in — emit_rust must not use parallel thread::scope scheduling (sequential fallback).\nlet ys = map(cons(1, singleton(2)), |x| x + 1)\n",
   file_name: "r3_free_consequences_auto_loop_parallelism_unproven.v3",
   predicate: LensOutputEquals(
     r3_auto_loop_parallelism_sequential_emit_witness,
