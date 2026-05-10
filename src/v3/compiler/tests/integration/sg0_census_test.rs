@@ -411,8 +411,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 gate #73 (`lens_behavioral_parity_demonstration`): temporary host
     // receipt for the four-lens parity snapshot while LensOutputEquals /
     // frozen-oracle claims migrate to `.dag` TestClaim data. Dissolution is
-    // tracked by `docs/r3-program-plan.md` §1.8 row 73 plus T-Tests-As-Data
-    // rows 84/87; delete with the module's `tests/integration.rs` registration.
+    // tracked by `docs/r3-program-plan.md` §1.8 row 73, T-Tests-As-Data
+    // rows 84/87, and `ROADMAP.md` §"Post-merge debt" row "Hand-Rust census" /
+    // T-PB-B test subset; delete with the module's `tests/integration.rs`
+    // registration.
     "src/v3/compiler/tests/integration/lens_behavioral_parity_demonstration_test.rs",
     // T-CostLens-Composition Slice 1a.1 (#2141 ε scope per gunbc#2181 ratification):
     // Rust integration tests exercising `lens_cost_target_realization` `.dag`-tier

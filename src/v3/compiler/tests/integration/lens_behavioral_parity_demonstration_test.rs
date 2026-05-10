@@ -10,7 +10,8 @@
 //! P5 receipt: this hand-written Rust test exists only as the gate #73 host
 //! receipt while `LensOutputEquals` / frozen-oracle claims are still migrating to
 //! data. Dissolution is tracked by `docs/r3-program-plan.md` §1.8 row 73
-//! (`lens_behavioral_parity_demonstration`) and the T-Tests-As-Data rows 84/87;
+//! (`lens_behavioral_parity_demonstration`), the T-Tests-As-Data rows 84/87, and
+//! `ROADMAP.md` §"Post-merge debt" row "Hand-Rust census" / T-PB-B test subset;
 //! when those rows can express this four-lens snapshot as `.dag` TestClaim data,
 //! delete this module and its `tests/integration.rs` registration.
 
