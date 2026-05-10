@@ -11,7 +11,7 @@ dsl/std/magnitude.dag	2	560	d1579da2ea458db8
 dsl/std/nat.dag	4	1895	9c5eb0ac8d25a015
 dsl/std/rational.dag	4	2379	3c3b86f7e18caf82
 dsl/std/string_type.dag	4	1910	119741c6fb9de2e3
-dsl/std/types.dag	111	198793	3a2f47d17a81426d
+dsl/std/types.dag	111	199485	45ad73daf932d379
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	43	92946	f6a6c0d08e3081bb
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
@@ -32,7 +32,7 @@ src/v3/std/anthropic_schema.dag	14	69934	58a973240ec25777
 src/v3/std/approximate_field.dag	11	16864	ccbe4826dc31c636
 src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
 src/v3/std/bootstrap_authority.dag	4	70609	e228bb8bb2449ece
-src/v3/std/bridge_ledger.dag	7	31728	e199a822d969d067
+src/v3/std/bridge_ledger.dag	7	31845	e4b7260339078102
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	19	37870	25c5a33ef4d8735a
 src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
