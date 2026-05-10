@@ -44,6 +44,7 @@ import std.http_path {
   PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
   parse_path_template, has_path_params, last_path_param
 }
+import std.verification { TestClaim }
 
 // =========================================================================
 // Effect shapes: how an operation modifies external state
@@ -132,12 +133,6 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
 //   meet_a ∘ append_b applied twice ≠ applied once
 //   (the append duplicates on the second application)
 
-type ComposedEffect {
-  operations: List<OperationEffect>
-  idempotent: Bool
-  breaking_operation: String?
-}
-
 // Per-operation effect entry in a workflow.
 type OperationEffect {
   operation_name: String
@@ -145,23 +140,42 @@ type OperationEffect {
   evidence: IdempotencyEvidence
 }
 
+// Workflow-level idempotency judgment — a sum, not a Bool × optional
+// label product. The old `ComposedEffect { idempotent, breaking_operation }`
+// shape admitted contradictory states (e.g. idempotent true with a named
+// breaker). R3 F5: only these two arms exist; `compose_effects` returns them.
+type CompositionVerdict
+  = IdempotentComposition
+  | BrokenBy { first_breaker: OperationEffect }
+
 // Compose a list of operation effects into a workflow-level verdict.
-fn compose_effects(effects: List<OperationEffect>) -> ComposedEffect {
+fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
   let non_idempotent = effects |> filter(e =>
     match e.evidence {
       NonIdempotent => true
       _ => false
     }
   )
-  let breaker = non_idempotent |> first
-  let breaker_name = match breaker {
-    Some { value: op } => Some { value: op.operation_name }
-    None => none
+  match non_idempotent |> first {
+    Some { value: op } => BrokenBy { first_breaker: op }
+    None => IdempotentComposition
   }
-  ComposedEffect {
-    operations: effects,
-    idempotent: non_idempotent |> count == 0,
-    breaking_operation: breaker_name
+}
+
+// R3 F5 — `TestClaim` witnesses: only legal `CompositionVerdict` shapes are
+// constructible as data (no forgeable Bool/String? product).
+data r3_f5_composition_verdict_sum_claim: TestClaim = {
+  kind: AssertTrue
+  label: "CompositionVerdict is IdempotentComposition | BrokenBy; illegal idempotent×breaker product is gone"
+}
+
+data r3_f5_legal_idempotent_composition: CompositionVerdict = IdempotentComposition
+
+data r3_f5_legal_broken_by: CompositionVerdict = BrokenBy {
+  first_breaker: OperationEffect {
+    operation_name: "r3_f5_demo_breaker"
+    shape: CreateEffect
+    evidence: NonIdempotent { shape: CreateEffect, reason: "demo non-idempotent evidence" }
   }
 }
 
