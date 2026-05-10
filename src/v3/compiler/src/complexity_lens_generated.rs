@@ -146,25 +146,14 @@ pub fn transform_summary(
     match &(per_call_pattern_at(p0, *p2)) {
         None => compose_many_inputs(p1, p3),
         Some(pattern) => match &(per_call_descent_operand_port(p0, *p2)) {
-            None => complexity_when_descent_unknown(pattern, p3),
+            None => complexity_when_descent_unknown(pattern),
             Some(descent_port) => recursive_transform_summary(p1, pattern, descent_port, p3),
         },
     }
 }
-pub fn complexity_when_descent_unknown(
-    p0: &CallPattern,
-    p1: &[PortId],
-) -> Lookup<ComplexitySummary> {
+pub fn complexity_when_descent_unknown(p0: &CallPattern) -> Lookup<ComplexitySummary> {
     match p0 {
-        CallPattern::SameArgumentCall => match p1 {
-            [] => summary_from_iter_bound(SymbolicCost::UnknownCost {
-                _0: String::from("same-argument recursive call has no descent"),
-            }),
-            [__list_head, __list_tail @ ..] => summary_from_iter_bound(pattern_to_iter_bound(
-                &(CallPattern::SameArgumentCall),
-                __list_head,
-            )),
-        },
+        CallPattern::SameArgumentCall => miss_complexity_summary_lookup(),
         CallPattern::ArithmeticSubtractCall {
             steps: _,
             ring_param: _,
