@@ -1383,10 +1383,19 @@ pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> 
     let entry = per_call_descent_evidence(dag)
         .into_iter()
         .find(|entry| entry.call == call_site)?;
-    call_pattern_from_relations(&entry.evidence)
+    call_pattern_from_sub_value_relations(&entry.evidence)
 }
 
-fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPattern> {
+/// Canonical projection from the per-call `SubValueRelation` evidence vector
+/// (as stored on [`CallDescentEvidence`]) to an optional [`CallPattern`].
+///
+/// This is the **only** lowering from producer evidence to `CallPattern` used
+/// by [`per_call_pattern_at`]; lenses and other consumers must not re-derive
+/// call-pattern witnesses by re-walking the `Dag` or by ad-hoc
+/// `SubValueRelation` scans (T-E-P gate `e_p_call_pattern_lookup_authoritative`).
+pub fn call_pattern_from_sub_value_relations(
+    relations: &[SubValueRelation],
+) -> Option<CallPattern> {
     if let Some(pattern) = relations
         .iter()
         .filter(|relation| !matches!(relation, SubValueRelation::PreservedValue))
@@ -4789,9 +4798,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn call_pattern_from_relations_fails_closed_for_mixed_unknown_and_preserved_evidence() {
+    fn call_pattern_from_sub_value_relations_fails_closed_for_mixed_unknown_and_preserved_evidence()
+    {
         assert_eq!(
-            call_pattern_from_relations(&[
+            call_pattern_from_sub_value_relations(&[
                 SubValueRelation::PreservedValue,
                 SubValueRelation::SubValueUnknown
             ]),

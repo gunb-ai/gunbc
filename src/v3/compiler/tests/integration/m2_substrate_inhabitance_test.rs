@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
-    join_evidence, literal_bits_int, lower_call_pattern, map_evidence_merge_at, merge_evidence,
-    optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
-    positive_amount_from_i64, promote_to_strict, size_bound_param,
+    algebra_profile_to_dimension, call_pattern_from_sub_value_relations, constant_bound_value,
+    evidence_rank, is_constant_bound, join_evidence, literal_bits_int, lower_call_pattern,
+    map_evidence_merge_at, merge_evidence, optional_evidence_meet, per_call_descent_evidence,
+    per_call_pattern_at, positive_amount_from_i64, promote_to_strict, size_bound_param,
     sub_value_relation_to_call_pattern, tree_size_bound, type_iteration_dimension, AlgebraProfile,
     ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue,
     Interval, IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget,
@@ -1210,15 +1210,18 @@ fn e_p_per_call_pattern_preserves_induction_child_accessor_projection() {
     );
 }
 
-/// T-E-P-Producer-Broadening **gate (2)** — `e_p_call_pattern_lookup_authoritative`.
+/// T-E-P-Producer-Broadening — **descent-evidence producer integrity** (supports
+/// gate `e_p_per_call_descent_evidence_full_coverage` / preconditions for gate
+/// `e_p_call_pattern_lookup_authoritative`).
 ///
-/// Pins `per_call_descent_evidence` as the **single** lookup authority for
-/// per-call `SubValueRelation` evidence over `TransformTarget::Callable`
-/// transforms. The gate guards against parallel producer growth while the
-/// other two gates (`_full_coverage`, `_per_call_landed`) extend the
-/// producer's coverage and move evidence onto a substrate carrier.
+/// Pins `per_call_descent_evidence` as the **single** producer of per-call
+/// `SubValueRelation` evidence over `TransformTarget::Callable` transforms: no
+/// duplicate rows, no synthetic rows, and full coverage of body-owned Callable
+/// transforms in the narrow fixture file. Gate **#77** (`CallPattern`
+/// authority) is pinned separately by
+/// `e_p_call_pattern_lookup_authoritative_matches_canonical_projection`.
 ///
-/// **Authoritativeness check (behavioral):**
+/// **Structural checks (behavioral):**
 /// - For every `Behavior::Transform` whose target is `TransformTarget::Callable`
 ///   and whose span sits in the user fixture file, the producer yields
 ///   **exactly one** `CallDescentEvidence` entry. (Bootstrap-scoped
@@ -1371,6 +1374,61 @@ fn caller(n: Int) -> Int = helper(n)
          producer reaching outside body-owned transforms (gate violation: producer \
          overshoots its scope)"
     );
+}
+
+/// T-E-P-Producer-Broadening **gate (2)** — `e_p_call_pattern_lookup_authoritative`.
+///
+/// The lens-facing query `dag::per_call_pattern_at` must agree with the canonical
+/// projection `dag::call_pattern_from_sub_value_relations` on every producer row.
+/// A future refactor that re-derived `CallPattern` from the `Dag` (or duplicated
+/// projection logic inside `per_call_pattern_at`) would diverge here while the
+/// descent-evidence cardinality ratchet above could still pass.
+#[test]
+fn e_p_call_pattern_lookup_authoritative_matches_canonical_projection() {
+    let source = "\
+fn countdown(n: Int) -> Int =
+  if n == 0 then 0 else countdown(n - 1)
+
+fn helper(n: Int) -> Int = n - 1
+
+fn caller(n: Int) -> Int = helper(n)
+";
+    let dag = compile_to_dag(source, "e_p_call_pattern_lookup_authority.v3")
+        .expect("countdown self-call + caller→helper cross-template fixture compiles");
+
+    let entries: Vec<_> = per_call_descent_evidence(&dag)
+        .into_iter()
+        .filter(|entry| {
+            dag.node(entry.call)
+                .as_transform()
+                .map(|t| t.span.file == "e_p_call_pattern_lookup_authority.v3")
+                .unwrap_or(false)
+        })
+        .collect();
+
+    assert!(
+        entries.len() >= 2,
+        "fixture must yield >= 2 Callable-side-table rows; got {}",
+        entries.len()
+    );
+
+    for entry in &entries {
+        let via_lookup = per_call_pattern_at(&dag, entry.call);
+        let via_projection = call_pattern_from_sub_value_relations(&entry.evidence);
+        assert_eq!(
+            via_lookup, via_projection,
+            "per_call_pattern_at must equal call_pattern_from_sub_value_relations on producer \
+             evidence for call {:?}; mismatch means CallPattern is no longer derived solely \
+             through the published projection path",
+            entry.call
+        );
+        assert_eq!(
+            via_lookup,
+            per_call_pattern_at(&dag, entry.call),
+            "per_call_pattern_at must be idempotent for call {:?}",
+            entry.call
+        );
+    }
 }
 
 #[test]
