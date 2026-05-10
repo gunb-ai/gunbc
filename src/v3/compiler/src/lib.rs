@@ -1047,10 +1047,8 @@ pub mod evaluator {
             TransformTarget::Operator(OperatorKind::Logical(_)) => {
                 Err(EvalError::UnsupportedTransformTarget { kind: "Logical" })
             }
-            TransformTarget::FieldProject {
-                field_label,
-                field_child: _,
-            } => {
+            TransformTarget::UnresolvedFieldProject { field_label }
+            | TransformTarget::ResolvedFieldProject { field_label } => {
                 if operands.len() != 1 {
                     return Err(EvalError::TransformArityMismatch {
                         expected: 1,
@@ -3040,9 +3038,8 @@ pub mod evaluator {
             let mut dag = Dag::new();
             let v = dag.push_value(literal_bits_int(1), span());
             let output = dag.push_transform(
-                TransformTarget::FieldProject {
+                TransformTarget::UnresolvedFieldProject {
                     field_label: "x".to_string(),
-                    field_child: None,
                 },
                 vec![v],
                 span(),
@@ -3226,9 +3223,8 @@ pub mod evaluator {
                 EvalFrame::from_bindings([(carrier_port, carrier_value)]).expect("caller frame");
             let mut state = EvalStateStack::with_root_frame(frame);
             let output = dag.push_transform(
-                TransformTarget::FieldProject {
+                TransformTarget::UnresolvedFieldProject {
                     field_label: "y".to_string(),
-                    field_child: None,
                 },
                 vec![carrier_port],
                 span(),
@@ -3252,9 +3248,8 @@ pub mod evaluator {
                 EvalFrame::from_bindings([(carrier_port, carrier_value)]).expect("caller frame");
             let mut state = EvalStateStack::with_root_frame(frame);
             let output = dag.push_transform(
-                TransformTarget::FieldProject {
+                TransformTarget::UnresolvedFieldProject {
                     field_label: "missing".to_string(),
-                    field_child: None,
                 },
                 vec![carrier_port],
                 span(),
