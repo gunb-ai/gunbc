@@ -64,44 +64,44 @@ type TypeSummary {
 //                       For enums, variant_name_set provides O(1) membership.
 //                       variant_to_enum and enum_variant_membership are derived
 //                       from type_summaries at the point of use (not stored).
-//   recursive_type_set — maps type names that participate in recursive cycles
-//                       (detected by 04_cycle.dag) to true. Used by emit to decide
+//   recursive_type_set — type names that participate in recursive cycles
+//                       (detected by 04_cycle.dag). Used by emit to decide
 //                       Rc wrapping (Rust) or pointer indirection (Go/C).
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
-  recursive_type_set: Map<String, Bool>
+  recursive_type_set: Set<String>
   // Per-variant structural fact: does this variant have fields?
   // Used by pattern emission to decide Variant vs Variant { .. }.
-  // Keyed by variant name → true if variant has children.
-  fielded_variants: Map<String, Bool>
-  // Per-type sharing decision: maps type names that need shared-pointer
-  // wrapping (Rc in Rust) to true. Computed from type_summaries ×
+  // Keys are "EnumName::VariantName" for variants that carry fields.
+  fielded_variants: Set<String>
+  // Per-type sharing decision: type names that need shared-pointer
+  // wrapping (Rc in Rust). Computed from type_summaries ×
   // recursive_type_set. The Rust emitter also adds collection types.
   // This is the SINGLE authority for sharing decisions — build_type_rendering
   // reads it, and direct emit sites read it for Rc-aware pattern matching
   // and construction.
-  shared_types: Map<String, Bool>
+  shared_types: Set<String>
   // Per-function ownership index: func_name → movable bindings set.
   // Built from ownership analysis. The emitter looks up the current
   // function's movable set and stores it in `movable` during item dispatch.
-  ownership_index: Map<String, Map<String, Bool>>
+  ownership_index: Map<String, Set<String>>
   // Current function's movable bindings. Set by emit_typed_item before
   // dispatching to emit_fn_def/emit_func_def. Bindings in this set have
   // fan-out=1 and can be moved instead of cloned.
-  movable: Map<String, Bool>
+  movable: Set<String>
   // Precomputed variant → parent enum name map. Built from type_summaries
   // by derive_variant_to_enum. Replaces heuristic lookups at emit sites.
   variant_to_enum: Map<String, String>
   // Bindings known to be owned (not behind Rc). Field accesses on these
   // bindings use move semantics instead of .clone(). Set for fold
   // accumulators after Rc::try_unwrap.
-  owned_bindings: Map<String, Bool>
-  // Per-function read-only params: func_name → (param_name → true).
+  owned_bindings: Set<String>
+  // Per-function read-only params: func_name → param names borrowable by &Rc.
   // A param is read-only when all usage edges are Read/Projected/Threaded
   // (no Consumed) and fan-out > 1. These can be passed by borrow (&Rc<T>).
-  read_only_params_index: Map<String, Map<String, Bool>>
+  read_only_params_index: Map<String, Set<String>>
   // Current function's read-only params. Set by emit_typed_item.
-  read_only_params: Map<String, Bool>
+  read_only_params: Set<String>
 }
 
 type EmitInfoBuildState {
@@ -115,15 +115,15 @@ type EmitInfoBuildState {
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
-    recursive_type_set: empty_map(),
-    fielded_variants: empty_map(),
-    shared_types: empty_map(),
+    recursive_type_set: empty_set(),
+    fielded_variants: empty_set(),
+    shared_types: empty_set(),
     ownership_index: empty_map(),
-    movable: empty_map(),
+    movable: empty_set(),
     variant_to_enum: empty_map(),
-    owned_bindings: empty_map(),
+    owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
-    read_only_params: empty_map()
+    read_only_params: empty_set()
   }
 }
 
@@ -134,10 +134,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
 
 fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
   let key = concat(enum_name, "::", variant_name)
-  match map_get(emit_info.fielded_variants, key) {
-    Some { value: v } => v
-    None => false
-  }
+  set_contains(emit_info.fielded_variants, key)
 }
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {

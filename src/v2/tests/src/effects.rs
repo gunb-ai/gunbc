@@ -339,6 +339,63 @@ fn rest_ops_have_derived_effects() {
 }
 
 // =========================================================================
+// R3 F5 — `CompositionVerdict` (illegal `Bool × String?` product dissolved)
+// =========================================================================
+
+fn op_lattice_read(name: &str) -> Rc<OperationEffect> {
+    Rc::new(OperationEffect {
+        operation_name: name.to_string(),
+        shape: Rc::new(EffectShape::ReadEffect),
+        evidence: Rc::new(IdempotencyEvidence::LatticeEffect {
+            shape: Rc::new(EffectShape::ReadEffect),
+        }),
+    })
+}
+
+fn op_non_idempotent(name: &str) -> Rc<OperationEffect> {
+    Rc::new(OperationEffect {
+        operation_name: name.to_string(),
+        shape: Rc::new(EffectShape::CreateEffect),
+        evidence: Rc::new(IdempotencyEvidence::NonIdempotent {
+            shape: Rc::new(EffectShape::CreateEffect),
+            reason: "test".to_string(),
+        }),
+    })
+}
+
+#[test]
+fn r3_f5_compose_effects_empty_yields_idempotent_composition() {
+    let ops = Rc::new(vec![]);
+    let v = compose_effects(ops);
+    assert!(matches!(&*v, CompositionVerdict::IdempotentComposition));
+}
+
+#[test]
+fn r3_f5_compose_effects_all_lattice_yields_idempotent_composition() {
+    let ops = Rc::new(vec![op_lattice_read("a"), op_lattice_read("b")]);
+    let v = compose_effects(ops);
+    assert!(matches!(&*v, CompositionVerdict::IdempotentComposition));
+}
+
+#[test]
+fn r3_f5_compose_effects_broken_by_first_non_idempotent_evidence() {
+    let ops = Rc::new(vec![
+        op_lattice_read("first"),
+        op_non_idempotent("breaker"),
+        op_non_idempotent("later"),
+    ]);
+    let v = compose_effects(ops);
+    match &*v {
+        CompositionVerdict::BrokenBy { first_breaker } => {
+            assert_eq!(first_breaker.operation_name, "breaker");
+        }
+        CompositionVerdict::IdempotentComposition => {
+            panic!("expected BrokenBy when NonIdempotent evidence is present");
+        }
+    }
+}
+
+// =========================================================================
 // Obligation generation
 // =========================================================================
 

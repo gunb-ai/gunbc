@@ -1,20 +1,19 @@
-//! Ratchet for the canonical lens-name dispatch bridge in `test_runner.rs`.
+//! Zero-residual ratchet for the retired canonical lens-name dispatch bridge in `test_runner.rs`.
 //!
-//! Pins the current bridge surface so any growth fails CI, and any reduction
-//! can lower the pin in the same PR. Per `feedback_ratchet_only_down`: never
-//! raise these constants.
+//! Pins the retired bridge surface at zero so any reintroduction fails CI.
 //!
-//! The bridge is described in `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`
+//! The bridge was described in `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`
+//! and closed by `docs/briefs/r3-pb-bridge-canonical-lens-name-dispatch-closure.md`
 //! (gate `bridge_canonical_lens_name_dispatch_retired`, R3 T-Bridge-Retirement
-//! distributed bridge #3). Full retirement is gated on PB-Runtime
-//! interpreter-as-data OR a typed lens-registry carrier substrate-introduction;
-//! both are outside this PR's scope.
+//! distributed bridge #3).
 //!
 //! Three categories are pinned:
 //!   A. `include_str!("…/lenses/<name>.dag")` calls.
 //!   B. `lens_decl.name.as_deref() == Some("<name>")` string-name dispatch arms.
 //!   C. Generic `lens_decl.name.as_deref()` name-keyed lookups (ones not
 //!      already counted in B).
+//!   D. Helper-shaped `DeclarationRef` to name-resolution dispatch for
+//!      canonical lens identity.
 
 use std::fs;
 use std::path::PathBuf;
@@ -288,9 +287,17 @@ fn count_lens_name_lookups(src: &str) -> usize {
         .count()
 }
 
-const EXPECTED_INCLUDE_STR_LENS_BYTES: usize = 2;
-const EXPECTED_NAME_EQ_DISPATCH_ARMS: usize = 2;
-const EXPECTED_GENERIC_NAME_LOOKUPS: usize = 2;
+/// Category D: helper-shaped `DeclarationRef` identity checks that resolve
+/// the referenced declaration back to a spelling such as `cost_of`.
+fn count_declaration_ref_name_dispatch_helpers(src: &str) -> usize {
+    src.matches("declaration_ref_resolves_to_name").count()
+        + src.matches("declaration_by_name(\"cost_of\")").count()
+}
+
+const EXPECTED_INCLUDE_STR_LENS_BYTES: usize = 0;
+const EXPECTED_NAME_EQ_DISPATCH_ARMS: usize = 0;
+const EXPECTED_GENERIC_NAME_LOOKUPS: usize = 0;
+const EXPECTED_DECLARATION_REF_NAME_DISPATCH_HELPERS: usize = 0;
 
 #[test]
 fn canonical_lens_include_str_bridges_pinned() {
@@ -300,12 +307,10 @@ fn canonical_lens_include_str_bridges_pinned() {
         n, EXPECTED_INCLUDE_STR_LENS_BYTES,
         "test_runner.rs canonical-lens `include_str!` count drifted: \
          expected {EXPECTED_INCLUDE_STR_LENS_BYTES}, found {n}. \
-         If this is a *reduction* (bridge retired), lower the constant in \
-         this file in the same PR. If this is *growth*, that is forbidden \
-         per the disposition in \
-         docs/briefs/r2-pb-canonical-lens-bridge-disposition.md — split \
-         a structural lens-registry carrier brief instead of adding another \
-         `include_str!` of canonical lens bytes."
+         The canonical lens-name dispatch bridge is retired; any nonzero \
+         count reintroduces a production canonical-lens byte authority. \
+         Keep lens execution routed through the resolved fixture \
+         DeclarationRef, not through runner-owned `include_str!` bytes."
     );
 }
 
@@ -317,11 +322,9 @@ fn canonical_lens_name_dispatch_arms_pinned() {
         n, EXPECTED_NAME_EQ_DISPATCH_ARMS,
         "test_runner.rs `lens_decl.name.as_deref() == Some(\"…\")` arm \
          count drifted: expected {EXPECTED_NAME_EQ_DISPATCH_ARMS}, found \
-         {n}. If this is a *reduction*, lower the constant. If this is \
-         *growth*, that is forbidden per the disposition — name-keyed \
-         dispatch on lens identity must be retired via PB-Runtime \
-         interpreter-as-data or a typed lens-registry carrier, not \
-         extended."
+         {n}. The canonical lens-name dispatch bridge is retired; any \
+         nonzero count reintroduces name-keyed semantic dispatch on lens \
+         identity."
     );
 }
 
@@ -333,8 +336,22 @@ fn canonical_lens_generic_name_lookups_pinned() {
         n, EXPECTED_GENERIC_NAME_LOOKUPS,
         "test_runner.rs generic `lens_decl.name.as_deref()` name-keyed \
          lookup count drifted: expected {EXPECTED_GENERIC_NAME_LOOKUPS}, \
-         found {n}. Same rule as the equality-arm ratchet: ratchet only \
-         down."
+         found {n}. The canonical lens-name dispatch bridge is retired; \
+         lens body selection must not route through declaration spelling."
+    );
+}
+
+#[test]
+fn canonical_lens_declaration_ref_name_dispatch_helpers_pinned() {
+    let src = strip_comments(&test_runner_source());
+    let n = count_declaration_ref_name_dispatch_helpers(&src);
+    assert_eq!(
+        n, EXPECTED_DECLARATION_REF_NAME_DISPATCH_HELPERS,
+        "test_runner.rs DeclarationRef-to-name lens dispatch helper count \
+         drifted: expected {EXPECTED_DECLARATION_REF_NAME_DISPATCH_HELPERS}, \
+         found {n}. The canonical lens-name dispatch bridge is retired; \
+         semantic dispatch must not route by resolving a lens DeclarationRef \
+         back to declaration spelling."
     );
 }
 
