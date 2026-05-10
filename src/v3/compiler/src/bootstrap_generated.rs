@@ -82322,7 +82322,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "input_ref".to_string(),
-                        ty: DeclarationId(1290),
+                        ty: DeclarationId(1291),
                     },
                 ],
             },

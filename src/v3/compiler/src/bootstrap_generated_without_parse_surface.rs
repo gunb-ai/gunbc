@@ -77887,7 +77887,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     },
                     Field {
                         label: "input_ref".to_string(),
-                        ty: DeclarationId(1275),
+                        ty: DeclarationId(1276),
                     },
                 ],
             },
