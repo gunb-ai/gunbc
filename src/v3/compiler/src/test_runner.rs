@@ -63,6 +63,13 @@ const R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME: &str = "repeated_pure_call_exp
 const R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME: &str =
     "r3_auto_parallelism_branch_arms_serialize_witness";
 
+/// R3 gate #50 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
+///
+/// A one-shot pure call may emit a direct call / inlined expression, but must not introduce
+/// memoization scaffolding. Repeated-call caching remains deferred to the purity+cost lens
+/// composition producer.
+const R3_ONE_SHOT_NO_MEMO_WITNESS_LENS_NAME: &str = "r3_auto_memoization_one_shot_no_cache_witness";
+
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
 /// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
@@ -2391,6 +2398,50 @@ impl<'a> TestRunner<'a> {
             } else {
                 ClaimResult::Fail(format!(
                     "LensOutputEquals(r3_auto_parallelism_parallel_emit_witness): expected `{expected_int}` (1 = parallel schedule), computed `{computed_int}` for `{}`",
+                    claim.file_name
+                ))
+            };
+        }
+
+        // R3 gate #50 (`auto_memoization_no_caching_for_one_shot`): one-shot call sites must not
+        // emit memo/cache scaffolding. Structural witness via emitted Rust text; dissolution when
+        // the AutoMemoizationEvidence producer reaches `.dag`.
+        if lens_decl.name.as_deref() == Some(R3_ONE_SHOT_NO_MEMO_WITNESS_LENS_NAME) {
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(r3_auto_memoization_one_shot_no_cache_witness): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_memoization_one_shot_no_cache_witness): expected_ref `{expected_name}` must be `data ...: Int = <literal>`"
+                    ));
+                }
+            };
+            let emitted = match crate::emit_rust::emit_rust(&program_dag) {
+                Ok(s) => s,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_memoization_one_shot_no_cache_witness): emit_rust failed for `{}`: {err:?}",
+                        claim.file_name
+                    ));
+                }
+            };
+            let scaffolding_absent = !emitted.contains("memo")
+                && !emitted.contains("Memo")
+                && !emitted.contains("cache")
+                && !emitted.contains("Cache")
+                && !emitted.contains("HashMap");
+            let computed_int = i64::from(scaffolding_absent);
+            return if computed_int == expected_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals(r3_auto_memoization_one_shot_no_cache_witness): expected `{expected_int}` (1 = no memo/cache scaffolding), computed `{computed_int}` for `{}`",
                     claim.file_name
                 ))
             };

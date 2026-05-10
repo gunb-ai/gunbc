@@ -54,6 +54,11 @@ fn r3_auto_parallelism_branch_arms_serialize_witness(_d: Dag) -> Int = 0
 
 data r3_auto_parallelism_branch_arms_serialize_expected: Int = 1
 
+// R3 #50 witness: one-shot pure call sites must not emit memo/cache scaffolding.
+fn r3_auto_memoization_one_shot_no_cache_witness(_d: Dag) -> Int = 0
+
+data r3_auto_memoization_one_shot_no_cache_expected: Int = 1
+
 type repeated_pure_call_observed_report = DimensionReport<AutoMemoizationEvidence>
 type repeated_pure_call_expected_report = DimensionReport<AutoMemoizationEvidence>
 type one_shot_call_observed_report = DimensionReport<AutoMemoizationEvidence>
@@ -108,11 +113,12 @@ data auto_memoization_repeated_pure_call_cached: TestClaim = {
 
 data auto_memoization_no_caching_for_one_shot: TestClaim = {
   name: "auto_memoization_no_caching_for_one_shot",
-  source: "// free-consequences fixture: one-shot calls do not emit memoization scaffolding.\nlet _: Int = 0\n",
+  source: "// free-consequences fixture: one-shot calls do not emit memoization scaffolding.\nfn bump(x: Int) -> Int = x + 1\nlet _: Int = bump(41)\n",
   file_name: "r3_free_consequences_auto_memoization_one_shot.v3",
-  predicate: BinaryDimensionReportEquals(
-    one_shot_call_observed_report,
-    one_shot_call_expected_report
+  predicate: LensOutputEquals(
+    r3_auto_memoization_one_shot_no_cache_witness,
+    auto_parallelism_program_input,
+    r3_auto_memoization_one_shot_no_cache_expected
   ),
   requires: []
 }
