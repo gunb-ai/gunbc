@@ -3,15 +3,15 @@
 # path\titems\tdebug_bytes\tfnv1a64
 dsl/std/algebra.dag	37	165680	20af3b3ea1ec59df
 dsl/std/bit.dag	9	7787	09279906a3939377
-dsl/std/float.dag	11	7602	e4a96bf8945883a6
+dsl/std/float.dag	13	8702	2a65fc1d97769eae
 dsl/std/integer.dag	27	28654	03818aeb82802366
 dsl/std/logic.dag	5	5614	bb0fc43f94c4374f
 dsl/std/machine_constraints.dag	4	1682	ac8d7987ef5489c2
 dsl/std/magnitude.dag	2	560	d1579da2ea458db8
 dsl/std/nat.dag	4	1895	9c5eb0ac8d25a015
 dsl/std/rational.dag	4	2379	3c3b86f7e18caf82
-dsl/std/string_type.dag	4	1910	119741c6fb9de2e3
-dsl/std/types.dag	111	198793	3a2f47d17a81426d
+dsl/std/string_type.dag	4	1910	2564a01bbb75f338
+dsl/std/types.dag	111	203583	5aac2f97e0f30153
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	43	92946	f6a6c0d08e3081bb
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
@@ -31,7 +31,7 @@ src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	14	69934	58a973240ec25777
 src/v3/std/approximate_field.dag	11	16864	ccbe4826dc31c636
 src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
-src/v3/std/bootstrap_authority.dag	4	70609	e228bb8bb2449ece
+src/v3/std/bootstrap_authority.dag	4	75864	d9c5d8fb10e8dad0
 src/v3/std/bridge_ledger.dag	7	36072	4c795fafb7530441
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	19	37870	25c5a33ef4d8735a
@@ -43,7 +43,7 @@ src/v3/std/dimensions.dag	21	39170	c6833b618a39e0af
 src/v3/std/effects.dag	53	97986	a7e76d1378ca354d
 src/v3/std/emission_provenance.dag	6	4966	ac93c5c74cb4f9f9
 src/v3/std/emit_model.dag	44	83040	affde4f732f411ec
-src/v3/std/extdeps_bootstrap_fixtures.dag	4	16839	22cffc76152e82dd
+src/v3/std/extdeps_bootstrap_fixtures.dag	4	23937	904ef09cfb122408
 src/v3/std/go_method_template_contracts.dag	14	133273	43ccd439b5e388ea
 src/v3/std/induction.dag	62	116145	bfb8e610fca3f217
 src/v3/std/integer_diagnostic_order.dag	6	8124	5d7b31594a5b3d5c
@@ -60,6 +60,7 @@ src/v3/std/rust_method_template_contracts.dag	9	109835	378c75ae8055bf97
 src/v3/std/services.dag	8	5791	baee59c59a65bbc2
 src/v3/std/substrate.dag	66	144888	1c219846ceee610d
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
+src/v3/std/t_ci_workflow_as_data_demo.dag	27	181014	161732a2a68f8a4d
 src/v3/std/termination.dag	26	47001	93f2a888194f9e4f
 src/v3/std/timing_lens.dag	29	150036	da5486c85292dc0e
 src/v3/std/tokenize.dag	8	38837	d12814269ec09247

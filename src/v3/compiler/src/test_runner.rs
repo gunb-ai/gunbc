@@ -44,7 +44,24 @@ const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
 /// `canonical_lens_name_dispatch_arms_pinned` does not treat this as a new string-literal name
 /// dispatch arm on the canonical lens bridge (see disposition:
 /// `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`).
+///
+/// **Deferral receipt:** structural proxy dissolves when ordinary lens output consumes DB-20
+/// workflow parallelism data (`ROADMAP.md` § Active deferrals → `DB-20`; `docs/db-history/db-20.md`).
 const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_emit_witness";
+
+/// R3 gate #44 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
+///
+/// Compared as `Some(R3_SEQUENTIAL_EMIT_WITNESS_LENS_NAME)` — **not** `Some("…")` inline — so
+/// `canonical_lens_name_dispatch_arms_pinned` does not treat this as a new string-literal name
+/// dispatch arm on the canonical lens bridge.
+const R3_SEQUENTIAL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_sequential_emit_witness";
+
+/// R3 gate #47 (`LensOutputEquals` witness in `r3_free_consequences_second_batch.dag`).
+///
+/// Compared by declaration-name matching like `R3_PARALLEL_EMIT_WITNESS_LENS_NAME`.
+/// **Deferral receipt:** `ROADMAP.md` § Active deferrals → `DB-20`; see repository `docs/db-history/db-20.md`.
+const R3_AUTO_LOOP_SEQUENTIAL_EMIT_WITNESS_LENS_NAME: &str =
+    "r3_auto_loop_parallelism_sequential_emit_witness";
 
 /// R3 gate #45 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
 ///
@@ -53,6 +70,15 @@ const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_e
 /// dispatch arm on the canonical lens bridge.
 const R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME: &str =
     "r3_auto_parallelism_branch_arms_serialize_witness";
+
+/// R3 gate #48 (`LensOutputEquals` witness in `r3_free_consequences_second_batch.dag`).
+///
+/// Compared as `Some(R3_LOOP_DEPENDENCE_SEQUENTIAL_EMIT_WITNESS_LENS_NAME)` — **not** `Some("…")`
+/// inline — so `canonical_lens_name_dispatch_arms_pinned` does not treat this as a new
+/// string-literal name dispatch arm on the canonical lens bridge (see disposition:
+/// `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`).
+const R3_LOOP_DEPENDENCE_SEQUENTIAL_EMIT_WITNESS_LENS_NAME: &str =
+    "r3_auto_loop_parallelism_dependence_sequential_emit_witness";
 
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
@@ -1981,7 +2007,7 @@ impl ProgramInputRole {
         }
     }
 
-    fn is_program_input(&self) -> bool {
+    fn reflects_compiled_claim_program(&self) -> bool {
         matches!(self, Self::ProgramInput)
     }
 }
@@ -2349,7 +2375,8 @@ impl<'a> TestRunner<'a> {
 
         // R3 gate #43 (`auto_parallelism_independent_binds_emit_parallel`): independent top-level
         // binds must emit a parallel Rust schedule (`std::thread::scope`). Structural witness via
-        // program text — dissolution when ordinary DB-20 parallelism lens output reaches `.dag`.
+        // program text — dissolution when ordinary DB-20 parallelism lens output reaches `.dag`
+        // (ROADMAP.md § Active deferrals → DB-20; docs/db-history/db-20.md).
         if lens_decl.name.as_deref() == Some(R3_PARALLEL_EMIT_WITNESS_LENS_NAME) {
             let expected_int = match expected_decl.value_body.as_ref() {
                 Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
@@ -2382,6 +2409,94 @@ impl<'a> TestRunner<'a> {
             } else {
                 ClaimResult::Fail(format!(
                     "LensOutputEquals(r3_auto_parallelism_parallel_emit_witness): expected `{expected_int}` (1 = parallel schedule), computed `{computed_int}` for `{}`",
+                    claim.file_name
+                ))
+            };
+        }
+
+        // R3 gate #47 (`auto_loop_parallelism_unproven_falls_back_sequential`): without
+        // `Lens<Iteration-Independence>` opt-in, lowering must not apply heuristic parallel loop
+        // scheduling. Structural proxy until DB-20 carries loop scheduling in the ordinary lens
+        // surface (ROADMAP.md § Active deferrals → DB-20; docs/db-history/db-20.md;
+        // docs/design-db20-lane2-stage2e-parallelism-lens.md): emitted Rust must not use the same
+        // `std::thread::scope` batch path as pairwise-independent top-level binds.
+        // TODO(DB-20): replace whole-program `thread::scope` substring checks with a marker scoped to
+        // the emitted loop/bind scheduling site once the producer lands.
+        if lens_decl.name.as_deref() == Some(R3_AUTO_LOOP_SEQUENTIAL_EMIT_WITNESS_LENS_NAME) {
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(r3_auto_loop_parallelism_sequential_emit_witness): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_loop_parallelism_sequential_emit_witness): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
+                    ));
+                }
+            };
+            let emitted = match crate::emit_rust::emit_rust(&program_dag) {
+                Ok(s) => s,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_loop_parallelism_sequential_emit_witness): emit_rust failed for `{}`: {err:?}",
+                        claim.file_name
+                    ));
+                }
+            };
+            let parallel_scope_batch = emitted.contains("thread::scope");
+            let computed_int = i64::from(!parallel_scope_batch);
+            return if computed_int == expected_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals(r3_auto_loop_parallelism_sequential_emit_witness): expected `{expected_int}` (1 = no `thread::scope` / sequential fallback), computed `{computed_int}` for `{}`",
+                    claim.file_name
+                ))
+            };
+        }
+
+        // R3 gate #48 (`auto_loop_parallelism_dependence_emits_sequential`): loop-carried
+        // dependence must stay on sequential Rust emission (no `std::thread::scope`); structural
+        // witness via `emit::rust_target::r3_loop_dependence_sequential_emit_witness`.
+        if lens_decl.name.as_deref() == Some(R3_LOOP_DEPENDENCE_SEQUENTIAL_EMIT_WITNESS_LENS_NAME) {
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(r3_auto_loop_parallelism_dependence_sequential_emit_witness): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_loop_parallelism_dependence_sequential_emit_witness): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
+                    ));
+                }
+            };
+            let emitted = match crate::emit_rust::emit_rust(&program_dag) {
+                Ok(s) => s,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_loop_parallelism_dependence_sequential_emit_witness): emit_rust failed for `{}`: {err:?}",
+                        claim.file_name
+                    ));
+                }
+            };
+            let witness_ok = crate::emit::rust_target::r3_loop_dependence_sequential_emit_witness(
+                &program_dag,
+                &emitted,
+            );
+            let computed_int = i64::from(witness_ok);
+            return if computed_int == expected_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals(r3_auto_loop_parallelism_dependence_sequential_emit_witness): expected `{expected_int}` (1 = sequential emission + loop-carried dependence), computed `{computed_int}` for `{}`",
                     claim.file_name
                 ))
             };
@@ -2435,6 +2550,47 @@ impl<'a> TestRunner<'a> {
                 ),
             };
         }
+
+        // R3 gate #44 (`auto_parallelism_dependent_binds_emit_sequential`): dependent top-level
+        // binds must **not** emit the parallel `std::thread::scope` batch — sequential schedule.
+        // Same emitted-Rust witness surface as gate #43 (`emit_rust` + `thread::scope` substring).
+        if lens_decl.name.as_deref() == Some(R3_SEQUENTIAL_EMIT_WITNESS_LENS_NAME) {
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(r3_auto_parallelism_sequential_emit_witness): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_parallelism_sequential_emit_witness): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
+                    ));
+                }
+            };
+            let emitted = match crate::emit_rust::emit_rust(&program_dag) {
+                Ok(s) => s,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_parallelism_sequential_emit_witness): emit_rust failed for `{}`: {err:?}",
+                        claim.file_name
+                    ));
+                }
+            };
+            let parallel = emitted.contains("thread::scope");
+            let computed_int = i64::from(parallel);
+            return if computed_int == expected_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals(r3_auto_parallelism_sequential_emit_witness): expected `{expected_int}` (0 = sequential schedule; no `thread::scope`), computed `{computed_int}` for `{}`",
+                    claim.file_name
+                ))
+            };
+        }
+
         // R3 gate #45 (`auto_parallelism_branch_arms_serialize`): emitted Rust for the claim
         // source must lower the Bool branch to `if … else` and contain no `thread::scope`
         // scheduling — branch arms are exclusive alternatives, not parallel work. Structural
@@ -2481,7 +2637,7 @@ impl<'a> TestRunner<'a> {
 
         let reflects_claim_program = program_input
             .as_ref()
-            .is_some_and(ProgramInputRole::is_program_input);
+            .is_some_and(ProgramInputRole::reflects_compiled_claim_program);
         let input_field = if reflects_claim_program {
             // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the
             // lens, so reflected `List` / `Behavior` variant `DeclarationId`s are not mixed across
@@ -2924,6 +3080,15 @@ impl<'a> TestRunner<'a> {
         }))
     }
 
+    fn declaration_carries_role_tag(decl: &Declaration, role_id: DeclarationId) -> bool {
+        decl.inhabits == Some(role_id)
+            || decl.meta_tag == Some(role_id)
+            || matches!(
+                &decl.connective,
+                TypeConnective::Instantiation { template, .. } if *template == role_id
+            )
+    }
+
     fn decl_inhabits_named_role(
         &self,
         decl: &Declaration,
@@ -2937,12 +3102,7 @@ impl<'a> TestRunner<'a> {
                 "verification role type `{role_name}` is missing from the fixture Dag"
             ));
         };
-        Ok(decl.inhabits == Some(role_id)
-            || decl.meta_tag == Some(role_id)
-            || matches!(
-                &decl.connective,
-                TypeConnective::Instantiation { template, .. } if *template == role_id
-            ))
+        Ok(Self::declaration_carries_role_tag(decl, role_id))
     }
 
     fn decl_inhabits_role_id(decl: &Declaration, role_id: DeclarationId) -> bool {

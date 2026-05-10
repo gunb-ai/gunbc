@@ -1,12 +1,10 @@
 //! **Layer:** integration
 //!
 //! R3 T-Free-Consequences first-batch author-now/fire-later claims.
-//! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust
-//! schedule, and gate `#45` asserts a Bool branch lowers to `if … else` with no
-//! `thread::scope` scheduling on the arms (both `LensOutputEquals` + runner
-//! witnesses). Gate `#44` stays fail-closed on the scalar parallelism
-//! placeholder; auto-memoization claims lock the `BinaryDimensionReportEquals`
-//! shape.
+//! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust schedule;
+//! gate `#44` asserts dependent binds omit the parallel `thread::scope` emit path (sequential);
+//! gate `#45` asserts a Bool branch lowers to `if … else` with no `thread::scope` scheduling on
+//! the arms. Auto-memoization claims lock the `BinaryDimensionReportEquals` shape.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -52,43 +50,36 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
     let results = TestRunner::new(&dag).run_suite(SUITE_NAME);
     assert_eq!(results.len(), EXPECTED_CLAIMS.len());
 
-    for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
+    for (result, expected_name) in results.iter().zip(EXPECTED_CLAIMS) {
         assert_eq!(result.claim_name, expected_name);
-        if idx == 0 {
-            assert!(
-                matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to Pass (parallel Rust emission witness), got {:?}",
-                result.result
-            );
-        } else if idx == 2 {
-            assert!(
-                matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to Pass (Bool branch lowers to `if … else` with no `thread::scope`), got {:?}",
-                result.result
-            );
-        } else if idx < 3 {
-            assert!(
-                matches!(
-                    &result.result,
-                    ClaimResult::Fail(reason)
-                        if reason.contains("expected 1")
-                            && reason.contains("computed 0")
-                            && reason.contains("auto_parallelism_pending_lens")
-                ),
-                "expected {expected_name} to fail closed on the pending ordinary parallelism lens, got {:?}",
-                result.result
-            );
-        } else {
-            assert!(
-                matches!(
-                    &result.result,
-                    ClaimResult::NotYetImplemented(reason)
-                        if reason.contains("BinaryDimensionReportEquals")
-                            && reason.contains("structural shape is valid")
-                ),
-                "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
-                result.result
-            );
+        match expected_name {
+            "auto_parallelism_independent_binds_emit_parallel"
+            | "auto_parallelism_dependent_binds_emit_sequential" => {
+                assert!(
+                    matches!(&result.result, ClaimResult::Pass),
+                    "expected {expected_name} (R3 gates #43/#44) to Pass, got {:?}",
+                    result.result
+                );
+            }
+            "auto_parallelism_branch_arms_serialize" => {
+                assert!(
+                    matches!(&result.result, ClaimResult::Pass),
+                    "expected {expected_name} (R3 gate #45) to Pass, got {:?}",
+                    result.result
+                );
+            }
+            _ => {
+                assert!(
+                    matches!(
+                        &result.result,
+                        ClaimResult::NotYetImplemented(reason)
+                            if reason.contains("BinaryDimensionReportEquals")
+                                && reason.contains("structural shape is valid")
+                    ),
+                    "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
+                    result.result
+                );
+            }
         }
     }
 }

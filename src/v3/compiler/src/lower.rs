@@ -568,6 +568,11 @@ fn pending_refined_function_refs(
 /// **value being refined**; it is not a second name for the type. The single
 /// `Var` in scope is bound to a port of shape `base_decl_id` (the base type
 /// for that value).
+///
+/// When `registry_synthesized_body` is true, the predicate `Bind` is tagged
+/// `<registry-refinement:{bind_name}>` so downstream literal discharge can
+/// distinguish registry ladder bodies from user-written refinements (same
+/// fragment shapes must not imply discharge equivalence).
 fn build_refinement_predicate_declaration(
     base_decl_id: DeclarationId,
     predicate: &SurfaceExpr,
@@ -575,6 +580,7 @@ fn build_refinement_predicate_declaration(
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
     subject_span: SourceSpan,
+    registry_synthesized_body: bool,
 ) -> DeclarationId {
     let pred_span = expr_span(predicate);
     let pred_param_port = dag.alloc_port(None);
@@ -600,9 +606,14 @@ fn build_refinement_predicate_declaration(
     );
 
     let bind_id = dag.alloc_node_id();
+    let bind_tag = if registry_synthesized_body {
+        format!("<registry-refinement:{bind_name}>")
+    } else {
+        format!("<refinement:{bind_name}>")
+    };
     dag.push_node(Behavior::Bind(BindNode {
         id: bind_id,
-        name: format!("<refinement:{bind_name}>"),
+        name: bind_tag,
         value: pred_value_port,
         params: vec![pred_param_port],
         span: pred_span.clone(),
@@ -754,6 +765,15 @@ const KNOWN_PREDICATES: &[PredicateSpec] = &[
     PredicateSpec {
         name: "gt_zero",
         allowed_carriers: &["Nat", "Int"],
+        arg_shape: PredicateArgShape::Bare,
+    },
+    // Unicode scalar value over `Int`: U+0000..U+D7FF ∪ U+E000..U+10FFFF
+    // (excludes surrogate pair code units U+D800..U+DFFF). Single-interval
+    // `range(max: 0x10FFFF)` is intentionally **not** used — it admits
+    // surrogates and contradicts `String = FreeMonoid<Char>` modeling.
+    PredicateSpec {
+        name: "unicode_scalar",
+        allowed_carriers: &["Int"],
         arg_shape: PredicateArgShape::Bare,
     },
 ];
@@ -985,6 +1005,20 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
 /// - **`gt_zero`**: subject `> 0`. Equivalent for both `Nat` and `Int`
 ///   carriers (Nat's structural lower bound is 0; gt_zero is "above
 ///   structural bound").
+/// - **`unicode_scalar`**: `(0 <= subject <= 0xD7FF) || (0xE000 <= subject <= 0x10FFFF)`.
+/// - **`brand`**: lowers to reflexive `subject == subject` ∧ reflexive string equality on
+///   the tag literal (`label == label`). That fragment is **always true** when evaluated
+///   statically, including at [`scalar_literal_must_reject_for_refinement`] — it carries the
+///   registry predicate as a **real lowered body** (Path (a) vs placeholder) for structural
+///   discharge / inference, but it contributes **no extra literal-side narrowing** on Int/Nat
+///   carriers by itself. Nominal disjointness between branded aliases is enforced where types
+///   are compared by declaration identity (call-site discharge, coercions), not by rejecting
+///   raw numeric literals. When `brand` is **conjoined** with substantive predicates (`range`,
+///   `unicode_scalar`, …), those conjuncts still constrain literals at the discharge boundary.
+///   **Dissolution / tech debt:** if we ever need brand-tag evidence at the literal boundary,
+///   introduce a non-vacuous lowered fact (or substrate provenance) rather than pretending
+///   reflexive Eq does that work — aligns with INVARIANTS facts-flow-forward: the Bool fragment
+///   here must not be interpreted as carrying nominal disjointness evidence it does not encode.
 /// - **`range`**: subject `>= min` / `<= max` / both, depending on which
 ///   record fields are present. Numeric primitives in scope; arg-shape
 ///   validation already guaranteed Int-literal field values when reaching
@@ -992,19 +1026,34 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
 ///
 /// Pending substrate — STOP-AND-ESCALATE candidates per S9 Slice 2.5 brief
 /// (returns `None` — falls through to placeholder for now):
-/// - `non_empty` / `brand`: synthesizing real Bool bodies for these
-///   predicates triggers a *discharge cascade* — `scalar_literal_requires_refinement_discharge`
-///   treats any non-placeholder refinement as needing static discharge,
-///   and the existing infrastructure cannot yet evaluate `subject != ""`
-///   (non_empty) or `true` (brand) against scalar data literals like
-///   `name: "lower_helpers"`. Result: bootstrap regen emits 18+ spurious
+/// - `non_empty`: synthesizing a real Bool body triggers a *discharge cascade*
+///   — `scalar_literal_must_reject_for_refinement` fails closed when it cannot
+///   evaluate the lowered predicate against the literal; there is no static
+///   evaluator for `subject != ""` yet on string literals (e.g. data fields
+///   typed `NonEmptyStr`). Result: bootstrap regen would emit spurious
 ///   "scalar literal does not satisfy `where` refinement" diagnostics for
-///   data declarations whose fields are typed as branded/non-empty
-///   carriers (e.g. `LensRegistryEntry.name: NonEmptyStr`). Surfacing as
-///   STOP per brief — the lowerer-side discharge mechanism is the
-///   substrate-fact-introduction needed before these synthesize.
+///   data declarations whose fields are typed as non-empty carriers (e.g.
+///   `LensRegistryEntry.name: NonEmptyStr`). Surfacing as STOP per brief —
+///   the lowerer-side discharge mechanism is the substrate-fact-introduction
+///   needed before `non_empty` synthesizes.
 /// - `pattern` / `format` / `content`: regex-primitive substrate-fact-introduction
 ///   (Q-Regex-Primitive) has not landed.
+fn brand_predicate_label(predicate: &SurfaceExpr) -> Option<String> {
+    match predicate {
+        SurfaceExpr::Call { args, .. } | SurfaceExpr::PathCall { args, .. } => {
+            let first = args.first()?;
+            match first {
+                SurfaceExpr::Literal {
+                    value: SurfaceLiteral::String(s),
+                    ..
+                } => Some(s.clone()),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 fn synthesize_predicate_body(
     spec: &PredicateSpec,
     predicate: &SurfaceExpr,
@@ -1026,20 +1075,75 @@ fn synthesize_predicate_body(
             args: vec![subject_var(), int_literal(0)],
             span,
         }),
-        // `brand` body synthesis is structurally available (`subject ==
-        // subject` reflexive Comparison(Eq) — references subject so the
-        // unused-parameter lens doesn't flag it; semantically `true` for
-        // every carrier value), but is held at placeholder for this slice
-        // because the existing `dsl/std/types.dag` declarations
-        //   `Milliseconds = Int where range(min: 0), brand("Milliseconds")`
-        //   `Seconds      = Int where range(min: 0), brand("Seconds")`
-        // would mix synthesizable `brand` with placeholder-only `range`,
-        // tripping the openai-pro REQUEST_CHANGES `Mixed`-fail-closed path
-        // (gunbc PR #1846 `79c4da09` finding). brand body synthesis
-        // re-enables when either (a) per-leaf refinement representation
-        // lands so mixed clauses preserve each fact, or (b) range body
-        // synthesis lands and the And combination is uniformly
-        // synthesizable.
+        "unicode_scalar" => {
+            const MAX_BMP_NON_SURROGATE: i64 = 0xD7FF;
+            const MIN_POST_SURROGATE: i64 = 0xE000;
+            const MAX_UNICODE_SCALAR: i64 = 0x10_FFFF;
+            let low_ok = SurfaceExpr::Operator {
+                op: OperatorKind::Logical(LogicalOp::And),
+                args: vec![
+                    SurfaceExpr::Operator {
+                        op: OperatorKind::Comparison(ComparisonOp::Ge),
+                        args: vec![subject_var(), int_literal(0)],
+                        span: span.clone(),
+                    },
+                    SurfaceExpr::Operator {
+                        op: OperatorKind::Comparison(ComparisonOp::Le),
+                        args: vec![subject_var(), int_literal(MAX_BMP_NON_SURROGATE)],
+                        span: span.clone(),
+                    },
+                ],
+                span: span.clone(),
+            };
+            let high_ok = SurfaceExpr::Operator {
+                op: OperatorKind::Logical(LogicalOp::And),
+                args: vec![
+                    SurfaceExpr::Operator {
+                        op: OperatorKind::Comparison(ComparisonOp::Ge),
+                        args: vec![subject_var(), int_literal(MIN_POST_SURROGATE)],
+                        span: span.clone(),
+                    },
+                    SurfaceExpr::Operator {
+                        op: OperatorKind::Comparison(ComparisonOp::Le),
+                        args: vec![subject_var(), int_literal(MAX_UNICODE_SCALAR)],
+                        span: span.clone(),
+                    },
+                ],
+                span: span.clone(),
+            };
+            Some(SurfaceExpr::Operator {
+                op: OperatorKind::Logical(LogicalOp::Or),
+                args: vec![low_ok, high_ok],
+                span,
+            })
+        }
+        "brand" => {
+            // Intentionally tautological Bool fragment: produces a real lowered Arrow body for
+            // registry Path (a) while keeping nominal disjointness out of this Expr-shaped proof.
+            // See module doc on `brand` in [`synthesize_predicate_body`].
+            let label = brand_predicate_label(predicate)?;
+            let brand_lit = SurfaceExpr::Literal {
+                value: SurfaceLiteral::String(label),
+                span: span.clone(),
+            };
+            let tag_check = SurfaceExpr::Operator {
+                op: OperatorKind::Comparison(ComparisonOp::Eq),
+                args: vec![brand_lit.clone(), brand_lit],
+                span: span.clone(),
+            };
+            Some(SurfaceExpr::Operator {
+                op: OperatorKind::Logical(LogicalOp::And),
+                args: vec![
+                    SurfaceExpr::Operator {
+                        op: OperatorKind::Comparison(ComparisonOp::Eq),
+                        args: vec![subject_var(), subject_var()],
+                        span: span.clone(),
+                    },
+                    tag_check,
+                ],
+                span,
+            })
+        }
         // range body synthesis enabled. Note: synthesizing `subject >= min`
         // / `subject <= max` for the existing `dsl/std/types.dag`
         // Int-where-range declarations (RetryCount, HttpStatus, Port,
@@ -1366,6 +1470,7 @@ fn lower_parameter_refinement(
         symbols,
         dag,
         param_span.clone(),
+        false,
     );
     let refined_id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
@@ -1530,11 +1635,12 @@ fn lower_parameter_refinements_phase(
 /// - **Registered + valid carrier + valid arg shape**: if
 ///   [`registered_predicate_synthesized_body`] returns `Some`, the predicate
 ///   lowers to a real `Bool` body via
-///   [`build_refinement_predicate_declaration`] (currently `gt_zero`).
+///   [`build_refinement_predicate_declaration`] (`gt_zero`, `unicode_scalar`,
+///   `range`, `brand`).
 ///   Otherwise it gets a `Conj`-shaped placeholder via
 ///   [`alloc_registered_refinement_placeholder`] (P3 facts-flow-forward —
 ///   alias still carries a named refinement; body synthesis is the named
-///   follow-on rung; currently `range` / `non_empty` / `brand`).
+///   follow-on rung; currently `non_empty` remains placeholder-only).
 /// - **Registered but malformed** (carrier-incompatible, arg-shape mismatch,
 ///   duplicate field, bare-with-empty-call): fail-closed via
 ///   `Diagnostic::ResolveError`, no refinement allocated.
@@ -1629,9 +1735,8 @@ fn lower_type_alias_refinements_phase(
                 // can be synthesized from existing substrate primitives,
                 // lower a real `Bool`-returning predicate body via
                 // `build_refinement_predicate_declaration` rather than
-                // allocating a `Conj`-shaped placeholder. Currently
-                // synthesizable: `gt_zero`. Pending substrate: the others
-                // (see `synthesize_predicate_body` doc-comment).
+                // allocating a `Conj`-shaped placeholder. Synthesizable today:
+                // `gt_zero`, `unicode_scalar`, `range`, `brand` (see `synthesize_predicate_body`).
                 match registered_predicate_synthesized_body(predicate, name, &carrier_chain) {
                     BodySynthOutcome::AllSynthesized(synthesized) => {
                         let pred_decl_id = build_refinement_predicate_declaration(
@@ -1641,6 +1746,7 @@ fn lower_type_alias_refinements_phase(
                             symbols,
                             dag,
                             span.clone(),
+                            true,
                         );
                         dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
                     }
@@ -1705,6 +1811,7 @@ fn lower_type_alias_refinements_phase(
             symbols,
             dag,
             span.clone(),
+            false,
         );
         dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
     }
@@ -1717,11 +1824,12 @@ fn lower_type_alias_refinements_phase(
 /// `lower_scalar_literal_for_type` can only check base scalar
 /// cardinality in the data pre-pass. After alias refinements land, this
 /// validation pass rejects any already-scalar-lowered data declaration
-/// whose declared type now carries a lowered predicate refinement,
-/// including scalar literals nested inside structural data bodies. A raw
-/// scalar literal is base-type evidence, not predicate evidence; callers
-/// must introduce a narrowing branch or another refinement-bearing
-/// source. Deferred placeholders are skipped because they intentionally
+/// whose declared type now carries a lowered predicate refinement that
+/// cannot be **statically discharged** for that literal (including literals
+/// nested inside structural data bodies). Synthesizable registry predicates
+/// (`gt_zero`, `unicode_scalar`, `range`, `brand`, nested `And`/`Or`) are
+/// evaluated via the same lowered `Transform` fragment as narrowing discharge;
+/// unsupported shapes fail closed. Deferred placeholders are skipped because they intentionally
 /// carry no lowered predicate to discharge until their PB-1 dissolution
 /// trigger lands.
 fn validate_scalar_data_refinements_phase(
@@ -1774,8 +1882,8 @@ fn value_body_contains_undischarged_scalar_literal(
     value_body: &crate::dag::ValueBody,
 ) -> bool {
     match value_body {
-        crate::dag::ValueBody::Scalar(_) => {
-            scalar_literal_requires_refinement_discharge(dag, expected_type)
+        crate::dag::ValueBody::Scalar(bits) => {
+            scalar_literal_must_reject_for_refinement(dag, bits, expected_type)
         }
         crate::dag::ValueBody::Structural { fields } => {
             structural_fields_contain_undischarged_scalar_literal(dag, expected_type, fields)
@@ -1823,8 +1931,8 @@ fn field_value_contains_undischarged_scalar_literal(
     value: &crate::dag::FieldValue,
 ) -> bool {
     match value {
-        crate::dag::FieldValue::Literal(_) => {
-            scalar_literal_requires_refinement_discharge(dag, expected_type)
+        crate::dag::FieldValue::Literal(bits) => {
+            scalar_literal_must_reject_for_refinement(dag, bits, expected_type)
         }
         crate::dag::FieldValue::Reference(_) => false,
         crate::dag::FieldValue::Record(fields) => {
@@ -1866,12 +1974,70 @@ fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> b
         .is_some_and(|name| name.starts_with("<registered predicate not lowered: "))
 }
 
-fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: DeclarationId) -> bool {
+/// Predicate bodies lowered from the registered-predicate synthesis ladder tag
+/// their `Bind` as `<registry-refinement:…>`. User-written alias/`where`
+/// predicates keep `<refinement:…>`. Static literal discharge runs **only** on
+/// the former so shapes like `PositiveInt > 0` cannot be accidentally proven
+/// merely because they lower to the same `Transform` operators as synthesized
+/// registry bodies (`int_literal_cardinality_test` discharge traps).
+///
+/// **Representation note:** this is intentionally encoded as a `Bind.name` prefix today — a
+/// small parallel-authority string convention (rename either prefix without updating both
+/// [`build_refinement_predicate_declaration`] and this predicate silently breaks discharge).
+/// **Dissolution trigger:** move eligibility to an explicit substrate field (e.g.
+/// `RefinementProvenance` on the predicate `Declaration` or a typed enum) once bootstrap /
+/// snapshot churn can absorb another Declaration slot — keeps the rule compiler-enforced.
+fn refinement_predicate_allows_registry_literal_static_discharge(
+    dag: &Dag,
+    pred_decl: DeclarationId,
+) -> bool {
+    let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_node_id),
+        ..
+    } = &dag.declaration(pred_decl).connective
+    else {
+        return false;
+    };
+    let Some(bind) = bind_node_id.bind_opt(dag) else {
+        return false;
+    };
+    bind.name.starts_with("<registry-refinement:")
+}
+
+/// Gate on scalar literals / structural `data` bodies when the declared type
+/// carries a **non-placeholder** refinement: reject unless we can **prove**
+/// the literal satisfies the lowered predicate body by evaluating the same
+/// `Transform(Value|Operator)` fragment produced by `synthesize_predicate_body`
+/// (`gt_zero`, `unicode_scalar`, `range`, `brand`, and nested `And`/`Or`).
+///
+/// For **`brand`-only** Int refinements, the synthesized fragment evaluates tautologically;
+/// see [`synthesize_predicate_body`] — discharge still succeeds but carries **no** nominal
+/// evidence beyond pairing with other conjuncts.
+///
+/// Proof is attempted **only** when the refinement predicate `Bind` carries the
+/// `<registry-refinement:…>` tag from [`build_refinement_predicate_declaration`]
+/// (`registry_synthesized_body: true`). User-written predicates always fail this
+/// gate and keep the historic “no narrowing / no discharge evidence” boundary.
+///
+/// Deferred placeholders intentionally return `false` — no proof obligation.
+///
+/// Unsupported shapes / evaluator overflow → `true` (fail closed).
+fn scalar_literal_must_reject_for_refinement(
+    dag: &Dag,
+    literal: &LiteralBits,
+    expected_type: DeclarationId,
+) -> bool {
     let mut current = expected_type;
     for _ in 0..32 {
         let decl = dag.declaration(current);
         if let Some(refinement) = decl.refinement {
-            return !is_deferred_refinement_placeholder(dag, refinement);
+            if is_deferred_refinement_placeholder(dag, refinement) {
+                return false;
+            }
+            if !refinement_predicate_allows_registry_literal_static_discharge(dag, refinement) {
+                return true;
+            }
+            return !literal_statically_satisfies_refinement_predicate(dag, literal, refinement);
         }
         match &decl.connective {
             TypeConnective::Instantiation { template, .. } => current = *template,
@@ -1881,6 +2047,133 @@ fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: Declar
         }
     }
     false
+}
+
+fn literal_statically_satisfies_refinement_predicate(
+    dag: &Dag,
+    literal: &LiteralBits,
+    pred_decl: DeclarationId,
+) -> bool {
+    let LiteralBits::Int(s) = literal else {
+        return false;
+    };
+    let Ok(value) = BigInt::from_str(s.as_str()) else {
+        return false;
+    };
+    let Some((param_port, body_port)) = outer_predicate_slots(dag, pred_decl) else {
+        return false;
+    };
+    eval_int_refinement_expr_port(dag, body_port, param_port, &value, 0).unwrap_or(false)
+}
+
+fn eval_int_refinement_expr_port(
+    dag: &Dag,
+    port: PortId,
+    param_port: PortId,
+    value: &BigInt,
+    depth: usize,
+) -> Option<bool> {
+    if depth >= 64 {
+        return None;
+    }
+    let nid = dag.port(port).produced_by?;
+    let Behavior::Transform(t) = dag.node(nid) else {
+        return None;
+    };
+    match &t.target {
+        TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)) => {
+            let l = eval_int_refinement_expr_port(dag, t.inputs[0], param_port, value, depth + 1)?;
+            let r = eval_int_refinement_expr_port(dag, t.inputs[1], param_port, value, depth + 1)?;
+            Some(l && r)
+        }
+        TransformTarget::Operator(OperatorKind::Logical(LogicalOp::Or)) => {
+            let l = eval_int_refinement_expr_port(dag, t.inputs[0], param_port, value, depth + 1)?;
+            let r = eval_int_refinement_expr_port(dag, t.inputs[1], param_port, value, depth + 1)?;
+            Some(l || r)
+        }
+        TransformTarget::Operator(OperatorKind::Comparison(op)) => {
+            eval_int_comparison_port(dag, *op, t.inputs[0], t.inputs[1], param_port, value)
+        }
+        _ => None,
+    }
+}
+
+fn eval_int_comparison_port(
+    dag: &Dag,
+    op: ComparisonOp,
+    lhs: PortId,
+    rhs: PortId,
+    param_port: PortId,
+    value: &BigInt,
+) -> Option<bool> {
+    match op {
+        ComparisonOp::Eq => eval_eq_comparison_ports(dag, lhs, rhs, param_port, value),
+        ComparisonOp::Ge | ComparisonOp::Le | ComparisonOp::Gt => {
+            let lhs_v = int_operand_for_static_refinement(dag, lhs, param_port, value)?;
+            let rhs_v = int_operand_for_static_refinement(dag, rhs, param_port, value)?;
+            let ok = match op {
+                ComparisonOp::Ge => lhs_v >= rhs_v,
+                ComparisonOp::Le => lhs_v <= rhs_v,
+                ComparisonOp::Gt => lhs_v > rhs_v,
+                _ => return None,
+            };
+            Some(ok)
+        }
+        ComparisonOp::Ne | ComparisonOp::Lt => None,
+    }
+}
+
+fn int_operand_for_static_refinement(
+    dag: &Dag,
+    port: PortId,
+    param_port: PortId,
+    value: &BigInt,
+) -> Option<BigInt> {
+    if port == param_port {
+        return Some(value.clone());
+    }
+    let nid = dag.port(port).produced_by?;
+    let Behavior::Value(v) = dag.node(nid) else {
+        return None;
+    };
+    match &v.data {
+        LiteralBits::Int(s) => BigInt::from_str(s.as_str()).ok(),
+        _ => None,
+    }
+}
+
+fn string_literal_value_port(dag: &Dag, port: PortId) -> Option<&str> {
+    let nid = dag.port(port).produced_by?;
+    let Behavior::Value(v) = dag.node(nid) else {
+        return None;
+    };
+    match &v.data {
+        LiteralBits::String(s) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+fn eval_eq_comparison_ports(
+    dag: &Dag,
+    lhs: PortId,
+    rhs: PortId,
+    param_port: PortId,
+    value: &BigInt,
+) -> Option<bool> {
+    if lhs == param_port && rhs == param_port {
+        return Some(true);
+    }
+    let ls = string_literal_value_port(dag, lhs);
+    let rs = string_literal_value_port(dag, rhs);
+    if ls.is_some() || rs.is_some() {
+        return Some(ls.is_some() && rs == ls);
+    }
+    let lv = int_operand_for_static_refinement(dag, lhs, param_port, value);
+    let rv = int_operand_for_static_refinement(dag, rhs, param_port, value);
+    match (lv, rv) {
+        (Some(a), Some(b)) => Some(a == b),
+        _ => None,
+    }
 }
 
 /// DB-11 (3a.3) fragment gate. Walks a `where`-predicate
@@ -5239,7 +5532,7 @@ fn lower_scalar_literal_for_type(
     };
     if type_ok {
         let span = expr_span(expr);
-        if scalar_literal_requires_refinement_discharge(dag, expected_type) {
+        if scalar_literal_must_reject_for_refinement(dag, &literal_bits, expected_type) {
             return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                 name: "scalar literal does not satisfy the expected `where` refinement — no narrowing branch in scope".to_string(),
                 span,
