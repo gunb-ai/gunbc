@@ -273,6 +273,9 @@ fn try_apply_lens_via_evaluator_literals_only(
     if !inputs.iter().all(|a| matches!(a, FieldValue::Literal(_))) {
         return None;
     }
+    // WIP: malformed-graph `ProducerLookup` rows fall through to legacy `EvalCtx` so literals-only
+    // experiments stay non-breaking. When this path becomes authoritative (post §7.1 / full bridge),
+    // switch MissingPort/MissingNode/BindCycle to fail-closed diagnostics instead of silent fallback.
     let producer = match lens_program.resolve_producer_lookup(&root_bind.value) {
         ProducerLookup::Found(b) => b,
         ProducerLookup::NoProducer | ProducerLookup::MissingPort { .. } => return None,
@@ -360,6 +363,8 @@ pub fn apply_lens_declaration(
             got: inputs.len(),
         });
     }
+    // Reflection (`program_under_test: Some`) supplies rich `FieldValue` shapes the literals-only
+    // evaluator bridge cannot encode yet — keep `EvalCtx` there until the retirement slice widens.
     if program_under_test.is_none() {
         if let Some(out) =
             try_apply_lens_via_evaluator_literals_only(lens_program, root_bind, inputs)
