@@ -11,9 +11,11 @@
 //! covered-cell set via [`crate::coverage::language_spec_emission_cells_covered`],
 //! then partitions [`crate::cells::Cell::all`] with `covered.contains(&cell)`.
 
+use std::collections::HashSet;
+
 use v3_compiler::dag::Dag;
 
-use crate::cells::Cell;
+use crate::cells::{Cell, ShapeATarget};
 use crate::coverage::{language_spec_emission_cells_covered, language_spec_targets};
 use crate::diagnostic::EmissionDiagnostic;
 
@@ -41,15 +43,7 @@ impl CrossProductReport {
 /// **Pure function** — no mutation, no side effects, no panics.
 pub fn walk_cross_product(dag: &Dag) -> CrossProductReport {
     let covered = language_spec_emission_cells_covered(dag);
-    let targets = language_spec_targets(dag).unwrap_or_else(|| {
-        let mut targets = Vec::new();
-        for cell in &covered {
-            if !targets.contains(&cell.target) {
-                targets.push(cell.target);
-            }
-        }
-        targets
-    });
+    let targets = language_spec_targets(dag).unwrap_or_else(|| fallback_targets(dag, &covered));
     let mut present = Vec::new();
     let mut missing = Vec::new();
     for cell in Cell::all(&targets) {
@@ -60,4 +54,45 @@ pub fn walk_cross_product(dag: &Dag) -> CrossProductReport {
         }
     }
     CrossProductReport { present, missing }
+}
+
+fn fallback_targets(dag: &Dag, covered: &HashSet<Cell>) -> Vec<ShapeATarget> {
+    let mut targets = [
+        dag.rust_language_spec(),
+        dag.python_language_spec(),
+        dag.go_language_spec(),
+    ]
+    .into_iter()
+    .flatten()
+    .map(ShapeATarget::new)
+    .collect::<Vec<_>>();
+
+    for cell in covered {
+        if !targets.contains(&cell.target) {
+            targets.push(cell.target);
+        }
+    }
+
+    targets
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use v3_compiler::generated_full_bootstrap_dag;
+
+    #[test]
+    fn fallback_targets_keep_bootstrap_axis_when_coverage_is_empty() {
+        let dag = generated_full_bootstrap_dag();
+        let targets = fallback_targets(&dag, &HashSet::new());
+
+        assert_eq!(
+            targets,
+            vec![
+                ShapeATarget::new(dag.rust_language_spec().expect("rust language")),
+                ShapeATarget::new(dag.python_language_spec().expect("python language")),
+                ShapeATarget::new(dag.go_language_spec().expect("go language")),
+            ]
+        );
+    }
 }
