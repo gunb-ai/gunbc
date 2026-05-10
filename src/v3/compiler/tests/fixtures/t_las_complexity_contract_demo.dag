@@ -19,5 +19,5 @@ data witness_log_cap: EnforcedApplication<ComplexitySummary, AsymptoticClass> = 
   section: DeclarationScope { declaration: linear_countdown_score }
   budget: ClassConstant
   diagnostic_severity: Error
-  span: { file: "t_las_complexity_contract_demo.dag", start: 805, end: 998 }
+  span: { file: "t_las_complexity_contract_demo.dag", start: 805, end: 1130 }
 }
