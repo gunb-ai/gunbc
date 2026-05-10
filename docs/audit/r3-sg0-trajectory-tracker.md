@@ -86,8 +86,8 @@ echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test fragments=$fra
 ## §6. Threshold alarms
 
 Configure PM standing duty / dashboard:
-- **Alarm 1**: 7-day net delta is `≥ +10` → trajectory-divergence flag (current state: +21 over last 7 days; alarm tripped)
-- **Alarm 2**: 14-day net delta is `≥ 0` → bulk-dissolution-events-not-firing flag (current state: +30 over 9 days; alarm tripped on extrapolation)
+- **Alarm 1**: 7-day net delta is `≥ +10` → trajectory-divergence flag (current state: +23 over 2026-05-07 → 2026-05-14; alarm tripped)
+- **Alarm 2**: 14-day net delta is `≥ 0` → bulk-dissolution-events-not-firing flag (current state: +46 over 2026-04-30 → 2026-05-14; alarm tripped)
 - **Alarm 3**: 30-day net delta is `< -50` → progress-on-track flag (current state: not applicable; insufficient data)
 
 When Alarm 1 or 2 trips, surface to Director cycle absorption + r3-program-plan §10 RED.
@@ -95,7 +95,7 @@ When Alarm 1 or 2 trips, surface to Director cycle absorption + r3-program-plan 
 ## §7. Relationship to R3 progress bars
 
 When Director authors new R3-close progress bars (per operator ask 2026-05-09), this tracker becomes the data source for the SG-0 axis. The progress-bar visualization should reflect:
-- Current count vs target (150 → 0)
+- Current count vs target (166 → 0)
 - Recent delta direction (growing / shrinking)
 - Named bulk-dissolution events queued + landed
 - Velocity-to-zero projection vs R3-close window
