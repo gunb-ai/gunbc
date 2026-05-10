@@ -9,6 +9,7 @@ use crate::dag::{
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
+use crate::emit::{emit_go_text, emit_python_text};
 use crate::evaluator::{
     evaluate_body, EvalError, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
 };
@@ -605,6 +606,189 @@ fn w1_differential_equals_lineage_int(
         _ => Err(format!(
             "W1 internal error: unknown lineage `{lineage}` (expected rust_emit_output or dag_eval_output)"
         )),
+    }
+}
+
+fn l5_parse_single_int_stdout_carve_out(target: &str, stdout: &str) -> Result<i64, String> {
+    w1_parse_single_int_stdout_carve_out(stdout)
+        .map_err(|msg| msg.replace("W1 rust_emit_output", &format!("L5 {target}_emit_output")))
+}
+
+fn l5_target_scratch(label: &str) -> Result<(std::path::PathBuf, W1RustEmitScratchGuard), String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let scratch =
+        std::env::temp_dir().join(format!("gunbc_l5_{label}_{}_{}", std::process::id(), stamp));
+    std::fs::create_dir_all(&scratch)
+        .map_err(|e| format!("L5 {label}: create scratch dir {}: {e}", scratch.display()))?;
+    let guard = W1RustEmitScratchGuard::new(scratch.clone());
+    Ok((scratch, guard))
+}
+
+fn l5_rust_emit_output_int(program_dag: &Dag, claim_file: &str) -> Result<i64, String> {
+    let rust_src = std::thread::scope(|s| -> Result<String, String> {
+        let handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn_scoped(s, || crate::emit_rust::emit_rust(program_dag))
+            .map_err(|e| format!("L5 rust_emit_output: spawn emit worker: {e}"))?;
+        let joined = handle
+            .join()
+            .map_err(|_| "L5 rust_emit_output: emit worker panicked".to_string())?;
+        joined.map_err(|e| format!("L5 rust_emit_output: emit_rust failed: {e:?}"))
+    })?;
+    let (scratch, _scratch_guard) = l5_target_scratch("rust_emit_output")?;
+    let src_path = scratch.join("main.rs");
+    let bin_path = scratch.join("l5_emit_out");
+    let mut file = std::fs::File::create(&src_path)
+        .map_err(|e| format!("L5 rust_emit_output: create {}: {e}", src_path.display()))?;
+    file.write_all(rust_src.as_bytes())
+        .map_err(|e| format!("L5 rust_emit_output: write {}: {e}", src_path.display()))?;
+
+    let mut rustc = Command::new("rustc");
+    rustc
+        .env_remove("RUSTC_BOOTSTRAP")
+        .arg("--edition=2021")
+        .arg(&src_path)
+        .arg("-o")
+        .arg(&bin_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    w1_prepare_host_command(&mut rustc);
+    let compile_out = w1_host_command_output(
+        "L5 rust_emit_output: rustc",
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+        rustc,
+    )?;
+    if !compile_out.status.success() {
+        return Err(format!(
+            "L5 rust_emit_output: rustc failed for claim file `{claim_file}` (exit {:?}); stdout:\n{}\nstderr:\n{}",
+            compile_out.status.code(),
+            String::from_utf8_lossy(&compile_out.stdout).trim_end(),
+            String::from_utf8_lossy(&compile_out.stderr).trim_end()
+        ));
+    }
+    let mut run_cmd = Command::new(&bin_path);
+    run_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    w1_prepare_host_command(&mut run_cmd);
+    let run = w1_host_command_output(
+        "L5 rust_emit_output: emitted binary",
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+        run_cmd,
+    )?;
+    if !run.status.success() {
+        return Err(format!(
+            "L5 rust_emit_output: emitted Rust binary exited with {:?}; stdout:\n{}\nstderr:\n{}",
+            run.status.code(),
+            String::from_utf8_lossy(&run.stdout).trim_end(),
+            String::from_utf8_lossy(&run.stderr).trim_end()
+        ));
+    }
+    l5_parse_single_int_stdout_carve_out("rust", &String::from_utf8_lossy(&run.stdout))
+}
+
+fn l5_python_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
+    let python_src = emit_python_text(program_dag)
+        .map_err(|e| format!("L5 python_emit_output: emit_python failed: {e:?}"))?;
+    let (scratch, _scratch_guard) = l5_target_scratch("python_emit_output")?;
+    let src_path = scratch.join("main.py");
+    let mut file = std::fs::File::create(&src_path)
+        .map_err(|e| format!("L5 python_emit_output: create {}: {e}", src_path.display()))?;
+    file.write_all(python_src.as_bytes())
+        .map_err(|e| format!("L5 python_emit_output: write {}: {e}", src_path.display()))?;
+    let mut run_cmd = Command::new("python3");
+    run_cmd
+        .arg(&src_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    w1_prepare_host_command(&mut run_cmd);
+    let run = w1_host_command_output(
+        "L5 python_emit_output: python3",
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+        run_cmd,
+    )?;
+    if !run.status.success() {
+        return Err(format!(
+            "L5 python_emit_output: python3 exited with {:?}; stdout:\n{}\nstderr:\n{}",
+            run.status.code(),
+            String::from_utf8_lossy(&run.stdout).trim_end(),
+            String::from_utf8_lossy(&run.stderr).trim_end()
+        ));
+    }
+    l5_parse_single_int_stdout_carve_out("python", &String::from_utf8_lossy(&run.stdout))
+}
+
+fn l5_go_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
+    let go_src = emit_go_text(program_dag)
+        .map_err(|e| format!("L5 go_emit_output: emit_go failed: {e:?}"))?;
+    let (scratch, _scratch_guard) = l5_target_scratch("go_emit_output")?;
+    let src_path = scratch.join("main.go");
+    let mut file = std::fs::File::create(&src_path)
+        .map_err(|e| format!("L5 go_emit_output: create {}: {e}", src_path.display()))?;
+    file.write_all(go_src.as_bytes())
+        .map_err(|e| format!("L5 go_emit_output: write {}: {e}", src_path.display()))?;
+    let mut run_cmd = Command::new("go");
+    run_cmd
+        .arg("run")
+        .arg(&src_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    w1_prepare_host_command(&mut run_cmd);
+    let run = w1_host_command_output(
+        "L5 go_emit_output: go run",
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+        run_cmd,
+    )?;
+    if !run.status.success() {
+        return Err(format!(
+            "L5 go_emit_output: go run exited with {:?}; stdout:\n{}\nstderr:\n{}",
+            run.status.code(),
+            String::from_utf8_lossy(&run.stdout).trim_end(),
+            String::from_utf8_lossy(&run.stderr).trim_end()
+        ));
+    }
+    l5_parse_single_int_stdout_carve_out("go", &String::from_utf8_lossy(&run.stdout))
+}
+
+fn l5_cross_target_outputs_int(claim: &TestClaimValue) -> ClaimResult {
+    let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => {
+            return ClaimResult::Fail(format!(
+                "ForAllTargets(L5): claim `source` / `{}` compiled with diagnostics: {:?}",
+                claim.file_name,
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            ));
+        }
+        Err(err) => {
+            return ClaimResult::Fail(format!(
+                "ForAllTargets(L5): claim `source` / `{}` did not compile: {err:?}",
+                claim.file_name
+            ));
+        }
+    };
+
+    let rust = match l5_rust_emit_output_int(&program_dag, &claim.file_name) {
+        Ok(v) => v,
+        Err(msg) => return ClaimResult::Fail(msg),
+    };
+    let python = match l5_python_emit_output_int(&program_dag) {
+        Ok(v) => v,
+        Err(msg) => return ClaimResult::Fail(msg),
+    };
+    let go = match l5_go_emit_output_int(&program_dag) {
+        Ok(v) => v,
+        Err(msg) => return ClaimResult::Fail(msg),
+    };
+
+    if rust == python && python == go {
+        ClaimResult::Pass
+    } else {
+        ClaimResult::Fail(format!(
+            "ForAllTargets(L5): cross-target Int mismatch for `{}`: rust={rust}, python={python}, go={go}",
+            claim.file_name
+        ))
     }
 }
 
@@ -2172,6 +2356,7 @@ impl<'a> TestRunner<'a> {
                         "PerfWithinBaseline" => self.eval_perf_within_baseline(claim, &payload),
                         "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                         "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
+                        "ForAllTargets" => self.eval_for_all_targets(claim, &payload),
                         "BinaryDimensionReportEquals" => {
                             self.eval_binary_dimension_report_equals(claim, &payload)
                         }
@@ -3600,6 +3785,22 @@ impl<'a> TestRunner<'a> {
             );
         };
         evaluate_execute_command_exit_code(&command, &args, expect_exit_code)
+    }
+
+    fn eval_for_all_targets(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
+        let Some((command, args, expect_exit_code)) = parse_execute_command_fields(payload) else {
+            return ClaimResult::Fail(
+                "ForAllTargets payload should be (String, List<String>, Int) — see verification.dag"
+                    .to_string(),
+            );
+        };
+        if command != "true" || !args.is_empty() || expect_exit_code != 0 {
+            return ClaimResult::Fail(format!(
+                "ForAllTargets(L5) expects inert scaffold payload true/[]/0; got command=`{command}`, args={args:?}, expect_exit_code={expect_exit_code}. \
+                 Target execution is owned by the Rust/Python/Go emit runner path, not the raw shell triple."
+            ));
+        }
+        l5_cross_target_outputs_int(claim)
     }
 
     fn eval_cost_bounded(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {

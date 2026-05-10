@@ -11,8 +11,8 @@
 //! lens semantics match the tagged obligation** (e.g. multiplicative `Identity` uses `*`); lattice /
 //! Boolean / free-monoid obligations and lattice meet/join law tags stay **out** of the passing
 //! matrix until faithful carriers exist (`dsl/std/algebra.dag`, INVARIANTS §P1 / MODELING M9); see
-//! fixture **Receipt limits** — slice receipts ≠ ROADMAP exhaustive L7 closure. Lane 2 / L5 rows
-//! remain intentionally deferred where noted.
+//! fixture **Receipt limits** — slice receipts ≠ ROADMAP exhaustive L7 closure. Lane 2 / L5 wires
+//! the seed corpus row through `ForAllTargets` over Rust/Python/Go Int observations.
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
 use std::sync::OnceLock;
@@ -312,7 +312,7 @@ fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
 }
 
 #[test]
-fn r3_verification_l5_corpus_for_all_targets_skeleton_is_nyi() {
+fn l5_cross_target_consistency_passes_seed_corpus_for_all_targets() {
     let dag = cached_compile(L5_FIXTURE, L5_FIXTURE_PATH, &L5_DAG);
     let claim_decl = dag
         .declaration_by_name(L5_CLAIM)
@@ -328,8 +328,8 @@ fn r3_verification_l5_corpus_for_all_targets_skeleton_is_nyi() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].claim_name, L5_CLAIM);
     assert!(
-        matches!(results[0].result, ClaimResult::NotYetImplemented(_)),
-        "expected ForAllTargets default-runner deferral, got {:?}",
+        matches!(results[0].result, ClaimResult::Pass),
+        "expected ForAllTargets Rust/Python/Go Int observations to agree, got {:?}",
         results[0].result
     );
 }
