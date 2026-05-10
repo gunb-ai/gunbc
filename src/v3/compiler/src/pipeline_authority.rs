@@ -35,8 +35,7 @@ pub(crate) struct PipelineStageAuthority {
 /// lowered Dag does **not** carry an ordered list of stage names inside the
 /// compile arrow. Without that structural witness, a fail-closed cross-check
 /// against the human-readable `compile` body cannot use the substrate query
-/// surface alone. Prior attempts used either compile-time embedding of
-/// `../pipeline.dag`
+/// surface alone. Prior attempts used either `include_str!("../pipeline.dag")`
 /// (compile-time embed) or `std::fs::read_to_string` + span slicing (runtime
 /// source-text side channel); both are rejected for `bridge_include_str_side_channels_retired`
 /// in this lane. **Compile-body vs binding drift detection is therefore

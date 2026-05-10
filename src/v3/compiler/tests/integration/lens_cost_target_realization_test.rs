@@ -10,13 +10,9 @@
 //! Slice 1a.1 landing).
 //!
 //! **R3 §1.8 gate #37** (`cost_lens_reads_target_realization`, ε path per
-//! Q-Cost-Composition-Layering / PR #2181): **partial integration receipt**
-//! (`docs/r3-program-plan.md` — not full emit-time `LanguageSpec` consumer;
-//! that remains gates **#40** / **#70**). Proves (i) **TypeRealization**:
-//! `symbolic_cost_of` × `rust_int` row `cost` via `sequential`; (ii)
-//! **CallableRealization**: `rust_is_empty_callable` row `cost` readable from
-//! the same lowered structural shape (**no** extra `sequential` pin in that
-//! subtest — see program-plan gate row).
+//! Q-Cost-Composition-Layering / PR #2181): `cost_lens_composes_symbolic_cost_with_rust_type_realization_row`
+//! and `cost_lens_reads_cost_field_on_rust_callable_realization_row` pin Rust-side reading of abstract
+//! `SymbolicCost` from `symbolic_cost_of` composed with bootstrap realization-row `cost` fields.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
@@ -45,7 +41,7 @@ fn run_with_cost_target_realization_stack(f: impl FnOnce() + Send + 'static) {
         .expect("cost target realization test thread should not panic");
 }
 
-fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::PortId {
+fn find_bind_value(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
     dag.nodes()
         .iter()
         .filter_map(Behavior::as_bind)
@@ -64,12 +60,10 @@ fn realization_row_cost_int(decl: &Declaration) -> i64 {
     };
     for (key, value) in fields {
         if key == "cost" {
-            let FieldValue::Literal(LiteralBits::Int(n)) = value else {
+            let FieldValue::Literal(LiteralBits::Int(s)) = value else {
                 panic!("`cost` must be Int literal, got {value:?}");
             };
-            return literal_decimal_i64(n.as_str()).unwrap_or_else(|| {
-                panic!("`cost` Int literal must be signed decimal i64, got {n:?}");
-            });
+            return literal_decimal_i64(s).unwrap_or_else(|| panic!("cost int: {s:?}"));
         }
     }
     panic!("no `cost` field on realization row {:?}", decl.name);
@@ -159,6 +153,63 @@ fn pattern_realization_meta_resolves_against_bootstrap() {
     assert_eq!(meta.unwrap().name.as_deref(), Some("PatternRealization"));
 }
 
+/// R3 gate #37 — ε-path consumer: abstract cost × target `TypeRealization.cost`.
+#[test]
+fn cost_lens_composes_symbolic_cost_with_rust_type_realization_row() {
+    run_with_cost_target_realization_stack(|| {
+        let boot = generated_full_bootstrap_dag();
+        let tr_meta = type_realization_meta(&boot).expect("TypeRealization meta in bootstrap");
+        let rust_int = boot
+            .declaration_by_name("rust_int")
+            .expect("`rust_int` TypeRealization row from rust.dag");
+        assert_eq!(
+            rust_int.meta_tag,
+            Some(tr_meta.id),
+            "rust_int should carry TypeRealization meta_tag"
+        );
+        let target_primitive_cost = realization_row_cost_int(rust_int);
+        assert_eq!(
+            target_primitive_cost, 1,
+            "fixture: rust_int.cost is 1 in src/v3/spec/rust.dag"
+        );
+
+        let user = compile_to_dag("let lit: Int = 7", "r3_gate37_cost_lens.v3")
+            .expect("literal program compiles");
+        let lit = find_bind_value(&user, "lit");
+        let algebra_cost = match symbolic_cost_of(&user, &lit) {
+            SymbolicCostLookup::Hit(c) => c,
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `lit`"),
+        };
+        assert!(
+            matches!(algebra_cost, SymbolicCost::ConstantCost { _0: 0 }),
+            "literal bind should stay constant zero at algebra layer, got {algebra_cost:?}"
+        );
+
+        let composed = sequential(
+            algebra_cost,
+            SymbolicCost::ConstantCost {
+                _0: target_primitive_cost,
+            },
+        );
+        assert!(
+            matches!(composed, SymbolicCost::ConstantCost { _0: 1 }),
+            "sequential(Constant(0), Constant(target_cost)) should normalize to Constant(1), got {composed:?}"
+        );
+    });
+}
+
+/// Same gate #37 surface on a `CallableRealization` row (list helper realization).
+#[test]
+fn cost_lens_reads_cost_field_on_rust_callable_realization_row() {
+    let boot = bootstrap_dag();
+    let cr_meta = callable_realization_meta(&boot).expect("CallableRealization meta");
+    let row = boot
+        .declaration_by_name("rust_is_empty_callable")
+        .expect("rust_is_empty_callable row");
+    assert_eq!(row.meta_tag, Some(cr_meta.id));
+    assert_eq!(realization_row_cost_int(row), 1);
+}
+
 #[test]
 fn realization_cost_table_reads_rust_type_realization_cost() {
     let dag = bootstrap_dag();
@@ -237,51 +288,6 @@ fn realization_cost_table_filters_by_language() {
             .map(|entry| entry.declaration),
         Some(named_id(&dag, "go_int"))
     );
-}
-
-/// R3 gate #37 — ε-path consumer: abstract cost × target `TypeRealization.cost`.
-#[test]
-fn cost_lens_composes_symbolic_cost_with_rust_type_realization_row() {
-    run_with_cost_target_realization_stack(|| {
-        let boot = generated_full_bootstrap_dag();
-        let tr_meta = type_realization_meta(&boot).expect("TypeRealization meta in bootstrap");
-        let rust_int = boot
-            .declaration_by_name("rust_int")
-            .expect("`rust_int` TypeRealization row from rust.dag");
-        assert_eq!(
-            rust_int.meta_tag,
-            Some(tr_meta.id),
-            "rust_int should carry TypeRealization meta_tag"
-        );
-        let target_primitive_cost = realization_row_cost_int(rust_int);
-        assert_eq!(
-            target_primitive_cost, 1,
-            "fixture: rust_int.cost is 1 in src/v3/spec/rust.dag"
-        );
-
-        let user = compile_to_dag("let lit: Int = 7", "r3_gate37_cost_lens.v3")
-            .expect("literal program compiles");
-        let lit = find_bind_value(&user, "lit");
-        let algebra_cost = match symbolic_cost_of(&user, &lit) {
-            SymbolicCostLookup::Hit(c) => c,
-            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `lit`"),
-        };
-        assert!(
-            matches!(algebra_cost, SymbolicCost::ConstantCost { _0: 0 }),
-            "literal bind should stay constant zero at algebra layer, got {algebra_cost:?}"
-        );
-
-        let composed = sequential(
-            algebra_cost,
-            SymbolicCost::ConstantCost {
-                _0: target_primitive_cost,
-            },
-        );
-        assert!(
-            matches!(composed, SymbolicCost::ConstantCost { _0: 1 }),
-            "sequential(Constant(0), Constant(target_cost)) should normalize to Constant(1), got {composed:?}"
-        );
-    });
 }
 
 /// R3 gate #70 — representative target-program receipt.
@@ -402,19 +408,6 @@ let demo: Int = countdown(3) + 1
             "cost lens demo should preserve the observable linear bound while folding Rust realization rows, got {composed:?}"
         );
     });
-}
-
-/// Gate #37 — `CallableRealization` row: lowered `cost` field is readable (bootstrap `rust_is_empty_callable`).
-/// Does **not** assert `symbolic_cost_of` × `sequential` on this row; see program plan gate **#37** wording.
-#[test]
-fn callable_realization_row_cost_readable_on_bootstrap() {
-    let boot = bootstrap_dag();
-    let cr_meta = callable_realization_meta(&boot).expect("CallableRealization meta");
-    let row = boot
-        .declaration_by_name("rust_is_empty_callable")
-        .expect("rust_is_empty_callable row");
-    assert_eq!(row.meta_tag, Some(cr_meta.id));
-    assert_eq!(realization_row_cost_int(row), 1);
 }
 
 fn named_id(dag: &Dag, name: &str) -> DeclarationId {
