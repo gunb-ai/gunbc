@@ -335,6 +335,12 @@ type TestPredicate
 // `TestClaim.source` program.
 type ProgramInput {}
 
+// Structural runner input role for `LensOutputEquals` witnesses that read **top-level program bind
+// ordering** from the compiled claim program (R3 gate #44 schedule tag). Same structural pattern as
+// `ProgramInput` / `ProgramOutputBind`; distinct so unary `fn(Dag) -> Int` lenses on ordinary
+// `ProgramInput` stay on the `apply_lens_declaration` path (`named_function_count`, etc.).
+type BindClusterScheduleProgramInput {}
+
 // Structural output-bind selector for predicates that compare a lens result
 // against one bind in the compiled `TestClaim.source` program.
 type ProgramOutputBind {

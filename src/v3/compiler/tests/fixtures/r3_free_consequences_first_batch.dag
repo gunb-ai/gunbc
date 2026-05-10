@@ -17,16 +17,12 @@ import std.dimensions { DimensionReport }
 import std.substrate { Dag }
 import std.verification {
   BinaryDimensionReportEquals,
+  BindClusterScheduleProgramInput,
   LensOutputEquals,
   ProgramInput,
   TestClaim,
   TestSuite
 }
-
-// Fixture-local runner input role for gate #44: `LensOutputEquals` witnesses that read top-level
-// bind ordering from the claim program. Mirrors the `ProgramInput` pattern; kept local so this
-// integration fixture does not depend on a bootstrap regen for `std.verification`.
-type BindClusterScheduleProgramInput {}
 
 type AutoMemoizationEvidence {}
 
@@ -41,7 +37,7 @@ data auto_parallelism_bind_schedule_program_input: BindClusterScheduleProgramInp
 // `WorkflowParallelismReport` producer is still a follow-on ordinary-lens
 // surface. Gate #43 uses `r3_auto_parallelism_parallel_emit_witness` (Rust emit text). Gate #44
 // pairs `auto_parallelism_bind_cluster_schedule_tag` with `BindClusterScheduleProgramInput`
-// (structural runner dispatch) and expected `0` for sequential scheduling. Gate #45 uses
+// from `std.verification` (structural runner dispatch) and expected `0` for sequential scheduling. Gate #45 uses
 // `r3_auto_parallelism_branch_arms_serialize_witness` (Rust emit text).
 fn auto_parallelism_pending_lens(_d: Dag) -> Int = 0
 
