@@ -44,6 +44,12 @@ fn r3_auto_loop_parallelism_sequential_emit_witness(_d: Dag) -> Int = 0
 
 data r3_auto_loop_parallelism_sequential_emit_expected: Int = 1
 
+// R3 gate #48 witness: runner checks sequential emission for loop-carried dependence
+// (`emit::rust_target::r3_loop_dependence_sequential_emit_witness`; see `test_runner`).
+fn r3_auto_loop_parallelism_dependence_sequential_emit_witness(_d: Dag) -> Int = 0
+
+data r3_auto_loop_parallelism_dependence_sequential_emit_expected: Int = 1
+
 type constant_fold_observed_report = DimensionReport<CrossTargetOptimizationEvidence>
 type constant_fold_expected_report = DimensionReport<CrossTargetOptimizationEvidence>
 type cost_structurally_derived_observed_report = DimensionReport<CrossTargetOptimizationEvidence>
@@ -75,12 +81,12 @@ data auto_loop_parallelism_unproven_falls_back_sequential: TestClaim = {
 
 data auto_loop_parallelism_dependence_emits_sequential: TestClaim = {
   name: "auto_loop_parallelism_dependence_emits_sequential",
-  source: "// free-consequences fixture: detected loop-carried dependence emits sequential loop code.\nlet _: Int = 0\n",
+  source: "// Program authority for R3 gate #48 (`auto_loop_parallelism_dependence_emits_sequential`).\nmodule user.r3_free_consequences_auto_loop_parallelism_dependence\n\nimport std.list { List, cons, empty, fold }\n\nlet r3_fc_loop_dep_vals: List<Int> = cons(1, cons(2, cons(3, empty())))\nlet r3_fc_loop_dep_out: Int =\n  fold(r3_fc_loop_dep_vals, 0, |acc, x| acc + x)\n",
   file_name: "r3_free_consequences_auto_loop_parallelism_dependence.v3",
   predicate: LensOutputEquals(
-    auto_loop_parallelism_pending_lens,
+    r3_auto_loop_parallelism_dependence_sequential_emit_witness,
     auto_loop_parallelism_program_input,
-    auto_loop_parallelism_pending_expected
+    r3_auto_loop_parallelism_dependence_sequential_emit_expected
   ),
   requires: []
 }
