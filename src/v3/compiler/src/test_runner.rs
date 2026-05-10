@@ -2553,8 +2553,7 @@ impl<'a> TestRunner<'a> {
                 ClaimResult::Pass
             } else {
                 ClaimResult::Fail(format!(
-<<<<<<< HEAD
-                    "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): expected `{expected_int}`, computed `{computed}`"
+                    "LensOutputEquals(BindClusterScheduleProgramInput): expected `{expected_int}`, computed `{computed}`"
                 ));
             };
         }
@@ -2599,9 +2598,6 @@ impl<'a> TestRunner<'a> {
                 ClaimResult::Fail(format!(
                     "LensOutputEquals(r3_auto_parallelism_branch_arms_serialize_witness): expected `{expected_int}` (1 = serialized branch arms), computed `{computed_int}` for `{}`",
                     claim.file_name
-=======
-                    "LensOutputEquals(BindClusterScheduleProgramInput): expected `{expected_int}`, computed `{computed}`"
->>>>>>> a236dcbba (fix(v3): gate #44 dispatch without lens-name bridge (ratchet))
                 ))
             };
         }
