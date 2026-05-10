@@ -4704,7 +4704,7 @@ fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<S
     let pname = param_node_name_at(n: p, source_indices: si)
     let ref_count = filtered_arg_values |> fold(acc: 0, f: (n, av) =>
       if expr_references_var(node: av, var_name: pname, source_indices: si) { n + 1 } else { n })
-    if ref_count <= 1 { map_insert(m, pname, true) } else { m })
+    if ref_count <= 1 { set_insert(m, pname) } else { m })
   let tco_emit_info = with(emit_info, { movable: tco_movable })
   let ordered_args = filtered_arg_values |> map(av => emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: tco_emit_info, fuel: 1024))
   let param_names = filtered_params |> map(p => emit_ident(name: param_node_name_at(n: p, source_indices: si), target: Rust))
