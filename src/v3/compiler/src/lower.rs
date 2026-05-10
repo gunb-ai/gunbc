@@ -12,7 +12,6 @@
 //   Var (local)              → scope lookup
 //   Var (unresolved)         → placeholder port + ResolveError
 //   Call                     → Transform { target: TransformTarget::Callable(DeclarationId), inputs }
-//                              except resolved std.list.fold, which lowers to LoopNode
 //   Operator                 → Transform { target: TransformTarget::Operator(OperatorKind), inputs }
 //   If                       → Branch with 2 Paths
 //   Fn item                  → Bind with non-empty params + optional Loop wrapper
@@ -7951,7 +7950,7 @@ fn lower_resolved_callable_invocation(
         retained_arguments,
         span,
     );
-    if is_std_list_fold_decl(dag, target_decl) && fold_calls_lower_as_loop_node(span) {
+    if is_std_list_fold_decl(dag, target_decl) && fold_call_has_nested_fold(args) {
         if let (Some(source), Some(init), Some(step_callable)) = (
             input_ports.first().copied(),
             input_ports.get(1).copied(),
@@ -7980,8 +7979,48 @@ fn lower_resolved_callable_invocation(
     output
 }
 
-fn fold_calls_lower_as_loop_node(span: &SourceSpan) -> bool {
-    !span.file.contains("/lenses/") && !span.file.starts_with("src/v3/lenses/")
+fn fold_call_has_nested_fold(args: &[SurfaceExpr]) -> bool {
+    args.get(2).is_some_and(surface_expr_contains_fold_call)
+}
+
+fn surface_expr_contains_fold_call(expr: &SurfaceExpr) -> bool {
+    match expr {
+        SurfaceExpr::Call { target, args, .. } => {
+            target == "fold" || args.iter().any(surface_expr_contains_fold_call)
+        }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            segments.last().is_some_and(|target| target == "fold")
+                || args.iter().any(surface_expr_contains_fold_call)
+        }
+        SurfaceExpr::Operator { args, .. } => args.iter().any(surface_expr_contains_fold_call),
+        SurfaceExpr::Lambda { body, .. } => surface_expr_contains_fold_call(body),
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            surface_expr_contains_fold_call(cond)
+                || surface_expr_contains_fold_call(then_branch)
+                || surface_expr_contains_fold_call(else_branch)
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            surface_expr_contains_fold_call(scrutinee)
+                || arms
+                    .iter()
+                    .any(|arm| surface_expr_contains_fold_call(&arm.body))
+        }
+        SurfaceExpr::VariantRecord { fields, .. } | SurfaceExpr::Record { fields, .. } => fields
+            .iter()
+            .any(|field| surface_expr_contains_fold_call(&field.value)),
+        SurfaceExpr::List { elements, .. } => elements.iter().any(surface_expr_contains_fold_call),
+        SurfaceExpr::Map { entries, .. } => entries
+            .iter()
+            .any(|entry| surface_expr_contains_fold_call(&entry.value)),
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => false,
+    }
 }
 
 fn is_std_list_fold_decl(dag: &Dag, mut decl_id: DeclarationId) -> bool {
