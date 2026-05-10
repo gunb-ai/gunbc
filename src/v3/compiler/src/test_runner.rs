@@ -8,8 +8,9 @@ use crate::dag::{
     NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
+use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
-use crate::emit::{emit_go_text, emit_python_text};
+use crate::emit::{emit_go_text, emit_python_text, last_emit_go_program_top_level_value_bind_name};
 use crate::evaluator::{
     evaluate_body, EvalError, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
 };
@@ -796,25 +797,43 @@ fn l5_cross_target_outputs_int(claim: &TestClaimValue, output_bind_name: &str) -
             claim.file_name
         ));
     };
-    let last_bind = match last_emit_rust_program_top_level_value_bind_name(&program_dag) {
-        Ok(Some(name)) => name,
-        Ok(None) => {
-            return ClaimResult::Fail(
-                "ForAllTargets(L5): compiled program has no top-level value binds to observe"
-                    .to_string(),
-            );
-        }
-        Err(e) => {
+    let selectors = [
+        (
+            "rust",
+            last_emit_rust_program_top_level_value_bind_name(&program_dag)
+                .map_err(|e| format!("{e:?}")),
+        ),
+        (
+            "python",
+            last_emit_python_program_top_level_value_bind_name(&program_dag)
+                .map_err(|e| format!("{e:?}")),
+        ),
+        (
+            "go",
+            last_emit_go_program_top_level_value_bind_name(&program_dag)
+                .map_err(|e| format!("{e:?}")),
+        ),
+    ];
+    for (target, selected) in selectors {
+        let selected = match selected {
+            Ok(Some(name)) => name,
+            Ok(None) => {
+                return ClaimResult::Fail(format!(
+                    "ForAllTargets(L5): {target} emitter has no top-level value bind to observe"
+                ));
+            }
+            Err(e) => {
+                return ClaimResult::Fail(format!(
+                    "ForAllTargets(L5): cannot resolve {target} emitted print target: {e}"
+                ));
+            }
+        };
+        if selected != output_bind.name {
             return ClaimResult::Fail(format!(
-                "ForAllTargets(L5): cannot resolve emitted print target: {e:?}"
+                "ForAllTargets(L5): declared ProgramOutputBind must name the {target} emitted top-level output bind; expected `{selected}`, got `{}`",
+                output_bind.name
             ));
         }
-    };
-    if last_bind != output_bind.name {
-        return ClaimResult::Fail(format!(
-            "ForAllTargets(L5): declared ProgramOutputBind must name the emitted top-level output bind; expected `{last_bind}`, got `{}`",
-            output_bind.name
-        ));
     }
 
     let rust = match l5_rust_emit_output_int(&program_dag, &claim.file_name) {
