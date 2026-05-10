@@ -2,7 +2,7 @@
 //!
 //! T-Ground-Engine Phase-1 unblock (Path 2): `dsl/extdeps/languages/rust/
 //! primitives.dag` is loaded into the bootstrap Dag; `Dag::rust_pilot_primitives`
-//! returns a walkable type-structure declaration. The 10-element pilot
+//! returns a walkable type-structure declaration. The Rust pilot
 //! enumeration is walkable as `ValueBody::List` after R2 T-Substrate's
 //! 4th sub-lane lands the top-level list extension.
 
@@ -116,10 +116,12 @@ fn rust_pilot_primitives_value_body_is_structural_list() {
     let ValueBody::List(elements) = body else {
         panic!("rust_pilot_primitives.value_body must lower to ValueBody::List, got {body:?}");
     };
-    // R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264):
-    // 10 IntegerPrimitive (i8..i64, i128, u8..u64, u128) + 2 NonIntegerPrimitive (bool, ()).
+    // R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264)
+    // + G2 Float candidate slice:
+    // 10 IntegerPrimitive (i8..i64, i128, u8..u64, u128) + 4 NonIntegerPrimitive
+    // (f32, f64, bool, ()).
     // u128 row unblocked by Phase A `IntervalInt::ExactInterval` BigInt host repr widening.
-    assert_eq!(elements.len(), 12);
+    assert_eq!(elements.len(), 14);
     let constructors: Vec<&str> = elements
         .iter()
         .map(|element| {
