@@ -7,6 +7,9 @@ use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
     Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
 };
+use crate::evaluator::{
+    evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
+};
 use crate::diagnostics::Diagnostic;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
 use crate::generated_files::GENERATED_FILES;
@@ -2751,7 +2754,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_binary_dimension_report_equals(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [left_fv, right_fv] = payload else {
@@ -2787,12 +2790,116 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
+        if claim.claim_name == "tc2_church_rosser_executable"
+            && self.type_ref_normalizes_to_named(left_carrier, "Dag")
+        {
+            return self.eval_tc2_church_rosser_executable_claim(claim);
+        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
              production/evaluation substrate; serialized report comparison is intentionally \
              unsupported"
         ))
+    }
+
+    /// R3 gate #12 (`tc2_church_rosser_executable`): eager applicative evaluation under
+    /// `LeftFirst` vs `RightFirst` input order must agree on the top-level value (Church-Rosser /
+    /// confluence slice for the fixed representative program).
+    ///
+    /// Full `DimensionReport<Dag>` substrate projection for arbitrary claims remains NYI; this
+    /// host bridge is keyed on the canonical gate claim name and `DimensionReport<Dag>` carrier
+    /// shape only.
+    fn eval_tc2_church_rosser_executable_claim(&self, claim: &TestClaimValue) -> ClaimResult {
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "tc2_church_rosser_executable: claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "tc2_church_rosser_executable: claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+        if !program_dag.diagnostics().is_empty() {
+            return ClaimResult::Fail(format!(
+                "tc2_church_rosser_executable: expected empty diagnostics on `{}`, got {:?}",
+                claim.file_name,
+                program_dag.diagnostics().iter().collect::<Vec<_>>()
+            ));
+        }
+
+        let bind_name = match last_emit_rust_program_top_level_value_bind_name(&program_dag) {
+            Ok(Some(name)) => name,
+            Ok(None) => {
+                return ClaimResult::Fail(
+                    "tc2_church_rosser_executable: program has no top-level value bind — add a \
+                     top-level `let` / value declaration (same convention as \
+                     `last_emit_rust_program_top_level_value_bind_name`)"
+                        .to_string(),
+                );
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "tc2_church_rosser_executable: cannot resolve top-level value bind for `{}`: \
+                     {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+        let Some(bind) = find_bind(&program_dag, &bind_name, &claim.file_name) else {
+            return ClaimResult::Fail(format!(
+                "tc2_church_rosser_executable: bind `{bind_name}` not found in `{}`",
+                claim.file_name
+            ));
+        };
+        if !bind.params.is_empty() {
+            return ClaimResult::Fail(format!(
+                "tc2_church_rosser_executable: bind `{bind_name}` must be a value bind with no \
+                 parameters (got {} parameter port(s))",
+                bind.params.len()
+            ));
+        }
+
+        let eval_under = |order: InputEvaluationOrder| {
+            let frame = EvalFrame::from_bindings(Vec::<(PortId, Value)>::new())
+                .expect("empty root frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = EvalStrategy::ApplicativeOrder { input_order: order };
+            evaluate_body(&program_dag, bind.id, &mut state, strategy)
+        };
+
+        let left = match eval_under(InputEvaluationOrder::LeftFirst) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "tc2_church_rosser_executable: LeftFirst evaluation failed: {err:?}"
+                ));
+            }
+        };
+        let right = match eval_under(InputEvaluationOrder::RightFirst) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "tc2_church_rosser_executable: RightFirst evaluation failed: {err:?}"
+                ));
+            }
+        };
+
+        if left == right {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "tc2_church_rosser_executable: LeftFirst result {left:?} != RightFirst result \
+                 {right:?} (eager applicative confluence / Church-Rosser slice)"
+            ))
+        }
     }
 
     fn validate_dimension_report_ref(
