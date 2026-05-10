@@ -23,6 +23,7 @@ use v3_compiler::dag::{
     literal_decimal_i64, sequential, Behavior, Dag, Declaration, DeclarationId, FieldValue,
     LiteralBits, SymbolicCost, ValueBody,
 };
+use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::lens_cost_target_realization::{
@@ -268,6 +269,70 @@ fn cost_lens_composes_symbolic_cost_with_rust_type_realization_row() {
         assert!(
             matches!(composed, SymbolicCost::ConstantCost { _0: 1 }),
             "sequential(Constant(0), Constant(target_cost)) should normalize to Constant(1), got {composed:?}"
+        );
+    });
+}
+
+/// R3 gate #70 — representative target-program receipt.
+///
+/// This exercises the same structural composition the lane promises end-to-end:
+/// compile a source program, emit a Rust target program, read algebra-level
+/// cost from the symbolic-cost lens, read target primitive costs from the Rust
+/// `LanguageSpec` realization table, then compose the two with the
+/// `SymbolicCost` sequential algebra.
+#[test]
+fn cost_lens_demonstration_composes_representative_rust_program_cost() {
+    run_with_cost_target_realization_stack(|| {
+        let boot = generated_full_bootstrap_dag();
+        let rust_language = named_id(&boot, "rust_language");
+        let int_decl = named_id(&boot, "Int");
+        let add_op = field_ref(&boot, "rust_int_add", "op");
+        let table = RealizationCostTable::for_language(&boot, rust_language)
+            .expect("rust realization-cost table should build from LanguageSpec rows");
+
+        let user = compile_to_dag("let sum: Int = 1 + 2", "r3_gate70_cost_lens.v3")
+            .expect("representative program compiles");
+        let emitted = emit_rust(&user).expect("representative program emits to Rust");
+        assert!(
+            emitted.contains("let sum: i64 = (1 + 2);"),
+            "emitted Rust should realize Int addition through the Rust target program:\n{emitted}"
+        );
+
+        let sum = find_bind_value(&user, "sum");
+        let algebra_cost = match symbolic_cost_of(&user, &sum) {
+            SymbolicCostLookup::Hit(c) => c,
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `sum`"),
+        };
+        assert!(
+            matches!(algebra_cost, SymbolicCost::ConstantCost { _0: 1 }),
+            "Int addition bind should charge one algebra transform step, got {algebra_cost:?}"
+        );
+
+        let type_cost = table
+            .cost(&RealizationCostKey::Type(int_decl))
+            .expect("Rust Int realization cost")
+            .value();
+        let add_cost = table
+            .cost(&RealizationCostKey::Operator {
+                target: int_decl,
+                op: add_op,
+            })
+            .expect("Rust Int add realization cost")
+            .value();
+        assert_eq!(
+            (type_cost, add_cost),
+            (1, 1),
+            "fixture rows should expose Rust Int and Rust add realization costs"
+        );
+
+        let composed = [type_cost, add_cost]
+            .into_iter()
+            .fold(algebra_cost, |acc, cost| {
+                sequential(acc, SymbolicCost::ConstantCost { _0: cost })
+            });
+        assert!(
+            matches!(composed, SymbolicCost::ConstantCost { _0: 1 }),
+            "cost lens demo should fold algebra Constant(1) with Rust Int/Add constant-time realization rows, got {composed:?}"
         );
     });
 }
