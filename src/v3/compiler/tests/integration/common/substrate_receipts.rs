@@ -103,37 +103,51 @@ pub fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a BindNode {
         .unwrap_or_else(|| panic!("Bind({name}) not found"))
 }
 
-/// Receipt: `Int64` is a width refinement `Compose<Int, MachineWidth<Word64>>` (R3 gate #19),
-/// not parallel `OrderedRing<Word64>` substrate. Abstract `Int` is
-/// `AbelianGroup<GroupCompletion<Nat>>` (Slice 3); fixed-width names compose it with
-/// the machine-width axis.
-pub fn assert_bootstrap_int64_compose_int_machine_width(dag: &Dag) {
-    let int64_id = find_named(dag, "Int64");
-    let compose_id = find_named(dag, "Compose");
-    let int_id = find_named(dag, "Int");
-    let machine_width_id = find_named(dag, "MachineWidth");
-    let word64_id = find_named(dag, "Word64");
+fn peel_zero_arg_alias(dag: &Dag, mut current: DeclarationId) -> DeclarationId {
+    for _ in 0..16 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => current = *template,
+            _ => return current,
+        }
+    }
+    current
+}
 
-    let connective = &dag.declaration(int64_id).connective;
+fn assert_compose_with_machine_width(
+    dag: &Dag,
+    alias_name: &str,
+    algebra_name: &str,
+    width_name: &str,
+) {
+    let alias_id = peel_zero_arg_alias(dag, find_named(dag, alias_name));
+    let compose_id = find_named(dag, "Compose");
+    let algebra_id = find_named(dag, algebra_name);
+    let machine_width_id = find_named(dag, "MachineWidth");
+    let width_id = find_named(dag, width_name);
+
+    let connective = &dag.declaration(alias_id).connective;
     let TypeConnective::Instantiation {
         template,
         arguments,
     } = connective
     else {
-        panic!("Int64 must be a Compose instantiation, got {connective:?}");
+        panic!("{alias_name} must resolve to a Compose instantiation, got {connective:?}");
     };
     assert_eq!(*template, compose_id);
     assert_eq!(
         arguments.len(),
         2,
-        "Compose<Int, MachineWidth<…>> takes two arguments"
+        "Compose<{algebra_name}, MachineWidth<…>> takes two arguments"
     );
 
-    let mut saw_int = false;
-    let mut saw_mw_word64 = false;
+    let mut saw_algebra = false;
+    let mut saw_machine_width = false;
     for arg in arguments {
-        if arg.value == int_id {
-            saw_int = true;
+        if arg.value == algebra_id {
+            saw_algebra = true;
             continue;
         }
         if let TypeConnective::Instantiation {
@@ -143,67 +157,47 @@ pub fn assert_bootstrap_int64_compose_int_machine_width(dag: &Dag) {
         {
             if *mw_template == machine_width_id
                 && mw_args.len() == 1
-                && mw_args[0].value == word64_id
+                && mw_args[0].value == width_id
             {
-                saw_mw_word64 = true;
+                saw_machine_width = true;
             }
         }
     }
     assert!(
-        saw_int,
-        "Int64 Compose must instantiate abstract Int (construction-chain carrier)"
+        saw_algebra,
+        "{alias_name} Compose must instantiate {algebra_name}"
     );
     assert!(
-        saw_mw_word64,
-        "Int64 Compose must include MachineWidth<Word64>"
+        saw_machine_width,
+        "{alias_name} Compose must include MachineWidth<{width_name}>"
     );
 }
 
-/// Receipt: `Float64` refines opaque `Ieee754Float` with `MachineWidth<Word64>` (R3 gate #19).
-pub fn assert_bootstrap_float64_compose_ieee_machine_width(dag: &Dag) {
-    let float64_id = find_named(dag, "Float64");
-    let compose_id = find_named(dag, "Compose");
-    let ieee_id = find_named(dag, "Ieee754Float");
-    let machine_width_id = find_named(dag, "MachineWidth");
-    let word64_id = find_named(dag, "Word64");
+/// Receipt: `Int64` is a width refinement `Compose<Int, MachineWidth<Word64>>` (R3 gate #19),
+/// not parallel `OrderedRing<Word64>` substrate. Abstract `Int` is
+/// `AbelianGroup<GroupCompletion<Nat>>` (Slice 3); fixed-width names compose it with
+/// the machine-width axis.
+pub fn assert_bootstrap_int64_compose_int_machine_width(dag: &Dag) {
+    assert_compose_with_machine_width(dag, "Int64", "Int", "Word64");
+}
 
-    let connective = &dag.declaration(float64_id).connective;
-    let TypeConnective::Instantiation {
-        template,
-        arguments,
-    } = connective
-    else {
-        panic!("Float64 must be a Compose instantiation, got {connective:?}");
-    };
-    assert_eq!(*template, compose_id);
-    assert_eq!(arguments.len(), 2);
+/// Receipt: `Real64` refines abstract `Real` with `MachineWidth<Word64>` (R3 gate #67).
+pub fn assert_bootstrap_real64_compose_real_machine_width(dag: &Dag) {
+    assert_compose_with_machine_width(dag, "Real64", "Real", "Word64");
+}
 
-    let mut saw_ieee = false;
-    let mut saw_mw_word64 = false;
-    for arg in arguments {
-        if arg.value == ieee_id {
-            saw_ieee = true;
-            continue;
-        }
-        if let TypeConnective::Instantiation {
-            template: mw_template,
-            arguments: mw_args,
-        } = &dag.declaration(arg.value).connective
-        {
-            if *mw_template == machine_width_id
-                && mw_args.len() == 1
-                && mw_args[0].value == word64_id
-            {
-                saw_mw_word64 = true;
-            }
-        }
-    }
-    assert!(
-        saw_ieee,
-        "Float64 Compose must instantiate Ieee754Float axis"
+/// Receipt: compatibility `Float64` names the same fixed-width `Real64` construction.
+pub fn assert_bootstrap_float64_aliases_real64(dag: &Dag) {
+    let float64_id = peel_zero_arg_alias(dag, find_named(dag, "Float64"));
+    let real64_id = peel_zero_arg_alias(dag, find_named(dag, "Real64"));
+    assert_eq!(
+        float64_id, real64_id,
+        "Float64 should alias the canonical Real64 construction entry"
     );
-    assert!(
-        saw_mw_word64,
-        "Float64 Compose must include MachineWidth<Word64>"
-    );
+}
+
+/// Gate #67 demonstration receipt: both construction-chain endpoints are present.
+pub fn assert_numeric_construction_demonstration_gate_67(dag: &Dag) {
+    assert_compose_with_machine_width(dag, "Int32", "Int", "Word32");
+    assert_bootstrap_real64_compose_real_machine_width(dag);
 }
