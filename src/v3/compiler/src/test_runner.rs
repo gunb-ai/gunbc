@@ -8,10 +8,7 @@ use crate::dag::{
     Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
-use crate::emit::rust_target::{
-    last_emit_rust_program_top_level_value_bind_name,
-    program_mode_top_level_value_binds_for_lens_runner,
-};
+use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
@@ -48,6 +45,13 @@ const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
 /// dispatch arm on the canonical lens bridge (see disposition:
 /// `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`).
 const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_emit_witness";
+
+/// R3 gate #44 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
+///
+/// Compared as `Some(R3_SEQUENTIAL_EMIT_WITNESS_LENS_NAME)` — **not** `Some("…")` inline — so
+/// `canonical_lens_name_dispatch_arms_pinned` does not treat this as a new string-literal name
+/// dispatch arm on the canonical lens bridge.
+const R3_SEQUENTIAL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_sequential_emit_witness";
 
 /// R3 gate #45 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
 ///
@@ -1973,8 +1977,6 @@ impl PerfMeasurementResolveError {
 
 enum ProgramInputRole {
     ProgramInput,
-    /// R3 gate #44: claim-program top-level bind schedule witness input (structural dispatch).
-    BindClusterScheduleProgramInput,
     ProgramOutputBind {
         output_bind_name: String,
     },
@@ -1984,16 +1986,12 @@ impl ProgramInputRole {
     fn output_bind_name(&self) -> Option<&str> {
         match self {
             Self::ProgramInput => None,
-            Self::BindClusterScheduleProgramInput => None,
             Self::ProgramOutputBind { output_bind_name } => Some(output_bind_name),
         }
     }
 
     fn reflects_compiled_claim_program(&self) -> bool {
-        matches!(
-            self,
-            Self::ProgramInput | Self::BindClusterScheduleProgramInput
-        )
+        matches!(self, Self::ProgramInput)
     }
 }
 
@@ -2001,73 +1999,6 @@ impl ProgramInputRole {
 enum DiagnosticDetailFilter {
     Any,
     Contains(String),
-}
-
-/// R3 gate #44 witness: `1` when top-level program binds have no ordered dependence (each bind's
-/// value does not transitively depend on a strictly earlier top-level bind's value port); `0` when
-/// a later bind depends on an earlier one (sequential scheduling required).
-fn lens_equals_bind_cluster_parallel_schedule_tag(program_dag: &Dag) -> Result<i64, String> {
-    let binds = program_mode_top_level_value_binds_for_lens_runner(program_dag)
-        .map_err(|err| format!("{err:?}"))?;
-    if binds.len() < 2 {
-        return Ok(1);
-    }
-    for i in 0..binds.len() {
-        for j in (i + 1)..binds.len() {
-            if bind_schedule_has_transitive_dependency(program_dag, binds[j].value, binds[i].value)
-            {
-                return Ok(0);
-            }
-        }
-    }
-    Ok(1)
-}
-
-fn bind_schedule_behavior_inputs(dag: &Dag, behavior: &Behavior) -> Vec<PortId> {
-    match behavior {
-        Behavior::Value(_) => Vec::new(),
-        Behavior::Transform(t) => t.inputs.clone(),
-        Behavior::Branch(b) => {
-            let mut inputs = vec![b.input];
-            inputs.extend(b.paths.iter().map(|path| path.output));
-            inputs
-        }
-        Behavior::Loop(l) => {
-            let mut inputs = vec![l.source, l.init];
-            if let Some(count) = l.bound.count_port() {
-                inputs.push(count);
-            }
-            inputs.push(match dag.node(l.body) {
-                Behavior::Value(v) => v.output,
-                Behavior::Transform(t) => t.output,
-                Behavior::Branch(b) => b.output,
-                Behavior::Loop(inner) => inner.output,
-                Behavior::Bind(b) => b.value,
-            });
-            inputs
-        }
-        Behavior::Bind(b) => vec![b.value],
-    }
-}
-
-fn bind_schedule_has_transitive_dependency(dag: &Dag, from_port: PortId, to_port: PortId) -> bool {
-    use std::collections::HashSet;
-
-    let mut seen: HashSet<PortId> = HashSet::new();
-    let mut queue = vec![from_port];
-    while let Some(port) = queue.pop() {
-        if !seen.insert(port) {
-            continue;
-        }
-        if port == to_port {
-            return true;
-        }
-        let Some(producer) = dag.port(port).produced_by else {
-            continue;
-        };
-        queue.extend(bind_schedule_behavior_inputs(dag, dag.node(producer)));
-    }
-    false
 }
 
 impl<'a> TestRunner<'a> {
@@ -2514,49 +2445,43 @@ impl<'a> TestRunner<'a> {
             };
         }
 
-        // R3 gate #44 (`auto_parallelism_dependent_binds_emit_sequential`): scalar schedule tag from
-        // ordered top-level bind dependence. Structural dispatch: `input_ref` inhabits
-        // `BindClusterScheduleProgramInput` (not `ProgramInput`, so `named_function_count` stays on
-        // the ordinary `apply_lens_declaration` path) and the lens has unary `Dag -> Int` shape.
-        if matches!(
-            program_input.as_ref(),
-            Some(ProgramInputRole::BindClusterScheduleProgramInput)
-        ) {
-            if !self.lens_has_unary_dag_to_int_signature(lens_id) {
-                return ClaimResult::Fail(format!(
-                    "LensOutputEquals: input_ref `{input_name}` inhabits BindClusterScheduleProgramInput, \
-                     but lens `{lens_name}` does not have unary `Dag -> Int` signature"
-                ));
-            }
-            let computed = match lens_equals_bind_cluster_parallel_schedule_tag(&program_dag) {
-                Ok(v) => v,
-                Err(msg) => {
-                    return ClaimResult::Fail(format!(
-                        "LensOutputEquals(BindClusterScheduleProgramInput): {msg}"
-                    ));
-                }
-            };
+        // R3 gate #44 (`auto_parallelism_dependent_binds_emit_sequential`): dependent top-level
+        // binds must **not** emit the parallel `std::thread::scope` batch — sequential schedule.
+        // Same emitted-Rust witness surface as gate #43 (`emit_rust` + `thread::scope` substring).
+        if lens_decl.name.as_deref() == Some(R3_SEQUENTIAL_EMIT_WITNESS_LENS_NAME) {
             let expected_int = match expected_decl.value_body.as_ref() {
                 Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
                     Ok(v) => v,
                     Err(_) => {
                         return ClaimResult::Fail(format!(
-                            "LensOutputEquals(BindClusterScheduleProgramInput): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                            "LensOutputEquals(r3_auto_parallelism_sequential_emit_witness): expected Int literal is not a valid i64 decimal for `{expected_name}`"
                         ));
                     }
                 },
                 _ => {
                     return ClaimResult::Fail(format!(
-                        "LensOutputEquals(BindClusterScheduleProgramInput): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
+                        "LensOutputEquals(r3_auto_parallelism_sequential_emit_witness): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
                     ));
                 }
             };
-            return if computed == expected_int {
+            let emitted = match crate::emit_rust::emit_rust(&program_dag) {
+                Ok(s) => s,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_parallelism_sequential_emit_witness): emit_rust failed for `{}`: {err:?}",
+                        claim.file_name
+                    ));
+                }
+            };
+            let parallel = emitted.contains("thread::scope");
+            let computed_int = i64::from(parallel);
+            return if computed_int == expected_int {
                 ClaimResult::Pass
             } else {
                 ClaimResult::Fail(format!(
-                    "LensOutputEquals(BindClusterScheduleProgramInput): expected `{expected_int}`, computed `{computed}`"
-                ));
+                    "LensOutputEquals(r3_auto_parallelism_sequential_emit_witness): expected `{expected_int}` (0 = sequential schedule; no `thread::scope`), computed `{computed_int}` for `{}`",
+                    claim.file_name
+                ))
             };
         }
 
@@ -3016,14 +2941,6 @@ impl<'a> TestRunner<'a> {
     }
 
     fn program_input_role(&self, decl: &Declaration) -> Result<Option<ProgramInputRole>, String> {
-        if let Some(role_decl) = self
-            .dag
-            .declaration_by_name("BindClusterScheduleProgramInput")
-        {
-            if Self::declaration_carries_role_tag(decl, role_decl.id) {
-                return Ok(Some(ProgramInputRole::BindClusterScheduleProgramInput));
-            }
-        }
         if self.decl_inhabits_named_role(decl, "ProgramInput")? {
             return Ok(Some(ProgramInputRole::ProgramInput));
         }

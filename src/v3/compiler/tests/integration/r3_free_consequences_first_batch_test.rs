@@ -2,7 +2,7 @@
 //!
 //! R3 T-Free-Consequences first-batch author-now/fire-later claims.
 //! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust schedule;
-//! gate `#44` asserts dependent binds schedule sequentially via the bind-cluster witness;
+//! gate `#44` asserts dependent binds omit the parallel `thread::scope` emit path (sequential);
 //! gate `#45` asserts a Bool branch lowers to `if … else` with no `thread::scope` scheduling on
 //! the arms. Auto-memoization claims lock the `BinaryDimensionReportEquals` shape.
 

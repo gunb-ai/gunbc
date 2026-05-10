@@ -17,7 +17,6 @@ import std.dimensions { DimensionReport }
 import std.substrate { Dag }
 import std.verification {
   BinaryDimensionReportEquals,
-  BindClusterScheduleProgramInput,
   LensOutputEquals,
   ProgramInput,
   TestClaim,
@@ -28,17 +27,13 @@ type AutoMemoizationEvidence {}
 
 data auto_parallelism_program_input: ProgramInput = {}
 
-data auto_parallelism_bind_schedule_program_input: BindClusterScheduleProgramInput = {}
-
 // Ordinary-lens placeholder until `src/v3/lenses/parallelism.dag` is ported from
 // its fail-closed stub to a `.dag` producer over DB-20 workflow parallelism data.
 // Keep this scalar and intentionally mismatched: current `LensOutputEquals`
 // evaluation can execute scalar demo lenses, while DB-20's full
 // `WorkflowParallelismReport` producer is still a follow-on ordinary-lens
-// surface. Gate #43 uses `r3_auto_parallelism_parallel_emit_witness` (Rust emit text). Gate #44
-// pairs `auto_parallelism_bind_cluster_schedule_tag` with `BindClusterScheduleProgramInput`
-// from `std.verification` (structural runner dispatch) and expected `0` for sequential scheduling. Gate #45 uses
-// `r3_auto_parallelism_branch_arms_serialize_witness` (Rust emit text).
+// surface. Gates #43 / #44 compare emitted Rust via `emit_rust` (`thread::scope`
+// presence / absence). Gate #45 uses `r3_auto_parallelism_branch_arms_serialize_witness` (Rust emit text).
 fn auto_parallelism_pending_lens(_d: Dag) -> Int = 0
 
 data auto_parallelism_pending_expected: Int = 1
@@ -48,10 +43,8 @@ fn r3_auto_parallelism_parallel_emit_witness(_d: Dag) -> Int = 0
 
 data r3_auto_parallelism_parallel_emit_expected: Int = 1
 
-// R3 gate #44: ordered top-level binds with a later bind depending on an earlier bind schedule
-// sequentially. Lens stub body is unused — runner applies host witness when `input_ref` inhabits
-// `BindClusterScheduleProgramInput` and the lens has unary `Dag -> Int` shape.
-fn auto_parallelism_bind_cluster_schedule_tag(_d: Dag) -> Int = 0
+// R3 #44 witness: dependent binds must not take the parallel `thread::scope` emit path (see test_runner).
+fn r3_auto_parallelism_sequential_emit_witness(_d: Dag) -> Int = 0
 
 data auto_parallelism_dependent_binds_schedule_expected: Int = 0
 
@@ -87,8 +80,8 @@ data auto_parallelism_dependent_binds_emit_sequential: TestClaim = {
   source: "// free-consequences fixture: dependent binds must remain sequential.\nlet a: Int = 1 + 2\nlet b: Int = a + 3\n",
   file_name: "r3_free_consequences_auto_parallelism_dependent_binds.v3",
   predicate: LensOutputEquals(
-    auto_parallelism_bind_cluster_schedule_tag,
-    auto_parallelism_bind_schedule_program_input,
+    r3_auto_parallelism_sequential_emit_witness,
+    auto_parallelism_program_input,
     auto_parallelism_dependent_binds_schedule_expected
   ),
   requires: []
