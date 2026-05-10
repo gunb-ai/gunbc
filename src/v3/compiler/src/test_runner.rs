@@ -2432,6 +2432,9 @@ impl<'a> TestRunner<'a> {
         // (pairwise RHS independence + no Branch/Loop in those RHS subgraphs). Fixture-local
         // `fn auto_parallelism_schedule_witness` is a M1(2.8) stub; the runner applies this Rust
         // mirror (same pattern as `cost_of` / D1 lens lowering limits).
+        //
+        // Use `matches!` (not `== Some("…")`) so `canonical_lens_name_dispatch_arms_pinned` keeps
+        // its fixed count of literal name-equality dispatch arms in this function.
         if matches!(
             lens_decl.name.as_deref(),
             Some("auto_parallelism_schedule_witness")

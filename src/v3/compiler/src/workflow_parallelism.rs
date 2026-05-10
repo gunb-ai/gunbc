@@ -228,25 +228,39 @@ fn bind_rhs_depends_on_prior_bind(d: &Dag, later: &BindNode, earlier: &BindNode)
     backward_reachable_ports_from_port(d, later.value).contains(&earlier.value)
 }
 
-/// When there are two or more top-level [`Behavior::Bind`] nodes in `nodes`
-/// order and every later bind's RHS is dataflow-independent of every earlier
-/// bind (no backward path from `bind.value` reaches a prior bind), installs
-/// [`WorkflowEffect::ParallelEffect`] on the workflow root (last bind).
+/// `SurfaceItem::Let` at module scope (`lower_item`) — empty `params`, no
+/// [`BindEmitParticipation::UserCallable`], not a `where`-refinement wrapper.
+/// Contrasts with function/lambda binds (`emit_participation: UserCallable`) and
+/// refinement Binds (non-empty `params` / `<refinement:…>` names).
+fn is_module_item_value_let_bind(b: &BindNode) -> bool {
+    b.emit_participation().is_none() && b.params.is_empty() && !b.name.starts_with("<refinement:")
+}
+
+/// When there are two or more **module-item** value [`Behavior::Bind`] nodes from
+/// [`lower_item`] (`SurfaceItem::Let`) in the compile file, and every later bind's
+/// RHS is dataflow-independent of every earlier bind, installs
+/// [`WorkflowEffect::ParallelEffect`] on the workflow root (last such bind by source
+/// order).
 ///
-/// Skips when any bind already carries `lane2_workflow` or when the pairwise
-/// check fails. Side-effect / commutativity certification is **not** performed
-/// here — pair with future `Lens<Effect-Commutativity>` before widening beyond
-/// pure-looking programs.
+/// Inner function bodies do not allocate additional `Bind` nodes for local `let` on
+/// today's lowering spine; this selector is aligned with module `let` items only
+/// (`emit_participation: None`, empty `params`) so function-value binds are not mixed
+/// into the independence walk.
 ///
-/// `user_source_file` must match [`BindNode::span`].`file` for user-authored
-/// binds (the `file` argument to [`crate::compile_to_dag`]) so bootstrap/std
-/// binds are excluded from the independence walk.
+/// Skips when any candidate bind already carries `lane2_workflow` or when the pairwise
+/// check fails. Side-effect / commutativity certification is **not** performed here —
+/// pair with future `Lens<Effect-Commutativity>` before widening beyond pure-looking
+/// programs.
+///
+/// `user_source_file` must match [`BindNode::span`].`file` for user-authored binds
+/// (the `file` argument to [`crate::compile_to_dag`]) so bootstrap/std binds are
+/// excluded.
 pub fn register_independent_bind_parallelism(dag: &mut Dag, user_source_file: &str) {
     let mut binds: Vec<&BindNode> = dag
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
-        .filter(|b| b.span.file == user_source_file)
+        .filter(|b| b.span.file == user_source_file && is_module_item_value_let_bind(b))
         .collect();
     if binds.len() < 2 {
         return;
@@ -264,11 +278,7 @@ pub fn register_independent_bind_parallelism(dag: &mut Dag, user_source_file: &s
     }
     let last_id = binds.last().expect("len >= 2").id;
     let branches: Vec<Box<WorkflowEffect>> = (0..binds.len())
-        .map(|_| {
-            Box::new(WorkflowEffect::LinearEffect {
-                ops: Vec::new(),
-            })
-        })
+        .map(|_| Box::new(WorkflowEffect::LinearEffect { ops: Vec::new() }))
         .collect();
     let Some(ns) = NonSingletonList::from_vec(branches) else {
         return;
@@ -279,14 +289,13 @@ pub fn register_independent_bind_parallelism(dag: &mut Dag, user_source_file: &s
 
 /// R3 T-Free-Consequences witness: `1` when [`register_independent_bind_parallelism`] installed
 /// [`WorkflowEffect::ParallelEffect`] on the claim-file workflow root (last user `Bind` by source
-/// order). Evaluated by `LensOutputEquals` in the test runner (M1(2.8) blocks `.dag` match bodies
-/// for this fixture module).
+/// order). Uses the same module-`let` selector as [`register_independent_bind_parallelism`].
 pub(crate) fn r3_auto_parallelism_schedule_witness(dag: &Dag, claim_file: &str) -> i64 {
     let mut binds: Vec<&BindNode> = dag
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
-        .filter(|b| b.span.file == claim_file)
+        .filter(|b| b.span.file == claim_file && is_module_item_value_let_bind(b))
         .collect();
     if binds.is_empty() {
         return 0;
@@ -315,6 +324,33 @@ mod register_parallelism_tests {
             .collect();
         binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
         assert_eq!(binds.len(), 2);
+        let last = binds.last().expect("two binds").id;
+        let wf = dag
+            .lane2_workflow_effect_at(&last)
+            .expect("parallelism registered");
+        assert!(matches!(wf, WorkflowEffect::ParallelEffect { .. }));
+    }
+
+    #[test]
+    fn interleaved_fn_item_does_not_mix_into_module_let_parallelism() {
+        let dag = compile_to_dag(
+            "let a: Int = 1\nfn f() -> Int = 1\nlet b: Int = 2\n",
+            "t.v3",
+        )
+        .expect("compile");
+        let mut binds: Vec<_> = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .filter(|b| {
+                b.span.file == "t.v3"
+                    && b.emit_participation().is_none()
+                    && b.params.is_empty()
+                    && !b.name.starts_with("<refinement:")
+            })
+            .collect();
+        binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
+        assert_eq!(binds.len(), 2, "fn root bind must not count as module let");
         let last = binds.last().expect("two binds").id;
         let wf = dag
             .lane2_workflow_effect_at(&last)
