@@ -126,10 +126,7 @@ pub fn recursive_transform_cost(
         [] => Lookup::Miss,
         [__list_head, __list_tail @ ..] => combine_iterate(
             &(Lookup::Hit(pattern_to_iter_bound(p1, p2))),
-            &(combine_sequential(
-                &(Lookup::Hit(SymbolicCost::ConstantCost { _0: 1 })),
-                &(sum_costs(p0, p3)),
-            )),
+            &(sum_costs(p0, p3)),
         ),
     }
 }
