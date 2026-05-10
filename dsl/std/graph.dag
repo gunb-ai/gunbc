@@ -12,7 +12,12 @@ import std.termination {
   TerminationProof
 }
 
-// Single-authority graph representation: proof edges are the stored fact.
+type GraphEdge {
+  caller: String
+  callee: String
+}
+
+// Single-authority graph representation: edges are the stored fact.
 // Forward and reverse adjacency maps are derived views, not fields that can
 // drift independently.
 // M4 note: String keys are a textual identity proxy. Post-M4, vertices
@@ -22,7 +27,7 @@ import std.termination {
 // are module-qualified from the typed IR (no collisions within a
 // compilation unit). Blocked on Map<K,V> supporting non-String keys.
 type CallGraph {
-  edges: List<ProofEdge>
+  edges: List<GraphEdge>
 }
 
 type CallGraphAdjacencyViews {
@@ -62,7 +67,11 @@ fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
 // Build a call graph from ProofEdge values. Self-loops are excluded
 // (they are handled separately by cycle detection callers).
 fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
-  CallGraph { edges: edges |> filter(e => e.caller != e.callee) }
+  CallGraph {
+    edges: edges
+      |> filter(e => e.caller != e.callee)
+      |> map(e => GraphEdge { caller: e.caller, callee: e.callee })
+  }
 }
 
 fn build_adjacency_views(names: List<String>, graph: CallGraph) -> CallGraphAdjacencyViews {
