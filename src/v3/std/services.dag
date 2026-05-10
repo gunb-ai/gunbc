@@ -64,8 +64,8 @@ import v3.spec.v3_l1 { DeclarationRef }
 type InputField {}
 
 // 🟢 TERMINAL at PR-α scope. Carries the structural facts
-// `std.effects::derive_op_effect(method_str, path_str)` (see `effects.dag`
-// line 707) needs to derive `OperationEffect.shape` from a callable's REST
+// `std.effects::derive_op_effect(method, path)` needs to derive
+// `OperationEffect.shape` from a callable's REST
 // realization: the HTTP verb, and the path template whose last segment
 // drives the create-vs-upsert-vs-delete branch via
 // `last_path_param(template)`. `path` reuses the upstream `PathTemplate`
