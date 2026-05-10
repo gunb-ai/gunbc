@@ -375,6 +375,31 @@ type TestClaim {
   requires: List<ResourceReference>
 }
 
+// Closed quantifier over a generated program family. This lives at the
+// claim layer, not inside `TestPredicate`, so predicates keep their
+// "property of one program" meaning.
+type Quantifier
+  = ForAll
+  | Exists
+
+type QuantifiedTestClaim {
+  name: String
+  generator: ProgramGenerator
+  quantifier: Quantifier
+  predicate: TestPredicate
+  requires: List<ResourceReference>
+}
+
+// Staged ordered suite-entry carrier for the post-#85 wrapper migration.
+// Today `TestSuite.claims` remains `List<TestClaim>` so existing enumerated
+// fixtures keep compiling while the quantifier substrate lands. Bounded
+// trigger: #2609 wraps existing suite entries as `Enumerated(...)` and flips
+// `TestSuite.claims` to `List<SuiteClaim>`, preserving reporting/dependency
+// order without parallel enumerated/quantified lists.
+type SuiteClaim
+  = Enumerated(TestClaim)
+  | Quantified(QuantifiedTestClaim)
+
 type TestSuite {
   name: String
   claims: List<TestClaim>
