@@ -35,13 +35,13 @@ import std.http_path {
 
 fn re_export_derive_op_effect(
   operation_name: String,
-  method_str: String,
-  path_str: String
+  method: HttpMethod,
+  path: PathTemplate
 ) -> DeriveOpEffectResult {
   derive_op_effect(
     operation_name: operation_name,
-    method_str: method_str,
-    path_str: path_str
+    method: method,
+    path: path
   )
 }
 
