@@ -33,10 +33,10 @@ use std::rc::Rc;
 
 pub fn re_export_derive_op_effect(
     operation_name: String,
-    method_str: String,
-    path_str: String,
+    method: HttpMethod,
+    path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
-    derive_op_effect(operation_name, &method_str, path_str)
+    derive_op_effect(operation_name, method, path)
 }
 
 pub fn re_export_check_modifier(
