@@ -584,28 +584,6 @@ let zero: Int = 0",
 }
 
 #[test]
-fn emit_rust_repeated_pure_call_cache_fails_closed_for_non_copy_result() {
-    let out = emit(
-        "type Point { x: Int }
-fn make_point(x: Int) -> Point = { x: x }
-let x: Int = 1
-let first: Point = make_point(x)
-let second: Point = make_point(x)
-let out: Int = 0",
-    );
-
-    assert_eq!(
-        out.matches("make_point(x)").count(),
-        2,
-        "non-Copy repeated call results must be re-emitted instead of moving the first bind; got: {out}"
-    );
-    assert!(
-        !out.contains("let second: Point = first;"),
-        "non-Copy repeated call reuse would move `first`; got: {out}"
-    );
-}
-
-#[test]
 fn emit_rust_module_match_on_imported_workflow_effect_sum() {
     let src = "\
 module emit_match_workflow_effect_smoke

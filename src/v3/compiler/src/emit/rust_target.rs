@@ -2888,12 +2888,6 @@ fn callable_input_disposition_for_target(
 
 pub(crate) type EmitRustMode = EmitMode;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct PureCallCacheKey {
-    target: DeclarationId,
-    inputs: Vec<PortId>,
-}
-
 fn scheduling_behavior_inputs(dag: &Dag, behavior: &Behavior) -> Vec<PortId> {
     match behavior {
         Behavior::Value(_) => Vec::new(),
@@ -2988,108 +2982,6 @@ fn program_mode_top_level_value_binds<'a>(
         .filter(|bind| !callable_body_binds.contains(&bind.id))
         .filter(|b| b.params.is_empty())
         .collect()
-}
-
-fn rust_port_is_copy_for_cache(
-    dag: &Dag,
-    indexes: &RealizationIndexes,
-    port: PortId,
-) -> Result<bool, EmitError> {
-    let ty = dag
-        .port(port)
-        .value_type()
-        .ok_or(EmitError::UntypedPort(port))?;
-    let mut visited = HashSet::new();
-    rust_decl_is_copy_for_cache(dag, indexes, ty.declaration, &mut visited)
-}
-
-fn rust_decl_is_copy_for_cache(
-    dag: &Dag,
-    indexes: &RealizationIndexes,
-    declaration: DeclarationId,
-    visited: &mut HashSet<DeclarationId>,
-) -> Result<bool, EmitError> {
-    if !visited.insert(declaration) {
-        return Ok(false);
-    }
-    let decl = dag.declaration(declaration);
-    if let Some(binding) = indexes.types.get(&declaration) {
-        return Ok(binding.is_copy);
-    }
-    match &decl.connective {
-        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-            rust_decl_is_copy_for_cache(dag, indexes, *next, visited)
-        }
-        _ => Ok(false),
-    }
-}
-
-fn top_level_bind_cache_key(
-    dag: &Dag,
-    indexes: &RealizationIndexes,
-    bind: &BindNode,
-) -> Result<Option<PureCallCacheKey>, EmitError> {
-    let Some(node_id) = dag.port(bind.value).produced_by else {
-        return Ok(None);
-    };
-    match dag.node(node_id) {
-        Behavior::Transform(TransformNode {
-            target: TransformTarget::Callable(target),
-            inputs,
-            ..
-        }) => {
-            // Structural reuse proxy only: this is not the R3 purity+cost
-            // memoization authority. Keep it target-local and fail closed on
-            // non-Copy outputs so the emitted Rust cannot move a previous bind.
-            // TODO(purity): when callable bodies can be impure, require the
-            // canonical purity witness here before admitting `UserDefined`.
-            let TypeConnective::Arrow {
-                body: ArrowBody::UserDefined(_),
-                ..
-            } = &dag.declaration(*target).connective
-            else {
-                return Ok(None);
-            };
-            if !rust_port_is_copy_for_cache(dag, indexes, bind.value)? {
-                return Ok(None);
-            }
-            Ok(Some(PureCallCacheKey {
-                target: *target,
-                inputs: inputs.clone(),
-            }))
-        }
-        _ => Ok(None),
-    }
-}
-
-struct PureCallCachePlan {
-    reuse_bind_names: Vec<Option<String>>,
-}
-
-fn top_level_pure_call_cache_plan(
-    dag: &Dag,
-    indexes: &RealizationIndexes,
-    top_level_binds: &[&BindNode],
-) -> Result<PureCallCachePlan, EmitError> {
-    let mut repeated_pure_call_cache: HashMap<PureCallCacheKey, String> = HashMap::new();
-    let mut reuse_bind_names = Vec::with_capacity(top_level_binds.len());
-    for bind in top_level_binds {
-        let Some(cache_key) = top_level_bind_cache_key(dag, indexes, bind)? else {
-            reuse_bind_names.push(None);
-            continue;
-        };
-        match repeated_pure_call_cache.entry(cache_key) {
-            std::collections::hash_map::Entry::Occupied(entry) => {
-                reuse_bind_names.push(Some(entry.get().clone()));
-            }
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(bind.name.clone());
-                reuse_bind_names.push(None);
-            }
-        }
-    }
-    Ok(PureCallCachePlan { reuse_bind_names })
 }
 
 pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
@@ -3270,18 +3162,16 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
             )
         } else {
             let mut rendered_binds: Vec<String> = Vec::with_capacity(top_level_binds.len());
-            let pure_call_cache_plan =
-                top_level_pure_call_cache_plan(dag, &indexes, &top_level_binds)?;
-            for (bind, reuse_bind_name) in top_level_binds
-                .iter()
-                .zip(pure_call_cache_plan.reuse_bind_names.iter())
-            {
+            for bind in &top_level_binds {
                 let ty_name = ctx.rust_type_name_for_port(bind.value)?;
                 let value_expr = ctx.render_top_level_value(bind.value)?;
-                let value = reuse_bind_name.clone().unwrap_or(value_expr);
                 let rendered = render_named_template(
                     &indexes.syntax.statements.let_binding,
-                    &[("name", &bind.name), ("type", &ty_name), ("value", &value)],
+                    &[
+                        ("name", &bind.name),
+                        ("type", &ty_name),
+                        ("value", &value_expr),
+                    ],
                 );
                 rendered_binds.push(rendered);
             }

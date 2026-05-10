@@ -1,16 +1,14 @@
 //! **Layer:** integration
 //!
-//! R3 T-Free-Consequences first-batch claims.
+//! R3 T-Free-Consequences first-batch author-now/fire-later claims.
 //! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust
 //! schedule; gate `#44` stays fail-closed on the scalar parallelism placeholder;
 //! gate `#45` asserts a Bool branch lowers to `if … else` with no `thread::scope`
 //! scheduling on the arms; gate `#50` asserts one-shot pure calls do not emit
-//! memo/cache scaffolding. Gate `#49` reaches the shared `BinaryDimensionReportEquals`
-//! shape but stays deferred until generic `DimensionReport<C>` evaluation lands.
+//! memo/cache scaffolding. Repeated-call memoization remains deferred.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::emit_rust::emit_rust;
-use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
+use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
 use crate::common::run_on_larger_stack;
@@ -79,11 +77,15 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
             }
             "auto_memoization_repeated_pure_call_cached" => {
                 assert!(
-                    matches!(&result.result, ClaimResult::NotYetImplemented(_)),
-                    "expected {expected_name} (R3 gate #49) to stay NotYetImplemented pending generic DimensionReport<C> evaluation, got {:?}",
+                    matches!(
+                        &result.result,
+                        ClaimResult::NotYetImplemented(reason)
+                            if reason.contains("BinaryDimensionReportEquals")
+                                && reason.contains("structural shape is valid")
+                    ),
+                    "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
                     result.result
                 );
-                assert_repeated_pure_call_claim_emits_cached_target_code(&dag, expected_name);
             }
             "auto_memoization_no_caching_for_one_shot" => {
                 assert!(
@@ -95,33 +97,4 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
             _ => panic!("unexpected claim name: {expected_name}"),
         }
     }
-}
-
-fn assert_repeated_pure_call_claim_emits_cached_target_code(
-    fixture_dag: &v3_compiler::dag::Dag,
-    claim_name: &str,
-) {
-    let claim_decl = fixture_dag
-        .declaration_by_name(claim_name)
-        .unwrap_or_else(|| panic!("fixture must declare TestClaim `{claim_name}`"));
-    let claim = TestClaimValue::from_declaration(claim_decl)
-        .unwrap_or_else(|err| panic!("fixture TestClaim `{claim_name}` must parse: {err}"));
-    let program_dag = compile_to_dag(&claim.source, &claim.file_name)
-        .unwrap_or_else(|err| panic!("claim source `{}` must compile: {err:?}", claim.file_name));
-    let emitted = emit_rust(&program_dag)
-        .unwrap_or_else(|err| panic!("claim source `{}` must emit Rust: {err:?}", claim.file_name));
-
-    assert_eq!(
-        emitted.matches("expensive(&x)").count(),
-        1,
-        "gate #49 proxy must emit the repeated source call once, then reuse the structural bind; emitted:\n{emitted}"
-    );
-    assert!(
-        emitted.contains("let first: i64 = expensive(&x);"),
-        "gate #49 proxy must materialize the first source-call bind; emitted:\n{emitted}"
-    );
-    assert!(
-        emitted.contains("let second: i64 = first;"),
-        "gate #49 proxy must render the repeated source call as structural reuse of `first`; emitted:\n{emitted}"
-    );
 }
