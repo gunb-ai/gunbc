@@ -1219,9 +1219,8 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
             FieldValue::Literal(literal_bits_int(11)),
             FieldValue::Literal(literal_bits_int(-3)),
         ];
-        let via_bridge =
-            super::try_apply_lens_via_evaluator_literals_only(&dag, root_bind, inputs)
-                .expect("literal Int add must succeed on evaluator bridge");
+        let via_bridge = super::try_apply_lens_via_evaluator_literals_only(&dag, root_bind, inputs)
+            .expect("literal Int add must succeed on evaluator bridge");
         let mut ctx = EvalCtx::new(&dag);
         for (port, arg) in root_bind.params.iter().zip(inputs.iter()) {
             ctx.bind_top(*port, arg.clone());
@@ -1238,7 +1237,10 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
         let lens_dag = compile_to_dag(lens_src, "reflect_skip_bridge_lens.v3").expect("compiles");
         let prog_under_test =
             compile_to_dag("let x: Int = 1", "reflect_skip_bridge_prog.v3").expect("prog compiles");
-        let id = lens_dag.declaration_by_name("lens_composition_op").unwrap().id;
+        let id = lens_dag
+            .declaration_by_name("lens_composition_op")
+            .unwrap()
+            .id;
         let inputs = &[
             FieldValue::Literal(literal_bits_int(5)),
             FieldValue::Literal(literal_bits_int(7)),
