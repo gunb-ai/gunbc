@@ -193,6 +193,7 @@ fn bootstrap_loads_verification_authority_types() {
                     String::from("command"),
                     String::from("args"),
                     String::from("expect_exit_code"),
+                    String::from("input_ref"),
                 ],
             ),
             (
