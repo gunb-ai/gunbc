@@ -204,20 +204,26 @@ mod tests {
 
     #[test]
     fn unknown_directive_token_is_parse_error() {
+        let file = "witness_typo.v3";
         let src = "// gunbc::r3_free_consequences::lane2_loop_witness: typo\nlet _: Int = 0\n";
-        let err = compile_to_dag(src, "witness_typo.v3").expect_err("diagnostic");
+        let err = compile_to_dag(src, file).expect_err("diagnostic");
         let CompileError::Semantic(dag) = err else {
             panic!("expected semantic failure");
         };
-        let mut saw = false;
+        // Contract: malformed witness token surfaces as `Diagnostic::ParseError` on the claim file.
+        // Avoid substring-matching diagnostic prose (TESTING.md / INVARIANTS P3); span + variant only.
+        let mut parse_error_spans = 0u32;
         for (_, d) in dag.diagnostics().iter() {
-            if let Diagnostic::ParseError { message, .. } = d {
-                if message.contains("unknown `lane2_loop_witness`") {
-                    saw = true;
-                    break;
-                }
+            if let Diagnostic::ParseError { span, .. } = d {
+                assert_eq!(span.file, file);
+                parse_error_spans += 1;
             }
         }
-        assert!(saw, "expected ParseError for malformed witness token");
+        assert_eq!(
+            parse_error_spans,
+            1,
+            "expected exactly one ParseError for malformed witness token, diagnostics={:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
     }
 }

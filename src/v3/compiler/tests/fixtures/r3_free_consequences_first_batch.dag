@@ -71,8 +71,8 @@ data auto_parallelism_independent_binds_emit_parallel: TestClaim = {
   requires: []
 }
 
-data auto_parallelism_dependent_binds_emit_sequential: TestClaim = {
-  name: "auto_parallelism_dependent_binds_emit_sequential",
+data auto_parallelism_dependent_binds_pending_lens_fail_closed: TestClaim = {
+  name: "auto_parallelism_dependent_binds_pending_lens_fail_closed",
   source: "// free-consequences fixture: dependent binds must remain sequential.\nlet a: Int = 1 + 2\nlet b: Int = a + 3\n",
   file_name: "r3_free_consequences_auto_parallelism_dependent_binds.v3",
   predicate: LensOutputEquals(
@@ -121,7 +121,7 @@ data r3_free_consequences_first_batch_suite: TestSuite = {
   name: "r3_free_consequences_first_batch_suite",
   claims: [
     auto_parallelism_independent_binds_emit_parallel,
-    auto_parallelism_dependent_binds_emit_sequential,
+    auto_parallelism_dependent_binds_pending_lens_fail_closed,
     auto_parallelism_branch_arms_serialize,
     auto_memoization_repeated_pure_call_cached,
     auto_memoization_no_caching_for_one_shot

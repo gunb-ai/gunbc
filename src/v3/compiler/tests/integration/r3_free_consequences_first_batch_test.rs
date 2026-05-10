@@ -19,7 +19,7 @@ const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_free_consequences_
 const SUITE_NAME: &str = "r3_free_consequences_first_batch_suite";
 const EXPECTED_CLAIMS: [&str; 5] = [
     "auto_parallelism_independent_binds_emit_parallel",
-    "auto_parallelism_dependent_binds_emit_sequential",
+    "auto_parallelism_dependent_binds_pending_lens_fail_closed",
     "auto_parallelism_branch_arms_serialize",
     "auto_memoization_repeated_pure_call_cached",
     "auto_memoization_no_caching_for_one_shot",
@@ -52,43 +52,50 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
     let results = TestRunner::new(&dag).run_suite(SUITE_NAME);
     assert_eq!(results.len(), EXPECTED_CLAIMS.len());
 
-    for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
+    for (result, expected_name) in results.iter().zip(EXPECTED_CLAIMS) {
         assert_eq!(result.claim_name, expected_name);
-        if idx == 0 {
-            assert!(
-                matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to Pass (parallel Rust emission witness), got {:?}",
-                result.result
-            );
-        } else if idx == 2 {
-            assert!(
-                matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to Pass (Bool branch lowers to `if … else` with no `thread::scope`), got {:?}",
-                result.result
-            );
-        } else if idx < 3 {
-            assert!(
-                matches!(
-                    &result.result,
-                    ClaimResult::Fail(reason)
-                        if reason.contains("expected 1")
-                            && reason.contains("computed 0")
-                            && reason.contains("auto_parallelism_pending_lens")
-                ),
-                "expected {expected_name} to fail closed on the pending ordinary parallelism lens, got {:?}",
-                result.result
-            );
-        } else {
-            assert!(
-                matches!(
-                    &result.result,
-                    ClaimResult::NotYetImplemented(reason)
-                        if reason.contains("BinaryDimensionReportEquals")
-                            && reason.contains("structural shape is valid")
-                ),
-                "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
-                result.result
-            );
+        match expected_name {
+            "auto_parallelism_independent_binds_emit_parallel" => {
+                assert!(
+                    matches!(&result.result, ClaimResult::Pass),
+                    "expected {expected_name} to Pass (parallel Rust emission witness), got {:?}",
+                    result.result
+                );
+            }
+            "auto_parallelism_dependent_binds_pending_lens_fail_closed" => {
+                assert!(
+                    matches!(
+                        &result.result,
+                        ClaimResult::Fail(reason)
+                            if reason.contains("expected 1")
+                                && reason.contains("computed 0")
+                                && reason.contains("auto_parallelism_pending_lens")
+                    ),
+                    "expected {expected_name} to fail closed on the pending ordinary parallelism lens, got {:?}",
+                    result.result
+                );
+            }
+            "auto_parallelism_branch_arms_serialize" => {
+                assert!(
+                    matches!(&result.result, ClaimResult::Pass),
+                    "expected {expected_name} to Pass (Bool branch lowers to `if … else` with no `thread::scope`), got {:?}",
+                    result.result
+                );
+            }
+            "auto_memoization_repeated_pure_call_cached"
+            | "auto_memoization_no_caching_for_one_shot" => {
+                assert!(
+                    matches!(
+                        &result.result,
+                        ClaimResult::NotYetImplemented(reason)
+                            if reason.contains("BinaryDimensionReportEquals")
+                                && reason.contains("structural shape is valid")
+                    ),
+                    "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
+                    result.result
+                );
+            }
+            _ => panic!("unexpected claim name: {expected_name}"),
         }
     }
 }
