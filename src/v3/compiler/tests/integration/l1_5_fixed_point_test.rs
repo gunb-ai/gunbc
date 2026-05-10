@@ -10,6 +10,9 @@ use v3_compiler::{
     tokenize_for_test, Dag,
 };
 
+/// Matches `pipeline_authority::PIPELINE_AUTHORITY_FILE` — integration tests cannot import `pub(crate)` helpers.
+const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
+
 #[test]
 fn pipeline_dag_parses() {
     let source = include_str!("../../pipeline.dag");
@@ -118,6 +121,35 @@ fn bootstrap_loads_pipeline_stage_realizations() {
             ),
             other => panic!("stage `{stage}` should lower to Arrow, got {other:?}"),
         }
+    }
+}
+
+/// Provenance ratchet: `PipelineStageBinding` rows must remain authored in `pipeline.dag` (same
+/// stable path the bootstrap embed uses), not only parse/infer shape checks (`bootstrap_loads_pipeline_stage_realizations`).
+#[test]
+fn pipeline_stage_bindings_are_pipeline_dag_sourced() {
+    let dag = Dag::new();
+    let binding_type = dag
+        .declaration_by_name("PipelineStageBinding")
+        .expect("PipelineStageBinding type present in bootstrap");
+    let mut bindings: Vec<_> = dag
+        .declarations()
+        .iter()
+        .filter(|d| d.meta_tag == Some(binding_type.id))
+        .collect();
+    assert!(
+        !bindings.is_empty(),
+        "expected at least one PipelineStageBinding row from pipeline authority"
+    );
+    bindings.sort_by_key(|d| d.id.raw());
+    for decl in bindings {
+        assert_eq!(
+            decl.span.file.as_str(),
+            PIPELINE_AUTHORITY_FILE,
+            "PipelineStageBinding `{}` must carry pipeline.dag provenance (got file {:?})",
+            decl.name.as_deref().unwrap_or("<anonymous>"),
+            decl.span.file
+        );
     }
 }
 

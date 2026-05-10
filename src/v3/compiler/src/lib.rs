@@ -1195,9 +1195,11 @@ pub mod evaluator {
                 Ok(Value::LiteralValue(LiteralBits::Bool(out)))
             }
             TransformTarget::Operator(OperatorKind::Logical(_)) => {
-                unreachable!(
-                    "logical operators use short-circuit path at eval_transform_node entry"
-                )
+                // `Logical` is handled above (short-circuit). Reaching here is dispatch drift,
+                // not a proof obligation — fail closed without `unreachable!` (CODING.md).
+                Err(EvalError::UnsupportedTransformTarget {
+                    kind: "LogicalTransformRouting",
+                })
             }
             TransformTarget::UnresolvedFieldProject { field_label }
             | TransformTarget::ResolvedFieldProject { field_label } => {
