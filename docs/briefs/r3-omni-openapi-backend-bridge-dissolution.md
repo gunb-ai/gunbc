@@ -2,7 +2,7 @@
 
 Status: QUEUED
 
-Owner lane: T-PB-A / T-PB-B, coordinated with T-Omni-Shape-B.
+Owner lane: T-PB-B, coordinated with T-Omni-Shape-B.
 
 ## Scope
 
@@ -30,8 +30,10 @@ artifact handle across multiple assertions. At that point:
 - The route roundtrip moves from Rust-authored `Command::new("rustc")` to an
   `ExecuteCommand`-based `.dag` TestClaim.
 
-## ROADMAP Rows
+## ROADMAP Receipt
 
-- `ROADMAP.md:53` — T-PB-A non-test hand-Rust surface reaches zero.
-- `ROADMAP.md:170` — Hand-Rust census split; test entries are T-PB-B and
-  migrate to `.dag` TestClaim declarations.
+`ROADMAP.md:170` — Hand-Rust census split; the test-driven bridge retires
+through T-PB-B by migrating the generated-backend roundtrip to a `.dag`
+TestClaim declaration. The adjacent production projection is in this brief's
+scope only because that test bridge is its sole consumer for the R3 gate #25
+receipt; it retires with the same T-PB-B TestClaim migration.
