@@ -291,9 +291,12 @@ fn symbolic_cost_product_identity_stage_is_bootstrap_substrate_fact() {
 }
 
 // ── Per-Behavior lowering ────────────────────────────────────────
+//
+// Inner wall-clock budgets below use `12_000` ms: cold Stage 2d runs can exceed
+// `9_000` ms on busy CI when this module is filtered / parallel-neighbor cold.
 
 budgeted_test! {
-    9000,
+    12_000,
     value_reports_constant,
     {
         // `let x = 1` → ConstantCost(0) (leaf literal, no work).
@@ -307,7 +310,7 @@ budgeted_test! {
 }
 
 budgeted_test! {
-    9000,
+    12_000,
     transform_single_op_reports_constant,
     {
         // `let x = 1 + 2` → sequential(Constant(1), sum(Constant(0), Constant(0)))
@@ -364,7 +367,7 @@ fn branch_reports_constant_when_both_arms_constant() {
 }
 
 budgeted_test! {
-    9000,
+    12_000,
     recursive_fn_body_contributes_to_loop_cost,
     {
         // PR #537 reviewer call-out (briansrls, BLOCKING): the prior
@@ -417,7 +420,7 @@ fn iterate_keeps_non_identity_body_cost_in_product() {
 }
 
 budgeted_test! {
-    9000,
+    12_000,
     recursive_fn_reports_linear_via_loop_lowering,
     {
         // `fn countdown(n) = if n == 0 then 0 else countdown(n - 1)`
