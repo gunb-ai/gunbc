@@ -2948,6 +2948,11 @@ fn port_reaches_upstream(dag: &Dag, from_port: PortId, to_port: PortId) -> bool 
 /// **List catamorphism path:** when lowering does not surface a `Loop` node but the emitter still
 /// spells the sequential iterator fold (`.iter().fold(`), treat that as the same sequential
 /// iteration receipt for this gate's fixture discipline.
+///
+/// **Formatting coupling:** like gate #43's `thread::scope` substring receipt, both substring tests
+/// key off today's Rust templates; if `rust.dag` emission spelling drifts, update this witness in
+/// the same change (dissolution: structural `WorkflowParallelismReport` / iteration-independence
+/// lens output per `docs/design-free-consequences.md` once `parallelism.dag` is no longer a stub).
 pub(crate) fn r3_loop_dependence_sequential_emit_witness(dag: &Dag, emitted_rust: &str) -> bool {
     if emitted_rust.contains("thread::scope") {
         return false;
