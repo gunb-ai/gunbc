@@ -1,9 +1,8 @@
 //! Project landed LanguageSpec-adjacent rows onto L6 cross-product cells.
 //!
 //! Authority at HEAD: `src/v3/std/cross_target_coverage.dag`
-//! (`List<EmissionPathProjection>`) joined back to
-//! `src/v3/std/{rust,python,go}_method_template_contracts.dag`
-//! (`List<MethodTemplateContract>` per target) by `(target, dag_method)`.
+//! (`List<EmissionPathProjection>`). Each row carries a typed
+//! `(LanguageSpec target, dag_method)` identity plus its covered cells.
 //!
 //! **Audit mapping (HEAD):** every Phase 1 row attaches to the same structural L6
 //! bucket — **[`FormAxis::Cardinality`] × [`BehaviorAxis::Transform`] × target** —
@@ -14,17 +13,13 @@
 //! [`ShapeATarget`].
 //!
 //! Future LanguageSpec tables should add row-local `EmissionCell` entries; the
-//! walker unions only cells carried by rows that bijectively join to source
-//! `MethodTemplateContract` identities.
+//! walker unions only cells carried by typed projection rows whose target
+//! refines to a loaded `LanguageSpec` declaration.
 
 use std::collections::{HashMap, HashSet};
 
-use v3_compiler::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
-use v3_compiler::pb_method_template_projection::{
-    method_template_contract_rows, MethodTemplateTarget,
-};
-
 use crate::cells::{BehaviorAxis, Cell, FormAxis, ShapeATarget};
+use v3_compiler::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
 
 const EMISSION_PATH_PROJECTIONS: &str = "emission_path_projections";
 
@@ -52,12 +47,22 @@ pub(crate) enum ProjectionCoverageError {
     RowIdentityNotRecord {
         row_index: usize,
     },
-    RowIdentityTargetNotVariant {
+    RowIdentityTargetNotRecord {
         row_index: usize,
     },
-    UnknownTargetLabel {
+    RowIdentityTargetReferenceMissing {
         row_index: usize,
-        label: String,
+        target: DeclarationId,
+    },
+    RowIdentityTargetMissingSpec {
+        row_index: usize,
+    },
+    RowIdentityTargetSpecNotReference {
+        row_index: usize,
+    },
+    RowIdentityTargetSpecNotLanguageSpec {
+        row_index: usize,
+        spec: DeclarationId,
     },
     DagMethodNotMethodRefRecord {
         row_index: usize,
@@ -105,14 +110,6 @@ pub(crate) enum ProjectionCoverageError {
         cell_index: usize,
         label: String,
     },
-    SourceRowsUnavailable,
-    ProjectionWithoutSourceRow {
-        row_index: usize,
-    },
-    MissingProjectionForSourceRow {
-        target: ShapeATarget,
-        dag_method: DeclarationId,
-    },
     DuplicateProjectionKey {
         row_index: usize,
         target: ShapeATarget,
@@ -136,55 +133,36 @@ struct ProjectionRow {
 /// at least one emission-path template at substrate load time.
 ///
 /// Fail-closed: any malformed projection surface, empty projection list, empty
-/// row-local cell list, projection/source mismatch, or duplicate key
-/// contributes **no** coverage. The walker then reports the cells as typed
-/// missing coverage rather than fabricating a partial answer.
+/// row-local cell list, non-`LanguageSpec` target, or duplicate key contributes
+/// **no** coverage. The walker then reports the cells as typed missing coverage
+/// rather than fabricating a partial answer.
 pub(crate) fn language_spec_emission_cells_covered(dag: &Dag) -> HashSet<Cell> {
     language_spec_emission_cells_covered_checked(dag).unwrap_or_default()
+}
+
+pub(crate) fn language_spec_targets(dag: &Dag) -> Option<Vec<ShapeATarget>> {
+    let meta = dag.declaration_by_name("ShapeATarget")?.id;
+    let mut targets = dag
+        .declarations()
+        .iter()
+        .filter(|decl| decl.meta_tag == Some(meta))
+        .map(|decl| ShapeATarget::new(decl.id))
+        .collect::<Vec<_>>();
+    targets.sort_by_key(|target| dag.declaration(target.spec).name.clone());
+    (!targets.is_empty()).then_some(targets)
 }
 
 fn language_spec_emission_cells_covered_checked(
     dag: &Dag,
 ) -> Result<HashSet<Cell>, ProjectionCoverageError> {
-    let source_keys = source_method_template_keys(dag)?;
     let projection_rows = projection_rows(dag)?;
-    let projection_by_key = projection_rows_by_key(projection_rows, &source_keys)?;
-
-    for key in &source_keys {
-        if !projection_by_key.contains_key(key) {
-            return Err(ProjectionCoverageError::MissingProjectionForSourceRow {
-                target: key.target,
-                dag_method: key.dag_method,
-            });
-        }
-    }
+    let projection_by_key = projection_rows_by_key(projection_rows)?;
 
     let mut covered = HashSet::new();
     for cells in projection_by_key.values() {
         covered.extend(cells.iter().copied());
     }
     Ok(covered)
-}
-
-fn source_method_template_keys(
-    dag: &Dag,
-) -> Result<HashSet<ProjectionKey>, ProjectionCoverageError> {
-    let mut keys = HashSet::new();
-    for (target, projection_target) in [
-        (MethodTemplateTarget::Rust, ShapeATarget::Rust),
-        (MethodTemplateTarget::Python, ShapeATarget::Python),
-        (MethodTemplateTarget::Go, ShapeATarget::Go),
-    ] {
-        let rows = method_template_contract_rows(dag, target)
-            .map_err(|_| ProjectionCoverageError::SourceRowsUnavailable)?;
-        for row in rows {
-            keys.insert(ProjectionKey {
-                target: projection_target,
-                dag_method: row.dag_method,
-            });
-        }
-    }
-    Ok(keys)
 }
 
 fn projection_rows(dag: &Dag) -> Result<Vec<ProjectionRow>, ProjectionCoverageError> {
@@ -209,13 +187,9 @@ fn projection_rows(dag: &Dag) -> Result<Vec<ProjectionRow>, ProjectionCoverageEr
 
 fn projection_rows_by_key(
     rows: Vec<ProjectionRow>,
-    source_keys: &HashSet<ProjectionKey>,
 ) -> Result<HashMap<ProjectionKey, HashSet<Cell>>, ProjectionCoverageError> {
     let mut by_key: HashMap<ProjectionKey, HashSet<Cell>> = HashMap::new();
     for (row_index, row) in rows.into_iter().enumerate() {
-        if !source_keys.contains(&row.key) {
-            return Err(ProjectionCoverageError::ProjectionWithoutSourceRow { row_index });
-        }
         if by_key.contains_key(&row.key) {
             return Err(ProjectionCoverageError::DuplicateProjectionKey {
                 row_index,
@@ -365,17 +339,64 @@ fn shape_target(
     row_index: usize,
     value: &FieldValue,
 ) -> Result<ShapeATarget, ProjectionCoverageError> {
-    let label = variant_label(dag, "ShapeATarget", value)
-        .ok_or(ProjectionCoverageError::RowIdentityTargetNotVariant { row_index })?;
-    match label {
-        "Rust" => Ok(ShapeATarget::Rust),
-        "Python" => Ok(ShapeATarget::Python),
-        "Go" => Ok(ShapeATarget::Go),
-        other => Err(ProjectionCoverageError::UnknownTargetLabel {
-            row_index,
-            label: other.to_string(),
-        }),
+    let value = match value {
+        FieldValue::Reference(target) => {
+            if is_shape_a_target(dag, *target) {
+                return Ok(ShapeATarget::new(*target));
+            }
+            let declaration = dag
+                .declarations()
+                .iter()
+                .find(|decl| decl.id == *target)
+                .ok_or(ProjectionCoverageError::RowIdentityTargetReferenceMissing {
+                    row_index,
+                    target: *target,
+                })?;
+            declaration
+                .value_body
+                .as_ref()
+                .ok_or(ProjectionCoverageError::RowIdentityTargetNotRecord { row_index })
+                .and_then(|body| {
+                    if let ValueBody::Structural { fields } = body {
+                        Ok(FieldValue::Record(fields.clone()))
+                    } else {
+                        Err(ProjectionCoverageError::RowIdentityTargetNotRecord { row_index })
+                    }
+                })?
+        }
+        other => other.clone(),
+    };
+    let FieldValue::Record(fields) = value else {
+        return Err(ProjectionCoverageError::RowIdentityTargetNotRecord { row_index });
+    };
+    let lookup = field_lookup(row_index, &fields, &["spec"])?;
+    let spec = lookup
+        .get("spec")
+        .ok_or(ProjectionCoverageError::RowIdentityTargetMissingSpec { row_index })?;
+    let FieldValue::Reference(spec) = spec else {
+        return Err(ProjectionCoverageError::RowIdentityTargetSpecNotReference { row_index });
+    };
+    if !is_language_spec(dag, *spec) {
+        return Err(
+            ProjectionCoverageError::RowIdentityTargetSpecNotLanguageSpec {
+                row_index,
+                spec: *spec,
+            },
+        );
     }
+    Ok(ShapeATarget::new(*spec))
+}
+
+fn is_shape_a_target(dag: &Dag, declaration: DeclarationId) -> bool {
+    dag.declaration_by_name("ShapeATarget")
+        .map(|meta| dag.declaration(declaration).meta_tag == Some(meta.id))
+        .unwrap_or(false)
+}
+
+fn is_language_spec(dag: &Dag, declaration: DeclarationId) -> bool {
+    dag.declaration_by_name("LanguageSpec")
+        .map(|meta| dag.declaration(declaration).meta_tag == Some(meta.id))
+        .unwrap_or(false)
 }
 
 fn form_axis(
@@ -505,34 +526,44 @@ mod tests {
     use super::*;
     use v3_compiler::generated_full_bootstrap_dag;
 
-    fn bootstrap_key_pair() -> (HashSet<ProjectionKey>, ProjectionKey, ProjectionKey) {
+    fn shape_target(dag: &Dag, name: &str) -> ShapeATarget {
+        ShapeATarget::new(
+            dag.declaration_by_name(name)
+                .unwrap_or_else(|| panic!("{name}"))
+                .id,
+        )
+    }
+
+    fn bootstrap_key_pair() -> (ProjectionKey, ProjectionKey) {
         let dag = generated_full_bootstrap_dag();
-        let source_keys = source_method_template_keys(&dag).expect("bootstrap source keys");
-        let rust_count = source_keys
+        let rust_target = shape_target(&dag, "rust_shape_a_target");
+        let python_target = shape_target(&dag, "python_shape_a_target");
+        let rows = projection_rows(&dag).expect("bootstrap projection rows");
+        let rust_count = rows
             .iter()
-            .copied()
-            .find(|key| key.target == ShapeATarget::Rust)
-            .expect("rust source key");
-        let python_count = source_keys
+            .map(|row| row.key)
+            .find(|key| key.target == rust_target)
+            .expect("rust projection key");
+        let python_count = rows
             .iter()
-            .copied()
-            .find(|key| key.target == ShapeATarget::Python)
-            .expect("python source key");
-        (source_keys, rust_count, python_count)
+            .map(|row| row.key)
+            .find(|key| key.target == python_target)
+            .expect("python projection key");
+        (rust_count, python_count)
     }
 
     #[test]
     fn per_row_projection_union_keeps_mixed_cells_row_local() {
-        let (source_keys, rust_key, python_key) = bootstrap_key_pair();
+        let (rust_key, python_key) = bootstrap_key_pair();
         let rust_cell = Cell {
             connective: FormAxis::Cardinality,
             behavior: BehaviorAxis::Transform,
-            target: ShapeATarget::Rust,
+            target: rust_key.target,
         };
         let python_cell = Cell {
             connective: FormAxis::Arrow,
             behavior: BehaviorAxis::Branch,
-            target: ShapeATarget::Python,
+            target: python_key.target,
         };
         let rows = vec![
             ProjectionRow {
@@ -545,7 +576,7 @@ mod tests {
             },
         ];
 
-        let by_key = projection_rows_by_key(rows, &source_keys).expect("mixed rows join");
+        let by_key = projection_rows_by_key(rows).expect("mixed rows index");
 
         assert_eq!(
             by_key.get(&rust_key).expect("rust row"),
@@ -558,33 +589,12 @@ mod tests {
     }
 
     #[test]
-    fn projection_rows_fail_closed_for_unjoined_row() {
-        let (_source_keys, rust_key, _) = bootstrap_key_pair();
-        let empty_sources = HashSet::new();
-        let rows = vec![ProjectionRow {
-            key: rust_key,
-            cells: [Cell {
-                connective: FormAxis::Cardinality,
-                behavior: BehaviorAxis::Transform,
-                target: ShapeATarget::Rust,
-            }]
-            .into_iter()
-            .collect(),
-        }];
-
-        assert!(matches!(
-            projection_rows_by_key(rows, &empty_sources),
-            Err(ProjectionCoverageError::ProjectionWithoutSourceRow { row_index: 0 })
-        ));
-    }
-
-    #[test]
     fn projection_rows_fail_closed_for_duplicate_key_even_with_identical_cells() {
-        let (source_keys, rust_key, _) = bootstrap_key_pair();
+        let (rust_key, _) = bootstrap_key_pair();
         let cell = Cell {
             connective: FormAxis::Cardinality,
             behavior: BehaviorAxis::Transform,
-            target: ShapeATarget::Rust,
+            target: rust_key.target,
         };
         let rows = vec![
             ProjectionRow {
@@ -598,21 +608,21 @@ mod tests {
         ];
 
         assert!(matches!(
-            projection_rows_by_key(rows, &source_keys),
+            projection_rows_by_key(rows),
             Err(ProjectionCoverageError::DuplicateProjectionKey { row_index: 1, .. })
         ));
     }
 
     #[test]
     fn projection_rows_fail_closed_for_duplicate_key_conflicting_cells() {
-        let (source_keys, rust_key, _) = bootstrap_key_pair();
+        let (rust_key, _) = bootstrap_key_pair();
         let rows = vec![
             ProjectionRow {
                 key: rust_key,
                 cells: [Cell {
                     connective: FormAxis::Cardinality,
                     behavior: BehaviorAxis::Transform,
-                    target: ShapeATarget::Rust,
+                    target: rust_key.target,
                 }]
                 .into_iter()
                 .collect(),
@@ -622,7 +632,7 @@ mod tests {
                 cells: [Cell {
                     connective: FormAxis::Arrow,
                     behavior: BehaviorAxis::Branch,
-                    target: ShapeATarget::Rust,
+                    target: rust_key.target,
                 }]
                 .into_iter()
                 .collect(),
@@ -630,7 +640,7 @@ mod tests {
         ];
 
         assert!(matches!(
-            projection_rows_by_key(rows, &source_keys),
+            projection_rows_by_key(rows),
             Err(ProjectionCoverageError::DuplicateProjectionKey { row_index: 1, .. })
         ));
     }
@@ -647,7 +657,7 @@ mod tests {
             })
         ));
 
-        let target = ShapeATarget::Rust;
+        let target = shape_target(&dag, "rust_shape_a_target");
         let empty_cells = FieldValue::List(vec![]);
         assert!(matches!(
             projection_cells(&dag, 0, target, &empty_cells),

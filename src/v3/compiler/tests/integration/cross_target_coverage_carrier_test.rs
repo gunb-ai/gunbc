@@ -85,17 +85,25 @@ fn conj_field_label_and_type_names<'a>(
 }
 
 #[test]
-fn shape_a_target_disj_variants_match_ratified_labels() {
+fn shape_a_target_aliases_language_spec() {
     let dag = generated_full_bootstrap_dag();
     let decl = dag
         .declaration_by_name(SHAPE_A_TARGET)
         .expect("ShapeATarget must exist");
-    let labels = disj_variant_labels(decl, SHAPE_A_TARGET);
-    assert_eq!(
-        labels,
-        vec!["Rust", "Python", "Go"],
-        "ShapeATarget variants must be exactly [Rust, Python, Go] in declaration order \
-         (closed set per Q-Unit-1 brief §1; new target requires P1 substrate-fact-introduction)"
+    let language_spec = dag
+        .declaration_by_name("LanguageSpec")
+        .expect("LanguageSpec must exist");
+    assert!(
+        matches!(
+            decl.connective,
+            TypeConnective::Instantiation {
+                template,
+                ref arguments,
+            } if template == language_spec.id && arguments.is_empty()
+        ),
+        "ShapeATarget must dissolve the closed Rust/Python/Go enum into a LanguageSpec alias, \
+         so carrier construction is structurally limited to LanguageSpec declarations; got {:?}",
+        decl.connective
     );
 }
 
@@ -245,11 +253,51 @@ fn variant_label<'a>(dag: &'a Dag, axis_name: &str, value: &FieldValue) -> &'a s
 }
 
 fn projection_target(dag: &Dag, value: &FieldValue) -> ProjectionTarget {
-    match variant_label(dag, SHAPE_A_TARGET, value) {
-        "Rust" => ProjectionTarget::Rust,
-        "Python" => ProjectionTarget::Python,
-        "Go" => ProjectionTarget::Go,
-        other => panic!("unknown ShapeATarget variant `{other}`"),
+    let owned_fields;
+    let fields = match value {
+        FieldValue::Record(fields) => fields,
+        FieldValue::Reference(target) => {
+            let target_decl = dag.declaration(*target);
+            match target_decl.name.as_deref() {
+                Some("rust_shape_a_target") => return ProjectionTarget::Rust,
+                Some("python_shape_a_target") => return ProjectionTarget::Python,
+                Some("go_shape_a_target") => return ProjectionTarget::Go,
+                _ => {}
+            }
+            if Some(*target) == dag.rust_language_spec() {
+                return ProjectionTarget::Rust;
+            } else if Some(*target) == dag.python_language_spec() {
+                return ProjectionTarget::Python;
+            } else if Some(*target) == dag.go_language_spec() {
+                return ProjectionTarget::Go;
+            }
+            let Some(ValueBody::Structural { fields }) = target_decl.value_body.as_ref() else {
+                panic!(
+                    "ShapeATarget reference must resolve to structural data, got {target_decl:?}"
+                );
+            };
+            owned_fields = fields.clone();
+            &owned_fields
+        }
+        other => panic!("ShapeATarget must be a record or reference, got {other:?}"),
+    };
+    let spec = field(fields, "spec");
+    let FieldValue::Reference(spec) = spec else {
+        panic!("ShapeATarget.spec must be a LanguageSpec reference, got {spec:?}");
+    };
+    if Some(*spec) == dag.rust_language_spec() {
+        ProjectionTarget::Rust
+    } else if Some(*spec) == dag.python_language_spec() {
+        ProjectionTarget::Python
+    } else if Some(*spec) == dag.go_language_spec() {
+        ProjectionTarget::Go
+    } else {
+        let name = dag
+            .declaration(*spec)
+            .name
+            .as_deref()
+            .unwrap_or("<anonymous>");
+        panic!("unknown ShapeATarget LanguageSpec `{name}`")
     }
 }
 
