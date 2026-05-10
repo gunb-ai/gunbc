@@ -2129,8 +2129,9 @@ impl ValueNode {
 ///   via the input port's resolved Conj + field label; Operator
 ///   dispatches via the operand type's algebra walk.
 /// - Pattern 2 (variant-is-data): fails. Callable carries a
-///   DeclarationId; resolved FieldProject carries the projected child
-///   declaration carrier; Operator carries an OperatorKind.
+///   DeclarationId; resolved FieldProject carries the projected field
+///   label resolved against the parent Conj; Operator carries an
+///   OperatorKind.
 /// - Pattern 3 (algebraic form): fails.
 /// - Pattern 4 (dimensional): fails.
 ///
