@@ -2895,6 +2895,12 @@ pub(crate) struct RepeatedPureCallCacheWitness {
     pub cached_reuse_binds: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct PureCallCacheKey {
+    target: DeclarationId,
+    inputs: Vec<PortId>,
+}
+
 fn scheduling_behavior_inputs(dag: &Dag, behavior: &Behavior) -> Vec<PortId> {
     match behavior {
         Behavior::Value(_) => Vec::new(),
@@ -2991,52 +2997,43 @@ fn program_mode_top_level_value_binds<'a>(
         .collect()
 }
 
-fn top_level_bind_is_cacheable_pure_call(dag: &Dag, bind: &BindNode) -> bool {
+fn top_level_bind_cache_key(dag: &Dag, bind: &BindNode) -> Option<PureCallCacheKey> {
     let Some(node_id) = dag.port(bind.value).produced_by else {
-        return false;
+        return None;
     };
-    matches!(
-        dag.node(node_id),
+    match dag.node(node_id) {
         Behavior::Transform(TransformNode {
-            target: TransformTarget::Callable(_),
+            target: TransformTarget::Callable(target),
+            inputs,
             ..
-        })
-    )
+        }) => Some(PureCallCacheKey {
+            target: *target,
+            inputs: inputs.clone(),
+        }),
+        _ => None,
+    }
 }
 
 pub(crate) fn repeated_pure_call_cache_witness(
     dag: &Dag,
 ) -> Result<RepeatedPureCallCacheWitness, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
-    let input_use_facts = InputUseFacts::build(dag, &indexes);
     let top_level_binds = program_mode_top_level_value_binds(dag, &indexes);
-    let mut bound_names: HashMap<PortId, LocalBinding> = HashMap::new();
-    for bind in &top_level_binds {
-        bound_names.insert(bind.value, LocalBinding::Owned(bind.name.clone()));
-    }
-    let ctx = Ctx {
-        dag,
-        indexes: &indexes,
-        bound_names: &bound_names,
-        input_use_facts: &input_use_facts,
-        mode: EmitRustMode::Program,
-    };
-    let mut repeated_pure_call_cache: HashMap<String, String> = HashMap::new();
+    let mut repeated_pure_call_cache: HashMap<PureCallCacheKey, String> = HashMap::new();
     let mut witness = RepeatedPureCallCacheWitness {
         cacheable_call_binds: 0,
         actual_call_binds: 0,
         cached_reuse_binds: 0,
     };
     for bind in top_level_binds {
-        if !top_level_bind_is_cacheable_pure_call(dag, bind) {
+        let Some(cache_key) = top_level_bind_cache_key(dag, bind) else {
             continue;
-        }
+        };
         witness.cacheable_call_binds += 1;
-        let value_expr = ctx.render_top_level_value(bind.value)?;
-        if repeated_pure_call_cache.contains_key(&value_expr) {
+        if repeated_pure_call_cache.contains_key(&cache_key) {
             witness.cached_reuse_binds += 1;
         } else {
-            repeated_pure_call_cache.insert(value_expr, bind.name.clone());
+            repeated_pure_call_cache.insert(cache_key, bind.name.clone());
             witness.actual_call_binds += 1;
         }
     }
@@ -3221,15 +3218,15 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
             )
         } else {
             let mut rendered_binds: Vec<String> = Vec::with_capacity(top_level_binds.len());
-            let mut repeated_pure_call_cache: HashMap<String, String> = HashMap::new();
+            let mut repeated_pure_call_cache: HashMap<PureCallCacheKey, String> = HashMap::new();
             for bind in &top_level_binds {
                 let ty_name = ctx.rust_type_name_for_port(bind.value)?;
                 let value_expr = ctx.render_top_level_value(bind.value)?;
-                let value = if top_level_bind_is_cacheable_pure_call(dag, bind) {
-                    match repeated_pure_call_cache.get(&value_expr) {
+                let value = if let Some(cache_key) = top_level_bind_cache_key(dag, bind) {
+                    match repeated_pure_call_cache.get(&cache_key) {
                         Some(cached_name) => cached_name.clone(),
                         None => {
-                            repeated_pure_call_cache.insert(value_expr.clone(), bind.name.clone());
+                            repeated_pure_call_cache.insert(cache_key, bind.name.clone());
                             value_expr
                         }
                     }
