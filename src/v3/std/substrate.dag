@@ -12,6 +12,14 @@ type TypeShape {
   declaration: DeclarationId
 }
 
+// R3 gate #31 — byte extent within the current compilation unit without
+// carrying `SourceSpan.file` on lens-produced surfaces (typed identity
+// discipline; see `bridge_source_span_file_participation_retired`).
+type SourceByteSpan {
+  byte_start: Int
+  byte_end: Int
+}
+
 // 🟢 TERMINAL at reflected-substrate scope. Three-way port inference
 // state is a durable compiler fact consumed directly by reflection.
 type PortState

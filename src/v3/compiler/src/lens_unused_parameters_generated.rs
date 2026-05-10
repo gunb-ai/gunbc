@@ -6,7 +6,6 @@ pub struct UnusedParameter {
     pub function: NodeId,
     pub parameter: PortId,
     pub parameter_index: i64,
-    pub function_span: SourceSpan,
 }
 pub fn check(p0: &Dag) -> Vec<UnusedParameter> {
     ((p0).nodes())
@@ -60,7 +59,6 @@ pub fn collect_unused_params(
                             function: (p1).id,
                             parameter: (*(__list_head)),
                             parameter_index: p3,
-                            function_span: ((p1).span).clone(),
                         },
                     );
                     __list
