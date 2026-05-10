@@ -721,13 +721,7 @@ pub(crate) fn emit_python_with_mode(
             )
         })
         .collect();
-    let top_level_binds: Vec<&BindNode> = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
-        .filter(|bind| bind.params.is_empty())
-        .collect();
+    let top_level_binds = python_program_mode_top_level_value_binds(dag, &indexes);
 
     if mode == EmitPythonMode::Program && top_level_binds.is_empty() {
         return Err(EmitPythonError::Unsupported(
@@ -823,6 +817,30 @@ pub(crate) fn emit_python_with_mode(
     }
 
     Ok(sections.join("\n\n"))
+}
+
+/// Top-level value `Bind` nodes that participate in Python program-mode emission, in `Dag::nodes`
+/// order. L5 uses this selector so `ForAllTargets` validates the declared observation against the
+/// same bind that emitted Python `__main__` prints.
+fn python_program_mode_top_level_value_binds<'a>(
+    dag: &'a Dag,
+    indexes: &PythonIndexes,
+) -> Vec<&'a BindNode> {
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
+        .filter(|bind| bind.params.is_empty())
+        .collect()
+}
+
+pub(crate) fn last_emit_python_program_top_level_value_bind_name(
+    dag: &Dag,
+) -> Result<Option<String>, EmitPythonError> {
+    let indexes = PythonIndexes::build(dag)?;
+    Ok(python_program_mode_top_level_value_binds(dag, &indexes)
+        .last()
+        .map(|b| b.name.clone()))
 }
 
 impl<'a> Ctx<'a> {
