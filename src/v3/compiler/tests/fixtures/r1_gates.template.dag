@@ -27,6 +27,8 @@ import std.substrate { Dag, Behavior, PortId }
 import std.types { Int }
 import std.verification {
   AlgebraicLaw,
+  CanonicalCostLens,
+  CanonicalNamedFunctionCountLens,
   Compiles,
   DeclarationHasRefinement,
   DifferentialEquals,
@@ -132,10 +134,12 @@ data p0_host_sentinel_and_rest_gate: TestSuite = {
 // fixture-side stub, delete this declaration.
 fn lens_composition_op(a: Int, b: Int) -> Int = a + b
 
-// Fixture-local stubs (names + shapes for `DeclarationRef` in this merged DAG). Bodies mirror
-// `src/v3/lenses/named_function_count.dag`; keep in sync when editing the lens file.
-// `LensOutputEquals` does **not** execute these stubs: `test_runner` compiles
-// `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` (same bytes as `build.rs` splices for Compiles).
+data canonical_named_function_count_lens: CanonicalNamedFunctionCountLens = {}
+data canonical_cost_lens: CanonicalCostLens = {}
+
+// Fixture-local body retained for `DeclarationRef` lowering / lockstep tests.
+// `LensOutputEquals` dispatches through `canonical_named_function_count_lens`
+// above, not this declaration's string name.
 fn count_named_bind(behavior: Behavior) -> Int =
   match behavior {
     Value(v) => 0
@@ -149,7 +153,8 @@ fn named_function_count(d: Dag) -> Int =
   fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
 
 // T-LaneE stubs: `DeclarationRef` lowering only (bodies `miss_int_lookup()` — not consulted).
-// `LensOutputEquals(cost_of, …)` → runner `lens_cost::cost_of` (emit from `complexity.dag`).
+// `LensOutputEquals(canonical_cost_lens, …)` → runner `lens_cost::cost_of`
+// (emit from `complexity.dag`).
 // `DifferentialEquals(v3_program_cost, v2_oracle_cost, …)` → host forward-fold vs the same emit
 // (`test_runner::lane_e_host_*` vs `lens_cost::cost_of`; ROADMAP T-LaneE / E-P receipt, api-review #764).
 fn cost_of(d: Dag, port_id: PortId) -> Lookup<Int> =
@@ -240,7 +245,7 @@ data lens_output_equals_gate: TestClaim = {
   source: "let x: Int = 1\n",
   file_name: "r1_lens_output_program.v3",
   predicate: LensOutputEquals(
-    named_function_count,
+    canonical_named_function_count_lens,
     r1_lens_output_program_input,
     lens_output_equals_expected
   ),
@@ -263,7 +268,7 @@ data complexity_merge_sort_is_nlogn_gate: TestClaim = {
   source: "R1_MERGE_SORT_PAIR_V3_SPLICE_V1",
   file_name: "r1_merge_sort_pair.v3",
   predicate: LensOutputEquals(
-    cost_of,
+    canonical_cost_lens,
     r1_merge_sort_program_input,
     complexity_merge_sort_expected_cost
   ),

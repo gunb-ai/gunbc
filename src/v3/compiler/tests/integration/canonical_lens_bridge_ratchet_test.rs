@@ -289,8 +289,8 @@ fn count_lens_name_lookups(src: &str) -> usize {
 }
 
 const EXPECTED_INCLUDE_STR_LENS_BYTES: usize = 2;
-const EXPECTED_NAME_EQ_DISPATCH_ARMS: usize = 2;
-const EXPECTED_GENERIC_NAME_LOOKUPS: usize = 2;
+const EXPECTED_NAME_EQ_DISPATCH_ARMS: usize = 0;
+const EXPECTED_GENERIC_NAME_LOOKUPS: usize = 0;
 
 #[test]
 fn canonical_lens_include_str_bridges_pinned() {

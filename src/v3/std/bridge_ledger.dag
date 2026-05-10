@@ -46,8 +46,10 @@ import v3.spec.v3_l1 { DeclarationRef }
 //     `canonical_lens_bridge_ratchet_test.rs`.
 //   - `bridge_canonical_lens_name_patching_residual` — Open. Broader
 //     exact-string canonical-lens-name class remains live in
-//     `test_runner.rs` (`include_str!`, name arms, and generic
-//     name-keyed lookups); full retirement waits for PB-Runtime
+//     `test_runner.rs` (`include_str!` canonical lens bytes). R3 gate
+//     #33 retired the runner-side name arms and generic name-keyed
+//     lookups via typed `LensOutputEquals` marker declarations; full
+//     retirement still waits for PB-Runtime
 //     interpreter-as-data or a typed lens-registry carrier.
 //   - `bridge_include_str_side_channels_retired` — Open. Per
 //     `r3-structure.md:82`: "Open disposition (`pipeline_authority`,

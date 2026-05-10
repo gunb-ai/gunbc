@@ -1970,6 +1970,12 @@ impl ProgramInputRole {
     }
 }
 
+enum LensOutputMode {
+    CanonicalNamedFunctionCount,
+    CanonicalCost,
+    FixtureDeclaration,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum DiagnosticDetailFilter {
     Any,
@@ -2307,17 +2313,10 @@ impl<'a> TestRunner<'a> {
             ));
         }
 
-        // INVARIANTS P2 (executable single authority): `DeclarationRef` for `lens_ref` still
-        // resolves against the fixture `Dag` for lowering, but for `named_function_count` the
-        // runner compiles `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` (same file as `build.rs` splices
-        // for `user_authored_lens_compiles_gate`) for `apply_lens_declaration` — not the
-        // fixture-local stub body. Other lens names: if `TestClaim.source` exports the same
-        // declaration name, apply that program; else fall back to the fixture graph.
-        //
-        // **Dissolution trigger (name-keyed bridge):** delete the `lens_decl.name ==
-        // Some("named_function_count")` arm and this entire parallel authority when
-        // `DeclarationRef` resolves lens executable identity from `program_dag` (or structured
-        // `TestClaim` metadata) without fixture-local stub bodies.
+        // INVARIANTS P2 (executable single authority): canonical legacy
+        // `LensOutputEquals` paths are selected by typed marker declarations,
+        // not by the referenced declaration's string name. Ordinary fixture
+        // lenses still execute from the merged fixture graph.
         // INVARIANTS P3 / TESTING: `TestClaim.source` must lower cleanly — never ignore
         // tokenize/parse failures and fall back to the fixture graph (that would let malformed
         // programs `Pass` when inputs/lens resolve only from the fixture).
@@ -2338,9 +2337,14 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        // T-LaneE (`cost_of`): structural `Lookup<Int>` from the Rust-generated lens on the claim
+        let lens_mode = match self.lens_output_mode(lens_decl) {
+            Ok(mode) => mode,
+            Err(msg) => return ClaimResult::Fail(format!("LensOutputEquals: {msg}")),
+        };
+
+        // T-LaneE (`canonical_cost_lens`): structural `Lookup<Int>` from the Rust-generated lens on the claim
         // program's `merge_sort_out` bind vs a fixture `Lookup<Int>` expected value.
-        if lens_decl.name.as_deref() == Some("cost_of") {
+        if matches!(lens_mode, LensOutputMode::CanonicalCost) {
             let Some(cost_bind) = program_input
                 .as_ref()
                 .and_then(ProgramInputRole::output_bind_name)
@@ -2386,9 +2390,10 @@ impl<'a> TestRunner<'a> {
 
         // INVARIANTS P2: reflected `FieldValue` List / `Behavior` variant ids must come from the
         // same `Dag` as `apply_lens_declaration` (canonical `named_function_count` vs claim).
-        let canonical_named_function_count_dag: Option<Dag> = if lens_decl.name.as_deref()
-            == Some("named_function_count")
-        {
+        let canonical_named_function_count_dag: Option<Dag> = if matches!(
+            lens_mode,
+            LensOutputMode::CanonicalNamedFunctionCount
+        ) {
             Some(
                 match compile_to_dag(
                     R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS,
@@ -2397,14 +2402,14 @@ impl<'a> TestRunner<'a> {
                     Ok(dag) => dag,
                     Err(CompileError::Semantic(dag)) => {
                         return ClaimResult::Fail(format!(
-                            "LensOutputEquals: canonical `named_function_count` lens failed inference: {:?}",
-                            dag.diagnostics().iter().collect::<Vec<_>>()
-                        ));
+                                "LensOutputEquals: canonical `named_function_count` lens failed inference: {:?}",
+                                dag.diagnostics().iter().collect::<Vec<_>>()
+                            ));
                     }
                     Err(err) => {
                         return ClaimResult::Fail(format!(
-                            "LensOutputEquals: canonical `named_function_count` lens did not compile: {err:?}"
-                        ));
+                                "LensOutputEquals: canonical `named_function_count` lens did not compile: {err:?}"
+                            ));
                     }
                 },
             )
@@ -2429,12 +2434,6 @@ impl<'a> TestRunner<'a> {
             // `List` / `Behavior` variant `DeclarationId`s are not mixed across graphs.
             let id_space: &Dag = if let Some(ref cld) = canonical_named_function_count_dag {
                 cld
-            } else if let Some(name) = lens_decl.name.as_deref() {
-                if program_dag.declaration_by_name(name).is_some() {
-                    &program_dag
-                } else {
-                    self.dag
-                }
             } else {
                 self.dag
             };
@@ -2485,11 +2484,6 @@ impl<'a> TestRunner<'a> {
                 );
                 };
                 (cld, d.id)
-            } else if let Some(name) = lens_decl.name.as_deref() {
-                match program_dag.declaration_by_name(name) {
-                    Some(d) => (&program_dag, d.id),
-                    None => (self.dag, lens_id),
-                }
             } else {
                 (self.dag, lens_id)
             };
@@ -2784,6 +2778,16 @@ impl<'a> TestRunner<'a> {
         Ok(Some(ProgramInputRole::ProgramOutputBind {
             output_bind_name,
         }))
+    }
+
+    fn lens_output_mode(&self, decl: &Declaration) -> Result<LensOutputMode, String> {
+        if self.decl_inhabits_named_role(decl, "CanonicalNamedFunctionCountLens")? {
+            return Ok(LensOutputMode::CanonicalNamedFunctionCount);
+        }
+        if self.decl_inhabits_named_role(decl, "CanonicalCostLens")? {
+            return Ok(LensOutputMode::CanonicalCost);
+        }
+        Ok(LensOutputMode::FixtureDeclaration)
     }
 
     fn decl_inhabits_named_role(

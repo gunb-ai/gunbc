@@ -340,6 +340,17 @@ type ProgramOutputBind {
   output_ref: DeclarationRef
 }
 
+// Canonical lens runner markers for `LensOutputEquals`.
+//
+// The marker declaration, not the lens declaration's string name, selects
+// the runner path for the two canonical legacy lenses that still need host
+// execution until PB-Runtime/interpreter-as-data can evaluate them directly.
+// `DeclarationRef` remains unrefined, so the runner fail-closes by checking
+// that `lens_ref` inhabits one of these marker types before taking a
+// canonical path.
+type CanonicalNamedFunctionCountLens {}
+type CanonicalCostLens {}
+
 // `requires` is the **only** place `ResourceReference` edges attach for a claim
 // (including mock backends when `predicate` is `MockBackedInvariant`). No parallel
 // resource slots on predicate variants — `obligation_for_claim` / materialization

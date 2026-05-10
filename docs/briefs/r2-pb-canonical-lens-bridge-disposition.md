@@ -15,7 +15,11 @@ These were retired in earlier PB / B4 work and survive structurally on main:
 
 ## What remains (the canonical lens-name dispatch bridge surface)
 
-Three categories of structural debt remain in `src/v3/compiler/src/test_runner.rs`:
+One category of structural debt remains in `src/v3/compiler/src/test_runner.rs`.
+R3 gate #33 retired the runner-side lens-name dispatch by routing
+`LensOutputEquals` through typed marker declarations
+(`CanonicalNamedFunctionCountLens`, `CanonicalCostLens`) instead of
+`lens_decl.name`.
 
 ### A. `include_str!` of canonical lens bytes (2 sites)
 
@@ -24,14 +28,17 @@ Three categories of structural debt remain in `src/v3/compiler/src/test_runner.r
 
 The runner re-compiles these bytes via `compile_to_dag(...)` to obtain a "canonical" `Dag` for `apply_lens_declaration`, distinct from the fixture-compiled stub.
 
-### B. String-name dispatch arms in `LensOutputEquals` (2 sites)
+### B. String-name dispatch arms in `LensOutputEquals` (retired)
 
-- `lens_decl.name.as_deref() == Some("cost_of")` (`test_runner.rs:1795`) — selects a `cost_of`-specific code path that reads `ProgramInputRole::output_bind_name` and computes `cost_of(&program_dag, &bind.value)`.
-- `lens_decl.name.as_deref() == Some("named_function_count")` (`test_runner.rs:1834`) — selects the `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` re-compile path.
+Retired by R3 gate #33. The `cost_of` and `named_function_count` special paths
+now dispatch on `lens_ref` declarations that inhabit closed marker types in
+`std.verification`, not on function-name strings.
 
-### C. Generic name-keyed lens lookup (2 sites)
+### C. Generic name-keyed lens lookup (retired)
 
-- `else if let Some(name) = lens_decl.name.as_deref() { program_dag.declaration_by_name(name) ... }` at `test_runner.rs:1877` (id-space selection) and `:1933` (lens-program selection). These resolve the lens body from `program_dag` (claim source) by **name** rather than by typed `DeclarationRef` identity.
+Retired by R3 gate #33. Ordinary non-canonical `LensOutputEquals` lenses execute
+from the fixture graph via their `DeclarationRef`; they no longer probe
+`program_dag` by the lens declaration's name.
 
 ## Why these survive — the substrate gap
 
@@ -50,13 +57,15 @@ Concretely (see comment block at `test_runner.rs:1762-1772` and `:1832-1833`):
 (b) a typed cross-`Dag` `DeclarationRef` carrier with reconciliation rules (substrate introduction), OR
 (c) PB-Runtime interpreter-as-data that loads the canonical lens once and routes `lens_ref` resolution through typed identity rather than name-keyed lookup,
 
-…the runner cannot drop the name-keyed dispatch without sacrificing the P2 cross-`Dag` invariant.
+…the runner cannot drop the canonical byte bridge (A) without sacrificing the
+P2 cross-`Dag` invariant. The name-keyed dispatch parts (B/C) are now replaced
+by typed marker declarations.
 
 ## Precise dependency
 
 Full retirement of `bridge_canonical_lens_name_dispatch_retired` is gated on **either**:
 
-1. **PB-Runtime interpreter-as-data** landing (load-bearing for T-LensProducer-Retirement's `lens_apply.rs` retirement; see [`r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) §"Owns (R3 continuation)"). That work makes lens application a `.dag`-driven walk over typed `DeclarationRef` identity rather than Rust name-keyed dispatch, and dissolves both the name-arms (B) and the generic name-keyed lookup (C). This dependency is **explicitly gated on Items 4+5** per Director cascade and **must not be unblocked from this disposition PR**. OR
+1. **PB-Runtime interpreter-as-data** landing (load-bearing for T-LensProducer-Retirement's `lens_apply.rs` retirement; see [`r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) §"Owns (R3 continuation)"). That work makes lens application a `.dag`-driven walk over typed `DeclarationRef` identity and can dissolve the remaining canonical byte bridge (A). OR
 2. **A typed lens-registry carrier substrate-introduction** authored by Substrate Manager per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) substrate-fact-introduction procedure — would dissolve the `include_str!` text bridges (A) by replacing canonical-lens-text with a typed `LensRegistryEntry` reference. The B4.1a worker brief explicitly STOPs and splits this as a sub-brief if it surfaces (per [`b4-1-declarationref-consumer-migration-worker.md`](b4-1-declarationref-consumer-migration-worker.md) §STOP-AND-ESCALATE: "Canonical lens identity requires loading a second DAG by path. Do not replace one `include_str!` bridge with another string registry; split a structural lens-registry carrier brief.").
 
 Either path is a substrate-level change outside PB authoring authority. PB territory cannot self-serve here without violating the dispatch guardrail "do not replace one string/path side channel with another."
@@ -65,7 +74,7 @@ Either path is a substrate-level change outside PB authoring authority. PB terri
 
 - [x] No `PROGRAM_INPUT_SENTINEL` remains (already retired pre-PR; verified by grep).
 - [x] Canonical lens lookup status documented; **not** retired in this PR (substrate gap above).
-- [x] Ratchet test added that fails if the bridge surface grows: pins counts of (1) `include_str!` of `lenses/*.dag` files in `test_runner.rs`, (2) `lens_decl.name.as_deref() == Some("...")` arms, and (3) generic `lens_decl.name.as_deref()` name-keyed lookups. Rule per `feedback_ratchet_only_down`: never increase. See `tests/integration/canonical_lens_bridge_ratchet_test.rs`.
+- [x] Ratchet test added that fails if the bridge surface grows: pins counts of (1) `include_str!` of `lenses/*.dag` files in `test_runner.rs`, (2) `lens_decl.name.as_deref() == Some("...")` arms, and (3) generic `lens_decl.name.as_deref()` name-keyed lookups. R3 gate #33 lowers (2) and (3) to zero. Rule per `feedback_ratchet_only_down`: never increase. See `tests/integration/canonical_lens_bridge_ratchet_test.rs`.
 - [x] Manager brief annotated with partial-retirement / blocker state for the slice (this disposition file). **No per-bridge retirement signal to Verification** — `bridge_retirement_ledger_zero` (the actual unified ledger authority) is not advanced by this PR; the bridge is not retired. This is a blocker/disposition receipt, not a ledger-advance.
 - [x] No replacement string / path side channel introduced.
 

@@ -82,8 +82,8 @@ they are the live Row 2 bridge rather than a separate BR id.
 | --- | --- | --- | --- | --- |
 | 3 | BR-17 `lens_apply.rs` unit-test canonical lens bytes | If a PR claims canonical-lens byte retirement and touches these tests, the tests must stop treating `../../lenses/named_function_count.dag` as a second canonical byte authority. A shared helper that only moves the string read is not retirement unless the test consumes the same structural lens identity as production. | Ideally the same typed lens registry, `program_dag` lens body identity, or PB-Runtime lens loader used by BR-07. If kept test-only, it remains adjacent cleanup and does not close Row 2 alone. | Optional same-wave cleanup with BR-07. Full `lens_apply.rs` retirement remains PB-Runtime sub-gate 1, not this receipt. |
 | 10a | BR-07 `test_runner` canonical lens public consts | Delete `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` / `R1_CANONICAL_COMPLEXITY_LENS` as production byte authorities, and remove runner recompilation paths that use those bytes to manufacture canonical lens identity. | PB-Runtime interpreter-as-data, typed lens registry, or structural `program_dag` lens body identity consumed by `LensOutputEquals` / lens application. The replacement must preserve cross-Dag declaration-id coherence without another path/string registry. | Row 1 owns file-stamped reflection participation after compilation. Row 3 may count generic `include_str!` channel mechanics, but Row 2 owns these canonical lens bytes. |
-| 10b | Canonical disposition name-dispatch arms | Remove `lens_decl.name.as_deref() == Some("cost_of")` and `Some("named_function_count")` semantic dispatch arms. A PR cannot claim retirement while either arm still selects behavior by string name. | PB-Runtime structural dispatch over typed lens identity, or a typed lens-registry carrier that maps claim/lens refs to executable lens bodies. | This is the core `bridge_canonical_lens_name_patching_residual` surface. Do not conflate with Row 1 broad `declaration_by_name` duplicate-preference cleanup. |
-| 10c | Canonical disposition generic name-keyed lens lookup | Remove generic `lens_decl.name.as_deref()` lookup that calls `program_dag.declaration_by_name(name)` for id-space selection or lens-program selection. | Cross-Dag typed lens identity or PB-Runtime loader that resolves the lens body structurally. Fixture-local names may remain display data only if they no longer select semantics. | Adjacent to Row 1 entry #14's broad `declaration_by_name` retirement, but Row 2 owns only canonical-lens body selection by name. |
+| 10b | Canonical disposition name-dispatch arms | **Retired by R3 gate #33:** `LensOutputEquals` no longer has `lens_decl.name.as_deref() == Some("cost_of")` or `Some("named_function_count")` semantic dispatch arms. | Typed marker declarations in `std.verification` (`CanonicalCostLens`, `CanonicalNamedFunctionCountLens`) select the two legacy runner paths without matching function-name strings. | Remaining Row 2 surface is BR-07/BR-08 byte authority, not name dispatch. |
+| 10c | Canonical disposition generic name-keyed lens lookup | **Retired by R3 gate #33:** generic `lens_decl.name.as_deref()` lookup no longer calls `program_dag.declaration_by_name(name)` for id-space or lens-program selection. | Ordinary non-canonical `LensOutputEquals` lenses execute from their fixture `DeclarationRef`; canonical named-function-count still compiles canonical bytes until BR-07 closes. | Adjacent Row 1 broad `declaration_by_name` retirement remains separate. |
 | 10d | BR-08 user-authored lens gate on-disk vs runner bytes | Remove byte equality / import coupling between the gate test and `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS`; the test must consume the same structural canonical lens identity as runner production. | Same carrier as BR-07, visible to the integration test through structural fixture/test-claim identity rather than duplicate on-disk bytes. | BR-08 also has hermetic fixture bytes; those are not Row 2 unless they assert canonical lens byte identity. |
 | 10e | Appendix B canonical lens ratchet | When BR-07/BR-08/name-dispatch surfaces shrink, update or delete the ratchet so it pins only live residuals. A retired bridge must not remain documented as an expected positive count. | No new carrier; consumes the same production counts as a verification ratchet. | Ratchet is evidence for Row 2 only, not an independent bridge entry. |
 | 11 | BR-06 R1 gates fixture splice, canonical-lens slice only | If a canonical-lens retirement PR edits `emit_r1_gates_fixture`, it must remove duplicate canonical lens text splicing rather than merely renaming sentinels or moving escaped bytes. | Structural `TestClaim` / declaration-ref lens-body carrier or single substrate-owned generator that embeds lens identity without parallel text authority. | Row 4 owns exact-string/sentinel splice retirement generally. Row 2 counts only the canonical-lens byte identity portion if it lands in the same wave as BR-07/BR-08. |
@@ -92,15 +92,15 @@ they are the live Row 2 bridge rather than a separate BR id.
 
 Row 2 routes primarily to PB-Runtime / T-LensProducer-Retirement:
 
-- PB-Runtime interpreter-as-data is the preferred owner-program path for
-  retiring `test_runner.rs` name arms and name-keyed lens-body selection while
-  preserving the P2 cross-Dag reflection invariant.
+- PB-Runtime interpreter-as-data remains the preferred owner-program path for
+  retiring the remaining canonical byte bridge while preserving the P2
+  cross-Dag reflection invariant.
 - A typed lens-registry carrier remains the Substrate alternative if PB-Runtime
   does not provide enough structural lens identity. That carrier must not be a
   new string/path registry.
 - `program_dag` lens body identity is acceptable only when the runner no longer
-  recompiles separate canonical bytes or chooses behavior through
-  `lens_decl.name`.
+  recompiles separate canonical bytes; behavior selection through
+  `lens_decl.name` was retired by R3 gate #33.
 - BR-08 and BR-17 should consume the same production structural lens identity as
   BR-07, or remain adjacent test cleanup rather than row closure.
 - BR-06's canonical-lens splice pressure should be coordinated with Row 4
