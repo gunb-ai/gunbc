@@ -153,7 +153,8 @@ fn assert_single_arg_instantiation(
     assert_eq!(arguments[0].value, argument, "{message}");
 }
 
-fn assert_numeric_construction_chain(dag: &Dag) {
+/// Receipt: `Nat` is the natural-number carrier `CommutativeSemiring<Magnitude>`.
+pub fn assert_bootstrap_nat_is_commutative_semiring_magnitude(dag: &Dag) {
     let magnitude_id = find_named(dag, "Magnitude");
     assert_single_arg_instantiation(
         dag,
@@ -162,7 +163,10 @@ fn assert_numeric_construction_chain(dag: &Dag) {
         magnitude_id,
         "Nat must be CommutativeSemiring<Magnitude>",
     );
+}
 
+/// Receipt: abstract `Int` is `AbelianGroup<GroupCompletion<Nat>>`.
+pub fn assert_bootstrap_int_is_group_completion_of_nat(dag: &Dag) {
     let nat_id = find_named(dag, "Nat");
     let group_completion_id = find_named(dag, "GroupCompletion");
     let int_id = resolve_atom_alias(dag, find_named(dag, "Int"));
@@ -196,7 +200,10 @@ fn assert_numeric_construction_chain(dag: &Dag) {
         }
         other => panic!("Int carrier must be GroupCompletion<Nat>; got {other:?}"),
     }
+}
 
+/// Receipt: `Rational` is exact `Field<FieldOfFractions<Int>>`.
+pub fn assert_bootstrap_rational_is_field_of_fractions_int(dag: &Dag) {
     let field_of_fractions_id = find_named(dag, "FieldOfFractions");
     let rational_id = resolve_atom_alias(dag, find_named(dag, "Rational"));
     let TypeConnective::Instantiation {
@@ -230,7 +237,11 @@ fn assert_numeric_construction_chain(dag: &Dag) {
         }
         other => panic!("Rational carrier must be FieldOfFractions<Int>; got {other:?}"),
     }
+}
 
+/// Receipt: `Real` is approximate `ApproximateField<FieldOfFractions<Int>>`.
+pub fn assert_bootstrap_real_is_approximate_field_of_fractions_int(dag: &Dag) {
+    let field_of_fractions_id = find_named(dag, "FieldOfFractions");
     let real_id = resolve_atom_alias(dag, find_named(dag, "Real"));
     let TypeConnective::Instantiation {
         template,
@@ -326,6 +337,11 @@ pub fn assert_bootstrap_int64_compose_int_machine_width(dag: &Dag) {
     assert_compose_with_machine_width(dag, "Int64", "Int", "Word64");
 }
 
+/// Receipt: `Int32` is a width refinement `Compose<Int, MachineWidth<Word32>>`.
+pub fn assert_bootstrap_int32_compose_int_machine_width(dag: &Dag) {
+    assert_compose_with_machine_width(dag, "Int32", "Int", "Word32");
+}
+
 /// Receipt: `Real64` refines abstract `Real` with `MachineWidth<Word64>` (R3 gate #67).
 pub fn assert_bootstrap_real64_compose_real_machine_width(dag: &Dag) {
     assert_compose_with_machine_width(dag, "Real64", "Real", "Word64");
@@ -339,11 +355,4 @@ pub fn assert_bootstrap_float64_aliases_real64(dag: &Dag) {
         float64_id, real64_id,
         "Float64 should alias the canonical Real64 construction entry"
     );
-}
-
-/// Gate #67 demonstration receipt: the construction chain and both width demos are present.
-pub fn assert_numeric_construction_demonstration_gate_67(dag: &Dag) {
-    assert_numeric_construction_chain(dag);
-    assert_compose_with_machine_width(dag, "Int32", "Int", "Word32");
-    assert_bootstrap_real64_compose_real_machine_width(dag);
 }

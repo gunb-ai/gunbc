@@ -7,9 +7,13 @@ use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind
 use v3_compiler::Diagnostic;
 
 use crate::common::substrate_receipts::{
-    assert_bootstrap_float64_aliases_real64, assert_bootstrap_int64_compose_int_machine_width,
+    assert_bootstrap_float64_aliases_real64, assert_bootstrap_int32_compose_int_machine_width,
+    assert_bootstrap_int64_compose_int_machine_width,
+    assert_bootstrap_int_is_group_completion_of_nat,
+    assert_bootstrap_nat_is_commutative_semiring_magnitude,
+    assert_bootstrap_rational_is_field_of_fractions_int,
     assert_bootstrap_real64_compose_real_machine_width,
-    assert_numeric_construction_demonstration_gate_67, bind_named, bind_value_type_decl,
+    assert_bootstrap_real_is_approximate_field_of_fractions_int, bind_named, bind_value_type_decl,
     callable_instantiation_arguments, field, find_named, transforms_in_source_file,
 };
 use crate::common::{cached_compile_any, cached_compile_to_dag};
@@ -55,8 +59,28 @@ fn bootstrap_float64_aliases_real64_machine_width_construction() {
 }
 
 #[test]
-fn numeric_construction_demonstration_gate_67() {
-    assert_numeric_construction_demonstration_gate_67(&Dag::new());
+fn bootstrap_nat_is_commutative_semiring_magnitude() {
+    assert_bootstrap_nat_is_commutative_semiring_magnitude(&Dag::new());
+}
+
+#[test]
+fn bootstrap_int_is_group_completion_of_nat() {
+    assert_bootstrap_int_is_group_completion_of_nat(&Dag::new());
+}
+
+#[test]
+fn bootstrap_rational_is_field_of_fractions_int() {
+    assert_bootstrap_rational_is_field_of_fractions_int(&Dag::new());
+}
+
+#[test]
+fn bootstrap_real_is_approximate_field_of_fractions_int() {
+    assert_bootstrap_real_is_approximate_field_of_fractions_int(&Dag::new());
+}
+
+#[test]
+fn bootstrap_int32_compose_int_machine_width_per_gate_67() {
+    assert_bootstrap_int32_compose_int_machine_width(&Dag::new());
 }
 
 #[test]
