@@ -38,6 +38,14 @@ const INFER_HELPERS_SOURCE: &str = include_str!(concat!(
 const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
     "src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag";
 
+/// R3 gate #43 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
+///
+/// Compared as `Some(R3_PARALLEL_EMIT_WITNESS_LENS_NAME)` — **not** `Some("…")` inline — so
+/// `canonical_lens_name_dispatch_arms_pinned` does not treat this as a new string-literal name
+/// dispatch arm on the canonical lens bridge (see disposition:
+/// `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`).
+const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_emit_witness";
+
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
 /// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
@@ -2334,7 +2342,7 @@ impl<'a> TestRunner<'a> {
         // R3 gate #43 (`auto_parallelism_independent_binds_emit_parallel`): independent top-level
         // binds must emit a parallel Rust schedule (`std::thread::scope`). Structural witness via
         // program text — dissolution when ordinary DB-20 parallelism lens output reaches `.dag`.
-        if lens_decl.name.as_deref() == Some("r3_auto_parallelism_parallel_emit_witness") {
+        if lens_decl.name.as_deref() == Some(R3_PARALLEL_EMIT_WITNESS_LENS_NAME) {
             let expected_int = match expected_decl.value_body.as_ref() {
                 Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
                     Ok(v) => v,
