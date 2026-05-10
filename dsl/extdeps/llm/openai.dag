@@ -28,6 +28,11 @@ data openai_chat_message_part_wire_contract: CoproductWireContract = {
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "OpenAiChatMessage", suffix: "Part" } }
 }
 
+data openai_chat_message_content_wire_contract: CoproductWireContract = {
+  coproduct: "OpenAiChatMessageContent",
+  encoding: UntaggedVariant
+}
+
 // -- Models --------------------------------------------------------
 
 type OpenAiModel
@@ -104,9 +109,9 @@ type OpenAiChatMessageRole = System | Developer | User | Assistant | Tool | Func
 
 // 🟡 SCAFFOLD provider-domain coproduct for request `messages[].content`.
 // Chat Completions accepts either a scalar text string or typed content parts.
-// Trigger: retire this scaffold when `std.serialization::VariantEncoding` grows
-// an untagged string-or-array contract; until then the source model carries the
-// structural surface and `OpenAiChatMessagePart` carries the tagged part rows.
+// Wire uses untagged string-or-array alternatives via
+// `openai_chat_message_content_wire_contract`; `OpenAiChatMessagePart` carries
+// the tagged part rows.
 type OpenAiChatMessageContent
   = OpenAiChatMessageText { text: String }
   | OpenAiChatMessageParts { parts: List<OpenAiChatMessagePart> }

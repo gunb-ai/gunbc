@@ -6476,6 +6476,21 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
         );
     }
 
+    let content_attrs = attrs_immediately_above_enum(&content, "pub enum OpenAiChatMessageContent");
+    assert!(
+        content_attrs.contains(&"#[serde(untagged)]"),
+        "expected OpenAiChatMessageContent to serialize as OpenAI's untagged string-or-array content field; attrs: {:?}",
+        content_attrs
+    );
+    let content_block = enum_block(&content, "pub enum OpenAiChatMessageContent");
+    assert!(
+        content_block.contains("OpenAiChatMessageText(String),")
+            && content_block.contains(
+                "OpenAiChatMessageParts(Rc<Vec<Rc<OpenAiChatMessagePart>>>),"
+            ),
+        "untagged OpenAiChatMessageContent variants must emit as newtype variants so `content` serializes as a string or content-part array; got:\n{content_block}"
+    );
+
     assert!(
         content.contains("\"messages\": messages"),
         "expected ChatCompletion REST body to pass `messages` through serde_json::json!; excerpt missing in emitted module"
