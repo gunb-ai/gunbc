@@ -171,6 +171,13 @@ fn transform_summary(
   call_site: NodeId,
   inputs: List<PortId>
 ) -> Lookup<ComplexitySummary> =
+  // Rust mirror note: surface `std.list.fold` currently reaches the reflected
+  // DAG as `TransformTarget::Callable` rather than `LoopNode`. The checked-in
+  // generated Rust module has a marked host mirror that recognizes that
+  // callable shape and feeds it through the same `combine_iterate` algebra here
+  // so `complexity_of` remains the single authority consumed by enforcement.
+  // Dissolution trigger: remove the host mirror when lowering exposes fold
+  // iteration/step edges directly in substrate query functions.
   match per_call_pattern_at(d, call_site) {
     None => compose_many_inputs(acc, inputs)
     Some(pattern) =>

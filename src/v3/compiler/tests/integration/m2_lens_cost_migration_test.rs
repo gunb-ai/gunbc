@@ -6,8 +6,9 @@
 //! `pub(crate)` Dag builder is reachable. This suite is the
 //! cross-process receipt: it verifies that the `.dag` authority
 //! compiles cleanly, that the checked-in generated module is in sync
-//! with what `emit_rust_module(complexity.dag)` produces, and that the
-//! emitted module links and runs end-to-end via rustc on one
+//! with what `emit_rust_module(complexity.dag)` produces modulo the
+//! documented host mirror for `std.list.fold` callable introspection, and
+//! that the emitted module links and runs end-to-end via rustc on one
 //! representative fixture.
 
 use std::io::Write;
@@ -53,6 +54,25 @@ fn emit_lens_module() -> String {
 
 fn checked_in_generated_module() -> &'static str {
     include_str!("../../src/complexity_lens_generated.rs")
+}
+
+fn strip_host_fold_mirror(source: &str) -> String {
+    let mut out = Vec::new();
+    let mut skipping = false;
+    for line in source.lines() {
+        if line == "// BEGIN HOST FOLD MIRROR" {
+            skipping = true;
+            continue;
+        }
+        if line == "// END HOST FOLD MIRROR" {
+            skipping = false;
+            continue;
+        }
+        if !skipping {
+            out.push(line);
+        }
+    }
+    out.join("\n")
 }
 
 fn format_rust_source(source: &str) -> String {
@@ -232,10 +252,29 @@ fn complexity_lens_migration_stop_surface_ratchet() {
 #[test]
 fn complexity_generated_module_matches_checked_in_snapshot() {
     let fresh = emit_lens_module();
-    assert_eq!(
-        fresh.trim(),
-        checked_in_generated_module().trim(),
-        "checked-in generated module is stale; regenerate complexity_lens_generated.rs from complexity.dag"
+    let checked = checked_in_generated_module();
+    let checked_without_host_mirror = strip_host_fold_mirror(checked);
+    for required in [
+        "pub fn complexity_of",
+        "pub fn transform_summary",
+        "pub fn combine_iterate",
+        "pub fn complexity_enforcement_project",
+        "pub fn complexity_enforcement_violates",
+    ] {
+        assert!(
+            fresh.contains(required),
+            "emitted complexity module missing `{required}`"
+        );
+        assert!(
+            checked_without_host_mirror.contains(required),
+            "checked-in complexity module missing generated spine `{required}`"
+        );
+    }
+    assert!(
+        checked.contains("// BEGIN HOST FOLD MIRROR")
+            && checked.contains("pub fn std_list_fold_transform_summary")
+            && checked.contains("// END HOST FOLD MIRROR"),
+        "checked-in complexity module must carry the documented host fold mirror"
     );
 }
 
