@@ -236,8 +236,14 @@ fn entry_for(
   }
 
 // Mirrors `lenses.complexity::recursive_transform_summary` / `pattern_to_iter_bound`:
-// recurrence iteration bound × non-recursive operand spine, keyed by the same
+// recurrence iteration bound × operand spine from `inputs`, keyed by the same
 // `per_call_pattern_at` projection over `SubValueRelation` evidence.
+//
+// **Match complexity spine shape:** use `sum_costs` alone as the iterate body — not
+// `ConstantCost(1)` + `sum_costs` like non-recursive `transform_cost`. The extra
+// sequential constant factor composed under `iterate` duplicated iterate-shaped
+// structure and forced `ProductCost(Linear, Linear)` on distinct ports for unary
+// tail recursion where complexity collapses to a single linear-family carrier.
 fn recursive_transform_cost(
   acc: List<SymbolicCostEntry>,
   pattern: CallPattern,
@@ -249,10 +255,7 @@ fn recursive_transform_cost(
     Cons(_) =>
       combine_iterate(
         hit_symbolic_cost_lookup(pattern_to_iter_bound(pattern, descent_port)),
-        combine_sequential(
-          hit_symbolic_cost_lookup(ConstantCost(1)),
-          sum_costs(acc, inputs)
-        )
+        sum_costs(acc, inputs)
       )
   }
 
