@@ -1,9 +1,10 @@
 //! Regression helper for the canonical recursive **countdown** fixture.
 //!
-//! Normalized output may be a bare **`LinearCost`** or, when **both** a **Loop** iterate bound and
-//! an inner recurrence **Transform** contribute distinct `SizeVariable` ports, a binary
-//! **`ProductCost(Linear, Linear)`** — still **linear-family** (no `PolynomialCost` / `UnknownCost`).
-//! Same-var `Linear × Linear` folds to **`PolynomialCost(n, 2)`** in the semiring, not `ProductCost`.
+//! Unary tail recursion composes a loop iterate bound with the recurrence body; after gate **#78**
+//! descent-operand discipline and `collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction`,
+//! the symbolic carrier for the canonical `fn countdown(n: Int) -> Int` fixture must normalize to a bare
+//! **`LinearCost`** on the parameter — not a **`ProductCost(Linear, Linear)`** shell keyed off two
+//! distinct `PortId`s for the same induction chain.
 
 use v3_compiler::dag::SymbolicCost;
 
@@ -19,10 +20,10 @@ fn cost_contains_polynomial_or_unknown(cost: &SymbolicCost) -> bool {
     }
 }
 
-/// Pins **linear-family** symbolic cost for tail-recursive countdown: **LinearCost**, or **binary**
-/// **Product(Linear, Linear)** on **distinct** ports (iterate / loop × inner spine — DB-7
-/// `product_of_linears_over_different_vars_stays_product`). Rejects carriers that admit super-linear
-/// growth (`PolynomialCost`) or reflection holes (`UnknownCost`).
+/// Pins **linear** symbolic cost for tail-recursive unary countdown: a single **`LinearCost`** on the
+/// formal parameter (post unary-bind iterate collapse). Rejects **`PolynomialCost`** /
+/// **`UnknownCost`** and rejects accidental **`ProductCost`** shells that would mask double-count
+/// regressions for gate **#78**.
 pub fn assert_recursive_countdown_linear_semantics(cost: &SymbolicCost) {
     assert!(
         !cost_contains_polynomial_or_unknown(cost),
@@ -30,26 +31,9 @@ pub fn assert_recursive_countdown_linear_semantics(cost: &SymbolicCost) {
          ambiguous bound): got {cost:?}"
     );
 
-    match cost {
-        SymbolicCost::LinearCost { .. } => {}
-        SymbolicCost::ProductCost { _0: terms } if terms.rest.is_empty() => {
-            match (terms.first.as_ref(), terms.second.as_ref()) {
-                (SymbolicCost::LinearCost { _0: va }, SymbolicCost::LinearCost { _0: vb }) => {
-                    assert_ne!(
-                        va, vb,
-                        "same-var Linear × Linear should normalize to PolynomialCost(n, 2), not \
-                         ProductCost — structural mismatch, got {cost:?}"
-                    );
-                }
-                _ => panic!(
-                    "iterate-shaped countdown must be Product(Linear, Linear) when not a bare \
-                     LinearCost; got {cost:?}"
-                ),
-            }
-        }
-        _ => panic!(
-            "recursive countdown must be LinearCost or iterate-shaped Product(Linear, Linear) with \
-             distinct SizeVariables; got {cost:?}"
-        ),
-    }
+    assert!(
+        matches!(cost, SymbolicCost::LinearCost { .. }),
+        "recursive countdown must normalize to a bare LinearCost on the unary parameter (gate #78 \
+         oracle); got {cost:?}"
+    );
 }
