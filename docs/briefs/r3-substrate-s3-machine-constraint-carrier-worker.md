@@ -99,7 +99,7 @@ emitter wiring (Grounding Mgr cross-program).
 
    Type spelling per sub-decision 3: `Int<64>` ≡
    `Compose<AbelianGroup, MachineWidth<64>>`. `Real<64>` ≡
-   `Compose<ApproximateField<Rational>, MachineWidth<64>>`
+   `Compose<Real, MachineWidth<64>>`
    (sub-decision 4 — algebra approximation + machine approximation
    compose as independent axes; both carried explicitly).
 
@@ -154,7 +154,7 @@ instantiations:
 2. `Compose<AbelianGroup, MachineWidth<64>>` (≡ `Int<64>`) → Rust `i64`
 3. `Compose<CommutativeMonoid, MachineWidth<64>>` (≡ `UInt<64>`) → Rust `u64`
 
-(Alternative: `Compose<ApproximateField<Rational>, MachineWidth<64>>`
+(Alternative: `Compose<Real, MachineWidth<64>>`
 ≡ `Real<64>` → Rust `f64` per sub-decision 4 covers the algebra-
 approximation × machine-approximation independent-composition case.
 Coordinate with S8 worker (quiet-boar-160) for the float entry.)

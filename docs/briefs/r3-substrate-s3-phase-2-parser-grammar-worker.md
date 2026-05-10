@@ -183,7 +183,7 @@ folds into parent worker brief Acceptance bullets, NOT separate dispatch
    - `MachineWidth<bits>` at `dsl/std/machine_constraints.dag` ✓
    - `Compose<Algebra, MachineConstraint> = Phantom` at same file ✓
    - Algebraic-concept names (`Int` = AbelianGroup<GroupCompletion<Nat>>;
-     `UInt` = CommutativeSemiring<Nat>; `Real` = ApproximateField<Rational>)
+     `UInt` = Nat; `Real` = ApproximateField<FieldOfFractions<Int>>)
      in `dsl/std/integer.dag` / canonical equivalents (worker re-greps
      at dispatch). These are the slot-1 elaboration targets per
      Q-MC sub-decision 3 — NOT bare witness shapes
