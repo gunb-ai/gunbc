@@ -931,6 +931,22 @@ fn ep_count_acc_pattern(xs: EpListP, acc: Int, limit: Int) -> Int =
     });
 }
 
+/// Two-parameter recursive self-call with independent arithmetic descent on each
+/// argument (`param_0` / `param_1`). Used by per-arg `SubValueRelation` cementing and
+/// by `e_p_per_call_pattern_projects_multi_arg_self_call_from_per_arg_evidence`.
+/// R3 gate #72 `e_p_producer_demonstration` uses a **unary** fixture instead (scalar
+/// `CallPattern` surface); see that test's module comment.
+fn compile_ep_two_descent_two_arg_arithmetic_dag(display_path: &str) -> Dag {
+    compile_to_dag(
+        "\
+fn ep_two_descent(n: Int, m: Int) -> Int =
+  if n == 0 then m else ep_two_descent(n - 1, m - 1)
+",
+        display_path,
+    )
+    .expect("ep_two_descent two-arg arithmetic fixture compiles")
+}
+
 #[test]
 fn e_p_per_call_descent_evidence_emits_distinct_per_arg_param_labels_for_arithmetic_descent() {
     // Phase-1 broadening Slice 4 (continued): when arithmetic descent
@@ -943,14 +959,7 @@ fn e_p_per_call_descent_evidence_emits_distinct_per_arg_param_labels_for_arithme
     // (v3's existing termination prover requires the first arg to descend
     // structurally; `n - 1` on arg 0 satisfies that, while `m - 1` on arg
     // 1 lets us also exercise classification for a non-first parameter.)
-    let dag = compile_to_dag(
-        "\
-fn ep_two_descent(n: Int, m: Int) -> Int =
-  if n == 0 then m else ep_two_descent(n - 1, m - 1)
-",
-        "e_p_multi_arg_arith.v3",
-    )
-    .expect("two-param arithmetic-descent fixture compiles");
+    let dag = compile_ep_two_descent_two_arg_arithmetic_dag("e_p_multi_arg_arith.v3");
 
     let entries = per_call_descent_evidence(&dag);
     let two_descent = entries
@@ -982,6 +991,56 @@ fn ep_two_descent(n: Int, m: Int) -> Int =
         }
         other => panic!("expected ArithmeticDescent for arg 1 (m - 1), got {other:?}"),
     }
+}
+
+/// R3 program-plan gate **#72** `e_p_producer_demonstration` (T-E-P-Producer-Broadening).
+///
+/// Runtime-executable witness per `docs/r3-structure.md` (demonstration principle): a
+/// representative lowered `Dag` exposes a recursive self-call with **proven** per-port
+/// `SubValueRelation` (here: single-arg arithmetic descent, no `SubValueUnknown`),
+/// the lens-facing `per_call_pattern_at` lookup succeeds on the live `Transform` node
+/// id, and `lower_call_pattern` materializes `DescentEvidence::Strict`.
+///
+/// Uses a **unary** self-call so the witness matches today's scalar `CallPattern`
+/// surface (`per_call_pattern_at` returns one pattern). Multi-arg per-port cementing
+/// lives in `e_p_per_call_descent_evidence_emits_distinct_per_arg_param_labels_for_arithmetic_descent`
+/// and `e_p_per_call_pattern_projects_multi_arg_self_call_from_per_arg_evidence`.
+#[test]
+fn e_p_producer_demonstration() {
+    let dag = compile_to_dag(
+        "\
+fn ep_gate72_demo(n: Int) -> Int =
+  if n == 0 then 0 else ep_gate72_demo(n - 1)
+",
+        "e_p_producer_demonstration.v3",
+    )
+    .expect("e_p_producer_demonstration fixture compiles");
+
+    let entry = per_call_descent_evidence(&dag)
+        .into_iter()
+        .find(|e| e.caller == "ep_gate72_demo" && e.callee == "ep_gate72_demo")
+        .expect("expected ep_gate72_demo self-call in per-call side table");
+
+    assert_eq!(entry.evidence.len(), 1);
+    let expected_factor = ShrinkFactor::ConstantShrink {
+        steps: PositiveDescentAmount::OneStep,
+    };
+    match &entry.evidence[0] {
+        SubValueRelation::ArithmeticDescent { param, factor } => {
+            assert_eq!(param, "param_0");
+            assert_eq!(factor, &expected_factor);
+        }
+        other => panic!("expected ArithmeticDescent on the sole arg, got {other:?}"),
+    }
+
+    let pattern = per_call_pattern_at(&dag, entry.call)
+        .expect("authoritative CallPattern lookup must succeed for unary strict-descent self-call");
+    let target = lower_call_pattern(pattern);
+    assert_eq!(
+        target.evidence,
+        DescentEvidence::Strict,
+        "lowering must observe Strict descent evidence for the projected CallPattern"
+    );
 }
 
 #[test]
