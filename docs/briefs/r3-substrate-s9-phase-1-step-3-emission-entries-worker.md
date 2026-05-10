@@ -73,7 +73,7 @@ Per PR #1818 / Codex P2 review: UInt = Nat (Nat IS the CommutativeSemiring with 
 - `UInt<64>` ≡ `Compose<UInt, MachineWidth<64>>` → emits Rust `u64`
 - `UInt<128>` ≡ `Compose<UInt, MachineWidth<128>>` → emits Rust `u128`
 
-Algebra-side spelling: **first slot is the fully-applied algebraic-concept name `UInt`** (= `CommutativeSemiring<Nat>` per #1818 Codex review framing), NOT bare `CommutativeSemiring`. Same Q-MC sub-decision 3 correction applies — witness shape doesn't go in slot-1; the named concept does.
+Algebra-side spelling: **first slot is the fully-applied algebraic-concept name `UInt`** (= `Nat`; Nat carries the `CommutativeSemiring<Magnitude>` surface per #1818), NOT bare `CommutativeSemiring`. Same Q-MC sub-decision 3 correction applies — witness shape doesn't go in slot-1; the named concept does.
 
 ### Deliverable 3 — Cross-program emission consumer wiring (Grounding G2)
 
@@ -112,7 +112,7 @@ Phase ordering (PR-internal):
 - 6 concrete emission entries landed: `Int<32>` / `Int<64>` / `Int<128>` + `UInt<32>` / `UInt<64>` / `UInt<128>` (≥3 minimum per sub-decision 5; 6 actual)
 - Algebra-side spellings correct per Q6 audit + #1818 Codex review:
   - `Int<N>` first slot = `Int` (fully-applied `AbelianGroup<GroupCompletion<Nat>>`)
-  - `UInt<N>` first slot = `UInt` (fully-applied `CommutativeSemiring<Nat>`)
+  - `UInt<N>` first slot = `UInt` (alias of `Nat`, whose carrier is `CommutativeSemiring<Magnitude>`)
 - Machine-axis spellings consistent: `MachineWidth<bits>` per S3 ratified shape
 - Cross-program handoff receipt to Grounding Mgr (#1745) in PR body for G2 consumer wiring
 - Producer-side verification: each instantiation type-checks under `Compose<...>` carrier; bootstrap snapshot + parse corpus manifest hold (NO end-to-end Rust emission demonstration in this PR — Grounding G2 owns lowering rules + emit verification per bundled-scope discipline)
@@ -138,7 +138,7 @@ Phase ordering (PR-internal):
 1. **Substrate exists?** Per memory + draft-time grep:
    - `MachineWidth<bits>` + `Compose<Algebra, MachineConstraint>` landed at #1856 ✓
    - `Int` algebraic-concept landed (= `AbelianGroup<GroupCompletion<Nat>>` per Slice 3 / #1466)
-   - `UInt` algebraic-concept landed (= `CommutativeSemiring<Nat>` per #1818 Codex review framing) — worker confirms at dispatch
+   - `UInt` algebraic-concept landed (= `Nat`; Nat carries `CommutativeSemiring<Magnitude>` per #1818) — worker confirms at dispatch
    - `GroupCompletion<Nat>` substrate landed per Slice 3 #1466 / Q6 audit
    - Concrete emission entries (Int<N> / UInt<N> parametric instantiations) do NOT yet exist; this brief is producer
 2. **Existing brief?** S9 parent brief (`r3-substrate-s9-t-numeric-construction-worker.md`) names Phase-1 step 3 in its slice section. This brief is the worker dispatch packet for that step; not a competing authority
