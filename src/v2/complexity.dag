@@ -81,8 +81,9 @@ import std.algebra {
   CostShape, ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody
 }
 import std.graph {
-  CallGraph, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
+  CallGraph, GraphEdge, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
   seed_adjacency_map, build_call_graph_from_proof_edges,
+  forward_adjacency, reverse_adjacency,
   dfs_finish_order, dfs_collect_component, graph_has_multi_node_scc,
   is_lexicographic_descent, is_valid_proof
 }
@@ -242,12 +243,12 @@ type CallEdge {
 
 type SccInfo {
   members: List<String>
-  member_set: Map<String, Bool>
+  member_set: Set<String>
   pattern: LoweringTarget
 }
 
 type SccBuildAcc {
-  assigned: Map<String, Bool>
+  assigned: Set<String>
   index: Map<String, SccInfo>
 }
 
@@ -1163,7 +1164,8 @@ fn infer_parser_always_advancing_members(members: List<String>, func_index: Map<
       None => []
     }
   )
-  let reverse_graph = build_call_graph(func_entries: parser_entries, si: si).reverse
+  let call_graph = build_call_graph(func_entries: parser_entries, si: si)
+  let reverse_graph = reverse_adjacency(names: members, graph: call_graph)
   infer_parser_always_advancing_members_worklist(
     queue: members,
     func_index: func_index,
@@ -1210,22 +1212,11 @@ fn seed_func_entry_map(key: String, value: FuncEntry) -> Map<String, FuncEntry> 
 // Typed return ensures [] resolves to List<String>, not List<Unit>.
 
 fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
-  let initial_forward = seed_adjacency_map(names: names)
-  let initial_reverse = seed_adjacency_map(names: names)
-  edges |> fold(init: CallGraph { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
-    let forward_neighbors = match map_get(acc.forward, edge.caller) {
-      Some { value: ns } => ns
-      None => []
-    }
-    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
-      Some { value: ns } => ns
-      None => []
-    }
-    CallGraph {
-      forward: map_insert(acc.forward, edge.caller, list_push(forward_neighbors, edge.callee)),
-      reverse: map_insert(acc.reverse, edge.callee, list_push(reverse_neighbors, edge.caller))
-    }
-  )
+  CallGraph {
+    edges: edges
+      |> filter(edge => edge.caller != edge.callee)
+      |> map(edge => GraphEdge { caller: edge.caller, callee: edge.callee })
+  }
 }
 
 // Check whether the NonIncreasing-only subgraph contains a cycle.
@@ -3220,22 +3211,11 @@ fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, NewlineIndex>
   let edges = func_entries |> flat_map(entry =>
     collect_local_call_edges_in_expr(caller: entry.name, body: entry.body, local_func_set: local_func_set, si: si)
   )
-  let initial_forward = seed_adjacency_map(names: names)
-  let initial_reverse = seed_adjacency_map(names: names)
-  edges |> fold(init: CallGraph { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
-    let forward_neighbors = match map_get(acc.forward, edge.caller) {
-      Some { value: ns } => ns
-      None => []
-    }
-    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
-      Some { value: ns } => ns
-      None => []
-    }
-    CallGraph {
-      forward: map_insert(acc.forward, edge.caller, list_push(forward_neighbors, edge.callee)),
-      reverse: map_insert(acc.reverse, edge.callee, list_push(reverse_neighbors, edge.caller))
-    }
-  )
+  CallGraph {
+    edges: edges
+      |> filter(edge => edge.caller != edge.callee)
+      |> map(edge => GraphEdge { caller: edge.caller, callee: edge.callee })
+  }
 }
 
 fn scc_label(members: List<String>) -> String {
@@ -3943,20 +3923,22 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
 fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEntry>, si: Map<String, NewlineIndex>) -> SccResult {
   let names = func_entries |> map(entry => entry.name)
   let graph = build_call_graph(func_entries: func_entries, si: si)
-  let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
-    dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
+  let adjacency = forward_adjacency(names: names, graph: graph)
+  let reverse_graph = reverse_adjacency(names: names, graph: graph)
+  let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
+    dfs_finish_order(node: name, adjacency: adjacency, acc: acc)
   )
   let topo_order = finish.order |> reverse
-  let result = topo_order |> fold(init: SccBuildAcc { assigned: empty_map(), index: empty_map() }, f: fn(acc, name) {
-    if set_has(m: acc.assigned, key: name) {
+  let result = topo_order |> fold(init: SccBuildAcc { assigned: empty_set(), index: empty_map() }, f: fn(acc, name) {
+    if set_contains(acc.assigned, name) {
       acc
     } else {
-      let component = dfs_collect_component(node: name, adjacency: graph.reverse, acc: SccComponentAcc { visited: acc.assigned, members: [] })
-      let member_set = component.members |> fold(init: empty_map(), f: (inner, member) =>
-        map_insert(inner, member, true)
+      let component = dfs_collect_component(node: name, adjacency: reverse_graph, acc: SccComponentAcc { visited: acc.assigned, members: [] })
+      let member_set = component.members |> fold(init: empty_set(), f: (inner, member) =>
+        set_insert(inner, member)
       )
       let members = names |> filter(member =>
-        set_has(m: member_set, key: member)
+        set_contains(member_set, member)
       )
       let next_assigned = component.visited
       if members |> count > 1 {
@@ -5426,7 +5408,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
           si: si)
           let info = SccInfo {
             members: [entry.name],
-            member_set: map_insert(empty_map(), entry.name, true),
+            member_set: set_insert(empty_set(), entry.name),
             pattern: pattern
           }
           map_insert(acc, entry.name, info)
@@ -5435,8 +5417,9 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   )
   // Compute fan-in: for each callee, how many unique callers reference it?
   // Used to know when a summary can be evicted (all callers processed).
+  let call_forward = forward_adjacency(names: func_entries |> map(entry => entry.name), graph: scc_result.call_graph)
   let fan_in = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
-    let callees = match map_get(scc_result.call_graph.forward, entry.name) {
+    let callees = match map_get(call_forward, entry.name) {
       Some { value: cs } => cs
       None => []
     }
@@ -5477,7 +5460,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
           }])
         } else { acc.violations }
         // Decrement fan-in for each unique callee of this function
-        let callees = match map_get(scc_result.call_graph.forward, func_name) {
+        let callees = match map_get(call_forward, func_name) {
           Some { value: cs } => cs
           None => []
         }
