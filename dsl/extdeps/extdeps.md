@@ -496,6 +496,7 @@ Each module is graded on how well it implements the upstream spec:
 |--------|-------|-------|----------|-------|
 | `git.dag` | 261 | A | **Missing** | Object model, merge strategies, diff format correct |
 | `shell.dag` | 54 | A | **Missing** | POSIX find/which/printenv correct |
+| `cron_schedule_model.dag` | 81 | A | Module header | POSIX.1-2017 XCU `crontab` five-field grammar; spec URL + edition in header |
 | `cargo.dag` | 216 | A | **Missing** | Package, target, profile, feature model correct |
 | `build/make.dag` | 127 | A | Cited | GNU Make manual URL. Recipe prefixes §5.2/5.5/5.7.1 |
 | `yaml.dag` | 92 | A | **Missing** | Indent/kv/list/comment rules correct |
