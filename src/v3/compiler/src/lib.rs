@@ -4988,10 +4988,15 @@ pub(crate) mod lower_helpers {
     #[allow(unused_imports)] // `item_span` is only referenced from this module's unit tests.
     pub(crate) use generated::{expr_span, item_span, pattern_binding_names};
 
-    /// Byte extent of a surface item within its compilation unit (no `SourceSpan.file`
-    /// on the lens surface — R3 gate #31). For a full [`SourceSpan`], use
-    /// [`crate::parse::expr_span`] on the underlying expression or read the item's
-    /// own `span` fields.
+    /// Full [`SourceSpan`] for a top-level [`SurfaceItem`]: `file` plus byte range,
+    /// read from the parse surface (`span` on each item shape, or
+    /// [`crate::parse::expr_span`] for `Let` bodies).
+    ///
+    /// Contrast with `expr_span` / `item_span` from `lower_helpers.dag`, which
+    /// return `SourceByteSpan` only (R3 gate #31 — no `SourceSpan.file` on that
+    /// lens-generated surface). Callers that need a real diagnostic / declaration
+    /// span with compilation-unit identity use this helper instead of inventing a
+    /// span from bytes alone.
     pub(crate) fn surface_item_span(item: &crate::parse_surface::SurfaceItem) -> &SourceSpan {
         use crate::parse_surface::SurfaceItem;
         match item {
