@@ -2882,7 +2882,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/float.dag", 1261, 1278),
+            span: SourceSpan::new("dsl/std/float.dag", 1248, 1265),
         });
         declarations.push(Declaration {
             id: DeclarationId(110),
@@ -2902,7 +2902,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/float.dag", 1459, 1510),
+            span: SourceSpan::new("dsl/std/float.dag", 1446, 1497),
         });
         declarations.push(Declaration {
             id: DeclarationId(111),
@@ -2928,7 +2928,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/float.dag", 1732, 1781),
+            span: SourceSpan::new("dsl/std/float.dag", 1719, 1768),
         });
         declarations.push(Declaration {
             id: DeclarationId(112),
@@ -2954,7 +2954,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/float.dag", 1782, 1831),
+            span: SourceSpan::new("dsl/std/float.dag", 1769, 1818),
         });
         declarations.push(Declaration {
             id: DeclarationId(113),
@@ -2971,7 +2971,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/float.dag", 1833, 1854),
+            span: SourceSpan::new("dsl/std/float.dag", 1820, 1841),
         });
         declarations.push(Declaration {
             id: DeclarationId(114),
@@ -2988,7 +2988,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/float.dag", 1855, 1876),
+            span: SourceSpan::new("dsl/std/float.dag", 1842, 1863),
         });
         declarations.push(Declaration {
             id: DeclarationId(115),
@@ -3005,7 +3005,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/float.dag", 1895, 1915),
+            span: SourceSpan::new("dsl/std/float.dag", 1882, 1902),
         });
         declarations.push(Declaration {
             id: DeclarationId(116),
@@ -11449,7 +11449,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/float.dag", 1488, 1509),
+            span: SourceSpan::new("dsl/std/float.dag", 1475, 1496),
         });
         declarations.push(Declaration {
             id: DeclarationId(505),
@@ -11469,7 +11469,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/float.dag", 1760, 1780),
+            span: SourceSpan::new("dsl/std/float.dag", 1747, 1767),
         });
         declarations.push(Declaration {
             id: DeclarationId(506),
@@ -11489,7 +11489,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/float.dag", 1810, 1830),
+            span: SourceSpan::new("dsl/std/float.dag", 1797, 1817),
         });
         declarations.push(Declaration {
             id: DeclarationId(507),

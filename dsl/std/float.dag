@@ -1,9 +1,9 @@
 // std/float.dag -- Floating-point types as algebraic compositions.
 //
-// Fixed-width floats are width refinements of a single approximate-float
-// algebra axis (`Ieee754Float`) composed with `MachineWidth<Word*>` (R3 §1.8
-// gate #19 `numeric_aliases_align_to_refinements`). IEEE 754 rounding still
-// breaks pure field laws — approximate semantics remain Grounding's concern.
+// Fixed-width floats are compatibility aliases for fixed-width reals:
+// `Float<N> = Real<N> = Compose<Real, MachineWidth<Word*>>` (R3 §1.8 gate #67
+// `numeric_construction_demonstration`). IEEE 754 rounding still breaks pure
+// field laws — approximate semantics remain Grounding's concern.
 //
 // T-Numeric-Construction / R3 gate #17 — abstract `Real` (construction-chain
 // layer 5). Spelling per
