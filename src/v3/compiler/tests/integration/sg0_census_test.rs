@@ -543,11 +543,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R2-Evaluator corpus comparison directly without this host-side harness.
     "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
     // R3 L4/L7/L5 skeleton + L7 enum-backed algebra-law matrix: hand-Rust receipt that Lane 1
-    // `DifferentialEquals` emit/eval pairing, Lane 2 `AlgebraicLaw::Identity`, and L5
-    // `ForAllTargets` compile but defer as `NotYetImplemented`; matrix rows pin current
-    // `Associativity` / `Commutativity` wired receipts plus `Identity` NYI receipts without adding
-    // missing-law enum variants. Dissolves when `TestRunner` can evaluate these claims directly
-    // without this host-side harness (same dissolution class as the R3 Free-Consequences batches).
+    // `DifferentialEquals` emit/eval pairing and Lane 1 `AlgebraicLaw` (`Associativity` /
+    // `Commutativity` / `Identity`) operational witnesses Pass on honest additive/multiplicative Int
+    // rows only (trimmed matrix — not ROADMAP exhaustive L7); L5 `ForAllTargets` still defers as
+    // `NotYetImplemented`. Matrix rows pin enum-backed law receipts without adding missing-law
+    // variants. Dissolves when `TestRunner` can evaluate these claims directly without this host-side
+    // harness (same dissolution class as the R3 Free-Consequences batches).
     // Retirement must also fold the L5 program-text bridge (`fixtures/r3_l5_corpus/add_then_branch_seed.v3`
     // vs embedded `TestClaim.source` — byte equality ratchet lives only in this harness today).
     "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
