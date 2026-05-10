@@ -80,6 +80,15 @@ pub fn concat_entries(
         }
     }
 }
+pub fn unary_call_inputs(p0: &[PortId]) -> bool {
+    match p0 {
+        [] => (0 == 1),
+        [__list_head, __list_tail @ ..] => match __list_tail {
+            [] => (0 == 0),
+            [__list_head, __list_tail @ ..] => (0 == 1),
+        },
+    }
+}
 pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicCostEntry {
     match p2 {
         Behavior::Value(v) => SymbolicCostEntry {
@@ -91,22 +100,19 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
                 port: (t).result_port(),
                 cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
             },
-            Some(pattern) => match &((t).inputs) {
-                [] => SymbolicCostEntry {
-                    port: (t).result_port(),
-                    cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
-                },
-                [__list_head, __list_tail @ ..] => match __list_tail {
-                    [] => SymbolicCostEntry {
+            Some(pattern) => {
+                if unary_call_inputs(&((t).inputs)) {
+                    SymbolicCostEntry {
                         port: (t).result_port(),
                         cost: recursive_transform_cost(p1, pattern, &((t).inputs)),
-                    },
-                    [__list_head, __list_tail @ ..] => SymbolicCostEntry {
+                    }
+                } else {
+                    SymbolicCostEntry {
                         port: (t).result_port(),
                         cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
-                    },
-                },
-            },
+                    }
+                }
+            }
         },
         Behavior::Branch(b) => SymbolicCostEntry {
             port: (b).result_port(),

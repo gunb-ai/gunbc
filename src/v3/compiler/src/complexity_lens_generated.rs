@@ -137,6 +137,15 @@ pub fn entry_for(p0: &Dag, p1: &[ComplexityEntry], p2: &Behavior) -> ComplexityE
         },
     }
 }
+pub fn unary_call_inputs(p0: &[PortId]) -> bool {
+    match p0 {
+        [] => (0 == 1),
+        [__list_head, __list_tail @ ..] => match __list_tail {
+            [] => (0 == 0),
+            [__list_head, __list_tail @ ..] => (0 == 1),
+        },
+    }
+}
 pub fn transform_summary(
     p0: &Dag,
     p1: &[ComplexityEntry],
@@ -145,7 +154,13 @@ pub fn transform_summary(
 ) -> Lookup<ComplexitySummary> {
     match &(per_call_pattern_at(p0, *p2)) {
         None => compose_many_inputs(p1, p3),
-        Some(pattern) => recursive_transform_summary(p1, pattern, p3),
+        Some(pattern) => {
+            if unary_call_inputs(p3) {
+                recursive_transform_summary(p1, pattern, p3)
+            } else {
+                compose_many_inputs(p1, p3)
+            }
+        }
     }
 }
 pub fn compose_many_inputs(p0: &[ComplexityEntry], p1: &[PortId]) -> Lookup<ComplexitySummary> {
