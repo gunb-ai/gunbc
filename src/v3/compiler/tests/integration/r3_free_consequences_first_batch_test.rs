@@ -2,19 +2,11 @@
 //!
 //! R3 T-Free-Consequences first-batch claims.
 //! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust
-<<<<<<< HEAD
-//! schedule, and gate `#45` asserts a Bool branch lowers to `if … else` with no
-//! `thread::scope` scheduling on the arms (both `LensOutputEquals` + runner
-//! witnesses). Gate `#44` stays fail-closed on the scalar parallelism
-//! placeholder. Gate `#49` asserts repeated pure-call target caching through its
-//! `BinaryDimensionReportEquals` declaration pair; gate `#50` keeps the remaining
-//! `BinaryDimensionReportEquals` author-now/fire-later shape.
-=======
 //! schedule; gate `#44` stays fail-closed on the scalar parallelism placeholder;
 //! gate `#45` asserts a Bool branch lowers to `if … else` with no `thread::scope`
 //! scheduling on the arms; gate `#50` asserts one-shot pure calls do not emit
-//! memo/cache scaffolding. Repeated-call memoization remains deferred.
->>>>>>> origin/main
+//! memo/cache scaffolding. Gate `#49` asserts the current repeated-call structural
+//! reuse path through its `BinaryDimensionReportEquals` declaration pair.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::emit_rust;
@@ -86,27 +78,12 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
                 );
             }
             "auto_memoization_repeated_pure_call_cached" => {
-<<<<<<< HEAD
                 assert!(
                     matches!(&result.result, ClaimResult::Pass),
                     "expected {expected_name} (R3 gate #49) to Pass, got {:?}",
                     result.result
                 );
                 assert_repeated_pure_call_claim_emits_cached_target_code(&dag, expected_name);
-            }
-            "auto_memoization_no_caching_for_one_shot" => {
-=======
->>>>>>> origin/main
-                assert!(
-                    matches!(
-                        &result.result,
-                        ClaimResult::NotYetImplemented(reason)
-                            if reason.contains("BinaryDimensionReportEquals")
-                                && reason.contains("structural shape is valid")
-                    ),
-                    "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
-                    result.result
-                );
             }
             "auto_memoization_no_caching_for_one_shot" => {
                 assert!(
