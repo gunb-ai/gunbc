@@ -119,6 +119,15 @@ fn r3_fieldproject_dual_authority_dissolution_suite_passes_through_runner() {
     run_suite_all_pass(&dag, "suite_fieldproject_dual_authority_dissolution");
 }
 
+#[test]
+fn r3_missing_emission_path_typed_axes_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_r3_missing_emission_path_typed_axes.dag"),
+        "src/v3/compiler/tests/dag/t_r3_missing_emission_path_typed_axes.dag",
+    );
+    run_suite_all_pass(&dag, "suite_missing_emission_path_typed_axes");
+}
+
 /// `ExecuteCommand` through the same `tests/dag` path as T-PB-B-1 (PB-Runtime extension).
 /// Boundary migration: `m1_4_emit_python_test::python_stdout` pattern → declarative
 /// `ExecuteCommand` (this suite uses `sh`/`echo` / `true` so CI need not install CPython).
