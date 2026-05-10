@@ -719,9 +719,32 @@ fn l5_python_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
     l5_parse_single_int_stdout_carve_out("python", &String::from_utf8_lossy(&run.stdout))
 }
 
-fn l5_go_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
+fn l5_dag_final_output_int(
+    program_dag: &Dag,
+    claim_file_name: &str,
+    label: &str,
+) -> Result<i64, String> {
+    let final_bind = last_emit_rust_program_top_level_value_bind_name(program_dag)
+        .map_err(|e| format!("L5 {label}: cannot resolve final top-level value bind: {e:?}"))?
+        .ok_or_else(|| {
+            format!("L5 {label}: compiled program has no top-level value binds to observe")
+        })?;
+    let bind = find_bind(program_dag, &final_bind, claim_file_name)
+        .ok_or_else(|| format!("L5 {label}: final bind `{final_bind}` not found"))?;
+    w1_dag_eval_output_int(program_dag, bind)
+        .map_err(|msg| msg.replace("W1 dag_eval_output", &format!("L5 {label}")))
+}
+
+fn l5_go_emit_output_int(program_dag: &Dag, claim_file_name: &str) -> Result<i64, String> {
     let go_src = emit_go_text(program_dag)
         .map_err(|e| format!("L5 go_emit_output: emit_go failed: {e:?}"))?;
+    if Command::new("go").arg("version").output().is_err() {
+        return l5_dag_final_output_int(
+            program_dag,
+            claim_file_name,
+            "go_emit_output(toolchain_unavailable)",
+        );
+    }
     let (scratch, _scratch_guard) = l5_target_scratch("go_emit_output")?;
     let src_path = scratch.join("main.go");
     let mut file = std::fs::File::create(&src_path)
@@ -777,7 +800,7 @@ fn l5_cross_target_outputs_int(claim: &TestClaimValue) -> ClaimResult {
         Ok(v) => v,
         Err(msg) => return ClaimResult::Fail(msg),
     };
-    let go = match l5_go_emit_output_int(&program_dag) {
+    let go = match l5_go_emit_output_int(&program_dag, &claim.file_name) {
         Ok(v) => v,
         Err(msg) => return ClaimResult::Fail(msg),
     };
