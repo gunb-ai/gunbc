@@ -11489,6 +11489,125 @@ pub fn collect_parent_envs(
     }
 }
 
+pub fn infer_field_value_by_name_for_wire(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    for fi in record.children.iter() {
+        if field_init_node_name_at(fi.clone(), source_indices.clone()) == field_name {
+            return Some(field_init_node_value(fi));
+        }
+    }
+    None
+}
+
+pub fn infer_literal_string_value_for_wire(n: Rc<Node>) -> Option<String> {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
+            LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub fn infer_record_string_field_for_wire(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    infer_field_value_by_name_for_wire(record, field_name, source_indices.clone())
+        .and_then(|vn| infer_literal_string_value_for_wire(vn))
+}
+
+pub fn build_untagged_json_tuple_variants(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<HashMap<String, bool>> {
+    modules.iter().cloned().fold(
+        v2_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| {
+            let si = m.type_env.clone().source_indices.clone();
+            m.items.clone().iter().cloned().fold(
+                acc,
+                |inner: Rc<HashMap<String, bool>>, item: Rc<Node>| {
+                    if item_kind(&item) == ItemKind::DataItem {
+                        match item.body.clone() {
+                            Some(body) => {
+                                match infer_record_string_field_for_wire(
+                                    body.clone(),
+                                    "coproduct".to_string(),
+                                    si.clone(),
+                                ) {
+                                    Some(coproduct_name) => {
+                                        match infer_field_value_by_name_for_wire(
+                                            body.clone(),
+                                            "encoding".to_string(),
+                                            si.clone(),
+                                        ) {
+                                            Some(enc_node) => {
+                                                if authored_name_at(si.clone(), &enc_node).as_str()
+                                                    == "UntaggedJsonStringOrArray"
+                                                {
+                                                    match infer_record_string_field_for_wire(
+                                                        enc_node.clone(),
+                                                        "string_variant".to_string(),
+                                                        si.clone(),
+                                                    ) {
+                                                        Some(sv) => {
+                                                            match infer_record_string_field_for_wire(
+                                                                enc_node.clone(),
+                                                                "array_variant".to_string(),
+                                                                si.clone(),
+                                                            ) {
+                                                                Some(av) => {
+                                                                    let k1 = v2_rt::concat(
+                                                                        v2_rt::concat(
+                                                                            coproduct_name.clone(),
+                                                                            "::".to_string(),
+                                                                        ),
+                                                                        sv.clone(),
+                                                                    );
+                                                                    let k2 = v2_rt::concat(
+                                                                        v2_rt::concat(
+                                                                            coproduct_name.clone(),
+                                                                            "::".to_string(),
+                                                                        ),
+                                                                        av.clone(),
+                                                                    );
+                                                                    let inner2 = v2_rt::rc_map_insert(
+                                                                        inner.clone(),
+                                                                        k1,
+                                                                        true,
+                                                                    );
+                                                                    v2_rt::rc_map_insert(inner2, k2, true)
+                                                                }
+                                                                None => inner.clone(),
+                                                            }
+                                                        }
+                                                        None => inner.clone(),
+                                                    }
+                                                } else {
+                                                    inner.clone()
+                                                }
+                                            }
+                                            None => inner.clone(),
+                                        }
+                                    }
+                                    None => inner.clone(),
+                                }
+                            }
+                            None => inner.clone(),
+                        }
+                    } else {
+                        inner.clone()
+                    }
+                },
+            )
+        },
+    )
+}
+
 pub fn build_fielded_variants(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
@@ -11588,11 +11707,13 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             },
         );
         let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
+        let untagged_tuples = build_untagged_json_tuple_variants(modules.clone());
         let vtoe = derive_variant_to_enum(built.type_summaries.clone());
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive,
             fielded_variants: fielded,
+            untagged_json_tuple_variants: untagged_tuples,
             shared_types: v2_rt::rc_empty_map::<String, bool>(),
             ownership_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             movable: v2_rt::rc_empty_map::<String, bool>(),

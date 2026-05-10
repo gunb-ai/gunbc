@@ -4820,21 +4820,38 @@ pub fn emit_variant_pattern(
                         ),
                         None => name.clone(),
                     };
-                    let is_fielded =
-                        match v2_rt::map_get(&emit_info.fielded_variants.clone(), fielded_key) {
+                    let is_untagged_tuple = match v2_rt::map_get(
+                        &emit_info.untagged_json_tuple_variants.clone(),
+                        fielded_key.clone(),
+                    ) {
+                        Some(true) => true,
+                        _ => match v2_rt::map_get(
+                            &emit_info.untagged_json_tuple_variants.clone(),
+                            qualified.clone(),
+                        ) {
                             Some(true) => true,
-                            _ => match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                qualified.clone(),
-                            ) {
-                                Some(true) => true,
-                                _ => false,
-                            },
-                        };
-                    if is_fielded {
-                        v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                            _ => false,
+                        },
+                    };
+                    if is_untagged_tuple {
+                        v2_rt::concat(qualified.clone(), "(..)".to_string())
                     } else {
-                        qualified.clone()
+                        let is_fielded =
+                            match v2_rt::map_get(&emit_info.fielded_variants.clone(), fielded_key) {
+                                Some(true) => true,
+                                _ => match v2_rt::map_get(
+                                    &emit_info.fielded_variants.clone(),
+                                    qualified.clone(),
+                                ) {
+                                    Some(true) => true,
+                                    _ => false,
+                                },
+                            };
+                        if is_fielded {
+                            v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                        } else {
+                            qualified.clone()
+                        }
                     }
                 }
             } else {
@@ -4860,27 +4877,114 @@ pub fn emit_variant_pattern(
                                 ),
                                 None => name.clone(),
                             };
-                            let is_fielded2 = match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                fielded_key2,
+                            let is_untagged_tuple2 = match v2_rt::map_get(
+                                &emit_info.untagged_json_tuple_variants.clone(),
+                                fielded_key2.clone(),
                             ) {
                                 Some(true) => true,
                                 _ => match v2_rt::map_get(
-                                    &emit_info.fielded_variants.clone(),
+                                    &emit_info.untagged_json_tuple_variants.clone(),
                                     qualified.clone(),
                                 ) {
                                     Some(true) => true,
                                     _ => false,
                                 },
                             };
-                            if is_fielded2 {
-                                v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                            if is_untagged_tuple2 {
+                                v2_rt::concat(qualified.clone(), "(..)".to_string())
                             } else {
-                                qualified.clone()
+                                let is_fielded2 = match v2_rt::map_get(
+                                    &emit_info.fielded_variants.clone(),
+                                    fielded_key2,
+                                ) {
+                                    Some(true) => true,
+                                    _ => match v2_rt::map_get(
+                                        &emit_info.fielded_variants.clone(),
+                                        qualified.clone(),
+                                    ) {
+                                        Some(true) => true,
+                                        _ => false,
+                                    },
+                                };
+                                if is_fielded2 {
+                                    v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                                } else {
+                                    qualified.clone()
+                                }
                             }
                         }
                     } else {
                         {
+                            let tuple_key = match resolved_parent.clone() {
+                                Some(parent) => v2_rt::concat(
+                                    v2_rt::concat(parent.clone(), "::".to_string()),
+                                    name.clone(),
+                                ),
+                                None => qualified.clone(),
+                            };
+                            let is_untagged_tuple3 = match v2_rt::map_get(
+                                &emit_info.untagged_json_tuple_variants.clone(),
+                                tuple_key,
+                            ) {
+                                Some(true) => true,
+                                _ => match v2_rt::map_get(
+                                    &emit_info.untagged_json_tuple_variants.clone(),
+                                    qualified.clone(),
+                                ) {
+                                    Some(true) => true,
+                                    _ => false,
+                                },
+                            };
+                            if (is_untagged_tuple3
+                                && ((effective_bindings.clone().len() as i64) == 1))
+                            {
+                                match effective_bindings.clone().first().cloned() {
+                                    Some(fb) => {
+                                        let fb_name = field_binding_name_at(
+                                            fb.clone(),
+                                            source_indices.clone(),
+                                        );
+                                        let fb_pat = field_binding_pattern(fb.clone());
+                                        if is_string_lit_pattern(fb_pat.clone()) {
+                                            v2_rt::concat(
+                                                v2_rt::concat(
+                                                    v2_rt::concat(qualified.clone(), "(ref ".to_string()),
+                                                    emit_ident(fb_name.clone(), RenderTarget::Rust),
+                                                ),
+                                                ")".to_string(),
+                                            )
+                                        } else {
+                                            let is_shorthand = match (*fb_pat.clone()).clone() {
+                                                MatchPattern::Bind { name: n, .. } => {
+                                                    (n.clone().as_str() == fb_name.clone().as_str())
+                                                }
+                                                _ => false,
+                                            };
+                                            if is_shorthand {
+                                                v2_rt::concat(
+                                                    v2_rt::concat(qualified.clone(), "(".to_string()),
+                                                    emit_ident(fb_name.clone(), RenderTarget::Rust),
+                                                )
+                                                + ")"
+                                            } else {
+                                                let pat_str = emit_pattern(
+                                                    fb_pat.clone(),
+                                                    shared_types.clone(),
+                                                    "".to_string(),
+                                                    source_indices.clone(),
+                                                    emit_info.clone(),
+                                                );
+                                                v2_rt::concat(
+                                                    v2_rt::concat(qualified.clone(), "(".to_string()),
+                                                    pat_str,
+                                                )
+                                                + ")"
+                                            }
+                                        }
+                                    }
+                                    None => v2_rt::concat(qualified.clone(), " { .. }".to_string()),
+                                }
+                            } else {
                             let binding_strs = Rc::new({
                                 let mut __result = Vec::new();
                                 for fb in effective_bindings.clone().iter().cloned() {
@@ -4941,6 +5045,7 @@ pub fn emit_variant_pattern(
                                 ),
                                 ", .. }".to_string(),
                             )
+                            }
                         }
                     }
                 }

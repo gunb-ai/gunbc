@@ -61,6 +61,9 @@ pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub recursive_type_set: Rc<HashMap<String, bool>>,
     pub fielded_variants: Rc<HashMap<String, bool>>,
+    /// Keys `EnumName::VariantName` for variants serialized as single-field tuple arms
+    /// under `UntaggedJsonStringOrArray` wire contracts.
+    pub untagged_json_tuple_variants: Rc<HashMap<String, bool>>,
     pub shared_types: Rc<HashMap<String, bool>>,
     pub ownership_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub movable: Rc<HashMap<String, bool>>,
@@ -80,6 +83,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         type_summaries: v2_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         recursive_type_set: v2_rt::rc_empty_map::<String, bool>(),
         fielded_variants: v2_rt::rc_empty_map::<String, bool>(),
+        untagged_json_tuple_variants: v2_rt::rc_empty_map::<String, bool>(),
         shared_types: v2_rt::rc_empty_map::<String, bool>(),
         ownership_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
         movable: v2_rt::rc_empty_map::<String, bool>(),
