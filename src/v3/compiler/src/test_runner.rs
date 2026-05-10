@@ -2892,17 +2892,6 @@ impl<'a> TestRunner<'a> {
             && self.lookup_int_type(*output)
     }
 
-    fn lens_has_unary_dag_to_int_signature(&self, lens_id: DeclarationId) -> bool {
-        let TypeConnective::Arrow { inputs, output, .. } =
-            &self.dag.declaration(lens_id).connective
-        else {
-            return false;
-        };
-        matches!(inputs.as_slice(), [dag]
-            if self.type_ref_normalizes_to_named(*dag, "Dag"))
-            && self.type_ref_normalizes_to_named(*output, "Int")
-    }
-
     fn type_ref_normalizes_to_named(&self, candidate: DeclarationId, expected_name: &str) -> bool {
         let Some(expected) = self
             .dag

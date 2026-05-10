@@ -63,5 +63,5 @@ src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	26	47001	93f2a888194f9e4f
 src/v3/std/timing_lens.dag	29	150036	da5486c85292dc0e
 src/v3/std/tokenize.dag	8	38837	d12814269ec09247
-src/v3/std/verification.dag	32	71418	918d2c27c05aaba6
+src/v3/std/verification.dag	31	71113	59dc6342c1e30aa8
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6
