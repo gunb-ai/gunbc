@@ -639,7 +639,7 @@ fn sql_ddl_projection_emits_valid_empty_schema_without_insert_values() {
 }
 
 #[test]
-fn shape_b_markdown_documentation_drift_locks_to_canonical_dag_routes() {
+fn omni_documentation_drift_lock_demo() {
     let dag = compile_omni_service_fixture();
 
     let canonical_routes = extract_rest_routes(&dag).expect("canonical route projection extracts");
