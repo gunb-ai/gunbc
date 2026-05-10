@@ -39,6 +39,20 @@ use v3_compiler::generated_files::GENERATED_FILES;
 // Relative to workspace root; mirrors the single census root
 // informally named in `dsl/gunbc/compiler.dag`.
 const CENSUS_ROOT: &str = "src/v3/compiler";
+const RETIRED_LENS_TESTGEN_RS: &str = "src/v3/compiler/src/lens_testgen.rs";
+
+#[test]
+fn r3_gate_6_lens_testgen_rs_stays_retired() {
+    let retired_path = workspace_root().join(RETIRED_LENS_TESTGEN_RS);
+
+    assert!(
+        !retired_path.exists(),
+        "R3 gate #6 (`lens_testgen_dot_rs_retired`) requires \
+         `{RETIRED_LENS_TESTGEN_RS}` to stay retired. Keep the stable \
+         `v3_compiler::lens_testgen` API routed through `lens_apply.rs` \
+         until PB-Runtime owns testgen end-to-end."
+    );
+}
 
 #[test]
 fn emit_production_code_has_no_declaration_by_name_calls() {
