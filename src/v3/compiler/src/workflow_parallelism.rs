@@ -7,7 +7,9 @@
 //!
 //! R3 free-consequences gate #43 uses [`r3_auto_parallelism_schedule_witness`]
 //! (test-runner host mirror) to observe **pairwise dataflow independence** among
-//! module-item `let` binds only. Installing [`WorkflowEffect::ParallelEffect`] on
+//! module-item `let` binds, and to stay **0** when any bind RHS carries
+//! [`Behavior::Branch`] / [`Behavior::Loop`] (branch arms are not parallel-safe
+//! in this witness). Installing [`WorkflowEffect::ParallelEffect`] on
 //! `lane2_workflow` remains **deferred** until `Lens<Effect-Commutativity>` and
 //! `Lens<Cost>` certify safe parallel scheduling per `docs/design-free-consequences.md`
 //! — DB-20 fail-closed: do not fabricate a parallel workflow fact without those
@@ -221,6 +223,49 @@ fn backward_reachable_ports_from_port(d: &Dag, start: PortId) -> HashSet<PortId>
     visited_ports
 }
 
+/// True when the producer subgraph for [`BindNode::value`] contains [`Behavior::Branch`] or
+/// [`Behavior::Loop`]. Auto-parallelism scheduling must not treat mutually exclusive arms (or loop
+/// bodies) as freely reorderable against other work until dedicated control-flow witnesses exist;
+/// the schedule witness stays **0** when any module `let` RHS carries this nonlinear control.
+fn bind_rhs_subgraph_contains_branch_or_loop(d: &Dag, bind: &BindNode) -> bool {
+    let mut visited_ports: HashSet<PortId> = HashSet::new();
+    let mut visited_nodes: HashSet<NodeId> = HashSet::new();
+    let mut frontier: Vec<PortId> = vec![bind.value];
+    while let Some(port) = frontier.pop() {
+        if !visited_ports.insert(port) {
+            continue;
+        }
+        let Some(p) = d.port_opt(&port) else {
+            continue;
+        };
+        let Some(producer) = p.produced_by else {
+            continue;
+        };
+        if !visited_nodes.insert(producer) {
+            continue;
+        }
+        let Some(behavior) = d.node_opt(&producer) else {
+            continue;
+        };
+        match behavior {
+            Behavior::Branch(_) | Behavior::Loop(_) => return true,
+            Behavior::Value(_) => {}
+            Behavior::Transform(transform) => {
+                for input in &transform.inputs {
+                    frontier.push(*input);
+                }
+            }
+            Behavior::Bind(b) => {
+                for param in &b.params {
+                    frontier.push(*param);
+                }
+                frontier.push(b.value);
+            }
+        }
+    }
+    false
+}
+
 /// `later` depends on `earlier` when the RHS port of `earlier` appears in the
 /// backward port slice from `later`'s RHS — `SurfaceExpr::Var` reuses the bound
 /// `PortId` (see `lower_expr` / `scope.get`), so the producer graph may never
@@ -263,18 +308,24 @@ fn module_lets_pairwise_rhs_independent(dag: &Dag, binds: &[&BindNode]) -> bool 
 }
 
 /// R3 T-Free-Consequences witness: `1` when the claim file has two or more
-/// module-item value [`Behavior::Bind`] nodes ([`SurfaceItem::Let`]) and every
-/// later bind's RHS is dataflow-independent of every earlier bind (same graph
-/// walk as a future `ParallelEffect` installer would use). Does **not** read
-/// `lane2_workflow` — full parallel workflow facts stay gated on commutativity +
-/// cost per DB-20.
+/// module-item value [`Behavior::Bind`] nodes ([`SurfaceItem::Let`]), every
+/// later bind's RHS is dataflow-independent of every earlier bind, and **no**
+/// such bind's RHS producer subgraph contains [`Behavior::Branch`] or
+/// [`Behavior::Loop`] (branch arms / loop bodies are not treated as parallel-safe
+/// here). Does **not** read `lane2_workflow` — full parallel workflow facts stay
+/// gated on commutativity + cost per DB-20.
 pub(crate) fn r3_auto_parallelism_schedule_witness(dag: &Dag, claim_file: &str) -> i64 {
     let binds = module_item_value_lets_in_file(dag, claim_file);
-    if module_lets_pairwise_rhs_independent(dag, &binds) {
-        1
-    } else {
-        0
+    if !module_lets_pairwise_rhs_independent(dag, &binds) {
+        return 0;
     }
+    if binds
+        .iter()
+        .any(|b| bind_rhs_subgraph_contains_branch_or_loop(dag, b))
+    {
+        return 0;
+    }
+    i64::from(binds.len() >= 2)
 }
 
 #[cfg(test)]
@@ -301,6 +352,16 @@ mod register_parallelism_tests {
     #[test]
     fn dependent_module_lets_witness_sequential_schedule() {
         let dag = compile_to_dag("let a: Int = 1\nlet b: Int = a + 1", "t.v3").expect("compile");
+        assert_eq!(r3_auto_parallelism_schedule_witness(&dag, "t.v3"), 0);
+    }
+
+    #[test]
+    fn independent_module_lets_with_branch_in_rhs_stay_sequential() {
+        let dag = compile_to_dag(
+            "let a: Int = 1\nlet r: Int = if 1 > 0 then 10 else 20\n",
+            "t.v3",
+        )
+        .expect("compile");
         assert_eq!(r3_auto_parallelism_schedule_witness(&dag, "t.v3"), 0);
     }
 }
