@@ -6,7 +6,8 @@ for numeric-construction shape and
 [`docs/r3-structure.md`](../r3-structure.md) for R3 lane ownership. ROADMAP.md
 is not the milestone authority for this reframed R3 lane. **Subject:**
 `ApproximateField<F>` — the structural carrier for `Real =
-ApproximateField<Rational>` and IEEE-754-style bounded real approximations.
+ApproximateField<FieldOfFractions<Int>>` and IEEE-754-style bounded real
+approximations.
 
 This is a design-decision receipt only. It intentionally does not introduce
 the carrier, migrate `Float`, author target-specific mirrors, or touch
@@ -69,10 +70,10 @@ value"; it changes underflow behavior.
 2. **Carrier slice (M):** land `SpecialValues` and `ApproximateField<F>`.
    Ratchet that `ApproximateField` points to `Field<F>` and carries the five
    structural axes above.
-3. **Real alias slice (S-M):** introduce `Real = ApproximateField<Rational>`
-   only after the Rational/Field gap is resolved. Do not pretend `Field<Int>`
-   is complete while reciprocal/division still lacks a non-zero or checked
-   boundary.
+3. **Real alias slice (S-M):** introduce `Real =
+   ApproximateField<FieldOfFractions<Int>>` only after the Rational/Field gap
+   is resolved. Do not pass the witness alias `Rational =
+   Field<FieldOfFractions<Int>>` as the `ApproximateField<F>` carrier argument.
 4. **Grounding slices (per target):** map `Real<32>`, `Real<64>`, etc. to
    Rust/Python/Go target facts. These are target-realization facts, not the
    substrate carrier itself.

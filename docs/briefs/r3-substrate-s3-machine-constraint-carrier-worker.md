@@ -98,8 +98,8 @@ emitter wiring (Grounding Mgr cross-program).
    ```
 
    Type spelling per sub-decision 3: `Int<64>` ≡
-   `Compose<AbelianGroup, MachineWidth<64>>`. `Real<64>` ≡
-   `Compose<ApproximateField<Rational>, MachineWidth<64>>`
+   `Compose<Int, MachineWidth<64>>`. `Real<64>` ≡
+   `Compose<Real, MachineWidth<64>>`
    (sub-decision 4 — algebra approximation + machine approximation
    compose as independent axes; both carried explicitly).
 
@@ -118,8 +118,8 @@ emitter wiring (Grounding Mgr cross-program).
    under both algebra-side options from PR #1815 (Option A
    canonical AbelianGroup vs Option B GroupCompletion-of-
    CommutativeMonoid<Nat>). S3 brief does NOT block on S9 / Option-
-   A-vs-B selection — `Compose<AbelianGroup, MachineWidth<64>>`
-   reads identically under either Int algebra-side shape.
+   A-vs-B selection — `Compose<Int, MachineWidth<64>>`
+   reads through the named integer concept under either Int algebra-side shape.
 
 ### Phase 2 — Parser-grammar surface (separate downstream PR)
 
@@ -150,11 +150,11 @@ Per sub-decision 5: ≥3 pairs is **minimum, not target**. Worker
 demonstrates Class 1 closure with at least three concrete
 instantiations:
 
-1. `Compose<AbelianGroup, MachineWidth<32>>` (≡ `Int<32>`) → Rust `i32`
-2. `Compose<AbelianGroup, MachineWidth<64>>` (≡ `Int<64>`) → Rust `i64`
-3. `Compose<CommutativeMonoid, MachineWidth<64>>` (≡ `UInt<64>`) → Rust `u64`
+1. `Compose<Int, MachineWidth<32>>` (≡ `Int<32>`) → Rust `i32`
+2. `Compose<Int, MachineWidth<64>>` (≡ `Int<64>`) → Rust `i64`
+3. `Compose<UInt, MachineWidth<64>>` (≡ `UInt<64>`) → Rust `u64`
 
-(Alternative: `Compose<ApproximateField<Rational>, MachineWidth<64>>`
+(Alternative: `Compose<Real, MachineWidth<64>>`
 ≡ `Real<64>` → Rust `f64` per sub-decision 4 covers the algebra-
 approximation × machine-approximation independent-composition case.
 Coordinate with S8 worker (quiet-boar-160) for the float entry.)
