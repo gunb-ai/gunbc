@@ -2340,7 +2340,7 @@ fn get_nested_x(outer: Outer) -> Int = outer.inner.x
     };
     match &final_projection.target {
         TransformTarget::ResolvedFieldProject { field_label } => {
-            assert_eq!(field_label, "value");
+            assert_eq!(field_label, "x");
         }
         other => panic!("expected final FieldProject target, got {other:?}"),
     }
@@ -2510,7 +2510,7 @@ fn get_or_zero(m: MaybePoint) -> Int = match id(m) { Some(point) => point.x, Non
     assert_eq!(projection.inputs, vec![binding.payload_port]);
     match &projection.target {
         TransformTarget::ResolvedFieldProject { field_label } => {
-            assert_eq!(field_label, "value");
+            assert_eq!(field_label, "x");
         }
         other => panic!("expected FieldProject target, got {other:?}"),
     }
@@ -2827,6 +2827,12 @@ fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap { inner: point } => point.
         Behavior::Transform(t) => t,
         other => panic!("expected Transform field projection, got {other:?}"),
     };
+    match &body_projection.target {
+        TransformTarget::ResolvedFieldProject { field_label } => {
+            assert_eq!(field_label, "x");
+        }
+        other => panic!("expected body FieldProject target, got {other:?}"),
+    }
     let projected_point_port = body_projection.inputs[0];
     let point_projection = match dag.node(
         dag.port(projected_point_port)
@@ -2839,7 +2845,7 @@ fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap { inner: point } => point.
     assert_eq!(point_projection.inputs, vec![binding.payload_port]);
     match &point_projection.target {
         TransformTarget::ResolvedFieldProject { field_label } => {
-            assert_eq!(field_label, "payload");
+            assert_eq!(field_label, "inner");
         }
         other => panic!("expected inner FieldProject target, got {other:?}"),
     }
