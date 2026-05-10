@@ -2427,6 +2427,50 @@ impl<'a> TestRunner<'a> {
                 ),
             };
         }
+
+        // R3 free-consequences gates #44–#45: module-`let` schedule witness on the claim program Dag
+        // (pairwise RHS independence + no Branch/Loop in those RHS subgraphs). Fixture-local
+        // `fn auto_parallelism_schedule_witness` is a M1(2.8) stub; the runner applies this Rust
+        // mirror (same pattern as `cost_of` / D1 lens lowering limits).
+        if matches!(
+            lens_decl.name.as_deref(),
+            Some("auto_parallelism_schedule_witness")
+        ) {
+            if !program_input
+                .as_ref()
+                .is_some_and(ProgramInputRole::is_program_input)
+            {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals(auto_parallelism_schedule_witness): input_ref `{input_name}` must inhabit ProgramInput"
+                ));
+            }
+            let computed = crate::workflow_parallelism::r3_auto_parallelism_schedule_witness(
+                &program_dag,
+                claim.file_name.as_str(),
+            );
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(auto_parallelism_schedule_witness): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(auto_parallelism_schedule_witness): expected_ref `{expected_name}` must be `data …: Int = <literal>` (M1(2.8))"
+                    ));
+                }
+            };
+            return if computed == expected_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals(auto_parallelism_schedule_witness): expected `{expected_int}`, computed `{computed}` for lens `{lens_name}` (input `{input_name}`)"
+                ))
+            };
+        }
         let reflects_claim_program = program_input
             .as_ref()
             .is_some_and(ProgramInputRole::is_program_input);

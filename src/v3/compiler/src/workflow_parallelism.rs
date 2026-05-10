@@ -201,12 +201,10 @@ fn expand_behavior_backward_ports(
     }
 }
 
-/// Behaviors reachable backward from `start` port's producer walk (same spine
-/// rules as DB-3 dimension backward slices).
-fn backward_reachable_nodes_from_port(d: &Dag, start: PortId) -> HashSet<NodeId> {
-    let mut visited_nodes = HashSet::new();
+fn backward_reachable_ports_from_port(d: &Dag, start: PortId) -> HashSet<PortId> {
     let mut visited_ports: HashSet<PortId> = HashSet::new();
-    let mut frontier = vec![start];
+    let mut visited_nodes: HashSet<NodeId> = HashSet::new();
+    let mut frontier: Vec<PortId> = vec![start];
     while let Some(port) = frontier.pop() {
         if !visited_ports.insert(port) {
             continue;
@@ -219,11 +217,15 @@ fn backward_reachable_nodes_from_port(d: &Dag, start: PortId) -> HashSet<NodeId>
         };
         expand_behavior_backward_ports(d, producer, &mut frontier, &mut visited_nodes);
     }
-    visited_nodes
+    visited_ports
 }
 
-fn bind_rhs_reaches_node(d: &Dag, bind: &BindNode, target: NodeId) -> bool {
-    backward_reachable_nodes_from_port(d, bind.value).contains(&target)
+/// `later` depends on `earlier` when the RHS port of `earlier` appears in the
+/// backward port slice from `later`'s RHS — `SurfaceExpr::Var` reuses the bound
+/// `PortId` (see `lower_expr` / `scope.get`), so the producer graph may never
+/// mention [`BindNode::id`] even when data flows from an earlier `let`.
+fn bind_rhs_depends_on_prior_bind(d: &Dag, later: &BindNode, earlier: &BindNode) -> bool {
+    backward_reachable_ports_from_port(d, later.value).contains(&earlier.value)
 }
 
 /// When there are two or more top-level [`Behavior::Bind`] nodes in `nodes`
@@ -255,7 +257,7 @@ pub fn register_independent_bind_parallelism(dag: &mut Dag, user_source_file: &s
     }
     for (i, bi) in binds.iter().enumerate() {
         for bj in binds.iter().skip(i + 1) {
-            if bind_rhs_reaches_node(dag, bj, bi.id) {
+            if bind_rhs_depends_on_prior_bind(dag, bj, bi) {
                 return;
             }
         }
@@ -273,6 +275,28 @@ pub fn register_independent_bind_parallelism(dag: &mut Dag, user_source_file: &s
     };
     let wf = WorkflowEffect::ParallelEffect { branches: ns };
     dag.try_register_lane2_workflow_effect(last_id, wf);
+}
+
+/// R3 T-Free-Consequences witness: `1` when [`register_independent_bind_parallelism`] installed
+/// [`WorkflowEffect::ParallelEffect`] on the claim-file workflow root (last user `Bind` by source
+/// order). Evaluated by `LensOutputEquals` in the test runner (M1(2.8) blocks `.dag` match bodies
+/// for this fixture module).
+pub(crate) fn r3_auto_parallelism_schedule_witness(dag: &Dag, claim_file: &str) -> i64 {
+    let mut binds: Vec<&BindNode> = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .filter(|b| b.span.file == claim_file)
+        .collect();
+    if binds.is_empty() {
+        return 0;
+    }
+    binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
+    let root = binds.last().expect("non-empty").id;
+    match dag.lane2_workflow_effect_at(&root) {
+        Some(WorkflowEffect::ParallelEffect { .. }) => 1,
+        _ => 0,
+    }
 }
 
 #[cfg(test)]

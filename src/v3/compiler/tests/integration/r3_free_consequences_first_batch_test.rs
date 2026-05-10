@@ -2,9 +2,10 @@
 //!
 //! R3 T-Free-Consequences first-batch author-now/fire-later claims.
 //! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust
-//! schedule (`LensOutputEquals` + runner witness). Gates `#44`–`#45` stay
-//! fail-closed on the scalar parallelism placeholder; auto-memoization claims
-//! lock the `BinaryDimensionReportEquals` shape.
+//! schedule (`LensOutputEquals` + `r3_auto_parallelism_parallel_emit_witness`).
+//! Gates `#44`–`#45` use `auto_parallelism_schedule_witness` with the runner mirror
+//! `r3_auto_parallelism_schedule_witness` (dataflow + branch/loop conservatism).
+//! Auto-memoization claims lock the `BinaryDimensionReportEquals` shape.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -60,14 +61,8 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
             );
         } else if idx < 3 {
             assert!(
-                matches!(
-                    &result.result,
-                    ClaimResult::Fail(reason)
-                        if reason.contains("expected 1")
-                            && reason.contains("computed 0")
-                            && reason.contains("auto_parallelism_pending_lens")
-                ),
-                "expected {expected_name} to fail closed on the pending ordinary parallelism lens, got {:?}",
+                matches!(&result.result, ClaimResult::Pass),
+                "expected {expected_name} to Pass (auto_parallelism schedule witness), got {:?}",
                 result.result
             );
         } else {
