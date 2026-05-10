@@ -6,7 +6,7 @@ license.workspace = true
 
 # T-Ground-Pilot — bounded probe validating that algebra-homomorphism
 # inhabitance search reproduces today's name-keyed table-lookup routing
-# on a 10-element Rust pilot set ({i8..i64, u8..u64, bool, ()}).
+# on the 12-row Rust pilot mirror ({i8..i64, i128, u8..u64, u128, bool, ()}).
 #
 # Scope: src/v3/grounding_pilot/src/lib.rs. Authority for the structural
 # target-side facts: dsl/extdeps/languages/rust/primitives.dag.
