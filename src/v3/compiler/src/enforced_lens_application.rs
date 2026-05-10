@@ -11,7 +11,8 @@ use std::collections::HashMap;
 
 use crate::dag::{
     literal_decimal_i64, positive_descent_count, ArrowBody, AsymptoticClass, Dag, DeclarationId,
-    FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount, TypeConnective, ValueBody,
+    FieldValue, LiteralBits, Lookup, PortId, PositiveDescentAmount, ProducerLookup,
+    TransformTarget, TypeConnective, ValueBody,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost::{
@@ -140,7 +141,12 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         .unwrap_or_else(|| decl.span.clone());
 
         let observed = match complexity_of(dag, &port) {
-            Lookup::Hit(s) => complexity_enforcement_project(&s),
+            Lookup::Hit(s) => sharpen_enforced_complexity_class(
+                dag,
+                port,
+                complexity_enforcement_project(&s),
+                &budget_class,
+            ),
             Lookup::Miss => {
                 violations.push(Diagnostic::ParseError {
                     message: "lens enforcement: complexity lens returned Miss for section — \
@@ -169,6 +175,131 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
     for diagnostic in violations {
         dag.attach_diagnostic(diagnostic);
     }
+}
+
+fn sharpen_enforced_complexity_class(
+    dag: &Dag,
+    port: PortId,
+    observed: AsymptoticClass,
+    budget: &AsymptoticClass,
+) -> AsymptoticClass {
+    if complexity_enforcement_violates(budget, &observed) {
+        return observed;
+    }
+    if max_fold_nesting_at_port(dag, port, 0) >= 2 {
+        return AsymptoticClass::ClassQuadratic;
+    }
+    observed
+}
+
+fn max_fold_nesting_at_port(dag: &Dag, port: PortId, depth: usize) -> usize {
+    if depth > 32 {
+        return 0;
+    }
+    let producer = match dag.resolve_producer_lookup(&port) {
+        ProducerLookup::Found(producer) => producer,
+        ProducerLookup::NoProducer
+        | ProducerLookup::MissingPort { .. }
+        | ProducerLookup::MissingNode { .. }
+        | ProducerLookup::BindCycle { .. } => return 0,
+    };
+    match producer {
+        crate::dag::Behavior::Value(_) => 0,
+        crate::dag::Behavior::Branch(branch) => branch
+            .paths
+            .iter()
+            .map(|path| max_fold_nesting_at_port(dag, path.output, depth + 1))
+            .max()
+            .unwrap_or(0),
+        crate::dag::Behavior::Loop(loop_node) => {
+            1 + max_fold_nesting_at_node(dag, loop_node.body, depth + 1)
+        }
+        crate::dag::Behavior::Bind(bind) => max_fold_nesting_at_port(dag, bind.value, depth + 1),
+        crate::dag::Behavior::Transform(transform) => {
+            let input_depth = transform
+                .inputs
+                .iter()
+                .map(|input| max_fold_nesting_at_port(dag, *input, depth + 1))
+                .max()
+                .unwrap_or(0);
+            let callable_depth = match transform.target {
+                TransformTarget::Callable(callee) if is_std_list_fold_callable(dag, callee) => {
+                    1 + fold_step_body_nesting(dag, callee, depth + 1)
+                }
+                _ => 0,
+            };
+            input_depth.max(callable_depth)
+        }
+    }
+}
+
+fn max_fold_nesting_at_node(dag: &Dag, node: crate::dag::NodeId, depth: usize) -> usize {
+    let Some(behavior) = dag.node_opt(&node) else {
+        return 0;
+    };
+    let port = match behavior {
+        crate::dag::Behavior::Value(v) => v.result_port(),
+        crate::dag::Behavior::Transform(t) => t.result_port(),
+        crate::dag::Behavior::Branch(b) => b.result_port(),
+        crate::dag::Behavior::Loop(l) => l.result_port(),
+        crate::dag::Behavior::Bind(b) => b.result_port(),
+    };
+    max_fold_nesting_at_port(dag, port, depth + 1)
+}
+
+fn is_std_list_fold_callable(dag: &Dag, mut callee: DeclarationId) -> bool {
+    for _ in 0..16 {
+        let decl = dag.declaration(callee);
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => {
+                if dag.std_list_fold_decl() == Some(*template) {
+                    return true;
+                }
+                callee = *template;
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn fold_step_body_nesting(dag: &Dag, mut callee: DeclarationId, depth: usize) -> usize {
+    for _ in 0..16 {
+        let decl = dag.declaration(callee);
+        match &decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                if dag.std_list_fold_decl() == Some(*template) {
+                    return arguments
+                        .iter()
+                        .filter_map(|arg| bind_result_port(dag, arg.value))
+                        .map(|port| max_fold_nesting_at_port(dag, port, depth + 1))
+                        .max()
+                        .unwrap_or(0);
+                }
+                callee = *template;
+            }
+            _ => return 0,
+        }
+    }
+    0
+}
+
+fn bind_result_port(dag: &Dag, mut decl_id: DeclarationId) -> Option<PortId> {
+    for _ in 0..16 {
+        let decl = dag.declaration(decl_id);
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => decl_id = *template,
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(root),
+                ..
+            } => return Some(root.bind(dag).result_port()),
+            _ => return None,
+        }
+    }
+    None
 }
 
 fn field_map(fields: &[(String, FieldValue)]) -> HashMap<&str, &FieldValue> {
