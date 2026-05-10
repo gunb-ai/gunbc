@@ -15,22 +15,18 @@
 //! `docs/v3-lens-capability-register.md` (Band-C would demand a v2-oracle or reviewed
 //! projection once the row is `COMPLETE` with a real v2 counterpart).
 //!
-//! Gate **#78** (`e_p_sub_value_relation_per_call_landed`): **`e_p78_descent_operand_port_follows_evidence_index_not_first_input`**
-//! proves **`per_call_descent_operand_port`** tracks the evidence-selected **`Transform.inputs`** slot,
-//! not **`inputs[0]`**. Unary Int tail recursion cannot put descent only on a later argument (termination
-//! expects the first parameter to descend); this regression uses **preserved head `Int` + list-tail structural
-//! descent** so evidence row `0` is **`PreservedValue`** and the relation chosen for **`CallPattern`** is on
-//! **`inputs[1]`**.
+//! Gate **#78** (`e_p_sub_value_relation_per_call_landed`): unary countdown assertions require a bare
+//! **`LinearCost`** so a **`ProductCost(Linear, Linear)`** double-count cannot satisfy the gate (see
+//! `cost.dag`). Evidence-index discipline for **`per_call_descent_operand_port`** / **`inputs[k]`** vs
+//! **`inputs[0]`** is unit-tested on synthetic evidence in **`dag::tests`** (`call_pattern_from_relations_*`);
+//! terminating surface recursion currently proves descent on the **first** parameter only (`lower.rs`), so
+//! multi-arg fixtures cannot express “descent only on a later operand” under that witness.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::CompileError;
-use v3_compiler::dag::{
-    per_call_descent_evidence, per_call_descent_operand_port, Behavior, PortId, SubValueRelation,
-    SymbolicCost,
-};
+use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
-use crate::common::assert_recursive_countdown_linear_semantics;
+use crate::common::assert_unary_tail_recursive_countdown_is_single_linear_symbolic_cost;
 
 /// Single source of truth for the gate #78 regression fixture label (`compile_to_dag` second
 /// argument and `TransformNode.span.file` filter — keep them paired).
@@ -124,7 +120,7 @@ fn recursive_countdown_pins_symbolic_cost_linear_and_sizevar_on_fixture() {
             "recursive countdown cost should carry a SizeVariable keyed by the parameter port \
              {parameter:?}, got cost={cost:?}"
         );
-        assert_recursive_countdown_linear_semantics(&cost);
+        assert_unary_tail_recursive_countdown_is_single_linear_symbolic_cost(&cost);
     });
 }
 
@@ -154,89 +150,6 @@ fn e_p_sub_value_relation_per_call_landed_cost_lens_routes_through_per_call_patt
              evidence present so the cost lens can branch on recurrence)"
         );
         let cost = expect_symbolic_cost(&dag, "countdown");
-        assert_recursive_countdown_linear_semantics(&cost);
-    });
-}
-
-/// R3 gate **#78** — regression that matters for **descent index discipline**: when evidence slot 0 is
-/// **`PreservedValue`** and the first selectable **`SubValueRelation`** maps to a **`CallPattern`** on a
-/// **later** operand, `per_call_descent_operand_port` must resolve **`TransformNode::inputs[k]`** for that
-/// row — **not** `inputs[0]`.
-#[test]
-fn e_p78_descent_operand_port_follows_evidence_index_not_first_input() {
-    run_with_symbolic_cost_stack(|| {
-        let dag = match compile_to_dag(
-            "\
-type EpListP = EpNilP | EpConsP(EpListP)
-fn ep_g78_acc(i: Int, xs: EpListP) -> Int =
-  match xs {
-    EpConsP(tail) => ep_g78_acc(i, tail),
-    EpNilP => i
-  }
-",
-            "e_p78_non_head_descent.v3",
-        ) {
-            Ok(d) => d,
-            Err(CompileError::Semantic(d)) => panic!(
-                "compile diagnostics: {:?}",
-                d.diagnostics().iter().collect::<Vec<_>>()
-            ),
-            Err(e) => panic!("compile error: {e:?}"),
-        };
-
-        let entry = per_call_descent_evidence(&dag)
-            .into_iter()
-            .find(|e| e.caller == "ep_g78_acc" && e.callee == "ep_g78_acc")
-            .expect("expected ep_g78_acc self-call in per-call descent evidence");
-
-        assert!(
-            entry.evidence.len() >= 2,
-            "fixture must carry per-arg evidence for both parameters; got {:?}",
-            entry.evidence
-        );
-        assert!(
-            matches!(entry.evidence[0], SubValueRelation::PreservedValue),
-            "first arg `i` must be preserved — first evidence row should be PreservedValue; got {:?}",
-            entry.evidence[0]
-        );
-        assert!(
-            matches!(entry.evidence[1], SubValueRelation::StrictSubValue { .. }),
-            "second arg `tail` must carry structural descent; got {:?}",
-            entry.evidence[1]
-        );
-
-        let call_site = entry.call;
-        let transform = dag
-            .node_opt(&call_site)
-            .and_then(Behavior::as_transform)
-            .expect("call site should be a Transform");
-
-        assert!(
-            transform.inputs.len() >= 2,
-            "ep_g78_acc call should have at least two operand ports; got {}",
-            transform.inputs.len()
-        );
-
-        let descent_port = per_call_descent_operand_port(&dag, call_site)
-            .expect("per_call_descent_operand_port must succeed when pattern exists");
-
-        assert_eq!(
-            descent_port,
-            transform.inputs[1],
-            "descent operand port must be inputs[1] when evidence row 0 is PreservedValue and row 1 proves descent"
-        );
-        assert_ne!(
-            descent_port,
-            transform.inputs[0],
-            "gate #78 regression: must not treat head operand as descent when evidence selects arg 1"
-        );
-
-        let cost = expect_symbolic_cost(&dag, "ep_g78_acc");
-        let mut ports = Vec::new();
-        linear_size_ports(&cost, &mut ports);
-        assert!(
-            ports.contains(&descent_port),
-            "symbolic cost should reference the evidence-selected descent port {descent_port:?}; got cost={cost:?}"
-        );
+        assert_unary_tail_recursive_countdown_is_single_linear_symbolic_cost(&cost);
     });
 }

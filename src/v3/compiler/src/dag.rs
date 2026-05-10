@@ -4903,6 +4903,30 @@ mod tests {
     }
 
     #[test]
+    fn call_pattern_from_relations_skips_leading_preserved_rows_for_descent_bound_index() {
+        let relations = [
+            SubValueRelation::PreservedValue,
+            SubValueRelation::ArithmeticDescent {
+                param: "param_1".to_string(),
+                factor: ShrinkFactor::ConstantShrink {
+                    steps: PositiveDescentAmount::OneStep,
+                },
+            },
+        ];
+        let (pattern, idx) = call_pattern_from_relations_with_index(&relations)
+            .expect("expected pattern from the first non-preserved, mapped row");
+        assert_eq!(
+            idx, 1,
+            "lenses must key `per_call_descent_operand_port` off the evidence index that produced the \
+             CallPattern, not `0` / first input heuristics"
+        );
+        assert!(
+            matches!(pattern, CallPattern::ArithmeticSubtractCall { .. }),
+            "expected arithmetic descent pattern, got {pattern:?}"
+        );
+    }
+
+    #[test]
     fn workflow_root_zero_bind_returns_no_root() {
         // V3 surface syntax always lowers each top-level decl to a
         // Bind, so the zero-Bind case is structurally unreachable from
