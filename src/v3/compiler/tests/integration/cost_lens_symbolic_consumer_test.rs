@@ -30,7 +30,8 @@ use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use crate::common::assert_recursive_countdown_linear_semantics;
 
 /// Single source of truth for the gate #78 regression fixture label (`compile_to_dag` second
-/// argument and `TransformNode.span.file` filter — keep them paired).
+/// argument and `TransformNode.span.file` filter — keep them paired). Tracked debt: ROADMAP gate
+/// #78 row (*Test-side `span.file` bridge*).
 const E_P78_PER_CALL_PATTERN_FIXTURE_FILE: &str = "e_p78_cost_lens.v3";
 
 fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
