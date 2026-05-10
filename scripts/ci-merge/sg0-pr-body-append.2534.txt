@@ -1,0 +1,1 @@
+SG-0 pairing: (c) dispatch — T-PB-B census ratchet entry for `tests/integration/common/symbolic_cost_countdown.rs` (R3 gate #78 shared oracle helper); consolidation tracked gunbc#2534.
