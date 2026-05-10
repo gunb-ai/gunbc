@@ -48,6 +48,11 @@ const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
 /// **Deferral receipt:** structural proxy dissolves when ordinary lens output consumes DB-20
 /// workflow parallelism data (`ROADMAP.md` § Active deferrals → `DB-20`; `docs/db-history/db-20.md`).
 const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_emit_witness";
+
+/// R3 gate #49 keeps the `BinaryDimensionReportEquals` consumer envelope for
+/// future `Lens<Purity> * Lens<Cost>` evidence. The current runner only checks
+/// a Rust emitter structural-reuse proxy; it must not treat that proxy as the
+/// real purity+cost-backed memoization report.
 const R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME: &str =
     "auto_memoization_repeated_pure_call_cached";
 
@@ -2920,7 +2925,7 @@ impl<'a> TestRunner<'a> {
             Ok(witness) => witness,
             Err(err) => {
                 return ClaimResult::Fail(format!(
-                    "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): repeated pure-call cache witness failed for `{}`: {err:?}",
+                    "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): repeated source-call structural-reuse proxy failed for `{}`: {err:?}",
                     claim.file_name
                 ));
             }
@@ -2929,10 +2934,15 @@ impl<'a> TestRunner<'a> {
             && witness.actual_call_binds == 1
             && witness.cached_reuse_binds == 1
         {
-            ClaimResult::Pass
+            ClaimResult::NotYetImplemented(
+                "BinaryDimensionReportEquals: structural emitted-code proxy is valid for repeated \
+                 source-call reuse, but auto-memoization still waits for Lens<Purity> + Lens<Cost> \
+                 DimensionReport producers; the Rust proxy is not purity+cost authority"
+                    .to_string(),
+            )
         } else {
             ClaimResult::Fail(format!(
-                "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): expected two cacheable pure-call binds, one actual emitted call bind, and one cached reuse bind; got {witness:?}"
+                "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): expected two structurally reusable source-call binds, one actual emitted call bind, and one cached reuse bind in the proxy; got {witness:?}"
             ))
         }
     }

@@ -3081,6 +3081,9 @@ fn top_level_bind_cache_key(
             inputs,
             ..
         }) => {
+            // Structural reuse proxy only: this is not the R3 purity+cost
+            // memoization authority. Keep it target-local and fail closed on
+            // non-Copy outputs so the emitted Rust cannot move a previous bind.
             let TypeConnective::Arrow {
                 body: ArrowBody::UserDefined(_),
                 ..
@@ -3116,11 +3119,14 @@ pub(crate) fn repeated_pure_call_cache_witness(
             continue;
         };
         witness.cacheable_call_binds += 1;
-        if repeated_pure_call_cache.contains_key(&cache_key) {
-            witness.cached_reuse_binds += 1;
-        } else {
-            repeated_pure_call_cache.insert(cache_key, bind.name.clone());
-            witness.actual_call_binds += 1;
+        match repeated_pure_call_cache.entry(cache_key) {
+            std::collections::hash_map::Entry::Occupied(_) => {
+                witness.cached_reuse_binds += 1;
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(bind.name.clone());
+                witness.actual_call_binds += 1;
+            }
         }
     }
     Ok(witness)
