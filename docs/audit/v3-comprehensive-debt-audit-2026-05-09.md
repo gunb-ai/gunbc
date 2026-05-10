@@ -76,7 +76,7 @@ From PR #2358 §8 meta-finding cycle (3 sha windows: b09e0c8 / 1211e453 / cf1d52
 | 2 | `ShapeATarget = Rust \| Python \| Go` closed enum vs `LanguageSpec` data extensibility | Class F — ontology duplication |
 | 3 | `Map<String, Bool>` as set across graph/syntax/node files (`set_has` ignores stored bool) | Class F — missed algebraic structure (Set<A> declared in std but bypassed) |
 | 4 | `PartitionResult` bypassed by anonymous return type | Class G — small duplicate-authority cleanup |
-| 5 | `ComposedEffect { idempotent, breaking_operation }` illegal product | Class C — illegal-state-representable |
+| 5 | `ComposedEffect { idempotent, breaking_operation }` illegal product — **REMEDIATED** (`dsl/std/effects.dag` → `CompositionVerdict`; PR #2491 / #2469) | Class C — illegal-state-representable (closed) |
 | 6 | `derive_op_effect(method_str, path_str)` string parser at structural boundary | Class C — string-keyed dispatch over typed carriers |
 
 ### Source 5: 4 dispatched bug-fix briefs (PR #2373 merged; durable in docs/briefs/)
@@ -151,7 +151,7 @@ Today's R4-carve dissolution ratchet (`scripts/check-r4-carve-dissolution-discip
 - TC1 #11 canvas-deferred (post-R3 substrate)
 - C4/C5/C6 substrate-axis defers in r4-carve-out-routing.md
 - ProgramShape richer-shape variants
-- gpt-5-5-pro Findings 4-6 (CallGraph; ComposedEffect; derive_op_effect)
+- gpt-5-5-pro Findings 4–6 (CallGraph; ComposedEffect illegal-product Finding 5 remediated PR #2491; derive_op_effect)
 
 ### P3 — discipline / drift prevention
 - Generalize R4-carve ratchet pattern to other drift classes

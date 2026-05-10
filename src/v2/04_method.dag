@@ -64,8 +64,11 @@ fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
 
 fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
   concat(
-    make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).diagnostics,
-    make_container_type(kind_name: "List", element: type_variable_node(id: "collection_element")).diagnostics
+    concat(
+      make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).diagnostics,
+      make_container_type(kind_name: "List", element: type_variable_node(id: "collection_element")).diagnostics
+    ),
+    make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).diagnostics
   )
 }
 
@@ -93,10 +96,15 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "map_insert", map_of_type_variables())
   let m = map_insert(m, "map_merge", map_of_type_variables())
   let m = map_insert(m, "with", map_of_type_variables())
+  let set_ty = make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty
+  let m = map_insert(m, "empty_set", set_ty)
+  let m = map_insert(m, "set_insert", set_ty)
+  let m = map_insert(m, "set_union", set_ty)
   // Bool-returning functions
   let m = map_insert(m, "map_contains_key", bool_type)
   let m = map_insert(m, "map_has", bool_type)
   let m = map_insert(m, "emit_map_has", bool_type)
+  let m = map_insert(m, "set_contains", bool_type)
   // Optional-returning functions (type variable)
   let m = map_insert(m, "lookup", with_optional_cardinality(n: type_variable_node(id: "map_value")))
   let m = map_insert(m, "map_get", with_optional_cardinality(n: type_variable_node(id: "map_value")))

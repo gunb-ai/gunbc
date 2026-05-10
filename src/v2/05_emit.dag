@@ -976,7 +976,7 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 // =========================================================================
 
 fn emit_node_type(n: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
-  render_node_type(n: n, target: target, shared_types: empty_map(), source_indices: source_indices)
+  render_node_type(n: n, target: target, shared_types: empty_set(), source_indices: source_indices)
 }
 
 // =========================================================================
@@ -987,7 +987,7 @@ fn emit_node_type(n: Node, target: RenderTarget, source_indices: Map<String, New
 // pipeline (build_type_rendering -> render_type).
 // =========================================================================
 
-fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> String {
+fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
@@ -1039,7 +1039,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   // Dispatch on connective
   let is_conj = n.connective == Conj
   let is_disj = n.connective == Disj
-  let shared = emit_map_has(m: shared_types, key: tn)
+  let shared = set_contains(shared_types, tn)
 
   if is_disj {
     let base = if n.ident_span != none {
