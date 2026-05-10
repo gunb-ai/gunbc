@@ -238,12 +238,13 @@ fn entry_for(
 // Recurrence iteration bound × operand spine from `inputs`, keyed by the same
 // `per_call_pattern_at` projection over `SubValueRelation` evidence.
 //
-// **Descent operand appears once:** `pattern_to_iter_bound(pattern, descent_port)`
-// already charges the iterate dimension on `descent_port`. Summing **every**
-// `inputs` port via `sum_costs` therefore double-counted that operand — unary tail
+// **Descent operand appears once (when the pattern yields an iterate bound):** on `Hit`,
+// `pattern_to_iter_bound` charges the iterate dimension on `descent_port`. Summing **every**
+// `inputs` port via `sum_costs` would double-count that operand — unary tail
 // recursion surfaced `ProductCost(Linear, Linear)` on distinct ports instead of a
 // single `LinearCost`. The body fold skips `descent_port` so non-descent arguments
 // still contribute while the bound carries the sized descent witness.
+// `SameArgumentCall` has no recurrence bound → `pattern_to_iter_bound` is `Miss` (P3).
 fn recursive_transform_cost(
   acc: List<SymbolicCostEntry>,
   pattern: CallPattern,
@@ -254,29 +255,32 @@ fn recursive_transform_cost(
     Empty => miss_symbolic_cost_lookup()
     Cons(_) =>
       combine_iterate(
-        hit_symbolic_cost_lookup(pattern_to_iter_bound(pattern, descent_port)),
+        pattern_to_iter_bound(pattern, descent_port),
         sum_costs_excluding_descent_operand(acc, inputs, descent_port)
       )
   }
 
-fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> SymbolicCost =
+// Recurrence **bound** for `combine_iterate` / `iterate`. `SameArgumentCall` is a
+// no-descent self-call (not a well-founded recurrence dimension here) — **Miss**, not
+// a successful `UnknownCost` shell (P3 / INVARIANTS.md; design: same-arg is not recurrence).
+fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> Lookup<SymbolicCost> =
   match pattern {
     ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
-      LogCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LogCost(unnamed_size_variable(arg_port)))
     ChildAccessorCall { accessor: accessor } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     CollectionShrinkCall { amount: amount, collection: collection } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     FoldBodyCall { outer_collection: outer_collection } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     ParserAdvanceCall { witness: witness } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     WorklistDrainCall { element: element } =>
-      LinearCost(unnamed_size_variable(arg_port))
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
     SameArgumentCall =>
-      UnknownCost("same-argument recursive call has no descent")
+      miss_symbolic_cost_lookup()
   }
 
 // `loop_cost` composes iteration: bound × body.
@@ -445,8 +449,8 @@ fn sum_costs(
   )
 
 // Sum operand-port costs for recursive Callable transforms, **excluding** the port
-// identified by `per_call_descent_operand_port` — that port's measure is already the
-// iterate bound from `pattern_to_iter_bound`.
+// identified by `per_call_descent_operand_port` — when `pattern_to_iter_bound` is `Hit`,
+// that port's measure is already the iterate bound (see `recursive_transform_cost`).
 fn sum_costs_excluding_descent_operand(
   acc: List<SymbolicCostEntry>,
   ports: List<PortId>,
