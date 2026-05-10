@@ -768,7 +768,7 @@ fn l5_go_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
     l5_parse_single_int_stdout_carve_out("go", &String::from_utf8_lossy(&run.stdout))
 }
 
-fn l5_cross_target_outputs_int(claim: &TestClaimValue) -> ClaimResult {
+fn l5_cross_target_outputs_int(claim: &TestClaimValue, output_bind_name: &str) -> ClaimResult {
     let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
         Ok(dag) => dag,
         Err(CompileError::Semantic(dag)) => {
@@ -785,6 +785,33 @@ fn l5_cross_target_outputs_int(claim: &TestClaimValue) -> ClaimResult {
             ));
         }
     };
+
+    let Some(output_bind) = find_bind(&program_dag, output_bind_name, &claim.file_name) else {
+        return ClaimResult::Fail(format!(
+            "ForAllTargets(L5): declared ProgramOutputBind `{output_bind_name}` was not found in `{}`",
+            claim.file_name
+        ));
+    };
+    let last_bind = match last_emit_rust_program_top_level_value_bind_name(&program_dag) {
+        Ok(Some(name)) => name,
+        Ok(None) => {
+            return ClaimResult::Fail(
+                "ForAllTargets(L5): compiled program has no top-level value binds to observe"
+                    .to_string(),
+            );
+        }
+        Err(e) => {
+            return ClaimResult::Fail(format!(
+                "ForAllTargets(L5): cannot resolve emitted print target: {e:?}"
+            ));
+        }
+    };
+    if last_bind != output_bind.name {
+        return ClaimResult::Fail(format!(
+            "ForAllTargets(L5): declared ProgramOutputBind must name the emitted top-level output bind; expected `{last_bind}`, got `{}`",
+            output_bind.name
+        ));
+    }
 
     let rust = match l5_rust_emit_output_int(&program_dag, &claim.file_name) {
         Ok(v) => v,
@@ -4030,21 +4057,45 @@ impl<'a> TestRunner<'a> {
         if let Err(reason) = self.validate_for_all_targets_resource_requirements(claim) {
             return ClaimResult::Fail(reason);
         }
-        let Some((command, args, expect_exit_code)) = parse_execute_command_fields(payload) else {
+        let [command_fv, args_fv, expect_exit_code_fv, input_fv] = payload else {
             return ClaimResult::Fail(
-                "ForAllTargets payload should be (String, List<String>, Int) — see verification.dag"
+                "ForAllTargets payload should be (String, List<String>, Int, DeclarationRef) — see verification.dag"
                     .to_string(),
             );
         };
+        let Some((command, args, expect_exit_code)) =
+            parse_execute_command_fields(&[command_fv.clone(), args_fv.clone(), expect_exit_code_fv.clone()])
+        else {
+            return ClaimResult::Fail(
+                "ForAllTargets payload should begin with (String, List<String>, Int) — see verification.dag"
+                    .to_string(),
+            );
+        };
+        let input_id = match self.resolve_declaration_ref_id(input_fv, "input_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(format!("ForAllTargets(L5): {msg}")),
+        };
+        let input_decl = self.dag.declaration(input_id);
+        let input_name = decl_display_name(input_id, input_decl);
+        let output_bind_name = match self.program_input_role(input_decl) {
+            Ok(Some(ProgramInputRole::ProgramOutputBind { output_bind_name })) => output_bind_name,
+            Ok(Some(ProgramInputRole::ProgramInput)) | Ok(None) => {
+                return ClaimResult::Fail(format!(
+                    "ForAllTargets(L5): input_ref `{input_name}` must inhabit ProgramOutputBind"
+                ));
+            }
+            Err(msg) => return ClaimResult::Fail(format!("ForAllTargets(L5): {msg}")),
+        };
         // Dissolution trigger: replace this ExecuteCommand-shaped scaffold once
-        // `std.verification.ForAllTargets` carries typed target-observation edges.
+        // `std.verification.ForAllTargets` drops the inert command triple and
+        // carries only typed target-observation edges.
         if command != "true" || !args.is_empty() || expect_exit_code != 0 {
             return ClaimResult::Fail(format!(
                 "ForAllTargets(L5) expects inert scaffold payload true/[]/0; got command=`{command}`, args={args:?}, expect_exit_code={expect_exit_code}. \
                  Target execution is owned by the Rust/Python/Go emit runner path, not the raw shell triple."
             ));
         }
-        l5_cross_target_outputs_int(claim)
+        l5_cross_target_outputs_int(claim, &output_bind_name)
     }
 
     fn validate_for_all_targets_resource_requirements(
