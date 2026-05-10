@@ -10773,6 +10773,58 @@ pub fn emit_typed_record_lit(
                             empty_raw
                         }
                     } else {
+                        if (((fields.clone().len() as i64) == 1)
+                            && (match v2_rt::map_get(
+                                &emit_info.untagged_json_tuple_variants.clone(),
+                                display_tn.clone(),
+                            ) {
+                                Some(true) => true,
+                                _ => false,
+                            }))
+                        {
+                            match fields.clone().first().cloned() {
+                                Some(f) => {
+                                    let f_name = field_init_node_name_at(
+                                        f.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    );
+                                    let f_value = field_init_node_value(&f);
+                                    let val_str = emit_field_value_with_context(
+                                        &f_value,
+                                        &resolved_type,
+                                        type_name.clone(),
+                                        &f_name,
+                                        registry.clone(),
+                                        &scope,
+                                        depth.clone(),
+                                        &shared_types,
+                                        &emit_info,
+                                    );
+                                    let needs_wrap = (is_optional_struct_field(
+                                        emit_info.clone(),
+                                        tn.clone(),
+                                        f_name.clone(),
+                                    ) && (is_already_optional(
+                                        &f_value,
+                                        emit_info.clone(),
+                                        &scope,
+                                    ) == false));
+                                    let field_val = if needs_wrap.clone() {
+                                        v2_rt::concat(
+                                            v2_rt::concat("Some(".to_string(), val_str.clone()),
+                                            ")".to_string(),
+                                        )
+                                    } else {
+                                        val_str.clone()
+                                    };
+                                    v2_rt::concat(
+                                        v2_rt::concat(display_tn.clone(), "(".to_string()),
+                                        v2_rt::concat(field_val, ")".to_string()),
+                                    )
+                                }
+                                None => v2_rt::concat(display_tn.clone(), " {}".to_string()),
+                            }
+                        } else {
                         {
                             let field_strs = Rc::new({
                                 let mut __result = Vec::new();
