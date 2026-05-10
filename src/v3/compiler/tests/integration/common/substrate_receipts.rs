@@ -342,6 +342,25 @@ pub fn assert_bootstrap_int32_compose_int_machine_width(dag: &Dag) {
     assert_compose_with_machine_width(dag, "Int32", "Int", "Word32");
 }
 
+/// Receipt: all fixed-width signed/unsigned aliases are width refinements of
+/// abstract `Int` / `UInt`, not parallel algebra substrate (R3 gate #19).
+pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
+    for (alias, algebra, width) in [
+        ("Int8", "Int", "Byte"),
+        ("Int16", "Int", "Word16"),
+        ("Int32", "Int", "Word32"),
+        ("Int64", "Int", "Word64"),
+        ("Int128", "Int", "Word128"),
+        ("UInt8", "UInt", "Byte"),
+        ("UInt16", "UInt", "Word16"),
+        ("UInt32", "UInt", "Word32"),
+        ("UInt64", "UInt", "Word64"),
+        ("UInt128", "UInt", "Word128"),
+    ] {
+        assert_compose_with_machine_width(dag, alias, algebra, width);
+    }
+}
+
 /// Receipt: `Real64` refines abstract `Real` with `MachineWidth<Word64>` (R3 gate #67).
 pub fn assert_bootstrap_real64_compose_real_machine_width(dag: &Dag) {
     assert_compose_with_machine_width(dag, "Real64", "Real", "Word64");
@@ -354,5 +373,17 @@ pub fn assert_bootstrap_float64_aliases_real64(dag: &Dag) {
     assert_eq!(
         float64_id, real64_id,
         "Float64 should alias the canonical Real64 construction entry"
+    );
+}
+
+/// Receipt: the String audit is a documented-no-change state check; `String`
+/// must remain the free monoid over the single `Char` element carrier.
+pub fn assert_bootstrap_string_is_free_monoid_char(dag: &Dag) {
+    assert_single_arg_instantiation(
+        dag,
+        "String",
+        "FreeMonoid",
+        find_named(dag, "Char"),
+        "String must be FreeMonoid<Char>",
     );
 }
