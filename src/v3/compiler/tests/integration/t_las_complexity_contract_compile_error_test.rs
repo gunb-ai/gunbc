@@ -13,6 +13,8 @@ use v3_compiler::CompileError;
 
 const DEMO_REL_PATH: &str = "src/v3/compiler/tests/fixtures/t_las_complexity_contract_demo.dag";
 const DEMO_FILE_NAME: &str = "t_las_complexity_contract_demo.dag";
+const DEMO_APPLICATION_SPAN_START: u32 = 805;
+const DEMO_APPLICATION_SPAN_END: u32 = 998;
 
 #[test]
 fn complexity_violation_compile_error_demonstrated() {
@@ -41,7 +43,8 @@ fn complexity_violation_compile_error_demonstrated() {
                     && msg.contains("ClassConstant")
                     && msg.contains("ClassUnknown")
                     && span.file.ends_with(DEMO_FILE_NAME)
-                    && span.byte_start < span.byte_end
+                    && span.byte_start == DEMO_APPLICATION_SPAN_START
+                    && span.byte_end == DEMO_APPLICATION_SPAN_END
             });
             assert!(
                 ok,
