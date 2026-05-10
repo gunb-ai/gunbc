@@ -288,12 +288,6 @@ pub fn validate_rust_pilot_rows_match_mirror() -> StructureResult<()> {
     Ok(())
 }
 
-/// Compatibility entry point for callers that still name the original Phase 2
-/// first-row check. It now runs the full row walk.
-pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
-    validate_rust_pilot_rows_match_mirror()
-}
-
 fn assert_rust_pilot_row_matches_mirror(
     dag: &Dag,
     disj_variants: &[Field],
@@ -829,7 +823,7 @@ fn assert_integer_primitive_payload_matches(
     } = pilot
     else {
         return Err(StructureMismatch {
-            location: "validate_first_rust_pilot_row_matches_mirror".to_string(),
+            location: "validate_rust_pilot_rows_match_mirror".to_string(),
             expected: "IntegerPrimitive mirror row".to_string(),
             actual: "NonIntegerPrimitive".to_string(),
         });
@@ -904,7 +898,7 @@ fn assert_non_integer_primitive_payload_matches(
     } = pilot
     else {
         return Err(StructureMismatch {
-            location: "validate_first_rust_pilot_row_matches_mirror".to_string(),
+            location: "validate_rust_pilot_rows_match_mirror".to_string(),
             expected: "NonIntegerPrimitive mirror row".to_string(),
             actual: "IntegerPrimitive".to_string(),
         });
