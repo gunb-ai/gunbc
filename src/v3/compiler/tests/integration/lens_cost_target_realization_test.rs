@@ -336,7 +336,7 @@ let demo: Int = countdown(3) + 1
             .count();
         assert!(
             algebra_instances >= 3,
-            "gate #70 fixture should expose >=2 algebra instances; got {algebra_instances}"
+            "gate #70 fixture should expose Add/Sub/Eq algebra instances; got {algebra_instances}"
         );
 
         let descent_entries = per_call_descent_evidence(&user);
