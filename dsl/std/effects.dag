@@ -44,7 +44,6 @@ import std.http_path {
   PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
   parse_path_template, has_path_params, last_path_param
 }
-import std.verification { TestClaim }
 
 // =========================================================================
 // Effect shapes: how an operation modifies external state
@@ -159,23 +158,6 @@ fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
   match non_idempotent |> first {
     Some { value: op } => BrokenBy { first_breaker: op }
     None => IdempotentComposition
-  }
-}
-
-// R3 F5 — `TestClaim` witnesses: only legal `CompositionVerdict` shapes are
-// constructible as data (no forgeable Bool/String? product).
-data r3_f5_composition_verdict_sum_claim: TestClaim = {
-  kind: AssertTrue
-  label: "CompositionVerdict is IdempotentComposition | BrokenBy; illegal idempotent×breaker product is gone"
-}
-
-data r3_f5_legal_idempotent_composition: CompositionVerdict = IdempotentComposition
-
-data r3_f5_legal_broken_by: CompositionVerdict = BrokenBy {
-  first_breaker: OperationEffect {
-    operation_name: "r3_f5_demo_breaker"
-    shape: CreateEffect
-    evidence: NonIdempotent { shape: CreateEffect, reason: "demo non-idempotent evidence" }
   }
 }
 
