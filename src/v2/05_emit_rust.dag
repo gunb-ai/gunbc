@@ -259,6 +259,10 @@ fn rust_tagged_object_policy() -> RustEnumWireSerde {
   rust_serde_policy(enum_attr: rust_serde_tag_attr(), rename_prefix: none, rename_suffix: none, rename_style: none)
 }
 
+fn rust_untagged_policy() -> RustEnumWireSerde {
+  rust_serde_policy(enum_attr: "#[serde(untagged)]", rename_prefix: none, rename_suffix: none, rename_style: none)
+}
+
 fn rust_serde_error_policy(message: String) -> RustEnumWireSerde {
   rust_serde_policy_error(message: message)
 }
@@ -424,6 +428,7 @@ fn rust_internal_policy_for_encoding(encoding: Node, source_indices: Map<String,
 // Reads WireContract.variant_encoding to determine the serde attribute:
 //   StringVariant { naming: AsAuthored } → "" (serde default: unit variants as strings)
 //   StringVariant { naming: SnakeCase }  → #[serde(rename_all = "snake_case")]
+//   UntaggedVariant                      → #[serde(untagged)]
 //   TaggedVariant                        → #[serde(tag = "_variant")] (default)
 //
 // `data wire_contract = StringVariant { … }` stores the record literal on the data item's
@@ -438,6 +443,8 @@ fn resolve_wire_serde_policy_from_encoding_node(ve: Node, source_indices: Map<St
       Some { value: nv } => rust_string_policy_for_naming(naming: nv, source_indices: source_indices)
       None => rust_serde_error_policy(message: "StringVariant requires a naming policy")
     }
+  } else if encoding_name == "UntaggedVariant" {
+    rust_untagged_policy()
   } else if encoding_name == "TaggedVariant" {
     rust_tagged_object_policy()
   } else {
@@ -1832,6 +1839,14 @@ fn emit_variant_from_child(child: Node, recursive_types: Set<String>, shared_typ
   if child.children |> count == 0 {
     // Unit variant -- no fields
     concat(rename_attr, "    ", child_text, ",")
+  } else if serde_policy.enum_attr == "#[serde(untagged)]" && child.children |> count == 1 {
+    let f = (child.children |> first).value
+    let rt_f = resolved_type(n: f)
+    let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
+    let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
+      concat("Box<", ty, ">")
+    } else { ty }
+    concat(rename_attr, "    ", child_text, "(", final_ty, "),")
   } else {
     // Fielded variant -- child's children are the variant's fields
     let field_lines = child.children |> map(f =>
