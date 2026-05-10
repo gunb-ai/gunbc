@@ -111,8 +111,8 @@ Phase ordering (PR-internal):
   via `Compose<Real, MachineWidth<N>>` (slot-1 is the algebraic-concept
   name `Real`, not the witness `ApproximateField` or its parameterization)
 - Algebra-side spelling matches S8 ratified shape
-  (`ApproximateField<Real>` per Q-ApproximateField-Axiom-Set
-  ratification — brief absorbs verbatim before authoring)
+  (`Real = ApproximateField<FieldOfFractions<Int>>` per the Option A STOP
+  resolution — brief absorbs verbatim before authoring)
 - Machine-axis spelling consistent: `MachineWidth<bits>` per S3
   ratified shape
 - Cross-program handoff receipt to Grounding Mgr (#1745) for G2
@@ -184,7 +184,7 @@ Phase ordering (PR-internal):
 5. **Carrier dissolves the bridge?** Yes — Float<N> emission entries
    are the end-state of the substrate-carrier port program for IEEE-754
    floats. The "bridge" is the gap between the abstract
-   `ApproximateField<Real>` algebra carrier + machine-width carrier
+   `Real = ApproximateField<FieldOfFractions<Int>>` algebra carrier + machine-width carrier
    and concrete target-Rust-primitives; parametric `Compose<...>`
    instantiations dissolve via emission-rule lookup at Grounding
    lowering layer.
