@@ -13,6 +13,7 @@
 
 module std.r3_free_consequences_second_batch
 
+import std.algebra { SymbolicCost }
 import std.dimensions { DimensionReport }
 import std.substrate { Dag }
 import std.verification {
@@ -39,8 +40,8 @@ data auto_loop_parallelism_pending_expected: Int = 1
 // Sequential / fail-closed hint (indicator → 0) for unproven independence and provable dependence.
 data auto_loop_parallelism_sequential_expected: Int = 0
 
-type constant_fold_observed_report = DimensionReport<CrossTargetOptimizationEvidence>
-type constant_fold_expected_report = DimensionReport<CrossTargetOptimizationEvidence>
+type constant_fold_observed_report = DimensionReport<SymbolicCost>
+type constant_fold_expected_report = DimensionReport<SymbolicCost>
 type cost_structurally_derived_observed_report = DimensionReport<CrossTargetOptimizationEvidence>
 type cost_structurally_derived_expected_report = DimensionReport<CrossTargetOptimizationEvidence>
 
@@ -82,7 +83,7 @@ data auto_loop_parallelism_dependence_emits_sequential: TestClaim = {
 
 data cross_target_optimization_constant_fold_consistent: TestClaim = {
   name: "cross_target_optimization_constant_fold_consistent",
-  source: "// free-consequences fixture: constant folding stays semantically consistent across target language specs when cost facts land.\nlet _: Int = 0\n",
+  source: "// free-consequences gate #51: `fold_post` aliases folded value; runner checks `DimensionReport<SymbolicCost>` equality plus cross-target `Int` TypeRealization overlay (structural cost-shrink).\nlet fold_pre: Int = 1 + 2\nlet fold_post: Int = fold_pre\n",
   file_name: "r3_free_consequences_cross_target_constant_fold_consistent.v3",
   predicate: BinaryDimensionReportEquals(
     constant_fold_observed_report,

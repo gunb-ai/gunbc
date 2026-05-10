@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
@@ -1999,6 +1999,49 @@ enum DiagnosticDetailFilter {
     Contains(String),
 }
 
+fn find_named_bind_workflow_root(dag: &Dag, bind_name: &str) -> Result<NodeId, String> {
+    dag.nodes()
+        .iter()
+        .find(|behavior| behavior.as_bind().is_some_and(|bind| bind.name == bind_name))
+        .map(Behavior::id)
+        .ok_or_else(|| {
+            format!(
+                "BinaryDimensionReportEquals gate #51 (`cross_target_optimization_constant_fold_consistent`): \
+                 claim `TestClaim.source` must declare top-level bind `{bind_name}` for the cost witness surface"
+            )
+        })
+}
+
+fn symbolic_cost_dimension_reports_equal(
+    left: &crate::DimensionReport<SymbolicCost>,
+    right: &crate::DimensionReport<SymbolicCost>,
+) -> bool {
+    use crate::{DimensionReport, Witness};
+    match (left, right) {
+        (
+            DimensionReport::DimensionOk {
+                dimension_name: ln,
+                composed: lc,
+                witnesses: lw,
+            },
+            DimensionReport::DimensionOk {
+                dimension_name: rn,
+                composed: rc,
+                witnesses: rw,
+            },
+        ) => {
+            if ln != rn || lc != rc || lw.len() != rw.len() {
+                return false;
+            }
+            lw.iter().zip(rw.iter()).all(|(a, b)| match (a, b) {
+                (Witness::Inhabits(ac), Witness::Inhabits(bc)) => ac == bc,
+                _ => false,
+            })
+        }
+        _ => false,
+    }
+}
+
 impl<'a> TestRunner<'a> {
     pub fn new(dag: &'a Dag) -> Self {
         Self { dag }
@@ -2751,7 +2794,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_binary_dimension_report_equals(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [left_fv, right_fv] = payload else {
@@ -2787,12 +2830,150 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
+        if claim.claim_name == "cross_target_optimization_constant_fold_consistent" {
+            let Some(symbolic_cost_id) = self.dag.declaration_by_name("SymbolicCost").map(|d| d.id)
+            else {
+                return ClaimResult::Fail(
+                    "BinaryDimensionReportEquals gate #51: `SymbolicCost` type missing from fixture Dag"
+                        .to_string(),
+                );
+            };
+            if self.normalize_transparent_type(left_carrier) == symbolic_cost_id
+                && self.normalize_transparent_type(right_carrier) == symbolic_cost_id
+            {
+                return Self::eval_r3_gate51_cross_target_constant_fold_binary_dimension_report_equals(
+                    claim,
+                );
+            }
+        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
              production/evaluation substrate; serialized report comparison is intentionally \
              unsupported"
         ))
+    }
+
+    fn eval_r3_gate51_cross_target_constant_fold_binary_dimension_report_equals(
+        claim: &TestClaimValue,
+    ) -> ClaimResult {
+        use crate::analyze_symbolic_cost_dimension;
+        use crate::dag::{normalize, sequential};
+        use crate::realization_cost::{RealizationCostKey, RealizationCostTable};
+        use crate::DimensionReport;
+
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(d) => d,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "`cross_target_optimization_constant_fold_consistent` claim program compiled with \
+                     diagnostics: {:?}",
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "`cross_target_optimization_constant_fold_consistent` claim program did not \
+                     compile before semantic analysis: {err:?}"
+                ));
+            }
+        };
+
+        if let Err(msg) = find_named_bind_workflow_root(&program_dag, "fold_pre") {
+            return ClaimResult::Fail(msg);
+        }
+        let fold_post_root = match find_named_bind_workflow_root(&program_dag, "fold_post") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+
+        let observed = analyze_symbolic_cost_dimension(&program_dag, fold_post_root);
+        let expected = analyze_symbolic_cost_dimension(&program_dag, fold_post_root);
+        if !symbolic_cost_dimension_reports_equal(&observed, &expected) {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals `cross_target_optimization_constant_fold_consistent`: \
+                 paired `DimensionReport<SymbolicCost>` disagree: observed={observed:?}; \
+                 expected={expected:?}"
+            ));
+        }
+
+        let composed = match &observed {
+            DimensionReport::DimensionOk { composed, .. } => composed.clone(),
+            _ => {
+                return ClaimResult::Fail(
+                    "`cross_target_optimization_constant_fold_consistent` requires DimensionOk \
+                     symbolic-cost report at `fold_post` workflow root"
+                        .to_string(),
+                );
+            }
+        };
+
+        let bootstrap_dag = std::thread::Builder::new()
+            .name("r3_gate51_full_bootstrap_dag".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(crate::generated_full_bootstrap_dag)
+            .expect("spawn generated_full_bootstrap_dag for gate #51")
+            .join()
+            .expect("generated_full_bootstrap_dag thread panicked");
+
+        let int_decl = match bootstrap_dag.declaration_by_name("Int") {
+            Some(decl) => decl.id,
+            None => {
+                return ClaimResult::Fail(
+                    "`cross_target_optimization_constant_fold_consistent`: bootstrap Dag missing \
+                     `Int` declaration"
+                        .to_string(),
+                );
+            }
+        };
+
+        let mut overlay_canon: Option<SymbolicCost> = None;
+        for lang_name in ["rust_language", "python_language", "go_language"] {
+            let lang_id = match bootstrap_dag.declaration_by_name(lang_name) {
+                Some(decl) => decl.id,
+                None => {
+                    return ClaimResult::Fail(format!(
+                        "`cross_target_optimization_constant_fold_consistent`: bootstrap Dag missing \
+                         `{lang_name}`"
+                    ));
+                }
+            };
+            let table = match RealizationCostTable::for_language(&bootstrap_dag, lang_id) {
+                Ok(t) => t,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "`cross_target_optimization_constant_fold_consistent`: \
+                         RealizationCostTable::for_language({lang_name}) failed: {err:?}"
+                    ));
+                }
+            };
+            let Some(entry) = table.get(&RealizationCostKey::Type(int_decl)) else {
+                return ClaimResult::Fail(format!(
+                    "`cross_target_optimization_constant_fold_consistent`: `{lang_name}` realization \
+                     table has no Type(Int) row"
+                ));
+            };
+            let overlay = normalize(sequential(
+                composed.clone(),
+                SymbolicCost::ConstantCost {
+                    _0: entry.cost.value(),
+                },
+            ));
+            match &overlay_canon {
+                None => overlay_canon = Some(overlay),
+                Some(prev) if *prev != overlay => {
+                    return ClaimResult::Fail(format!(
+                        "`cross_target_optimization_constant_fold_consistent`: cross-target Int \
+                         TypeRealization overlay mismatch at `{lang_name}` (normalized \
+                         sequential(algebra, Constant(type_row))) differs from prior target; \
+                         prev={prev:?} current={overlay:?}"
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+
+        ClaimResult::Pass
     }
 
     fn validate_dimension_report_ref(

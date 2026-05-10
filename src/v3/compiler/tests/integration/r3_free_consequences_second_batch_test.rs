@@ -10,8 +10,9 @@
 //! `r3_free_consequences_auto_loop_parallelism_dependence.v3` so lowering still exercises a real
 //! loop body; integration tests ratchet embedded `TestClaim.source` against that file byte-for-byte
 //! and assert the claim program lowers to `Behavior::Loop` so the fold is exercised on the compile
-//! path, not only carried as inert text. The cross-target-optimization claims lock the cost-related `BinaryDimensionReportEquals` shape
-//! and stay `NotYetImplemented` until cost facts land.
+//! path, not only carried as inert text. The cross-target-optimization gate **#51** executes
+//! `BinaryDimensionReportEquals` over `DimensionReport<SymbolicCost>` (runner: `test_runner.rs`).
+//! Gate **#52** remains author-now/fire-later on the same envelope until its consumer lands.
 
 use std::sync::OnceLock;
 
@@ -101,6 +102,12 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
             assert!(
                 matches!(&result.result, ClaimResult::Pass),
                 "expected {expected_name} to pass (LensOutputEquals matches staged loop-parallelism indicator), got {:?}",
+                result.result
+            );
+        } else if idx == 3 {
+            assert!(
+                matches!(&result.result, ClaimResult::Pass),
+                "expected {expected_name} to pass on BinaryDimensionReportEquals (gate #51 executable surface), got {:?}",
                 result.result
             );
         } else {
