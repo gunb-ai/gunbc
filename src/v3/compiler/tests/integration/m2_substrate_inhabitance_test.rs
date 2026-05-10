@@ -984,6 +984,66 @@ fn ep_two_descent(n: Int, m: Int) -> Int =
     }
 }
 
+/// R3 program-plan gate **#72** `e_p_producer_demonstration` (T-E-P-Producer-Broadening).
+///
+/// Runtime-executable witness per `docs/r3-structure.md` (demonstration principle): a
+/// representative lowered `Dag` exposes a recursive self-call whose per-argument
+/// `SubValueRelation` vector is fully populated with **proven** arithmetic descent
+/// (no `SubValueUnknown` fabrications), the lens-facing `per_call_pattern_at` lookup
+/// succeeds on the live `Transform` node id, and `lower_call_pattern` materializes
+/// `DescentEvidence::Strict` — the end-to-end E-P producer surface from call site to
+/// iteration lowering facts.
+#[test]
+fn e_p_producer_demonstration() {
+    let dag = compile_to_dag(
+        "\
+fn ep_demo_two_arg_arith(n: Int, m: Int) -> Int =
+  if n == 0 then m else ep_demo_two_arg_arith(n - 1, m - 1)
+",
+        "e_p_producer_demonstration.v3",
+    )
+    .expect("e_p_producer_demonstration fixture compiles");
+
+    let entry = per_call_descent_evidence(&dag)
+        .into_iter()
+        .find(|e| e.caller == "ep_demo_two_arg_arith" && e.callee == "ep_demo_two_arg_arith")
+        .expect("expected ep_demo_two_arg_arith self-call in per-call side table");
+
+    assert_eq!(
+        entry.evidence.len(),
+        2,
+        "demonstration pins a multi-arg self-call: producer emits one relation per argument port"
+    );
+
+    let expected_factor = ShrinkFactor::ConstantShrink {
+        steps: PositiveDescentAmount::OneStep,
+    };
+    match &entry.evidence[0] {
+        SubValueRelation::ArithmeticDescent { param, factor } => {
+            assert_eq!(param, "param_0");
+            assert_eq!(factor, &expected_factor);
+        }
+        other => panic!("expected ArithmeticDescent on arg 0, got {other:?}"),
+    }
+    match &entry.evidence[1] {
+        SubValueRelation::ArithmeticDescent { param, factor } => {
+            assert_eq!(param, "param_1");
+            assert_eq!(factor, &expected_factor);
+        }
+        other => panic!("expected ArithmeticDescent on arg 1, got {other:?}"),
+    }
+
+    let pattern = per_call_pattern_at(&dag, entry.call).expect(
+        "authoritative CallPattern lookup must succeed when at least one arg carries strict descent",
+    );
+    let target = lower_call_pattern(pattern);
+    assert_eq!(
+        target.evidence,
+        DescentEvidence::Strict,
+        "lowering must observe Strict descent evidence for the projected CallPattern"
+    );
+}
+
 #[test]
 fn e_p_per_call_descent_evidence_indirect_call_fail_closed_invariance() {
     // Phase-1 broadening Slice 6 — cementing-only. Pin the fail-closed
