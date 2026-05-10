@@ -3049,6 +3049,8 @@ fn top_level_bind_cache_key(
             // Structural reuse proxy only: this is not the R3 purity+cost
             // memoization authority. Keep it target-local and fail closed on
             // non-Copy outputs so the emitted Rust cannot move a previous bind.
+            // TODO(purity): when callable bodies can be impure, require the
+            // canonical purity witness here before admitting `UserDefined`.
             let TypeConnective::Arrow {
                 body: ArrowBody::UserDefined(_),
                 ..
@@ -3068,33 +3070,53 @@ fn top_level_bind_cache_key(
     }
 }
 
-pub(crate) fn repeated_pure_call_cache_witness(
+struct PureCallCachePlan {
+    reuse_bind_names: Vec<Option<String>>,
+    witness: RepeatedPureCallCacheWitness,
+}
+
+fn top_level_pure_call_cache_plan(
     dag: &Dag,
-) -> Result<RepeatedPureCallCacheWitness, EmitError> {
-    let indexes = RealizationIndexes::build(dag)?;
-    let top_level_binds = program_mode_top_level_value_binds(dag, &indexes);
+    indexes: &RealizationIndexes,
+    top_level_binds: &[&BindNode],
+) -> Result<PureCallCachePlan, EmitError> {
     let mut repeated_pure_call_cache: HashMap<PureCallCacheKey, String> = HashMap::new();
+    let mut reuse_bind_names = Vec::with_capacity(top_level_binds.len());
     let mut witness = RepeatedPureCallCacheWitness {
         cacheable_call_binds: 0,
         actual_call_binds: 0,
         cached_reuse_binds: 0,
     };
     for bind in top_level_binds {
-        let Some(cache_key) = top_level_bind_cache_key(dag, &indexes, bind)? else {
+        let Some(cache_key) = top_level_bind_cache_key(dag, indexes, bind)? else {
+            reuse_bind_names.push(None);
             continue;
         };
         witness.cacheable_call_binds += 1;
         match repeated_pure_call_cache.entry(cache_key) {
-            std::collections::hash_map::Entry::Occupied(_) => {
+            std::collections::hash_map::Entry::Occupied(entry) => {
                 witness.cached_reuse_binds += 1;
+                reuse_bind_names.push(Some(entry.get().clone()));
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(bind.name.clone());
                 witness.actual_call_binds += 1;
+                reuse_bind_names.push(None);
             }
         }
     }
-    Ok(witness)
+    Ok(PureCallCachePlan {
+        reuse_bind_names,
+        witness,
+    })
+}
+
+pub(crate) fn repeated_pure_call_cache_witness(
+    dag: &Dag,
+) -> Result<RepeatedPureCallCacheWitness, EmitError> {
+    let indexes = RealizationIndexes::build(dag)?;
+    let top_level_binds = program_mode_top_level_value_binds(dag, &indexes);
+    Ok(top_level_pure_call_cache_plan(dag, &indexes, &top_level_binds)?.witness)
 }
 
 pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
@@ -3275,22 +3297,15 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
             )
         } else {
             let mut rendered_binds: Vec<String> = Vec::with_capacity(top_level_binds.len());
-            let mut repeated_pure_call_cache: HashMap<PureCallCacheKey, String> = HashMap::new();
-            for bind in &top_level_binds {
+            let pure_call_cache_plan =
+                top_level_pure_call_cache_plan(dag, &indexes, &top_level_binds)?;
+            for (bind, reuse_bind_name) in top_level_binds
+                .iter()
+                .zip(pure_call_cache_plan.reuse_bind_names.iter())
+            {
                 let ty_name = ctx.rust_type_name_for_port(bind.value)?;
                 let value_expr = ctx.render_top_level_value(bind.value)?;
-                let value = if let Some(cache_key) = top_level_bind_cache_key(dag, &indexes, bind)?
-                {
-                    match repeated_pure_call_cache.get(&cache_key) {
-                        Some(cached_name) => cached_name.clone(),
-                        None => {
-                            repeated_pure_call_cache.insert(cache_key, bind.name.clone());
-                            value_expr
-                        }
-                    }
-                } else {
-                    value_expr
-                };
+                let value = reuse_bind_name.clone().unwrap_or(value_expr);
                 let rendered = render_named_template(
                     &indexes.syntax.statements.let_binding,
                     &[("name", &bind.name), ("type", &ty_name), ("value", &value)],
