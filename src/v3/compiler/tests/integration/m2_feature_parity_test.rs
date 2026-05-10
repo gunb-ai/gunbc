@@ -1407,6 +1407,62 @@ fn test_unicode_scalar_lowers_to_surrogate_excluding_union() {
     );
 }
 
+/// R3 gate #20 / scalar-literal boundary: synthesizable `where` predicates
+/// (`range`, `unicode_scalar`, `brand`, `And` compositions) must discharge from
+/// plain Int literals so std aliases like `Char`, `Milliseconds`, and
+/// `Seconds` stay constructible without an explicit narrowing branch.
+#[test]
+fn test_gate20_scalar_literals_statically_discharge_refinements() {
+    let f = "dsl/std/types.dag";
+    let _ = cached_compile_to_dag(
+        "let ms_ok: Milliseconds = 0\n\
+         let sec_ok: Seconds = 1\n\
+         let ch_ok: Char = 65\n\
+         data epoch_tick: Milliseconds = 0\n",
+        f,
+    );
+}
+
+#[test]
+fn test_gate20_char_literal_surrogate_rejected() {
+    let f = "dsl/std/types.dag";
+    let err = compile_to_dag("let bad: Char = 55296\n", f).expect_err("U+D800 surrogate Char");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic error; got {err:?}");
+    };
+    assert!(
+        dag.diagnostics().iter().any(|(_, d)| {
+            matches!(
+                d,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("scalar literal") && name.contains("refinement")
+            )
+        }),
+        "expected scalar-literal refinement diagnostic for surrogate; got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn test_gate20_milliseconds_negative_literal_rejected() {
+    let f = "dsl/std/types.dag";
+    let err = compile_to_dag("let bad: Milliseconds = -1\n", f).expect_err("negative Milliseconds");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic error; got {err:?}");
+    };
+    assert!(
+        dag.diagnostics().iter().any(|(_, d)| {
+            matches!(
+                d,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("scalar literal") && name.contains("refinement")
+            )
+        }),
+        "expected scalar-literal refinement diagnostic for out-of-range literal; got {:?}",
+        dag.diagnostics()
+    );
+}
+
 /// S9 Slice 2.5 Path (a) cement: registered predicate applied to a
 /// non-allowed carrier fails closed — either via the carrier-compatibility
 /// reject in `validate_predicate_clause` (emits `Diagnostic::ResolveError`
@@ -2237,3 +2293,13 @@ fn test_3a4_refined_generic_substrate_integrity_behavior_still_five_variants() {
 // =================================================================
 // 3a.1 — Mutual recursion (TODO: unimplemented)
 // =================================================================
+#[test] fn scratch_seconds() {
+    for src in [
+        "let x: Seconds = 1\n",
+        "let x: Milliseconds = 0\n",
+        "let x: Char = 65\n",
+    ] {
+        let r = v3_compiler::compile_to_dag(src, "dsl/std/types.dag");
+        eprintln!("{src:?} -> {:?}", r.as_ref().err());
+    }
+}

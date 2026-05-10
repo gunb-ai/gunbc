@@ -1005,10 +1005,10 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
 /// Pending substrate — STOP-AND-ESCALATE candidates per S9 Slice 2.5 brief
 /// (returns `None` — falls through to placeholder for now):
 /// - `non_empty`: synthesizing a real Bool body triggers a *discharge cascade*
-///   — `scalar_literal_requires_refinement_discharge` treats any non-placeholder
-///   refinement as needing static discharge, and the existing infrastructure
-///   cannot yet evaluate `subject != ""` against scalar data literals like
-///   `name: "lower_helpers"`. Result: bootstrap regen emits spurious
+///   — `scalar_literal_must_reject_for_refinement` fails closed when it cannot
+///   evaluate the lowered predicate against the literal; there is no static
+///   evaluator for `subject != ""` yet on string literals (e.g. data fields
+///   typed `NonEmptyStr`). Result: bootstrap regen would emit spurious
 ///   "scalar literal does not satisfy `where` refinement" diagnostics for
 ///   data declarations whose fields are typed as non-empty carriers (e.g.
 ///   `LensRegistryEntry.name: NonEmptyStr`). Surfacing as STOP per brief —
@@ -1796,11 +1796,12 @@ fn lower_type_alias_refinements_phase(
 /// `lower_scalar_literal_for_type` can only check base scalar
 /// cardinality in the data pre-pass. After alias refinements land, this
 /// validation pass rejects any already-scalar-lowered data declaration
-/// whose declared type now carries a lowered predicate refinement,
-/// including scalar literals nested inside structural data bodies. A raw
-/// scalar literal is base-type evidence, not predicate evidence; callers
-/// must introduce a narrowing branch or another refinement-bearing
-/// source. Deferred placeholders are skipped because they intentionally
+/// whose declared type now carries a lowered predicate refinement that
+/// cannot be **statically discharged** for that literal (including literals
+/// nested inside structural data bodies). Synthesizable registry predicates
+/// (`gt_zero`, `unicode_scalar`, `range`, `brand`, nested `And`/`Or`) are
+/// evaluated via the same lowered `Transform` fragment as narrowing discharge;
+/// unsupported shapes fail closed. Deferred placeholders are skipped because they intentionally
 /// carry no lowered predicate to discharge until their PB-1 dissolution
 /// trigger lands.
 fn validate_scalar_data_refinements_phase(
@@ -1853,8 +1854,8 @@ fn value_body_contains_undischarged_scalar_literal(
     value_body: &crate::dag::ValueBody,
 ) -> bool {
     match value_body {
-        crate::dag::ValueBody::Scalar(_) => {
-            scalar_literal_requires_refinement_discharge(dag, expected_type)
+        crate::dag::ValueBody::Scalar(bits) => {
+            scalar_literal_must_reject_for_refinement(dag, bits, expected_type)
         }
         crate::dag::ValueBody::Structural { fields } => {
             structural_fields_contain_undischarged_scalar_literal(dag, expected_type, fields)
@@ -1902,8 +1903,8 @@ fn field_value_contains_undischarged_scalar_literal(
     value: &crate::dag::FieldValue,
 ) -> bool {
     match value {
-        crate::dag::FieldValue::Literal(_) => {
-            scalar_literal_requires_refinement_discharge(dag, expected_type)
+        crate::dag::FieldValue::Literal(bits) => {
+            scalar_literal_must_reject_for_refinement(dag, bits, expected_type)
         }
         crate::dag::FieldValue::Reference(_) => false,
         crate::dag::FieldValue::Record(fields) => {
@@ -2040,14 +2041,15 @@ fn eval_int_comparison_port(
         ComparisonOp::Ge | ComparisonOp::Le | ComparisonOp::Gt => {
             let lhs_v = int_operand_for_static_refinement(dag, lhs, param_port, value)?;
             let rhs_v = int_operand_for_static_refinement(dag, rhs, param_port, value)?;
-            Some(match op {
+            let ok = match op {
                 ComparisonOp::Ge => lhs_v >= rhs_v,
                 ComparisonOp::Le => lhs_v <= rhs_v,
                 ComparisonOp::Gt => lhs_v > rhs_v,
-                ComparisonOp::Eq => unreachable!("handled above"),
-            })
+                _ => return None,
+            };
+            Some(ok)
         }
-        _ => None,
+        ComparisonOp::Ne | ComparisonOp::Lt => None,
     }
 }
 
@@ -5460,7 +5462,7 @@ fn lower_scalar_literal_for_type(
     };
     if type_ok {
         let span = expr_span(expr);
-        if scalar_literal_requires_refinement_discharge(dag, expected_type) {
+        if scalar_literal_must_reject_for_refinement(dag, &literal_bits, expected_type) {
             return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                 name: "scalar literal does not satisfy the expected `where` refinement — no narrowing branch in scope".to_string(),
                 span,
