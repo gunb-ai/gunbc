@@ -2307,12 +2307,8 @@ fn get_x(point: Point) -> Int = point.x
     };
     assert_eq!(projection.inputs, vec![bind.params[0]]);
     match &projection.target {
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => {
-            assert_eq!(field_label, "x");
-            assert_eq!(*field_child, Some(int_id));
+        TransformTarget::ResolvedFieldProject { field_ref } => {
+            assert_eq!(*field_ref, int_id);
         }
         other => panic!("expected FieldProject target, got {other:?}"),
     }
@@ -2344,12 +2340,8 @@ fn get_nested_x(outer: Outer) -> Int = outer.inner.x
         other => panic!("expected final Transform field projection, got {other:?}"),
     };
     match &final_projection.target {
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => {
-            assert_eq!(field_label, "x");
-            assert_eq!(*field_child, Some(find_named(&dag, "Int")));
+        TransformTarget::ResolvedFieldProject { field_ref } => {
+            assert_eq!(*field_ref, find_named(&dag, "Int"));
         }
         other => panic!("expected final FieldProject target, got {other:?}"),
     }
@@ -2365,12 +2357,8 @@ fn get_nested_x(outer: Outer) -> Int = outer.inner.x
     assert_eq!(intermediate_projection.inputs, vec![bind.params[0]]);
     assert_eq!(intermediate_projection.output, final_projection.inputs[0]);
     match &intermediate_projection.target {
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => {
-            assert_eq!(field_label, "inner");
-            assert_eq!(*field_child, Some(find_named(&dag, "Inner")));
+        TransformTarget::ResolvedFieldProject { field_ref } => {
+            assert_eq!(*field_ref, find_named(&dag, "Inner"));
         }
         other => panic!("expected intermediate FieldProject target, got {other:?}"),
     }
@@ -2396,12 +2384,8 @@ fn read(boxed: Box<Int>) -> Int = boxed.value
         other => panic!("expected Transform field projection, got {other:?}"),
     };
     match &projection.target {
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => {
-            assert_eq!(field_label, "value");
-            assert_eq!(*field_child, Some(box_t));
+        TransformTarget::ResolvedFieldProject { field_ref } => {
+            assert_eq!(*field_ref, box_t);
         }
         other => panic!("expected FieldProject target, got {other:?}"),
     }
@@ -2528,12 +2512,8 @@ fn get_or_zero(m: MaybePoint) -> Int = match id(m) { Some(point) => point.x, Non
     };
     assert_eq!(projection.inputs, vec![binding.payload_port]);
     match &projection.target {
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => {
-            assert_eq!(field_label, "x");
-            assert_eq!(*field_child, Some(find_named(&dag, "Int")));
+        TransformTarget::ResolvedFieldProject { field_ref } => {
+            assert_eq!(*field_ref, find_named(&dag, "Int"));
         }
         other => panic!("expected FieldProject target, got {other:?}"),
     }
@@ -2861,12 +2841,8 @@ fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap { inner: point } => point.
     };
     assert_eq!(point_projection.inputs, vec![binding.payload_port]);
     match &point_projection.target {
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => {
-            assert_eq!(field_label, "inner");
-            assert_eq!(*field_child, Some(find_named(&dag, "Point")));
+        TransformTarget::ResolvedFieldProject { field_ref } => {
+            assert_eq!(*field_ref, find_named(&dag, "Point"));
         }
         other => panic!("expected inner FieldProject target, got {other:?}"),
     }

@@ -873,18 +873,24 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitPythonError> {
         match &t.target {
             TransformTarget::Operator(op) => self.render_operator(t, *op, locals),
-            TransformTarget::FieldProject { field_label, .. } => {
+            TransformTarget::UnresolvedFieldProject { field_label } => {
+                return Err(EmitPythonError::Unsupported(format!(
+                    "field projection .{field_label} is unresolved; emit_python expects post-infer FieldProject targets"
+                )));
+            }
+            TransformTarget::ResolvedFieldProject { field_ref } => {
+                let field_label = resolved_field_project_label(self.dag, t, *field_ref)?;
                 if let Some(binding) = locals
                     .payload_bindings
                     .get(&t.inputs[0])
-                    .and_then(|binding| binding.field(field_label))
+                    .and_then(|binding| binding.field(&field_label))
                 {
                     return Ok(binding.clone());
                 }
                 let object = self.render_port(t.inputs[0], locals)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.field_access,
-                    &[("object", &object), ("field", field_label)],
+                    &[("object", &object), ("field", &field_label)],
                 ))
             }
             TransformTarget::Callable(target) => self.render_callable_transform(t, *target, locals),
@@ -2047,6 +2053,46 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
             EmitPythonError::Unsupported(detail.replace(" — likely a cycle", ""))
         }
     })
+}
+
+fn walk_to_conj(dag: &Dag, mut current: DeclarationId) -> Option<DeclarationId> {
+    for _ in 0..32 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn resolved_field_project_label(
+    dag: &Dag,
+    t: &TransformNode,
+    field_ref: DeclarationId,
+) -> Result<String, EmitPythonError> {
+    let parent_type = primitive_type_id_for_port(dag, t.inputs[0])?;
+    let conj_id =
+        walk_to_conj(dag, parent_type).ok_or(EmitPythonError::MissingTypeRealization {
+            target: parent_type,
+        })?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return Err(EmitPythonError::MissingTypeRealization {
+            target: parent_type,
+        });
+    };
+    children
+        .iter()
+        .find(|field| field.ty == field_ref)
+        .map(|field| field.label.clone())
+        .ok_or_else(|| {
+            EmitPythonError::Unsupported(format!(
+                "resolved field projection target {:?} is not a child of parent type {:?}",
+                field_ref, parent_type
+            ))
+        })
 }
 
 fn is_optional_match_disj(dag: &Dag, disj_id: DeclarationId) -> bool {

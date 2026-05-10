@@ -191,10 +191,8 @@ pub fn transform_cost_for_target(
 ) -> Lookup<SymbolicCost> {
     match p1 {
         TransformTarget::Callable(_) => transform_cost(p0, p2),
-        TransformTarget::FieldProject {
-            field_label: _,
-            field_child: _,
-        } => transform_cost(p0, p2),
+        TransformTarget::UnresolvedFieldProject { .. }
+        | TransformTarget::ResolvedFieldProject { .. } => transform_cost(p0, p2),
         TransformTarget::Operator(op) => match op {
             OperatorKind::Arithmetic(arith) => match arith {
                 ArithmeticOp::Div => match p2 {

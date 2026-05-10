@@ -281,20 +281,14 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(33),
-            target: TransformTarget::FieldProject {
-                field_label: "count".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "count".to_string() },
             inputs: vec![PortId(34)],
             output: PortId(35),
             span: SourceSpan::new("src/v3/std/substrate.dag", 18045, 18050),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(34),
-            target: TransformTarget::FieldProject {
-                field_label: "measure".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "measure".to_string() },
             inputs: vec![PortId(36)],
             output: PortId(37),
             span: SourceSpan::new("src/v3/std/substrate.dag", 18083, 18090),
@@ -343,20 +337,14 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(37),
-            target: TransformTarget::FieldProject {
-                field_label: "source_port".to_string(),
-                field_child: Some(DeclarationId(702)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(702) },
             inputs: vec![PortId(39)],
             output: PortId(41),
             span: SourceSpan::new("src/v3/std/algebra.dag", 7604, 7615),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(38),
-            target: TransformTarget::FieldProject {
-                field_label: "source_port".to_string(),
-                field_child: Some(DeclarationId(702)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(702) },
             inputs: vec![PortId(40)],
             output: PortId(42),
             span: SourceSpan::new("src/v3/std/algebra.dag", 7621, 7632),
@@ -515,10 +503,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(56),
-            target: TransformTarget::FieldProject {
-                field_label: "previous".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "previous".to_string() },
             inputs: vec![PortId(64)],
             output: PortId(65),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11994, 12002),
@@ -1089,10 +1074,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(102),
-            target: TransformTarget::FieldProject {
-                field_label: "var".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "var".to_string() },
             inputs: vec![PortId(131)],
             output: PortId(137),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15934, 15937),
@@ -1106,20 +1088,14 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(104),
-            target: TransformTarget::FieldProject {
-                field_label: "var".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "var".to_string() },
             inputs: vec![PortId(131)],
             output: PortId(140),
             span: SourceSpan::new("src/v3/std/algebra.dag", 16008, 16011),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(105),
-            target: TransformTarget::FieldProject {
-                field_label: "var".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "var".to_string() },
             inputs: vec![PortId(139)],
             output: PortId(141),
             span: SourceSpan::new("src/v3/std/algebra.dag", 16016, 16019),
@@ -1133,10 +1109,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(107),
-            target: TransformTarget::FieldProject {
-                field_label: "degree".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "degree".to_string() },
             inputs: vec![PortId(131)],
             output: PortId(143),
             span: SourceSpan::new("src/v3/std/algebra.dag", 16052, 16058),
@@ -1150,10 +1123,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(109),
-            target: TransformTarget::FieldProject {
-                field_label: "degree".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "degree".to_string() },
             inputs: vec![PortId(139)],
             output: PortId(145),
             span: SourceSpan::new("src/v3/std/algebra.dag", 16077, 16083),
@@ -1785,10 +1755,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(148),
-            target: TransformTarget::FieldProject {
-                field_label: "degree".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "degree".to_string() },
             inputs: vec![PortId(200)],
             output: PortId(201),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18747, 18758),
@@ -1809,10 +1776,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(151),
-            target: TransformTarget::FieldProject {
-                field_label: "degree".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "degree".to_string() },
             inputs: vec![PortId(204)],
             output: PortId(205),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18870, 18881),
@@ -2974,30 +2938,21 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(223),
-            target: TransformTarget::FieldProject {
-                field_label: "first".to_string(),
-                field_child: Some(DeclarationId(708)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(708) },
             inputs: vec![PortId(285)],
             output: PortId(286),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22286, 22291),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(224),
-            target: TransformTarget::FieldProject {
-                field_label: "second".to_string(),
-                field_child: Some(DeclarationId(708)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(708) },
             inputs: vec![PortId(285)],
             output: PortId(287),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22304, 22310),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(225),
-            target: TransformTarget::FieldProject {
-                field_label: "rest".to_string(),
-                field_child: Some(DeclarationId(1687)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(1687) },
             inputs: vec![PortId(285)],
             output: PortId(288),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22318, 22322),
@@ -3034,10 +2989,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(230),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(293)],
             output: PortId(294),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22666, 22670),
@@ -3051,10 +3003,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(232),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(293)],
             output: PortId(296),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22712, 22716),
@@ -3068,20 +3017,14 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(234),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(293)],
             output: PortId(298),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22750, 22754),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(235),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(293)],
             output: PortId(299),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22783, 22787),
@@ -3255,10 +3198,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(250),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(314)],
             output: PortId(315),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23297, 23301),
@@ -3272,10 +3212,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(252),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(314)],
             output: PortId(317),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23323, 23327),
@@ -3351,10 +3288,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(259),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(324)],
             output: PortId(325),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23659, 23663),
@@ -3368,10 +3302,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(261),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(324)],
             output: PortId(327),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23710, 23714),
@@ -3385,20 +3316,14 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(263),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(324)],
             output: PortId(329),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23748, 23752),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(264),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(324)],
             output: PortId(330),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23786, 23790),
@@ -3824,40 +3749,28 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(293),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(373)],
             output: PortId(374),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25237, 25241),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(294),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(373)],
             output: PortId(375),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25269, 25273),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(295),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(373)],
             output: PortId(377),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25330, 25334),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(296),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(373)],
             output: PortId(378),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25344, 25348),
@@ -3968,50 +3881,35 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(305),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(387)],
             output: PortId(388),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25508, 25512),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(306),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(387)],
             output: PortId(389),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25540, 25544),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(307),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(387)],
             output: PortId(391),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25596, 25600),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(308),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(390)],
             output: PortId(392),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25609, 25613),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(309),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(390)],
             output: PortId(393),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25622, 25626),
@@ -4115,50 +4013,35 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(317),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(401)],
             output: PortId(402),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25974, 25978),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(318),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(401)],
             output: PortId(403),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26006, 26010),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(319),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(404)],
             output: PortId(405),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26058, 26062),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(320),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(401)],
             output: PortId(406),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26117, 26121),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(321),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(404)],
             output: PortId(407),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26130, 26134),
@@ -4172,30 +4055,21 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(323),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(401)],
             output: PortId(410),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26190, 26194),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(324),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(404)],
             output: PortId(411),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26203, 26207),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(325),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(404)],
             output: PortId(412),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26216, 26220),
@@ -4697,20 +4571,14 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(358),
-            target: TransformTarget::FieldProject {
-                field_label: "any".to_string(),
-                field_child: Some(DeclarationId(126)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(126) },
             inputs: vec![PortId(465)],
             output: PortId(467),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27733, 27736),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(359),
-            target: TransformTarget::FieldProject {
-                field_label: "pivot".to_string(),
-                field_child: Some(DeclarationId(828)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(828) },
             inputs: vec![PortId(465)],
             output: PortId(468),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27757, 27762),
@@ -4731,10 +4599,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(362),
-            target: TransformTarget::FieldProject {
-                field_label: "pivot".to_string(),
-                field_child: Some(DeclarationId(828)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(828) },
             inputs: vec![PortId(465)],
             output: PortId(471),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27777, 27782),
@@ -4757,10 +4622,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(365),
-            target: TransformTarget::FieldProject {
-                field_label: "any".to_string(),
-                field_child: Some(DeclarationId(126)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(126) },
             inputs: vec![PortId(473)],
             output: PortId(474),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27838, 27841),
@@ -4783,10 +4645,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(368),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(478)],
             output: PortId(479),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28052, 28056),
@@ -4800,10 +4659,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(370),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(478)],
             output: PortId(481),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28103, 28107),
@@ -4817,20 +4673,14 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(372),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(478)],
             output: PortId(483),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28149, 28153),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(373),
-            target: TransformTarget::FieldProject {
-                field_label: "tail".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
             inputs: vec![PortId(478)],
             output: PortId(484),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28187, 28191),
@@ -5034,10 +4884,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(392),
-            target: TransformTarget::FieldProject {
-                field_label: "cost".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "cost".to_string() },
             inputs: vec![PortId(504)],
             output: PortId(505),
             span: SourceSpan::new("src/v3/std/induction.dag", 29133, 29140),
@@ -5051,10 +4898,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(394),
-            target: TransformTarget::FieldProject {
-                field_label: "factors".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "factors".to_string() },
             inputs: vec![PortId(507)],
             output: PortId(508),
             span: SourceSpan::new("src/v3/std/induction.dag", 29192, 29203),
@@ -5068,10 +4912,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(396),
-            target: TransformTarget::FieldProject {
-                field_label: "terms".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "terms".to_string() },
             inputs: vec![PortId(510)],
             output: PortId(511),
             span: SourceSpan::new("src/v3/std/induction.dag", 29264, 29273),
@@ -5085,10 +4926,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(398),
-            target: TransformTarget::FieldProject {
-                field_label: "terms".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "terms".to_string() },
             inputs: vec![PortId(513)],
             output: PortId(514),
             span: SourceSpan::new("src/v3/std/induction.dag", 29323, 29332),
@@ -5232,20 +5070,14 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(407),
-            target: TransformTarget::FieldProject {
-                field_label: "param".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "param".to_string() },
             inputs: vec![PortId(523)],
             output: PortId(524),
             span: SourceSpan::new("src/v3/std/induction.dag", 29612, 29620),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(408),
-            target: TransformTarget::FieldProject {
-                field_label: "exponent".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "exponent".to_string() },
             inputs: vec![PortId(523)],
             output: PortId(525),
             span: SourceSpan::new("src/v3/std/induction.dag", 29622, 29633),
@@ -5268,10 +5100,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(411),
-            target: TransformTarget::FieldProject {
-                field_label: "param".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "param".to_string() },
             inputs: vec![PortId(528)],
             output: PortId(529),
             span: SourceSpan::new("src/v3/std/induction.dag", 29741, 29749),
@@ -5412,10 +5241,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(426),
-            target: TransformTarget::FieldProject {
-                field_label: "duration".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
             inputs: vec![PortId(544)],
             output: PortId(545),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 6747, 6758),
@@ -5498,10 +5324,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(432),
-            target: TransformTarget::FieldProject {
-                field_label: "duration".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
             inputs: vec![PortId(551)],
             output: PortId(552),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 6917, 6928),
@@ -5563,10 +5386,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(435),
-            target: TransformTarget::FieldProject {
-                field_label: "duration".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
             inputs: vec![PortId(555)],
             output: PortId(556),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 6967, 6979),
@@ -5594,30 +5414,21 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(439),
-            target: TransformTarget::FieldProject {
-                field_label: "duration".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
             inputs: vec![PortId(560)],
             output: PortId(561),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7107, 7119),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(440),
-            target: TransformTarget::FieldProject {
-                field_label: "count".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "count".to_string() },
             inputs: vec![PortId(556)],
             output: PortId(562),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7199, 7204),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(441),
-            target: TransformTarget::FieldProject {
-                field_label: "count".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "count".to_string() },
             inputs: vec![PortId(561)],
             output: PortId(563),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7210, 7215),
@@ -5645,20 +5456,14 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(445),
-            target: TransformTarget::FieldProject {
-                field_label: "count".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "count".to_string() },
             inputs: vec![PortId(556)],
             output: PortId(567),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7288, 7293),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(446),
-            target: TransformTarget::FieldProject {
-                field_label: "count".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "count".to_string() },
             inputs: vec![PortId(561)],
             output: PortId(568),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7299, 7304),
@@ -5946,50 +5751,35 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(468),
-            target: TransformTarget::FieldProject {
-                field_label: "span".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
             inputs: vec![PortId(589)],
             output: PortId(590),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 8243, 8247),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(469),
-            target: TransformTarget::FieldProject {
-                field_label: "span".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
             inputs: vec![PortId(591)],
             output: PortId(592),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 8270, 8274),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(470),
-            target: TransformTarget::FieldProject {
-                field_label: "span".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
             inputs: vec![PortId(593)],
             output: PortId(594),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 8296, 8300),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(471),
-            target: TransformTarget::FieldProject {
-                field_label: "span".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
             inputs: vec![PortId(595)],
             output: PortId(596),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 8318, 8322),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(472),
-            target: TransformTarget::FieldProject {
-                field_label: "span".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
             inputs: vec![PortId(597)],
             output: PortId(598),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 8346, 8350),
@@ -6155,30 +5945,21 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(486),
-            target: TransformTarget::FieldProject {
-                field_label: "declarations".to_string(),
-                field_child: Some(DeclarationId(1867)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(1867) },
             inputs: vec![PortId(610)],
             output: PortId(613),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9781, 9793),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(487),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(614)],
             output: PortId(615),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9916, 9920),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(488),
-            target: TransformTarget::FieldProject {
-                field_label: "span".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
             inputs: vec![PortId(615)],
             output: PortId(616),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9921, 9925),
@@ -6250,10 +6031,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(495),
-            target: TransformTarget::FieldProject {
-                field_label: "head".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
             inputs: vec![PortId(623)],
             output: PortId(624),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10321, 10325),
@@ -6320,10 +6098,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(501),
-            target: TransformTarget::FieldProject {
-                field_label: "duration".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
             inputs: vec![PortId(631)],
             output: PortId(632),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10799, 10810),
@@ -6878,10 +6653,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(547),
-            target: TransformTarget::FieldProject {
-                field_label: "duration".to_string(),
-                field_child: None,
-            },
+            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
             inputs: vec![PortId(687)],
             output: PortId(688),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12758, 12769),
@@ -7024,10 +6796,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(561),
-            target: TransformTarget::FieldProject {
-                field_label: "nodes".to_string(),
-                field_child: Some(DeclarationId(1868)),
-            },
+            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(1868) },
             inputs: vec![PortId(701)],
             output: PortId(702),
             span: SourceSpan::new("src/v3/std/workflows.dag", 1013, 1018),

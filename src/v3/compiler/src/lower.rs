@@ -2289,7 +2289,7 @@ pub(crate) fn clone_predicate_body(
 /// - `Operator(_)`: no substitution. Operator kinds are intrinsic;
 ///   `resolve_operator_arrow` handles TypeParam operands through its
 ///   own substitution pipeline at inference time.
-/// - `FieldProject { field_child, .. }`: route `field_child` through
+/// - `ResolvedFieldProject { field_ref }`: route `field_ref` through
 ///   `concretize_decl_with_subst`. When the parent record is generic
 ///   (e.g., `Box<T>` scoped under `fn f<T>(x: Box<T> where ...)`),
 ///   substitution re-roots `field_child` to the concrete
@@ -2310,13 +2310,12 @@ fn substitute_transform_target(
 ) -> TransformTarget {
     match target {
         TransformTarget::Operator(_) => target,
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => TransformTarget::FieldProject {
-            field_label,
-            field_child: field_child.map(|id| concretize_decl_with_subst(dag, id, subst, 0)),
-        },
+        TransformTarget::UnresolvedFieldProject { .. } => target,
+        TransformTarget::ResolvedFieldProject { field_ref } => {
+            TransformTarget::ResolvedFieldProject {
+                field_ref: concretize_decl_with_subst(dag, field_ref, subst, 0),
+            }
+        }
         TransformTarget::Callable(id) => {
             TransformTarget::Callable(concretize_decl_with_subst(dag, id, subst, 0))
         }
@@ -7104,10 +7103,12 @@ fn lower_field_path_expr(
                 .unwrap_or_else(|| span.clone());
             dag.push_node(Behavior::Transform(TransformNode {
                 id: node_id,
-                target: TransformTarget::FieldProject {
-                    field_label: field_label.clone(),
-                    field_child: static_resolution.map(|(field_child, _)| field_child),
-                },
+                target: static_resolution.map_or_else(
+                    || TransformTarget::UnresolvedFieldProject {
+                        field_label: field_label.clone(),
+                    },
+                    |(field_ref, _)| TransformTarget::ResolvedFieldProject { field_ref },
+                ),
                 inputs: vec![current_port],
                 output,
                 span: field_span,
@@ -7317,10 +7318,12 @@ fn lower_field_projection_from_port(
     let static_resolution = resolve_static_field_project(dag, input_port, field_label);
     dag.push_node(Behavior::Transform(TransformNode {
         id: node_id,
-        target: TransformTarget::FieldProject {
-            field_label: field_label.to_string(),
-            field_child: static_resolution.map(|(field_child, _)| field_child),
-        },
+        target: static_resolution.map_or_else(
+            || TransformTarget::UnresolvedFieldProject {
+                field_label: field_label.to_string(),
+            },
+            |(field_ref, _)| TransformTarget::ResolvedFieldProject { field_ref },
+        ),
         inputs: vec![input_port],
         output,
         span: span.clone(),

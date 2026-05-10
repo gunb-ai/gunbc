@@ -304,10 +304,11 @@ impl Dag {
     ) -> Option<TypeShape> {
         match target {
             TransformTarget::Callable(target) => self.callable_output_shape(*target),
-            TransformTarget::FieldProject { field_child, .. } => field_child.map(|child| {
-                self.assert_declaration_exists(child, "push_transform(target.field_child)");
-                TypeShape::new(child)
-            }),
+            TransformTarget::UnresolvedFieldProject { .. } => None,
+            TransformTarget::ResolvedFieldProject { field_ref } => {
+                self.assert_declaration_exists(*field_ref, "push_transform(target.field_ref)");
+                Some(TypeShape::new(*field_ref))
+            }
             TransformTarget::Operator(kind) => self.operator_output_shape(*kind, inputs),
         }
     }
@@ -759,7 +760,8 @@ impl Dag {
                     );
                 }
             }
-            TransformTarget::FieldProject { .. } => {
+            TransformTarget::UnresolvedFieldProject { .. }
+            | TransformTarget::ResolvedFieldProject { .. } => {
                 assert!(
                     inputs.len() == 1,
                     "push_transform(FieldProject) requires exactly one input port"
@@ -1335,9 +1337,8 @@ mod tests {
         );
 
         let _ = dag.push_transform(
-            TransformTarget::FieldProject {
-                field_label: "nodes".to_string(),
-                field_child: Some(DeclarationId(u32::MAX)),
+            TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(u32::MAX),
             },
             vec![parent],
             span(),

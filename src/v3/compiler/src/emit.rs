@@ -1543,10 +1543,14 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitError> {
         match &t.target {
             TransformTarget::Operator(op) => self.render_operator(t, *op, locals),
-            TransformTarget::FieldProject {
-                field_label,
-                field_child: _,
-            } => self.render_field_project(t, field_label, locals),
+            TransformTarget::UnresolvedFieldProject { field_label } => {
+                Err(EmitError::UnsupportedBehavior(format!(
+                    "field projection .{field_label} is unresolved; emit expects post-infer FieldProject targets"
+                )))
+            }
+            TransformTarget::ResolvedFieldProject { field_ref } => {
+                self.render_field_project(t, *field_ref, locals)
+            }
             TransformTarget::Callable(target) => {
                 let (template, arguments) = callable_template(*target, self.dag);
                 if let Some(strategy) = self.indexes.callables.get(&template) {
@@ -1562,25 +1566,26 @@ impl<'a> Ctx<'a> {
     fn render_field_project(
         &self,
         t: &TransformNode,
-        field_label: &str,
+        field_ref: DeclarationId,
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         if t.inputs.len() != 1 {
             return Err(EmitError::UnsupportedBehavior(format!(
-                "field projection .{field_label} expected one input"
+                "field projection expected one input"
             )));
         }
+        let field_label = resolved_field_project_label(self.dag, t, field_ref)?;
         if let Some(binding) = locals
             .payload_bindings
             .get(&t.inputs[0])
-            .and_then(|binding| binding.field(field_label))
+            .and_then(|binding| binding.field(&field_label))
         {
             return Ok(binding.clone());
         }
         let parent = self.render_port(t.inputs[0], locals)?;
         let parent_type = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         if let Some(type_binding) = self.indexes.types.get(&parent_type) {
-            if let Some(binding) = type_binding.fields.get(field_label) {
+            if let Some(binding) = type_binding.fields.get(&field_label) {
                 return Ok(match &binding.access {
                     GoFieldAccessBinding::DirectField(name) => render_named_template(
                         &self.indexes.syntax.expressions.field_access,
@@ -1598,7 +1603,7 @@ impl<'a> Ctx<'a> {
         }
         Ok(render_named_template(
             &self.indexes.syntax.expressions.field_access,
-            &[("object", &parent), ("field", field_label)],
+            &[("object", &parent), ("field", &field_label)],
         ))
     }
 
@@ -3398,6 +3403,45 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
         SharedEmitLookupError::UntypedPort(port) => EmitError::UntypedPort(port),
         SharedEmitLookupError::Unsupported(detail) => EmitError::UnsupportedBehavior(detail),
     })
+}
+
+fn walk_to_conj(dag: &Dag, mut current: DeclarationId) -> Option<DeclarationId> {
+    for _ in 0..32 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn resolved_field_project_label(
+    dag: &Dag,
+    t: &TransformNode,
+    field_ref: DeclarationId,
+) -> Result<String, EmitError> {
+    let parent_type = primitive_type_id_for_port(dag, t.inputs[0])?;
+    let conj_id = walk_to_conj(dag, parent_type).ok_or(EmitError::MissingTypeRealization {
+        target: parent_type,
+    })?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return Err(EmitError::MissingTypeRealization {
+            target: parent_type,
+        });
+    };
+    children
+        .iter()
+        .find(|field| field.ty == field_ref)
+        .map(|field| field.label.clone())
+        .ok_or_else(|| {
+            EmitError::UnsupportedBehavior(format!(
+                "resolved field projection target {:?} is not a child of parent type {:?}",
+                field_ref, parent_type
+            ))
+        })
 }
 
 /// Peel named empty `Instantiation` chains (`type MyBool = Bool` → `Bool`).
