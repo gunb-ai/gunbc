@@ -1,5 +1,13 @@
 //! Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
 //! over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
+//!
+//! **R3 `lens_apply_dot_rs_retired` — canonical acceptance vs edits here:** Gate closure is
+//! **deletion of this file** plus **`EXPECTED_HAND_AUTHORED_NON_TEST` shrink** in
+//! `src/v3/compiler/tests/integration/sg0_census_test.rs`, after PB-Runtime / §7.1 Row-4 readiness,
+//! per `docs/r3-program-plan.md` §1.8 (gate **#5**). **Pre-closure retirement-lane PRs may still
+//! grow or refactor this file** as migration signal; that work is **not** the acceptance receipt and
+//! does not certify the gate. Branch merge deferral (§7.1) and INVARIANTS P5(b) explicit deferral +
+//! dissolution trigger are stated on the tracking PR body.
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
@@ -10,6 +18,9 @@ use crate::dag::{
     literal_bits_int, ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, Dag,
     Declaration, DeclarationId, FieldValue, LiteralBits, OperatorKind, PortId, ProducerLookup,
     TransformNode, TransformTarget, TypeConnective, ValueBody,
+};
+use crate::evaluator::{
+    evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
 };
 use crate::infer_helpers::resolve_template_argument_value;
 
@@ -255,6 +266,68 @@ fn find_fold_step_bind_via_instantiation(
     None
 }
 
+/// WIP gate #2374: R2 evaluator path for lenses whose **runtime inputs are scalar literals only**
+/// (`FieldValue::Literal`). Matches PB-runtime-shaped `evaluate` / `evaluate_body` semantics on the
+/// lowered lens graph; falls back to [`EvalCtx`] when preconditions fail or evaluation returns a
+/// non-literal `Value` this bridge cannot yet map back to [`FieldValue`].
+///
+/// **ProducerLookup discipline:** `ProducerLookup::NoProducer` may fall through to [`EvalCtx`]
+/// (`Ok(None)`). Malformed-substrate variants (`MissingPort`, `MissingNode`, `BindCycle`) fail
+/// closed as [`LensApplyError`] — they must not collapse into the same silent fallback as legitimate
+/// absence (INVARIANTS P2/P3). Evaluator frame/build failures and [`evaluate_body`] errors still
+/// return `Ok(None)` so [`EvalCtx`] can recover typed diagnostics (overflow, branch miss, loops).
+///
+/// **Not gate closure:** This helper does **not** satisfy `lens_apply_dot_rs_retired`; canonical
+/// acceptance remains **file deletion + SG-0 shrink** after Row-4 (see module docs above).
+///
+/// **Merge:** still gated on §7.1 Row-4 green; this is early signal only — expand coverage until
+/// `lens_apply.rs` can retire entirely.
+fn try_apply_lens_via_evaluator_literals_only(
+    lens_program: &Dag,
+    root_bind: &BindNode,
+    inputs: &[FieldValue],
+) -> Result<Option<FieldValue>, LensApplyError> {
+    if !inputs.iter().all(|a| matches!(a, FieldValue::Literal(_))) {
+        return Ok(None);
+    }
+    let producer = match lens_program.resolve_producer_lookup(&root_bind.value) {
+        ProducerLookup::Found(b) => b,
+        ProducerLookup::NoProducer => return Ok(None),
+        ProducerLookup::MissingPort { .. } => return Err(LensApplyError::UnresolvedPort),
+        ProducerLookup::MissingNode { .. } | ProducerLookup::BindCycle { .. } => {
+            return Err(LensApplyError::MalformedLensRoot);
+        }
+    };
+    let entry = producer.id();
+    let bindings: Vec<(PortId, Value)> = root_bind
+        .params
+        .iter()
+        .zip(inputs.iter())
+        .map(|(p, fv)| {
+            let FieldValue::Literal(bits) = fv else {
+                unreachable!("filtered to literals above")
+            };
+            (*p, Value::LiteralValue(bits.clone()))
+        })
+        .collect();
+    let frame = match EvalFrame::from_bindings(bindings) {
+        Ok(f) => f,
+        Err(_) => return Ok(None),
+    };
+    let mut state = EvalStateStack::with_root_frame(frame);
+    let strategy = EvalStrategy::ApplicativeOrder {
+        input_order: InputEvaluationOrder::LeftFirst,
+    };
+    let out = match evaluate_body(lens_program, entry, &mut state, strategy) {
+        Ok(v) => v,
+        Err(_) => return Ok(None),
+    };
+    match out {
+        Value::LiteralValue(bits) => Ok(Some(FieldValue::Literal(bits))),
+        _ => Ok(None),
+    }
+}
+
 /// Apply a named lens (`Arrow` + `UserDefined` body) from `lens_program` to positional
 /// `inputs` (left-to-right with the arrow's formal parameters).
 ///
@@ -310,6 +383,15 @@ pub fn apply_lens_declaration(
             expected: root_bind.params.len(),
             got: inputs.len(),
         });
+    }
+    // Reflection (`program_under_test: Some`) supplies rich `FieldValue` shapes the literals-only
+    // evaluator bridge cannot encode yet — keep `EvalCtx` there until the retirement slice widens.
+    if program_under_test.is_none() {
+        if let Some(out) =
+            try_apply_lens_via_evaluator_literals_only(lens_program, root_bind, inputs)?
+        {
+            return Ok(out);
+        }
     }
     let mut ctx = EvalCtx::new(lens_program);
     for (port, arg) in root_bind.params.iter().zip(inputs.iter()) {
@@ -1137,6 +1219,58 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
                 .expect("assoc witness"),
             "Int `+` lens must pass every ASSOCIATIVITY_WITNESS_TRIPLES entry"
         );
+    }
+
+    #[test]
+    fn literals_only_evaluator_bridge_agrees_with_eval_ctx_for_int_add() {
+        let src = r#"module w
+fn lens_composition_op(a: Int, b: Int) -> Int = a + b
+"#;
+        let dag = compile_to_dag(src, "eval_bridge_vs_ctx.v3").expect("compiles");
+        let lens_decl_id = dag.declaration_by_name("lens_composition_op").unwrap().id;
+        let decl = dag.declaration(lens_decl_id);
+        let TypeConnective::Arrow { body, .. } = &decl.connective else {
+            panic!("expected arrow lens");
+        };
+        let ArrowBody::UserDefined(root) = body else {
+            panic!("expected user-defined arrow body");
+        };
+        let root_bind = (*root).bind(&dag);
+        let inputs = &[
+            FieldValue::Literal(literal_bits_int(11)),
+            FieldValue::Literal(literal_bits_int(-3)),
+        ];
+        let via_bridge = super::try_apply_lens_via_evaluator_literals_only(&dag, root_bind, inputs)
+            .expect("evaluator bridge lookup")
+            .expect("literal Int add must succeed on evaluator bridge");
+        let mut ctx = EvalCtx::new(&dag);
+        for (port, arg) in root_bind.params.iter().zip(inputs.iter()) {
+            ctx.bind_top(*port, arg.clone());
+        }
+        let via_ctx = ctx.eval_port(root_bind.value).expect("eval ctx");
+        assert_eq!(via_bridge, via_ctx);
+    }
+
+    #[test]
+    fn literals_only_with_program_under_test_skips_bridge_matches_bare_apply() {
+        let lens_src = r#"module w
+fn lens_composition_op(a: Int, b: Int) -> Int = a + b
+"#;
+        let lens_dag = compile_to_dag(lens_src, "reflect_skip_bridge_lens.v3").expect("compiles");
+        let prog_under_test =
+            compile_to_dag("let x: Int = 1", "reflect_skip_bridge_prog.v3").expect("prog compiles");
+        let id = lens_dag
+            .declaration_by_name("lens_composition_op")
+            .unwrap()
+            .id;
+        let inputs = &[
+            FieldValue::Literal(literal_bits_int(5)),
+            FieldValue::Literal(literal_bits_int(7)),
+        ];
+        let bare = apply_lens_declaration(&lens_dag, None, id, inputs).expect("bare apply");
+        let with_put =
+            apply_lens_declaration(&lens_dag, Some(&prog_under_test), id, inputs).expect("put");
+        assert_eq!(bare, with_put);
     }
 
     #[test]
