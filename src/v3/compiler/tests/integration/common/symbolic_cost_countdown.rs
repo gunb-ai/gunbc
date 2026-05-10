@@ -10,8 +10,8 @@
 
 use v3_compiler::dag::SymbolicCost;
 
-/// True when `cost` contains no carrier that asserts super-linear growth (`PolynomialCost`) or an
-/// unbounded reflection hole (`UnknownCost`) anywhere in the composite tree.
+/// Returns `true` when `cost` contains a `PolynomialCost` or `UnknownCost` anywhere under a
+/// composite tree walk (super-linear / ambiguous bound carriers).
 fn cost_contains_polynomial_or_unknown(cost: &SymbolicCost) -> bool {
     match cost {
         SymbolicCost::PolynomialCost { .. } | SymbolicCost::UnknownCost { .. } => true,
