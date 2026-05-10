@@ -83,7 +83,7 @@ data auto_loop_parallelism_dependence_emits_sequential: TestClaim = {
 
 data cross_target_optimization_constant_fold_consistent: TestClaim = {
   name: "cross_target_optimization_constant_fold_consistent",
-  source: "// free-consequences gate #51: `fold_post` aliases folded value; runner checks `DimensionReport<SymbolicCost>` equality plus cross-target `Int` TypeRealization overlay (structural cost-shrink).\nlet fold_pre: Int = 1 + 2\nlet fold_post: Int = fold_pre\n",
+  source: "// free-consequences gate #51: `fold_pre` = pre-fold expression; `fold_post` = literal folded value (same semantic Int). Runner: `analyze_symbolic_cost_dimension` at `fold_pre` vs `fold_post` roots — `composed` SymbolicCost must match; then cross-target `Int` TypeRealization overlay (rust/python/go) must normalize identically.\nlet fold_pre: Int = 1 + 2\nlet fold_post: Int = 3\n",
   file_name: "r3_free_consequences_cross_target_constant_fold_consistent.v3",
   predicate: BinaryDimensionReportEquals(
     constant_fold_observed_report,

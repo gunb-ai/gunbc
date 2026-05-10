@@ -2895,21 +2895,23 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        if let Err(msg) = find_named_bind_workflow_root(&program_dag, "fold_pre") {
-            return ClaimResult::Fail(msg);
-        }
+        let fold_pre_root = match find_named_bind_workflow_root(&program_dag, "fold_pre") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
         let fold_post_root = match find_named_bind_workflow_root(&program_dag, "fold_post") {
             Ok(id) => id,
             Err(msg) => return ClaimResult::Fail(msg),
         };
 
-        let observed = analyze_symbolic_cost_dimension(&program_dag, fold_post_root);
+        // `constant_fold_observed_report` / `constant_fold_expected_report` — fixture names map to
+        // distinct workflow roots (pre-fold expression vs literal folded value).
+        let observed = analyze_symbolic_cost_dimension(&program_dag, fold_pre_root);
         let expected = analyze_symbolic_cost_dimension(&program_dag, fold_post_root);
-        if !symbolic_cost_dimension_reports_equal(&observed, &expected) {
+        if let Err(msg) = gate51_constant_fold_dimension_ok_composed_match(&observed, &expected) {
             return ClaimResult::Fail(format!(
                 "BinaryDimensionReportEquals `cross_target_optimization_constant_fold_consistent`: \
-                 paired `DimensionReport<SymbolicCost>` disagree: observed={observed:?}; \
-                 expected={expected:?}"
+                 {msg}"
             ));
         }
 
@@ -2917,8 +2919,8 @@ impl<'a> TestRunner<'a> {
             DimensionReport::DimensionOk { composed, .. } => composed.clone(),
             _ => {
                 return ClaimResult::Fail(
-                    "`cross_target_optimization_constant_fold_consistent` requires DimensionOk \
-                     symbolic-cost report at `fold_post` workflow root"
+                    "`cross_target_optimization_constant_fold_consistent`: internal error after \
+                     composed-match (expected DimensionOk on `fold_pre` root)"
                         .to_string(),
                 );
             }
