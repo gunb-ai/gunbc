@@ -995,27 +995,32 @@ fn e_p_per_call_descent_evidence_emits_distinct_per_arg_param_labels_for_arithme
 /// R3 program-plan gate **#72** `e_p_producer_demonstration` (T-E-P-Producer-Broadening).
 ///
 /// Runtime-executable witness per `docs/r3-structure.md` (demonstration principle): a
-/// representative lowered `Dag` exposes a recursive self-call whose per-argument
-/// `SubValueRelation` vector is fully populated with **proven** arithmetic descent
-/// (no `SubValueUnknown` fabrications), the lens-facing `per_call_pattern_at` lookup
-/// succeeds on the live `Transform` node id, and `lower_call_pattern` materializes
-/// `DescentEvidence::Strict` — the end-to-end E-P producer surface from call site to
-/// iteration lowering facts.
+/// representative lowered `Dag` exposes a recursive self-call with **proven** per-port
+/// `SubValueRelation` (here: single-arg arithmetic descent, no `SubValueUnknown`),
+/// the lens-facing `per_call_pattern_at` lookup succeeds on the live `Transform` node
+/// id, and `lower_call_pattern` materializes `DescentEvidence::Strict`.
+///
+/// Uses a **unary** self-call so the witness matches today's scalar `CallPattern`
+/// surface (`per_call_pattern_at` returns one pattern). Multi-arg per-port cementing
+/// lives in `e_p_per_call_descent_evidence_emits_distinct_per_arg_param_labels_for_arithmetic_descent`
+/// and `e_p_per_call_pattern_projects_multi_arg_self_call_from_per_arg_evidence`.
 #[test]
 fn e_p_producer_demonstration() {
-    let dag = compile_ep_two_descent_two_arg_arithmetic_dag("e_p_producer_demonstration.v3");
+    let dag = compile_to_dag(
+        "\
+fn ep_gate72_demo(n: Int) -> Int =
+  if n == 0 then 0 else ep_gate72_demo(n - 1)
+",
+        "e_p_producer_demonstration.v3",
+    )
+    .expect("e_p_producer_demonstration fixture compiles");
 
     let entry = per_call_descent_evidence(&dag)
         .into_iter()
-        .find(|e| e.caller == "ep_two_descent" && e.callee == "ep_two_descent")
-        .expect("expected ep_two_descent self-call in per-call side table");
+        .find(|e| e.caller == "ep_gate72_demo" && e.callee == "ep_gate72_demo")
+        .expect("expected ep_gate72_demo self-call in per-call side table");
 
-    assert_eq!(
-        entry.evidence.len(),
-        2,
-        "demonstration pins a multi-arg self-call: producer emits one relation per argument port"
-    );
-
+    assert_eq!(entry.evidence.len(), 1);
     let expected_factor = ShrinkFactor::ConstantShrink {
         steps: PositiveDescentAmount::OneStep,
     };
@@ -1024,19 +1029,11 @@ fn e_p_producer_demonstration() {
             assert_eq!(param, "param_0");
             assert_eq!(factor, &expected_factor);
         }
-        other => panic!("expected ArithmeticDescent on arg 0, got {other:?}"),
-    }
-    match &entry.evidence[1] {
-        SubValueRelation::ArithmeticDescent { param, factor } => {
-            assert_eq!(param, "param_1");
-            assert_eq!(factor, &expected_factor);
-        }
-        other => panic!("expected ArithmeticDescent on arg 1, got {other:?}"),
+        other => panic!("expected ArithmeticDescent on the sole arg, got {other:?}"),
     }
 
-    let pattern = per_call_pattern_at(&dag, entry.call).expect(
-        "authoritative CallPattern lookup must succeed when at least one arg carries strict descent",
-    );
+    let pattern = per_call_pattern_at(&dag, entry.call)
+        .expect("authoritative CallPattern lookup must succeed for unary strict-descent self-call");
     let target = lower_call_pattern(pattern);
     assert_eq!(
         target.evidence,
