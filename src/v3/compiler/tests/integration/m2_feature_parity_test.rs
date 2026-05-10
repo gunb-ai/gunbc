@@ -11,7 +11,7 @@ use crate::common::{cached_compile_any, cached_compile_to_dag};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     literal_bits_int, ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId,
-    LogicalOp, OperatorKind, TransformTarget, TypeConnective,
+    LiteralBits, LogicalOp, OperatorKind, PortId, TransformNode, TransformTarget, TypeConnective,
 };
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
@@ -1060,18 +1060,17 @@ fn test_registered_predicate_placeholder_works_outside_types_dag() {
 
 /// S9 Slice 2.5 Path (a) cement (openai-pro REQUEST_CHANGES at gunbc PR
 /// #1846 `79c4da09`): a mixed `where`-clause that combines a body-synthesized
-/// predicate (`gt_zero`) with a placeholder-only predicate (`range`)
+/// predicate (`brand`) with a placeholder-only predicate (`non_empty`)
 /// fails-closed via `Diagnostic::ResolveError` rather than collapsing both
-/// into a single placeholder (which would silently lose the gt_zero
+/// into a single placeholder (which would silently lose the synthesized
 /// enforcement). Per-leaf refinement representation is the named follow-on
 /// that would let mixed clauses lower without fail-closed.
 #[test]
 fn test_mixed_synthesizable_and_placeholder_predicates_fails_closed() {
     let f = "dsl/std/integer.dag";
-    // Use `gt_zero` (synthesized) + `brand` (placeholder) — both registered
-    // and both allowed over Nat per `KNOWN_PREDICATES`, but brand is held at
-    // placeholder pending per-leaf refinement representation.
-    let dag = cached_compile_any("type M = Nat where gt_zero, brand(\"X\")", f);
+    // `brand` synthesizes (reflexive Eq); `non_empty` remains placeholder-only
+    // on `String` until discharge lands — Mixed fail-closed must persist.
+    let dag = cached_compile_any("type M = String where brand(\"X\"), non_empty", f);
     assert!(
         !dag.diagnostics().is_empty(),
         "mixed synthesizable + placeholder predicate clause must surface a \
@@ -1095,19 +1094,23 @@ fn test_mixed_synthesizable_and_placeholder_predicates_fails_closed() {
 ///
 /// Pre-fix bug: `leaf_predicate_name(arg)` returned `None` for an
 /// `Operator(And)` arg (it's not a leaf), so a clause like
-/// `gt_zero, gt_zero, brand` parsing as `(gt_zero, gt_zero), brand` would
-/// record only `brand` as a leaf name — outer aggregation would see an
+/// `brand("A"), brand("B"), non_empty` parsing as `(brand("A"), brand("B")), non_empty` would
+/// record only `non_empty` as a leaf name — outer aggregation would see an
 /// empty `synthesized_names` vector and classify the whole clause as
-/// `AllPlaceholder` instead of `Mixed`. The nested gt_zero-derived facts
+/// `AllPlaceholder` instead of `Mixed`. The nested brand-derived facts
 /// would silently collapse into a single placeholder.
 ///
 /// Fix: `collect_leaf_predicate_names` recurses through `And` subtrees so
 /// every leaf name reaches the outer aggregator. This test cements the
-/// fail-closed Mixed diagnostic.
+/// fail-closed Mixed diagnostic with **nested** `And` grouping (two
+/// synthesized `brand` leaves under an inner conjunction).
 #[test]
 fn test_nested_and_with_placeholder_leaf_fails_closed() {
     let f = "dsl/std/integer.dag";
-    let dag = cached_compile_any("type N = Nat where gt_zero, gt_zero, brand(\"X\")", f);
+    let dag = cached_compile_any(
+        "type N = String where brand(\"A\"), brand(\"B\"), non_empty",
+        f,
+    );
     assert!(
         !dag.diagnostics().is_empty(),
         "nested-And clause with synthesized + placeholder leaves must \
@@ -1125,18 +1128,15 @@ fn test_nested_and_with_placeholder_leaf_fails_closed() {
     }
 }
 
-/// S9 Slice 2.5 Path (a) cement: `brand("X")` body synthesis is
-/// structurally available (reflexive `subject == subject`) but held at
-/// placeholder for this slice — re-enabling triggers the openai-pro
-/// REQUEST_CHANGES mixed-fail-closed path on the existing
-/// `Milliseconds = Int where range(min: 0), brand(...)` and
-/// `Seconds = Int where range(min: 0), brand(...)` declarations (range
-/// is placeholder-only; brand body would be synthesizable). Brand
-/// re-enables when per-leaf refinement representation lands or when
-/// range body synthesis lands. Test cements that brand currently
-/// takes a placeholder.
+/// R3 gate #20 / S9 Path (a): `brand("X")` lowers to a **real** refinement
+/// body (`subject == subject` ∧ tag literal reflexive `Eq`) — not a placeholder
+/// — so nominal labels participate in structural discharge and compose with
+/// synthesizable `range` on `Milliseconds` / `Seconds`.
 #[test]
-fn test_brand_takes_placeholder_pending_mixed_clause_fix() {
+fn test_brand_lowers_to_real_refinement_body_not_placeholder() {
+    use v3_compiler::dag::{ArrowBody, Behavior, TransformTarget, TypeConnective};
+    use v3_compiler::operators::{ComparisonOp, LogicalOp, OperatorKind};
+
     let f = "dsl/std/integer.dag";
     let dag = cached_compile_to_dag("type B = Int where brand(\"B\")", f);
     let decl = dag
@@ -1145,16 +1145,58 @@ fn test_brand_takes_placeholder_pending_mixed_clause_fix() {
     let pred_id = decl
         .refinement
         .expect("`brand` refinement must produce a `Declaration::refinement`");
-    let label = dag
-        .declaration(pred_id)
-        .name
-        .as_deref()
-        .expect("placeholder should carry a diagnostic name");
-    assert!(
-        label.contains("predicate not lowered"),
-        "`brand` currently takes a placeholder pending mixed-clause fix; \
-         got label {label:?}"
+    let pred = dag.declaration(pred_id);
+    if let Some(label) = pred.name.as_deref() {
+        assert!(
+            !label.contains("predicate not lowered"),
+            "`brand` must lower to a real refinement body, not placeholder; \
+             got label {label:?}"
+        );
+    }
+    let TypeConnective::Arrow { body, .. } = &pred.connective else {
+        panic!(
+            "`brand` refinement should be `Arrow`-shaped; got connective={:?}",
+            pred.connective
+        );
+    };
+    let ArrowBody::UserDefined(bind_node_id) = body else {
+        panic!("`brand` Arrow body should be `UserDefined`; got {body:?}");
+    };
+    let bind = bind_node_id
+        .bind_opt(&dag)
+        .expect("Bind node id should resolve to a `Behavior::Bind`");
+    let value_port = bind.value;
+    let producer = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            Behavior::Transform(t) if t.output == value_port => Some(t),
+            _ => None,
+        })
+        .expect("`brand` body should be produced by a Transform node");
+    match &producer.target {
+        TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)) => {}
+        other => panic!("`brand` root should be logical And; got {other:?}"),
+    }
+    assert_eq!(
+        producer.inputs.len(),
+        2,
+        "`brand` body should join subject reflex + tag reflex"
     );
+    for &inp in &producer.inputs {
+        let conj = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Transform(t) if t.output == inp => Some(t),
+                _ => None,
+            })
+            .expect("conjunct producer");
+        match &conj.target {
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => {}
+            other => panic!("each `brand` conjunct should be Comparison(Eq); got {other:?}"),
+        }
+    }
 }
 
 /// S9 Slice 2.5 Path (a) Rung 3 cement: `gt_zero` body synthesis produces a
@@ -1227,6 +1269,212 @@ fn test_gt_zero_lowers_to_real_refinement_body_not_placeholder() {
     assert!(
         zero_literal,
         "`gt_zero` body's Gt operator should have a literal `Int(0)` input"
+    );
+}
+
+/// R3 gate #20 cement: `unicode_scalar` lowers to the surrogate-excluding union
+/// `(0 ≤ s ≤ 0xD7FF) ∨ (0xE000 ≤ s ≤ 0x10FFFF)`. A regression that modeled
+/// Unicode scalars as a single full range through `U+10FFFF` would admit
+/// surrogate code units `U+D800..=U+DFFF` and still satisfy weaker tests that
+/// only assert “some refinement exists”.
+#[test]
+fn test_unicode_scalar_lowers_to_surrogate_excluding_union() {
+    use v3_compiler::dag::{ArrowBody, TypeConnective};
+    use v3_compiler::operators::{ComparisonOp, LogicalOp, OperatorKind};
+
+    fn transform_at_output(dag: &Dag, output_port: PortId) -> &TransformNode {
+        dag.nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Transform(t) if t.output == output_port => Some(t),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no transform producing port {output_port:?}"))
+    }
+
+    fn int_literal_on_port(dag: &Dag, port: PortId) -> Option<i64> {
+        dag.nodes().iter().find_map(|node| match node {
+            Behavior::Value(v) if v.output == port => match &v.data {
+                LiteralBits::Int(s) => s.parse().ok(),
+                _ => None,
+            },
+            _ => None,
+        })
+    }
+
+    fn comparison_op_and_literal(dag: &Dag, t: &TransformNode) -> (ComparisonOp, i64) {
+        let op = match &t.target {
+            TransformTarget::Operator(OperatorKind::Comparison(c)) => *c,
+            other => panic!("expected comparison transform; got {other:?}"),
+        };
+        let lit = t
+            .inputs
+            .iter()
+            .filter_map(|p| int_literal_on_port(dag, *p))
+            .next()
+            .expect("comparison should reference an int literal operand");
+        (op, lit)
+    }
+
+    fn band_interval(dag: &Dag, and_t: &TransformNode) -> (i64, i64) {
+        assert!(
+            matches!(
+                and_t.target,
+                TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And))
+            ),
+            "unicode_scalar arm should be logical And; got {:?}",
+            and_t.target
+        );
+        assert_eq!(and_t.inputs.len(), 2, "each scalar band is two comparisons");
+        let mut ge_v = None;
+        let mut le_v = None;
+        for &p in &and_t.inputs {
+            let cmp_t = transform_at_output(dag, p);
+            let (op, v) = comparison_op_and_literal(dag, cmp_t);
+            match op {
+                ComparisonOp::Ge => ge_v = Some(v),
+                ComparisonOp::Le => le_v = Some(v),
+                _ => panic!("band comparisons must be Ge/Le; got {op:?}"),
+            }
+        }
+        (ge_v.expect("band needs Ge"), le_v.expect("band needs Le"))
+    }
+
+    const MAX_BMP_NON_SURROGATE: i64 = 0xD7FF;
+    const MIN_POST_SURROGATE: i64 = 0xE000;
+    const MAX_UNICODE_SCALAR: i64 = 0x10_FFFF;
+
+    let f = "dsl/std/types.dag";
+    let dag = cached_compile_to_dag("type ScalarInt = Int where unicode_scalar", f);
+    let decl = dag
+        .declaration_by_name("ScalarInt")
+        .expect("type alias `ScalarInt` should exist");
+    let pred_id = decl
+        .refinement
+        .expect("`unicode_scalar` must produce a refinement declaration");
+    let pred = dag.declaration(pred_id);
+    if let Some(label) = pred.name.as_deref() {
+        assert!(
+            !label.contains("predicate not lowered"),
+            "`unicode_scalar` must lower to a real body; got label {label:?}"
+        );
+    }
+    let TypeConnective::Arrow { body, .. } = &pred.connective else {
+        panic!(
+            "`unicode_scalar` refinement should be Arrow-shaped; got {:?}",
+            pred.connective
+        );
+    };
+    let ArrowBody::UserDefined(bind_node_id) = body else {
+        panic!("expected UserDefined arrow body; got {body:?}");
+    };
+    let bind = bind_node_id
+        .bind_opt(&dag)
+        .expect("bind node for unicode_scalar body");
+    let value_port = bind.value;
+    let or_t = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            Behavior::Transform(t) if t.output == value_port => Some(t),
+            _ => None,
+        })
+        .expect("unicode_scalar body should end in a Transform");
+    assert!(
+        matches!(
+            or_t.target,
+            TransformTarget::Operator(OperatorKind::Logical(LogicalOp::Or))
+        ),
+        "unicode_scalar root should be Or of two bands; got {:?}",
+        or_t.target
+    );
+    assert_eq!(or_t.inputs.len(), 2, "exactly two disjoint intervals");
+
+    let mut bands = Vec::new();
+    for &p in &or_t.inputs {
+        let and_t = transform_at_output(&dag, p);
+        bands.push(band_interval(&dag, and_t));
+    }
+    bands.sort_by_key(|(lo, _)| *lo);
+    assert_eq!(
+        bands,
+        vec![
+            (0, MAX_BMP_NON_SURROGATE),
+            (MIN_POST_SURROGATE, MAX_UNICODE_SCALAR)
+        ],
+        "expected BMP ∪ supplementary scalar ranges excluding surrogates U+D800..=U+DFFF \
+         (hole between 0xD7FF and 0xE000)"
+    );
+}
+
+/// R3 gate #20 / scalar-literal boundary: synthesizable `where` predicates
+/// (`range`, `unicode_scalar`, `brand`, `And` compositions) must discharge from
+/// plain Int literals so std aliases like `Char` and `Milliseconds` stay
+/// constructible from `data` scalar witnesses (the `lower_scalar_literal_for_type`
+/// discharge site).
+///
+/// We use a local `SecNominal` alias (`range` ∧ `brand`) instead of std `Seconds`:
+/// the bootstrapped DAG also exposes a phantom SI `Seconds` unit declaration
+/// (`dimensions.dag`), and `declaration_by_name("Seconds")` can resolve to that
+/// `Conj` stub — then `walks_to(..., Int)` fails and literals surface as
+/// "scalar literal does not match declared type". `SecNominal` keeps the test
+/// hermetic while still covering the same synthesized predicate shape as
+/// `dsl/std/types.dag`'s temporal nominals.
+///
+/// Annotated `let … = <literal>` still relies on inference reconciliation for
+/// default-`Int` literals vs refined aliases (pilot range facts), which is
+/// outside this regression lock.
+#[test]
+fn test_gate20_scalar_literals_statically_discharge_refinements() {
+    let f = "dsl/std/types.dag";
+    let _ = cached_compile_to_dag(
+        "type SecNominal = Int where range(min: 0), brand(\"SecNominal\")\n\
+         data ms_ok: Milliseconds = 0\n\
+         data sec_ok: SecNominal = 1\n\
+         data ch_ok: Char = 65\n",
+        f,
+    );
+}
+
+#[test]
+fn test_gate20_char_literal_surrogate_rejected() {
+    let f = "dsl/std/types.dag";
+    let err =
+        compile_to_dag("data bad_char: Char = 55296\n", f).expect_err("U+D800 surrogate Char");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic error; got {err:?}");
+    };
+    assert!(
+        dag.diagnostics().iter().any(|(_, d)| {
+            matches!(
+                d,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("scalar literal") && name.contains("refinement")
+            )
+        }),
+        "expected scalar-literal refinement diagnostic for surrogate; got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn test_gate20_milliseconds_negative_literal_rejected() {
+    let f = "dsl/std/types.dag";
+    let err =
+        compile_to_dag("data bad_ms: Milliseconds = -1\n", f).expect_err("negative Milliseconds");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic error; got {err:?}");
+    };
+    assert!(
+        dag.diagnostics().iter().any(|(_, d)| {
+            matches!(
+                d,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("scalar literal") && name.contains("refinement")
+            )
+        }),
+        "expected scalar-literal refinement diagnostic for out-of-range literal; got {:?}",
+        dag.diagnostics()
     );
 }
 
