@@ -25,11 +25,15 @@ G2 audit: the modeling is wrong on two axes —
    `ApproximateField<F>` — which is the substrate target.
 2. **Width independence**: `Word32` / `Word64` is the wrong axis.
    Per S3 (`MachineConstraint<C>` carrier), machine width is an
-   independent axis from algebra. Float32 = `ApproximateField<FieldOfFractions<Int>>` ×
-   `MachineWidth<32>`; Float64 = `ApproximateField<FieldOfFractions<Int>>` ×
-   `MachineWidth<64>`. The base carrier `F` is the algebraic field
-   being approximated (`Real` for IEEE-754 floats; potentially
-   `Rational` or `Complex` for other approximation regimes).
+   independent axis from algebra. Float32 = `Real` ×
+   `MachineWidth<32>`; Float64 = `Real` × `MachineWidth<64>`, where
+   `Real = ApproximateField<FieldOfFractions<Int>>`. In
+   `ApproximateField<F>`, `F` is the exact-field carrier slot
+   (`FieldOfFractions<Int>` for IEEE-754 real approximations). The
+   witness alias `Rational = Field<FieldOfFractions<Int>>` describes
+   the exact field over that carrier; it is not the `ApproximateField`
+   type argument. Other approximation regimes may introduce different
+   exact-field carriers, such as a future complex carrier.
 
 This brief is **parallel with S3** per Substrate Mgr partition
 response 2026-05-06 — they're independent axes. Brief cross-references
@@ -57,7 +61,7 @@ S3 carriers; consumer work synthesizes both axes at the
    - Which retain (commutativity / closure)?
    - Are rounding-mode parameters part of the carrier or a separate axis?
 
-2. **Author `Rational` base-carrier** if not landed:
+2. **Author exact-field carrier / `Rational` witness prerequisites** if not landed:
 
    ```
    data Rational  // 🟢 PRIMITIVE — algebraic rationals; structural fact
