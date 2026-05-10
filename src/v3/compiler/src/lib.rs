@@ -1047,7 +1047,8 @@ pub mod evaluator {
             TransformTarget::Operator(OperatorKind::Logical(_)) => {
                 Err(EvalError::UnsupportedTransformTarget { kind: "Logical" })
             }
-            TransformTarget::UnresolvedFieldProject { field_label } => {
+            TransformTarget::UnresolvedFieldProject { field_label }
+            | TransformTarget::ResolvedFieldProject { field_label } => {
                 if operands.len() != 1 {
                     return Err(EvalError::TransformArityMismatch {
                         expected: 1,
@@ -1066,11 +1067,6 @@ pub mod evaluator {
                     });
                 };
                 Ok(field.value.clone())
-            }
-            TransformTarget::ResolvedFieldProject { .. } => {
-                Err(EvalError::UnsupportedTransformTarget {
-                    kind: "ResolvedFieldProject",
-                })
             }
             TransformTarget::Callable(callee_decl) => {
                 let callee_decl = *callee_decl;

@@ -565,7 +565,8 @@ impl<'a> EvalCtx<'a> {
             TransformTarget::Operator(OperatorKind::Logical(_)) => Err(
                 LensApplyError::UnsupportedConstruct("logical operator in lens apply"),
             ),
-            TransformTarget::UnresolvedFieldProject { field_label } => {
+            TransformTarget::UnresolvedFieldProject { field_label }
+            | TransformTarget::ResolvedFieldProject { field_label } => {
                 if t.inputs.len() != 1 {
                     return Err(LensApplyError::ArityMismatch {
                         expected: 1,
@@ -575,9 +576,6 @@ impl<'a> EvalCtx<'a> {
                 let base = self.eval_port(t.inputs[0])?;
                 project_field(&base, field_label)
             }
-            TransformTarget::ResolvedFieldProject { .. } => Err(
-                LensApplyError::UnsupportedConstruct("resolved field project in lens apply"),
-            ),
         }
     }
 
