@@ -39,6 +39,11 @@ fn auto_parallelism_pending_lens(_d: Dag) -> Int = 0
 
 data auto_parallelism_pending_expected: Int = 1
 
+// R3 #43 witness: runner matches emitted Rust for `std::thread::scope` (see test_runner).
+fn r3_auto_parallelism_parallel_emit_witness(_d: Dag) -> Int = 0
+
+data r3_auto_parallelism_parallel_emit_expected: Int = 1
+
 type repeated_pure_call_observed_report = DimensionReport<AutoMemoizationEvidence>
 type repeated_pure_call_expected_report = DimensionReport<AutoMemoizationEvidence>
 type one_shot_call_observed_report = DimensionReport<AutoMemoizationEvidence>
@@ -46,19 +51,19 @@ type one_shot_call_expected_report = DimensionReport<AutoMemoizationEvidence>
 
 data auto_parallelism_independent_binds_emit_parallel: TestClaim = {
   name: "auto_parallelism_independent_binds_emit_parallel",
-  source: "// free-consequences fixture: independent binds may emit parallel schedule when independence, effect-commutativity, and cost witnesses land.\nlet _: Int = 0\n",
+  source: "// free-consequences fixture: pairwise-independent top-level binds emit a parallel Rust schedule.\nlet a: Int = 1 + 2\nlet b: Int = 3 + 4\n",
   file_name: "r3_free_consequences_auto_parallelism_independent_binds.v3",
   predicate: LensOutputEquals(
-    auto_parallelism_pending_lens,
+    r3_auto_parallelism_parallel_emit_witness,
     auto_parallelism_program_input,
-    auto_parallelism_pending_expected
+    r3_auto_parallelism_parallel_emit_expected
   ),
   requires: []
 }
 
 data auto_parallelism_dependent_binds_emit_sequential: TestClaim = {
   name: "auto_parallelism_dependent_binds_emit_sequential",
-  source: "// free-consequences fixture: dependent binds must remain sequential.\nlet _: Int = 0\n",
+  source: "// free-consequences fixture: dependent binds must remain sequential.\nlet a: Int = 1 + 2\nlet b: Int = a + 3\n",
   file_name: "r3_free_consequences_auto_parallelism_dependent_binds.v3",
   predicate: LensOutputEquals(
     auto_parallelism_pending_lens,
