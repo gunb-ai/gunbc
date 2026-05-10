@@ -12,8 +12,9 @@
 //! `TestClaim.source` is orthogonal). Still
 //! **not** a `pb_*` gate and still not a Rust-deletion signal.
 //!
-//! R3 gate #87 `R3_GATE_87_CEMENTING_REGEN_SUITES` wiring: **INVARIANTS P5(b)** receipt is the
-//! paired deletion + module doc on `r3_gate_87_lens_cementing_regen_receipts_test` (same PR).
+//! R3 gate #87 `R3_GATE_87_CEMENTING_REGEN_SUITES` wiring: **INVARIANTS P5(b)** — merge-visible
+//! integration delta; see module doc on `r3_gate_87_lens_cementing_regen_receipts_test` (§P5(b)
+//! checkable receipt = **PR #2639 description**, not inferred deletes).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;

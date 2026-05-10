@@ -10,10 +10,15 @@
 //! strict user modules can freeze the corresponding list carriers without M1(2.8) opaque-body
 //! diagnostics; Rust receipts below cover `UnusedParametersLens` / `lens_structural_resolution::check`.
 //!
-//! **INVARIANTS P5(b) checkable receipt:** net hand-Rust here is paired with deletions on the same
-//! PR (`tmp_import_test.dag`, `r3_gate_87_effect_enum_probe.rs` + `integration.rs` wiring). Remaining
-//! work toward full §Acceptance frozen-v2 cementing is tracked in `ROADMAP.md` under the **v3 lens
-//! capability honesty pass** bullet (cementing-test discipline follow-up).
+//! **INVARIANTS P5(b):** Against `origin/main...HEAD`, gate-#87 work is **merge-visible** as this
+//! module (two new `mod` lines in `tests/integration.rs`), `t_pb_b_1_dag_runner_test`’s
+//! `R3_GATE_87_CEMENTING_REGEN_SUITES`, and the `tests/dag/t_r3_gate_87_cementing_regen_*.dag`
+//! harness files — reviewers can confirm with `git diff origin/main...HEAD --stat` / path grep.
+//! Per `INVARIANTS.md` §P5(b), the **single checkable net paydown receipt** (delete path, SG-0
+//! census shrink with counts, or cited `ROADMAP.md` deferral) must live in **PR #2639’s
+//! description**; module comments must not assert deletes for paths that never existed on
+//! `origin/main`. Remaining §Acceptance (frozen v2-oracle cementing): `ROADMAP.md` **v3 lens
+//! capability honesty pass** bullet.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
