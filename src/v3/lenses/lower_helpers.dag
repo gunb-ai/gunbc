@@ -5,9 +5,11 @@
 //
 // `expr_span` is the smallest real lowering primitive that survives
 // the current emit constraints: a pure match over `SurfaceExpr`'s
-// eleven named-field variants returning each variant's `span`
-// field. Used at 16 sites across `src/v3/compiler/src/lower.rs` —
-// real lowering semantics, not bookkeeping.
+// eleven named-field variants returning each variant's `span` as
+// `SourceByteSpan` (bytes only). Full lowering still needs a parse
+// `SourceSpan` including `file`; `lower.rs` takes that from
+// `crate::parse::expr_span` (usually imported as `surface_expr_span`),
+// not from this lens helper.
 //
 // Two earlier candidate slices hit `emit_rust_module` gaps and were
 // rejected:
@@ -39,8 +41,14 @@
 // the lens output), so neither construction gap applies. The generator
 // produces clean Rust for it.
 //
-// Wire-in: `lower.rs` imports `crate::lower_helpers::expr_span` (SG-3g-b).
-// `parse::SurfaceExpr` is the same type as `parse_surface::SurfaceExpr`
+// Wire-in: `lower.rs` imports `pattern_binding_names` and
+// `surface_item_span` from `crate::lower_helpers` (the latter is the
+// hand helper next to `include!("lower_helpers_generated.rs")` in
+// `lib.rs`). Expression extents for full `SourceSpan` come from
+// `crate::parse::expr_span`. Byte-only `lower_helpers::expr_span` is
+// used where parse glue stitches spans before calling
+// `SourceSpan::new(self.file, ...)` (see `parse_parser_body.txt`).
+// `parse::SurfaceExpr` matches `parse_surface::SurfaceExpr`
 // (`parse_generated.rs` re-exports the mirror), so no clone bridge.
 //
 // Placement under `lenses/` mirrors `infer_helpers.dag`: `build.rs`'s
