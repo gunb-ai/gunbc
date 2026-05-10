@@ -4,14 +4,13 @@
 
 module std.r3_verification_l5_corpus
 
-import std.types { Int }
 import std.verification { ForAllTargets, ProgramOutputBind, TestClaim, TestSuite }
 
 type L5RustcToolchain {}
 type L5Python3Toolchain {}
 type L5GoToolchain {}
 
-data l5_out: Int = 0
+type l5_out {}
 
 data r3_l5_program_output: ProgramOutputBind = {
   output_ref: l5_out
