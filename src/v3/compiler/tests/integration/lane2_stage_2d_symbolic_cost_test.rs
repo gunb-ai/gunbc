@@ -375,21 +375,22 @@ budgeted_test! {
         //
         // Post-fix: `l.body: NodeId` is resolved through
         // `node(d, body_id)` → result_port, and THAT port's cost
-        // enters the iterate composition. The recursive fn's Branch
-        // body has a `ConstantCost(1)` (the comparison op). With
-        // `SymbolicCost` now honestly inhabiting `Semiring<SymbolicCost>`,
-        // `ConstantCost(1)` is the multiplicative identity, so the final
-        // normalized result is a bare `LinearCost`. The regression guard here
-        // is therefore the semantic value: the loop must remain linear rather
-        // than collapsing to constant/missing cost.
+        // enters the iterate composition. With **per-call** recurrence wiring
+        // (`per_call_pattern_at` / gate `e_p_sub_value_relation_per_call_landed`),
+        // recursive Callable transforms also compose `iterate(bound, spine)` from
+        // `SubValueRelation`→`CallPattern` facts — normalization may leave a
+        // `ProductCost` when the recurrence bound and operand spine refer to
+        // distinct `SizeVariable`s (still dominated by a linear family term).
         let dag = cached_compile_to_dag(
             "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
             "loop_body_countdown.v3",
         );
         let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
         assert!(
-            matches!(cost, SymbolicCost::LinearCost { .. }),
-            "recursive fn with O(1) body should normalize Linear * 1 to Linear, got {cost:?}"
+            matches!(cost, SymbolicCost::LinearCost { .. })
+                || matches!(cost, SymbolicCost::ProductCost { .. }),
+            "recursive fn should report iterate-shaped recurrence cost (linear or product \
+             normalization), got {cost:?}"
         );
     }
 }

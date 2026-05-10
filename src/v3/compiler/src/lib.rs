@@ -4502,7 +4502,8 @@ pub mod lens_cost_symbolic {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        clippy::deref_addrof
     )]
     mod generated {
         use crate::dag::*;

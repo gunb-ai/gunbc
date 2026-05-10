@@ -86,9 +86,15 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
             port: (v).result_port(),
             cost: Lookup::Hit(SymbolicCost::ConstantCost { _0: 0 }),
         },
-        Behavior::Transform(t) => SymbolicCostEntry {
-            port: (t).result_port(),
-            cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
+        Behavior::Transform(t) => match &(per_call_pattern_at(p0, *&((t).id))) {
+            None => SymbolicCostEntry {
+                port: (t).result_port(),
+                cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
+            },
+            Some(pattern) => SymbolicCostEntry {
+                port: (t).result_port(),
+                cost: recursive_transform_cost(p1, pattern, &((t).inputs)),
+            },
         },
         Behavior::Branch(b) => SymbolicCostEntry {
             port: (b).result_port(),
@@ -101,6 +107,82 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
         Behavior::Bind(bind) => SymbolicCostEntry {
             port: (bind).result_port(),
             cost: lookup_cost(p1, &((bind).result_port())),
+        },
+    }
+}
+pub fn recursive_transform_cost(
+    p0: &[SymbolicCostEntry],
+    p1: &CallPattern,
+    p2: &[PortId],
+) -> Lookup<SymbolicCost> {
+    match p2 {
+        [] => Lookup::Miss,
+        [__list_head, __list_tail @ ..] => combine_iterate(
+            &(Lookup::Hit(pattern_to_iter_bound(p1, __list_head))),
+            &(combine_sequential(
+                &(Lookup::Hit(SymbolicCost::ConstantCost { _0: 1 })),
+                &(sum_costs(p0, p2)),
+            )),
+        ),
+    }
+}
+pub fn pattern_to_iter_bound(p0: &CallPattern, p1: &PortId) -> SymbolicCost {
+    match p0 {
+        CallPattern::ArithmeticSubtractCall {
+            steps: _,
+            ring_param: _,
+        } => SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        },
+        CallPattern::ArithmeticDivideCall {
+            divisor: _,
+            ring_param: _,
+        } => SymbolicCost::LogCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        },
+        CallPattern::ChildAccessorCall { accessor: _ } => SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        },
+        CallPattern::CollectionShrinkCall {
+            amount: _,
+            collection: _,
+        } => SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        },
+        CallPattern::FoldBodyCall {
+            outer_collection: _,
+        } => SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        },
+        CallPattern::ParserAdvanceCall { witness: _ } => SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        },
+        CallPattern::WorklistDrainCall { element: _ } => SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        },
+        CallPattern::SameArgumentCall => SymbolicCost::UnknownCost {
+            _0: String::from("same-argument recursive call has no descent"),
         },
     }
 }

@@ -36,9 +36,12 @@
 // and the `CostBound` algebra in `std.induction`. Integer **`Div`** composes
 // operand costs (`transform_cost`) with **`LogCost(dividend_port)`** in
 // `transform_cost_for_target`; other primitives still use input-port sum only.
-// General per-call `CallPattern` descent remains **E-P** follow-on (producer wiring,
-// richer size variables, behavioral tests) — not missing E-I vocabulary or a ported
-// `MethodSemantics` carrier. E-M closed method carrier parity by structural subsumption
+// Recursive callable transforms consume per-call descent facts via
+// `std.computation::per_call_pattern_at` (R3 gate `e_p_sub_value_relation_per_call_landed` /
+// T-E-P-Producer-Broadening Phase 3): same `SubValueRelation`→`CallPattern` projection
+// authority as `complexity.dag`, per `docs/design-cost-lens-sizevar-dimension-wiring.md` §3.2.
+// Band-C v2-oracle cementing for cost stays PROXY per register row. E-M closed method
+// carrier parity by structural subsumption
 // through `TransformTarget` and typed declaration/effect metadata. Integration module
 // `cost_lens_symbolic_consumer_test` pins the generated `symbolic_cost_of` consumer on
 // `compile_to_dag` fixtures. Band-C cementing (`integration/cementing/`, v2 oracle /
@@ -69,6 +72,18 @@ import std.algebra {
   max_path,
   miss_symbolic_cost_lookup,
   hit_symbolic_cost_lookup
+}
+import std.computation {
+  CallPattern,
+  ArithmeticSubtractCall,
+  ArithmeticDivideCall,
+  ChildAccessorCall,
+  CollectionShrinkCall,
+  FoldBodyCall,
+  ParserAdvanceCall,
+  WorklistDrainCall,
+  SameArgumentCall,
+  per_call_pattern_at
 }
 import v3.std.lookup { Lookup }
 import v3.std.substrate { SourceSpan }
@@ -197,13 +212,58 @@ fn entry_for(
     Value(v) =>
       { port: v.result_port, cost: hit_symbolic_cost_lookup(ConstantCost(0)) }
     Transform(t) =>
-      { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
+      match per_call_pattern_at(d, t.id) {
+        None =>
+          { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
+        Some(pattern) =>
+          { port: t.result_port, cost: recursive_transform_cost(acc, pattern, t.inputs) }
+      }
     Branch(b) =>
       { port: b.result_port, cost: branch_cost(acc, b.input, b.paths) }
     Loop(l) =>
       { port: l.result_port, cost: loop_cost(d, acc, l) }
     Bind(bind) =>
       { port: bind.result_port, cost: lookup_cost(acc, bind.result_port) }
+  }
+
+// Mirrors `lenses.complexity::recursive_transform_summary` / `pattern_to_iter_bound`:
+// recurrence iteration bound × non-recursive operand spine, keyed by the same
+// `per_call_pattern_at` projection over `SubValueRelation` evidence.
+fn recursive_transform_cost(
+  acc: List<SymbolicCostEntry>,
+  pattern: CallPattern,
+  inputs: List<PortId>
+) -> Lookup<SymbolicCost> =
+  match inputs {
+    Empty => miss_symbolic_cost_lookup()
+    Cons(payload) =>
+      combine_iterate(
+        hit_symbolic_cost_lookup(pattern_to_iter_bound(pattern, payload.head)),
+        combine_sequential(
+          hit_symbolic_cost_lookup(ConstantCost(1)),
+          sum_costs(acc, inputs)
+        )
+      )
+  }
+
+fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> SymbolicCost =
+  match pattern {
+    ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
+      LogCost(unnamed_size_variable(arg_port))
+    ChildAccessorCall { accessor: accessor } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    CollectionShrinkCall { amount: amount, collection: collection } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    FoldBodyCall { outer_collection: outer_collection } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    ParserAdvanceCall { witness: witness } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    WorklistDrainCall { element: element } =>
+      LinearCost(unnamed_size_variable(arg_port))
+    SameArgumentCall =>
+      UnknownCost("same-argument recursive call has no descent")
   }
 
 // `loop_cost` composes iteration: bound × body.
