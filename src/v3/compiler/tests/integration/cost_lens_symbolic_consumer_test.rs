@@ -121,7 +121,7 @@ fn recursive_countdown_pins_symbolic_cost_linear_and_sizevar_on_fixture() {
             "recursive countdown cost should carry a SizeVariable keyed by the parameter port \
              {parameter:?}, got cost={cost:?}"
         );
-        assert_unary_tail_recursive_countdown_is_single_linear_symbolic_cost(&cost);
+        assert_recursive_countdown_linear_semantics(&cost);
     });
 }
 
@@ -151,6 +151,6 @@ fn e_p_sub_value_relation_per_call_landed_cost_lens_routes_through_per_call_patt
              evidence present so the cost lens can branch on recurrence)"
         );
         let cost = expect_symbolic_cost(&dag, "countdown");
-        assert_unary_tail_recursive_countdown_is_single_linear_symbolic_cost(&cost);
+        assert_recursive_countdown_linear_semantics(&cost);
     });
 }
