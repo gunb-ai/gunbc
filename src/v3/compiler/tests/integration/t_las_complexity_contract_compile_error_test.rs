@@ -1,8 +1,8 @@
 //! **Layer:** integration
 //!
 //! §1.8 / gate #92 `complexity_violation_compile_error_demonstrated`: a concrete
-//! nested-fold program whose `complexity_of` asymptotic class strictly exceeds a
-//! `ClassLog` budget under an `EnforcedApplication` must fail closed with an
+//! recursive-descent program whose `complexity_of` asymptotic class strictly exceeds a
+//! `ClassConstant` budget under an `EnforcedApplication` must fail closed with an
 //! Error/`ParseError` diagnostic at the lens-application site.
 
 use std::fs;
@@ -25,7 +25,7 @@ fn complexity_violation_compile_error_demonstrated() {
         .stack_size(64 * 1024 * 1024)
         .spawn(move || {
             let err = compile_to_dag(&source, DEMO_FILE_NAME).expect_err(
-                "O(n^2) witness asymptotic class exceeds ClassLog - compile must fail",
+                "recursive-descent witness asymptotic class exceeds ClassConstant - compile must fail",
             );
             let CompileError::Semantic(dag) = err else {
                 panic!("expected Semantic(Dag) after violation, got {err:?}");
@@ -38,8 +38,8 @@ fn complexity_violation_compile_error_demonstrated() {
             let ok = receipts.iter().any(|(kind, msg, span)| {
                 kind == "ParseError"
                     && msg.contains("lens enforcement violation")
-                    && msg.contains("ClassLog")
-                    && msg.contains("ClassLinear")
+                    && msg.contains("ClassConstant")
+                    && msg.contains("ClassUnknown")
                     && span.file.ends_with(DEMO_FILE_NAME)
                     && span.byte_start < span.byte_end
             });
