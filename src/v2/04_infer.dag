@@ -79,9 +79,9 @@ import v2.std.core {
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
-  node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved,
+  node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, is_fully_resolved,
   resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
-  bare_map_node,
+  bare_map_node, bare_set_node,
   callable_inferred,
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
@@ -155,7 +155,7 @@ import v2.compiler.infer_lookup {
   resolve_known_method_node, resolve_scrutinee_type_node,
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node,
-  map_value_type_in_env, map_key_type_in_env,
+  map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig
 }
 import v2.compiler.infer_access {
@@ -396,14 +396,6 @@ fn nominal_type_binding(name: String) -> TypeBinding {
   TypeBinding { name: name, resolved: nominal_leaf_type(name: name), provenance: SubValueUnknown }
 }
 
-// Map-as-set membership check.
-fn set_has(m: Map<String, Bool>, key: String) -> Bool {
-  match map_get(m, key) {
-    Some { value: _ } => true
-    None => false
-  }
-}
-
 // Classify a field's recursive relationship to its parent type.
 // Returns the RecursionShape if the field references the parent type, or none.
 // Dispatches on container identity (List/Set/Map), not arity.
@@ -412,7 +404,7 @@ type FieldRecursionResult {
   element_type: String
 }
 
-fn classify_field_recursion(field_node: Node, parent_name: String, recursive_type_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> FieldRecursionResult? {
+fn classify_field_recursion(field_node: Node, parent_name: String, recursive_type_set: Set<String>, source_indices: Map<String, NewlineIndex>) -> FieldRecursionResult? {
   // After field_to_child_node, type info is in inferred (not children).
   let type_expr = match field_node.inferred {
     Some { value: Resolved { node: rt } } => rt
@@ -436,7 +428,7 @@ fn classify_field_recursion(field_node: Node, parent_name: String, recursive_typ
       Some { value: t } => authored_name_at(source_indices: source_indices, node: t)
       None => ""
     }
-    let is_recursive_element = value_type == parent_name || set_has(m: recursive_type_set, key: value_type)
+    let is_recursive_element = value_type == parent_name || set_contains(recursive_type_set, value_type)
     if is_recursive_element {
       let elem = if value_type == parent_name { parent_name } else { value_type }
       match field_type_name {
@@ -446,7 +438,7 @@ fn classify_field_recursion(field_node: Node, parent_name: String, recursive_typ
         _ => none
       }
     } else { none }
-  } else if set_has(m: recursive_type_set, key: field_type_name) {
+  } else if set_contains(recursive_type_set, field_type_name) {
     // Cross-type reference to another recursive type (e.g., InferredNode → Node)
     match field_node.return_cardinality {
       CardOptional => Some { value: FieldRecursionResult { shape: OptionalRecursion, element_type: field_type_name } }
@@ -456,7 +448,7 @@ fn classify_field_recursion(field_node: Node, parent_name: String, recursive_typ
 }
 
 // Collect InductiveFields for the fields of a single variant or record.
-fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_name: String, recursive_type_set: Map<String, Bool>, acc: Map<String, List<InductiveField>>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
+fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_name: String, recursive_type_set: Set<String>, acc: Map<String, List<InductiveField>>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
   fields |> fold(init: acc, f: (field_acc, field_node) =>
     match classify_field_recursion(field_node: field_node, parent_name: parent_name, recursive_type_set: recursive_type_set, source_indices: source_indices) {
       Some { value: result } =>
@@ -468,7 +460,7 @@ fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_nam
 
 // Collect InductiveFields from a type item (handles both Disj and Conj).
 // Detects both self-referential fields and cross-type references to other recursive types.
-fn collect_item_inductive_fields(item: Node, recursive_type_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
+fn collect_item_inductive_fields(item: Node, recursive_type_set: Set<String>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
   let item_name = authored_name_at(source_indices: source_indices, node: item)
   // Cross-type: any type can have fields referencing recursive types, not just recursive types themselves
   match item.connective {
@@ -482,7 +474,7 @@ fn collect_item_inductive_fields(item: Node, recursive_type_set: Map<String, Boo
   }
 }
 
-fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
+fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Set<String>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
   items |> fold(init: empty_map(), f: (acc, item) =>
     merge_inductive_fields(left: acc, right: collect_item_inductive_fields(item: item, recursive_type_set: recursive_type_set, source_indices: source_indices))
   )
@@ -696,6 +688,18 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
           _ => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
         }
       None => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
+    }
+  } else if func_name == "set_insert" || func_name == "set_union" {
+    Tier2bBt {
+      bt: match typed_args |> first {
+        Some { value: receiver_arg } =>
+          match arg_value(n: receiver_arg).inferred {
+            Some { value: Resolved { node: receiver_type } } => receiver_type
+            _ => resolve_builtin_call_type(name: func_name)
+          }
+        None => resolve_builtin_call_type(name: func_name)
+      },
+      kernel_diags: []
     }
   } else {
     Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
@@ -1514,6 +1518,74 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                       name_span: node_name_span(n: texpr)
                     ),
                     diagnostics: concat(arg_diags, [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)])
+                  }
+              }
+          }
+        } else if func_name == "empty_set" {
+          let bare_s = bare_set_node()
+          match expected {
+            Some { value: exp } =>
+              if node_is_set_collection(n: exp, source_indices: scope.type_env.source_indices) {
+                InferResult {
+                  typed: make_named_expr_node(
+                    name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                    children: typed_arg_nodes,
+                    inferred: Some { value: Resolved { node: exp } },
+                    span: span,
+                    name_span: node_name_span(n: texpr)
+                  ),
+                  diagnostics: arg_diags
+                }
+              } else {
+                let empty_set_diags = concat(arg_diags, [inference_error(message: "empty_set(): expected type is not Set<...>", span: span, module_name: scope.module_name)])
+                match bare_s {
+                  Some { value: set_t } =>
+                    InferResult {
+                      typed: make_named_expr_node(
+                        name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                        children: typed_arg_nodes,
+                        inferred: Some { value: Resolved { node: set_t } },
+                        span: span,
+                        name_span: node_name_span(n: texpr)
+                      ),
+                      diagnostics: empty_set_diags
+                    }
+                  None =>
+                    InferResult {
+                      typed: make_named_expr_node(
+                        name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                        children: typed_arg_nodes,
+                        inferred: Some { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
+                        span: span,
+                        name_span: node_name_span(n: texpr)
+                      ),
+                      diagnostics: concat(empty_set_diags, [inference_error(message: "empty_set(): Set kernel container profile missing", span: span, module_name: scope.module_name)])
+                    }
+                }
+              }
+            None =>
+              match bare_s {
+                Some { value: set_t } =>
+                  InferResult {
+                    typed: make_named_expr_node(
+                      name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                      children: typed_arg_nodes,
+                      inferred: Some { value: Resolved { node: set_t } },
+                      span: span,
+                      name_span: node_name_span(n: texpr)
+                    ),
+                    diagnostics: arg_diags
+                  }
+                None =>
+                  InferResult {
+                    typed: make_named_expr_node(
+                      name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                      children: typed_arg_nodes,
+                      inferred: Some { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
+                      span: span,
+                      name_span: node_name_span(n: texpr)
+                    ),
+                    diagnostics: concat(arg_diags, [inference_error(message: "empty_set(): Set kernel container profile missing", span: span, module_name: scope.module_name)])
                   }
               }
           }
@@ -5250,14 +5322,9 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // to break recursive expansion without threading a growing resolving list.
   let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: str_bindings)
   let cycle_set = cycle_set_str |> map(name => intern(table: intern_table, s: name).id)
-  let cycle_map = fold(cycle_set_str, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
-  // Build recursive variant fields AFTER cycle detection so the structural
-  // cycle_map gates which types are considered recursive, replacing the
-  // raw-name identity check with a structurally validated one.
-  // Merge compiler_recursive_types so cross-type detection finds Node-referencing fields
-  // in module-local types (e.g., MatchPattern.VariantPattern.field_bindings: List<Node>).
-  let cross_type_set_str = map_merge(cycle_map, compiler_recursive_types)
-  let cross_type_set = fold(map_keys(cross_type_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
+  let cross_type_all_names = concat(cycle_set_str, map_keys(compiler_recursive_types))
+  let cross_type_set_str = fold(cross_type_all_names, init: empty_set(), f: (acc, name) => set_insert(acc, name))
+  let cross_type_set = fold(cross_type_all_names, init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set_str, source_indices: source_indices)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
@@ -5363,11 +5430,9 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   )
   let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: str_bindings)
   let cycle_set = cycle_set_str |> map(name => intern(table: intern_table, s: name).id)
-  let cycle_map = fold(cycle_set_str, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
-  // Merge compiler_recursive_types so cross-type detection finds Node-referencing fields
-  // in module-local types (e.g., MatchPattern.VariantPattern.field_bindings: List<Node>).
-  let cross_type_set_str = map_merge(cycle_map, compiler_recursive_types)
-  let cross_type_set = fold(map_keys(cross_type_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
+  let cross_type_all_names = concat(cycle_set_str, map_keys(compiler_recursive_types))
+  let cross_type_set_str = fold(cross_type_all_names, init: empty_set(), f: (acc, name) => set_insert(acc, name))
+  let cross_type_set = fold(cross_type_all_names, init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set_str, source_indices: source_indices)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
@@ -5779,11 +5844,11 @@ fn topo_resolve_types(
 
   // A type is ready when all its local dependencies are already resolved
   // (not in remaining), primitive, or recursive (cycle-breaker).
-  let remaining_set = fold(remaining, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let remaining_set = fold(remaining, init: empty_set(), f: (acc, name) => set_insert(acc, name))
   let ready = filter(remaining, name =>
     match map_get(deps_map, name) {
       Some { value: deps } =>
-        all(deps, dep => is_kernel_type(name: dep) || dep == "None" || dep == "" || is_recursive_type_by_name(env: env, name: dep) || emit_map_has(m: remaining_set, key: dep) == false)
+        all(deps, dep => is_kernel_type(name: dep) || dep == "None" || dep == "" || is_recursive_type_by_name(env: env, name: dep) || set_contains(remaining_set, dep) == false)
       None => true
     }
   )

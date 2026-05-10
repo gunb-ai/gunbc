@@ -32,7 +32,7 @@ import std.algebra {
 import v2.compiler.infer_types {
   child_type_node,
   nominal_type_ref,
-  normalize_access_type_node, node_is_keyed_collection,
+  normalize_access_type_node, node_is_keyed_collection, node_is_set_collection,
   method_receiver_element_node,
   emit_map_has,
   enrich_kernel_type
@@ -203,6 +203,20 @@ fn map_key_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   if node_is_keyed_collection(n: map_type, source_indices: env.source_indices) && map_type.children |> count >= 1 {
     match map_type.children |> first {
       Some { value: key_type } => Some { value: key_type }
+      None => none
+    }
+  } else {
+    none
+  }
+}
+
+fn set_element_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
+  let normed = normalize_access_type_node(n: type_node)
+  let resolved = resolve_scrutinee_type_node(env: env, n: normed)
+  let set_type = normalize_access_type_node(n: resolved)
+  if node_is_set_collection(n: set_type, source_indices: env.source_indices) && set_type.children |> count >= 1 {
+    match set_type.children |> first {
+      Some { value: elem_type } => Some { value: elem_type }
       None => none
     }
   } else {
