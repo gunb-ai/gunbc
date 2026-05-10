@@ -45,11 +45,10 @@
 #   TEST_TIMEOUT_EXEMPT   Path to exemption file
 #                         (default scripts/slow-test-exemptions.txt).
 #   TEST_TIMEOUT_MAX_EXEMPTIONS
-#                         Ratchet floor for active exemption entries
-#                         (default 43, captured 2026-05-09: main's 41 incl. two
-#                         `cost_lens_symbolic_consumer_test::*` rows plus gate #92
-#                         T-LAS demo line). Lower this
-#                         value in the same PR that removes exemptions.
+#                         Ratchet floor for active exemption entries (default 45;
+#                         keep aligned with non-comment rows in
+#                         scripts/slow-test-exemptions.txt). Raise or lower in the same PR
+#                         as exemption rows; lower when deleting exemptions.
 
 set -euo pipefail
 
