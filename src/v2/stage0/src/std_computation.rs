@@ -17,7 +17,8 @@ use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{
-    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
+    positive_descent_count, DescentEvidence, PositiveDescentAmount, ProportionalDivisor,
+    RankingDimension,
 };
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
@@ -40,15 +41,6 @@ pub enum SizeBound {
 
 pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
     Rc::new(SizeBound::TreeSize { param: param })
-}
-
-pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*steps).clone() {
-        PositiveDescentAmount::OneStep => 1,
-        PositiveDescentAmount::AdditionalStep { previous: p, .. } => {
-            (1 + positive_descent_count(p.clone()))
-        }
-    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

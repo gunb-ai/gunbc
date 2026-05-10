@@ -12,7 +12,7 @@ use crate::std_effects::KeySource::{CompositeKey, InputField, PathParam};
 use crate::std_effects::ModifierAgreement::{Agrees, DerivationUnknown, Disagrees};
 pub use crate::std_effects::{
     check_modifier_vs_derivation, compose_effects, derive_effect_shape, derive_op_effect,
-    generate_idempotency_obligations, is_idempotent_effect, parse_http_method, ComposedEffect,
+    generate_idempotency_obligations, is_idempotent_effect, parse_http_method, CompositionVerdict,
     DeriveOpEffectResult, DerivedOpEffect, EffectShape, IdempotencyEvidence,
     IdempotencyTestObligation, KeySource, ModifierAgreement, ModifierCheck, OperationEffect,
     WorkflowEffectConcern,
