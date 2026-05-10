@@ -1428,55 +1428,16 @@ fn declaration_id_owning_bind_root(dag: &Dag, bind_node_id: NodeId) -> Option<De
     None
 }
 
-/// Structural witness for gate **#78** unary-bind iterate alias collapse (not a port-inequality
-/// heuristic): `other_port` must be exactly [`per_call_descent_operand_port`] for some **self-call**
-/// [`TransformNode`] inside [`bind`]'s body graph (same callable template as the owning declaration).
-///
-/// Fail-closed when the bind is not `ArrowBody::UserDefined` or template provenance is unresolved.
-fn unary_bind_duplicate_induction_other_factor_is_self_call_descent_operand(
-    dag: &Dag,
-    bind: &BindNode,
-    other_port: PortId,
-) -> bool {
-    let Some(owning_decl) = declaration_id_owning_bind_root(dag, bind.id) else {
-        return false;
-    };
-    let caller_template = callable_target_template_for_provenance(dag, owning_decl);
-    let CallableProvenance::Resolved(caller_tpl) = caller_template else {
-        return false;
-    };
-
-    for call_site in bind_body_transform_ids(dag, bind) {
-        let Some(transform) = dag.node_opt(&call_site).and_then(Behavior::as_transform) else {
-            continue;
-        };
-        let TransformTarget::Callable(target_decl) = transform.target else {
-            continue;
-        };
-        let callee_template = callable_target_template_for_provenance(dag, target_decl);
-        let CallableProvenance::Resolved(callee_tpl) = callee_template else {
-            continue;
-        };
-        if caller_tpl != callee_tpl {
-            continue;
-        }
-        if per_call_descent_operand_port(dag, call_site) == Some(other_port) {
-            return true;
-        }
-    }
-    false
-}
-
 /// Collapses an accidental `ProductCost(Linear, Linear)` on **unary-parameter** binds when one
 /// factor keys off the formal parameter port and the other keys off the **descent operand port**
 /// for a **self-call** in this bind’s body — the same duplicate-induction artifact described in
 /// gate **#78** (`iterate` multiplies loop-bound `Linear(param)` with `pattern_to_iter_bound` on the
 /// descent wire; distinct `PortId`s, same chain).
 ///
-/// **Does not** collapse `Linear(param) × Linear(other)` when `other` is only structurally distinct:
-/// `other` must match [`unary_bind_duplicate_induction_other_factor_is_self_call_descent_operand`]
-/// so genuine multiplicative carriers (independent linear factors) are not erased (P1 / modeling
-/// discipline).
+/// **Does not** collapse `Linear(param) × Linear(other)` from descent-port coincidence alone:
+/// [`unary_bind_duplicate_iter_alias_evidence`] requires the same joint witness as `cost.dag`
+/// (`Loop.source` iteration carrier × per-call `combine_iterate`) — a **param-sourced** [`LoopNode`]
+/// whose **body** contains the self-call, and `other` is that call’s [`per_call_descent_operand_port`].
 ///
 /// **Residual flow (why this exists):** `recursive_transform_cost` / `sum_costs_excluding_descent_operand`
 /// already prevent double-counting **within** the recursive call’s operand list. They do **not**
@@ -1521,11 +1482,7 @@ pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
             } else {
                 return cost;
             };
-            if !unary_bind_duplicate_induction_other_factor_is_self_call_descent_operand(
-                dag,
-                bind,
-                non_param_port,
-            ) {
+            if !unary_bind_duplicate_iter_alias_evidence(dag, bind, param, non_param_port) {
                 return cost;
             }
             SymbolicCost::LinearCost {
