@@ -24,6 +24,7 @@ use v3_compiler::dag::{
     OperationEffect, PortId, SymbolicCost, TransformTarget, TypeConnective, WorkflowEffect,
     WorkflowParallelismReport,
 };
+use v3_compiler::lens_cost::ComplexitySummary;
 use v3_compiler::lens_cost::{complexity_of, Certainty, ComplexityLookup};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::lens_effect_enumeration::{
@@ -33,6 +34,9 @@ use v3_compiler::Dag;
 
 static COUNTDOWN_DAG: OnceLock<Dag> = OnceLock::new();
 static EFFECTS_DAG: OnceLock<Dag> = OnceLock::new();
+static COUNTDOWN_COMPLEXITY: OnceLock<(ComplexitySummary, PortId)> = OnceLock::new();
+static COUNTDOWN_SYMBOLIC_COST: OnceLock<(SymbolicCost, PortId)> = OnceLock::new();
+static EFFECTS_REPORT: OnceLock<EffectEnumerationReport> = OnceLock::new();
 
 fn countdown_dag() -> &'static Dag {
     COUNTDOWN_DAG.get_or_init(|| {
@@ -49,6 +53,38 @@ fn effects_dag() -> &'static Dag {
         compile_to_dag("let answer: Int = 1 + 2", "r3_gate_73_effects.v3")
             .expect("effect enumeration fixture compiles")
     })
+}
+
+fn countdown_complexity() -> (ComplexitySummary, PortId) {
+    COUNTDOWN_COMPLEXITY
+        .get_or_init(|| {
+            let (dag, countdown, parameter) = countdown_fixture();
+            let complexity = match complexity_of(&dag, &countdown.value) {
+                ComplexityLookup::Hit(summary) => summary,
+                ComplexityLookup::Miss => panic!("complexity lens returned Miss for countdown"),
+            };
+            (complexity, parameter)
+        })
+        .clone()
+}
+
+fn countdown_symbolic_cost() -> (SymbolicCost, PortId) {
+    COUNTDOWN_SYMBOLIC_COST
+        .get_or_init(|| {
+            let (dag, countdown, parameter) = countdown_fixture();
+            let symbolic_cost = match symbolic_cost_of(&dag, &countdown.value) {
+                SymbolicCostLookup::Hit(cost) => cost,
+                SymbolicCostLookup::Miss => panic!("cost lens returned Miss for countdown"),
+            };
+            (symbolic_cost, parameter)
+        })
+        .clone()
+}
+
+fn effects_report() -> EffectEnumerationReport {
+    EFFECTS_REPORT
+        .get_or_init(|| enumerate_effects(effects_dag()))
+        .clone()
 }
 
 fn find_bind(dag: &Dag, name: &str) -> v3_compiler::dag::BindNode {
@@ -118,11 +154,7 @@ fn countdown_fixture() -> (Dag, v3_compiler::dag::BindNode, PortId) {
 #[test]
 fn r3_gate_73_demonstrates_complexity_work_is_linear_in_countdown_parameter() {
     run_with_parity_demo_stack(|| {
-        let (dag, countdown, parameter) = countdown_fixture();
-        let complexity = match complexity_of(&dag, &countdown.value) {
-            ComplexityLookup::Hit(summary) => summary,
-            ComplexityLookup::Miss => panic!("complexity lens returned Miss for countdown"),
-        };
+        let (complexity, parameter) = countdown_complexity();
         assert!(
             contains_linear(&complexity.work, parameter),
             "complexity work should consume the recursive CallPattern as linear parameter cost, got {:?}",
@@ -134,11 +166,7 @@ fn r3_gate_73_demonstrates_complexity_work_is_linear_in_countdown_parameter() {
 #[test]
 fn r3_gate_73_demonstrates_complexity_span_is_linear_in_countdown_parameter() {
     run_with_parity_demo_stack(|| {
-        let (dag, countdown, parameter) = countdown_fixture();
-        let complexity = match complexity_of(&dag, &countdown.value) {
-            ComplexityLookup::Hit(summary) => summary,
-            ComplexityLookup::Miss => panic!("complexity lens returned Miss for countdown"),
-        };
+        let (complexity, parameter) = countdown_complexity();
         assert!(
             contains_linear(&complexity.span, parameter),
             "complexity span should consume the recursive CallPattern as linear parameter cost, got {:?}",
@@ -150,11 +178,7 @@ fn r3_gate_73_demonstrates_complexity_span_is_linear_in_countdown_parameter() {
 #[test]
 fn r3_gate_73_demonstrates_complexity_classification_is_conservative() {
     run_with_parity_demo_stack(|| {
-        let (dag, countdown, _) = countdown_fixture();
-        let complexity = match complexity_of(&dag, &countdown.value) {
-            ComplexityLookup::Hit(summary) => summary,
-            ComplexityLookup::Miss => panic!("complexity lens returned Miss for countdown"),
-        };
+        let (complexity, _) = countdown_complexity();
         assert_eq!(
             complexity.asymptotic_class,
             AsymptoticClass::ClassUnknown,
@@ -166,11 +190,7 @@ fn r3_gate_73_demonstrates_complexity_classification_is_conservative() {
 #[test]
 fn r3_gate_73_demonstrates_complexity_certainty_is_proven() {
     run_with_parity_demo_stack(|| {
-        let (dag, countdown, _) = countdown_fixture();
-        let complexity = match complexity_of(&dag, &countdown.value) {
-            ComplexityLookup::Hit(summary) => summary,
-            ComplexityLookup::Miss => panic!("complexity lens returned Miss for countdown"),
-        };
+        let (complexity, _) = countdown_complexity();
         assert!(matches!(complexity.work_certainty, Certainty::Proven));
         assert!(matches!(complexity.span_certainty, Certainty::Proven));
     });
@@ -179,11 +199,7 @@ fn r3_gate_73_demonstrates_complexity_certainty_is_proven() {
 #[test]
 fn r3_gate_73_demonstrates_symbolic_cost_is_linear() {
     run_with_parity_demo_stack(|| {
-        let (dag, countdown, _) = countdown_fixture();
-        let symbolic_cost = match symbolic_cost_of(&dag, &countdown.value) {
-            SymbolicCostLookup::Hit(cost) => cost,
-            SymbolicCostLookup::Miss => panic!("cost lens returned Miss for countdown"),
-        };
+        let (symbolic_cost, _) = countdown_symbolic_cost();
         assert!(
             matches!(symbolic_cost, SymbolicCost::LinearCost { .. }),
             "cost lens frozen snapshot expects countdown symbolic cost to normalize to LinearCost, got {symbolic_cost:?}"
@@ -194,11 +210,7 @@ fn r3_gate_73_demonstrates_symbolic_cost_is_linear() {
 #[test]
 fn r3_gate_73_demonstrates_symbolic_cost_is_keyed_by_countdown_parameter() {
     run_with_parity_demo_stack(|| {
-        let (dag, countdown, parameter) = countdown_fixture();
-        let symbolic_cost = match symbolic_cost_of(&dag, &countdown.value) {
-            SymbolicCostLookup::Hit(cost) => cost,
-            SymbolicCostLookup::Miss => panic!("cost lens returned Miss for countdown"),
-        };
+        let (symbolic_cost, parameter) = countdown_symbolic_cost();
         assert!(
             contains_linear(&symbolic_cost, parameter),
             "cost lens linear SizeVariable should be keyed by countdown parameter {parameter:?}, got {symbolic_cost:?}"
@@ -241,8 +253,7 @@ fn r3_gate_73_demonstrates_parallelism_parity_snapshot() {
 #[test]
 fn r3_gate_73_demonstrates_effect_enumeration_publishes_facts() {
     run_with_parity_demo_stack(|| {
-        let dag = effects_dag().clone();
-        let report = enumerate_effects(&dag);
+        let report = effects_report();
 
         assert!(
             !report.facts.is_empty(),
@@ -254,11 +265,11 @@ fn r3_gate_73_demonstrates_effect_enumeration_publishes_facts() {
 #[test]
 fn r3_gate_73_demonstrates_effect_enumeration_preserves_non_arrow_callable_gap() {
     run_with_parity_demo_stack(|| {
-        let dag = effects_dag().clone();
-        let report = enumerate_effects(&dag);
+        let dag = effects_dag();
+        let report = effects_report();
 
         assert!(
-            has_non_arrow_callable_gap(&dag, &report),
+            has_non_arrow_callable_gap(dag, &report),
             "effect enumeration frozen snapshot should preserve the current non-arrow callable coverage gap, got {:?}",
             report.coverage_gaps
         );
@@ -268,8 +279,7 @@ fn r3_gate_73_demonstrates_effect_enumeration_preserves_non_arrow_callable_gap()
 #[test]
 fn r3_gate_73_demonstrates_effect_enumeration_proves_no_effect_fact() {
     run_with_parity_demo_stack(|| {
-        let dag = effects_dag().clone();
-        let report = enumerate_effects(&dag);
+        let report = effects_report();
 
         assert!(
             report
@@ -285,8 +295,7 @@ fn r3_gate_73_demonstrates_effect_enumeration_proves_no_effect_fact() {
 #[test]
 fn r3_gate_73_demonstrates_effect_enumeration_has_no_redundant_reads() {
     run_with_parity_demo_stack(|| {
-        let dag = effects_dag().clone();
-        let report = enumerate_effects(&dag);
+        let report = effects_report();
 
         assert!(report.redundant_reads.is_empty());
     });
@@ -295,8 +304,7 @@ fn r3_gate_73_demonstrates_effect_enumeration_has_no_redundant_reads() {
 #[test]
 fn r3_gate_73_demonstrates_effect_enumeration_has_no_transaction() {
     run_with_parity_demo_stack(|| {
-        let dag = effects_dag().clone();
-        let report = enumerate_effects(&dag);
+        let report = effects_report();
 
         assert!(matches!(
             report.transaction,
