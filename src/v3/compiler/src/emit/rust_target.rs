@@ -56,9 +56,9 @@ use super::{
     VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
-    FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective, ValueBody, ValueNode,
+    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, Dag, DeclarationId,
+    Field, FieldValue, LiteralBits, LoopNode, Path, PortId, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective, ValueBody, ValueNode,
 };
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
@@ -2888,6 +2888,76 @@ fn callable_input_disposition_for_target(
 
 pub(crate) type EmitRustMode = EmitMode;
 
+fn scheduling_behavior_inputs(dag: &Dag, behavior: &Behavior) -> Vec<PortId> {
+    match behavior {
+        Behavior::Value(_) => Vec::new(),
+        Behavior::Transform(t) => t.inputs.clone(),
+        Behavior::Branch(b) => {
+            let mut inputs = vec![b.input];
+            inputs.extend(b.paths.iter().map(|path| path.output));
+            inputs
+        }
+        Behavior::Loop(l) => {
+            let mut inputs = vec![l.source, l.init];
+            if let Some(count) = l.bound.count_port() {
+                inputs.push(count);
+            }
+            inputs.push(loop_body_result_port(dag, l));
+            inputs
+        }
+        Behavior::Bind(b) => vec![b.value],
+    }
+}
+
+fn loop_body_result_port(dag: &Dag, l: &LoopNode) -> PortId {
+    match dag.node(l.body) {
+        Behavior::Value(v) => v.output,
+        Behavior::Transform(t) => t.output,
+        Behavior::Branch(b) => b.output,
+        Behavior::Loop(inner) => inner.output,
+        Behavior::Bind(b) => b.value,
+    }
+}
+
+/// Walk upstream from `from_port` through producer→input edges; returns true when `to_port` is reachable.
+fn port_reaches_upstream(dag: &Dag, from_port: PortId, to_port: PortId) -> bool {
+    let mut seen: HashSet<PortId> = HashSet::new();
+    let mut queue = vec![from_port];
+    while let Some(port) = queue.pop() {
+        if !seen.insert(port) {
+            continue;
+        }
+        if port == to_port {
+            return true;
+        }
+        let Some(producer) = dag.port(port).produced_by else {
+            continue;
+        };
+        queue.extend(scheduling_behavior_inputs(dag, dag.node(producer)));
+    }
+    false
+}
+
+/// True when every pair of top-level binds has no value→value dependency in either direction.
+///
+/// Used for R3 free-consequence auto-parallelism: only **pairwise** independent clusters emit a
+/// single `std::thread::scope` batch (wave scheduling across dependent layers is deferred).
+fn top_level_binds_pairwise_independent(dag: &Dag, binds: &[&BindNode]) -> bool {
+    if binds.len() < 2 {
+        return false;
+    }
+    for i in 0..binds.len() {
+        for j in (i + 1)..binds.len() {
+            if port_reaches_upstream(dag, binds[i].value, binds[j].value)
+                || port_reaches_upstream(dag, binds[j].value, binds[i].value)
+            {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// Top-level value `Bind` nodes that participate in Rust program-mode emission, in `Dag::nodes`
 /// order. **Single selector** for `emit_rust_with_mode` and W1 (`last_emit_rust_program_top_level_value_bind_name`).
 fn program_mode_top_level_value_binds<'a>(
@@ -3065,22 +3135,47 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
         sections.push(function_defs);
     }
     if mode == EmitRustMode::Program {
-        let mut rendered_binds: Vec<String> = Vec::with_capacity(top_level_binds.len());
-        for bind in &top_level_binds {
-            let ty_name = ctx.rust_type_name_for_port(bind.value)?;
-            let value_expr = ctx.render_top_level_value(bind.value)?;
-            let rendered = render_named_template(
-                &indexes.syntax.statements.let_binding,
-                &[
-                    ("name", &bind.name),
-                    ("type", &ty_name),
-                    ("value", &value_expr),
-                ],
-            );
-            rendered_binds.push(rendered);
-        }
-
-        let body_joined = join_rendered(&rendered_binds, " ");
+        let body_joined = if top_level_binds.len() >= 2
+            && top_level_binds_pairwise_independent(dag, &top_level_binds)
+        {
+            let mut ty_parts: Vec<String> = Vec::with_capacity(top_level_binds.len());
+            let mut expr_parts: Vec<String> = Vec::with_capacity(top_level_binds.len());
+            let mut names: Vec<&str> = Vec::with_capacity(top_level_binds.len());
+            for bind in &top_level_binds {
+                ty_parts.push(ctx.rust_type_name_for_port(bind.value)?);
+                expr_parts.push(ctx.render_top_level_value(bind.value)?);
+                names.push(bind.name.as_str());
+            }
+            let tuple_ty = format!("({})", ty_parts.join(", "));
+            let tuple_pat = format!("({})", names.join(", "));
+            let mut spawn_stmts: Vec<String> = Vec::with_capacity(expr_parts.len());
+            let mut join_elems: Vec<String> = Vec::with_capacity(expr_parts.len());
+            for (idx, expr) in expr_parts.iter().enumerate() {
+                spawn_stmts.push(format!("let h{idx} = s.spawn(|| {{ {expr} }});"));
+                join_elems.push(format!("h{idx}.join().unwrap()"));
+            }
+            let spawn_block = spawn_stmts.join(" ");
+            let joined = join_elems.join(", ");
+            format!(
+                "let {tuple_pat}: {tuple_ty} = ::std::thread::scope(|s| {{ {spawn_block} ({joined}) }});"
+            )
+        } else {
+            let mut rendered_binds: Vec<String> = Vec::with_capacity(top_level_binds.len());
+            for bind in &top_level_binds {
+                let ty_name = ctx.rust_type_name_for_port(bind.value)?;
+                let value_expr = ctx.render_top_level_value(bind.value)?;
+                let rendered = render_named_template(
+                    &indexes.syntax.statements.let_binding,
+                    &[
+                        ("name", &bind.name),
+                        ("type", &ty_name),
+                        ("value", &value_expr),
+                    ],
+                );
+                rendered_binds.push(rendered);
+            }
+            join_rendered(&rendered_binds, " ")
+        };
         let final_bind = top_level_binds.last().expect("guarded above");
         let final_bind_name = final_bind.name.clone();
         let final_display_expr = if ctx.port_is_substrate_result(final_bind.value)? {

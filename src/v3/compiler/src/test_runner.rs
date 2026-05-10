@@ -2331,6 +2331,46 @@ impl<'a> TestRunner<'a> {
             }
         };
 
+        // R3 gate #43 (`auto_parallelism_independent_binds_emit_parallel`): independent top-level
+        // binds must emit a parallel Rust schedule (`std::thread::scope`). Structural witness via
+        // program text — dissolution when ordinary DB-20 parallelism lens output reaches `.dag`.
+        if lens_decl.name.as_deref() == Some("r3_auto_parallelism_parallel_emit_witness") {
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(r3_auto_parallelism_parallel_emit_witness): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_parallelism_parallel_emit_witness): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
+                    ));
+                }
+            };
+            let emitted = match crate::emit_rust::emit_rust(&program_dag) {
+                Ok(s) => s,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_parallelism_parallel_emit_witness): emit_rust failed for `{}`: {err:?}",
+                        claim.file_name
+                    ));
+                }
+            };
+            let parallel = emitted.contains("thread::scope");
+            let computed_int = i64::from(parallel);
+            return if computed_int == expected_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals(r3_auto_parallelism_parallel_emit_witness): expected `{expected_int}` (1 = parallel schedule), computed `{computed_int}` for `{}`",
+                    claim.file_name
+                ))
+            };
+        }
+
         // T-LaneE cost receipt: `ProgramOutputBind` is the structural contract for a claim
         // source output-bind cost check. Dispatch on that input role, not on lens declaration
         // spelling; otherwise the canonical lens-name bridge would survive under a helper.
