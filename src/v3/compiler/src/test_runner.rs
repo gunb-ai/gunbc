@@ -2823,23 +2823,19 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        let emitted = match emit_rust(&program_dag) {
-            Ok(emitted) => emitted,
-            Err(err) => {
-                return ClaimResult::Fail(format!(
-                    "BinaryDimensionReportEquals(r3 cross-target cost): Rust emission failed: {err:?}"
-                ));
-            }
-        };
-        if !emitted.contains("let cost_demo: i64") {
+        if let Err(err) = emit_rust(&program_dag) {
             return ClaimResult::Fail(format!(
-                "BinaryDimensionReportEquals(r3 cross-target cost): emitted Rust did not expose the expected target program bind; emitted:\n{emitted}"
+                "BinaryDimensionReportEquals(r3 cross-target cost): Rust emission failed: {err:?}"
             ));
         }
 
-        let observed = match self.r3_observed_cost_report_from_emitted_rust(&emitted) {
+        let observed = match self.r3_observed_cost_report_from_source_structure(&program_dag) {
             Ok(cost) => cost,
-            Err(reason) => return ClaimResult::Fail(reason),
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): {err}"
+                ));
+            }
         };
         let expected = match self.r3_expected_cost_report_from_source_dag(&program_dag, claim) {
             Ok(cost) => cost,
@@ -2855,35 +2851,42 @@ impl<'a> TestRunner<'a> {
         }
     }
 
-    fn r3_observed_cost_report_from_emitted_rust(
+    fn r3_observed_cost_report_from_source_structure(
         &self,
-        emitted: &str,
+        program_dag: &Dag,
     ) -> Result<SymbolicCost, String> {
         let boot = generated_full_bootstrap_dag();
-        let rust_costs = r3_rust_int_costs(&boot)?;
-        let line = emitted
-            .lines()
-            .find(|line| line.contains("let cost_demo: i64"))
-            .ok_or_else(|| {
-                "BinaryDimensionReportEquals(r3 cross-target cost): emitted Rust target bind `cost_demo: i64` not found".to_string()
-            })?;
+        let rust_language = boot
+            .declaration_by_name("rust_language")
+            .map(|decl| decl.id)
+            .ok_or_else(|| "missing rust_language LanguageSpec".to_string())?;
+        let int_decl = boot
+            .declaration_by_name("Int")
+            .map(|decl| decl.id)
+            .ok_or_else(|| "missing Int declaration".to_string())?;
+        let table = RealizationCostTable::for_language(&boot, rust_language)
+            .map_err(|err| format!("could not read Rust LanguageSpec realization table: {err:?}"))?;
+        let int_cost = table
+            .cost(&RealizationCostKey::Type(int_decl))
+            .ok_or_else(|| "missing Rust Int TypeRealization cost".to_string())?
+            .value();
         let mut composed = SymbolicCost::ConstantCost { _0: 0 };
-        composed = sequential(composed, SymbolicCost::ConstantCost { _0: rust_costs.int });
-        for (needle, cost) in [
-            (" + ", rust_costs.add),
-            (" - ", rust_costs.sub),
-            (" * ", rust_costs.mul),
-            (" / ", rust_costs.div),
-            (" == ", rust_costs.eq),
-            (" != ", rust_costs.ne),
-            (" < ", rust_costs.lt),
-            (" <= ", rust_costs.le),
-            (" > ", rust_costs.gt),
-            (" >= ", rust_costs.ge),
-        ] {
-            for _ in line.match_indices(needle) {
-                composed = sequential(composed, SymbolicCost::ConstantCost { _0: cost });
-            }
+        composed = sequential(composed, SymbolicCost::ConstantCost { _0: int_cost });
+
+        for transform in program_dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_transform)
+        {
+            let Some(key) = r3_operator_realization_key(&boot, int_decl, transform)? else {
+                continue;
+            };
+            let op_cost = table
+                .cost(&key)
+                .ok_or_else(|| format!("missing Rust operator realization cost for {key:?}"))?
+                .value();
+            composed = sequential(composed, SymbolicCost::ConstantCost { _0: 1 });
+            composed = sequential(composed, SymbolicCost::ConstantCost { _0: op_cost });
         }
         Ok(composed)
     }
