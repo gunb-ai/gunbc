@@ -29,6 +29,13 @@ use std::path::{Path, PathBuf};
 
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 
+const R3_LENS_BEHAVIORAL_PARITY_SCOPE: &[&str] = &[
+    "complexity.dag",
+    "cost.dag",
+    "parallelism.dag",
+    "effect_enumeration.dag",
+];
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -105,7 +112,15 @@ fn regen_lens_file_basenames() -> BTreeSet<String> {
 /// `.dag` lens inside the capability section counts here.
 const CAPABILITY_TABLE_HEADING: &str = "## Capability table";
 
-fn register_lens_basenames() -> BTreeSet<String> {
+fn md_table_cells(line: &str) -> Vec<String> {
+    // Capability rows escape `|` inside cells as `\|` (see v3 output column).
+    let tmp = line.replace("\\|", "\u{241f}");
+    tmp.split('|')
+        .map(|s| s.replace('\u{241f}', "|").trim().to_string())
+        .collect()
+}
+
+fn capability_table_rows() -> Vec<(String, String)> {
     let md_path = workspace_root().join("docs/v3-lens-capability-register.md");
     let md = std::fs::read_to_string(&md_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", md_path.display()));
@@ -117,7 +132,7 @@ fn register_lens_basenames() -> BTreeSet<String> {
          in this test in the same PR."
     );
     let mut in_capability_section = false;
-    let mut basenames = BTreeSet::new();
+    let mut rows = Vec::new();
     for raw in md.lines() {
         let line = raw.trim();
         if line == CAPABILITY_TABLE_HEADING {
@@ -136,14 +151,8 @@ fn register_lens_basenames() -> BTreeSet<String> {
         if !line.starts_with('|') || line.starts_with("|---") || line.contains("---|---") {
             continue;
         }
-        // `|`-split with `\|` escape (capability rows use it in the
-        // v3-output column).
-        let tmp = line.replace("\\|", "\u{241f}");
-        let cells: Vec<String> = tmp
-            .split('|')
-            .map(|s| s.replace('\u{241f}', "|").trim().to_string())
-            .collect();
-        if cells.len() < 2 {
+        let cells = md_table_cells(line);
+        if cells.len() < 4 {
             continue;
         }
         let lens_cell = cells[1].trim();
@@ -154,9 +163,16 @@ fn register_lens_basenames() -> BTreeSet<String> {
         if !basename.ends_with(".dag") {
             continue;
         }
-        basenames.insert(basename.to_string());
+        rows.push((basename.to_string(), cells[3].trim().to_string()));
     }
-    basenames
+    rows
+}
+
+fn register_lens_basenames() -> BTreeSet<String> {
+    capability_table_rows()
+        .into_iter()
+        .map(|(basename, _)| basename)
+        .collect()
 }
 
 #[test]
@@ -174,5 +190,80 @@ fn every_regen_lens_entry_has_a_capability_register_row() {
          of `docs/v3-lens-capability-register.md` for each missing lens, \
          declaring both its structural and behavioral status. Current \
          register-visible basenames: {register:?}."
+    );
+}
+
+#[test]
+fn r3_gate_83_lens_capability_register_scope_is_explicit() {
+    let register = register_lens_basenames();
+    let missing: Vec<_> = R3_LENS_BEHAVIORAL_PARITY_SCOPE
+        .iter()
+        .copied()
+        .filter(|basename| !register.contains(*basename))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "R3 gate #83 (`lens_capability_register_zero_proxy_zero_stub`) is defined over \
+         the four T-Lens-Behavioral-Parity rows: complexity, cost, parallelism, and \
+         effect_enumeration. Missing capability-register row(s): {missing:?}."
+    );
+}
+
+#[test]
+#[ignore = "strict-fire gate #83; unignore when cost/parallelism sibling slices remove PROXY/STUB"]
+fn r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub() {
+    let rows = capability_table_rows();
+    let blockers: Vec<_> = R3_LENS_BEHAVIORAL_PARITY_SCOPE
+        .iter()
+        .copied()
+        .filter_map(|basename| {
+            let behavioral = rows
+                .iter()
+                .find(|(row_basename, _)| row_basename == basename)
+                .map(|(_, behavioral)| behavioral.as_str())
+                .unwrap_or("<missing>");
+            let normalized = behavioral
+                .trim()
+                .trim_matches('*')
+                .trim()
+                .to_ascii_uppercase();
+            (normalized == "PROXY" || normalized == "STUB")
+                .then(|| format!("{basename}: {behavioral}"))
+        })
+        .collect();
+    assert!(
+        blockers.is_empty(),
+        "R3 gate #83 requires ZERO PROXY / ZERO STUB in the capability register for \
+         the four in-R3 T-Lens-Behavioral-Parity lenses. Remaining blocker(s): {blockers:?}."
+    );
+}
+
+#[test]
+fn r3_gate_83_current_register_blockers_are_explicit() {
+    let rows = capability_table_rows();
+    let blockers: Vec<_> = R3_LENS_BEHAVIORAL_PARITY_SCOPE
+        .iter()
+        .copied()
+        .filter_map(|basename| {
+            let behavioral = rows
+                .iter()
+                .find(|(row_basename, _)| row_basename == basename)
+                .map(|(_, behavioral)| behavioral.as_str())
+                .unwrap_or("<missing>");
+            let normalized = behavioral
+                .trim()
+                .trim_matches('*')
+                .trim()
+                .to_ascii_uppercase();
+            (normalized == "PROXY" || normalized == "STUB")
+                .then(|| format!("{basename}: {behavioral}"))
+        })
+        .collect();
+    assert_eq!(
+        blockers,
+        vec!["cost.dag: **PROXY**", "parallelism.dag: **STUB**"],
+        "Gate #83 is not ready to strict-fire until sibling lens-completion slices \
+         remove all PROXY/STUB statuses. If this changed, update the strict-fire \
+         posture in `r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub`."
     );
 }
