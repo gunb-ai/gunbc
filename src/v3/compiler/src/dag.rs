@@ -1408,9 +1408,7 @@ pub fn per_call_pattern_and_descent_operand_index(
 /// transform only (P2: no parallel list from the consumer that could desync from substrate).
 pub fn per_call_descent_operand_port(dag: &Dag, call_site: NodeId) -> Option<PortId> {
     let (_, idx) = per_call_pattern_and_descent_operand_index(dag, call_site)?;
-    let transform = dag
-        .node_opt(&call_site)
-        .and_then(Behavior::as_transform)?;
+    let transform = dag.node_opt(&call_site).and_then(Behavior::as_transform)?;
     transform.inputs.get(idx).copied()
 }
 
