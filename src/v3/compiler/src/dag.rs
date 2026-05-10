@@ -1573,12 +1573,14 @@ fn bind_body_transform_ids(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
         bind.value,
         &mut visited_ports,
         &mut visited_nodes,
-        Some(&mut transforms),
+        true,
+        &mut transforms,
     );
     transforms
 }
 
 fn bind_body_reachable_nodes(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
+    let mut transforms = HashSet::new();
     let mut visited_ports = HashSet::new();
     let mut visited_nodes = HashSet::new();
     collect_body_port(
@@ -1586,7 +1588,8 @@ fn bind_body_reachable_nodes(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
         bind.value,
         &mut visited_ports,
         &mut visited_nodes,
-        None,
+        false,
+        &mut transforms,
     );
     visited_nodes
 }
@@ -1611,6 +1614,7 @@ fn self_call_under_param_bound_loop(
         if loop_node.source != param {
             continue;
         }
+        let mut transforms = HashSet::new();
         let mut visited_ports = HashSet::new();
         let mut visited_nodes = HashSet::new();
         collect_body_node(
@@ -1618,7 +1622,8 @@ fn self_call_under_param_bound_loop(
             loop_node.body,
             &mut visited_ports,
             &mut visited_nodes,
-            None,
+            false,
+            &mut transforms,
         );
         if visited_nodes.contains(&call_site) {
             return true;
@@ -1674,7 +1679,8 @@ fn collect_body_port(
     port: PortId,
     visited_ports: &mut HashSet<PortId>,
     visited_nodes: &mut HashSet<NodeId>,
-    transform_ids: Option<&mut HashSet<NodeId>>,
+    record_transform_ids: bool,
+    transform_ids: &mut HashSet<NodeId>,
 ) {
     if !visited_ports.insert(port) {
         return;
@@ -1687,6 +1693,7 @@ fn collect_body_port(
         producer,
         visited_ports,
         visited_nodes,
+        record_transform_ids,
         transform_ids,
     );
 }
@@ -1696,7 +1703,8 @@ fn collect_body_node(
     node: NodeId,
     visited_ports: &mut HashSet<PortId>,
     visited_nodes: &mut HashSet<NodeId>,
-    transform_ids: Option<&mut HashSet<NodeId>>,
+    record_transform_ids: bool,
+    transform_ids: &mut HashSet<NodeId>,
 ) {
     if !visited_nodes.insert(node) {
         return;
@@ -1707,18 +1715,46 @@ fn collect_body_node(
     match behavior {
         Behavior::Value(_) => {}
         Behavior::Transform(transform) => {
-            if let Some(ids) = transform_ids.as_deref_mut() {
-                ids.insert(transform.id);
+            if record_transform_ids {
+                transform_ids.insert(transform.id);
             }
             for input in &transform.inputs {
-                collect_body_port(dag, *input, visited_ports, visited_nodes, transform_ids);
+                collect_body_port(
+                    dag,
+                    *input,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
         }
         Behavior::Branch(branch) => {
-            collect_body_port(dag, branch.input, visited_ports, visited_nodes, transform_ids);
+            collect_body_port(
+                dag,
+                branch.input,
+                visited_ports,
+                visited_nodes,
+                record_transform_ids,
+                transform_ids,
+            );
             for path in &branch.paths {
-                collect_body_node(dag, path.body, visited_ports, visited_nodes, transform_ids);
-                collect_body_port(dag, path.output, visited_ports, visited_nodes, transform_ids);
+                collect_body_node(
+                    dag,
+                    path.body,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
+                collect_body_port(
+                    dag,
+                    path.output,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
         }
         Behavior::Loop(loop_node) => {
@@ -1727,6 +1763,7 @@ fn collect_body_node(
                 loop_node.source,
                 visited_ports,
                 visited_nodes,
+                record_transform_ids,
                 transform_ids,
             );
             collect_body_port(
@@ -1734,16 +1771,25 @@ fn collect_body_node(
                 loop_node.init,
                 visited_ports,
                 visited_nodes,
+                record_transform_ids,
                 transform_ids,
             );
             if let Some(count) = loop_node.bound.count_port() {
-                collect_body_port(dag, count, visited_ports, visited_nodes, transform_ids);
+                collect_body_port(
+                    dag,
+                    count,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
             collect_body_node(
                 dag,
                 loop_node.body,
                 visited_ports,
                 visited_nodes,
+                record_transform_ids,
                 transform_ids,
             );
         }
@@ -1752,7 +1798,14 @@ fn collect_body_node(
             // own a separate `ArrowBody::UserDefined` body and are scanned through
             // their declaration, not through an enclosing span/body walk.
             if inner.params.is_empty() {
-                collect_body_port(dag, inner.value, visited_ports, visited_nodes, transform_ids);
+                collect_body_port(
+                    dag,
+                    inner.value,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
         }
     }
