@@ -10,22 +10,15 @@
 //! `r3_free_consequences_auto_loop_parallelism_dependence.v3` so lowering still exercises a real
 //! loop body; integration tests ratchet embedded `TestClaim.source` against that file byte-for-byte
 //! and assert the claim program lowers to `Behavior::Loop` so the fold is exercised on the compile
-<<<<<<< HEAD
-//! path, not only carried as inert text. Gate #51 still locks the cost-related
-//! `BinaryDimensionReportEquals` shape and stays `NotYetImplemented`; gate #52 adds a host-side
-//! executable receipt that composes `Lens<SymbolicCost>` with `LanguageSpec` realization rows.
-=======
 //! path, not only carried as inert text. The first cross-target-optimization claim (#51) is
 //! executable through the symbolic-cost lens: the host test proves a constant arithmetic subtree has
-//! cost `1` before the folded literal target (`3`) is applied. The second claim (#52) keeps the
-//! cost-related `BinaryDimensionReportEquals` shape and stays `NotYetImplemented` until generic
-//! `DimensionReport<C>` evaluation lands.
->>>>>>> origin/main
+//! cost `1` before the folded literal target (`3`) is applied. Gate #52 keeps the cost-related
+//! `BinaryDimensionReportEquals` shape at the generic runner boundary and adds a host-side
+//! executable receipt that composes `Lens<SymbolicCost>` with `LanguageSpec` realization rows.
 
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
-<<<<<<< HEAD
 use v3_compiler::dag::{
     sequential, ArithmeticOp, Behavior, ComparisonOp, Dag, DeclarationId, OperatorKind,
     SymbolicCost, TransformTarget,
@@ -34,11 +27,6 @@ use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::realization_cost::{RealizationCostKey, RealizationCostTable};
-=======
-use v3_compiler::dag::Dag;
-use v3_compiler::dag::{ArithmeticOp, Behavior, OperatorKind, SymbolicCost};
-use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
->>>>>>> origin/main
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
@@ -133,12 +121,6 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
                 "expected {expected_name} to pass (loop witnesses use staged LensOutputEquals; gate #51 uses executable SymbolicCostExprEquals), got {:?}",
                 result.result
             );
-        } else if idx == 3 {
-            assert!(
-                matches!(&result.result, ClaimResult::NotYetImplemented(_)),
-                "expected {expected_name} to stay author-now/fire-later on BinaryDimensionReportEquals, got {:?}",
-                result.result
-            );
         } else {
             assert!(
                 matches!(&result.result, ClaimResult::NotYetImplemented(_)),
@@ -151,7 +133,6 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
 }
 
 #[test]
-<<<<<<< HEAD
 fn cross_target_optimization_cost_structurally_derived_receipt() {
     run_on_larger_stack(|| {
         let boot = generated_full_bootstrap_dag();
@@ -397,7 +378,8 @@ fn mentions_linear(cost: &SymbolicCost) -> bool {
         _ => false,
     }
 }
-=======
+
+#[test]
 fn cross_target_optimization_constant_fold_consistent_has_symbolic_cost_witness() {
     run_on_larger_stack(|| {
         let claim = claim_by_name("cross_target_optimization_constant_fold_consistent");
@@ -439,4 +421,3 @@ fn cross_target_optimization_constant_fold_consistent_has_symbolic_cost_witness(
         );
     });
 }
->>>>>>> origin/main
