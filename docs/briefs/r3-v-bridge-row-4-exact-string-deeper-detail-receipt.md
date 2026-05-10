@@ -3,7 +3,12 @@
 **Status:** AUDIT RECEIPT - docs-only. This receipt does not flip any
 `BridgeLedgerRow.status` and does not close a Debt-Paydown row directly.
 
-**Row:** `bridge_exact_string_patching_residual_retired`.
+**Ledger rows (split, substrate authority `src/v3/std/bridge_ledger.dag`):**
+`bridge_exact_string_patching_residual_retired` (**Retired** — PB Tier-2
+lower-helper exact-string patch class, #1014 / #1192 ratchet) and
+`bridge_exact_string_semantic_patching_residual` (**Open** — Row-4 remainder).
+This receipt inventories the **Open** Row-4 semantic class bucket; it does not
+re-litigate the closed lower-helper slice.
 
 **Primary inputs:** `docs/briefs/bridge-retirement-audit-include-str-family.md`
 for family B BR-19 / BR-09 exact-string boundaries, and
