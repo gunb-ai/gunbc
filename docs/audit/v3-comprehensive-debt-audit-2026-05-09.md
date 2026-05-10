@@ -72,7 +72,7 @@ From PR #2358 §8 meta-finding cycle (3 sha windows: b09e0c8 / 1211e453 / cf1d52
 
 | # | Finding | Class candidate |
 |---|---|---|
-| 1 | `MissingEmissionPath` stringifies typed axes (`connective: String, behavior: String, target: String`) | Class C — typed-carrier regression at diagnostic boundary |
+| 1 | `MissingEmissionPath` stringified typed axes (`connective: String, behavior: String, target: String`) — **RETIRED** (`EmissionDiagnostic::MissingEmissionPath` now carries `FormAxis` / `BehaviorAxis` / `ShapeATarget`; issue #2465 / PR #2574 receipt) | Class C — typed-carrier regression at diagnostic boundary (closed) |
 | 2 | `ShapeATarget = Rust \| Python \| Go` closed enum vs `LanguageSpec` data extensibility | Class F — ontology duplication — resolved by issue #2466 / crisp-raven-202: `ShapeATarget` aliases `LanguageSpec`, with named Shape A target data bindings consumed by projection rows |
 | 3 | `Map<String, Bool>` as set across graph/syntax/node files (`set_has` ignores stored bool) | Class F — missed algebraic structure (Set<A> declared in std but bypassed) |
 | 4 | `PartitionResult` bypassed by anonymous return type | Class G — small duplicate-authority cleanup |
