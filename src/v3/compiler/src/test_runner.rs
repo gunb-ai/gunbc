@@ -46,15 +46,6 @@ const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
 /// `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`).
 const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_emit_witness";
 
-/// R3 gate #49 (`BinaryDimensionReportEquals` payload in
-/// `r3_free_consequences_first_batch.dag`).
-///
-/// The runner dispatches from the typed predicate payload declarations, not the
-/// free-form `TestClaim.name`, so the `BinaryDimensionReportEquals` envelope
-/// remains the single authority for this gate's semantics.
-const R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME: &str = "repeated_pure_call_observed_report";
-const R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME: &str = "repeated_pure_call_expected_report";
-
 /// R3 gate #45 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
 ///
 /// Compared as `Some(R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME)` — **not** `Some("…")` inline —
@@ -2760,7 +2751,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_binary_dimension_report_equals(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [left_fv, right_fv] = payload else {
@@ -2796,68 +2787,12 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
-        if self.is_r3_repeated_pure_call_report_pair(left_id, right_id) {
-            return self.eval_r3_auto_memoization_repeated_pure_call_cached(claim);
-        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
              production/evaluation substrate; serialized report comparison is intentionally \
              unsupported"
         ))
-    }
-
-    fn is_r3_repeated_pure_call_report_pair(
-        &self,
-        left_id: DeclarationId,
-        right_id: DeclarationId,
-    ) -> bool {
-        self.dag.declaration(left_id).name.as_deref()
-            == Some(R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME)
-            && self.dag.declaration(right_id).name.as_deref()
-                == Some(R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME)
-    }
-
-    fn eval_r3_auto_memoization_repeated_pure_call_cached(
-        &self,
-        claim: &TestClaimValue,
-    ) -> ClaimResult {
-        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
-            Ok(dag) => dag,
-            Err(CompileError::Semantic(dag)) => {
-                return ClaimResult::Fail(format!(
-                    "BinaryDimensionReportEquals({R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME}, {R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME}): claim `source` / `{}` failed inference: {:?}",
-                    claim.file_name,
-                    dag.diagnostics().iter().collect::<Vec<_>>()
-                ));
-            }
-            Err(err) => {
-                return ClaimResult::Fail(format!(
-                    "BinaryDimensionReportEquals({R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME}, {R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME}): claim `source` / `{}` did not compile: {err:?}",
-                    claim.file_name
-                ));
-            }
-        };
-        let witness = match crate::emit::rust_target::repeated_pure_call_cache_witness(&program_dag)
-        {
-            Ok(witness) => witness,
-            Err(err) => {
-                return ClaimResult::Fail(format!(
-                    "BinaryDimensionReportEquals({R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME}, {R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME}): repeated source-call cache witness failed for `{}`: {err:?}",
-                    claim.file_name
-                ));
-            }
-        };
-        if witness.cacheable_call_binds == 2
-            && witness.actual_call_binds == 1
-            && witness.cached_reuse_binds == 1
-        {
-            ClaimResult::Pass
-        } else {
-            ClaimResult::Fail(format!(
-                "BinaryDimensionReportEquals({R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME}, {R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME}): expected two structurally reusable source-call binds, one actual emitted call bind, and one cached reuse bind; got {witness:?}"
-            ))
-        }
     }
 
     fn validate_dimension_report_ref(

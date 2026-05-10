@@ -2888,13 +2888,6 @@ fn callable_input_disposition_for_target(
 
 pub(crate) type EmitRustMode = EmitMode;
 
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct RepeatedPureCallCacheWitness {
-    pub cacheable_call_binds: usize,
-    pub actual_call_binds: usize,
-    pub cached_reuse_binds: usize,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct PureCallCacheKey {
     target: DeclarationId,
@@ -3072,7 +3065,6 @@ fn top_level_bind_cache_key(
 
 struct PureCallCachePlan {
     reuse_bind_names: Vec<Option<String>>,
-    witness: RepeatedPureCallCacheWitness,
 }
 
 fn top_level_pure_call_cache_plan(
@@ -3082,41 +3074,22 @@ fn top_level_pure_call_cache_plan(
 ) -> Result<PureCallCachePlan, EmitError> {
     let mut repeated_pure_call_cache: HashMap<PureCallCacheKey, String> = HashMap::new();
     let mut reuse_bind_names = Vec::with_capacity(top_level_binds.len());
-    let mut witness = RepeatedPureCallCacheWitness {
-        cacheable_call_binds: 0,
-        actual_call_binds: 0,
-        cached_reuse_binds: 0,
-    };
     for bind in top_level_binds {
         let Some(cache_key) = top_level_bind_cache_key(dag, indexes, bind)? else {
             reuse_bind_names.push(None);
             continue;
         };
-        witness.cacheable_call_binds += 1;
         match repeated_pure_call_cache.entry(cache_key) {
             std::collections::hash_map::Entry::Occupied(entry) => {
-                witness.cached_reuse_binds += 1;
                 reuse_bind_names.push(Some(entry.get().clone()));
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(bind.name.clone());
-                witness.actual_call_binds += 1;
                 reuse_bind_names.push(None);
             }
         }
     }
-    Ok(PureCallCachePlan {
-        reuse_bind_names,
-        witness,
-    })
-}
-
-pub(crate) fn repeated_pure_call_cache_witness(
-    dag: &Dag,
-) -> Result<RepeatedPureCallCacheWitness, EmitError> {
-    let indexes = RealizationIndexes::build(dag)?;
-    let top_level_binds = program_mode_top_level_value_binds(dag, &indexes);
-    Ok(top_level_pure_call_cache_plan(dag, &indexes, &top_level_binds)?.witness)
+    Ok(PureCallCachePlan { reuse_bind_names })
 }
 
 pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
