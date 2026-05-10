@@ -442,65 +442,65 @@ fn build_read_only_params(proof: OwnershipProof, param_names: Set<String>) -> Se
 // FunctionValueBinding — these are functions referenced as values.
 // =========================================================================
 
-fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Map<String, Bool> {
+fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<String> {
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
       match bk {
         Some { value: FunctionValueBinding } =>
           let n = expr_var_name_at(texpr: texpr, source_indices: si)
-          map_insert(empty_map(), n, true)
-        _ => empty_map()
+          set_insert(empty_set(), n)
+        _ => empty_set()
       }
-    ExprLiteral { value: _ } => empty_map()
+    ExprLiteral { value: _ } => empty_set()
     ExprFieldAccess =>
       collect_callable_refs(texpr: field_access_base(texpr: texpr), si: si)
     ExprCall =>
-      texpr.children |> fold(init: empty_map(), f: (acc, a) =>
-        map_merge(acc, collect_callable_refs(texpr: arg_value(n: a), si: si))
+      texpr.children |> fold(init: empty_set(), f: (acc, a) =>
+        set_union(acc, collect_callable_refs(texpr: arg_value(n: a), si: si))
       )
     ExprMethodCall { method_semantics: _ } =>
       let recv = collect_callable_refs(texpr: method_receiver(texpr: texpr), si: si)
       method_arg_nodes(texpr: texpr) |> fold(init: recv, f: (acc, a) =>
-        map_merge(acc, collect_callable_refs(texpr: arg_value(n: a), si: si))
+        set_union(acc, collect_callable_refs(texpr: arg_value(n: a), si: si))
       )
     ExprIf =>
       let cond = collect_callable_refs(texpr: if_condition(texpr: texpr), si: si)
       let then_br = collect_callable_refs(texpr: if_then_branch(texpr: texpr), si: si)
       let else_br = match if_else_branch(texpr: texpr) {
         Some { value: eb } => collect_callable_refs(texpr: eb, si: si)
-        None => empty_map()
+        None => empty_set()
       }
-      map_merge(map_merge(cond, then_br), else_br)
+      set_union(set_union(cond, then_br), else_br)
     ExprMatch =>
       let scrut = collect_callable_refs(texpr: match_scrutinee(texpr: texpr), si: si)
       match_arm_nodes(texpr: texpr) |> fold(init: scrut, f: (acc, arm) =>
-        map_merge(acc, collect_callable_refs(texpr: arm_body(arm: arm), si: si))
+        set_union(acc, collect_callable_refs(texpr: arm_body(arm: arm), si: si))
       )
     ExprLet =>
       let val = collect_callable_refs(texpr: let_value(texpr: texpr), si: si)
       match let_body(texpr: texpr) {
-        Some { value: lb } => map_merge(val, collect_callable_refs(texpr: lb, si: si))
+        Some { value: lb } => set_union(val, collect_callable_refs(texpr: lb, si: si))
         None => val
       }
     ExprBlock =>
-      texpr.children |> fold(init: empty_map(), f: (acc, child) =>
-        map_merge(acc, collect_callable_refs(texpr: child, si: si))
+      texpr.children |> fold(init: empty_set(), f: (acc, child) =>
+        set_union(acc, collect_callable_refs(texpr: child, si: si))
       )
     ExprReturn =>
       match texpr.children |> first {
         Some { value: child } => collect_callable_refs(texpr: child, si: si)
-        None => empty_map()
+        None => empty_set()
       }
     ExprLambda =>
       collect_callable_refs(texpr: lambda_body(texpr: texpr), si: si)
     ExprForEach =>
       let col = collect_callable_refs(texpr: foreach_collection(texpr: texpr), si: si)
-      map_merge(col, collect_callable_refs(texpr: foreach_body(texpr: texpr), si: si))
+      set_union(col, collect_callable_refs(texpr: foreach_body(texpr: texpr), si: si))
     ExprRecordLit =>
-      texpr.children |> fold(init: empty_map(), f: (acc, field) =>
-        map_merge(acc, collect_callable_refs(texpr: arg_value(n: field), si: si))
+      texpr.children |> fold(init: empty_set(), f: (acc, field) =>
+        set_union(acc, collect_callable_refs(texpr: arg_value(n: field), si: si))
       )
-    _ => empty_map()
+    _ => empty_set()
   }
 }
 
