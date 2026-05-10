@@ -819,6 +819,22 @@ let b: Int = a + 2",
 }
 
 #[test]
+fn emit_rust_pairwise_independent_multi_bind_uses_thread_scope() {
+    let out = emit(
+        "let a: Int = 1 + 2
+let b: Int = 3 + 4",
+    );
+    assert!(
+        out.contains("thread::scope"),
+        "expected parallel schedule for pairwise-independent binds; got:\n{out}"
+    );
+    assert!(
+        out.contains("let (a, b):") && out.contains("(i64, i64)"),
+        "expected destructuring tuple bind for parallel batch; got:\n{out}"
+    );
+}
+
+#[test]
 fn emit_rust_preserves_rust_dag_is_the_only_rust_syntax_source() {
     // Structural check: the carrier strings the emitter produced
     // match what rust.dag declared — not some hardcoded Rust-side
