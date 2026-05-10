@@ -23,8 +23,8 @@ use crate::lens_cost::{cost_of, CostLookup};
 use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use crate::types::TypeShape;
 use crate::{
-    analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots, compile_to_dag,
-    default_fixed_point_source, CompileError, DimensionReport,
+    analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots,
+    compile_to_dag, default_fixed_point_source, CompileError, DimensionReport,
 };
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
@@ -2887,7 +2887,14 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
-<<<<<<< HEAD
+        if let Some(result) = self.try_eval_tc1_eta_equivalence_executable(
+            claim,
+            left_carrier,
+            left_name.as_str(),
+            right_name.as_str(),
+        ) {
+            return result;
+        }
         if self.type_ref_normalizes_to_named(left_carrier, "Dag")
             && tc2_church_rosser_strict_fire_report_role_ids(self.dag, left_id, right_id)
         {
@@ -2896,15 +2903,6 @@ impl<'a> TestRunner<'a> {
                 &left_name,
                 &right_name,
             );
-=======
-        if let Some(result) = self.try_eval_tc1_eta_equivalence_executable(
-            claim,
-            left_carrier,
-            left_name.as_str(),
-            right_name.as_str(),
-        ) {
-            return result;
->>>>>>> 2a8440848 (WIP: R3 gate #11: tc1 eta equivalence executable)
         }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
@@ -2914,34 +2912,26 @@ impl<'a> TestRunner<'a> {
         ))
     }
 
-<<<<<<< HEAD
-    /// R3 gate #12 (`tc2_church_rosser_strict_fire.dag`): `BinaryDimensionReportEquals` payload
-    /// references the fixture-local `tc2_church_rosser_strict_fire_left_dimension_report` /
-    /// `tc2_church_rosser_strict_fire_right_dimension_report` `DimensionReport<Dag>` roles.
-    /// The runner materializes one [`DimensionReport::DimensionOk`] per eager applicative
-    /// [`InputEvaluationOrder`] for the claim program's top-level bind and applies the bounded
-    /// confluence receipt in [`tc2_church_rosser_dimension_reports_equivalent_under_binary_equals`].
+    /// R3 §1.8 gate #11 (`tc1_eta_equivalence_executable`): Path A executable receipt.
     ///
-    /// Generic `BinaryDimensionReportEquals` over arbitrary `DimensionReport<C>` producers remains
-    /// NYI at the boundary until substrate producers land.
-    fn eval_tc2_church_rosser_binary_dimension_report_equals_claim(
-        &self,
-        claim: &TestClaimValue,
-        left_report_label: &str,
-        right_report_label: &str,
-    ) -> ClaimResult {
-        if claim.source.trim().is_empty() {
-            return ClaimResult::NotYetImplemented(format!(
-                "BinaryDimensionReportEquals: structural shape is valid for `{left_report_label}` \
-                 and `{right_report_label}`, but executable TC2 Church-Rosser comparison requires a \
-                 non-empty `TestClaim.source` program slice"
-            ));
-=======
-    /// R3 §1.8 gate #11 (`tc1_eta_equivalence_executable`): Path A compares the migrated symbolic-
-    /// cost dimension spine (`analyze_symbolic_cost_dimension`) at two η-pair workflow roots declared
-    /// in `TestClaim.source`. Typed `.dag` refs still carry `DimensionReport<Tc1EtaLensObservation>`
-    /// — runtime receipt uses the live `DimensionReport<SymbolicCost>` analyzer until a dedicated
-    /// `Tc1EtaLensObservation` fold lands.
+    /// **Typed `.dag` authority:** `BinaryDimensionReportEquals` still names
+    /// `DimensionReport<Tc1EtaLensObservation>` — structural envelope only until substrate delivers a
+    /// non-proxy fold (see below).
+    ///
+    /// **Runtime authority (this slice):** the runner compares
+    /// [`crate::analyze_symbolic_cost_dimension`] at two η-pair workflow roots in
+    /// `TestClaim.source` (`tc1_eta_exec_direct` and `tc1_eta_exec_eta_expanded` entry binds). That is a **bounded proxy**:
+    /// `DimensionReport<SymbolicCost>`, not `DimensionReport<Tc1EtaLensObservation>`, so the Pass
+    /// line is an intentional *proxy* until the real carrier fold exists. **P5 / single-authority
+    /// forward:** dissolution + carrier-aligned witness is tracked at **gunbc#1972** (substrate /
+    /// Evaluator canvas-tier producer for `Tc1EtaLensObservation`); this gate is expected to
+    /// migrate off symbolic-cost proxy comparison when #1972 closes the fold path (upgrade the
+    /// assertion body to compare produced `Tc1EtaLensObservation` reports, not `SymbolicCost`).
+    ///
+    /// Comparison uses [`tc1_eta_equivalence_symbolic_cost_reports_equivalent`] — **root
+    /// `composed` `SymbolicCost` only** (not full witness-spine equality), so an η-expanded extra
+    /// call frame cannot false-fail solely on spine length while the root asymptotic bound stays
+    /// identical for this representative.
     fn try_eval_tc1_eta_equivalence_executable(
         &self,
         claim: &TestClaimValue,
@@ -2968,13 +2958,79 @@ impl<'a> TestRunner<'a> {
                  tc1_eta_equivalence_executable requires carrier `Tc1EtaLensObservation`, got {:?}",
                 carrier_decl.name
             )));
->>>>>>> 2a8440848 (WIP: R3 gate #11: tc1 eta equivalence executable)
         }
 
         let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(dag) => dag,
             Err(CompileError::Semantic(dag)) => {
-<<<<<<< HEAD
+                return Some(ClaimResult::Fail(format!(
+                    "tc1_eta_equivalence_executable: claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                )));
+            }
+            Err(err) => {
+                return Some(ClaimResult::Fail(format!(
+                    "tc1_eta_equivalence_executable: claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                )));
+            }
+        };
+
+        let Some(left_bind) = find_bind(
+            &program_dag,
+            TC1_ETA_EXECUTABLE_DIRECT_ENTRY,
+            &claim.file_name,
+        ) else {
+            return Some(ClaimResult::Fail(format!(
+                "tc1_eta_equivalence_executable: missing η-pair entry bind `{TC1_ETA_EXECUTABLE_DIRECT_ENTRY}` in `{}`",
+                claim.file_name
+            )));
+        };
+        let Some(right_bind) =
+            find_bind(&program_dag, TC1_ETA_EXECUTABLE_ETA_ENTRY, &claim.file_name)
+        else {
+            return Some(ClaimResult::Fail(format!(
+                "tc1_eta_equivalence_executable: missing η-pair entry bind `{TC1_ETA_EXECUTABLE_ETA_ENTRY}` in `{}`",
+                claim.file_name
+            )));
+        };
+
+        let left_report = analyze_symbolic_cost_dimension(&program_dag, left_bind.id);
+        let right_report = analyze_symbolic_cost_dimension(&program_dag, right_bind.id);
+
+        Some(tc1_eta_equivalence_symbolic_cost_reports_equivalent(
+            left_report,
+            right_report,
+        ))
+    }
+
+    /// R3 gate #12 (`tc2_church_rosser_strict_fire.dag`): `BinaryDimensionReportEquals` payload
+    /// references the fixture-local `tc2_church_rosser_strict_fire_left_dimension_report` /
+    /// `tc2_church_rosser_strict_fire_right_dimension_report` `DimensionReport<Dag>` roles.
+    /// The runner materializes one [`DimensionReport::DimensionOk`] per eager applicative
+    /// [`InputEvaluationOrder`] for the claim program's top-level bind and applies the bounded
+    /// confluence receipt in [`tc2_church_rosser_dimension_reports_equivalent_under_binary_equals`].
+    ///
+    /// Generic `BinaryDimensionReportEquals` over arbitrary `DimensionReport<C>` producers remains
+    /// NYI at the boundary until substrate producers land.
+    fn eval_tc2_church_rosser_binary_dimension_report_equals_claim(
+        &self,
+        claim: &TestClaimValue,
+        left_report_label: &str,
+        right_report_label: &str,
+    ) -> ClaimResult {
+        if claim.source.trim().is_empty() {
+            return ClaimResult::NotYetImplemented(format!(
+                "BinaryDimensionReportEquals: structural shape is valid for `{left_report_label}` \
+                 and `{right_report_label}`, but executable TC2 Church-Rosser comparison requires a \
+                 non-empty `TestClaim.source` program slice"
+            ));
+        }
+
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
                 return ClaimResult::Fail(format!(
                     "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
                      claim `source` / `{}` failed inference: {:?}",
@@ -3072,48 +3128,6 @@ impl<'a> TestRunner<'a> {
                  (value={left_value:?}) vs right={right_report:?} (value={right_value:?})"
             ))
         }
-=======
-                return Some(ClaimResult::Fail(format!(
-                    "tc1_eta_equivalence_executable: claim `source` / `{}` failed inference: {:?}",
-                    claim.file_name,
-                    dag.diagnostics().iter().collect::<Vec<_>>()
-                )));
-            }
-            Err(err) => {
-                return Some(ClaimResult::Fail(format!(
-                    "tc1_eta_equivalence_executable: claim `source` / `{}` did not compile: {err:?}",
-                    claim.file_name
-                )));
-            }
-        };
-
-        let Some(left_bind) = find_bind(
-            &program_dag,
-            TC1_ETA_EXECUTABLE_DIRECT_ENTRY,
-            &claim.file_name,
-        ) else {
-            return Some(ClaimResult::Fail(format!(
-                "tc1_eta_equivalence_executable: missing η-pair entry bind `{TC1_ETA_EXECUTABLE_DIRECT_ENTRY}` in `{}`",
-                claim.file_name
-            )));
-        };
-        let Some(right_bind) =
-            find_bind(&program_dag, TC1_ETA_EXECUTABLE_ETA_ENTRY, &claim.file_name)
-        else {
-            return Some(ClaimResult::Fail(format!(
-                "tc1_eta_equivalence_executable: missing η-pair entry bind `{TC1_ETA_EXECUTABLE_ETA_ENTRY}` in `{}`",
-                claim.file_name
-            )));
-        };
-
-        let left_report = analyze_symbolic_cost_dimension(&program_dag, left_bind.id);
-        let right_report = analyze_symbolic_cost_dimension(&program_dag, right_bind.id);
-
-        Some(tc1_eta_equivalence_symbolic_cost_reports_equivalent(
-            left_report,
-            right_report,
-        ))
->>>>>>> 2a8440848 (WIP: R3 gate #11: tc1 eta equivalence executable)
     }
 
     fn validate_dimension_report_ref(
@@ -5123,24 +5137,12 @@ fn tc1_eta_equivalence_symbolic_cost_reports_equivalent(
 ) -> ClaimResult {
     match (&left, &right) {
         (
-            DimensionReport::DimensionOk {
-                composed: lc,
-                ..
-            },
-            DimensionReport::DimensionOk {
-                composed: rc,
-                ..
-            },
+            DimensionReport::DimensionOk { composed: lc, .. },
+            DimensionReport::DimensionOk { composed: rc, .. },
         ) if lc == rc => ClaimResult::Pass,
         (
-            DimensionReport::DimensionOk {
-                composed: lc,
-                ..
-            },
-            DimensionReport::DimensionOk {
-                composed: rc,
-                ..
-            },
+            DimensionReport::DimensionOk { composed: lc, .. },
+            DimensionReport::DimensionOk { composed: rc, .. },
         ) => ClaimResult::Fail(format!(
             "tc1_eta_equivalence_executable: η-pair symbolic-cost dimension reports disagree \
              at composed carrier: left={lc:?} right={rc:?}"
