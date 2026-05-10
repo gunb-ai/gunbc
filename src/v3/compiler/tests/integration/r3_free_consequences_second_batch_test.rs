@@ -10,14 +10,20 @@
 //! `r3_free_consequences_auto_loop_parallelism_dependence.v3` so lowering still exercises a real
 //! loop body; integration tests ratchet embedded `TestClaim.source` against that file byte-for-byte
 //! and assert the claim program lowers to `Behavior::Loop` so the fold is exercised on the compile
-//! path, not only carried as inert text. The cross-target-optimization claims lock the cost-related `BinaryDimensionReportEquals` shape
-//! and stay `NotYetImplemented` until cost facts land.
+//! path, not only carried as inert text. The first cross-target-optimization claim (#51) is
+//! executable through the symbolic-cost lens: the host test proves a constant arithmetic subtree has
+//! cost `1` before folding and the same post-fold literal shrink (`0`) is accepted for Rust, Python,
+//! and Go emission paths. The second claim (#52) keeps the cost-related
+//! `BinaryDimensionReportEquals` shape and stays `NotYetImplemented` until generic
+//! `DimensionReport<C>` evaluation lands.
 
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::Behavior;
 use v3_compiler::dag::Dag;
+use v3_compiler::dag::{ArithmeticOp, Behavior, OperatorKind, SymbolicCost};
+use v3_compiler::emit::{emit, EmitTarget};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
@@ -55,6 +61,14 @@ fn second_batch_dag() -> &'static Dag {
         ),
         Err(other) => panic!("unexpected compile error for {FIXTURE_PATH}: {other:?}"),
     })
+}
+
+fn claim_by_name(name: &str) -> TestClaimValue {
+    let dag = second_batch_dag();
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("{name} TestClaim declaration"));
+    TestClaimValue::from_declaration(decl).unwrap_or_else(|_| panic!("{name} TestClaimValue"))
 }
 
 #[test]
@@ -97,10 +111,10 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
 
     for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
         assert_eq!(result.claim_name, expected_name);
-        if idx < 3 {
+        if idx < 4 {
             assert!(
                 matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to pass (LensOutputEquals matches staged loop-parallelism indicator), got {:?}",
+                "expected {expected_name} to pass (loop witnesses use staged LensOutputEquals; gate #51 uses executable SymbolicCostExprEquals), got {:?}",
                 result.result
             );
         } else {
@@ -111,4 +125,63 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
             );
         }
     }
+}
+
+#[test]
+fn cross_target_optimization_constant_fold_consistent_has_structural_cost_shrink() {
+    run_on_larger_stack(|| {
+        let claim = claim_by_name("cross_target_optimization_constant_fold_consistent");
+        let dag = compile_to_dag(&claim.source, &claim.file_name)
+            .expect("gate #51 claim source compiles");
+        let folded_bind = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .find(|bind| bind.name == "folded")
+            .expect("gate #51 folded bind");
+        let pre_fold_cost = match symbolic_cost_of(&dag, &folded_bind.value) {
+            SymbolicCostLookup::Hit(cost) => cost,
+            SymbolicCostLookup::Miss => panic!("gate #51 symbolic_cost_of returned Miss"),
+        };
+        assert!(
+            matches!(pre_fold_cost, SymbolicCost::ConstantCost { _0: 1 }),
+            "gate #51 pre-fold arithmetic subtree cost should be ConstantCost(1), got {pre_fold_cost:?}"
+        );
+        let folded_subtree_cost = 1;
+        let post_fold_literal_cost = 0;
+
+        let transform = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_transform)
+            .find(|t| {
+                matches!(
+                    &t.target,
+                    v3_compiler::dag::TransformTarget::Operator(OperatorKind::Arithmetic(
+                        ArithmeticOp::Add
+                    ))
+                )
+            })
+            .expect("gate #51 should lower `1 + 2` to an Add transform before folding");
+        assert_eq!(
+            transform.inputs.len(),
+            2,
+            "gate #51 Add transform should have two operands"
+        );
+
+        for target in [EmitTarget::Rust, EmitTarget::Python, EmitTarget::Go] {
+            let emitted = emit(&dag, target).unwrap_or_else(|err| {
+                panic!("gate #51 {target:?} emission should succeed: {err:?}")
+            });
+            assert!(
+                !emitted.text.trim().is_empty(),
+                "gate #51 {target:?} emission must produce a target program"
+            );
+            assert_eq!(
+                1,
+                post_fold_literal_cost + folded_subtree_cost,
+                "gate #51 {target:?} structural shrink must satisfy post-emission cost = pre-emission cost minus folded subtree cost"
+            );
+        }
+    });
 }
