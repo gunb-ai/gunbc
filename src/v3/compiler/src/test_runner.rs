@@ -2053,9 +2053,13 @@ fn build_tc2_church_rosser_strategy_dimension_report(
     Ok((report, value))
 }
 
-/// Structural equality for the TC2 Church-Rosser **host slice**: confluence requires identical
-/// evaluated top-level values, distinct strategy keys in `dimension_name`, and matching composed
-/// `Dag` shape (same lowered program under both strategies).
+/// Receipt for the TC2 Church-Rosser **host slice** (bounded runner bridge).
+///
+/// Load-bearing: identical evaluated top-level [`Value`]s under `LeftFirst` vs `RightFirst`.
+/// Envelope: both sides are [`DimensionReport::DimensionOk`] with empty witness lists (scaffold),
+/// and distinct `dimension_name` strings so the two requested strategies were exercised.
+/// `composed` is always the same lowered-program `Dag` clone by construction, so it is not used
+/// for inequality here (a future substrate producer would supply non-vacuous witnesses / carriers).
 fn tc2_church_rosser_dimension_reports_equivalent_under_binary_equals(
     left: &DimensionReport<Dag>,
     left_value: &Value,
@@ -2068,22 +2072,16 @@ fn tc2_church_rosser_dimension_reports_equivalent_under_binary_equals(
     match (left, right) {
         (
             DimensionReport::DimensionOk {
-                composed: lc,
                 witnesses: lw,
                 dimension_name: na,
+                ..
             },
             DimensionReport::DimensionOk {
-                composed: rc,
                 witnesses: rw,
                 dimension_name: nb,
+                ..
             },
-        ) => {
-            na != nb
-                && lw.is_empty()
-                && rw.is_empty()
-                && lc.nodes().len() == rc.nodes().len()
-                && lc.declarations().len() == rc.declarations().len()
-        }
+        ) => na != nb && lw.is_empty() && rw.is_empty(),
         _ => false,
     }
 }
@@ -2897,8 +2895,8 @@ impl<'a> TestRunner<'a> {
     /// references the fixture-local `tc2_church_rosser_strict_fire_left_dimension_report` /
     /// `tc2_church_rosser_strict_fire_right_dimension_report` `DimensionReport<Dag>` roles.
     /// The runner materializes one [`DimensionReport::DimensionOk`] per eager applicative
-    /// [`InputEvaluationOrder`] for the claim program's top-level bind and requires structural
-    /// agreement plus identical evaluated values (confluence slice).
+    /// [`InputEvaluationOrder`] for the claim program's top-level bind and applies the bounded
+    /// confluence receipt in [`tc2_church_rosser_dimension_reports_equivalent_under_binary_equals`].
     ///
     /// Generic `BinaryDimensionReportEquals` over arbitrary `DimensionReport<C>` producers remains
     /// NYI at the boundary until substrate producers land.
