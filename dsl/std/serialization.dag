@@ -44,9 +44,13 @@ type VariantNaming
 // TaggedVariant: internally tagged objects ({"_variant": "Name"}) — .dag default.
 // InternallyTaggedObject: serde-style internally tagged payload objects with an
 // explicit discriminator field ({"type": "text", ...}).
+// UntaggedVariant: serde-style untagged alternatives. Use only when the wire
+// shape is determined by payload JSON shape rather than a discriminator field
+// (for example string-or-array provider request fields).
 type VariantEncoding
   = StringVariant { naming: VariantNaming }
   | InternallyTaggedObject { tag_field: String, naming: VariantNaming }
+  | UntaggedVariant
   | TaggedVariant
 
 // Declaration-level override. Selection order is:
