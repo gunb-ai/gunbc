@@ -7,7 +7,7 @@
 //! equivalent `.dag` programs can own the artifact projections.
 //!
 //! P5 bridge bound: `project_openapi_yaml`, `project_markdown_documentation`,
-//! and `project_rust_backend_service` are one fixture-scoped R3
+//! `project_sql_ddl_schema`, and `project_rust_backend_service` are one fixture-scoped R3
 //! T-Omni-Shape-B receipt over `RestEndpointBinding` rows. They are not new
 //! compiler targets and must not grow into a general backend framework.
 //! Dissolution trigger: queued brief
@@ -253,6 +253,54 @@ pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenAp
             }
         }
         out.push_str(" |\n");
+    }
+    Ok(out)
+}
+
+pub fn project_sql_ddl_schema(dag: &Dag) -> Result<String, ProjectOpenApiError> {
+    let routes = extract_rest_routes(dag)?;
+    let mut methods = BTreeSet::new();
+    for route in &routes {
+        methods.insert(route.method.as_str());
+    }
+
+    let mut out = String::from(
+        "-- GunBC generated service route schema.\n\
+         -- Shape B SQL DDL projection; not a compiler target.\n\
+         CREATE TABLE omni_service_routes (\n\
+           method TEXT NOT NULL,\n\
+           path_template TEXT NOT NULL,\n",
+    );
+    if !methods.is_empty() {
+        out.push_str("  CHECK (method IN (");
+        for (index, method) in methods.iter().enumerate() {
+            if index > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(&sql_string_literal(method));
+        }
+        out.push_str(")),\n");
+    }
+    out.push_str(
+        "  PRIMARY KEY (method, path_template)\n\
+         );\n\n\
+         INSERT INTO omni_service_routes (method, path_template) VALUES\n",
+    );
+    if routes.is_empty() {
+        out.push_str("  -- no routes declared\n");
+        return Ok(out);
+    }
+    for (index, route) in routes.iter().enumerate() {
+        out.push_str("  (");
+        out.push_str(&sql_string_literal(&route.method));
+        out.push_str(", ");
+        out.push_str(&sql_string_literal(&route.path));
+        out.push(')');
+        if index + 1 == routes.len() {
+            out.push_str(";\n");
+        } else {
+            out.push_str(",\n");
+        }
     }
     Ok(out)
 }
@@ -589,6 +637,10 @@ fn single_string_payload(payload: &[FieldValue]) -> Option<String> {
 }
 
 fn yaml_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn sql_string_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 

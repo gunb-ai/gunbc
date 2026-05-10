@@ -16,7 +16,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::omni_shape_b_openapi::{
     extract_rest_routes, project_markdown_documentation, project_openapi_yaml,
-    project_rust_backend_service, RestRoute,
+    project_rust_backend_service, project_sql_ddl_schema, RestRoute,
 };
 
 static BACKEND_ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
@@ -314,6 +314,53 @@ fn markdown_documentation_routes(markdown: &str) -> BTreeSet<RestRoute> {
         .collect()
 }
 
+fn sql_ddl_routes(sql: &str) -> BTreeSet<RestRoute> {
+    sql.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let row = line.strip_prefix('(')?;
+            let row = row.strip_suffix("),").or_else(|| row.strip_suffix(");"))?;
+            let (method, path) = parse_sql_route_row(row);
+            Some(RestRoute {
+                method,
+                path,
+                path_parameters: vec![],
+            })
+        })
+        .collect()
+}
+
+fn parse_sql_route_row(row: &str) -> (String, String) {
+    let mut chars = row.chars().peekable();
+    let method = parse_sql_string(&mut chars);
+    assert_eq!(chars.next(), Some(','));
+    assert_eq!(chars.next(), Some(' '));
+    let path = parse_sql_string(&mut chars);
+    assert!(
+        chars.next().is_none(),
+        "SQL route row contains exactly two string values"
+    );
+    (method, path)
+}
+
+fn parse_sql_string(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
+    assert_eq!(chars.next(), Some('\''));
+    let mut value = String::new();
+    while let Some(ch) = chars.next() {
+        if ch == '\'' {
+            if chars.peek() == Some(&'\'') {
+                value.push('\'');
+                chars.next();
+            } else {
+                return value;
+            }
+        } else {
+            value.push(ch);
+        }
+    }
+    panic!("unterminated SQL string literal");
+}
+
 fn markdown_code_cell_value(cell: &str) -> String {
     let delimiter_len = cell.chars().take_while(|ch| *ch == '`').count();
     assert!(delimiter_len > 0, "Markdown code cell is code-formatted");
@@ -420,12 +467,13 @@ fn omni_layers_share_one_node_tree() {
         project_rust_backend_service(&dag).expect("backend service projects from shared DAG");
     let _markdown =
         project_markdown_documentation(&dag).expect("Shape B Markdown projects from shared DAG");
+    let _sql = project_sql_ddl_schema(&dag).expect("Shape B SQL DDL projects from shared DAG");
     let _rust = emit_rust(&dag).expect("Shape A Rust emit consumes shared DAG");
 
     assert_eq!(
         compile_count, 1,
         "Shape A + Shape B layers must consume the same compile_to_dag result \
-         (routes + OpenAPI + backend + Markdown + emit_rust); recompiling per layer would \
+         (routes + OpenAPI + backend + Markdown + SQL DDL + emit_rust); recompiling per layer would \
          break the structural-fold receipt."
     );
 }
@@ -501,6 +549,53 @@ fn omni_openapi_backend_emission_demo_generates_runnable_matching_backend() {
         backend_probe(&backend_bin, "POST", "/secrets/api/key:addVersion"),
         "404"
     );
+}
+
+#[test]
+fn omni_sql_ddl_alternative_demo_generates_schema_matching_backend() {
+    let dag = compile_omni_service_fixture();
+
+    let canonical_routes = extract_rest_routes(&dag).expect("canonical route projection extracts");
+    let backend_source =
+        project_rust_backend_service(&dag).expect("backend service projects from shared DAG");
+    let (_tmp_dir, backend_bin) = compile_backend_service(&backend_source);
+    let ddl = project_sql_ddl_schema(&dag).expect("SQL DDL projects from shared DAG");
+    let ddl_routes = sql_ddl_routes(&ddl);
+    let canonical_without_parameters: BTreeSet<_> = canonical_routes
+        .iter()
+        .map(|route| RestRoute {
+            method: route.method.clone(),
+            path: route.path.clone(),
+            path_parameters: vec![],
+        })
+        .collect();
+
+    assert!(ddl.starts_with("-- GunBC generated service route schema.\n"));
+    assert!(ddl.contains("CREATE TABLE omni_service_routes (\n"));
+    assert!(ddl.contains("  CHECK (method IN ('GET', 'POST')),\n"));
+    assert!(ddl.contains("  PRIMARY KEY (method, path_template)\n"));
+    assert!(ddl.contains("('GET', '/users/{id}')"));
+    assert_eq!(
+        ddl_routes, canonical_without_parameters,
+        "SQL DDL route schema must list exactly the backend route exposure set \
+         extracted from the same compiled DAG."
+    );
+
+    for route in &canonical_routes {
+        let concrete_path = route
+            .path
+            .replace("{id}", "42")
+            .replace("{org}", "gunb-ai")
+            .replace("{repo}", "gunbc")
+            .replace("{secret_name}", "api-key");
+        assert_eq!(
+            backend_probe(&backend_bin, &route.method, &concrete_path),
+            "200",
+            "generated backend implements SQL schema route {} {}",
+            route.method,
+            concrete_path
+        );
+    }
 }
 
 #[test]
