@@ -19,14 +19,16 @@ fn parse_ok(path: &str) -> Rc<PathTemplate> {
 }
 
 fn derive_result(name: &str, method: &str, path: &str) -> Rc<DeriveOpEffectResult> {
-    derive_op_effect(name.to_string(), &method.to_string(), path.to_string())
+    let method_str = method.to_string();
+    derive_op_effect_from_strings(name.to_string(), &method_str, path.to_string())
 }
 
 fn derive(name: &str, method: &str, path: &str) -> Rc<DerivedOpEffect> {
-    match &*derive_result(name, method, path) {
-        DeriveOpEffectResult::DerivedEffect { effect } => effect.clone(),
-        other => panic!("expected derived effect, got {other:?}"),
-    }
+    let m = parse_http_method(&method.to_string()).unwrap_or_else(|| {
+        panic!("expected parseable HTTP method for derive({name:?}, {method:?}, {path:?})")
+    });
+    let p = parse_ok(path);
+    derive_op_effect(name.to_string(), &m, &p)
 }
 
 fn check(op: &Rc<DerivedOpEffect>, idempotent: bool, readonly: bool) -> Rc<ModifierCheck> {

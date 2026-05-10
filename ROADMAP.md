@@ -376,7 +376,7 @@ Per-row tagging is a scheduled follow-up sweep — **trigger:** post-merge of th
 ### P1 — fabrication / fail-open boundaries
 
 - **http_path.dag `None => ""` fabrications**: `dsl/std/http_path.dag:37-69` silently normalizes malformed `{...}` segments to empty strings. Dissolution: parser returns `Option` / `Result`, caller handles.
-- **effects.dag reconstructs `HttpMethod` and `PathTemplate` from strings**: `dsl/std/effects.dag:214-223, 270-287` reparses already-modeled structures. Dissolution: `derive_op_effect` parameterized by the typed transport declaration, not `(method_str, path_str)`.
+- **effects.dag reconstructs `HttpMethod` and `PathTemplate` from strings**: ~~`dsl/std/effects.dag:214-223, 270-287` reparses already-modeled structures. Dissolution: `derive_op_effect` parameterized by the typed transport declaration, not `(method_str, path_str)`.~~ **Dissolved (gunbc#2470):** `derive_op_effect(operation_name, HttpMethod, PathTemplate)` is structural; `derive_op_effect_from_strings` parses once at the HTTP-string boundary.
 - **`ResourceHandle` forgeable despite opacity claim**: `dsl/std/resources.dag:18-25` documents "only compiler's acquire nodes can mint these" but carries plain-record fields (user code can construct arbitrary handles). Dissolution: witness-carrier + private constructor, or typed opaque handle per Track 9 pattern.
 
 ### P2 — structural compression (biggest ROI)

@@ -77,7 +77,7 @@ From PR #2358 §8 meta-finding cycle (3 sha windows: b09e0c8 / 1211e453 / cf1d52
 | 3 | `Map<String, Bool>` as set across graph/syntax/node files (`set_has` ignores stored bool) | Class F — missed algebraic structure (Set<A> declared in std but bypassed) |
 | 4 | `PartitionResult` bypassed by anonymous return type | Class G — small duplicate-authority cleanup |
 | 5 | `ComposedEffect { idempotent, breaking_operation }` illegal product | Class C — illegal-state-representable |
-| 6 | `derive_op_effect(method_str, path_str)` string parser at structural boundary | Class C — string-keyed dispatch over typed carriers |
+| 6 | ~~`derive_op_effect(method_str, path_str)` string parser at structural boundary~~ — **resolved:** typed `derive_op_effect` + `derive_op_effect_from_strings` (gunbc#2470) | Class C — string-keyed dispatch over typed carriers |
 
 ### Source 5: 4 dispatched bug-fix briefs (PR #2373 merged; durable in docs/briefs/)
 

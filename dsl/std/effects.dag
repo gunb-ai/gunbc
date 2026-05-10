@@ -232,14 +232,9 @@ type DerivedOpEffect {
   shape: EffectShape
 }
 
-// 🟡 SCAFFOLD. This coproduct keeps the derivation boundary fail-closed while
-// the caller surface still uses string inputs and has not yet been rewired to
-// a shared typed compiler diagnostic/result boundary. Richer source exists:
-// unknown-method and malformed-path failures should eventually surface through
-// that single boundary-owned channel instead of through a local derivation enum.
-// Dissolution trigger: the effect-derivation entrypoint stops returning local
-// stringly boundary errors because callers consume typed transport facts and
-// report failures through the shared compiler diagnostic/result carrier.
+// Result of `derive_op_effect_from_strings` — HTTP surface parses strings once,
+// then delegates to typed `derive_op_effect`. Unknown method / malformed path
+// are transport-parse failures, not effect-shape derivation failures.
 type DeriveOpEffectResult
   = DerivedEffect { effect: DerivedOpEffect }
   | UnknownHttpMethodInput { operation_name: String, method_str: String }
@@ -291,6 +286,20 @@ fn derive_effect_shape(
 
 fn derive_op_effect(
   operation_name: String,
+  method: HttpMethod,
+  path: PathTemplate
+) -> DerivedOpEffect {
+  let shape = derive_effect_shape(method: method, path: path)
+  DerivedOpEffect {
+    operation_name: operation_name,
+    method: method,
+    path_template: path,
+    shape: shape
+  }
+}
+
+fn derive_op_effect_from_strings(
+  operation_name: String,
   method_str: String,
   path_str: String
 ) -> DeriveOpEffectResult {
@@ -302,15 +311,14 @@ fn derive_op_effect(
       }
     Some { value: method } => {
       match parse_path_template(raw: path_str) {
-        ParsedPathTemplate { template: path } => {
-          let shape = derive_effect_shape(method: method, path: path)
-          DerivedEffect { effect: DerivedOpEffect {
-            operation_name: operation_name,
-            method: method,
-            path_template: path,
-            shape: shape
-          } }
-        }
+        ParsedPathTemplate { template: path } =>
+          DerivedEffect {
+            effect: derive_op_effect(
+              operation_name: operation_name,
+              method: method,
+              path: path
+            )
+          }
         MalformedPathTemplate { raw: raw_path, segment: segment, reason: reason } =>
           MalformedPathInput {
             operation_name: operation_name,

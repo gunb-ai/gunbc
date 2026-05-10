@@ -45,7 +45,7 @@ import v3.spec.v3_l1 { DeclarationRef }
 //   - `analyze_workflow` / `analyze_parallelism`
 //     (`src/v3/compiler/src/workflow_idempotency.rs`,
 //     `workflow_parallelism.rs`) derive `OperationEffect` per
-//     `std.effects::derive_op_effect(method, path)` from loaded `Operation`
+//     `std.effects::derive_op_effect(operation_name, method, path)` from loaded `Operation`
 //     records; authored `lane2_workflow` retires.
 //   - `OperationEffect` substrate type
 //     (`src/v3/compiler/src/dag/effects.rs`, `src/v3/std/effects.dag`)
@@ -64,8 +64,8 @@ import v3.spec.v3_l1 { DeclarationRef }
 type InputField {}
 
 // 🟢 TERMINAL at PR-α scope. Carries the structural facts
-// `std.effects::derive_op_effect(method_str, path_str)` (see `effects.dag`
-// line 707) needs to derive `OperationEffect.shape` from a callable's REST
+// `std.effects::derive_op_effect(operation_name, method, path)` (see `effects.dag`)
+// needs to derive `OperationEffect.shape` from a callable's REST
 // realization: the HTTP verb, and the path template whose last segment
 // drives the create-vs-upsert-vs-delete branch via
 // `last_path_param(template)`. `path` reuses the upstream `PathTemplate`

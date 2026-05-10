@@ -39,7 +39,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | REST_OPS `CreateComment` test-table drift | 2026-04 | Grounding GitHub extdeps | Retired | Dissolved: extdep authority via `all_parsed_extdep_rest_ops()` consumed at `src/v2/tests/src/effects.rs:255`; ratchet at `effects.rs:524 create_comment_rest_path_matches_github_issues_comments_api` enforces `/issues/{issue_number}` path. ROADMAP P0 row removed. |
 | `__BUG_NO_PROFILE_...` sentinel | 2026-04 | PB / fail-closed | Retired | Dissolved: `container_param_name_required` removed; `container_param_name` returns `String?` at `dsl/std/types.dag:103`; callers `match` the Option; sentinel literal absent from src/+dsl/; ratchet at `src/v2/tests/src/bug_sentinel_ratchet.rs`. ROADMAP P0 row removed. |
 | `http_path.dag` `None => ""` | 2026-04 | Grounding / fail-closed | Open | Parser returns `Option` / `Result`. |
-| `effects.dag` reparses typed transport from strings | 2026-04 | Grounding / effects | Open | `derive_op_effect` consumes typed transport declaration. |
+| `effects.dag` reparses typed transport from strings | 2026-04 | Grounding / effects | Closed | gunbc#2470 — typed `derive_op_effect(HttpMethod, PathTemplate)`; strings only via `derive_op_effect_from_strings`. |
 | Forgeable `ResourceHandle` | 2026-04 | Substrate resources | Open | Opaque/private constructor or witness-carrier handle. |
 | Hand-rolled lattice instances | 2026-04 | Substrate + Verification | Open | Declare real algebra inhabitants or weaken claims; law witnesses close. |
 | `languages.dag` vs per-target emit tables | 2026-04 | Grounding LanguageSpec | Open | Emit consumes `languages.dag`; per-target duplicates dissolve. |

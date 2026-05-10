@@ -18,6 +18,7 @@ import std.effects {
   parse_http_method,
   derive_effect_shape,
   derive_op_effect,
+  derive_op_effect_from_strings,
   check_modifier_vs_derivation,
   generate_idempotency_obligations,
   is_idempotent_effect,
@@ -38,7 +39,7 @@ fn re_export_derive_op_effect(
   method_str: String,
   path_str: String
 ) -> DeriveOpEffectResult {
-  derive_op_effect(
+  derive_op_effect_from_strings(
     operation_name: operation_name,
     method_str: method_str,
     path_str: path_str

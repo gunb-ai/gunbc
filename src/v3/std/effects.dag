@@ -423,11 +423,9 @@ type OperationEffect {
   shape: EffectShape
 }
 
-// 🟡 SCAFFOLD. Mirrored staged receipt for the temporary derivation boundary
-// coproduct. Richer source exists: once v3 routes unknown-method and malformed-
-// path failures through the shared compiler diagnostic/result boundary and the
-// string-input bridge dissolves, this local enum should disappear in favor of
-// that boundary-owned channel.
+// Result of `derive_op_effect_from_strings`: HTTP surface parses strings once,
+// then delegates to typed `derive_op_effect`. Unknown method / malformed path
+// are transport-parse failures.
 type DeriveOpEffectResult
   = DerivedEffect { effect: OperationEffect }
   | UnknownHttpMethodInput { operation_name: String, method_str: String }
@@ -721,6 +719,17 @@ fn derive_effect_shape(
 
 fn derive_op_effect(
   operation_name: String,
+  method: HttpMethod,
+  path: PathTemplate
+) -> OperationEffect {
+  OperationEffect {
+    operation_name: operation_name,
+    shape: derive_effect_shape(method: method, path: path)
+  }
+}
+
+fn derive_op_effect_from_strings(
+  operation_name: String,
   method_str: String,
   path_str: String
 ) -> DeriveOpEffectResult {
@@ -734,13 +743,11 @@ fn derive_op_effect(
       match parse_path_template(raw: path_str) {
         ParsedPathTemplate { template: path } =>
           DerivedEffect {
-            effect: OperationEffect {
+            effect: derive_op_effect(
               operation_name: operation_name,
-              shape: derive_effect_shape(
-                method: method,
-                path: path
-              )
-            }
+              method: method,
+              path: path
+            )
           }
         MalformedPathTemplate { raw: raw_path, segment: segment, reason: reason } =>
           MalformedPathInput {
