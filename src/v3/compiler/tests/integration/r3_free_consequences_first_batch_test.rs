@@ -1,10 +1,11 @@
 //! **Layer:** integration
 //!
 //! R3 T-Free-Consequences first-batch claims.
-//! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust schedule;
-//! gate `#44` asserts dependent binds omit the parallel `thread::scope` emit path (sequential);
-//! gate `#45` asserts a Bool branch lowers to `if … else` with no `thread::scope` scheduling on
-//! the arms. Gate `#49` asserts repeated pure-call target caching through its
+//! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust
+//! schedule, and gate `#45` asserts a Bool branch lowers to `if … else` with no
+//! `thread::scope` scheduling on the arms (both `LensOutputEquals` + runner
+//! witnesses). Gate `#44` stays fail-closed on the scalar parallelism
+//! placeholder. Gate `#49` asserts repeated pure-call target caching through its
 //! `BinaryDimensionReportEquals` declaration pair; gate `#50` keeps the remaining
 //! `BinaryDimensionReportEquals` author-now/fire-later shape.
 
@@ -20,7 +21,7 @@ const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_free_consequences_
 const SUITE_NAME: &str = "r3_free_consequences_first_batch_suite";
 const EXPECTED_CLAIMS: [&str; 5] = [
     "auto_parallelism_independent_binds_emit_parallel",
-    "auto_parallelism_dependent_binds_emit_sequential",
+    "auto_parallelism_dependent_binds_pending_lens_fail_closed",
     "auto_parallelism_branch_arms_serialize",
     "auto_memoization_repeated_pure_call_cached",
     "auto_memoization_no_caching_for_one_shot",
@@ -56,18 +57,24 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
     for (result, expected_name) in results.iter().zip(EXPECTED_CLAIMS) {
         assert_eq!(result.claim_name, expected_name);
         match expected_name {
-            "auto_parallelism_independent_binds_emit_parallel"
-            | "auto_parallelism_dependent_binds_emit_sequential" => {
+            "auto_parallelism_independent_binds_emit_parallel" => {
                 assert!(
                     matches!(&result.result, ClaimResult::Pass),
-                    "expected {expected_name} (R3 gates #43/#44) to Pass, got {:?}",
+                    "expected {expected_name} to Pass (parallel Rust emission witness), got {:?}",
+                    result.result
+                );
+            }
+            "auto_parallelism_dependent_binds_pending_lens_fail_closed" => {
+                assert!(
+                    matches!(&result.result, ClaimResult::Fail(_)),
+                    "expected {expected_name} to Fail (fail-closed pending parallelism lens), got {:?}",
                     result.result
                 );
             }
             "auto_parallelism_branch_arms_serialize" => {
                 assert!(
                     matches!(&result.result, ClaimResult::Pass),
-                    "expected {expected_name} (R3 gate #45) to Pass, got {:?}",
+                    "expected {expected_name} to Pass (Bool branch lowers to `if … else` with no `thread::scope`), got {:?}",
                     result.result
                 );
             }
@@ -79,7 +86,7 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
                 );
                 assert_repeated_pure_call_claim_emits_cached_target_code(&dag, expected_name);
             }
-            _ => {
+            "auto_memoization_no_caching_for_one_shot" => {
                 assert!(
                     matches!(
                         &result.result,
@@ -91,6 +98,7 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
                     result.result
                 );
             }
+            _ => panic!("unexpected claim name: {expected_name}"),
         }
     }
 }

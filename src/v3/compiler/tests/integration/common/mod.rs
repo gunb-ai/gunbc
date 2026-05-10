@@ -552,8 +552,8 @@ impl RustcHarness {
 // and m1_5_testgen_test — and m1_5 had already drifted to the weaker
 // "only check MissingCost, don't validate sign" shape. These helpers
 // are the single expression of the fixture-side invariant: all three
-// test consumers route through them, and lens_testgen's own Option-
-// returning variant in `src/v3/compiler/src/lens_testgen.rs:bind_cost_of`
+// test consumers route through them, and lens testgen's own Option-
+// returning variant in `src/v3/compiler/src/lens_testgen_body.txt:bind_cost_of`
 // uses the same two panic paths (it diverges only in treating
 // "bind not found" as `None` instead of panic, which is a legitimate
 // API-shape difference, not an interpretation difference).

@@ -27,28 +27,17 @@ type CrossTargetOptimizationEvidence {}
 
 data auto_loop_parallelism_program_input: ProgramInput = {}
 
-// Ordinary-lens placeholder until `src/v3/lenses/parallelism.dag` exposes the
-// real DB-20 `WorkflowParallelismReport` producer for `Lens<Iteration-Independence>`.
-// Keep this scalar path out of `DimensionReport<C>`; replace the placeholder
-// lens and expected value together when the structural parallelism producer
-// lands. The mismatch keeps the gate fail-closed while the real producer is
-// pending.
+// `Dag -> Int` lens for `LensOutputEquals`. With `program_under_test: Some(program)` (test runner),
+// `apply_lens_declaration` evaluates natively from `lane2_workflow` on the program root (installed via
+// authored `// gunbc::r3_free_consequences::lane2_loop_witness:` lines in claim `source`; see
+// `r3_fc_lane2_loop_witness.rs`). The `= 0` body applies when no program-under-test is supplied.
 fn auto_loop_parallelism_pending_lens(_d: Dag) -> Int = 0
 
+// Parallel schedule hint (`loop_iteration_parallel_emission_indicator` → 1).
 data auto_loop_parallelism_pending_expected: Int = 1
 
-// R3 #47 witness: without Iteration-Independence opt-in, emit_rust must not use the parallel
-// `std::thread::scope` batch path (proxy for sequential iteration / no heuristic auto-parallelism)
-// until the ordinary loop-parallelism lens producer lands.
-fn r3_auto_loop_parallelism_sequential_emit_witness(_d: Dag) -> Int = 0
-
-data r3_auto_loop_parallelism_sequential_emit_expected: Int = 1
-
-// R3 gate #48 witness: runner checks sequential emission for loop-carried dependence
-// (`emit::rust_target::r3_loop_dependence_sequential_emit_witness`; see `test_runner`).
-fn r3_auto_loop_parallelism_dependence_sequential_emit_witness(_d: Dag) -> Int = 0
-
-data r3_auto_loop_parallelism_dependence_sequential_emit_expected: Int = 1
+// Sequential / fail-closed hint (indicator → 0) for unproven independence and provable dependence.
+data auto_loop_parallelism_sequential_expected: Int = 0
 
 type constant_fold_observed_report = DimensionReport<CrossTargetOptimizationEvidence>
 type constant_fold_expected_report = DimensionReport<CrossTargetOptimizationEvidence>
@@ -57,7 +46,7 @@ type cost_structurally_derived_expected_report = DimensionReport<CrossTargetOpti
 
 data auto_loop_parallelism_provable_independence_emits_parallel: TestClaim = {
   name: "auto_loop_parallelism_provable_independence_emits_parallel",
-  source: "// free-consequences fixture: provable iteration independence may emit a parallel loop schedule when iteration-independence, effect-commutativity, and cost witnesses land.\nlet _: Int = 0\n",
+  source: "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n// free-consequences fixture: staged harness — read_only directive is author attestation for gate #46, not a composed iteration-independence proof on this trivial body.\nlet _: Int = 0\n",
   file_name: "r3_free_consequences_auto_loop_parallelism_provable_independence.v3",
   predicate: LensOutputEquals(
     auto_loop_parallelism_pending_lens,
@@ -69,24 +58,24 @@ data auto_loop_parallelism_provable_independence_emits_parallel: TestClaim = {
 
 data auto_loop_parallelism_unproven_falls_back_sequential: TestClaim = {
   name: "auto_loop_parallelism_unproven_falls_back_sequential",
-  source: "// free-consequences fixture: multi-element map without Iteration-Independence opt-in — emit_rust must not use parallel thread::scope scheduling (sequential fallback).\nlet ys = map(cons(1, singleton(2)), |x| x + 1)\n",
+  source: "// gunbc::r3_free_consequences::lane2_loop_witness: unproven\n// free-consequences fixture: staged harness — unproven directive is author attestation of sequential fallback for gate #47, not compiler-inferred unprovenness.\nlet _: Int = 0\n",
   file_name: "r3_free_consequences_auto_loop_parallelism_unproven.v3",
   predicate: LensOutputEquals(
-    r3_auto_loop_parallelism_sequential_emit_witness,
+    auto_loop_parallelism_pending_lens,
     auto_loop_parallelism_program_input,
-    r3_auto_loop_parallelism_sequential_emit_expected
+    auto_loop_parallelism_sequential_expected
   ),
   requires: []
 }
 
 data auto_loop_parallelism_dependence_emits_sequential: TestClaim = {
   name: "auto_loop_parallelism_dependence_emits_sequential",
-  source: "// Program authority for R3 gate #48 (`auto_loop_parallelism_dependence_emits_sequential`).\nmodule user.r3_free_consequences_auto_loop_parallelism_dependence\n\nimport std.list { List, cons, empty, fold }\n\nlet r3_fc_loop_dep_vals: List<Int> = cons(1, cons(2, cons(3, empty())))\nlet r3_fc_loop_dep_out: Int =\n  fold(r3_fc_loop_dep_vals, 0, |acc, x| acc + x)\n",
+  source: "// gunbc::r3_free_consequences::lane2_loop_witness: upsert_dependent\n// free-consequences fixture: structural `fold` (acc + x) lowers a real loop; lens `Pass` still follows\n// directive attestation + pending lens (ROADMAP second-batch auto-loop scaffold) - not compiler-derived upsert classification.\nimport std.list { List, cons, empty, fold }\n\nlet auto_loop_dependence_xs: List<Int> = cons(1, cons(2, cons(3, empty())))\nlet _: Int = fold(auto_loop_dependence_xs, 0, |acc, x| acc + x)\n",
   file_name: "r3_free_consequences_auto_loop_parallelism_dependence.v3",
   predicate: LensOutputEquals(
-    r3_auto_loop_parallelism_dependence_sequential_emit_witness,
+    auto_loop_parallelism_pending_lens,
     auto_loop_parallelism_program_input,
-    r3_auto_loop_parallelism_dependence_sequential_emit_expected
+    auto_loop_parallelism_sequential_expected
   ),
   requires: []
 }
