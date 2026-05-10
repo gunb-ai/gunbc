@@ -16,9 +16,11 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    literal_decimal_i64, sequential, Behavior, Dag, Declaration, DeclarationId, FieldValue,
-    LiteralBits, SymbolicCost, ValueBody,
+    literal_decimal_i64, per_call_descent_evidence, sequential, ArithmeticOp, Behavior,
+    ComparisonOp, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, OperatorKind,
+    SymbolicCost, TransformTarget, ValueBody,
 };
+use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::lens_cost_target_realization::{
@@ -65,6 +67,16 @@ fn realization_row_cost_int(decl: &Declaration) -> i64 {
         }
     }
     panic!("no `cost` field on realization row {:?}", decl.name);
+}
+
+fn mentions_linear(cost: &SymbolicCost) -> bool {
+    match cost {
+        SymbolicCost::LinearCost { .. } => true,
+        SymbolicCost::SumCost { _0: terms } | SymbolicCost::ProductCost { _0: terms } => {
+            terms.iter().any(|term| mentions_linear(term.as_ref()))
+        }
+        _ => false,
+    }
 }
 
 #[test]
@@ -276,6 +288,126 @@ fn realization_cost_table_filters_by_language() {
             .map(|entry| entry.declaration),
         Some(named_id(&dag, "go_int"))
     );
+}
+
+/// R3 gate #70 — representative target-program receipt.
+///
+/// This exercises the same structural composition the lane promises end-to-end:
+/// compile a source program, emit a Rust target program, read algebra-level
+/// cost from the symbolic-cost lens, read target primitive costs from the Rust
+/// `LanguageSpec` realization table, then compose the two with the
+/// `SymbolicCost` sequential algebra.
+#[test]
+fn cost_lens_demonstration_composes_representative_rust_program_cost() {
+    run_with_cost_target_realization_stack(|| {
+        let boot = generated_full_bootstrap_dag();
+        let rust_language = named_id(&boot, "rust_language");
+        let int_decl = named_id(&boot, "Int");
+        let add_op = field_ref(&boot, "rust_int_add", "op");
+        let sub_op = field_ref(&boot, "rust_int_sub", "op");
+        let eq_op = field_ref(&boot, "rust_int_eq", "op");
+        let table = RealizationCostTable::for_language(&boot, rust_language)
+            .expect("rust realization-cost table should build from LanguageSpec rows");
+
+        let user = compile_to_dag(
+            "\
+fn countdown(n: Int) -> Int =
+  if n == 0 then 0 else countdown(n - 1)
+
+let demo: Int = countdown(3) + 1
+",
+            "r3_gate70_cost_lens.v3",
+        )
+        .expect("representative recursive program compiles");
+        let emitted = emit_rust(&user).expect("representative program emits to Rust");
+        assert!(
+            emitted.contains("fn countdown")
+                && emitted.contains("countdown(&(((*(p0)) - 1)))")
+                && emitted.contains("let demo: i64 = (countdown(&(3)) + 1);"),
+            "emitted Rust should realize the recursive countdown target program:\n{emitted}"
+        );
+
+        let mut saw_add = false;
+        let mut saw_sub = false;
+        let mut saw_eq = false;
+        for transform in user.nodes().iter().filter_map(Behavior::as_transform) {
+            match transform.target {
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => {
+                    saw_add = true;
+                }
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)) => {
+                    saw_sub = true;
+                }
+                TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => {
+                    saw_eq = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            saw_add && saw_sub && saw_eq,
+            "gate #70 fixture should expose Add/Sub/Eq algebra instances; got add={saw_add}, sub={saw_sub}, eq={saw_eq}"
+        );
+
+        let descent_entries = per_call_descent_evidence(&user);
+        assert!(
+            descent_entries
+                .iter()
+                .any(|entry| entry.caller == "countdown" && entry.callee == "countdown"),
+            "gate #70 fixture should expose a recursive countdown call, got {descent_entries:?}"
+        );
+
+        let countdown = find_bind_value(&user, "countdown");
+        let algebra_cost = match symbolic_cost_of(&user, &countdown) {
+            SymbolicCostLookup::Hit(c) => c,
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `countdown`"),
+        };
+        assert!(
+            mentions_linear(&algebra_cost),
+            "recursive countdown should expose an observable linear cost bound, got {algebra_cost:?}"
+        );
+
+        let type_cost = table
+            .cost(&RealizationCostKey::Type(int_decl))
+            .expect("Rust Int realization cost")
+            .value();
+        let add_cost = table
+            .cost(&RealizationCostKey::Operator {
+                target: int_decl,
+                op: add_op,
+            })
+            .expect("Rust Int add realization cost")
+            .value();
+        let sub_cost = table
+            .cost(&RealizationCostKey::Operator {
+                target: int_decl,
+                op: sub_op,
+            })
+            .expect("Rust Int sub realization cost")
+            .value();
+        let eq_cost = table
+            .cost(&RealizationCostKey::Operator {
+                target: int_decl,
+                op: eq_op,
+            })
+            .expect("Rust Int eq realization cost")
+            .value();
+        assert_eq!(
+            (type_cost, add_cost, sub_cost, eq_cost),
+            (1, 1, 1, 1),
+            "fixture rows should expose Rust Int/Add/Sub/Eq realization costs"
+        );
+
+        let composed = [type_cost, add_cost, sub_cost, eq_cost]
+            .into_iter()
+            .fold(algebra_cost, |acc, cost| {
+                sequential(acc, SymbolicCost::ConstantCost { _0: cost })
+            });
+        assert!(
+            mentions_linear(&composed),
+            "cost lens demo should preserve the observable linear bound while folding Rust realization rows, got {composed:?}"
+        );
+    });
 }
 
 fn named_id(dag: &Dag, name: &str) -> DeclarationId {
