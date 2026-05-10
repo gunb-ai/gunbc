@@ -2949,6 +2949,13 @@ fn port_reaches_upstream(dag: &Dag, from_port: PortId, to_port: PortId) -> bool 
 /// spells the sequential iterator fold (`.iter().fold(`), treat that as the same sequential
 /// iteration receipt for this gate's fixture discipline.
 ///
+/// **OR semantics (intentional):** `loop_carried` and the `.iter().fold(` substring are
+/// **disjunctive** so the witness stays true on either lowering shape. The substring branch alone
+/// does not prove arbitrary DAG-side iteration independence; it is a **fixture-scoped** receipt for
+/// the authority program in `r3_free_consequences_auto_loop_parallelism_dependence.v3` (left fold
+/// with carried `acc`). Broader reuse of this helper for other programs would need stronger
+/// predicates, not a silent widening here.
+///
 /// **Formatting coupling:** like gate #43's `thread::scope` substring receipt, both substring tests
 /// key off today's Rust templates; if `rust.dag` emission spelling drifts, update this witness in
 /// the same change (dissolution: structural `WorkflowParallelismReport` / iteration-independence
