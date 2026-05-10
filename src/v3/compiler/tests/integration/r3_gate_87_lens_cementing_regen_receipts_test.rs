@@ -14,6 +14,9 @@
 //! module (two new `mod` lines in `tests/integration.rs`), `t_pb_b_1_dag_runner_test`’s
 //! `R3_GATE_87_CEMENTING_REGEN_SUITES`, and the `tests/dag/t_r3_gate_87_cementing_regen_*.dag`
 //! harness files — reviewers can confirm with `git diff origin/main...HEAD --stat` / path grep.
+//! Registry `name` inventory is cross-checked against
+//! `t_pb_b_1_dag_runner_test::r3_gate_87_cementing_regen_lens_names_for_runner_table` (derived from
+//! `R3_GATE_87_CEMENTING_REGEN_SUITES` paths — single authority, no parallel hand list).
 //! Per `INVARIANTS.md` §P5(b), the **single checkable net paydown receipt** (delete path, SG-0
 //! census shrink with counts, or cited `ROADMAP.md` deferral) must live in **PR #2639’s
 //! description**; module comments must not assert deletes for paths that never existed on
@@ -22,6 +25,8 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+
+use crate::t_pb_b_1_dag_runner_test::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
@@ -88,23 +93,6 @@ fn regen_lens_registry_names() -> BTreeSet<String> {
         .collect()
 }
 
-/// Sorted `LensRegistryEntry.name` keys pinned to `src/v3/compiler/regen.dag` at HEAD.
-/// When adding a registry row, land `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` + a
-/// `t_pb_b_1_dag_runner_test` receipt in the same PR (and extend Rust receipts below when the
-/// harness remains a `Compiles` placeholder).
-const EXPECTED_REGEN_LENS_NAMES: &[&str] = &[
-    "cost",
-    "cost_symbolic",
-    "cost_target_realization",
-    "effect_enumeration",
-    "infer_helpers",
-    "lower_helpers",
-    "provenance",
-    "structural_resolution",
-    "unused_parameters",
-    "variant_payload",
-];
-
 fn read_lens_source(rel: &str) -> String {
     let path = workspace_root().join(rel);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
@@ -134,15 +122,12 @@ fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
 #[test]
 fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
     let actual = regen_lens_registry_names();
-    let expected: BTreeSet<String> = EXPECTED_REGEN_LENS_NAMES
-        .iter()
-        .map(|s| (*s).to_string())
-        .collect();
+    let expected = r3_gate_87_cementing_regen_lens_names_for_runner_table();
     assert_eq!(
         actual, expected,
-        "`src/v3/compiler/regen.dag` registry drift: update EXPECTED_REGEN_LENS_NAMES and the \
-         `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test` harness list in \
-         the same PR."
+        "`src/v3/compiler/regen.dag` registry drift vs \
+         `t_pb_b_1_dag_runner_test::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
+         `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
     );
 }
 
