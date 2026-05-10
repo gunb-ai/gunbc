@@ -274,7 +274,8 @@ fn find_fold_step_bind_via_instantiation(
 /// **ProducerLookup discipline:** `ProducerLookup::NoProducer` may fall through to [`EvalCtx`]
 /// (`Ok(None)`). Malformed-substrate variants (`MissingPort`, `MissingNode`, `BindCycle`) fail
 /// closed as [`LensApplyError`] — they must not collapse into the same silent fallback as legitimate
-/// absence (INVARIANTS P2/P3).
+/// absence (INVARIANTS P2/P3). Evaluator frame/build failures and [`evaluate_body`] errors still
+/// return `Ok(None)` so [`EvalCtx`] can recover typed diagnostics (overflow, branch miss, loops).
 ///
 /// **Not gate closure:** This helper does **not** satisfy `lens_apply_dot_rs_retired`; canonical
 /// acceptance remains **file deletion + SG-0 shrink** after Row-4 (see module docs above).
@@ -388,7 +389,8 @@ pub fn apply_lens_declaration(
     // Reflection (`program_under_test: Some`) supplies rich `FieldValue` shapes the literals-only
     // evaluator bridge cannot encode yet — keep `EvalCtx` there until the retirement slice widens.
     if program_under_test.is_none() {
-        if let Some(out) = try_apply_lens_via_evaluator_literals_only(lens_program, root_bind, inputs)?
+        if let Some(out) =
+            try_apply_lens_via_evaluator_literals_only(lens_program, root_bind, inputs)?
         {
             return Ok(out);
         }
