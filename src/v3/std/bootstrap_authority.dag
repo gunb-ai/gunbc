@@ -43,6 +43,7 @@ data bootstrap_authority: BootstrapAuthoritySet = {
   "dsl/std/unicode.dag": StdAuthority,
   "dsl/std/render_repeat_string_bootstrap.dag": StdAuthority,
   "dsl/std/methods.dag": StdAuthority,
+  "dsl/std/serialization.dag": StdAuthority,
 
   "src/v3/std/algebra.dag": V3StdAuthority,
     "src/v3/std/anthropic_messages.dag": V3StdAuthority,
@@ -80,6 +81,7 @@ data bootstrap_authority: BootstrapAuthoritySet = {
     "src/v3/std/substrate.dag": V3StdAuthority,
     "src/v3/std/substrate_minimal.dag": V3StdAuthority,
     "src/v3/std/termination.dag": V3StdAuthority,
+    "src/v3/std/t_ci_workflow_as_data_demo.dag": V3StdAuthority,
     "src/v3/std/timing_lens.dag": V3StdAuthority,
     "src/v3/std/tokenize.dag": V3StdAuthority,
     "src/v3/std/verification.dag": V3StdAuthority,
@@ -94,5 +96,8 @@ data bootstrap_authority: BootstrapAuthoritySet = {
     "src/v3/compiler/operators.dag": CompilerAuthority,
     "src/v3/compiler/regen.dag": CompilerAuthority,
 
-    "dsl/extdeps/languages/rust/primitives.dag": ExtdepsFixtureAuthority
+    "dsl/extdeps/languages/rust/primitives.dag": ExtdepsFixtureAuthority,
+    "dsl/extdeps/cron_schedule_model.dag": ExtdepsFixtureAuthority,
+    "dsl/extdeps/github/github.dag": ExtdepsFixtureAuthority,
+    "dsl/extdeps/github/actions.dag": ExtdepsFixtureAuthority
 }

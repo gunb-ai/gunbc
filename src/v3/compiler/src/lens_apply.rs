@@ -2815,3 +2815,5 @@ fn get_x(point: Point) -> Int = point.x
         }
     }
 }
+
+pub use substrate_reflection::reflect_behavior_list;
