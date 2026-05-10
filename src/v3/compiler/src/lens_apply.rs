@@ -8,8 +8,8 @@ use num_bigint::BigInt;
 
 use crate::dag::{
     literal_bits_int, ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, Dag,
-    Declaration, DeclarationId, FieldValue, LiteralBits, OperatorKind, PortId, TransformNode,
-    TransformTarget, TypeConnective, ValueBody,
+    Declaration, DeclarationId, FieldValue, LiteralBits, OperatorKind, PortId, ProducerLookup,
+    TransformNode, TransformTarget, TypeConnective, ValueBody,
 };
 use crate::infer_helpers::resolve_template_argument_value;
 

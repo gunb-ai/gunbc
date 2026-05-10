@@ -3001,6 +3001,31 @@ static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock:
     dag
 });
 
+/// Typed result of a Bind-chain producer walk. Discriminates
+/// **legitimate absence** (parameter port with no producer) from
+/// **malformed-substrate** states (missing port, missing node, cyclic
+/// Bind chain). INVARIANTS P3 fail-closed: consumers must not collapse
+/// the malformed variants into the legitimate-absence path — see
+/// `Dag::resolve_producer_opt` for the compat wrapper that does
+/// collapse, and `lens_apply.rs::eligibility_walk_port` for the
+/// canonical typed consumer.
+pub enum ProducerLookup<'a> {
+    /// Legitimate: the port has no `produced_by` link (e.g., a
+    /// parameter port bound by the interpreter at evaluation time).
+    NoProducer,
+    /// A non-Bind producer reached after walking through any number of
+    /// Bind hops.
+    Found(&'a Behavior),
+    /// Malformed substrate: the `PortId` does not resolve in the DAG.
+    MissingPort { port: PortId },
+    /// Malformed substrate: a `produced_by` link references a `NodeId`
+    /// that is not in the DAG.
+    MissingNode { producer: NodeId },
+    /// Malformed substrate: a cycle was detected while walking the
+    /// Bind chain — the walk would not terminate.
+    BindCycle { detected_at: NodeId },
+}
+
 impl Dag {
     // Only `bootstrap_regen_fresh` constructs an empty Dag for regen; omitting
     // that module without `bootstrap-regen-fresh` would otherwise trip `dead_code`.
@@ -3722,38 +3747,56 @@ impl Dag {
     }
 
     /// Producer walk for the .dag substrate accessor
-    /// `resolve_producer(d, port_id) -> Behavior?`. DB-5 locks this
-    /// as recursive Bind-chain resolution: follow `produced_by` to
-    /// the producing Behavior, and if that Behavior is a `Bind`,
-    /// recurse on `bind.value` until a non-Bind producer (Value /
-    /// Transform / Branch / Loop) is reached. Every current lens
-    /// wrote this chain inline; centralizing it here is the DB-14
-    /// substrate-primitive refactor.
-    ///
-    /// `None` covers the miss modes (missing port, port has no
-    /// producer, produced_by references a missing node) — all
-    /// structurally equivalent to "no non-Bind producer found" at
-    /// this substrate boundary. Richer lens-local enums layer on top.
-    pub fn resolve_producer_opt(&self, port_id: &PortId) -> Option<&Behavior> {
-        // Bounded by the total number of nodes: every Bind hop
-        // consumes one node in the walk, and the Dag is finite.
+    /// Typed Bind-chain producer walk. See `ProducerLookup` for the
+    /// four discriminated outcomes; each malformed variant is a
+    /// substrate-integrity violation that consumers MUST handle
+    /// explicitly (do not collapse into `NoProducer`).
+    pub fn resolve_producer_lookup(&self, port_id: &PortId) -> ProducerLookup<'_> {
         let bound = self.nodes.len();
         let mut current_port = *port_id;
+        let mut last_producer: Option<NodeId> = None;
         for _ in 0..=bound {
-            let port = self.port_opt(&current_port)?;
-            let producer_id = port.produced_by?;
-            let behavior = self.node_opt(&producer_id)?;
+            let Some(port) = self.port_opt(&current_port) else {
+                return ProducerLookup::MissingPort { port: current_port };
+            };
+            let Some(producer_id) = port.produced_by else {
+                return ProducerLookup::NoProducer;
+            };
+            let Some(behavior) = self.node_opt(&producer_id) else {
+                return ProducerLookup::MissingNode { producer: producer_id };
+            };
+            last_producer = Some(producer_id);
             match behavior {
                 Behavior::Bind(bind) => {
                     current_port = bind.value;
                     continue;
                 }
-                _ => return Some(behavior),
+                _ => return ProducerLookup::Found(behavior),
             }
         }
-        // Cycle in the Bind chain — malformed substrate. Surface as
-        // miss rather than infinite loop.
-        None
+        // Walk exceeded `nodes.len()` hops — only possible on a cyclic
+        // Bind chain. Report the last Bind node visited.
+        ProducerLookup::BindCycle {
+            detected_at: last_producer.expect("walk visited at least one Bind"),
+        }
+    }
+
+    /// Compat wrapper over `resolve_producer_lookup`: maps the typed
+    /// result to `Option<&Behavior>`, **collapsing** all malformed
+    /// states (`MissingPort`, `MissingNode`, `BindCycle`) into `None`
+    /// alongside legitimate `NoProducer`. Only use when malformed-
+    /// substrate equivalence to absence is the intended semantics
+    /// (e.g., callers that already wrap `None` in a fail-closed
+    /// diagnostic via `ok_or`); prefer `resolve_producer_lookup` when
+    /// the consumer must distinguish the four states.
+    pub fn resolve_producer_opt(&self, port_id: &PortId) -> Option<&Behavior> {
+        match self.resolve_producer_lookup(port_id) {
+            ProducerLookup::Found(b) => Some(b),
+            ProducerLookup::NoProducer
+            | ProducerLookup::MissingPort { .. }
+            | ProducerLookup::MissingNode { .. }
+            | ProducerLookup::BindCycle { .. } => None,
+        }
     }
 
     /// O(1) lookup by DeclarationId. Same dense-sequential invariant as nodes.
