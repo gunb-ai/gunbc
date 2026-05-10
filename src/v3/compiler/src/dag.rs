@@ -5384,4 +5384,31 @@ mod tests {
         assert_eq!(payload.element(), exact_two);
         assert_eq!(payload.bound(), CardinalityBound::AtMostOne);
     }
+
+    /// Cementing test for issue #2463: `resolve_producer_lookup` must
+    /// discriminate the four states (`NoProducer`, `Found`,
+    /// `MissingPort`, `MissingNode`, `BindCycle`) so consumers can
+    /// fail-closed on malformed substrate per INVARIANTS P3.
+    /// `resolve_producer_opt` (compat wrapper) collapses all four miss
+    /// shapes into `None`; the typed surface preserves the
+    /// distinction.
+    #[test]
+    fn resolve_producer_lookup_discriminates_malformed_substrate() {
+        let dag = Dag::new();
+        // MissingPort: a `PortId` past the allocated range cannot
+        // resolve. The compat wrapper hides this as `None`; the typed
+        // surface surfaces it as `MissingPort`.
+        let bogus = PortId::test_raw(u32::MAX);
+        assert!(
+            matches!(
+                dag.resolve_producer_lookup(&bogus),
+                ProducerLookup::MissingPort { .. }
+            ),
+            "out-of-range PortId must surface as MissingPort, not collapse to NoProducer"
+        );
+        assert!(
+            dag.resolve_producer_opt(&bogus).is_none(),
+            "compat wrapper collapses MissingPort to None"
+        );
+    }
 }

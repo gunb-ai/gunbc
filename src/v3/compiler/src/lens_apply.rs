@@ -54,8 +54,14 @@ fn eligibility_walk_port(
     // Parameter ports (acc/elt of the step `Bind`, formals of any callable we walk into)
     // have no producer — they're bound by the interpreter at evaluation time. Treat as
     // eligible; only producer-backed nodes contribute interpretability constraints.
-    let Some(producer) = dag.resolve_producer_opt(&port) else {
-        return true;
+    // Malformed-substrate states (MissingPort / MissingNode / BindCycle) fail-closed:
+    // INVARIANTS P3 forbids collapsing them into the legitimate-absence path.
+    let producer = match dag.resolve_producer_lookup(&port) {
+        ProducerLookup::NoProducer => return true,
+        ProducerLookup::Found(b) => b,
+        ProducerLookup::MissingPort { .. }
+        | ProducerLookup::MissingNode { .. }
+        | ProducerLookup::BindCycle { .. } => return false,
     };
     match producer {
         Behavior::Value(_) => true,
