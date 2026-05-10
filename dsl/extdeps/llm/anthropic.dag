@@ -174,12 +174,17 @@ type AnthropicMessages200ContentBlock
 // by `server_tool_input_payloads_unmodeled`.
 type AnthropicServerToolName = WebSearch | WebFetch | CodeExecution | BashCodeExecution | TextEditorCodeExecution | ToolSearchToolRegex | ToolSearchToolBm25 | Advisor
 
+// 🟢 TERMINAL provider-domain enum for Anthropic Messages `usage.service_tier`.
+// Anthropic documents this slot as a closed tier token (`standard`, `priority`,
+// `batch`); the emitter uses snake_case string serde matching `AnthropicStopReason`.
+type AnthropicMessages200ServiceTier = Standard | Priority | Batch
+
 type AnthropicMessages200Usage {
   input_tokens: Int
   output_tokens: Int
   cache_creation_input_tokens: Int?
   cache_read_input_tokens: Int?
-  service_tier: String?
+  service_tier: AnthropicMessages200ServiceTier?
 }
 
 // Anthropic Messages 200 response role. The API currently returns only
