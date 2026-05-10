@@ -5,17 +5,12 @@
 //! V1 first slice per Pattern-A / E6-G1.a (Q-PAFS Path A ACCEPTED 2026-05-06; Q-Reification
 //! Option A ratified 2026-05-07 in PR #2096; Substrate Gate A merged 2026-05-07 in PR #2079).
 //! Cross-Mgr split: Verification authors the .dag-side η-pair + lens consumer envelope; Evaluator
-//! wires the non-vacuous lens-fold-over-`Dag` substrate-fact projection. Director (a)-disposition
-//! 2026-05-09: E3.c (gunbc#1970) closed superseded-by-deferral; the remaining producer path is
-//! tracked at E4/G1.b (gunbc#1972), currently HELD-CANVAS-DEFERRED past R3.
+//! wires the non-vacuous lens-fold-over-`Dag` substrate-fact projection.
 //!
-//! Today's runner returns `NotYetImplemented` with the canonical "structural shape is valid"
-//! reason (`eval_binary_dimension_report_equals_shape` in `src/v3/compiler/src/test_runner.rs`).
-//! Per Director (C-modified) ratification at gunbc#828 2026-05-07: §1.8 gate #11 status STAYS
-//! DECLARED on this scaffold landing; the NotYetImplemented sentinel is fail-closed-by-
-//! construction (any actual implementation that runs WILL fail this assertion when the producer
-//! path lands, forcing fixture upgrade). R3 keeps the sentinel as Pattern A second-mover audit
-//! evidence; strict-fire CONSUMER_LANDED/PASSING moves to a fresh post-R3 issue after #1972.
+//! Executable receipt: `BinaryDimensionReportEquals` resolves gate #11 by comparing
+//! `analyze_symbolic_cost_dimension` at two η-pair workflow roots declared in `TestClaim.source`
+//! (`tc1_eta_exec_direct` vs `tc1_eta_exec_eta_expanded`). Typed refs remain
+//! `DimensionReport<Tc1EtaLensObservation>` per Pattern-A envelope authority.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -59,19 +54,10 @@ fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape_
         results[0].claim_name, "tc1_eta_equivalence_executable",
         "claim name must be the §1.8 #11 canonical gate name"
     );
-    // Today: shape-valid NotYetImplemented (runner waits on the Evaluator producer path;
-    // #1970 closed superseded-by-deferral, remaining path tracked at #1972).
-    // R3 intentionally keeps this sentinel as scaffold-with-sentinel evidence. When #1972 lands
-    // in post-R3 work, the fresh strict-fire issue flips this assertion from NotYetImplemented to
-    // Pass as the §1.8 #11 CONSUMER_LANDED -> PASSING transition.
     assert!(
-        matches!(
-            &results[0].result,
-            ClaimResult::NotYetImplemented(reason)
-                if reason.contains("BinaryDimensionReportEquals")
-                    && reason.contains("structural shape is valid")
-        ),
-        "expected BinaryDimensionReportEquals shape-valid NotYetImplemented, got {:?}",
+        matches!(&results[0].result, ClaimResult::Pass),
+        "expected tc1_eta_equivalence_executable to Pass (symbolic-cost dimension spine equality \
+         on η-pair roots), got {:?}",
         results[0].result
     );
 }
