@@ -4512,31 +4512,41 @@ pub mod lens_cost_symbolic {
         include!("lens_cost_symbolic_generated.rs");
     }
 
-    /// [`generated::symbolic_cost_of`] is the regen’d `cost.dag` lens. This function applies only
-    /// [`crate::dag::collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction`] (P5
-    /// receipt: `ROADMAP.md` Post-merge debt (2026-05-08), row **R3 gate #78 — unary-bind …**).
-    /// That collapse is fail-closed to the **joint** iterate-alias witness (param-sourced
-    /// [`crate::dag::LoopNode`] containing the self-call, plus [`crate::dag::per_call_descent_operand_port`]
-    /// with matching template provenance) — not descent-port coincidence alone. The wrapper is
-    /// explicit normalization — not a parallel lens authority.
+    pub use generated::{
+        transform_cost_for_target, CostBasisDeclaration, CostBasisKind, SymbolicCostEntry,
+    };
+
+    /// Same fold order as regen’d [`generated::compute_symbolic_costs`], plus
+    /// [`crate::dag::collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction`] on
+    /// each `Hit` row (P5 receipt: `ROADMAP.md` Post-merge debt (2026-05-08), **R3 gate #78**).
+    /// **Single public authority** for symbolic-cost facts: [`symbolic_cost_of`] is just
+    /// [`generated::lookup_cost`] over this table — no parallel uncollapsed export (P2).
+    pub fn compute_symbolic_costs(dag: &crate::dag::Dag) -> Vec<SymbolicCostEntry> {
+        generated::compute_symbolic_costs(dag)
+            .into_iter()
+            .map(|SymbolicCostEntry { port, cost }| SymbolicCostEntry {
+                port,
+                cost: match cost {
+                    crate::dag::Lookup::Miss => crate::dag::Lookup::Miss,
+                    crate::dag::Lookup::Hit(c) => crate::dag::Lookup::Hit(
+                        crate::dag::collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+                            dag, port, c,
+                        ),
+                    ),
+                },
+            })
+            .collect()
+    }
+
+    /// [`generated::lookup_cost`] over [`compute_symbolic_costs`] — the normalized lens surface (see
+    /// module docs on [`compute_symbolic_costs`]).
     pub fn symbolic_cost_of(
         dag: &crate::dag::Dag,
         port: &crate::dag::PortId,
     ) -> crate::dag::Lookup<crate::dag::SymbolicCost> {
-        match generated::symbolic_cost_of(dag, port) {
-            crate::dag::Lookup::Miss => crate::dag::Lookup::Miss,
-            crate::dag::Lookup::Hit(cost) => crate::dag::Lookup::Hit(
-                crate::dag::collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
-                    dag, *port, cost,
-                ),
-            ),
-        }
+        generated::lookup_cost(&compute_symbolic_costs(dag), port)
     }
 
-    pub use generated::{
-        compute_symbolic_costs, transform_cost_for_target, CostBasisDeclaration, CostBasisKind,
-        SymbolicCostEntry,
-    };
     /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
     /// at `SymbolicCost`. Alias (not a second sum type) — the lens now
     /// returns `Lookup<SymbolicCost>` directly; this name stays for
