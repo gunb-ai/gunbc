@@ -686,3 +686,60 @@ fn rust_dag_isomorphism_executable_passes_dag_shape_report_gate() {
         .join()
         .expect("rust_dag_isomorphism gate thread");
 }
+
+/// R3 gate #40 (`symbolic_cost_expr_equals_executable`): `SymbolicCostExprEquals` applies the
+/// symbolic-cost lens to `TestClaim.source` and compares against the declared expected `SymbolicCost`.
+const SYMBOLIC_COST_EXPR_EQUALS_SMOKE_FIXTURE: &str = r#"
+module std.symbolic_cost_expr_equals_smoke
+
+import std.verification {
+  SymbolicCostExprEquals,
+  TestClaim,
+  TestSuite
+}
+import std.algebra { SymbolicCost }
+
+data expected_lit_cost: SymbolicCost = ConstantCost(0)
+
+data symbolic_cost_expr_equals_claim: TestClaim = {
+  name: "literal_symbolic_cost_matches_expected",
+  source: "let lit: Int = 7",
+  file_name: "lit.v3",
+  predicate: SymbolicCostExprEquals(expected_lit_cost),
+  requires: []
+}
+
+data symbolic_cost_expr_equals_suite: TestSuite = {
+  name: "symbolic_cost_expr_equals_smoke_suite",
+  claims: [symbolic_cost_expr_equals_claim]
+}
+"#;
+
+#[test]
+fn symbolic_cost_expr_equals_smoke_suite_passes() {
+    let dag = match compile_to_dag(
+        SYMBOLIC_COST_EXPR_EQUALS_SMOKE_FIXTURE,
+        "symbolic_cost_expr_equals_smoke.dag",
+    ) {
+        Ok(dag) => {
+            assert!(
+                dag.diagnostics().is_empty(),
+                "fixture should compile cleanly: {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+            dag
+        }
+        Err(CompileError::Semantic(dag)) => panic!(
+            "fixture semantic failure: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("fixture compile error: {other:?}"),
+    };
+    let results = TestRunner::new(&dag).run_suite("symbolic_cost_expr_equals_suite");
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].claim_name,
+        "literal_symbolic_cost_matches_expected"
+    );
+    assert_eq!(results[0].result, ClaimResult::Pass);
+}
