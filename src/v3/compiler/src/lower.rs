@@ -2273,7 +2273,7 @@ fn narrow_scope_for_predicate(
         &narrow_name,
     )?;
     let narrow_port = dag.alloc_port(None);
-    match declaration_to_port_shape(refined_decl, dag, &surface_expr_span(cond)) {
+    match declaration_to_port_shape(refined_decl, dag, surface_expr_span(cond)) {
         Ok(shape) => dag.set_port_type(narrow_port, shape),
         Err(_) => return None,
     }
@@ -4274,7 +4274,7 @@ fn lower_list_to_structural(
             symbols,
             dag,
             None,
-            &surface_expr_span(element),
+            surface_expr_span(element),
             pending_refined_function_refs,
         )?);
     }
@@ -4356,7 +4356,7 @@ fn lower_string_map_entries(
                 symbols,
                 dag,
                 None,
-                &surface_expr_span(&entry.value),
+                surface_expr_span(&entry.value),
                 pending_refined_function_refs,
             )?,
         ));
@@ -5084,7 +5084,7 @@ fn lower_structural_field_value(
                 symbols,
                 dag,
                 None,
-                &surface_expr_span(element),
+                surface_expr_span(element),
                 pending_refined_function_refs,
             )?);
         }
@@ -5374,7 +5374,7 @@ fn lower_structural_field_value(
                     symbols,
                     dag,
                     None,
-                    &surface_expr_span(arg),
+                    surface_expr_span(arg),
                     pending_refined_function_refs,
                 )?);
             }
@@ -6882,7 +6882,7 @@ fn resolve_callable_reference(
         SurfaceExpr::Path { segments, span, .. } => {
             alloc_identifier_stub(dag, &segments.join("."), span)
         }
-        other => alloc_identifier_stub(dag, "__callable_argument__", &surface_expr_span(other)),
+        other => alloc_identifier_stub(dag, "__callable_argument__", surface_expr_span(other)),
     }
 }
 
@@ -7910,7 +7910,7 @@ fn lower_resolved_callable_invocation(
                         callable_binding_conflict_diagnostic(
                             callable_diagnostic_name,
                             idx,
-                            &surface_expr_span(arg),
+                            surface_expr_span(arg),
                         ),
                     );
                     return port;
