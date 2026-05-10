@@ -565,6 +565,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when generic runner coverage can execute the claims without a
     // host-side integration harness.
     "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
+    // R3 gate #66 (`lens_producer_retirement_executable_witness`): focused receipt
+    // that the `.dag` PB census claim executes through `TestRunner` and reports
+    // the live lens-producer residual count while Row-4 / Item 4 retirement
+    // preconditions remain open.
+    "src/v3/compiler/tests/integration/r3_lens_producer_retirement_executable_witness_test.rs",
     // R3 PB Row-4 corpus seeds (1)–(2): hand-Rust driver for author-now/fire-later
     // `DifferentialEquals(pb_runtime_evaluate, r2_evaluator_evaluate, …)` TestClaims.
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
