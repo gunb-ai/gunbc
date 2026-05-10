@@ -4512,9 +4512,20 @@ pub mod lens_cost_symbolic {
         include!("lens_cost_symbolic_generated.rs");
     }
 
+    pub fn symbolic_cost_of(dag: &crate::dag::Dag, port: &crate::dag::PortId) -> crate::dag::Lookup<crate::dag::SymbolicCost> {
+        match generated::symbolic_cost_of(dag, port) {
+            crate::dag::Lookup::Miss => crate::dag::Lookup::Miss,
+            crate::dag::Lookup::Hit(cost) => crate::dag::Lookup::Hit(
+                crate::dag::collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+                    dag, *port, cost,
+                ),
+            ),
+        }
+    }
+
     pub use generated::{
-        compute_symbolic_costs, symbolic_cost_of, transform_cost_for_target, CostBasisDeclaration,
-        CostBasisKind, SymbolicCostEntry,
+        compute_symbolic_costs, transform_cost_for_target, CostBasisDeclaration, CostBasisKind,
+        SymbolicCostEntry,
     };
     /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
     /// at `SymbolicCost`. Alias (not a second sum type) — the lens now

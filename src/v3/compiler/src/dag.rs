@@ -1412,6 +1412,61 @@ pub fn per_call_descent_operand_port(dag: &Dag, call_site: NodeId) -> Option<Por
     transform.inputs.get(idx).copied()
 }
 
+/// Collapses an accidental `ProductCost(Linear, Linear)` on **unary-parameter** binds when one
+/// factor keys off the formal parameter port and the other keys off a **distinct** port from the
+/// same tail-recurrence induction chain (loop iterate bound × recurrence operand wiring).
+///
+/// `SizeVariable` equality is structural (`PortId`), so `iterate` composes those factors as a
+/// multiplicative product even when both witness the same asymptotic parameter — exactly the
+/// double-count family gate **#78** eliminates by skipping the descent operand in the spine sum.
+/// Folding to a single [`SymbolicCost::LinearCost`] on the parameter port restores the intended
+/// **O(n)** carrier without rewriting the algebra emitter.
+pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+    dag: &Dag,
+    bind_value_port: PortId,
+    cost: SymbolicCost,
+) -> SymbolicCost {
+    let Some(bind) = dag.nodes().iter().find_map(|node| {
+        Behavior::as_bind(node).filter(|bind| bind.value == bind_value_port)
+    }) else {
+        return cost;
+    };
+    if bind.params.len() != 1 {
+        return cost;
+    }
+    let param = bind.params[0];
+
+    let SymbolicCost::ProductCost { _0: terms } = &cost else {
+        return cost;
+    };
+    if !terms.rest.is_empty() {
+        return cost;
+    }
+
+    match (terms.first.as_ref(), terms.second.as_ref()) {
+        (SymbolicCost::LinearCost { _0: va }, SymbolicCost::LinearCost { _0: vb }) => {
+            if va.source_port == param && vb.source_port != param {
+                SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: param,
+                        display_name: None,
+                    },
+                }
+            } else if vb.source_port == param && va.source_port != param {
+                SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: param,
+                        display_name: None,
+                    },
+                }
+            } else {
+                cost
+            }
+        }
+        _ => cost,
+    }
+}
+
 fn call_pattern_from_relations_with_index(
     relations: &[SubValueRelation],
 ) -> Option<(CallPattern, usize)> {
