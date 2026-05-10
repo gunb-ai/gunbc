@@ -2837,11 +2837,11 @@ impl<'a> TestRunner<'a> {
             ));
         }
 
-        let observed = match self.r3_structural_cost_report_for_rust_target(&program_dag, claim) {
+        let observed = match self.r3_observed_cost_report_from_emitted_rust(&emitted) {
             Ok(cost) => cost,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        let expected = match self.r3_structural_cost_report_for_rust_target(&program_dag, claim) {
+        let expected = match self.r3_expected_cost_report_from_source_dag(&program_dag, claim) {
             Ok(cost) => cost,
             Err(reason) => return ClaimResult::Fail(reason),
         };
@@ -2855,7 +2855,40 @@ impl<'a> TestRunner<'a> {
         }
     }
 
-    fn r3_structural_cost_report_for_rust_target(
+    fn r3_observed_cost_report_from_emitted_rust(
+        &self,
+        emitted: &str,
+    ) -> Result<SymbolicCost, String> {
+        let boot = generated_full_bootstrap_dag();
+        let rust_costs = r3_rust_int_costs(&boot)?;
+        let line = emitted
+            .lines()
+            .find(|line| line.contains("let cost_demo: i64"))
+            .ok_or_else(|| {
+                "BinaryDimensionReportEquals(r3 cross-target cost): emitted Rust target bind `cost_demo: i64` not found".to_string()
+            })?;
+        let mut composed = SymbolicCost::ConstantCost { _0: 0 };
+        composed = sequential(composed, SymbolicCost::ConstantCost { _0: rust_costs.int });
+        for (needle, cost) in [
+            (" + ", rust_costs.add),
+            (" - ", rust_costs.sub),
+            (" * ", rust_costs.mul),
+            (" / ", rust_costs.div),
+            (" == ", rust_costs.eq),
+            (" != ", rust_costs.ne),
+            (" < ", rust_costs.lt),
+            (" <= ", rust_costs.le),
+            (" > ", rust_costs.gt),
+            (" >= ", rust_costs.ge),
+        ] {
+            for _ in line.match_indices(needle) {
+                composed = sequential(composed, SymbolicCost::ConstantCost { _0: cost });
+            }
+        }
+        Ok(composed)
+    }
+
+    fn r3_expected_cost_report_from_source_dag(
         &self,
         program_dag: &Dag,
         claim: &TestClaimValue,
@@ -5003,6 +5036,89 @@ fn r3_operator_realization_keys(
         }
     }
     Ok(keys)
+}
+
+struct R3RustIntCosts {
+    int: i64,
+    add: i64,
+    sub: i64,
+    mul: i64,
+    div: i64,
+    eq: i64,
+    ne: i64,
+    lt: i64,
+    le: i64,
+    gt: i64,
+    ge: i64,
+}
+
+fn r3_rust_int_costs(boot: &Dag) -> Result<R3RustIntCosts, String> {
+    let rust_language = boot
+        .declaration_by_name("rust_language")
+        .map(|decl| decl.id)
+        .ok_or_else(|| {
+            "BinaryDimensionReportEquals(r3 cross-target cost): missing rust_language LanguageSpec"
+                .to_string()
+        })?;
+    let int_decl = boot
+        .declaration_by_name("Int")
+        .map(|decl| decl.id)
+        .ok_or_else(|| {
+            "BinaryDimensionReportEquals(r3 cross-target cost): missing Int declaration".to_string()
+        })?;
+    let table = RealizationCostTable::for_language(boot, rust_language).map_err(|err| {
+        format!(
+            "BinaryDimensionReportEquals(r3 cross-target cost): could not read Rust LanguageSpec realization table: {err:?}"
+        )
+    })?;
+    let int = table
+        .cost(&RealizationCostKey::Type(int_decl))
+        .ok_or_else(|| {
+            "BinaryDimensionReportEquals(r3 cross-target cost): missing Rust Int TypeRealization cost"
+                .to_string()
+        })?
+        .value();
+
+    let op_cost = |decl_name: &str| -> Result<i64, String> {
+        let op = match field_value(boot, decl_name, "op") {
+            Some(FieldValue::Reference(id)) => *id,
+            Some(other) => {
+                return Err(format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): `{decl_name}.op` should be a DeclarationRef, got {other:?}"
+                ));
+            }
+            None => {
+                return Err(format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): missing `{decl_name}.op` field"
+                ));
+            }
+        };
+        table
+            .cost(&RealizationCostKey::Operator {
+                target: int_decl,
+                op,
+            })
+            .ok_or_else(|| {
+                format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): missing Rust operator realization cost for `{decl_name}`"
+                )
+            })
+            .map(|cost| cost.value())
+    };
+
+    Ok(R3RustIntCosts {
+        int,
+        add: op_cost("rust_int_add")?,
+        sub: op_cost("rust_int_sub")?,
+        mul: op_cost("rust_int_mul")?,
+        div: op_cost("rust_int_div")?,
+        eq: op_cost("rust_int_eq")?,
+        ne: op_cost("rust_int_ne")?,
+        lt: op_cost("rust_int_lt")?,
+        le: op_cost("rust_int_le")?,
+        gt: op_cost("rust_int_gt")?,
+        ge: op_cost("rust_int_ge")?,
+    })
 }
 
 fn field_value<'a>(dag: &'a Dag, decl_name: &str, field_name: &str) -> Option<&'a FieldValue> {
