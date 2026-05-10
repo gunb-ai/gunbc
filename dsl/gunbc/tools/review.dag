@@ -11,6 +11,7 @@
 module gunbc.tools.review
 
 import extdeps.cron
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Step, render_cron_schedule }
 import extdeps.github.pulls
 import extdeps.llm.anthropic
 import extdeps.shell

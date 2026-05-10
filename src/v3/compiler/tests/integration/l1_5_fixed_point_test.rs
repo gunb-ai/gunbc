@@ -1,87 +1,77 @@
 //! **Layer:** integration (TESTING.md § test layers — multi-stage
 //! pipeline fixed-point convergence).
 
+use std::fs;
+use std::path::{Path, PathBuf};
+
 use v3_compiler::dag::{ArrowBody, TypeConnective};
 use v3_compiler::{
-    compare_stage_snapshots, compile_stage_snapshots, default_fixed_point_source,
-    generated_full_bootstrap_dag, Dag,
+    compare_stage_snapshots, compile_stage_snapshots, default_fixed_point_source, parse_for_test,
+    tokenize_for_test, Dag,
 };
 
-fn visit_rust_sources(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
-    for entry in std::fs::read_dir(dir).unwrap_or_else(|err| {
-        panic!(
-            "failed to read compiler source directory `{}`: {err}",
-            dir.display()
-        )
-    }) {
-        let path = entry.expect("read_dir entry").path();
-        if path.is_dir() {
-            visit_rust_sources(&path, files);
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
-            files.push(path);
-        }
-    }
+/// Matches `pipeline_authority::PIPELINE_AUTHORITY_FILE` — integration tests cannot import `pub(crate)` helpers.
+const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
+
+#[test]
+fn pipeline_dag_parses() {
+    let source = include_str!("../../pipeline.dag");
+    let tokens = tokenize_for_test(source, "pipeline.dag")
+        .unwrap_or_else(|diag| panic!("tokenize pipeline.dag failed: {diag:?}"));
+    let _module = parse_for_test(&tokens, "pipeline.dag")
+        .unwrap_or_else(|diag| panic!("parse pipeline.dag failed: {diag:?}"));
 }
 
-fn has_pipeline_dag_include_str(source: &str) -> bool {
-    let include_macro = concat!("include_", "str!");
-    let mut offset = 0;
-    while let Some(found) = source[offset..].find(include_macro) {
-        let start = offset + found + include_macro.len();
-        let Some(close) = source[start..].find(')') else {
-            return false;
-        };
-        if source[start..start + close].contains("pipeline.dag") {
-            return true;
+/// Ratchet for `bridge_include_str_side_channels_retired` (pipeline slice): library sources under
+/// `src/v3/compiler/src/` must not embed `pipeline.dag` via `include_str!` — ordering authority
+/// stays structural (`PipelineStageBinding` / bootstrap witness). Integration tests may still
+/// `include_str!("../../pipeline.dag")` for parse fixtures (`pipeline_dag_parses`).
+fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries =
+        fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {} failed: {e}", dir.display()));
+    for entry in entries {
+        let entry = entry.unwrap_or_else(|e| panic!("read_dir entry failed: {e}"));
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rs_files(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            out.push(path);
         }
-        offset = start + close + 1;
     }
-    false
 }
 
 #[test]
-fn compiler_has_no_pipeline_dag_include_str_side_channel() {
-    let compiler_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let mut rust_sources = Vec::new();
-    visit_rust_sources(&compiler_root, &mut rust_sources);
-
-    let offenders: Vec<_> = rust_sources
-        .into_iter()
-        .filter(|path| {
-            let source = std::fs::read_to_string(path)
-                .unwrap_or_else(|err| panic!("failed to read `{}`: {err}", path.display()));
-            has_pipeline_dag_include_str(&source)
-        })
-        .collect();
+fn compiler_src_has_no_include_str_pipeline_dag_authority() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let src_dir = manifest_dir.join("src");
+    let mut files = Vec::new();
+    collect_rs_files(&src_dir, &mut files);
+    files.sort();
+    let mut offenders = Vec::new();
+    for path in files {
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {} failed: {e}", path.display()));
+        for (idx, line) in text.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            if line.contains("include_str!") && line.contains("pipeline.dag") {
+                offenders.push(format!(
+                    "{}:{}:{}",
+                    path.strip_prefix(&manifest_dir).unwrap_or(&path).display(),
+                    idx + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
     assert!(
         offenders.is_empty(),
-        "R3 bridge_include_str_side_channels_retired forbids {} of {} under \
-         src/v3/compiler; offenders: {offenders:?}",
-        concat!("include_", "str!"),
-        "pipeline.dag"
+        "`src/**/*.rs` must not use include_str! on pipeline.dag (see bridge_ledger \
+         bridge_include_str_side_channels_retired + pipeline_authority.rs). Offenders:\n{}",
+        offenders.join("\n")
     );
-}
-
-#[test]
-fn pipeline_dag_is_present_in_structural_bootstrap_witness() {
-    let dag = generated_full_bootstrap_dag();
-    for name in [
-        "PipelineStageBinding",
-        "parse_stage_binding",
-        "lower_stage_binding",
-        "infer_stage_binding",
-        "compute_ownership_stage_binding",
-        "lens_complexity_stage_binding",
-        "emit_stage_binding",
-    ] {
-        let decl = dag
-            .declaration_by_name(name)
-            .unwrap_or_else(|| panic!("`{name}` missing from structural bootstrap witness"));
-        assert_eq!(
-            decl.span.file, "src/v3/compiler/pipeline.dag",
-            "`{name}` should be sourced from the generated pipeline.dag witness"
-        );
-    }
 }
 
 #[test]
@@ -131,6 +121,35 @@ fn bootstrap_loads_pipeline_stage_realizations() {
             ),
             other => panic!("stage `{stage}` should lower to Arrow, got {other:?}"),
         }
+    }
+}
+
+/// Provenance ratchet: `PipelineStageBinding` rows must remain authored in `pipeline.dag` (same
+/// stable path the bootstrap embed uses), not only parse/infer shape checks (`bootstrap_loads_pipeline_stage_realizations`).
+#[test]
+fn pipeline_stage_bindings_are_pipeline_dag_sourced() {
+    let dag = Dag::new();
+    let binding_type = dag
+        .declaration_by_name("PipelineStageBinding")
+        .expect("PipelineStageBinding type present in bootstrap");
+    let mut bindings: Vec<_> = dag
+        .declarations()
+        .iter()
+        .filter(|d| d.meta_tag == Some(binding_type.id))
+        .collect();
+    assert!(
+        !bindings.is_empty(),
+        "expected at least one PipelineStageBinding row from pipeline authority"
+    );
+    bindings.sort_by_key(|d| d.id.raw());
+    for decl in bindings {
+        assert_eq!(
+            decl.span.file.as_str(),
+            PIPELINE_AUTHORITY_FILE,
+            "PipelineStageBinding `{}` must carry pipeline.dag provenance (got file {:?})",
+            decl.name.as_deref().unwrap_or("<anonymous>"),
+            decl.span.file
+        );
     }
 }
 
