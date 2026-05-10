@@ -146,9 +146,43 @@ pub fn transform_summary(
     match &(per_call_pattern_at(p0, *p2)) {
         None => compose_many_inputs(p1, p3),
         Some(pattern) => match &(per_call_descent_operand_port(p0, *p2)) {
-            None => miss_complexity_summary_lookup(),
+            None => complexity_when_descent_unknown(pattern, p3),
             Some(descent_port) => recursive_transform_summary(p1, pattern, descent_port, p3),
         },
+    }
+}
+pub fn complexity_when_descent_unknown(
+    p0: &CallPattern,
+    p1: &[PortId],
+) -> Lookup<ComplexitySummary> {
+    match p0 {
+        CallPattern::SameArgumentCall => match p1 {
+            [] => summary_from_iter_bound(SymbolicCost::UnknownCost {
+                _0: String::from("same-argument recursive call has no descent"),
+            }),
+            [__list_head, __list_tail @ ..] => summary_from_iter_bound(pattern_to_iter_bound(
+                &(CallPattern::SameArgumentCall),
+                __list_head,
+            )),
+        },
+        CallPattern::ArithmeticSubtractCall {
+            steps: _,
+            ring_param: _,
+        } => miss_complexity_summary_lookup(),
+        CallPattern::ArithmeticDivideCall {
+            divisor: _,
+            ring_param: _,
+        } => miss_complexity_summary_lookup(),
+        CallPattern::ChildAccessorCall { accessor: _ } => miss_complexity_summary_lookup(),
+        CallPattern::CollectionShrinkCall {
+            amount: _,
+            collection: _,
+        } => miss_complexity_summary_lookup(),
+        CallPattern::FoldBodyCall {
+            outer_collection: _,
+        } => miss_complexity_summary_lookup(),
+        CallPattern::ParserAdvanceCall { witness: _ } => miss_complexity_summary_lookup(),
+        CallPattern::WorklistDrainCall { element: _ } => miss_complexity_summary_lookup(),
     }
 }
 pub fn compose_many_inputs(p0: &[ComplexityEntry], p1: &[PortId]) -> Lookup<ComplexitySummary> {
