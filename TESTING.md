@@ -356,16 +356,20 @@ while prose still claimed parity. Concretely:
   the pipeline). This is still a cementing test: it cements the
   `COMPLETE` row against accidental semantic drift.
 
-**Where tests live.** Add modules under
-`src/v3/compiler/tests/integration/cementing/` and register each
-file from `src/v3/compiler/tests/integration.rs` via `#[path =
-"integration/cementing/<file>.rs"]`. Prefer one focused module per
-lens (or per v2 parity claim), not a kitchen-sink file.
+**Where tests live.** Add `.dag` `TestClaim` / `TestSuite` harnesses
+under `src/v3/compiler/tests/dag/`, named for the gate and lens they
+cement (for example `t_r3_gate_87_cementing_regen_cost.dag`). Prefer
+one focused harness per lens (or per v2 parity claim), not a
+kitchen-sink file. A temporary Rust receipt under
+`src/v3/compiler/tests/integration/cementing/` is allowed only when
+the required `TestPredicate` carrier cannot yet express the published
+shape; it must name the missing carrier/substrate blocker and stay in
+`EXPECTED_HAND_AUTHORED_TEST` until the `.dag` harness replaces it.
 
 **Dispatch (same PR as the claim).** Editing
 `src/v3/compiler/regen.dag` or promoting a register row to
 `COMPLETE` with v2 parity is not complete until the matching
-cementing module exists and `tests/integration.rs` wires it. Extend
+cementing `.dag` harness exists. Extend
 `CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` in
 `tests/integration/cementing/cementing_lens_registry_dispatch_test.rs`
 when the register row is upgraded; the test
@@ -373,11 +377,10 @@ when the register row is upgraded; the test
 required registry `name` keys from `docs/v3-lens-capability-register.md`
 plus `regen.dag` and asserts the slice matches **exactly** (the slice
 is a projection, not a parallel inventory). The test
-`cementing_test_modules_exist_for_escalated_v2_complete_registry_claims`
-then requires each listed stem to resolve to an on-disk `.rs` file under
-`cementing/` **and** to appear in `tests/integration.rs` behind an
-exact `#[path = "integration/cementing/<stem>.rs"]` attribute (so an
-orphan file cannot satisfy the ratchet).
+`cementing_test_claims_exist_for_escalated_v2_complete_registry_claims`
+then requires each listed stem to resolve to an on-disk
+`tests/dag/<stem>.dag` file, so an unwired or missing TestClaim harness
+cannot satisfy the ratchet.
 
 **Anti-scope.** This section is not a mandate to prove full lens
 equivalence for every `.dag` file, and it does not require new
