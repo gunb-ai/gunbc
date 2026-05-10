@@ -20,9 +20,9 @@ pub use crate::std_computation::{
     IterationDimension, LoweringTarget,
 };
 pub use crate::std_graph::{
-    build_call_graph_from_proof_edges, dfs_collect_component, dfs_finish_order,
-    graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, seed_adjacency_map,
-    CallGraph, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
+    build_call_graph_from_proof_edges, dfs_collect_component, dfs_finish_order, forward_adjacency,
+    graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, reverse_adjacency,
+    seed_adjacency_map, CallGraph, DfsFinishAcc, GraphEdge, SccComponentAcc, SccCycleAcc,
 };
 use crate::std_induction::AtomicCost::PolyCost;
 use crate::std_induction::CostBound::{AtomicBound, ConstantBound, ErrorBound, ForeverBound};
@@ -1484,9 +1484,8 @@ pub fn infer_parser_always_advancing_members(
             }
             __result
         });
-        let reverse_graph = build_call_graph(&parser_entries, si.clone())
-            .reverse
-            .clone();
+        let call_graph = build_call_graph(&parser_entries, si.clone());
+        let reverse_graph = reverse_adjacency(members.clone(), call_graph);
         infer_parser_always_advancing_members_worklist(
             members.clone(),
             func_index.clone(),
@@ -1546,43 +1545,32 @@ pub fn seed_func_entry_map(
 }
 
 pub fn build_call_graph_from_parser_edges(
-    names: &Rc<Vec<String>>,
+    names: Rc<Vec<String>>,
     edges: Rc<Vec<Rc<ParserProgressEdge>>>,
 ) -> Rc<CallGraph> {
-    {
-        let initial_forward = seed_adjacency_map(names.clone());
-        let initial_reverse = seed_adjacency_map(names.clone());
-        edges.iter().cloned().fold(
-            Rc::new(CallGraph {
-                forward: initial_forward,
-                reverse: initial_reverse,
-            }),
-            |acc: Rc<CallGraph>, edge: Rc<ParserProgressEdge>| {
-                let forward_neighbors =
-                    match v2_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
-                        Some(ns) => ns.clone(),
-                        None => Rc::new(vec![]),
-                    };
-                let reverse_neighbors =
-                    match v2_rt::map_get(&acc.reverse.clone(), edge.callee.clone()) {
-                        Some(ns) => ns.clone(),
-                        None => Rc::new(vec![]),
-                    };
-                Rc::new(CallGraph {
-                    forward: v2_rt::rc_map_insert(
-                        acc.forward.clone(),
-                        edge.caller.clone(),
-                        v2_rt::rc_list_push(forward_neighbors.clone(), edge.callee.clone()),
-                    ),
-                    reverse: v2_rt::rc_map_insert(
-                        acc.reverse.clone(),
-                        edge.callee.clone(),
-                        v2_rt::rc_list_push(reverse_neighbors.clone(), edge.caller.clone()),
-                    ),
-                })
-            },
-        )
-    }
+    Rc::new(CallGraph {
+        edges: Rc::new({
+            let mut __result = Vec::new();
+            for edge in Rc::new({
+                let mut __result = Vec::new();
+                for edge in edges.iter().cloned() {
+                    if (edge.caller.clone().as_str() != edge.callee.clone().as_str()) {
+                        __result.push(edge);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(Rc::new(GraphEdge {
+                    caller: edge.caller.clone(),
+                    callee: edge.callee.clone(),
+                }));
+            }
+            __result
+        }),
+    })
 }
 
 pub fn same_progress_subgraph_has_cycle(
@@ -1622,8 +1610,8 @@ pub fn same_progress_subgraph_has_cycle(
                     }
                     __result
                 });
-                let graph = build_call_graph_from_parser_edges(&members, same_cross_edges);
-                graph_has_multi_node_scc(members.clone(), graph)
+                let graph = build_call_graph_from_parser_edges(members.clone(), same_cross_edges);
+                graph_has_multi_node_scc(&members, graph)
             }
         }
     }
@@ -5508,7 +5496,7 @@ pub fn build_call_graph(
             }
             __result
         });
-        let local_func_set = names.clone().iter().cloned().fold(
+        let local_func_set = names.iter().cloned().fold(
             v2_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, name: String| {
                 v2_rt::rc_map_insert(acc, name.clone(), true)
@@ -5530,38 +5518,29 @@ pub fn build_call_graph(
             }
             __result
         });
-        let initial_forward = seed_adjacency_map(names.clone());
-        let initial_reverse = seed_adjacency_map(names.clone());
-        edges.iter().cloned().fold(
-            Rc::new(CallGraph {
-                forward: initial_forward,
-                reverse: initial_reverse,
-            }),
-            |acc: Rc<CallGraph>, edge: Rc<CallEdge>| {
-                let forward_neighbors =
-                    match v2_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
-                        Some(ns) => ns.clone(),
-                        None => Rc::new(vec![]),
-                    };
-                let reverse_neighbors =
-                    match v2_rt::map_get(&acc.reverse.clone(), edge.callee.clone()) {
-                        Some(ns) => ns.clone(),
-                        None => Rc::new(vec![]),
-                    };
-                Rc::new(CallGraph {
-                    forward: v2_rt::rc_map_insert(
-                        acc.forward.clone(),
-                        edge.caller.clone(),
-                        v2_rt::rc_list_push(forward_neighbors.clone(), edge.callee.clone()),
-                    ),
-                    reverse: v2_rt::rc_map_insert(
-                        acc.reverse.clone(),
-                        edge.callee.clone(),
-                        v2_rt::rc_list_push(reverse_neighbors.clone(), edge.caller.clone()),
-                    ),
+        Rc::new(CallGraph {
+            edges: Rc::new({
+                let mut __result = Vec::new();
+                for edge in Rc::new({
+                    let mut __result = Vec::new();
+                    for edge in edges.iter().cloned() {
+                        if (edge.caller.clone().as_str() != edge.callee.clone().as_str()) {
+                            __result.push(edge);
+                        }
+                    }
+                    __result
                 })
-            },
-        )
+                .iter()
+                .cloned()
+                {
+                    __result.push(Rc::new(GraphEdge {
+                        caller: edge.caller.clone(),
+                        callee: edge.callee.clone(),
+                    }));
+                }
+                __result
+            }),
+        })
     }
 }
 
@@ -6988,14 +6967,14 @@ pub fn build_scc_index(
             __result
         });
         let graph = build_call_graph(&func_entries, si.clone());
+        let adjacency = forward_adjacency(names.clone(), graph.clone());
+        let reverse_graph = reverse_adjacency(names.clone(), graph.clone());
         let finish = names.clone().iter().cloned().fold(
             Rc::new(DfsFinishAcc {
                 visited: v2_rt::rc_empty_map::<String, bool>(),
                 order: Rc::new(vec![]),
             }),
-            |acc: Rc<DfsFinishAcc>, name: String| {
-                dfs_finish_order(&name, &graph.forward.clone(), &acc)
-            },
+            |acc: Rc<DfsFinishAcc>, name: String| dfs_finish_order(&name, &adjacency, &acc),
         );
         let topo_order = v2_rt::reverse(finish.order.clone());
         let result = topo_order.clone().iter().cloned().fold(
@@ -7010,7 +6989,7 @@ pub fn build_scc_index(
                     {
                         let component = dfs_collect_component(
                             &name,
-                            &graph.reverse.clone(),
+                            &reverse_graph,
                             &Rc::new(SccComponentAcc {
                                 visited: acc.assigned.clone(),
                                 members: Rc::new(vec![]),
@@ -9422,13 +9401,20 @@ pub fn build_complexity_report(
                 }
             },
         );
+        let call_forward = forward_adjacency(
+            Rc::new({
+                let mut __result = Vec::new();
+                for entry in func_entries.clone().iter().cloned() {
+                    __result.push(entry.name.clone());
+                }
+                __result
+            }),
+            scc_result.call_graph.clone(),
+        );
         let fan_in = func_entries.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, i64>(),
             |acc: Rc<HashMap<String, i64>>, entry: Rc<FuncEntry>| {
-                let callees = match v2_rt::map_get(
-                    &scc_result.call_graph.clone().forward.clone(),
-                    entry.name.clone(),
-                ) {
+                let callees = match v2_rt::map_get(&call_forward, entry.name.clone()) {
                     Some(cs) => cs.clone(),
                     None => Rc::new(vec![]),
                 };
@@ -9492,10 +9478,7 @@ pub fn build_complexity_report(
                     } else {
                         acc.violations.clone()
                     };
-                    let callees = match v2_rt::map_get(
-                        &scc_result.call_graph.clone().forward.clone(),
-                        func_name.clone(),
-                    ) {
+                    let callees = match v2_rt::map_get(&call_forward, func_name.clone()) {
                         Some(cs) => cs.clone(),
                         None => Rc::new(vec![]),
                     };
