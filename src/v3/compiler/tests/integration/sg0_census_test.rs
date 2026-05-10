@@ -594,12 +594,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `Commutativity` / `Identity`) operational witnesses, and the T-V-L5-Corpus seed
     // `ForAllTargets` Rust/Python/Go observation row Pass on honest Int rows only (trimmed matrix —
     // not ROADMAP exhaustive L7/L5). Matrix rows pin enum-backed law receipts without adding
-    // missing-law variants. Explicit P5 deferral: this test entry belongs to
-    // `docs/r3-structure.md` § T-Tests-As-Data-Completeness / gate #84
-    // `pb_rust_tests_outside_residual_zero`; it dissolves when the generic TestClaim runner can
-    // execute these claims directly without this host-side harness. Retirement must also fold the
-    // L5 program-text bridge (`fixtures/r3_l5_corpus/add_then_branch_seed.v3` vs embedded
-    // `TestClaim.source` — byte equality ratchet lives only in this harness today).
+    // missing-law variants. Explicit P5 deferral: this test entry belongs to ROADMAP.md § "Nine
+    // lanes" row `T-PB-B` and § "Lane acceptance — .dag gates" row `T-PB-B` /
+    // `pb_rust_tests_outside_residual_zero`; R3 tracks the same test-residual outcome as
+    // `docs/r3-structure.md` § T-Tests-As-Data-Completeness / gate #84. It dissolves when the
+    // generic TestClaim runner can execute these claims directly without this host-side harness.
+    // Retirement must also fold the L5 program-text bridge
+    // (`fixtures/r3_l5_corpus/add_then_branch_seed.v3` vs embedded `TestClaim.source` — byte
+    // equality ratchet lives only in this harness today).
     "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
     "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
