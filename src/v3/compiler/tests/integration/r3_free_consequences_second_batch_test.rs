@@ -8,13 +8,15 @@
 //! independence or dependence; full `Lens<Iteration-Independence> * …` composition is out of scope
 //! here. Gate **#48** additionally keeps a structural `std.list.fold` program in
 //! `r3_free_consequences_auto_loop_parallelism_dependence.v3` so lowering still exercises a real
-//! loop body; integration tests ratchet embedded `TestClaim.source` against that file byte-for-byte.
-//! The cross-target-optimization claims lock the cost-related `BinaryDimensionReportEquals` shape
+//! loop body; integration tests ratchet embedded `TestClaim.source` against that file byte-for-byte
+//! and assert the claim program lowers to `Behavior::Loop` so the fold is exercised on the compile
+//! path, not only carried as inert text. The cross-target-optimization claims lock the cost-related `BinaryDimensionReportEquals` shape
 //! and stay `NotYetImplemented` until cost facts land.
 
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
+use v3_compiler::dag::Behavior;
 use v3_compiler::dag::Dag;
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
@@ -72,6 +74,22 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
         claim_48.source,
         GATE_48_PROGRAM_AUTHORITY,
         "embedded `TestClaim.source` must match `r3_free_consequences_auto_loop_parallelism_dependence.v3` byte-for-byte"
+    );
+
+    let gate_48_program = match compile_to_dag(&claim_48.source, &claim_48.file_name) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => panic!(
+            "gate #48 claim program should compile without diagnostics, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("gate #48 claim program compile error: {other:?}"),
+    };
+    assert!(
+        gate_48_program
+            .nodes()
+            .iter()
+            .any(|b| matches!(b, Behavior::Loop(_))),
+        "gate #48 must lower `std.list.fold` to at least one Behavior::Loop (fold is not decorative)"
     );
 
     let results = TestRunner::new(dag).run_suite(SUITE_NAME);
