@@ -583,7 +583,7 @@ fn build_refinement_predicate_declaration(
     subject_span: SourceSpan,
     registry_synthesized_body: bool,
 ) -> DeclarationId {
-    let pred_span = surface_expr_span(predicate);
+    let pred_span = surface_expr_span(predicate).clone();
     let pred_param_port = dag.alloc_port(None);
     match declaration_to_port_shape(base_decl_id, dag, &subject_span) {
         Ok(shape) => dag.set_port_type(pred_param_port, shape),
@@ -1061,7 +1061,7 @@ fn synthesize_predicate_body(
     bind_name: &str,
     _carrier_chain: &[String],
 ) -> Option<SurfaceExpr> {
-    let span = surface_expr_span(predicate);
+    let span = surface_expr_span(predicate).clone();
     let subject_var = || SurfaceExpr::Var {
         name: bind_name.to_string(),
         span: span.clone(),
@@ -2346,11 +2346,11 @@ fn build_narrowed_refinement(
             narrow_name,
             symbols,
             dag,
-            surface_expr_span(new_cond),
+            surface_expr_span(new_cond).clone(),
         ));
     };
 
-    let pred_span = surface_expr_span(new_cond);
+    let pred_span = surface_expr_span(new_cond).clone();
     // Allocate a fresh composite parameter port typed as the true
     // base — the composite predicate's sole parameter slot.
     let composite_param_port = dag.alloc_port(None);
@@ -3033,7 +3033,7 @@ fn lower_item(
             let bind_id = dag.alloc_node_id();
             let bind_span = match type_ann {
                 Some(ty) => ty.span().clone(),
-                None => surface_expr_span(expr),
+                None => surface_expr_span(expr).clone(),
             };
             dag.push_node(Behavior::Bind(BindNode {
                 id: bind_id,
@@ -4254,7 +4254,7 @@ fn lower_list_to_structural(
                 name: format!(
                     "data `{name}` has a list body but its declared type is not a List<_>"
                 ),
-                span: surface_expr_span(expr),
+                span: surface_expr_span(expr).clone(),
                 fixes: Vec::new(),
             },
         );
@@ -4301,7 +4301,7 @@ fn lower_map_to_structural(
                 name: format!(
                     "data `{name}` has a map body but its declared type is not a {expected_shape}"
                 ),
-                span: surface_expr_span(expr),
+                span: surface_expr_span(expr).clone(),
                 fixes: Vec::new(),
             },
         );
@@ -5512,7 +5512,7 @@ fn lower_scalar_literal_for_type(
             let Ok(int_value) = BigInt::from_str(s.as_str()) else {
                 return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                     name: "internal: malformed decimal integer literal".to_string(),
-                    span: surface_expr_span(expr),
+                    span: surface_expr_span(expr).clone(),
                     fixes: Vec::new(),
                 });
             };
@@ -5532,7 +5532,7 @@ fn lower_scalar_literal_for_type(
             .unwrap_or(false),
     };
     if type_ok {
-        let span = surface_expr_span(expr);
+        let span = surface_expr_span(expr).clone();
         if scalar_literal_must_reject_for_refinement(dag, &literal_bits, expected_type) {
             return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                 name: "scalar literal does not satisfy the expected `where` refinement — no narrowing branch in scope".to_string(),
@@ -5546,7 +5546,7 @@ fn lower_scalar_literal_for_type(
         let Ok(int_value) = BigInt::from_str(s.as_str()) else {
             return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                 name: "internal: malformed decimal integer literal".to_string(),
-                span: surface_expr_span(expr),
+                span: surface_expr_span(expr).clone(),
                 fixes: Vec::new(),
             });
         };
@@ -5565,7 +5565,7 @@ fn lower_scalar_literal_for_type(
     }
     LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
         name: "scalar literal does not match declared type".to_string(),
-        span: surface_expr_span(expr),
+                    span: surface_expr_span(expr).clone(),
         fixes: Vec::new(),
     })
 }
