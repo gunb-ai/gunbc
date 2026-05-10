@@ -311,12 +311,18 @@ fn try_apply_lens_via_evaluator_literals_only(
         .zip(runtime_inputs)
         .map(|(p, v)| (*p, v))
         .collect();
-    let frame = EvalFrame::from_bindings(bindings).ok()?;
+    let frame = match EvalFrame::from_bindings(bindings) {
+        Ok(f) => f,
+        Err(_) => return Ok(None),
+    };
     let mut state = EvalStateStack::with_root_frame(frame);
     let strategy = EvalStrategy::ApplicativeOrder {
         input_order: InputEvaluationOrder::LeftFirst,
     };
-    let out = evaluate_body(lens_program, entry, &mut state, strategy).ok()?;
+    let out = match evaluate_body(lens_program, entry, &mut state, strategy) {
+        Ok(v) => v,
+        Err(_) => return Ok(None),
+    };
     match out {
         Value::LiteralValue(bits) => Ok(Some(FieldValue::Literal(bits))),
         _ => Ok(None),
@@ -382,9 +388,9 @@ pub fn apply_lens_declaration(
     // Reflection (`program_under_test: Some`) supplies rich `FieldValue` shapes the literals-only
     // evaluator bridge cannot encode yet — keep `EvalCtx` there until the retirement slice widens.
     if program_under_test.is_none() {
-        match try_apply_lens_via_evaluator_literals_only(lens_program, root_bind, inputs)? {
-            Some(out) => return Ok(out),
-            None => {}
+        if let Some(out) = try_apply_lens_via_evaluator_literals_only(lens_program, root_bind, inputs)?
+        {
+            return Ok(out);
         }
     }
     let mut ctx = EvalCtx::new(lens_program);
