@@ -1,24 +1,24 @@
 //! **Layer:** integration
 //!
-//! TC2 Church-Rosser / strategy-order — strict-fire executable form (§1.8 gate #12).
+//! TC2 Church-Rosser / strategy-order — strict-fire executable form (R3 gate #12).
 //!
 //! Pairing `DimensionReport<Dag>` for LeftFirst vs RightFirst evaluation order per
 //! `tc2_evaluation_order_independence_deferred.dag` staging and
 //! `r3-v-pattern-a-tc2-v1-worker.md`. Unified consumer envelope: `BinaryDimensionReportEquals`.
 //!
-//! Today's runner returns `NotYetImplemented` with the canonical "structural shape is valid"
-//! reason (`eval_binary_dimension_report_equals_shape` in `src/v3/compiler/src/test_runner.rs`).
-//! Gate #12 stays **DECLARED** at this scaffold until Evaluator + substrate produce comparable
-//! reports; the NYI receipt is fail-closed — a real equality eval **must** flip this test to
-//! `Pass` when wiring lands (worker brief §Implementation slices).
+//! The runner executes the embedded claim program under eager applicative
+//! `InputEvaluationOrder::LeftFirst` vs `RightFirst` and requires identical top-level values
+//! (confluence slice). Other `BinaryDimensionReportEquals` claims remain NYI at the generic
+//! `eval_binary_dimension_report_equals_shape` boundary until substrate `DimensionReport<C>`
+//! producers land.
 //!
 //! **Vacuity guard:** embedded `TestClaim.source` is a binary Transform application with two
 //! non-atomic Int operands (`sub_pos(2 + 3, 1 + 1)`) so LeftFirst vs RightFirst schedules are not
 //! trivially identical traces at substrate flip (Pattern-A TC2 worker brief).
 //!
-//! **INVARIANTS P5:** The §P5(b) **single checkable per-PR receipt** (SG-0 census / pairing /
+//! **INVARIANTS P5:** The P5(b) **single checkable per-PR receipt** (SG-0 census / pairing /
 //! `ROADMAP.md` deferral) lives on **the PR description**, not in this file — see GitHub PR body for
-//! authoritative dissolution bookkeeping (`INVARIANTS.md` §P5 Dispatch-Discipline mechanism (b)).
+//! authoritative dissolution bookkeeping (`INVARIANTS.md` P5 Dispatch-Discipline mechanism (b)).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
@@ -86,16 +86,11 @@ fn tc2_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape(
     assert_eq!(results.len(), 1, "strict-fire suite has exactly one claim");
     assert_eq!(
         results[0].claim_name, "tc2_church_rosser_executable",
-        "claim name must be the §1.8 #12 canonical gate name"
+        "claim name must be the gate #12 canonical gate name"
     );
-    assert!(
-        matches!(
-            &results[0].result,
-            ClaimResult::NotYetImplemented(reason)
-                if reason.contains("BinaryDimensionReportEquals")
-                    && reason.contains("structural shape is valid")
-        ),
-        "expected BinaryDimensionReportEquals shape-valid NotYetImplemented, got {:?}",
-        results[0].result
+    assert_eq!(
+        results[0].result,
+        ClaimResult::Pass,
+        "tc2_church_rosser_executable must pass under LeftFirst vs RightFirst confluence check"
     );
 }
