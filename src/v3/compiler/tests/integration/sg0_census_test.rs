@@ -413,18 +413,30 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // **Dissolution trigger (P5)**: retires when T-Tests-As-Data infrastructure
     // expresses ".dag-fn-resolution-against-bootstrap" assertions and
     // `cost_lens_demonstration` as structural `TestClaim` data instead of
-    // hand-Rust integration tests. The 6 resolver assertions here (one per
-    // `*Realization` meta-type — `assert meta.is_some() && name == "X"`) factor
-    // as `OutputEquals` / declaration-resolution claims under the T-Tests-As-Data
-    // umbrella (#1966 §3 ratchet predicate scope). Gate #70 additionally factors
-    // into TestClaims over the representative recursive fixture: emitted target
+    // hand-Rust integration tests.
+    //
+    // **P5 explicit deferral receipt**: lane = T-Tests-As-Data-Completeness /
+    // T-PB-B test-census dissolution; concrete ROADMAP rows =
+    // `ROADMAP.md` T-PB-B test subset row at `ROADMAP.md:170` (Rust-authored
+    // tests migrate to `.dag` `TestClaim` declarations) plus SG-0 PR-window
+    // discipline at `ROADMAP.md:177`. Gate authority = `docs/r3-program-plan.md`
+    // row #70 (`cost_lens_demonstration`) and the T-CostLens worker brief's
+    // same-slice acceptance bullet. This is a strict deferral of the test
+    // harness shape, not of the gate behavior.
+    //
+    // The 6 resolver assertions here (one per `*Realization` meta-type —
+    // `assert meta.is_some() && name == "X"`) factor as `OutputEquals` /
+    // declaration-resolution claims under the T-Tests-As-Data umbrella (#1966
+    // §3 ratchet predicate scope). Gate #70 additionally factors into
+    // TestClaims over the representative recursive fixture: emitted target
     // program contains the recursive call, lowered DAG has >=2 algebra-instance
-    // operator transforms, `per_call_descent_evidence` observes the self-call, and
-    // the Rust-side cost composition preserves the observable linear
-    // `SymbolicCost` bound. Until that landing, hand-Rust is the consumption path
-    // for `.dag`-fn-from-Rust and emitted-target cost-composition assertions; Mgr
-    // standing-authority approval at gunbc#2221 #issuecomment-4404395097 ratifies
-    // this bridge for the Slice 1a.1 / gate #70 window.
+    // operator transforms, `per_call_descent_evidence` observes the self-call,
+    // and the Rust-side cost composition preserves the observable linear
+    // `SymbolicCost` bound. Until that landing, hand-Rust is the consumption
+    // path for `.dag`-fn-from-Rust and emitted-target cost-composition
+    // assertions; Mgr standing-authority approval at gunbc#2221
+    // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1 / gate
+    // #70 window.
     "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
