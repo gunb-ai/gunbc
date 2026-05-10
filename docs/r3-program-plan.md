@@ -267,7 +267,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 | 41 | `v2_oracle_no_remaining_test_consumers` | state-check | T-V2-Retirement | DECLARED | no .rs test consumes src/v2/ |
 | 42 | `v2_directory_deleted` | state-check | T-V2-Retirement | DECLARED | src/v2/ removed from workspace |
 | 43 | `auto_parallelism_independent_binds_emit_parallel` | demonstration | T-Free-Consequences-Demonstration | DECLARED | bind-independent → parallel emit |
-| 44 | `auto_parallelism_dependent_binds_emit_sequential` | demonstration | T-Free-Consequences-Demonstration | DECLARED | bind-dependence → serialized |
+| 44 | `auto_parallelism_dependent_binds_pending_lens_fail_closed` | demonstration | T-Free-Consequences-Demonstration | DECLARED | dependent-bind fixture fails closed on pending scalar parallelism lens until real schedule lands |
 | 45 | `auto_parallelism_branch_arms_serialize` | demonstration | T-Free-Consequences-Demonstration | DECLARED | branch arms sequenced |
 | 46 | `auto_loop_parallelism_provable_independence_emits_parallel` | demonstration | T-Free-Consequences-Demonstration | DECLARED | opt-in `Lens<Iteration-Independence>` |
 | 47 | `auto_loop_parallelism_unproven_falls_back_sequential` | demonstration | T-Free-Consequences-Demonstration | DECLARED | no heuristic auto-parallelization |
@@ -292,7 +292,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 | 66 | `lens_producer_retirement_executable_witness` | demonstration | T-LensProducer-Retirement | DECLARED (NEW 2026-05-06) | DEFERRED to Row-4 receipts per PB Mgr F3 |
 | 67 | `numeric_construction_demonstration` | demonstration | T-Numeric-Construction | DECLARED (NEW 2026-05-06) | `Int<32>` + `Real<64>` round-trip |
 | 68 | `anthropic_wire_demonstration` | demonstration | T-Anthropic-Wire | DECLARED (NEW 2026-05-06) | deterministic mock; live-API NOT closure gate |
-| 69 | `bridge_retirement_demonstration` | demonstration | T-Bridge-Retirement | DECLARED (NEW 2026-05-06) | typed-identity-surface in production code |
+| 69 | `bridge_retirement_demonstration` | demonstration | T-Bridge-Retirement | **CONSUMER_LANDED** — integration `bridge_retirement_demonstration` (`canonical_lens_bridge_ratchet_test.rs`) | typed-identity-surface executes through `LensOutputEquals` using fixture-local `DeclarationRef` resolution + production `apply_lens_declaration` |
 | 70 | `cost_lens_demonstration` | demonstration | T-CostLens-Composition | DECLARED — ε path RATIFIED 2026-05-07 (Q-Cost-Composition-Layering canvas at PR #2181); closes via Rust-side composition fixture demonstrating end-to-end cost reading per ε in T-CostLens follow-on slice | ≥2 algebra-instances + ≥1 recursive call |
 | 71 | `v3_self_host_demonstration` | demonstration | T-V2-Retirement | DECLARED (NEW 2026-05-06) | bootstrap PB-Runtime trampoline runs end-to-end |
 | 72 | `e_p_producer_demonstration` | demonstration | T-E-P-Producer-Broadening | **CONSUMER_LANDED** — integration `e_p_producer_demonstration` (`m2_substrate_inhabitance_test.rs`) | unary recursive self-call: `SubValueRelation` + scalar `per_call_pattern_at` → `lower_call_pattern` / `DescentEvidence::Strict` (multi-arg per-port vectors: other E-P tests) |
