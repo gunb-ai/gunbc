@@ -1945,12 +1945,28 @@ fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> b
         .is_some_and(|name| name.starts_with("<registered predicate not lowered: "))
 }
 
-fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: DeclarationId) -> bool {
+/// Gate on scalar literals / structural `data` bodies when the declared type
+/// carries a **non-placeholder** refinement: reject unless we can **prove**
+/// the literal satisfies the lowered predicate body by evaluating the same
+/// `Transform(Value|Operator)` fragment produced by `synthesize_predicate_body`
+/// (`gt_zero`, `unicode_scalar`, `range`, `brand`, and nested `And`/`Or`).
+///
+/// Deferred placeholders intentionally return `false` — no proof obligation.
+///
+/// Unsupported shapes / evaluator overflow → `true` (fail closed).
+fn scalar_literal_must_reject_for_refinement(
+    dag: &Dag,
+    literal: &LiteralBits,
+    expected_type: DeclarationId,
+) -> bool {
     let mut current = expected_type;
     for _ in 0..32 {
         let decl = dag.declaration(current);
         if let Some(refinement) = decl.refinement {
-            return !is_deferred_refinement_placeholder(dag, refinement);
+            if is_deferred_refinement_placeholder(dag, refinement) {
+                return false;
+            }
+            return !literal_statically_satisfies_refinement_predicate(dag, literal, refinement);
         }
         match &decl.connective {
             TypeConnective::Instantiation { template, .. } => current = *template,
@@ -1960,6 +1976,132 @@ fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: Declar
         }
     }
     false
+}
+
+fn literal_statically_satisfies_refinement_predicate(
+    dag: &Dag,
+    literal: &LiteralBits,
+    pred_decl: DeclarationId,
+) -> bool {
+    let LiteralBits::Int(s) = literal else {
+        return false;
+    };
+    let Ok(value) = BigInt::from_str(s.as_str()) else {
+        return false;
+    };
+    let Some((param_port, body_port)) = outer_predicate_slots(dag, pred_decl) else {
+        return false;
+    };
+    eval_int_refinement_expr_port(dag, body_port, param_port, &value, 0).unwrap_or(false)
+}
+
+fn eval_int_refinement_expr_port(
+    dag: &Dag,
+    port: PortId,
+    param_port: PortId,
+    value: &BigInt,
+    depth: usize,
+) -> Option<bool> {
+    if depth >= 64 {
+        return None;
+    }
+    let nid = dag.port(port).produced_by?;
+    let Behavior::Transform(t) = dag.node(nid) else {
+        return None;
+    };
+    match &t.target {
+        TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)) => {
+            let l = eval_int_refinement_expr_port(dag, t.inputs[0], param_port, value, depth + 1)?;
+            let r = eval_int_refinement_expr_port(dag, t.inputs[1], param_port, value, depth + 1)?;
+            Some(l && r)
+        }
+        TransformTarget::Operator(OperatorKind::Logical(LogicalOp::Or)) => {
+            let l = eval_int_refinement_expr_port(dag, t.inputs[0], param_port, value, depth + 1)?;
+            let r = eval_int_refinement_expr_port(dag, t.inputs[1], param_port, value, depth + 1)?;
+            Some(l || r)
+        }
+        TransformTarget::Operator(OperatorKind::Comparison(op)) => {
+            eval_int_comparison_port(dag, *op, t.inputs[0], t.inputs[1], param_port, value)
+        }
+        _ => None,
+    }
+}
+
+fn eval_int_comparison_port(
+    dag: &Dag,
+    op: ComparisonOp,
+    lhs: PortId,
+    rhs: PortId,
+    param_port: PortId,
+    value: &BigInt,
+) -> Option<bool> {
+    match op {
+        ComparisonOp::Eq => eval_eq_comparison_ports(dag, lhs, rhs, param_port, value),
+        ComparisonOp::Ge | ComparisonOp::Le | ComparisonOp::Gt => {
+            let lhs_v = int_operand_for_static_refinement(dag, lhs, param_port, value)?;
+            let rhs_v = int_operand_for_static_refinement(dag, rhs, param_port, value)?;
+            Some(match op {
+                ComparisonOp::Ge => lhs_v >= rhs_v,
+                ComparisonOp::Le => lhs_v <= rhs_v,
+                ComparisonOp::Gt => lhs_v > rhs_v,
+                ComparisonOp::Eq => unreachable!("handled above"),
+            })
+        }
+        _ => None,
+    }
+}
+
+fn int_operand_for_static_refinement(
+    dag: &Dag,
+    port: PortId,
+    param_port: PortId,
+    value: &BigInt,
+) -> Option<BigInt> {
+    if port == param_port {
+        return Some(value.clone());
+    }
+    let nid = dag.port(port).produced_by?;
+    let Behavior::Value(v) = dag.node(nid) else {
+        return None;
+    };
+    match &v.data {
+        LiteralBits::Int(s) => BigInt::from_str(s.as_str()).ok(),
+        _ => None,
+    }
+}
+
+fn string_literal_value_port(dag: &Dag, port: PortId) -> Option<&str> {
+    let nid = dag.port(port).produced_by?;
+    let Behavior::Value(v) = dag.node(nid) else {
+        return None;
+    };
+    match &v.data {
+        LiteralBits::String(s) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+fn eval_eq_comparison_ports(
+    dag: &Dag,
+    lhs: PortId,
+    rhs: PortId,
+    param_port: PortId,
+    value: &BigInt,
+) -> Option<bool> {
+    if lhs == param_port && rhs == param_port {
+        return Some(true);
+    }
+    let ls = string_literal_value_port(dag, lhs);
+    let rs = string_literal_value_port(dag, rhs);
+    if ls.is_some() || rs.is_some() {
+        return Some(ls.is_some() && rs == ls);
+    }
+    let lv = int_operand_for_static_refinement(dag, lhs, param_port, value);
+    let rv = int_operand_for_static_refinement(dag, rhs, param_port, value);
+    match (lv, rv) {
+        (Some(a), Some(b)) => Some(a == b),
+        _ => None,
+    }
 }
 
 /// DB-11 (3a.3) fragment gate. Walks a `where`-predicate
