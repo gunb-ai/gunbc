@@ -430,6 +430,20 @@ check_q4_landed_pr_in_history() {
       if [ "$pr_state" = "MERGED" ]; then
         continue
       fi
+      # REST fallback: `gh pr view` uses GraphQL and can fail or return an
+      # empty state in constrained CI contexts even when the pull request is
+      # plainly merged. The REST pull endpoint needs only read access and
+      # exposes `merged_at` directly.
+      local merged_at=""
+      gh_stderr_file="$(mktemp)"
+      merged_at="$(gh api "repos/${REPO_SLUG}/pulls/${pr_num}" --jq '.merged_at // ""' 2>"$gh_stderr_file" || true)"
+      if [ -z "$gh_stderr" ]; then
+        gh_stderr="$(cat "$gh_stderr_file" 2>/dev/null || true)"
+      fi
+      rm -f "$gh_stderr_file"
+      if [ -n "$merged_at" ]; then
+        continue
+      fi
     fi
 
     # Stage 2 (fallback): pure-git grep for "(#N)" merge subject.

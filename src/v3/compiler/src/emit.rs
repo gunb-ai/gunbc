@@ -1289,13 +1289,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
             )
         })
         .collect();
-    let top_level_binds: Vec<_> = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
-        .filter(|bind| bind.params.is_empty())
-        .collect();
+    let top_level_binds = go_program_mode_top_level_value_binds(dag, &indexes);
 
     if mode == EmitMode::Program && top_level_binds.is_empty() {
         return Err(EmitError::UnsupportedBehavior(
@@ -1406,6 +1400,35 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     }
 
     Ok(sections.join("\n\n"))
+}
+
+/// Top-level value `Bind` nodes that participate in Go program-mode emission, in `Dag::nodes`
+/// order. L5 uses this selector so `ForAllTargets` validates the declared observation against the
+/// same bind that emitted Go `main` prints.
+fn go_program_mode_top_level_value_binds<'a>(
+    dag: &'a Dag,
+    indexes: &RealizationIndexes,
+) -> Vec<&'a BindNode> {
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
+        .filter(|bind| bind.params.is_empty())
+        .collect()
+}
+
+pub(crate) fn last_emit_go_program_top_level_value_bind_name(
+    dag: &Dag,
+) -> Result<Option<String>, EmitError> {
+    let indexes = RealizationIndexes::build(dag)?;
+    if indexes.execution_model.memory == MemoryModelBinding::OwnershipBased {
+        return Err(EmitError::UnsupportedBehavior(
+            "emit_go requires a non-ownership execution model".to_string(),
+        ));
+    }
+    Ok(go_program_mode_top_level_value_binds(dag, &indexes)
+        .last()
+        .map(|b| b.name.clone()))
 }
 
 pub(crate) fn dag_uses_arithmetic_div(
