@@ -16,7 +16,10 @@
 //! projection once the row is `COMPLETE` with a real v2 counterpart).
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
+use v3_compiler::dag::{
+    per_call_descent_evidence, per_call_descent_operand_port, Behavior, PortId, SubValueRelation,
+    SymbolicCost,
+};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
 use crate::common::assert_recursive_countdown_linear_semantics;
