@@ -2900,7 +2900,7 @@ impl<'a> TestRunner<'a> {
             .iter()
             .filter_map(Behavior::as_transform)
         {
-            let Some(key) = r3_operator_realization_key(&boot, int_decl, transform)? else {
+            let Some(key) = r3_operator_realization_key(boot, int_decl, transform)? else {
                 continue;
             };
             let op_cost = table
