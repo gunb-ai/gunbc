@@ -189,7 +189,9 @@ fn parse_positive_interval_width(dag: &Dag, value: &FieldValue) -> Option<Positi
         }
         "UnitCount" => {
             if let [FieldValue::Literal(LiteralBits::Int(units))] = payload.as_slice() {
-                return Some(PositiveIntervalWidth::UnitCount { units: *units });
+                return Some(PositiveIntervalWidth::UnitCount {
+                    units: literal_decimal_i64(units.as_str())?,
+                });
             }
             if let [FieldValue::Record(fields)] = payload.as_slice() {
                 return Some(PositiveIntervalWidth::UnitCount {
@@ -249,7 +251,7 @@ fn parse_int_interval(dag: &Dag, value: &FieldValue) -> Option<Interval<i64>> {
         "BoundedInterval" => {
             if let [FieldValue::Literal(LiteralBits::Int(lower)), width] = payload.as_slice() {
                 return Some(Interval::BoundedInterval {
-                    lower: *lower,
+                    lower: literal_decimal_i64(lower.as_str())?,
                     width: parse_interval_width(dag, width)?,
                 });
             }
