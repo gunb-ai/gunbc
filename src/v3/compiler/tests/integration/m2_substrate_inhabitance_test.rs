@@ -932,9 +932,10 @@ fn ep_count_acc_pattern(xs: EpListP, acc: Int, limit: Int) -> Int =
 }
 
 /// Two-parameter recursive self-call with independent arithmetic descent on each
-/// argument (`param_0` / `param_1`). Shared by per-arg label cementing and by R3
-/// gate #72 `e_p_producer_demonstration` so the demonstration cannot drift from the
-/// canonical producer contract.
+/// argument (`param_0` / `param_1`). Used by per-arg `SubValueRelation` cementing and
+/// by `e_p_per_call_pattern_projects_multi_arg_self_call_from_per_arg_evidence`.
+/// R3 gate #72 `e_p_producer_demonstration` uses a **unary** fixture instead (scalar
+/// `CallPattern` surface); see that test's module comment.
 fn compile_ep_two_descent_two_arg_arithmetic_dag(display_path: &str) -> Dag {
     compile_to_dag(
         "\
