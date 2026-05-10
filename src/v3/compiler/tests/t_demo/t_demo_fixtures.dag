@@ -113,7 +113,7 @@ data t_demo_effects_bind_count_expected: Int = 1
 
 data integration_effects_compiles: TestClaim = {
   name: "fixture_integration_canonical.effects_compiles",
-  source: "let upsert_effect = derive_op_effect(\"upsert_project\", \"PUT\", \"/projects/{project_id}\")",
+  source: "let upsert_effect = derive_op_effect(\"upsert_project\", PUT, { tokens: [ParamToken { name: \"project_id\" }] })",
   file_name: "fixture_integration_canonical_effects.v3",
   predicate: Compiles,
   requires: []
@@ -129,7 +129,7 @@ data integration_idempotency_compiles: TestClaim = {
 
 data integration_testgen_compiles: TestClaim = {
   name: "fixture_integration_canonical.testgen_compiles",
-  source: "import std.verification { Compiles, TestClaim } data generated_claim: TestClaim = { name: \"upsert_project_compiles\", source: \"let upsert_effect = derive_op_effect(\\\"upsert_project\\\", \\\"PUT\\\", \\\"/projects/{project_id}\\\")\", file_name: \"upsert_project_claim.v3\", predicate: Compiles, requires: [] }",
+  source: "import std.verification { Compiles, TestClaim } data generated_claim: TestClaim = { name: \"upsert_project_compiles\", source: \"let upsert_effect = derive_op_effect(\\\"upsert_project\\\", PUT, { tokens: [ParamToken { name: \\\"project_id\\\" }] })\", file_name: \"upsert_project_claim.v3\", predicate: Compiles, requires: [] }",
   file_name: "fixture_integration_canonical_testgen.v3",
   predicate: Compiles,
   requires: []
@@ -137,7 +137,7 @@ data integration_testgen_compiles: TestClaim = {
 
 data integration_effects_lens_output: TestClaim = {
   name: "fixture_integration_canonical.effects_lens_output",
-  source: "let upsert_effect = derive_op_effect(\"upsert_project\", \"PUT\", \"/projects/{project_id}\")",
+  source: "let upsert_effect = derive_op_effect(\"upsert_project\", PUT, { tokens: [ParamToken { name: \"project_id\" }] })",
   file_name: "fixture_integration_canonical_effects.v3",
   predicate: LensOutputEquals(
     named_function_count,
