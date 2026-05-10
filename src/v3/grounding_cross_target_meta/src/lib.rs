@@ -53,12 +53,13 @@
 //! ## Status
 //!
 //! **R2 closure-pre-pass — real coverage fold.** The walker enumerates
-//! 30 cells per loaded target and resolves each against landed `MethodTemplateContract`
-//! row authorities (`src/v3/std/*_method_template_contracts.dag`). At
-//! HEAD, Phase 1 rows cover **Cardinality × Transform × Shape A target**
-//! for each non-empty per-target list (see `coverage` module audit); all
-//! other cells report [`EmissionDiagnostic::MissingEmissionPath`] as
-//! honest structural gaps until additional LanguageSpec tables land.
+//! 30 cells per loaded target and resolves each against landed
+//! `EmissionPathProjection` rows (`src/v3/std/cross_target_coverage.dag`).
+//! At HEAD, Phase 1 projection rows cover **Cardinality × Transform ×
+//! Shape A target** for each target with populated row-local projection
+//! facts (see `coverage` module audit); all other cells report
+//! [`EmissionDiagnostic::MissingEmissionPath`] as honest structural gaps
+//! until additional LanguageSpec tables land.
 
 use v3_compiler::dag::Dag;
 
@@ -115,7 +116,7 @@ mod tests {
             report.present.len(),
             EXPECTED_PRESENT_COUNT,
             "present cells must match audit table (Cardinality×Transform×each target \
-             when that target's MethodTemplateContract list is non-empty)"
+             when that target has populated EmissionPathProjection rows)"
         );
         assert_eq!(report.missing.len(), EXPECTED_MISSING_COUNT);
         let expected_present = [
