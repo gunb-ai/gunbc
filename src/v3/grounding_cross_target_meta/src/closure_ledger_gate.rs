@@ -41,7 +41,7 @@ pub(crate) fn assert_closure_ledger_matches_l6_missing_emission_paths() {
     let expected: HashSet<String> = report
         .missing
         .iter()
-        .map(|(cell, _)| cell.ledger_key())
+        .map(|(cell, _)| cell.ledger_key(&dag))
         .collect();
 
     assert!(

@@ -16,9 +16,11 @@
 //!   this?" — anchored by #1229.
 //! - **Behavior axis** — five [`v3_compiler::dag::Behavior`] variants
 //!   per L1 model (`Value`, `Transform`, `Branch`, `Loop`, `Bind`).
-//! - **Target axis** — three Shape A targets (Rust / Python / Go).
+//! - **Target axis** — loaded `LanguageSpec` declarations. The current
+//!   bootstrap corpus contains Rust, Python, and Go.
 //!
-//! Total: `6 × 5 × 3 = 90` cells. Today's LanguageSpec has intentional
+//! Total: `6 × 5 × |LanguageSpec targets|` cells (90 for today's
+//! three-target bootstrap corpus). Today's LanguageSpec has intentional
 //! gaps named in deferral receipts elsewhere in the program (Rust
 //! higher-order Phase 1.5; Go `chars` tokenizer; per-input fields
 //! parser-grammar; etc.); the walker reports those as
@@ -51,12 +53,13 @@
 //! ## Status
 //!
 //! **R2 closure-pre-pass — real coverage fold.** The walker enumerates
-//! all 90 cells and resolves each against landed `MethodTemplateContract`
-//! row authorities (`src/v3/std/*_method_template_contracts.dag`). At
-//! HEAD, Phase 1 rows cover **Cardinality × Transform × Shape A target**
-//! for each non-empty per-target list (see `coverage` module audit); all
-//! other cells report [`EmissionDiagnostic::MissingEmissionPath`] as
-//! honest structural gaps until additional LanguageSpec tables land.
+//! 30 cells per loaded target and resolves each against landed
+//! `EmissionPathProjection` rows (`src/v3/std/cross_target_coverage.dag`).
+//! At HEAD, Phase 1 projection rows cover **Cardinality × Transform ×
+//! Shape A target** for each target with populated row-local projection
+//! facts (see `coverage` module audit); all other cells report
+//! [`EmissionDiagnostic::MissingEmissionPath`] as honest structural gaps
+//! until additional LanguageSpec tables land.
 
 use v3_compiler::dag::Dag;
 
@@ -85,11 +88,18 @@ mod tests {
     use super::*;
     use v3_compiler::generated_full_bootstrap_dag;
 
-    /// Expected L6 coverage at HEAD from Step 1 audit of
-    /// `rust_method_template_contracts` / `python_method_template_contracts` /
-    /// `go_method_template_contracts`: each list is non-empty (Rust 13, Python 17,
-    /// Go 13 rows) and every Phase 1 row maps to the single structural bucket
-    /// **Cardinality × Transform × &lt;target&gt;** for collection method templates.
+    fn shape_target(dag: &v3_compiler::dag::Dag, name: &str) -> ShapeATarget {
+        ShapeATarget::new(
+            dag.declaration_by_name(name)
+                .unwrap_or_else(|| panic!("{name}"))
+                .id,
+        )
+    }
+
+    /// Expected L6 coverage at HEAD from the `EmissionPathProjection`
+    /// authority table: the populated Phase 1 projection rows map to the
+    /// single structural bucket **Cardinality × Transform × &lt;target&gt;**
+    /// for each Shape A target.
     const EXPECTED_PRESENT_COUNT: usize = 3;
     const EXPECTED_MISSING_COUNT: usize = 90 - EXPECTED_PRESENT_COUNT;
 
@@ -113,24 +123,24 @@ mod tests {
             report.present.len(),
             EXPECTED_PRESENT_COUNT,
             "present cells must match audit table (Cardinality×Transform×each target \
-             when that target's MethodTemplateContract list is non-empty)"
+             when that target has populated EmissionPathProjection rows)"
         );
         assert_eq!(report.missing.len(), EXPECTED_MISSING_COUNT);
         let expected_present = [
             Cell {
                 connective: FormAxis::Cardinality,
                 behavior: BehaviorAxis::Transform,
-                target: ShapeATarget::Rust,
+                target: shape_target(&dag, "rust_shape_a_target"),
             },
             Cell {
                 connective: FormAxis::Cardinality,
                 behavior: BehaviorAxis::Transform,
-                target: ShapeATarget::Python,
+                target: shape_target(&dag, "python_shape_a_target"),
             },
             Cell {
                 connective: FormAxis::Cardinality,
                 behavior: BehaviorAxis::Transform,
-                target: ShapeATarget::Go,
+                target: shape_target(&dag, "go_shape_a_target"),
             },
         ];
         for cell in expected_present {
