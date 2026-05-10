@@ -1006,8 +1006,19 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
 ///   carriers (Nat's structural lower bound is 0; gt_zero is "above
 ///   structural bound").
 /// - **`unicode_scalar`**: `(0 <= subject <= 0xD7FF) || (0xE000 <= subject <= 0x10FFFF)`.
-/// - **`brand`**: reflexive subject `Eq` plus reflexive string `Eq` on the label
-///   literal (nominal disjointness under structural discharge).
+/// - **`brand`**: lowers to reflexive `subject == subject` ∧ reflexive string equality on
+///   the tag literal (`label == label`). That fragment is **always true** when evaluated
+///   statically, including at [`scalar_literal_must_reject_for_refinement`] — it carries the
+///   registry predicate as a **real lowered body** (Path (a) vs placeholder) for structural
+///   discharge / inference, but it contributes **no extra literal-side narrowing** on Int/Nat
+///   carriers by itself. Nominal disjointness between branded aliases is enforced where types
+///   are compared by declaration identity (call-site discharge, coercions), not by rejecting
+///   raw numeric literals. When `brand` is **conjoined** with substantive predicates (`range`,
+///   `unicode_scalar`, …), those conjuncts still constrain literals at the discharge boundary.
+///   **Dissolution / tech debt:** if we ever need brand-tag evidence at the literal boundary,
+///   introduce a non-vacuous lowered fact (or substrate provenance) rather than pretending
+///   reflexive Eq does that work — aligns with INVARIANTS facts-flow-forward: the Bool fragment
+///   here must not be interpreted as carrying nominal disjointness evidence it does not encode.
 /// - **`range`**: subject `>= min` / `<= max` / both, depending on which
 ///   record fields are present. Numeric primitives in scope; arg-shape
 ///   validation already guaranteed Int-literal field values when reaching
@@ -1107,6 +1118,9 @@ fn synthesize_predicate_body(
             })
         }
         "brand" => {
+            // Intentionally tautological Bool fragment: produces a real lowered Arrow body for
+            // registry Path (a) while keeping nominal disjointness out of this Expr-shaped proof.
+            // See module doc on `brand` in [`synthesize_predicate_body`].
             let label = brand_predicate_label(predicate)?;
             let brand_lit = SurfaceExpr::Literal {
                 value: SurfaceLiteral::String(label),
@@ -1966,6 +1980,13 @@ fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> b
 /// the former so shapes like `PositiveInt > 0` cannot be accidentally proven
 /// merely because they lower to the same `Transform` operators as synthesized
 /// registry bodies (`int_literal_cardinality_test` discharge traps).
+///
+/// **Representation note:** this is intentionally encoded as a `Bind.name` prefix today — a
+/// small parallel-authority string convention (rename either prefix without updating both
+/// [`build_refinement_predicate_declaration`] and this predicate silently breaks discharge).
+/// **Dissolution trigger:** move eligibility to an explicit substrate field (e.g.
+/// `RefinementProvenance` on the predicate `Declaration` or a typed enum) once bootstrap /
+/// snapshot churn can absorb another Declaration slot — keeps the rule compiler-enforced.
 fn refinement_predicate_allows_registry_literal_static_discharge(
     dag: &Dag,
     pred_decl: DeclarationId,
@@ -1988,6 +2009,10 @@ fn refinement_predicate_allows_registry_literal_static_discharge(
 /// the literal satisfies the lowered predicate body by evaluating the same
 /// `Transform(Value|Operator)` fragment produced by `synthesize_predicate_body`
 /// (`gt_zero`, `unicode_scalar`, `range`, `brand`, and nested `And`/`Or`).
+///
+/// For **`brand`-only** Int refinements, the synthesized fragment evaluates tautologically;
+/// see [`synthesize_predicate_body`] — discharge still succeeds but carries **no** nominal
+/// evidence beyond pairing with other conjuncts.
 ///
 /// Proof is attempted **only** when the refinement predicate `Bind` carries the
 /// `<registry-refinement:…>` tag from [`build_refinement_predicate_declaration`]
