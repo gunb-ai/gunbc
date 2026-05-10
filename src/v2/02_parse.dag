@@ -399,6 +399,14 @@ fn drop_leading_type_modifier(tokens: List<Token>, modifier: String) -> List<Tok
 fn type_body_tokens_after_modifiers(tokens: List<Token>) -> List<Token> {
   drop_leading_type_modifier(tokens: tokens, modifier: "nominal_opaque")
 }
+fn parse_optional_type_inhabits_clause(tokens: List<Token>, ctx: ParseContext) -> TypeResult {
+  if tok_is_ident_text(tok: tokens |> first, text: "inhabits") {
+    let r = parse_type_expr(tokens: tokens |> skip(1), ctx: ctx)
+    TypeResult { type_expr: r.type_expr, tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: r.err }
+  } else {
+    TypeResult { type_expr: leaf_type_node(name: "", span: no_span()), tokens: tokens, ctx: ctx, err: none }
+  }
+}
 fn tok_is_newline(tok: Token?) -> Bool {
   match tok { Some { value: t } => is_newline_shape(shape: t.shape)  None => false }
 }
@@ -1279,6 +1287,10 @@ fn parse_type_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: Sourc
   let tokens = skip_newlines(tokens: type_params_result.tokens)
   let ctx = type_params_result.ctx
   let tokens = type_body_tokens_after_modifiers(tokens: tokens)
+  let inhabits_result = parse_optional_type_inhabits_clause(tokens: tokens, ctx: ctx)
+  if has_err(err: inhabits_result.err) { return ItemResult { item: dummy, tokens: inhabits_result.tokens, ctx: inhabits_result.ctx, err: inhabits_result.err } }
+  let tokens = inhabits_result.tokens
+  let ctx = inhabits_result.ctx
 
   // Record type: type Name { fields }
   match eat(tokens: tokens, expected: ExpectLBrace) {
@@ -1317,6 +1329,10 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
   let ctx = prefix.ctx
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let tokens = type_body_tokens_after_modifiers(tokens: skip_newlines(tokens: prefix.tokens))
+  let inhabits_result = parse_optional_type_inhabits_clause(tokens: tokens, ctx: ctx)
+  if has_err(err: inhabits_result.err) { return ItemResult { item: named_dummy, tokens: inhabits_result.tokens, ctx: inhabits_result.ctx, err: inhabits_result.err } }
+  let tokens = inhabits_result.tokens
+  let ctx = inhabits_result.ctx
 
   // Record type: type Name { fields }
   match eat(tokens: tokens, expected: ExpectLBrace) {

@@ -699,6 +699,18 @@ fn gist_transitive_closure_parse() {
     }
 }
 
+#[test]
+fn shared_std_types_accepts_type_inhabits_clause() {
+    assert_parses_strict("dsl/std/types.dag");
+    let source = "module test\ntype Bool inhabits BooleanAlgebra<Bool> = True | False\n";
+    let result = parse_source(source);
+    assert!(
+        result.error.is_none(),
+        "v2 parser should accept and ignore shared type inhabits clauses: {:?}",
+        result.error
+    );
+}
+
 // ── keyword-as-name regression (dag_non_name_keywords authority) ───────
 
 /// Keywords that ARE valid as field/type names should parse.

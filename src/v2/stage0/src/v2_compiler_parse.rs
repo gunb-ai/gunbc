@@ -1193,6 +1193,28 @@ pub fn type_body_tokens_after_modifiers(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc
     drop_leading_type_modifier(&tokens, "nominal_opaque".to_string())
 }
 
+pub fn parse_optional_type_inhabits_clause(
+    tokens: &Rc<Vec<Rc<Token>>>,
+    ctx: &Rc<ParseContext>,
+) -> Rc<TypeResult> {
+    if tok_is_ident_text(tokens.first().cloned(), "inhabits".to_string()) {
+        let r = parse_type_expr(&Rc::new(tokens.iter().skip(1).cloned().collect()), ctx);
+        Rc::new(TypeResult {
+            type_expr: r.type_expr.clone(),
+            tokens: skip_newlines(r.tokens.clone()),
+            ctx: r.ctx.clone(),
+            err: r.err.clone(),
+        })
+    } else {
+        Rc::new(TypeResult {
+            type_expr: leaf_type_node(&"".to_string(), &no_span()),
+            tokens: tokens.clone(),
+            ctx: ctx.clone(),
+            err: None,
+        })
+    }
+}
+
 pub fn tok_is_newline(tok: Option<Rc<Token>>) -> bool {
     match tok {
         Some(t) => is_newline_shape(t.shape.clone()),
@@ -2996,6 +3018,17 @@ pub fn parse_type_after_kw(
         let tokens = skip_newlines(type_params_result.tokens.clone());
         let ctx = type_params_result.ctx.clone();
         let tokens = type_body_tokens_after_modifiers(tokens.clone());
+        let inhabits_result = parse_optional_type_inhabits_clause(&tokens, &ctx);
+        if has_err(inhabits_result.err.clone()) {
+            return Rc::new(ItemResult {
+                item: dummy,
+                tokens: inhabits_result.tokens.clone(),
+                ctx: inhabits_result.ctx.clone(),
+                err: inhabits_result.err.clone(),
+            });
+        }
+        let tokens = inhabits_result.tokens.clone();
+        let ctx = inhabits_result.ctx.clone();
         match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx.clone());
@@ -3151,6 +3184,17 @@ pub fn parse_type_body_from_prefix(
             ident: None,
         });
         let tokens = type_body_tokens_after_modifiers(skip_newlines(prefix.tokens.clone()));
+        let inhabits_result = parse_optional_type_inhabits_clause(&tokens, &ctx);
+        if has_err(inhabits_result.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: inhabits_result.tokens.clone(),
+                ctx: inhabits_result.ctx.clone(),
+                err: inhabits_result.err.clone(),
+            });
+        }
+        let tokens = inhabits_result.tokens.clone();
+        let ctx = inhabits_result.ctx.clone();
         match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx.clone());
