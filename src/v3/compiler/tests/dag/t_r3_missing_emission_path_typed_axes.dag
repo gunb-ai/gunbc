@@ -4,17 +4,17 @@
 
 module v3.compiler.tests.t_r3.missing_emission_path_typed_axes
 
-import std.verification { Compiles, TestClaim, TestSuite }
+import std.verification { TestClaim, TestSuite, TestPredicate }
 
-data missing_emission_path_accepts_typed_axes: TestClaim = {
-  name: "MissingEmissionPath carries typed discriminant axes",
-  source: "import v3.std.cross_target_coverage { BehaviorAxis, FormAxis, ShapeATarget }\nimport v3.std.diagnostics { EmissionDiagnostic }\n\ntype MissingEmissionPathAxisProbe { connective: FormAxis, behavior: BehaviorAxis, target: ShapeATarget }\nfn diagnostic_identity(diagnostic: EmissionDiagnostic) -> EmissionDiagnostic = diagnostic\n",
+data missing_emission_path_rejects_string_axes: TestClaim = {
+  name: "MissingEmissionPath rejects string discriminant axes",
+  source: "import v3.std.diagnostics { EmissionDiagnostic, MissingEmissionPath }\n\nfn diag() -> EmissionDiagnostic = MissingEmissionPath(\"Atom\", \"Value\", \"rust\")\n",
   file_name: "missing_emission_path_typed_axes.v3",
-  predicate: Compiles,
+  predicate: FailsWithDiagnostic({ kind: TypeMismatch, detail_contains: AnyDetail }),
   requires: []
 }
 
 data suite_missing_emission_path_typed_axes: TestSuite = {
   name: "r3/missing-emission-path-typed-axes",
-  claims: [missing_emission_path_accepts_typed_axes]
+  claims: [missing_emission_path_rejects_string_axes]
 }
