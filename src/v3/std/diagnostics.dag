@@ -2,6 +2,7 @@ module v3.std.diagnostics
 
 import std.list { List }
 import v3.spec.v3_l1 { DeclarationRef }
+import v3.std.cross_target_coverage { BehaviorAxis, FormAxis, ShapeATarget }
 import v3.std.substrate { SourceSpan, TypeShape }
 
 // 🟡 SCAFFOLD. Mirrors the compiler's native diagnostic taxonomy for
@@ -212,12 +213,13 @@ type EmissionDiagnostic
   // variant is a stub-failure surface for the in-flight fold.
   | FoldNotImplemented
   // CrossTarget-Meta L6: `(connective × behavior × target)` cell has
-  // no LanguageSpec emission-path declaration. Each axis carries a
-  // string label (substrate-anchored discriminant; resolved against
-  // `TypeConnective` per #1229 anchor + `Behavior` per L1 model +
-  // Shape A targets per `r2-grounding-manager.md` portability set).
+  // no LanguageSpec emission-path declaration. Each axis carries the
+  // typed discriminant authority used by the L6 projection substrate:
+  // `FormAxis` mirrors `TypeConnective` discriminants, `BehaviorAxis`
+  // mirrors L1 `Behavior` discriminants, and `ShapeATarget` is the
+  // closed Shape-A target set.
   | MissingEmissionPath {
-      connective: String,
-      behavior: String,
-      target: String
+      connective: FormAxis,
+      behavior: BehaviorAxis,
+      target: ShapeATarget
     }
