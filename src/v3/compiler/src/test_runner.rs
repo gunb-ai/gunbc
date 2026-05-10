@@ -5,10 +5,13 @@ use std::time::{Duration, Instant};
 
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    OperatorKind, Path, PortId, PortState, SymbolicCost, TransformTarget, TypeConnective,
+    ValueBody,
 };
+use crate::dag_cost::sequential;
 use crate::diagnostics::Diagnostic;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
+use crate::emit_rust::emit_rust;
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
@@ -18,10 +21,11 @@ use crate::lens_apply::{
 };
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use crate::realization_cost::{RealizationCostKey, RealizationCostTable};
 use crate::types::TypeShape;
 use crate::{
     compare_stage_snapshots, compile_stage_snapshots, compile_to_dag, default_fixed_point_source,
-    CompileError,
+    generated_full_bootstrap_dag, CompileError,
 };
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
@@ -60,6 +64,8 @@ const R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME: &str =
 /// memoization scaffolding. Repeated-call caching remains deferred to the purity+cost lens
 /// composition producer.
 const R3_ONE_SHOT_NO_MEMO_WITNESS_LENS_NAME: &str = "r3_auto_memoization_one_shot_no_cache_witness";
+const R3_CROSS_TARGET_COST_OBSERVED_REPORT: &str = "cost_structurally_derived_observed_report";
+const R3_CROSS_TARGET_COST_EXPECTED_REPORT: &str = "cost_structurally_derived_expected_report";
 
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
