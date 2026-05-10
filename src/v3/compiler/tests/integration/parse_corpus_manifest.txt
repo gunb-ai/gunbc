@@ -32,7 +32,7 @@ src/v3/std/anthropic_schema.dag	14	69934	58a973240ec25777
 src/v3/std/approximate_field.dag	11	16864	ccbe4826dc31c636
 src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
 src/v3/std/bootstrap_authority.dag	4	70609	e228bb8bb2449ece
-src/v3/std/bridge_ledger.dag	7	31728	e199a822d969d067
+src/v3/std/bridge_ledger.dag	7	36072	4c795fafb7530441
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	19	37870	25c5a33ef4d8735a
 src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
@@ -58,7 +58,7 @@ src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/runtime.dag	15	19230	3e1bda4bee413db0
 src/v3/std/rust_method_template_contracts.dag	9	109835	378c75ae8055bf97
 src/v3/std/services.dag	8	5791	baee59c59a65bbc2
-src/v3/std/substrate.dag	66	144867	9504887c8d19b68c
+src/v3/std/substrate.dag	66	144888	1c219846ceee610d
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	26	47001	93f2a888194f9e4f
 src/v3/std/timing_lens.dag	29	150036	da5486c85292dc0e

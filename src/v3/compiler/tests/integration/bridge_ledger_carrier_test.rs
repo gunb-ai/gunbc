@@ -8,8 +8,9 @@
 //!   authority }`.
 //! - `BridgeStatus` is a closed two-variant coproduct (`Retired` /
 //!   `Open`); no stringly status, no third state.
-//! - `bridge_ledger` lowers as `List<BridgeLedgerRow>` with exactly the
-//!   five canonical bridge names from `docs/r3-structure.md:79-83`.
+//! - `bridge_ledger` lowers as `List<BridgeLedgerRow>` carrying the canonical
+//!   bridge rows from `docs/r3-structure.md` T-Bridge-Retirement (including
+//!   split rows such as canonical-lens and exact-string slice vs residual).
 //! - Each row's `status` resolves to one of the two `BridgeStatus`
 //!   constructors structurally (not a string check).
 

@@ -41,7 +41,8 @@ fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
                 _ => decl.name.clone(),
             }
         }
-        TransformTarget::FieldProject { field_label, .. } => Some(format!(".{field_label}")),
+        TransformTarget::UnresolvedFieldProject { field_label } => Some(format!(".{field_label}")),
+        TransformTarget::ResolvedFieldProject { .. } => Some(".<resolved-field>".to_string()),
         TransformTarget::Operator(op_kind) => Some(v3_compiler::operators::symbol(*op_kind)),
     };
     assert_eq!(actual.as_deref(), Some(expected));

@@ -96,10 +96,10 @@ pub fn bind_effect(p0: &Dag, p1: &[EffectFact], p2: &BindNode) -> StructuralEffe
 pub fn transform_effect(p0: &Dag, p1: &TransformNode) -> StructuralEffectShape {
     match &((p1).target) {
         TransformTarget::Callable(id) => callable_signature_effect(p0, id),
-        TransformTarget::FieldProject {
-            field_label: _,
-            field_child: _,
-        } => StructuralEffectShape::NoEffect,
+        TransformTarget::UnresolvedFieldProject { field_label: _ } => {
+            StructuralEffectShape::NoEffect
+        }
+        TransformTarget::ResolvedFieldProject { field_label: _ } => StructuralEffectShape::NoEffect,
         TransformTarget::Operator(_) => StructuralEffectShape::NoEffect,
     }
 }

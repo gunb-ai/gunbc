@@ -185,7 +185,8 @@ fn test_3a5_match_arm_dotted_path_compiles() {
             v3_compiler::dag::Behavior::Transform(t)
             if matches!(
                 &t.target,
-                v3_compiler::dag::TransformTarget::FieldProject { field_label, .. }
+                v3_compiler::dag::TransformTarget::UnresolvedFieldProject { field_label }
+                | v3_compiler::dag::TransformTarget::ResolvedFieldProject { field_label }
                     if field_label == "x"
             )
         )
@@ -813,8 +814,7 @@ fn test_3a2_data_field_access_resolves_statically() {
             v3_compiler::dag::Behavior::Transform(t)
             if matches!(
                 &t.target,
-                v3_compiler::dag::TransformTarget::FieldProject { field_label, .. }
-                    if field_label == "host"
+                v3_compiler::dag::TransformTarget::UnresolvedFieldProject { field_label } if field_label == "host"
             )
         )
     });
