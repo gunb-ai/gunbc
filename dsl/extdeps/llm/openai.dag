@@ -138,16 +138,6 @@ type OpenAiChatMessage
   | OpenAiChatMessageTool { content: OpenAiChatMessageContent, tool_call_id: String }
   | OpenAiChatMessageFunction { content: String, name: String }
 
-fn openai_chat_message_role(message: OpenAiChatMessage) -> OpenAiChatMessageRole =
-  match message {
-    OpenAiChatMessageSystem => System
-    OpenAiChatMessageDeveloper => Developer
-    OpenAiChatMessageUser => User
-    OpenAiChatMessageAssistant => Assistant
-    OpenAiChatMessageTool => Tool
-    OpenAiChatMessageFunction => Function
-  }
-
 // Narrow 200-OK wire slice for Chat Completions (`response { 200 => … }` + serde).
 // Tool calls / multimodal message bodies remain outside this carrier (same narrow
 // slice as the historical `from` JSON-pointer paths).

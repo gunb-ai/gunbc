@@ -6424,20 +6424,27 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
         .map(|i| open_brace + 1 + i)
         .expect("OpenAiChatMessageRole enum closing brace");
     let enum_body = &content[open_brace..=close_brace];
-    for needle in ["System,", "Developer,", "User,", "Assistant,", "Tool,", "Function,"] {
+    for needle in [
+        "System,",
+        "Developer,",
+        "User,",
+        "Assistant,",
+        "Tool,",
+        "Function,",
+    ] {
         assert!(
             enum_body.contains(needle),
             "expected variant {needle} in OpenAiChatMessageRole; got:\n{enum_body}"
         );
     }
 
-    let message_attrs = attrs_immediately_above_enum(&content, "pub enum OpenAiChatMessage");
+    let message_attrs = attrs_immediately_above_enum(&content, "pub enum OpenAiChatMessage {");
     assert!(
         message_attrs.contains(&"#[serde(tag = \"role\")]"),
         "expected OpenAiChatMessage to serialize as an OpenAI role-tagged object; attrs: {:?}",
         message_attrs
     );
-    let message_block = enum_block(&content, "pub enum OpenAiChatMessage");
+    let message_block = enum_block(&content, "pub enum OpenAiChatMessage {");
     for rename in [
         "#[serde(rename = \"system\")]",
         "#[serde(rename = \"developer\")]",
@@ -6931,7 +6938,9 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
         #[serde(rename = "text")]
         Text { text: String },
         #[serde(rename = "image_url")]
-        ImageUrl { image_url: OpenAiChatMessageImageUrl },
+        ImageUrl {
+            image_url: OpenAiChatMessageImageUrl,
+        },
     }
 
     #[derive(serde::Serialize)]
