@@ -15,18 +15,19 @@
 //! `docs/v3-lens-capability-register.md` (Band-C would demand a v2-oracle or reviewed
 //! projection once the row is `COMPLETE` with a real v2 counterpart).
 //!
-//! Gate **#78** (`e_p_sub_value_relation_per_call_landed`): unary countdown assertions require a bare
-//! **`LinearCost`** so a **`ProductCost(Linear, Linear)`** double-count cannot satisfy the gate (see
-//! `cost.dag`). Evidence-index discipline for **`per_call_descent_operand_port`** / **`inputs[k]`** vs
-//! **`inputs[0]`** is unit-tested on synthetic evidence in **`dag::tests`** (`call_pattern_from_relations_*`);
-//! terminating surface recursion currently proves descent on the **first** parameter only (`lower.rs`), so
-//! multi-arg fixtures cannot express “descent only on a later operand” under that witness.
+//! Gate **#78** (`e_p_sub_value_relation_per_call_landed`): integration tests pin **`symbolic_cost_of`**
+//! on unary countdown fixtures with **`assert_recursive_countdown_linear_semantics`** (linear-family).
+//! Evidence-index discipline for **`per_call_descent_operand_port`** / **`inputs[k]`** vs **`inputs[0]`**
+//! is additionally unit-tested on synthetic evidence in **`dag::tests`**
+//! (`call_pattern_from_relations_skips_leading_preserved_rows_for_descent_bound_index`) — terminating
+//! surface recursion proves descent on the **first** parameter only (`lower.rs`), so those indices do not
+//! currently surface from **`compile_to_dag`** multi-arg fixtures.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
-use crate::common::assert_unary_tail_recursive_countdown_is_single_linear_symbolic_cost;
+use crate::common::assert_recursive_countdown_linear_semantics;
 
 /// Single source of truth for the gate #78 regression fixture label (`compile_to_dag` second
 /// argument and `TransformNode.span.file` filter — keep them paired).

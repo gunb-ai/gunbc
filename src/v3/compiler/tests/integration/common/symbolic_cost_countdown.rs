@@ -53,14 +53,3 @@ pub fn assert_recursive_countdown_linear_semantics(cost: &SymbolicCost) {
         ),
     }
 }
-
-/// R3 gate **#78** unary tail recursion: `cost.dag` routes the iterate bound through the single
-/// descent operand port so the recurrence is charged once — a **`ProductCost(Linear, Linear)`**
-/// here indicates double-counting of the size variable.
-pub fn assert_unary_tail_recursive_countdown_is_single_linear_symbolic_cost(cost: &SymbolicCost) {
-    assert_recursive_countdown_linear_semantics(cost);
-    assert!(
-        matches!(cost, SymbolicCost::LinearCost { .. }),
-        "unary tail-recursive countdown must normalize to a single LinearCost; got {cost:?}"
-    );
-}

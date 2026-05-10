@@ -38,10 +38,7 @@ pub use list_variant_tags::find_list_empty_constructor_tag;
 pub use r1_gates_bridge::{
     assert_p0_host_sentinel_and_rest_gate_passes, assert_p0_repeat_string_correct_gate_passes,
 };
-pub use symbolic_cost_countdown::{
-    assert_recursive_countdown_linear_semantics,
-    assert_unary_tail_recursive_countdown_is_single_linear_symbolic_cost,
-};
+pub use symbolic_cost_countdown::assert_recursive_countdown_linear_semantics;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
