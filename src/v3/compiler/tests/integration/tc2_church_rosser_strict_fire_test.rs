@@ -28,7 +28,7 @@ const FIXTURE_SOURCE: &str = include_str!("../fixtures/tc2_church_rosser_strict_
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/tc2_church_rosser_strict_fire.dag";
 const SUITE_NAME: &str = "tc2_church_rosser_strict_fire_suite";
 
-/// Sidecar bytes for the §1.8 claim program — **must** match parsed `TestClaim.source` from the
+/// Sidecar bytes for the gate #12 claim program — **must** match parsed `TestClaim.source` from the
 /// `.dag` fixture (`tc2_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape`).
 const CLAIM_PROGRAM_SOURCE: &str = include_str!("../fixtures/tc2_church_rosser_executable.v3");
 const CLAIM_PROGRAM_PATH: &str = "src/v3/compiler/tests/fixtures/tc2_church_rosser_executable.v3";
