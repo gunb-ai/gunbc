@@ -183,22 +183,17 @@ fn transform_summary(
       }
   }
 
+// No-descent recursion (`per_call_descent_operand_port` → `None`): align with
+// `cost.dag` `pattern_to_iter_bound(SameArgumentCall)` → **Miss** — same-argument
+// self-call is not a recurrence dimension here; **do not** surface `UnknownCost`
+// as a successful summary (P3 / INVARIANTS.md; mirrors §3.1.1 cost-lens note).
 fn complexity_when_descent_unknown(
   pattern: CallPattern,
   inputs: List<PortId>
 ) -> Lookup<ComplexitySummary> =
   match pattern {
     SameArgumentCall =>
-      match inputs {
-        Cons(payload) =>
-          summary_from_iter_bound(
-            pattern_to_iter_bound(SameArgumentCall, payload.head)
-          )
-        Empty =>
-          summary_from_iter_bound(
-            UnknownCost("same-argument recursive call has no descent")
-          )
-      }
+      miss_complexity_summary_lookup()
     ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
       miss_complexity_summary_lookup()
     ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
