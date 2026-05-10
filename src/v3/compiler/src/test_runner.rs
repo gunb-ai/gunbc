@@ -5135,6 +5135,9 @@ fn tc1_eta_equivalence_symbolic_cost_reports_equivalent(
     left: DimensionReport<SymbolicCost>,
     right: DimensionReport<SymbolicCost>,
 ) -> ClaimResult {
+    // Compare workflow-root `composed` only (see `try_eval_tc1_eta_equivalence_executable` rustdoc).
+    // Full `DimensionReport` equality is intentionally out of scope for this Path A proxy — carrier-
+    // aligned report equality is gunbc#1972.
     match (&left, &right) {
         (
             DimensionReport::DimensionOk { composed: lc, .. },

@@ -16,8 +16,18 @@
 //   - Predicate stays `BinaryDimensionReportEquals` (Pattern-A consumer envelope; unified
 //     surface ratified at gunbc#828).
 //
-// Runner: §1.8 gate #11 executes via `TestRunner::try_eval_tc1_eta_equivalence_executable`
-// (`analyze_symbolic_cost_dimension` at η-pair entry binds in `TestClaim.source`).
+// Runner: §1.8 gate #11 executes via `TestRunner::try_eval_tc1_eta_equivalence_executable`:
+// `analyze_symbolic_cost_dimension` at η-pair entry binds in `TestClaim.source`. Typed refs remain
+// `DimensionReport<Tc1EtaLensObservation>` (Pattern-A envelope); Pass uses a **proxy**
+// `DimensionReport<SymbolicCost>` comparison until gunbc#1972 lands the real
+// `Tc1EtaLensObservation` fold — single forward dissolution trigger (INVARIANTS P5-style receipt).
+//
+// Path A intent for this representative: both entries reduce to the same Int computation (`0+1`);
+// η-expansion adds an indirect call but the symbolic-cost lens attributes the **same** root
+// `composed` asymptotic bound for these workflows today — so equality of root `composed`
+// `SymbolicCost` matches Director-approved Path A static-rep receipt without claiming full TC1
+// lens-fold η-invariance yet. A future analyzer that weights call depth could flip this gate until
+// #1972 migrates the assertion to carrier-native reports.
 //
 // Hard bars (E6-G1.a Option 3 caveat #1853): no `lens_apply` / `eval_substrate_reify` /
 // `reflect_behavior` imports. Carrier shape is the ratified Q-Reification Option A `Dag`-as-
@@ -51,9 +61,9 @@ fn eta_subject_f_eta(x: Int) -> Int = eta_subject_f(x)
 type tc1_subject_f_report = DimensionReport<Tc1EtaLensObservation>
 type tc1_subject_eta_expanded_report = DimensionReport<Tc1EtaLensObservation>
 
-// §1.8 gate #11 canonical TestClaim name. Predicate uses the unified `BinaryDimensionReport
-// Equals` shape; the eta pair is declared above as `eta_subject_f` / `eta_subject_f_eta` for
-// source-visible η-pair witness — the runtime fold-application is Evaluator-side authority.
+// §1.8 gate #11 canonical TestClaim name. Predicate uses the unified `BinaryDimensionReportEquals`
+// shape; `TestClaim.source` wires η-pair entry binds — runner compares **root composed SymbolicCost**
+// proxy equality (see header comment); full `Tc1EtaLensObservation` report parity is gunbc#1972.
 data tc1_eta_equivalence_executable_claim: TestClaim = {
   name: "tc1_eta_equivalence_executable",
   source: "// TC1 V1 executable η-pair — binds wired for runner Path A (`tc1_eta_exec_*`).\nfn eta_subject_f(x: Int) -> Int = x + 1\nfn eta_subject_f_eta(x: Int) -> Int = eta_subject_f(x)\nfn tc1_eta_exec_direct() -> Int = eta_subject_f(0)\nfn tc1_eta_exec_eta_expanded() -> Int = eta_subject_f_eta(0)\n",
