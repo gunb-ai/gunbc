@@ -2061,21 +2061,22 @@ fn tc3_pattern_a_second_mover_strict_fire_report_role_ids(
         && declaration_has_exact_name(dag, right_id, TC3_PATTERN_A_COMPARE_REPORT)
 }
 
-/// Build one TC3 second-mover projection report. `dimension_name` distinguishes baseline vs
-/// compare (eval-step vs termination-evidence) projections per the strict-fire fixture role
-/// declarations; both projections evaluate the same `program_dag` top-level bind so the
-/// resulting `Value` agrees iff the program strongly normalizes (Pattern-A second-mover
-/// receipt — bounded runner proxy).
+/// Build one TC3 second-mover projection report by evaluating the program under the supplied
+/// applicative `InputEvaluationOrder`. The baseline projection runs `LeftFirst`; the compare
+/// projection runs `RightFirst`. Strong-normalization is the load-bearing claim — under any
+/// terminating reduction order the program reaches the same top-level `Value`, so the two
+/// projections (genuinely distinct evaluator runs through `evaluate_body`) must agree on
+/// `Value` for `BinaryDimensionReportEquals` to Pass. The resulting envelope carries the
+/// projection's `dimension_name` so the report-pair is non-vacuous in the equivalence check.
 fn build_tc3_pattern_a_second_mover_projection_report(
     program_dag: &Dag,
     bind_id: NodeId,
     dimension_name: &str,
+    order: InputEvaluationOrder,
 ) -> Result<(DimensionReport<Dag>, Value), EvalError> {
     let frame = EvalFrame::from_bindings(Vec::<(PortId, Value)>::new()).expect("empty root frame");
     let mut state = EvalStateStack::with_root_frame(frame);
-    let strategy = EvalStrategy::ApplicativeOrder {
-        input_order: InputEvaluationOrder::LeftFirst,
-    };
+    let strategy = EvalStrategy::ApplicativeOrder { input_order: order };
     let value = evaluate_body(program_dag, bind_id, &mut state, strategy)?;
     let report = DimensionReport::DimensionOk {
         dimension_name: dimension_name.to_string(),
@@ -2087,8 +2088,10 @@ fn build_tc3_pattern_a_second_mover_projection_report(
 
 /// Receipt for the TC3 Pattern-A second-mover **host slice** (bounded runner bridge).
 ///
-/// Load-bearing: identical evaluated top-level [`Value`]s under the baseline eval-step projection
-/// vs the compare / termination-evidence projection. Envelope: both sides are
+/// Load-bearing: identical evaluated top-level [`Value`]s under genuinely distinct evaluator
+/// runs — `LeftFirst` (baseline projection) vs `RightFirst` (compare projection). For
+/// strongly-normalizing programs every reduction order yields the same value; disagreement here
+/// is a strong-normalization counterexample on this representative. Envelope: both sides are
 /// [`DimensionReport::DimensionOk`] with empty witness lists (scaffold) and distinct
 /// `dimension_name` strings so the two projection roles were exercised. `composed` is the same
 /// lowered-program `Dag` clone by construction; a future substrate-side eval-step / bounded-step
@@ -3321,6 +3324,7 @@ impl<'a> TestRunner<'a> {
             &program_dag,
             bind.id,
             TC3_PATTERN_A_BASELINE_DIMENSION_NAME,
+            InputEvaluationOrder::LeftFirst,
         ) {
             Ok(pair) => pair,
             Err(err) => {
@@ -3334,6 +3338,7 @@ impl<'a> TestRunner<'a> {
             &program_dag,
             bind.id,
             TC3_PATTERN_A_COMPARE_DIMENSION_NAME,
+            InputEvaluationOrder::RightFirst,
         ) {
             Ok(pair) => pair,
             Err(err) => {
