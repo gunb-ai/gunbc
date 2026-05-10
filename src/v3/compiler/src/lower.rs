@@ -2521,6 +2521,8 @@ fn collect_symbols(
         }
     }
 
+    seed_symbolic_cost_variant_constructors_for_symbols(dag, &mut symbols);
+
     let mut is_first = vec![true; items.len()];
     for (idx, item) in items.iter().enumerate() {
         // Extract the surface-level name and type parameter list.
@@ -2634,6 +2636,30 @@ fn collect_symbols(
         }
     }
     (symbols, is_first)
+}
+
+/// Seeds [`SymbolicCost`] coproduct variant **carrier** ids under their surface labels (`ConstantCost`,
+/// `LinearCost`, …). Those carriers are anonymous declarations in the substrate (`name: None`), so
+/// they never appear in the first-pass name seed — yet call sites spell variant constructors by
+/// name. Without this hook, [`try_lower_symbolic_cost_constant_cost_data`] cannot match the
+/// `symbols` map (Practice 5 / duplicate authority at data-body edges).
+///
+/// `HashMap::entry` via `or_insert` preserves an explicit same-spelling binding when one already
+/// exists (user decl or higher-ranked bootstrap duplicate).
+fn seed_symbolic_cost_variant_constructors_for_symbols(
+    dag: &Dag,
+    symbols: &mut HashMap<String, DeclarationId>,
+) {
+    let Some(sym_decl) = dag.declaration_by_name("SymbolicCost") else {
+        return;
+    };
+    let decl = dag.declaration(sym_decl.id);
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        return;
+    };
+    for v in variants {
+        symbols.entry(v.label.clone()).or_insert(v.ty);
+    }
 }
 
 fn placeholder_connective(name: &str) -> TypeConnective {
@@ -3720,7 +3746,13 @@ fn lower_data_item(
                 (Some(canonical), Some(&callee)) if callee == canonical => {
                     try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, dag)
                 }
-                _ => None,
+                _ => try_lower_symbolic_cost_constant_cost_data(
+                    target,
+                    args.as_slice(),
+                    ty_decl_id,
+                    dag,
+                    symbols.get(target).copied(),
+                ),
             }
         }
         _ => None,
@@ -3831,6 +3863,93 @@ fn fold_repeat_string_semantics(s: &str, n: i64) -> Option<String> {
         return None;
     }
     Some(s.repeat(n as usize))
+}
+
+fn type_decl_is_symbolic_cost(dag: &Dag, mut ty_decl_id: DeclarationId) -> bool {
+    for _ in 0..32 {
+        let decl = dag.declaration(ty_decl_id);
+        if decl.name.as_deref() == Some("SymbolicCost") {
+            return true;
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => {
+                ty_decl_id = *template;
+            }
+            TypeConnective::Atom(
+                AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+            ) => {
+                ty_decl_id = *next;
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn symbolic_cost_variant_constructor_id(dag: &Dag, variant_label: &str) -> Option<DeclarationId> {
+    let symbolic_cost = dag.declaration_by_name("SymbolicCost")?;
+    let TypeConnective::Disj { variants } = &symbolic_cost.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.label == variant_label)
+        .map(|v| v.ty)
+}
+
+/// `data …: SymbolicCost = ConstantCost(<Int literal>)` — progress on **R3 gate #40**
+/// (`symbolic_cost_expr_equals_executable`) / the ROADMAP.md debt row where §SymbolicCostExprEquals was
+/// still `NotYetImplemented`: a narrow **class-5 gap #3** lowering slice until general `SymbolicCost`
+/// data literals lower structurally (same gap named in `lower_data_item` / DOWNSTREAM_REQUIREMENTS).
+///
+/// **Terminology:** do not read this staged compiler hook as INVARIANTS **P5(b)**’s per-PR “checkable
+/// receipt” (deleted scaffold path, SG-0 census before/after in `sg0_census_test.rs`, or explicit
+/// deferral citing a `ROADMAP.md` row). Those receipts belong in the **PR description**, not in this
+/// doc comment.
+///
+/// **Canonical constructor id (modeling Practice 5 / single authority at the boundary):** like
+/// [`dsl_std_render_repeat_string_decl_id`]
+/// for `repeat_string`, only the **bootstrap** `SymbolicCost::ConstantCost` variant constructor is
+/// eligible — compare the resolved callee [`DeclarationId`] to [`symbolic_cost_variant_constructor_id`],
+/// not only the surface spelling `ConstantCost` (local shadowing must not reinterpret as std arm).
+fn try_lower_symbolic_cost_constant_cost_data(
+    target: &str,
+    args: &[SurfaceExpr],
+    ty_decl_id: DeclarationId,
+    dag: &Dag,
+    resolved_call_target: Option<DeclarationId>,
+) -> Option<crate::dag::ValueBody> {
+    if target != "ConstantCost" || args.len() != 1 {
+        return None;
+    }
+    let canonical_constant_cost = symbolic_cost_variant_constructor_id(dag, "ConstantCost")?;
+    let resolved = resolved_call_target?;
+    if resolved != canonical_constant_cost {
+        return None;
+    }
+    if !type_decl_is_symbolic_cost(dag, ty_decl_id) {
+        return None;
+    }
+    let SurfaceExpr::Literal {
+        value: SurfaceLiteral::Int(s),
+        ..
+    } = &args[0]
+    else {
+        return None;
+    };
+    let constructor = canonical_constant_cost;
+    Some(crate::dag::ValueBody::Structural {
+        fields: vec![(
+            "_".to_string(),
+            crate::dag::FieldValue::Variant {
+                constructor,
+                payload: vec![crate::dag::FieldValue::Literal(LiteralBits::Int(s.clone()))],
+            },
+        )],
+    })
 }
 
 fn lower_list_to_structural(
