@@ -38,13 +38,19 @@ pub fn behavior_output_port(p0: &Behavior) -> PortId {
         Behavior::Bind(bind) => (bind).result_port(),
     }
 }
-pub fn payload_binding_span(p0: &Path, p1: SourceSpan) -> SourceByteSpan {
+pub fn payload_binding_span(p0: &Path, p1: &SourceSpan) -> SourceByteSpan {
     match &((p0).pattern) {
         BranchPattern::UnresolvedVariant {
             name: __u_name,
             span: __u_span,
-        } => SourceByteSpan::new(__u_span.byte_start, __u_span.byte_end),
-        BranchPattern::ResolvedVariant(_) => SourceByteSpan::new(p1.byte_start, p1.byte_end),
+        } => SourceByteSpan {
+            byte_start: (__u_span).byte_start,
+            byte_end: (__u_span).byte_end,
+        },
+        BranchPattern::ResolvedVariant(_) => SourceByteSpan {
+            byte_start: (p1).byte_start,
+            byte_end: (p1).byte_end,
+        },
     }
 }
 pub fn template_argument_value(

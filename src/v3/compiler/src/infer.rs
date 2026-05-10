@@ -687,7 +687,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
 }
 
 fn branch_payload_binding_span(path: &crate::dag::Path, branch_span: &SourceSpan) -> SourceSpan {
-    let extent = generated_payload_binding_span(path, branch_span.clone());
+    let extent = generated_payload_binding_span(path, branch_span);
     let file = match &path.pattern {
         crate::dag::BranchPattern::UnresolvedVariant { span, .. } => span.file.clone(),
         crate::dag::BranchPattern::ResolvedVariant(_) => branch_span.file.clone(),
