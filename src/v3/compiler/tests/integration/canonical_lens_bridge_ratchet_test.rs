@@ -12,6 +12,8 @@
 //!   B. `lens_decl.name.as_deref() == Some("<name>")` string-name dispatch arms.
 //!   C. Generic `lens_decl.name.as_deref()` name-keyed lookups (ones not
 //!      already counted in B).
+//!   D. Helper-shaped `DeclarationRef` to name-resolution dispatch for
+//!      canonical lens identity.
 
 use std::fs;
 use std::path::PathBuf;
@@ -285,9 +287,17 @@ fn count_lens_name_lookups(src: &str) -> usize {
         .count()
 }
 
+/// Category D: helper-shaped `DeclarationRef` identity checks that resolve
+/// the referenced declaration back to a spelling such as `cost_of`.
+fn count_declaration_ref_name_dispatch_helpers(src: &str) -> usize {
+    src.matches("declaration_ref_resolves_to_name").count()
+        + src.matches("declaration_by_name(\"cost_of\")").count()
+}
+
 const EXPECTED_INCLUDE_STR_LENS_BYTES: usize = 0;
 const EXPECTED_NAME_EQ_DISPATCH_ARMS: usize = 0;
 const EXPECTED_GENERIC_NAME_LOOKUPS: usize = 0;
+const EXPECTED_DECLARATION_REF_NAME_DISPATCH_HELPERS: usize = 0;
 
 #[test]
 fn canonical_lens_include_str_bridges_pinned() {
@@ -328,6 +338,20 @@ fn canonical_lens_generic_name_lookups_pinned() {
          lookup count drifted: expected {EXPECTED_GENERIC_NAME_LOOKUPS}, \
          found {n}. The canonical lens-name dispatch bridge is retired; \
          lens body selection must not route through declaration spelling."
+    );
+}
+
+#[test]
+fn canonical_lens_declaration_ref_name_dispatch_helpers_pinned() {
+    let src = strip_comments(&test_runner_source());
+    let n = count_declaration_ref_name_dispatch_helpers(&src);
+    assert_eq!(
+        n, EXPECTED_DECLARATION_REF_NAME_DISPATCH_HELPERS,
+        "test_runner.rs DeclarationRef-to-name lens dispatch helper count \
+         drifted: expected {EXPECTED_DECLARATION_REF_NAME_DISPATCH_HELPERS}, \
+         found {n}. The canonical lens-name dispatch bridge is retired; \
+         semantic dispatch must not route by resolving a lens DeclarationRef \
+         back to declaration spelling."
     );
 }
 

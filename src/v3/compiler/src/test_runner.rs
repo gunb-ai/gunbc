@@ -2309,17 +2309,13 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        // T-LaneE (`cost_of`): structural `Lookup<Int>` from the Rust-generated lens on the claim
-        // program's `merge_sort_out` bind vs a fixture `Lookup<Int>` expected value.
-        if self.declaration_ref_resolves_to_name(lens_id, "cost_of") {
-            let Some(cost_bind) = program_input
-                .as_ref()
-                .and_then(ProgramInputRole::output_bind_name)
-            else {
-                return ClaimResult::Fail(format!(
-                    "LensOutputEquals(cost_of): input_ref `{input_name}` must inhabit ProgramOutputBind"
-                ));
-            };
+        // T-LaneE cost receipt: `ProgramOutputBind` is the structural contract for a claim
+        // source output-bind cost check. Dispatch on that input role, not on lens declaration
+        // spelling; otherwise the canonical lens-name bridge would survive under a helper.
+        if let Some(cost_bind) = program_input
+            .as_ref()
+            .and_then(ProgramInputRole::output_bind_name)
+        {
             let Some(bind) = find_bind(&program_dag, cost_bind, &claim.file_name) else {
                 return ClaimResult::Fail(format!(
                     "LensOutputEquals(cost_of): bind `{cost_bind}` not found in `{}`",
@@ -2353,15 +2349,6 @@ impl<'a> TestRunner<'a> {
                     "LensOutputEquals(cost_of): computed cost is Miss (malformed program)".to_string(),
                 ),
             };
-        }
-
-        if matches!(
-            program_input,
-            Some(ProgramInputRole::ProgramOutputBind { .. })
-        ) {
-            return ClaimResult::Fail(format!(
-                "LensOutputEquals: input_ref `{input_name}` inhabits ProgramOutputBind but lens `{lens_name}` does not consume an output bind"
-            ));
         }
         let reflects_claim_program = program_input
             .as_ref()
@@ -2650,12 +2637,6 @@ impl<'a> TestRunner<'a> {
                  for a DeclarationRef edge, got {other:?}"
             )),
         }
-    }
-
-    fn declaration_ref_resolves_to_name(&self, decl_id: DeclarationId, expected: &str) -> bool {
-        self.dag
-            .declaration_by_name(expected)
-            .is_some_and(|decl| decl.id == decl_id)
     }
 
     fn program_input_role(&self, decl: &Declaration) -> Result<Option<ProgramInputRole>, String> {
