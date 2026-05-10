@@ -446,8 +446,8 @@ pub mod evaluator {
 
     use crate::dag::{
         ArithmeticOp, ArrowBody, Behavior, BranchNode, BranchPattern, ClusterId, ComparisonOp, Dag,
-        DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode,
-        TransformTarget, TypeConnective,
+        DeclarationId, LiteralBits, LogicalOp, LoopBound, NodeId, OperatorKind, Path, PortId,
+        TransformNode, TransformTarget, TypeConnective,
     };
 
     /// Rust mirror of the substrate runtime `Value` carrier in
@@ -699,7 +699,7 @@ pub mod evaluator {
             Value::VariantValue { tag, payload } => (tag, payload),
             _ => return Err(EvalError::BranchScrutineeShape { node: branch.id }),
         };
-        let path = select_branch_path(&branch, tag)?;
+        let path = select_branch_path(dag, &branch, tag)?;
         state.push_frame(EvalFrame::empty());
         let body_result =
             eval_branch_body_in_pushed_frame(dag, branch.id, &path, *payload, state, strategy);
@@ -713,33 +713,149 @@ pub mod evaluator {
         }
     }
 
-    fn select_branch_path(branch: &BranchNode, tag: DeclarationId) -> Result<Path, EvalError> {
-        // Pass 1 (Fail-Closed / C-8): every `BranchPath.pattern` must be
-        // `ResolvedVariant` before evaluation proceeds. Any
-        // `UnresolvedVariant` — even on a path that wouldn't have been
-        // selected — is a substrate-resolution invariant violation and
-        // surfaces before arm matching, so a matching early arm cannot
-        // mask a later unresolved arm.
+    fn select_branch_path(
+        dag: &Dag,
+        branch: &BranchNode,
+        tag: DeclarationId,
+    ) -> Result<Path, EvalError> {
+        // Pass 1 (Fail-Closed / C-8): reject substrate-invalid branches before arm
+        // selection — a matching early arm cannot mask an unresolvable later arm.
+        //
+        // PB-1 embedded bootstrap often leaves surface variant labels as
+        // `UnresolvedVariant` before inference materializes `ResolvedVariant` rows.
+        // Validation + matching consult **existing `Disj` facts** on `dag` (plus Bool /
+        // list-shaped fast paths), not a parallel sum-name registry.
         for path in &branch.paths {
             if let BranchPattern::UnresolvedVariant { name, .. } = &path.pattern {
-                return Err(EvalError::BranchUnresolvedVariant {
-                    node: branch.id,
-                    name: name.clone(),
-                });
+                validate_unresolved_branch_pattern_for_eval(dag, branch.id, name, tag)?;
             }
         }
-        // Pass 2: select the arm whose `ResolvedVariant.tag` matches.
         for path in &branch.paths {
-            if let BranchPattern::ResolvedVariant(decl) = &path.pattern {
-                if *decl == tag {
-                    return Ok(path.clone());
-                }
+            if branch_pattern_matches_scrutinee_tag(dag, &path.pattern, tag)? {
+                return Ok(path.clone());
             }
         }
         Err(EvalError::BranchNoMatchingArm {
             node: branch.id,
             tag,
         })
+    }
+
+    fn validate_unresolved_branch_pattern_for_eval(
+        dag: &Dag,
+        branch_id: NodeId,
+        name: &str,
+        scrutinee_tag: DeclarationId,
+    ) -> Result<(), EvalError> {
+        let missing = || EvalError::BranchUnresolvedVariant {
+            node: branch_id,
+            name: name.to_string(),
+        };
+        // Fail-closed: labels must be declared on the **owning sum** of `scrutinee_tag`,
+        // not merely on some unrelated `Disj` elsewhere on `dag`. Otherwise a wrong-sum
+        // `UnresolvedVariant` arm validates globally while an earlier arm matches —
+        // masking substrate-invalid arms (C-8).
+        if !scrutinee_sum_declares_variant_label(dag, scrutinee_tag, name) {
+            return Err(missing());
+        }
+        Ok(())
+    }
+
+    fn variant_arm_targets_scrutinee_constructor(
+        dag: &Dag,
+        arm_ty: DeclarationId,
+        scrutinee_tag: DeclarationId,
+    ) -> bool {
+        if arm_ty == scrutinee_tag {
+            return true;
+        }
+        let scrutinee_template = match &dag.declaration(scrutinee_tag).connective {
+            TypeConnective::Instantiation { template, .. } => Some(*template),
+            _ => None,
+        };
+        scrutinee_template == Some(arm_ty)
+    }
+
+    fn scrutinee_sum_declares_variant_label(
+        dag: &Dag,
+        scrutinee_tag: DeclarationId,
+        label: &str,
+    ) -> bool {
+        for decl in dag.declarations() {
+            let TypeConnective::Disj { variants } = &decl.connective else {
+                continue;
+            };
+            let owns_scrutinee = variants
+                .iter()
+                .any(|v| variant_arm_targets_scrutinee_constructor(dag, v.ty, scrutinee_tag));
+            if !owns_scrutinee {
+                continue;
+            }
+            if variants.iter().any(|v| v.label == label) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn branch_pattern_matches_scrutinee_tag(
+        dag: &Dag,
+        pattern: &BranchPattern,
+        scrutinee_tag: DeclarationId,
+    ) -> Result<bool, EvalError> {
+        let list_scrutinee_shape = Value::VariantValue {
+            tag: scrutinee_tag,
+            payload: Box::new(Value::RecordValue(Vec::new())),
+        };
+        match pattern {
+            BranchPattern::ResolvedVariant(decl) => Ok(*decl == scrutinee_tag),
+            BranchPattern::UnresolvedVariant { name, .. } => match name.as_str() {
+                "True" => Ok(dag.bool_runtime_variant_id(true) == Some(scrutinee_tag)),
+                "False" => Ok(dag.bool_runtime_variant_id(false) == Some(scrutinee_tag)),
+                "Empty" => {
+                    Ok(eval_std_list_is_empty_variant(dag, &list_scrutinee_shape) == Some(true))
+                }
+                "Cons" => {
+                    Ok(eval_std_list_is_empty_variant(dag, &list_scrutinee_shape) == Some(false))
+                }
+                other => Ok(unresolved_variant_label_matches_scrutinee_tag(
+                    dag,
+                    other,
+                    scrutinee_tag,
+                )),
+            },
+        }
+    }
+
+    /// PB-1 embed: relate an `UnresolvedVariant` label to the scrutinee constructor id using only
+    /// [`TypeConnective::Disj`] rows already allocated on [`Dag`]—the same substrate carrier
+    /// inference will eventually freeze as [`BranchPattern::ResolvedVariant`].
+    fn unresolved_variant_label_matches_scrutinee_tag(
+        dag: &Dag,
+        pattern_label: &str,
+        scrutinee_tag: DeclarationId,
+    ) -> bool {
+        let constructor_template = match &dag.declaration(scrutinee_tag).connective {
+            TypeConnective::Instantiation { template, .. } => Some(*template),
+            _ => None,
+        };
+        for decl in dag.declarations() {
+            let TypeConnective::Disj { variants } = &decl.connective else {
+                continue;
+            };
+            for variant in variants {
+                if variant.label != pattern_label {
+                    continue;
+                }
+                if variant.ty == scrutinee_tag {
+                    return true;
+                }
+                if constructor_template == Some(variant.ty) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     fn eval_branch_body_in_pushed_frame(
@@ -961,6 +1077,40 @@ pub mod evaluator {
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
+        // Bool `&&` / `||` must short-circuit: eager operand evaluation would run RHS
+        // transforms (e.g. polymorphic `contains`) even when the LHS already fixes the
+        // result — PB-1 demo stubs rely on surface precedence (`A || B && C` ≡ `A || (B && C)`).
+        if let TransformTarget::Operator(OperatorKind::Logical(op)) = &t.target {
+            if t.inputs.len() != 2 {
+                return Err(EvalError::TransformArityMismatch {
+                    expected: 2,
+                    got: t.inputs.len(),
+                });
+            }
+            let lhs_val = eval_port(dag, t.inputs[0], state, strategy)?;
+            let a = expect_bool_literal(&lhs_val)?;
+            return match op {
+                LogicalOp::And => {
+                    if !a {
+                        Ok(Value::LiteralValue(LiteralBits::Bool(false)))
+                    } else {
+                        let rhs_val = eval_port(dag, t.inputs[1], state, strategy)?;
+                        let b = expect_bool_literal(&rhs_val)?;
+                        Ok(Value::LiteralValue(LiteralBits::Bool(b)))
+                    }
+                }
+                LogicalOp::Or => {
+                    if a {
+                        Ok(Value::LiteralValue(LiteralBits::Bool(true)))
+                    } else {
+                        let rhs_val = eval_port(dag, t.inputs[1], state, strategy)?;
+                        let b = expect_bool_literal(&rhs_val)?;
+                        Ok(Value::LiteralValue(LiteralBits::Bool(b)))
+                    }
+                }
+            };
+        }
+
         let operands = eval_transform_operands(dag, &t.inputs, state, strategy)?;
         match &t.target {
             TransformTarget::Operator(OperatorKind::Arithmetic(op)) => {
@@ -1045,7 +1195,9 @@ pub mod evaluator {
                 Ok(Value::LiteralValue(LiteralBits::Bool(out)))
             }
             TransformTarget::Operator(OperatorKind::Logical(_)) => {
-                Err(EvalError::UnsupportedTransformTarget { kind: "Logical" })
+                unreachable!(
+                    "logical operators use short-circuit path at eval_transform_node entry"
+                )
             }
             TransformTarget::UnresolvedFieldProject { field_label }
             | TransformTarget::ResolvedFieldProject { field_label } => {
@@ -1070,6 +1222,9 @@ pub mod evaluator {
             }
             TransformTarget::Callable(callee_decl) => {
                 let callee_decl = *callee_decl;
+                if let Some(value) = try_dispatch_std_list_is_empty(dag, callee_decl, &operands) {
+                    return Ok(value);
+                }
                 let connective = &dag.declaration(callee_decl).connective;
                 if let TypeConnective::Arrow { body, .. } = connective {
                     let ArrowBody::UserDefined(bind_id) = body else {
@@ -1219,6 +1374,96 @@ pub mod evaluator {
             _ => Err(EvalError::BadTransformOperands {
                 reason: "expected Int literal",
             }),
+        }
+    }
+
+    fn expect_bool_literal(value: &Value) -> Result<bool, EvalError> {
+        match value {
+            Value::LiteralValue(LiteralBits::Bool(b)) => Ok(*b),
+            _ => Err(EvalError::BadTransformOperands {
+                reason: "expected Bool literal",
+            }),
+        }
+    }
+
+    /// PB-1 scaffold: `std.list.is_empty` lowers as `Callable(non-UserDefined)` for generic
+    /// instances; recognize list-shaped `VariantValue` scrutinees without executing the missing
+    /// body. Dissolution: UserDefined lowering for list helpers on the PB-1 bootstrap path.
+    fn try_dispatch_std_list_is_empty(
+        dag: &Dag,
+        callee_decl: DeclarationId,
+        operands: &[Value],
+    ) -> Option<Value> {
+        if operands.len() != 1 {
+            return None;
+        }
+        let callee = dag.declaration(callee_decl);
+        if callee.name.as_deref() != Some("is_empty") {
+            return None;
+        }
+        if !callee.span.file.ends_with("list.dag") {
+            return None;
+        }
+        let TypeConnective::Arrow { output, body, .. } = &callee.connective else {
+            return None;
+        };
+        if matches!(body, ArrowBody::UserDefined(_)) {
+            return None;
+        }
+        if !type_peels_to_bool(dag, *output) {
+            return None;
+        }
+        let bit = eval_std_list_is_empty_variant(dag, &operands[0])?;
+        Some(Value::LiteralValue(LiteralBits::Bool(bit)))
+    }
+
+    fn type_peels_to_bool(dag: &Dag, mut ty: DeclarationId) -> bool {
+        let Some(bool_shape) = dag.bool_shape() else {
+            return false;
+        };
+        let bool_decl = bool_shape.declaration;
+        for _ in 0..64 {
+            if ty == bool_decl {
+                return true;
+            }
+            let decl = dag.declaration(ty);
+            match &decl.connective {
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if arguments.is_empty() => {
+                    ty = *template;
+                }
+                _ => return false,
+            }
+        }
+        false
+    }
+
+    fn eval_std_list_is_empty_variant(dag: &Dag, list_value: &Value) -> Option<bool> {
+        let Value::VariantValue { tag, .. } = list_value else {
+            return None;
+        };
+        let list_decl = dag.declaration_by_name("List")?;
+        let TypeConnective::Disj { variants } = &list_decl.connective else {
+            return None;
+        };
+        let empty_arm_ty = variants.iter().find(|v| v.label == "Empty")?.ty;
+        let cons_arm_ty = variants.iter().find(|v| v.label == "Cons")?.ty;
+        let tag_decl = dag.declaration(*tag);
+        if let TypeConnective::Instantiation { template, .. } = &tag_decl.connective {
+            if *template == empty_arm_ty {
+                return Some(true);
+            }
+            if *template == cons_arm_ty {
+                return Some(false);
+            }
+            return None;
+        }
+        match tag_decl.name.as_deref()? {
+            "Empty" => Some(true),
+            "Cons" => Some(false),
+            _ => None,
         }
     }
 
@@ -2559,6 +2804,61 @@ pub mod evaluator {
             assert_eq!(state.frames_outer_to_inner().len(), 1);
         }
 
+        // Wrong-sum `UnresolvedVariant` labels exist on *some* `Disj` in the fixture DAG but not on
+        // the scrutinee's owning sum. Without scrutinee-scoped validation, `any_disj` acceptance
+        // lets them pass the pre-pass while an earlier arm matches — masking the substrate gap.
+        #[test]
+        fn eval_branch_fails_closed_on_wrong_sum_unresolved_arm_masked_by_earlier_match() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let matching_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let early_output = dag.push_value(LiteralBits::Int("7".to_string()), span());
+            let early_body = node_for_port(&dag, early_output);
+            let late_output = dag.push_value(LiteralBits::Int("13".to_string()), span());
+            let late_body = node_for_port(&dag, late_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![
+                    Path {
+                        body: early_body,
+                        output: early_output,
+                        pattern: BranchPattern::ResolvedVariant(matching_tag),
+                        binding: None,
+                    },
+                    Path {
+                        body: late_body,
+                        output: late_output,
+                        pattern: BranchPattern::UnresolvedVariant {
+                            name: "Empty".to_string(),
+                            span: span(),
+                        },
+                        binding: None,
+                    },
+                ],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                variant(matching_tag, Value::LiteralValue(LiteralBits::Bool(true))),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let err = eval_node(&dag, entry, &mut state, &strategy)
+                .expect_err("wrong-sum unresolved arm rejected");
+
+            assert_eq!(
+                err,
+                EvalError::BranchUnresolvedVariant {
+                    node: entry,
+                    name: "Empty".to_string(),
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
         #[test]
         fn eval_loop_zero_iterations_returns_init_without_body_eval() {
             let mut dag = Dag::new();
@@ -3010,7 +3310,7 @@ pub mod evaluator {
         }
 
         #[test]
-        fn transform_logical_operator_unsupported_in_e3_slice() {
+        fn transform_logical_operator_evaluates_bool_literals() {
             let mut dag = Dag::new();
             let lhs = dag.push_value(LiteralBits::Bool(true), span());
             let rhs = dag.push_value(LiteralBits::Bool(false), span());
@@ -3022,12 +3322,9 @@ pub mod evaluator {
             let entry = node_for_port(&dag, output);
             let mut state = empty_state();
 
-            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("logical");
+            let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("logical");
 
-            assert_eq!(
-                err,
-                EvalError::UnsupportedTransformTarget { kind: "Logical" }
-            );
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Bool(false)));
         }
 
         #[test]

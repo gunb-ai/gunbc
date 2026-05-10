@@ -42,6 +42,7 @@ const UNICODE_DAG: &str = include_str!("../../../../dsl/std/unicode.dag");
 const RENDER_REPEAT_STRING_BOOTSTRAP_DAG: &str =
     include_str!("../../../../dsl/std/render_repeat_string_bootstrap.dag");
 const METHODS_DAG: &str = include_str!("../../../../dsl/std/methods.dag");
+const SERIALIZATION_DAG: &str = include_str!("../../../../dsl/std/serialization.dag");
 
 // Same `OUT_DIR` fixture arrays `build.rs` emits for staged/spec/compiler/extdeps sources;
 // this module is their only remaining fresh-parse consumer.
@@ -56,10 +57,10 @@ include!(concat!(env!("OUT_DIR"), "/v3_extdeps_files.rs"));
 // `load_runtime_bootstrap_authorities`, so this iterator returns only the
 // extdeps-tree subset of the keys to avoid duplicate-declaration loads.
 fn extdeps_keyed_bootstrap_fixtures() -> impl Iterator<Item = (&'static str, &'static str)> {
-    EXTDEPS_FILES
+    crate::bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS
         .iter()
         .copied()
-        .filter(|(path, _)| crate::bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS.contains(path))
+        .filter_map(|key| EXTDEPS_FILES.iter().find(|(path, _)| *path == key).copied())
 }
 
 // Single authority for staged-vs-`dsl/` name collision resolution during regen.
@@ -119,6 +120,12 @@ fn load_runtime_bootstrap_authorities(
         .collect();
     load_fixtures(dag, &fixtures);
     crate::bootstrap::materialize_pipeline_realizations(dag);
+    // Materialize `optional_match_disjs` for `T?` fields so substrate helpers and
+    // evaluator harnesses can use `Dag::optional_match_disj` on the embedded graph.
+    // Full `infer::infer` is intentionally **not** run here: the PB-1 snapshot is a
+    // lowered structural cache; mixing the interactive inference fixpoint into the
+    // embedded graph drifts callable/stamping contracts vs `compile_to_dag`.
+    crate::infer::ensure_all_optional_match_disjs(dag);
     dag.finalize_runtime_bootstrap_from_generated_snapshot(
         RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot,
     );
@@ -161,6 +168,7 @@ fn std_fixtures() -> &'static [(&'static str, &'static str)] {
             RENDER_REPEAT_STRING_BOOTSTRAP_DAG,
         ),
         ("dsl/std/methods.dag", METHODS_DAG),
+        ("dsl/std/serialization.dag", SERIALIZATION_DAG),
     ]
 }
 
