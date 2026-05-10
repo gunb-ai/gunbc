@@ -6512,6 +6512,18 @@ fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
                 "#[serde(rename = \"tool_use\")]",
             ][..],
         ),
+        (
+            "pub enum AnthropicMessages200ContentBlock",
+            "#[serde(tag = \"type\")]",
+            &[
+                "#[serde(rename = \"text\")]",
+                "#[serde(rename = \"thinking\")]",
+                "#[serde(rename = \"redacted_thinking\")]",
+                "#[serde(rename = \"tool_use\")]",
+                "#[serde(rename = \"server_tool_use\")]",
+                "#[serde(rename = \"web_search_tool_result\")]",
+            ][..],
+        ),
     ] {
         let attrs = attrs_immediately_above_enum(&content, enum_decl);
         assert!(
@@ -6559,6 +6571,26 @@ fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
         response_role_block.contains("Assistant,"),
         "expected AnthropicMessages200Role singleton Assistant variant; got:\n{response_role_block}"
     );
+
+    let service_tier_attrs =
+        attrs_immediately_above_enum(&content, "pub enum AnthropicMessages200ServiceTier");
+    assert!(
+        service_tier_attrs.contains(&"#[serde(rename_all = \"snake_case\")]"),
+        "expected AnthropicMessages200ServiceTier snake_case wire serde; attrs: {:?}",
+        service_tier_attrs
+    );
+    assert!(
+        !service_tier_attrs.iter().any(|attr| attr.contains("tag =")),
+        "AnthropicMessages200ServiceTier must remain a string enum, not a tagged object; attrs: {:?}",
+        service_tier_attrs
+    );
+    let service_tier_block = enum_block(&content, "pub enum AnthropicMessages200ServiceTier");
+    for needle in ["Standard,", "Priority,", "Batch,"] {
+        assert!(
+            service_tier_block.contains(needle),
+            "expected variant {needle} in AnthropicMessages200ServiceTier; got:\n{service_tier_block}"
+        );
+    }
 }
 
 #[test]
