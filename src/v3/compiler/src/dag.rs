@@ -3763,7 +3763,9 @@ impl Dag {
                 return ProducerLookup::NoProducer;
             };
             let Some(behavior) = self.node_opt(&producer_id) else {
-                return ProducerLookup::MissingNode { producer: producer_id };
+                return ProducerLookup::MissingNode {
+                    producer: producer_id,
+                };
             };
             last_producer = Some(producer_id);
             match behavior {
