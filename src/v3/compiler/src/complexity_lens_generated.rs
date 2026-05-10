@@ -145,7 +145,7 @@ pub fn transform_summary(
 ) -> Lookup<ComplexitySummary> {
     match &(per_call_pattern_at(p0, *p2)) {
         None => compose_many_inputs(p1, p3),
-        Some(pattern) => match &(per_call_descent_operand_port(p0, *p2, p3)) {
+        Some(pattern) => match &(per_call_descent_operand_port(p0, *p2)) {
             None => compose_many_inputs(p1, p3),
             Some(descent_port) => recursive_transform_summary(p1, pattern, descent_port, p3),
         },

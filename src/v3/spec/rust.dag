@@ -1759,10 +1759,10 @@ data per_call_pattern_at_binding_rust: SubstrateAccessorBinding = {
   language: rust_language
 }
 
-// `dag::per_call_descent_operand_port(&Dag, NodeId, &[PortId]) -> Option<PortId>` — third
-// argument is the live transform input slice in evidence order.
+// `dag::per_call_descent_operand_port(&Dag, NodeId) -> Option<PortId>` — transform inputs are
+// taken from the `Transform` at `call_site` in the `Dag` (not caller-supplied lists).
 data rust_per_call_descent_operand_port_accessor: SubstrateAccessorRealization = {
-  carrier: "per_call_descent_operand_port({p0}, *{p1}, {p2})"
+  carrier: "per_call_descent_operand_port({p0}, *{p1})"
 }
 
 data per_call_descent_operand_port_binding_rust: SubstrateAccessorBinding = {

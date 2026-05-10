@@ -1388,8 +1388,9 @@ pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> 
 /// Same projection surface as [`per_call_pattern_at`], plus the evidence index of the
 /// [`SubValueRelation`] row that [`call_pattern_from_relations_with_index`] selected for that pattern.
 ///
-/// Lenses align this index with `Transform.inputs` so multi-argument self-calls still bind
-/// `pattern_to_iter_bound` to the port that proved descent (not an arbitrary list head).
+/// Lenses use this index against the [`TransformNode::inputs`] slice at `call_site` (read from
+/// the `Dag`, not a parallel list) so multi-argument self-calls still bind
+/// `pattern_to_iter_bound` to the port that proved descent.
 pub fn per_call_pattern_and_descent_operand_index(
     dag: &Dag,
     call_site: NodeId,
@@ -1400,15 +1401,17 @@ pub fn per_call_pattern_and_descent_operand_index(
     call_pattern_from_relations_with_index(&entry.evidence)
 }
 
-/// [`PortId`] for the call input that carried the [`SubValueRelation`] selected by
-/// [`per_call_pattern_at`], when `inputs` is the live transform argument list in evidence order.
-pub fn per_call_descent_operand_port(
-    dag: &Dag,
-    call_site: NodeId,
-    inputs: &[PortId],
-) -> Option<PortId> {
+/// [`PortId`] for the [`TransformNode::inputs`] slot that carried the [`SubValueRelation`]
+/// selected by [`per_call_pattern_at`].
+///
+/// `call_site` must identify a [`Behavior::Transform`] in `dag`; input ports are read from that
+/// transform only (P2: no parallel list from the consumer that could desync from substrate).
+pub fn per_call_descent_operand_port(dag: &Dag, call_site: NodeId) -> Option<PortId> {
     let (_, idx) = per_call_pattern_and_descent_operand_index(dag, call_site)?;
-    inputs.get(idx).copied()
+    let transform = dag
+        .node_opt(&call_site)
+        .and_then(Behavior::as_transform)?;
+    transform.inputs.get(idx).copied()
 }
 
 fn call_pattern_from_relations_with_index(

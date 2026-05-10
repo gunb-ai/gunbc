@@ -92,7 +92,7 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
                 cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
             },
             Some(pattern) => {
-                match &(per_call_descent_operand_port(p0, *&((t).id), &((t).inputs))) {
+                match &(per_call_descent_operand_port(p0, *&((t).id))) {
                     None => SymbolicCostEntry {
                         port: (t).result_port(),
                         cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),

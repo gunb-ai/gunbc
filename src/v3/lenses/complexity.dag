@@ -175,7 +175,7 @@ fn transform_summary(
   match per_call_pattern_at(d, call_site) {
     None => compose_many_inputs(acc, inputs)
     Some(pattern) =>
-      match per_call_descent_operand_port(d, call_site, inputs) {
+      match per_call_descent_operand_port(d, call_site) {
         None => compose_many_inputs(acc, inputs)
         Some(descent_port) =>
           recursive_transform_summary(acc, pattern, descent_port, inputs)

@@ -6,7 +6,6 @@
 
 module std.computation
 
-import std.list { List }
 import v3.std.substrate { Dag, NodeId, PortId }
 import std.termination {
   DescentEvidence, DescentUnknown, Strict, NonIncreasing,
@@ -63,8 +62,8 @@ fn per_call_pattern_at(d: Dag, call_site: NodeId) -> CallPattern? {
   host per_call_pattern_at
 }
 
-// Operand port aligned with `per_call_pattern_at`'s evidence-index selection (multi-arg safe).
-fn per_call_descent_operand_port(d: Dag, call_site: NodeId, inputs: List<PortId>) -> PortId? {
+// Operand port aligned with `per_call_pattern_at`; reads `Transform.inputs` at `call_site` from `d`.
+fn per_call_descent_operand_port(d: Dag, call_site: NodeId) -> PortId? {
   host per_call_descent_operand_port
 }
 
