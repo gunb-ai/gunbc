@@ -151,7 +151,7 @@ fn reference_field(fields: &[(String, FieldValue)], label: &str) -> Option<Decla
 
 fn int_literal_field(fields: &[(String, FieldValue)], label: &str) -> Option<i64> {
     match field(fields, label)? {
-        FieldValue::Literal(LiteralBits::Int(value)) => Some(*value),
+        FieldValue::Literal(LiteralBits::Int(value)) => value.parse().ok(),
         _ => None,
     }
 }
@@ -188,7 +188,9 @@ fn parse_positive_interval_width(dag: &Dag, value: &FieldValue) -> Option<Positi
         }
         "UnitCount" => {
             if let [FieldValue::Literal(LiteralBits::Int(units))] = payload.as_slice() {
-                return Some(PositiveIntervalWidth::UnitCount { units: *units });
+                return Some(PositiveIntervalWidth::UnitCount {
+                    units: units.parse().ok()?,
+                });
             }
             if let [FieldValue::Record(fields)] = payload.as_slice() {
                 return Some(PositiveIntervalWidth::UnitCount {
@@ -248,7 +250,7 @@ fn parse_int_interval(dag: &Dag, value: &FieldValue) -> Option<Interval<i64>> {
         "BoundedInterval" => {
             if let [FieldValue::Literal(LiteralBits::Int(lower)), width] = payload.as_slice() {
                 return Some(Interval::BoundedInterval {
-                    lower: *lower,
+                    lower: lower.parse().ok()?,
                     width: parse_interval_width(dag, width)?,
                 });
             }

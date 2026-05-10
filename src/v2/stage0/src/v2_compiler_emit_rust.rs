@@ -10973,6 +10973,7 @@ pub fn emit_typed_record_lit(
                             );
                             raw
                         }
+                        }
                     }
                 }
             }
