@@ -23,18 +23,32 @@ import std.verification {
   TestSuite
 }
 
+// Fixture-local runner input role for gate #44: `LensOutputEquals` witnesses that read top-level
+// bind ordering from the claim program. Mirrors the `ProgramInput` pattern; kept local so this
+// integration fixture does not depend on a bootstrap regen for `std.verification`.
+type BindClusterScheduleProgramInput {}
+
 type AutoMemoizationEvidence {}
 
 data auto_parallelism_program_input: ProgramInput = {}
+
+data auto_parallelism_bind_schedule_program_input: BindClusterScheduleProgramInput = {}
 
 // Ordinary-lens placeholder until `src/v3/lenses/parallelism.dag` is ported from
 // its fail-closed stub to a `.dag` producer over DB-20 workflow parallelism data.
 // Keep this scalar and intentionally mismatched: current `LensOutputEquals`
 // evaluation can execute scalar demo lenses, while DB-20's full
 // `WorkflowParallelismReport` producer is still a follow-on ordinary-lens
+<<<<<<< HEAD
 // surface. Gate #43 uses `r3_auto_parallelism_parallel_emit_witness` (Rust emit text); gate #44
 // uses `auto_parallelism_bind_cluster_schedule_tag` and expected `0` for sequential scheduling;
 // gate #45 uses `r3_auto_parallelism_branch_arms_serialize_witness` (Rust emit text).
+=======
+// surface. Gate #43 uses `r3_auto_parallelism_parallel_emit_witness` (Rust emit text). Gate #44
+// pairs `auto_parallelism_bind_cluster_schedule_tag` with `BindClusterScheduleProgramInput`
+// (structural runner dispatch) and expected `0` for sequential scheduling. Gate #45 stays on the
+// pending lens mismatch.
+>>>>>>> a236dcbba (fix(v3): gate #44 dispatch without lens-name bridge (ratchet))
 fn auto_parallelism_pending_lens(_d: Dag) -> Int = 0
 
 data auto_parallelism_pending_expected: Int = 1
@@ -45,7 +59,8 @@ fn r3_auto_parallelism_parallel_emit_witness(_d: Dag) -> Int = 0
 data r3_auto_parallelism_parallel_emit_expected: Int = 1
 
 // R3 gate #44: ordered top-level binds with a later bind depending on an earlier bind schedule
-// sequentially (witness via `lens_equals_bind_cluster_parallel_schedule_tag` in test_runner).
+// sequentially. Lens stub body is unused — runner applies host witness when `input_ref` inhabits
+// `BindClusterScheduleProgramInput` and the lens has unary `Dag -> Int` shape.
 fn auto_parallelism_bind_cluster_schedule_tag(_d: Dag) -> Int = 0
 
 data auto_parallelism_dependent_binds_schedule_expected: Int = 0
@@ -83,7 +98,7 @@ data auto_parallelism_dependent_binds_emit_sequential: TestClaim = {
   file_name: "r3_free_consequences_auto_parallelism_dependent_binds.v3",
   predicate: LensOutputEquals(
     auto_parallelism_bind_cluster_schedule_tag,
-    auto_parallelism_program_input,
+    auto_parallelism_bind_schedule_program_input,
     auto_parallelism_dependent_binds_schedule_expected
   ),
   requires: []

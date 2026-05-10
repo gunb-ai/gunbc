@@ -1973,6 +1973,8 @@ impl PerfMeasurementResolveError {
 
 enum ProgramInputRole {
     ProgramInput,
+    /// R3 gate #44: claim-program top-level bind schedule witness input (structural dispatch).
+    BindClusterScheduleProgramInput,
     ProgramOutputBind { output_bind_name: String },
 }
 
@@ -1980,12 +1982,16 @@ impl ProgramInputRole {
     fn output_bind_name(&self) -> Option<&str> {
         match self {
             Self::ProgramInput => None,
+            Self::BindClusterScheduleProgramInput => None,
             Self::ProgramOutputBind { output_bind_name } => Some(output_bind_name),
         }
     }
 
-    fn is_program_input(&self) -> bool {
-        matches!(self, Self::ProgramInput)
+    fn reflects_compiled_claim_program(&self) -> bool {
+        matches!(
+            self,
+            Self::ProgramInput | Self::BindClusterScheduleProgramInput
+        )
     }
 }
 
@@ -2507,21 +2513,24 @@ impl<'a> TestRunner<'a> {
         }
 
         // R3 gate #44 (`auto_parallelism_dependent_binds_emit_sequential`): scalar schedule tag from
-        // ordered top-level bind dependence (ordinary lens data path; DB-20 producer follow-on).
-        if lens_decl.name.as_deref() == Some("auto_parallelism_bind_cluster_schedule_tag") {
-            if !program_input
-                .as_ref()
-                .is_some_and(ProgramInputRole::is_program_input)
-            {
+        // ordered top-level bind dependence. Structural dispatch: `input_ref` inhabits
+        // `BindClusterScheduleProgramInput` (not `ProgramInput`, so `named_function_count` stays on
+        // the ordinary `apply_lens_declaration` path) and the lens has unary `Dag -> Int` shape.
+        if matches!(
+            program_input.as_ref(),
+            Some(ProgramInputRole::BindClusterScheduleProgramInput)
+        ) {
+            if !self.lens_has_unary_dag_to_int_signature(lens_id) {
                 return ClaimResult::Fail(format!(
-                    "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): input_ref `{input_name}` must inhabit ProgramInput"
+                    "LensOutputEquals: input_ref `{input_name}` inhabits BindClusterScheduleProgramInput, \
+                     but lens `{lens_name}` does not have unary `Dag -> Int` signature"
                 ));
             }
             let computed = match lens_equals_bind_cluster_parallel_schedule_tag(&program_dag) {
                 Ok(v) => v,
                 Err(msg) => {
                     return ClaimResult::Fail(format!(
-                        "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): {msg}"
+                        "LensOutputEquals(BindClusterScheduleProgramInput): {msg}"
                     ));
                 }
             };
@@ -2530,13 +2539,13 @@ impl<'a> TestRunner<'a> {
                     Ok(v) => v,
                     Err(_) => {
                         return ClaimResult::Fail(format!(
-                            "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                            "LensOutputEquals(BindClusterScheduleProgramInput): expected Int literal is not a valid i64 decimal for `{expected_name}`"
                         ));
                     }
                 },
                 _ => {
                     return ClaimResult::Fail(format!(
-                        "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
+                        "LensOutputEquals(BindClusterScheduleProgramInput): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
                     ));
                 }
             };
@@ -2544,6 +2553,7 @@ impl<'a> TestRunner<'a> {
                 ClaimResult::Pass
             } else {
                 ClaimResult::Fail(format!(
+<<<<<<< HEAD
                     "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): expected `{expected_int}`, computed `{computed}`"
                 ));
             };
@@ -2589,13 +2599,16 @@ impl<'a> TestRunner<'a> {
                 ClaimResult::Fail(format!(
                     "LensOutputEquals(r3_auto_parallelism_branch_arms_serialize_witness): expected `{expected_int}` (1 = serialized branch arms), computed `{computed_int}` for `{}`",
                     claim.file_name
+=======
+                    "LensOutputEquals(BindClusterScheduleProgramInput): expected `{expected_int}`, computed `{computed}`"
+>>>>>>> a236dcbba (fix(v3): gate #44 dispatch without lens-name bridge (ratchet))
                 ))
             };
         }
 
         let reflects_claim_program = program_input
             .as_ref()
-            .is_some_and(ProgramInputRole::is_program_input);
+            .is_some_and(ProgramInputRole::reflects_compiled_claim_program);
         let input_field = if reflects_claim_program {
             // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the
             // lens, so reflected `List` / `Behavior` variant `DeclarationId`s are not mixed across
@@ -2956,6 +2969,17 @@ impl<'a> TestRunner<'a> {
             && self.lookup_int_type(*output)
     }
 
+    fn lens_has_unary_dag_to_int_signature(&self, lens_id: DeclarationId) -> bool {
+        let TypeConnective::Arrow { inputs, output, .. } =
+            &self.dag.declaration(lens_id).connective
+        else {
+            return false;
+        };
+        matches!(inputs.as_slice(), [dag]
+            if self.type_ref_normalizes_to_named(*dag, "Dag"))
+            && self.type_ref_normalizes_to_named(*output, "Int")
+    }
+
     fn type_ref_normalizes_to_named(&self, candidate: DeclarationId, expected_name: &str) -> bool {
         let Some(expected) = self
             .dag
@@ -2994,6 +3018,11 @@ impl<'a> TestRunner<'a> {
     }
 
     fn program_input_role(&self, decl: &Declaration) -> Result<Option<ProgramInputRole>, String> {
+        if let Some(role_decl) = self.dag.declaration_by_name("BindClusterScheduleProgramInput") {
+            if Self::declaration_carries_role_tag(decl, role_decl.id) {
+                return Ok(Some(ProgramInputRole::BindClusterScheduleProgramInput));
+            }
+        }
         if self.decl_inhabits_named_role(decl, "ProgramInput")? {
             return Ok(Some(ProgramInputRole::ProgramInput));
         }
@@ -3038,6 +3067,15 @@ impl<'a> TestRunner<'a> {
         }))
     }
 
+    fn declaration_carries_role_tag(decl: &Declaration, role_id: DeclarationId) -> bool {
+        decl.inhabits == Some(role_id)
+            || decl.meta_tag == Some(role_id)
+            || matches!(
+                &decl.connective,
+                TypeConnective::Instantiation { template, .. } if *template == role_id
+            )
+    }
+
     fn decl_inhabits_named_role(
         &self,
         decl: &Declaration,
@@ -3051,12 +3089,7 @@ impl<'a> TestRunner<'a> {
                 "verification role type `{role_name}` is missing from the fixture Dag"
             ));
         };
-        Ok(decl.inhabits == Some(role_id)
-            || decl.meta_tag == Some(role_id)
-            || matches!(
-                &decl.connective,
-                TypeConnective::Instantiation { template, .. } if *template == role_id
-            ))
+        Ok(Self::declaration_carries_role_tag(decl, role_id))
     }
 
     fn decl_inhabits_role_id(decl: &Declaration, role_id: DeclarationId) -> bool {
