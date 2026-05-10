@@ -219,7 +219,7 @@ fn entry_for(
         Some(pattern) =>
           match per_call_descent_operand_port(d, t.id) {
             None =>
-              { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
+              { port: t.result_port, cost: miss_symbolic_cost_lookup() }
             Some(descent_port) =>
               {
                 port: t.result_port,

@@ -146,7 +146,7 @@ pub fn transform_summary(
     match &(per_call_pattern_at(p0, *p2)) {
         None => compose_many_inputs(p1, p3),
         Some(pattern) => match &(per_call_descent_operand_port(p0, *p2)) {
-            None => compose_many_inputs(p1, p3),
+            None => miss_complexity_summary_lookup(),
             Some(descent_port) => recursive_transform_summary(p1, pattern, descent_port, p3),
         },
     }
