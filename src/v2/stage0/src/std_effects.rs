@@ -95,9 +95,7 @@ pub struct OperationEffect {
 #[serde(tag = "_variant")]
 pub enum CompositionVerdict {
     IdempotentComposition,
-    BrokenBy {
-        first_breaker: Rc<OperationEffect>,
-    },
+    BrokenBy { first_breaker: Rc<OperationEffect> },
 }
 impl CompositionVerdict {
     pub fn first_breaker(&self) -> Rc<OperationEffect> {
@@ -105,7 +103,10 @@ impl CompositionVerdict {
             CompositionVerdict::IdempotentComposition => {
                 panic!("no first_breaker on unit variant")
             }
-            CompositionVerdict::BrokenBy { first_breaker: __val, .. } => __val.clone(),
+            CompositionVerdict::BrokenBy {
+                first_breaker: __val,
+                ..
+            } => __val.clone(),
         }
     }
 }
