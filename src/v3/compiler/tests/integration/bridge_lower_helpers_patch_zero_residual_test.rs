@@ -1,12 +1,14 @@
 //! **Layer:** integration
 //!
 //! Zero-residual **receipt + ratchet** for the PB Tier-2 lower-helper
-//! post-processing bridge tracked in R3 under the exact-string umbrella
-//! **`bridge_exact_string_patching_residual_retired`** (**lower-helper slice**
-//! only; PB brief `docs/briefs/r2-pure-bootstrap-manager.md` names the sibling
-//! Tier-2 row as `bridge_patch_lower` + `_helpers_residual_retired` split
-//! across lines here so this source stays free of the contiguous forbidden
-//! token under scan).
+//! post-processing bridge: ledger row **`bridge_exact_string_patching_residual_retired`**
+//! is **`Retired`** in `src/v3/std/bridge_ledger.dag` for the **lower-helper slice**
+//! only (PB brief
+//! `docs/briefs/r2-pure-bootstrap-manager.md` names the sibling Tier-2 row as
+//! `bridge_patch_lower` + `_helpers_residual_retired` split across lines here
+//! so this source stays free of the contiguous forbidden token under scan).
+//! Remaining Row-4 semantic exact-string patching outside this slice is tracked
+//! as the open ledger row `bridge_exact_string_semantic_patching_residual`.
 //! See `docs/r3-structure.md` (T-Bridge-Retirement).
 //!
 //! ## Audit (PB v3-compiler crate, post–PR #1014)
