@@ -2958,6 +2958,16 @@ fn top_level_binds_pairwise_independent(dag: &Dag, binds: &[&BindNode]) -> bool 
     true
 }
 
+/// Top-level program-mode value binds in `Dag::nodes` order — same selector as
+/// [`emit_rust_with_mode`] / W1 (`last_emit_rust_program_top_level_value_bind_name`).
+/// Exposed for `LensOutputEquals` bind-schedule witnesses (R3 gate #44).
+pub(crate) fn program_mode_top_level_value_binds_for_lens_runner(
+    dag: &Dag,
+) -> Result<Vec<&crate::dag::BindNode>, EmitError> {
+    let indexes = RealizationIndexes::build(dag)?;
+    Ok(program_mode_top_level_value_binds(dag, &indexes))
+}
+
 /// Top-level value `Bind` nodes that participate in Rust program-mode emission, in `Dag::nodes`
 /// order. **Single selector** for `emit_rust_with_mode` and W1 (`last_emit_rust_program_top_level_value_bind_name`).
 fn program_mode_top_level_value_binds<'a>(

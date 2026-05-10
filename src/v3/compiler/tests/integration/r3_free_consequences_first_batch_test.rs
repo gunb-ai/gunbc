@@ -54,10 +54,10 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
 
     for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
         assert_eq!(result.claim_name, expected_name);
-        if idx == 0 {
+        if idx == 0 || idx == 1 {
             assert!(
                 matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to Pass (parallel Rust emission witness), got {:?}",
+                "expected {expected_name} to Pass (R3 auto-parallelism gates #43/#44), got {:?}",
                 result.result
             );
         } else if idx == 2 {

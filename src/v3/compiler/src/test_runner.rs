@@ -8,7 +8,10 @@ use crate::dag::{
     Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
-use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
+use crate::emit::rust_target::{
+    last_emit_rust_program_top_level_value_bind_name,
+    program_mode_top_level_value_binds_for_lens_runner,
+};
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
@@ -1992,6 +1995,73 @@ enum DiagnosticDetailFilter {
     Contains(String),
 }
 
+/// R3 gate #44 witness: `1` when top-level program binds have no ordered dependence (each bind's
+/// value does not transitively depend on a strictly earlier top-level bind's value port); `0` when
+/// a later bind depends on an earlier one (sequential scheduling required).
+fn lens_equals_bind_cluster_parallel_schedule_tag(program_dag: &Dag) -> Result<i64, String> {
+    let binds = program_mode_top_level_value_binds_for_lens_runner(program_dag)
+        .map_err(|err| format!("{err:?}"))?;
+    if binds.len() < 2 {
+        return Ok(1);
+    }
+    for i in 0..binds.len() {
+        for j in (i + 1)..binds.len() {
+            if bind_schedule_has_transitive_dependency(program_dag, binds[j].value, binds[i].value)
+            {
+                return Ok(0);
+            }
+        }
+    }
+    Ok(1)
+}
+
+fn bind_schedule_behavior_inputs(dag: &Dag, behavior: &Behavior) -> Vec<PortId> {
+    match behavior {
+        Behavior::Value(_) => Vec::new(),
+        Behavior::Transform(t) => t.inputs.clone(),
+        Behavior::Branch(b) => {
+            let mut inputs = vec![b.input];
+            inputs.extend(b.paths.iter().map(|path| path.output));
+            inputs
+        }
+        Behavior::Loop(l) => {
+            let mut inputs = vec![l.source, l.init];
+            if let Some(count) = l.bound.count_port() {
+                inputs.push(count);
+            }
+            inputs.push(match dag.node(l.body) {
+                Behavior::Value(v) => v.output,
+                Behavior::Transform(t) => t.output,
+                Behavior::Branch(b) => b.output,
+                Behavior::Loop(inner) => inner.output,
+                Behavior::Bind(b) => b.value,
+            });
+            inputs
+        }
+        Behavior::Bind(b) => vec![b.value],
+    }
+}
+
+fn bind_schedule_has_transitive_dependency(dag: &Dag, from_port: PortId, to_port: PortId) -> bool {
+    use std::collections::HashSet;
+
+    let mut seen: HashSet<PortId> = HashSet::new();
+    let mut queue = vec![from_port];
+    while let Some(port) = queue.pop() {
+        if !seen.insert(port) {
+            continue;
+        }
+        if port == to_port {
+            return true;
+        }
+        let Some(producer) = dag.port(port).produced_by else {
+            continue;
+        };
+        queue.extend(bind_schedule_behavior_inputs(dag, dag.node(producer)));
+    }
+    false
+}
+
 impl<'a> TestRunner<'a> {
     pub fn new(dag: &'a Dag) -> Self {
         Self { dag }
@@ -2435,6 +2505,50 @@ impl<'a> TestRunner<'a> {
                 ),
             };
         }
+
+        // R3 gate #44 (`auto_parallelism_dependent_binds_emit_sequential`): scalar schedule tag from
+        // ordered top-level bind dependence (ordinary lens data path; DB-20 producer follow-on).
+        if lens_decl.name.as_deref() == Some("auto_parallelism_bind_cluster_schedule_tag") {
+            if !program_input
+                .as_ref()
+                .is_some_and(ProgramInputRole::is_program_input)
+            {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): input_ref `{input_name}` must inhabit ProgramInput"
+                ));
+            }
+            let computed = match lens_equals_bind_cluster_parallel_schedule_tag(&program_dag) {
+                Ok(v) => v,
+                Err(msg) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): {msg}"
+                    ));
+                }
+            };
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
+                    ));
+                }
+            };
+            return if computed == expected_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals(auto_parallelism_bind_cluster_schedule_tag): expected `{expected_int}`, computed `{computed}`"
+                ));
+            };
+        }
+
         // R3 gate #45 (`auto_parallelism_branch_arms_serialize`): emitted Rust for the claim
         // source must lower the Bool branch to `if … else` and contain no `thread::scope`
         // scheduling — branch arms are exclusive alternatives, not parallel work. Structural
