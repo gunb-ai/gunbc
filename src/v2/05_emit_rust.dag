@@ -5276,6 +5276,90 @@ fn wire_child_for_segment(wire_node: Node, seg: String, source_indices: Map<Stri
   }
 }
 
+// REST typed-response projection: when the wire path names a record field on a
+// coproduct arm (e.g. `content/0/text` on `List<AnthropicMessages200ContentBlock>`),
+// struct-style `(...).text` projection fails because the leaf is a Disj. If
+// exactly one variant payload carries a field whose wire/authored key matches
+// `seg`, emit a `match &*(scrutinee) { Enum::Variant { field, .. } => field.clone(), ... }`.
+fn payload_field_child_matching_seg(payload: Node, seg: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  if !is_product_type(n: payload) {
+    none
+  } else {
+    match payload.children |> filter(f => {
+      let authored = authored_name_at(source_indices: source_indices, node: f)
+      let wire_key = match child_from_key(ch: f, source_indices: source_indices) {
+        Some { value: k } => k
+        None => authored
+      }
+      wire_key == seg
+    }) |> first {
+      Some { value: fch } => Some { value: fch }
+      None => none
+    }
+  }
+}
+
+fn try_advance_wire_disjunct_field(
+  state: WirePathProjection,
+  seg: String,
+  full_path: String,
+  source_indices: Map<String, NewlineIndex>
+) -> WirePathProjection {
+  match state.node {
+    Some { value: n } => {
+      let normed = normalize_access_type_node(n: n)
+      if !is_coproduct_type(n: normed) {
+        WirePathProjection { expr: state.expr, node: none, ok: false }
+      } else {
+        let hit_variants = normed.children |> filter(variant_arm => {
+          let payload = resolved_type(n: variant_arm)
+          match payload_field_child_matching_seg(payload: payload, seg: seg, source_indices: source_indices) {
+            Some { value: _ } => true
+            None => false
+          }
+        })
+        if hit_variants |> count != 1 {
+          WirePathProjection { expr: state.expr, node: none, ok: false }
+        } else {
+          match hit_variants |> first {
+            Some { value: variant_arm } => {
+              let payload = resolved_type(n: variant_arm)
+              match payload_field_child_matching_seg(payload: payload, seg: seg, source_indices: source_indices) {
+                Some { value: fch } => {
+                  let enum_name = authored_name_at(source_indices: source_indices, node: normed)
+                  let variant_name = authored_name_at(source_indices: source_indices, node: variant_arm)
+                  let field_rust = emit_ident(name: authored_name_at(source_indices: source_indices, node: fch), target: Rust)
+                  let match_expr = concat(
+                    "match &*(",
+                    state.expr,
+                    ") { ",
+                    enum_name,
+                    "::",
+                    variant_name,
+                    " { ",
+                    field_rust,
+                    ", .. } => ",
+                    field_rust,
+                    ", _ => return Err(format!(\"REST typed response path ",
+                    full_path,
+                    ": expected ",
+                    variant_name,
+                    " arm\").into()) }"
+                  )
+                  WirePathProjection { expr: match_expr, node: Some { value: resolved_type(n: fch) }, ok: true }
+                }
+                None => WirePathProjection { expr: state.expr, node: none, ok: false }
+              }
+            }
+            None => WirePathProjection { expr: state.expr, node: none, ok: false }
+          }
+        }
+      }
+    }
+    None => WirePathProjection { expr: state.expr, node: none, ok: false }
+  }
+}
+
 fn advance_wire_path_projection(state: WirePathProjection, seg: String, full_path: String, source_indices: Map<String, NewlineIndex>) -> WirePathProjection {
   if !state.ok { state }
   else if path_segment_is_list_index(seg: seg) {
@@ -5297,7 +5381,7 @@ fn advance_wire_path_projection(state: WirePathProjection, seg: String, full_pat
             node: Some { value: resolved_type(n: ch) }
             ok: true
           }
-          None => WirePathProjection { expr: state.expr, node: none, ok: false }
+          None => try_advance_wire_disjunct_field(state: state, seg: seg, full_path: full_path, source_indices: source_indices)
         }
       None => WirePathProjection { expr: state.expr, node: none, ok: false }
     }
