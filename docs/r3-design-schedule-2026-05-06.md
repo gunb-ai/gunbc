@@ -411,7 +411,7 @@ No additional PM/Director ratification needed from Evaluator for E1/E5. **E3 dis
 | Item | Status | Worker / trigger |
 |---|---|---|
 | **G1** L6 row population | HELD | Trigger = Substrate S6 `EmissionPathProjection` carrier landing |
-| **G2** T-Ground-Rust full coverage | ACTIVE / FLOAT ROWS CONSUMED | S7 PR-F and S8 Float migration/base-carrier gates cleared for primitive rows; Rust `f32`/`f64` rows consume `ApproximateFieldAlgebra` via Grounding G2. Remaining follow-ons track broader Real<N> emission demonstrations. |
+| **G2** T-Ground-Rust full coverage | HELD | Trigger = Substrate S7 PR-F + S8 Float migration / Real base-carrier for float rows; #1783 remains draft as dispatch-guide staging artifact |
 | **G3** Coercion-Fold scratch retirement | HELD | Trigger = executable LanguageSpec projection |
 | **G4** F10 `install_hint` cleanup | **DONE / NO-OP 2026-05-06** | silent-badger-711 (#1774) verified shape already present at HEAD `cde245713f89a08e11c4242e4bb1cd98e098a881`; no diff, no PR needed; `cargo test -p v2-compiler-tests` 482 passed / 0 failed. Closure signal at [gunbc#846 #issuecomment-4387302181](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4387302181). |
 | **G5** Anthropic #1702 re-dispatch | HELD | Trigger = Substrate S5 variant-aware projection metadata carrier + Q-Anthropic-Variant-Aware closure-scope ratification |
