@@ -77,11 +77,11 @@ phases below; Substrate Mgr ratifies phase-by-phase.
 3. **Concrete emission entries** via parametric
    `Compose<Algebra, MachineConstraint>` (cross-program with
    Grounding Mgr):
-   - `Int<32>` ≡ `Compose<AbelianGroup, MachineWidth<32>>` → Rust `i32`
-   - `Int<64>` ≡ `Compose<AbelianGroup, MachineWidth<64>>` → Rust `i64`
-   - `Int<128>` ≡ `Compose<AbelianGroup, MachineWidth<128>>` → Rust `i128`
-   - `UInt<32>` ≡ `Compose<CommutativeSemiring, MachineWidth<32>>` → Rust `u32`
-   - `UInt<64>` ≡ `Compose<CommutativeSemiring, MachineWidth<64>>` → Rust `u64`
+   - `Int<32>` ≡ `Compose<Int, MachineWidth<32>>` → Rust `i32`
+   - `Int<64>` ≡ `Compose<Int, MachineWidth<64>>` → Rust `i64`
+   - `Int<128>` ≡ `Compose<Int, MachineWidth<128>>` → Rust `i128`
+   - `UInt<32>` ≡ `Compose<UInt, MachineWidth<32>>` → Rust `u32`
+   - `UInt<64>` ≡ `Compose<UInt, MachineWidth<64>>` → Rust `u64`
 
    Algebra-side labels per landed shapes: `Int = AbelianGroup<GroupCompletion<Nat>>`
    (Slice 3 #1466) — algebra label is AbelianGroup; `UInt = Nat`
@@ -95,7 +95,7 @@ phases below; Substrate Mgr ratifies phase-by-phase.
 ### Phase 2 — Float construction (gate #19; coordinate with S8)
 
 This phase is **owned by S8** — `ApproximateField<F>` migration
-+ `Real` base-carrier + `Float = ApproximateField<Real> × MachineWidth<N>`.
++ `Real` base-carrier + `Float = Real × MachineWidth<N>`.
 This brief references S8 closure rather than re-doing the work.
 Worker confirms S8 has landed before declaring Phase 2 complete.
 
