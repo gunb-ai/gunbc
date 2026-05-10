@@ -83,7 +83,8 @@ import std.computation {
   ParserAdvanceCall,
   WorklistDrainCall,
   SameArgumentCall,
-  per_call_pattern_at
+  per_call_pattern_at,
+  per_call_descent_operand_port
 }
 import v3.std.lookup { Lookup }
 import v3.std.substrate { SourceSpan }
@@ -203,19 +204,6 @@ fn concat_entries(
     Cons(payload) => cons(payload.head, concat_entries(payload.tail, b))
   }
 
-// Single-input call sites only for `recursive_transform_cost` / `pattern_to_iter_bound`:
-// `per_call_pattern_at` is still a unary projection over evidence (see `dag.rs:call_pattern_from_relations`).
-// Bool via `0 == 0` / `0 == 1` so rust emit stays valid `bool` (same as `complexity_enforcement_violates`).
-fn unary_call_inputs(inputs: List<PortId>) -> Bool =
-  match inputs {
-    Cons(payload) =>
-      match payload.tail {
-        Empty => 0 == 0
-        Cons(_) => 0 == 1
-      }
-    Empty => 0 == 1
-  }
-
 fn entry_for(
   d: Dag,
   acc: List<SymbolicCostEntry>,
@@ -229,14 +217,15 @@ fn entry_for(
         None =>
           { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
         Some(pattern) =>
-          // Unary Callable calls only: `CallPattern` from `per_call_pattern_at` is still a
-          // unary projection over `Vec<SubValueRelation>` (see `dag.rs:call_pattern_from_relations`;
-          // multi-arg per-port descent is a separate E-P gate). Binding `pattern_to_iter_bound` to
-          // `payload.head` for 2+ inputs would fabricate which argument carries the recurrence.
-          if unary_call_inputs(t.inputs) then
-            { port: t.result_port, cost: recursive_transform_cost(acc, pattern, t.inputs) }
-          else
-            { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
+          match per_call_descent_operand_port(d, t.id, t.inputs) {
+            None =>
+              { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
+            Some(descent_port) =>
+              {
+                port: t.result_port,
+                cost: recursive_transform_cost(acc, pattern, descent_port, t.inputs)
+              }
+          }
       }
     Branch(b) =>
       { port: b.result_port, cost: branch_cost(acc, b.input, b.paths) }
@@ -252,13 +241,14 @@ fn entry_for(
 fn recursive_transform_cost(
   acc: List<SymbolicCostEntry>,
   pattern: CallPattern,
+  descent_port: PortId,
   inputs: List<PortId>
 ) -> Lookup<SymbolicCost> =
   match inputs {
     Empty => miss_symbolic_cost_lookup()
-    Cons(payload) =>
+    Cons(_) =>
       combine_iterate(
-        hit_symbolic_cost_lookup(pattern_to_iter_bound(pattern, payload.head)),
+        hit_symbolic_cost_lookup(pattern_to_iter_bound(pattern, descent_port)),
         combine_sequential(
           hit_symbolic_cost_lookup(ConstantCost(1)),
           sum_costs(acc, inputs)

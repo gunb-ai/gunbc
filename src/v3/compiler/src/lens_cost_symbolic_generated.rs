@@ -80,15 +80,6 @@ pub fn concat_entries(
         }
     }
 }
-pub fn unary_call_inputs(p0: &[PortId]) -> bool {
-    match p0 {
-        [] => (0 == 1),
-        [__list_head, __list_tail @ ..] => match __list_tail {
-            [] => (0 == 0),
-            [__list_head, __list_tail @ ..] => (0 == 1),
-        },
-    }
-}
 pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicCostEntry {
     match p2 {
         Behavior::Value(v) => SymbolicCostEntry {
@@ -101,16 +92,15 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
                 cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
             },
             Some(pattern) => {
-                if unary_call_inputs(&((t).inputs)) {
-                    SymbolicCostEntry {
-                        port: (t).result_port(),
-                        cost: recursive_transform_cost(p1, pattern, &((t).inputs)),
-                    }
-                } else {
-                    SymbolicCostEntry {
+                match &(per_call_descent_operand_port(p0, *&((t).id), &((t).inputs))) {
+                    None => SymbolicCostEntry {
                         port: (t).result_port(),
                         cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
-                    }
+                    },
+                    Some(descent_port) => SymbolicCostEntry {
+                        port: (t).result_port(),
+                        cost: recursive_transform_cost(p1, pattern, descent_port, &((t).inputs)),
+                    },
                 }
             }
         },
@@ -131,15 +121,16 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
 pub fn recursive_transform_cost(
     p0: &[SymbolicCostEntry],
     p1: &CallPattern,
-    p2: &[PortId],
+    p2: &PortId,
+    p3: &[PortId],
 ) -> Lookup<SymbolicCost> {
-    match p2 {
+    match p3 {
         [] => Lookup::Miss,
         [__list_head, __list_tail @ ..] => combine_iterate(
-            &(Lookup::Hit(pattern_to_iter_bound(p1, __list_head))),
+            &(Lookup::Hit(pattern_to_iter_bound(p1, p2))),
             &(combine_sequential(
                 &(Lookup::Hit(SymbolicCost::ConstantCost { _0: 1 })),
-                &(sum_costs(p0, p2)),
+                &(sum_costs(p0, p3)),
             )),
         ),
     }

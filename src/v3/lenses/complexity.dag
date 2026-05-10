@@ -54,7 +54,8 @@ import std.computation {
   ParserAdvanceCall,
   WorklistDrainCall,
   SameArgumentCall,
-  per_call_pattern_at
+  per_call_pattern_at,
+  per_call_descent_operand_port
 }
 import v3.std.lookup { Lookup }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
@@ -165,17 +166,6 @@ fn entry_for(
       { port: bind.result_port, summary: lookup_summary(acc, bind.result_port) }
   }
 
-// Bool via `0 == 0` / `0 == 1` — see `lenses.cost::unary_call_inputs` / `complexity_enforcement_violates`.
-fn unary_call_inputs(inputs: List<PortId>) -> Bool =
-  match inputs {
-    Cons(payload) =>
-      match payload.tail {
-        Empty => 0 == 0
-        Cons(_) => 0 == 1
-      }
-    Empty => 0 == 1
-  }
-
 fn transform_summary(
   d: Dag,
   acc: List<ComplexityEntry>,
@@ -185,12 +175,11 @@ fn transform_summary(
   match per_call_pattern_at(d, call_site) {
     None => compose_many_inputs(acc, inputs)
     Some(pattern) =>
-      // Same unary discipline as `lenses.cost::entry_for`: `per_call_pattern_at` does not yet
-      // pair each `CallPattern` arm with the argument port that proved it for multi-arg calls.
-      if unary_call_inputs(inputs) then
-        recursive_transform_summary(acc, pattern, inputs)
-      else
-        compose_many_inputs(acc, inputs)
+      match per_call_descent_operand_port(d, call_site, inputs) {
+        None => compose_many_inputs(acc, inputs)
+        Some(descent_port) =>
+          recursive_transform_summary(acc, pattern, descent_port, inputs)
+      }
   }
 
 fn compose_many_inputs(
@@ -204,13 +193,14 @@ fn compose_many_inputs(
 fn recursive_transform_summary(
   acc: List<ComplexityEntry>,
   pattern: CallPattern,
+  descent_port: PortId,
   inputs: List<PortId>
 ) -> Lookup<ComplexitySummary> =
   match inputs {
     Empty => miss_complexity_summary_lookup()
-    Cons(payload) =>
+    Cons(_) =>
       combine_iterate(
-        summary_from_iter_bound(pattern_to_iter_bound(pattern, payload.head)),
+        summary_from_iter_bound(pattern_to_iter_bound(pattern, descent_port)),
         compose_many_inputs(acc, inputs)
       )
   }

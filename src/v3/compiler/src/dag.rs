@@ -1382,19 +1382,45 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
 /// preserved here; multi-argument composition and lowered/lens consumers
 /// remain separate E-P gates.
 pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> {
+    per_call_pattern_and_descent_operand_index(dag, call_site).map(|(p, _)| p)
+}
+
+/// Same projection surface as [`per_call_pattern_at`], plus the evidence index of the
+/// [`SubValueRelation`] row that [`call_pattern_from_relations_with_index`] selected for that pattern.
+///
+/// Lenses align this index with `Transform.inputs` so multi-argument self-calls still bind
+/// `pattern_to_iter_bound` to the port that proved descent (not an arbitrary list head).
+pub fn per_call_pattern_and_descent_operand_index(
+    dag: &Dag,
+    call_site: NodeId,
+) -> Option<(CallPattern, usize)> {
     let entry = per_call_descent_evidence(dag)
         .into_iter()
         .find(|entry| entry.call == call_site)?;
-    call_pattern_from_relations(&entry.evidence)
+    call_pattern_from_relations_with_index(&entry.evidence)
 }
 
-fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPattern> {
-    if let Some(pattern) = relations
-        .iter()
-        .filter(|relation| !matches!(relation, SubValueRelation::PreservedValue))
-        .find_map(sub_value_relation_to_call_pattern)
-    {
-        return Some(pattern);
+/// [`PortId`] for the call input that carried the [`SubValueRelation`] selected by
+/// [`per_call_pattern_at`], when `inputs` is the live transform argument list in evidence order.
+pub fn per_call_descent_operand_port(
+    dag: &Dag,
+    call_site: NodeId,
+    inputs: &[PortId],
+) -> Option<PortId> {
+    let (_, idx) = per_call_pattern_and_descent_operand_index(dag, call_site)?;
+    inputs.get(idx).copied()
+}
+
+fn call_pattern_from_relations_with_index(
+    relations: &[SubValueRelation],
+) -> Option<(CallPattern, usize)> {
+    for (i, relation) in relations.iter().enumerate() {
+        if matches!(relation, SubValueRelation::PreservedValue) {
+            continue;
+        }
+        if let Some(pattern) = sub_value_relation_to_call_pattern(relation) {
+            return Some((pattern, i));
+        }
     }
 
     if relations
@@ -1404,9 +1430,13 @@ fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPat
         return None;
     }
 
-    relations
-        .iter()
-        .find_map(sub_value_relation_to_call_pattern)
+    for (i, relation) in relations.iter().enumerate() {
+        if let Some(pattern) = sub_value_relation_to_call_pattern(relation) {
+            return Some((pattern, i));
+        }
+    }
+
+    None
 }
 
 pub fn sub_value_relation_to_call_pattern(relation: &SubValueRelation) -> Option<CallPattern> {
@@ -4862,7 +4892,7 @@ mod tests {
     #[test]
     fn call_pattern_from_relations_fails_closed_for_mixed_unknown_and_preserved_evidence() {
         assert_eq!(
-            call_pattern_from_relations(&[
+            call_pattern_from_relations_with_index(&[
                 SubValueRelation::PreservedValue,
                 SubValueRelation::SubValueUnknown
             ]),

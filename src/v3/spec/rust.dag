@@ -79,7 +79,7 @@ import v3.std.substrate {
   port, node, resolve_producer, lane2_workflow_at, declaration_by_id,
   declaration_by_name
 }
-import std.computation { per_call_pattern_at }
+import std.computation { per_call_pattern_at, per_call_descent_operand_port }
 import v3.std.clean_emission {
   CleanEmissionContract,
   TargetCleanEmissionBinding,
@@ -1756,5 +1756,17 @@ data rust_per_call_pattern_at_accessor: SubstrateAccessorRealization = {
 data per_call_pattern_at_binding_rust: SubstrateAccessorBinding = {
   accessor: per_call_pattern_at
   realization: rust_per_call_pattern_at_accessor
+  language: rust_language
+}
+
+// `dag::per_call_descent_operand_port(&Dag, NodeId, &[PortId]) -> Option<PortId>` — third
+// argument is the live transform input slice in evidence order.
+data rust_per_call_descent_operand_port_accessor: SubstrateAccessorRealization = {
+  carrier: "per_call_descent_operand_port({p0}, *{p1}, {p2})"
+}
+
+data per_call_descent_operand_port_binding_rust: SubstrateAccessorBinding = {
+  accessor: per_call_descent_operand_port
+  realization: rust_per_call_descent_operand_port_accessor
   language: rust_language
 }

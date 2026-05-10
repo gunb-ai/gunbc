@@ -137,15 +137,6 @@ pub fn entry_for(p0: &Dag, p1: &[ComplexityEntry], p2: &Behavior) -> ComplexityE
         },
     }
 }
-pub fn unary_call_inputs(p0: &[PortId]) -> bool {
-    match p0 {
-        [] => (0 == 1),
-        [__list_head, __list_tail @ ..] => match __list_tail {
-            [] => (0 == 0),
-            [__list_head, __list_tail @ ..] => (0 == 1),
-        },
-    }
-}
 pub fn transform_summary(
     p0: &Dag,
     p1: &[ComplexityEntry],
@@ -154,13 +145,10 @@ pub fn transform_summary(
 ) -> Lookup<ComplexitySummary> {
     match &(per_call_pattern_at(p0, *p2)) {
         None => compose_many_inputs(p1, p3),
-        Some(pattern) => {
-            if unary_call_inputs(p3) {
-                recursive_transform_summary(p1, pattern, p3)
-            } else {
-                compose_many_inputs(p1, p3)
-            }
-        }
+        Some(pattern) => match &(per_call_descent_operand_port(p0, *p2, p3)) {
+            None => compose_many_inputs(p1, p3),
+            Some(descent_port) => recursive_transform_summary(p1, pattern, descent_port, p3),
+        },
     }
 }
 pub fn compose_many_inputs(p0: &[ComplexityEntry], p1: &[PortId]) -> Lookup<ComplexitySummary> {
@@ -174,13 +162,14 @@ pub fn compose_many_inputs(p0: &[ComplexityEntry], p1: &[PortId]) -> Lookup<Comp
 pub fn recursive_transform_summary(
     p0: &[ComplexityEntry],
     p1: &CallPattern,
-    p2: &[PortId],
+    p2: &PortId,
+    p3: &[PortId],
 ) -> Lookup<ComplexitySummary> {
-    match p2 {
+    match p3 {
         [] => miss_complexity_summary_lookup(),
         [__list_head, __list_tail @ ..] => combine_iterate(
-            &(summary_from_iter_bound(pattern_to_iter_bound(p1, __list_head))),
-            &(compose_many_inputs(p0, p2)),
+            &(summary_from_iter_bound(pattern_to_iter_bound(p1, p2))),
+            &(compose_many_inputs(p0, p3)),
         ),
     }
 }
