@@ -279,6 +279,10 @@ pub fn rust_tagged_object_policy() -> Rc<RustEnumWireSerde> {
     rust_serde_policy(rust_serde_tag_attr(), None, None, None)
 }
 
+pub fn rust_untagged_policy() -> Rc<RustEnumWireSerde> {
+    rust_serde_policy("#[serde(untagged)]".to_string(), None, None, None)
+}
+
 pub fn rust_serde_error_policy(message: String) -> Rc<RustEnumWireSerde> {
     rust_serde_policy_error(message)
 }
@@ -621,7 +625,9 @@ pub fn resolve_wire_serde_policy_from_encoding_node(
                     ),
                 }
             } else {
-                if (encoding_name.clone().as_str() == "TaggedVariant".to_string().as_str()) {
+                if (encoding_name.clone().as_str() == "UntaggedVariant".to_string().as_str()) {
+                    rust_untagged_policy()
+                } else if (encoding_name.clone().as_str() == "TaggedVariant".to_string().as_str()) {
                     rust_tagged_object_policy()
                 } else {
                     rust_serde_error_policy(v2_rt::concat(
@@ -3770,6 +3776,40 @@ pub fn emit_variant_from_child(
                     child_text.clone(),
                 ),
                 ",".to_string(),
+            )
+        } else if (serde_policy.enum_attr.clone().as_str()
+            == "#[serde(untagged)]".to_string().as_str())
+            && ((child.children.clone().len() as i64) == 1)
+        {
+            let f = child.children[0].clone();
+            let rt_f = resolved_type(f.clone());
+            let ty = render_rust_type(
+                rt_f.clone(),
+                shared_types.clone(),
+                env.source_indices.clone(),
+            );
+            let final_ty = if needs_box_wrapping(
+                rt_f.clone(),
+                recursive_types.clone(),
+                shared_types.clone(),
+                env.source_indices.clone(),
+            ) {
+                v2_rt::concat(
+                    v2_rt::concat("Box<".to_string(), ty.clone()),
+                    ">".to_string(),
+                )
+            } else {
+                ty.clone()
+            };
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(rename_attr, "    ".to_string()),
+                        child_text.clone(),
+                    ),
+                    "(".to_string(),
+                ),
+                v2_rt::concat(final_ty, "),".to_string()),
             )
         } else {
             {
