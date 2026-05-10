@@ -5556,7 +5556,7 @@ fn lower_scalar_literal_for_type(
                     &int_value,
                     TypeShape::new(expected_type),
                     range,
-                    surface_expr_span(expr),
+                    surface_expr_span(expr).clone(),
                 ));
             }
             IntegerRangeLookup::Invalid(diag) => return LowerScalarLiteralOutcome::Reject(diag),
@@ -6321,7 +6321,7 @@ fn lower_fn_item_expr_body(
     //    shape via the common bottom-of-function code.
     if let Some(invalid_cluster) = mutual_recursion.invalid_by_member.get(&fn_decl_id) {
         let err_port = dag.alloc_port(None);
-        let body_span = surface_expr_span(body);
+        let body_span = surface_expr_span(body).clone();
         dag.mark_unresolved(
             err_port,
             Diagnostic::ResolveError {
@@ -8189,7 +8189,7 @@ fn lower_expr(
                         output: then_port,
                         pattern: BranchPattern::UnresolvedVariant {
                             name: "True".to_string(),
-                            span: surface_expr_span(then_branch),
+                            span: surface_expr_span(then_branch).clone(),
                         },
                         binding: None,
                     },
@@ -8198,7 +8198,7 @@ fn lower_expr(
                         output: else_port,
                         pattern: BranchPattern::UnresolvedVariant {
                             name: "False".to_string(),
-                            span: surface_expr_span(else_branch),
+                            span: surface_expr_span(else_branch).clone(),
                         },
                         binding: None,
                     },
@@ -8896,7 +8896,7 @@ fn lower_list_literal_expr(
         dag,
         singleton_decl,
         vec![last],
-        surface_expr_span(elements.last().expect("non-empty")),
+        surface_expr_span(elements.last().expect("non-empty")).clone(),
     );
     while let Some(head) = element_ports.pop() {
         current = lower_constructor_invocation(dag, cons_decl, vec![head, current], span.clone());
