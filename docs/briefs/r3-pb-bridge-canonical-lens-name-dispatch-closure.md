@@ -1,5 +1,5 @@
 ---
-status: PROPOSAL
+status: CLOSED
 owning_manager: Pure Bootstrap Manager (R2 → R3 continuation)
 lane: T-Bridge-Retirement — distributed bridge #3 (`bridge_canonical_lens_name_dispatch_retired`)
 authored: 2026-05-06 (neat-bear-351 — PB Mgr cycle #1861 / next-tier queue)
@@ -7,7 +7,7 @@ authored: 2026-05-06 (neat-bear-351 — PB Mgr cycle #1861 / next-tier queue)
 
 # R3 PB — canonical lens-name dispatch closure — worker brief
 
-**Status:** PROPOSAL — **pre-authored closure brief** (dispatch-gated). Aligns with [`docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`](r2-pb-canonical-lens-bridge-disposition.md): partial retirement + ratchet already landed; **full** `bridge_canonical_lens_name_dispatch_retired` remains **open** until substrate-level unblockers fire.
+**Status:** CLOSED — implementation receipt for full `bridge_canonical_lens_name_dispatch_retired`.
 
 **Owning manager:** Pure Bootstrap Manager (R3 continuation per [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-Bridge-Retirement distribution map).
 
@@ -35,9 +35,18 @@ Full gap analysis, P2 cross-`Dag` reflection rationale, and ratchet (`tests/inte
 2. **`canonical_lens_bridge_ratchet_test`** updated or retired per closure — counts **never increase** per `feedback_ratchet_only_down`; ratchet may tighten to zero targets when bridge is gone.
 3. **Verification** records ledger row movement toward **`bridge_retirement_ledger_zero`** in cadence with PB + Verification Manager.
 
+## Closure Receipt
+
+- `src/v3/compiler/src/test_runner.rs` no longer defines `R1_CANONICAL_*_LENS` byte constants.
+- `LensOutputEquals` no longer branches on `lens_decl.name.as_deref()` and no longer searches `program_dag.declaration_by_name(name)` to select a lens body.
+- The cost adapter remains selected by the resolved fixture `DeclarationRef` identity (`lens_id` equals the fixture declaration named `cost_of`), not by reading the referenced declaration's name as a dispatch arm.
+- Reflected program input uses the fixture `Dag` as the id-space, matching the `apply_lens_declaration(self.dag, lens_id, ...)` authority and preserving P2 declaration-id coherence.
+- `canonical_lens_bridge_ratchet_test.rs` is tightened to zero for categories A, B, and C.
+- `src/v3/std/bridge_ledger.dag` marks `bridge_canonical_lens_name_patching_residual` as `Retired` with this document as authority.
+
 ## Dispatch triggers (mechanical)
 
-Pick up implementation **only when** a **single live-state check** shows **at least one** path is real on main:
+Historical dispatch triggers were:
 
 | # | Trigger | Authority |
 |---|---------|-----------|
@@ -45,7 +54,8 @@ Pick up implementation **only when** a **single live-state check** shows **at le
 | T2 | **Typed lens-registry / cross-`Dag` `DeclarationRef` substrate** lands per §P1 — dissolving **A** without a new string registry bridge — *or* | Substrate Manager |
 | T3 | **Pair-authored Verification ledger note** — closure row movement coordinated with Verification Manager | PB + Verification |
 
-Until **T1 or T2** is true, this brief stays **PROPOSAL / queued** — PB may maintain **disposition + ratchet** artifacts only; **no** fake structural resolution.
+This closure did not add a new path/string registry. It removed the runner's parallel canonical
+lens byte authority and stopped selecting lens bodies from `claim.source` by declaration spelling.
 
 ## STOP conditions
 

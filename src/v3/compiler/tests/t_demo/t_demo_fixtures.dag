@@ -7,7 +7,7 @@
 module v3.compiler.tests.t_demo.t_demo_fixtures
 
 import std.list { fold }
-import std.substrate { Behavior, ComparisonOp, Dag, PortId }
+import std.substrate { Behavior, Dag }
 import std.verification {
   AnyDetail,
   Compiles,
@@ -17,14 +17,12 @@ import std.verification {
   LensOutputEquals,
   PortHasState,
   ProgramInput,
-  ProgramOutputBind,
   Resolved,
   TestClaim,
   TestSuite,
   TypeMismatch,
   ResolveError
 }
-import v3.std.lookup { Lookup, miss_int_lookup }
 
 // ── `LensOutputEquals` stubs (DeclarationRef lowering only; runner uses canonical bytes). ──
 fn count_named_bind(behavior: Behavior) -> Int =
@@ -39,26 +37,11 @@ fn count_named_bind(behavior: Behavior) -> Int =
 fn named_function_count(d: Dag) -> Int =
   fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
 
-fn cost_of(d: Dag, port_id: PortId) -> Lookup<Int> =
-  miss_int_lookup()
-
 data complexity_demo_out: Int = 0
 
 data total: Int = 0
 
 data r1_lens_output_program_input: ProgramInput = {}
-
-data t_demo_complexity_program_input: ProgramOutputBind = {
-  output_ref: complexity_demo_out
-}
-
-data t_demo_parallelism_program_input: ProgramOutputBind = {
-  output_ref: total
-}
-
-data t_demo_complexity_cost_expected: Int = 3
-
-data t_demo_parallelism_cost_expected: Int = 4
 
 data t_demo_ownership_bind_count_expected: Int = 1
 
@@ -90,11 +73,7 @@ data compiler_nerd_complexity_lens_output: TestClaim = {
   name: "fixture_compiler_nerd_canonical.complexity_lens_output",
   source: "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))\nlet complexity_demo_out: Int = pair_score(cons(1, singleton(2)))\n",
   file_name: "fixture_compiler_nerd_canonical_complexity.v3",
-  predicate: LensOutputEquals(
-    cost_of,
-    t_demo_complexity_program_input,
-    t_demo_complexity_cost_expected
-  ),
+  predicate: CostBounded("complexity_demo_out", Eq, 3),
   requires: []
 }
 
@@ -114,11 +93,7 @@ data compiler_nerd_parallelism_lens_output: TestClaim = {
   name: "fixture_compiler_nerd_canonical.parallelism_lens_output",
   source: "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
   file_name: "fixture_compiler_nerd_canonical_parallelism.v3",
-  predicate: LensOutputEquals(
-    cost_of,
-    t_demo_parallelism_program_input,
-    t_demo_parallelism_cost_expected
-  ),
+  predicate: CostBounded("total", Eq, 4),
   requires: []
 }
 
