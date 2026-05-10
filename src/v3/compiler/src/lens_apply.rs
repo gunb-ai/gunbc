@@ -2822,3 +2822,5 @@ fn get_x(point: Point) -> Int = point.x
 pub mod lens_testgen {
     include!("lens_testgen_body.txt");
 }
+
+pub use substrate_reflection::reflect_behavior_list;

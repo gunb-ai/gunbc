@@ -12,8 +12,7 @@
 
 module extdeps.github.actions
 
-import extdeps.github.github { Repository }
-import extdeps.cron { CronSchedule }
+import extdeps.cron.schedule_model { CronSchedule }
 import std.types { SecretName }
 
 // -- Workflows --------------------------------------------------------
