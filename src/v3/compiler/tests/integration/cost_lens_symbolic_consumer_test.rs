@@ -23,6 +23,7 @@
 //! **`inputs[1]`**.
 
 use v3_compiler::compile_to_dag;
+use v3_compiler::CompileError;
 use v3_compiler::dag::{
     per_call_descent_evidence, per_call_descent_operand_port, Behavior, PortId, SubValueRelation,
     SymbolicCost,
@@ -164,7 +165,7 @@ fn e_p_sub_value_relation_per_call_landed_cost_lens_routes_through_per_call_patt
 #[test]
 fn e_p78_descent_operand_port_follows_evidence_index_not_first_input() {
     run_with_symbolic_cost_stack(|| {
-        let dag = compile_to_dag(
+        let dag = match compile_to_dag(
             "\
 type EpListP = EpNilP | EpConsP(EpListP)
 fn ep_g78_acc(i: Int, xs: EpListP) -> Int =
@@ -174,8 +175,14 @@ fn ep_g78_acc(i: Int, xs: EpListP) -> Int =
   }
 ",
             "e_p78_non_head_descent.v3",
-        )
-        .expect("compile preserved-head + list-tail self-call");
+        ) {
+            Ok(d) => d,
+            Err(CompileError::Semantic(d)) => panic!(
+                "compile diagnostics: {:?}",
+                d.diagnostics().iter().collect::<Vec<_>>()
+            ),
+            Err(e) => panic!("compile error: {e:?}"),
+        };
 
         let entry = per_call_descent_evidence(&dag)
             .into_iter()
