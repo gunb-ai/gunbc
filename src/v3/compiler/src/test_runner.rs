@@ -2014,48 +2014,126 @@ fn find_named_bind_workflow_root(dag: &Dag, bind_name: &str) -> Result<NodeId, S
 
 /// R3 gate #51 — `BinaryDimensionReportEquals` consumer surface.
 ///
-/// Compares two [`crate::DimensionReport<SymbolicCost>`] values produced from **different**
-/// workflow roots (`fold_pre` vs `fold_post`): the backward slices differ, so witness vectors are
-/// intentionally **not** required to match. The load-bearing behavioral contract is that the
-/// `composed` [`SymbolicCost`] at each root agrees after constant folding (same semantic Int),
-/// plus the caller’s cross-target `TypeRealization` overlay check on that shared bound.
-fn gate51_constant_fold_dimension_ok_composed_match(
-    observed: &crate::DimensionReport<SymbolicCost>,
-    expected: &crate::DimensionReport<SymbolicCost>,
+/// `fold_pre` / `fold_post` are **different** workflow roots (pre-fold `1 + 2` vs literal `3`).
+/// Full `DimensionReport` witness-vector equality is intentionally not required (different backward
+/// slices). The behavioral contract is:
+/// 1. Both reports are [`crate::DimensionReport::DimensionOk`].
+/// 2. `normalize(sequential(composed_post, Constant(delta))) == normalize(composed_pre)` where
+///    `delta` is the **LanguageSpec** `OperatorRealization` cost for `Int` addition, and the same
+///    `delta` is verified across rust/python/go (cross-target structural agreement on the folded
+///    surface).
+/// 3. Caller then checks the cross-target `Type(Int)` overlay on the shared normalized bound.
+fn gate51_constant_fold_pre_post_reports_align(
+    bootstrap: &Dag,
+    pre: &crate::DimensionReport<SymbolicCost>,
+    post: &crate::DimensionReport<SymbolicCost>,
 ) -> Result<(), String> {
+    use crate::dag::{normalize, sequential};
+    use crate::realization_cost::{RealizationCostKey, RealizationCostTable};
     use crate::DimensionReport;
-    let (
-        DimensionReport::DimensionOk {
-            dimension_name: on,
-            composed: oc,
-            witnesses: _ow,
-        },
-        DimensionReport::DimensionOk {
-            dimension_name: en,
-            composed: ec,
-            witnesses: _ew,
-        },
-    ) = (observed, expected)
-    else {
-        return Err(format!(
-            "gate #51 requires both `DimensionReport<SymbolicCost>` arms to be DimensionOk; \
-             observed={observed:?}; expected={expected:?}"
-        ));
+
+    let (dimension_name, pre_composed, post_composed) = match (pre, post) {
+        (
+            DimensionReport::DimensionOk {
+                dimension_name: pn,
+                composed: pc,
+                ..
+            },
+            DimensionReport::DimensionOk {
+                dimension_name: qn,
+                composed: qc,
+                ..
+            },
+        ) => {
+            if pn != qn {
+                return Err(format!(
+                    "gate #51 `dimension_name` mismatch between `fold_pre` and `fold_post` roots: \
+                     {pn:?} vs {qn:?}"
+                ));
+            }
+            (pn.clone(), pc.clone(), qc.clone())
+        }
+        _ => {
+            return Err(format!(
+                "gate #51 requires `DimensionOk` on both `fold_pre` and `fold_post` workflow roots; \
+                 pre={pre:?}; post={post:?}"
+            ));
+        }
     };
-    if on != en {
-        return Err(format!(
-            "gate #51 `dimension_name` mismatch between fold_pre and fold_post workflow roots: \
-             {on:?} vs {en:?}"
-        ));
+
+    let int_decl = bootstrap
+        .declaration_by_name("Int")
+        .map(|d| d.id)
+        .ok_or_else(|| "bootstrap missing `Int` declaration for gate #51".to_string())?;
+
+    let mut int_add_cost: Option<i64> = None;
+    for (lang_name, row_name) in [
+        ("rust_language", "rust_int_add"),
+        ("python_language", "python_int_add"),
+        ("go_language", "go_int_add"),
+    ] {
+        let op = realization_row_op_decl(bootstrap, row_name)?;
+        let lang_id = bootstrap
+            .declaration_by_name(lang_name)
+            .map(|d| d.id)
+            .ok_or_else(|| format!("bootstrap missing `{lang_name}` for gate #51"))?;
+        let table = RealizationCostTable::for_language(bootstrap, lang_id)
+            .map_err(|e| format!("RealizationCostTable({lang_name}) for gate #51: {e:?}"))?;
+        let Some(entry) = table.get(&RealizationCostKey::Operator {
+            target: int_decl,
+            op,
+        }) else {
+            return Err(format!(
+                "gate #51: `{lang_name}` realization table missing Operator(Int,+) row (via `{row_name}`)"
+            ));
+        };
+        let c = entry.cost.value();
+        match int_add_cost {
+            None => int_add_cost = Some(c),
+            Some(prev) if prev != c => {
+                return Err(format!(
+                    "gate #51: Int add realization `cost` differs cross-target (`{row_name}`): {prev} vs {c}"
+                ));
+            }
+            Some(_) => {}
+        }
     }
-    if oc != ec {
+
+    let delta =
+        int_add_cost.ok_or_else(|| "gate #51: missing Int add realization cost".to_string())?;
+    let adjusted_post = normalize(sequential(
+        post_composed,
+        SymbolicCost::ConstantCost { _0: delta },
+    ));
+    let pre_norm = normalize(pre_composed);
+    if adjusted_post != pre_norm {
         return Err(format!(
-            "gate #51 composed `SymbolicCost` mismatch between pre-fold (`fold_pre`) and post-fold \
-             (`fold_post`) workflow roots — constant-fold cost consistency violated: \
-             fold_pre={oc:?} fold_post={ec:?}"
+            "gate #51 structural constant-fold witness failed (dimension={dimension_name}): expected \
+             normalize(sequential(fold_post.composed, Constant({delta}))) == normalize(fold_pre.composed); \
+             got adjusted_post={adjusted_post:?} pre_norm={pre_norm:?}"
         ));
     }
     Ok(())
+}
+
+fn realization_row_op_decl(dag: &Dag, row_name: &str) -> Result<DeclarationId, String> {
+    let row = dag
+        .declaration_by_name(row_name)
+        .ok_or_else(|| format!("bootstrap missing `{row_name}` for gate #51"))?;
+    let Some(ValueBody::Structural { fields }) = &row.value_body else {
+        return Err(format!(
+            "`{row_name}` must carry Structural `value_body` for gate #51 OperatorRealization lookup"
+        ));
+    };
+    let Some(op_fv) = field(fields, "op") else {
+        return Err(format!("`{row_name}` is missing `op` field for gate #51"));
+    };
+    match op_fv {
+        FieldValue::Reference(id) => Ok(*id),
+        other => Err(format!(
+            "`{row_name}.op` must be a DeclarationRef for gate #51; got {other:?}"
+        )),
+    }
 }
 
 impl<'a> TestRunner<'a> {
@@ -2908,23 +2986,6 @@ impl<'a> TestRunner<'a> {
         // distinct workflow roots (pre-fold expression vs literal folded value).
         let observed = analyze_symbolic_cost_dimension(&program_dag, fold_pre_root);
         let expected = analyze_symbolic_cost_dimension(&program_dag, fold_post_root);
-        if let Err(msg) = gate51_constant_fold_dimension_ok_composed_match(&observed, &expected) {
-            return ClaimResult::Fail(format!(
-                "BinaryDimensionReportEquals `cross_target_optimization_constant_fold_consistent`: \
-                 {msg}"
-            ));
-        }
-
-        let composed = match &observed {
-            DimensionReport::DimensionOk { composed, .. } => composed.clone(),
-            _ => {
-                return ClaimResult::Fail(
-                    "`cross_target_optimization_constant_fold_consistent`: internal error after \
-                     composed-match (expected DimensionOk on `fold_pre` root)"
-                        .to_string(),
-                );
-            }
-        };
 
         let bootstrap_dag = std::thread::Builder::new()
             .name("r3_gate51_full_bootstrap_dag".into())
@@ -2933,6 +2994,26 @@ impl<'a> TestRunner<'a> {
             .expect("spawn generated_full_bootstrap_dag for gate #51")
             .join()
             .expect("generated_full_bootstrap_dag thread panicked");
+
+        if let Err(msg) =
+            gate51_constant_fold_pre_post_reports_align(&bootstrap_dag, &observed, &expected)
+        {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals `cross_target_optimization_constant_fold_consistent`: \
+                 {msg}"
+            ));
+        }
+
+        let composed = match &observed {
+            DimensionReport::DimensionOk { composed, .. } => normalize(composed.clone()),
+            _ => {
+                return ClaimResult::Fail(
+                    "`cross_target_optimization_constant_fold_consistent`: internal error after \
+                     fold alignment (expected DimensionOk on `fold_pre` root)"
+                        .to_string(),
+                );
+            }
+        };
 
         let int_decl = match bootstrap_dag.declaration_by_name("Int") {
             Some(decl) => decl.id,
