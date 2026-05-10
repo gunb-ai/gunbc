@@ -1543,10 +1543,14 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitError> {
         match &t.target {
             TransformTarget::Operator(op) => self.render_operator(t, *op, locals),
-            TransformTarget::FieldProject {
-                field_label,
-                field_child: _,
-            } => self.render_field_project(t, field_label, locals),
+            TransformTarget::UnresolvedFieldProject { field_label } => {
+                Err(EmitError::UnsupportedBehavior(format!(
+                    "field projection .{field_label} is unresolved; emit expects post-infer FieldProject targets"
+                )))
+            }
+            TransformTarget::ResolvedFieldProject { field_label } => {
+                self.render_field_project(t, field_label, locals)
+            }
             TransformTarget::Callable(target) => {
                 let (template, arguments) = callable_template(*target, self.dag);
                 if let Some(strategy) = self.indexes.callables.get(&template) {
@@ -1566,9 +1570,9 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         if t.inputs.len() != 1 {
-            return Err(EmitError::UnsupportedBehavior(format!(
-                "field projection .{field_label} expected one input"
-            )));
+            return Err(EmitError::UnsupportedBehavior(
+                "field projection expected one input".to_string(),
+            ));
         }
         if let Some(binding) = locals
             .payload_bindings

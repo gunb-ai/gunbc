@@ -130,7 +130,8 @@ fn bind_effect(d: Dag, acc: List<EffectFact>, bind: BindNode) -> StructuralEffec
 fn transform_effect(d: Dag, t: TransformNode) -> StructuralEffectShape =
   match t.target {
     Callable(id) => callable_signature_effect(d, id)
-    FieldProject(_) => NoEffect
+    UnresolvedFieldProject(_) => NoEffect
+    ResolvedFieldProject(_) => NoEffect
     Operator(_) => NoEffect
   }
 
