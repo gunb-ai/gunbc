@@ -54,20 +54,19 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
 
     for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
         assert_eq!(result.claim_name, expected_name);
-        if idx == 0 {
-            assert!(
+        match idx {
+            // Gate #43 only — not grouped with `#44`/`#45` (those are indices 1 and 2).
+            0 => assert!(
                 matches!(&result.result, ClaimResult::Pass),
                 "expected {expected_name} to Pass (parallel Rust emission witness), got {:?}",
                 result.result
-            );
-        } else if idx < 3 {
-            assert!(
+            ),
+            1 | 2 => assert!(
                 matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to Pass (auto_parallelism schedule witness), got {:?}",
+                "expected {expected_name} to Pass (gates #44/#45 schedule witness), got {:?}",
                 result.result
-            );
-        } else {
-            assert!(
+            ),
+            _ => assert!(
                 matches!(
                     &result.result,
                     ClaimResult::NotYetImplemented(reason)
@@ -76,7 +75,7 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
                 ),
                 "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
                 result.result
-            );
+            ),
         }
     }
 }

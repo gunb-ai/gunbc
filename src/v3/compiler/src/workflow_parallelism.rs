@@ -223,10 +223,11 @@ fn backward_reachable_ports_from_port(d: &Dag, start: PortId) -> HashSet<PortId>
     visited_ports
 }
 
-/// True when the producer subgraph for [`BindNode::value`] contains [`Behavior::Branch`] or
-/// [`Behavior::Loop`]. Auto-parallelism scheduling must not treat mutually exclusive arms (or loop
-/// bodies) as freely reorderable against other work until dedicated control-flow witnesses exist;
-/// the schedule witness stays **0** when any module `let` RHS carries this nonlinear control.
+/// True when the backward slice from [`BindNode::value`] reaches [`Behavior::Branch`] or
+/// [`Behavior::Loop`]. Uses the same port walk driver as [`backward_reachable_ports_from_port`]
+/// ([`expand_behavior_backward_ports`]) so subgraph shape stays consistent; exits early on
+/// branch/loop without descending further. The schedule witness stays **0** when any module `let`
+/// RHS carries this nonlinear control.
 fn bind_rhs_subgraph_contains_branch_or_loop(d: &Dag, bind: &BindNode) -> bool {
     let mut visited_ports: HashSet<PortId> = HashSet::new();
     let mut visited_nodes: HashSet<NodeId> = HashSet::new();
@@ -241,27 +242,16 @@ fn bind_rhs_subgraph_contains_branch_or_loop(d: &Dag, bind: &BindNode) -> bool {
         let Some(producer) = p.produced_by else {
             continue;
         };
-        if !visited_nodes.insert(producer) {
+        if visited_nodes.contains(&producer) {
             continue;
         }
         let Some(behavior) = d.node_opt(&producer) else {
             continue;
         };
-        match behavior {
-            Behavior::Branch(_) | Behavior::Loop(_) => return true,
-            Behavior::Value(_) => {}
-            Behavior::Transform(transform) => {
-                for input in &transform.inputs {
-                    frontier.push(*input);
-                }
-            }
-            Behavior::Bind(b) => {
-                for param in &b.params {
-                    frontier.push(*param);
-                }
-                frontier.push(b.value);
-            }
+        if matches!(behavior, Behavior::Branch(_) | Behavior::Loop(_)) {
+            return true;
         }
+        expand_behavior_backward_ports(d, producer, &mut frontier, &mut visited_nodes);
     }
     false
 }
@@ -293,6 +283,8 @@ fn module_item_value_lets_in_file<'a>(dag: &'a Dag, user_source_file: &str) -> V
     binds
 }
 
+/// Returns `false` when there are fewer than two binds (nothing to compare pairwise) **or** when
+/// any later bind's RHS is dataflow-dependent on an earlier bind ([`bind_rhs_depends_on_prior_bind`]).
 fn module_lets_pairwise_rhs_independent(dag: &Dag, binds: &[&BindNode]) -> bool {
     if binds.len() < 2 {
         return false;
