@@ -42,7 +42,7 @@
 //   ];
 //
 //   pub static COMPILER_FILES: &[(&str, &str)] = &[
-//       ("src/v3/compiler/pipeline.dag", <compile-time embedded source>),
+//       ("src/v3/compiler/pipeline.dag", include_str!("...")),
 //   ];
 //   `tokenize.dag` is intentionally omitted: tokenizer authority for `regen_tokenize`
 //   must not be folded into the bootstrap Dag (duplicate declarations when
