@@ -145,6 +145,8 @@ fn cross_target_optimization_constant_fold_consistent_has_symbolic_cost_witness(
             matches!(pre_fold_cost, SymbolicCost::ConstantCost { _0: 1 }),
             "gate #51 pre-fold arithmetic subtree cost should be ConstantCost(1), got {pre_fold_cost:?}"
         );
+        // This witness intentionally observes the pre-fold DAG; if lowering starts folding
+        // `1 + 2` earlier, update this Add-shape check and the expected symbolic cost together.
         let transform = dag
             .nodes()
             .iter()
