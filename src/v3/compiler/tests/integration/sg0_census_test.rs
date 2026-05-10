@@ -579,6 +579,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when generic runner coverage can execute the claims without a
     // host-side integration harness.
     "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
+    // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): Rust receipts
+    // paired with `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test`
+    // until strict modules can freeze full `LensOutputEquals` carriers (M1(2.8)).
+    "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
     // R3 gate #66 (`lens_producer_retirement_executable_witness`): focused receipt
     // that the `.dag` PB census claim executes through `TestRunner` and reports
     // the live lens-producer residual count while Row-4 / Item 4 retirement
