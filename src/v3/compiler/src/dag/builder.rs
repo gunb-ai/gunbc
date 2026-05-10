@@ -304,12 +304,30 @@ impl Dag {
     ) -> Option<TypeShape> {
         match target {
             TransformTarget::Callable(target) => self.callable_output_shape(*target),
-            TransformTarget::FieldProject { field_child, .. } => field_child.map(|child| {
-                self.assert_declaration_exists(child, "push_transform(target.field_child)");
-                TypeShape::new(child)
-            }),
+            TransformTarget::UnresolvedFieldProject { .. } => None,
+            TransformTarget::ResolvedFieldProject { field_label } => {
+                self.field_project_output_shape(field_label, inputs)
+            }
             TransformTarget::Operator(kind) => self.operator_output_shape(*kind, inputs),
         }
+    }
+
+    fn field_project_output_shape(
+        &self,
+        field_label: &str,
+        inputs: &[PortId],
+    ) -> Option<TypeShape> {
+        let input_shape = self.resolved_port_shape(*inputs.first()?)?;
+        let mut subst = Vec::new();
+        let conj_id = self.walk_to_conj_decl_with_subst(input_shape.declaration, &mut subst, 0)?;
+        let TypeConnective::Conj { children } = &self.declaration(conj_id).connective else {
+            return None;
+        };
+        let field_ty = children
+            .iter()
+            .find(|field| field.label == field_label)
+            .map(|field| field.ty)?;
+        self.signature_type_shape(field_ty, &subst, 0)
     }
 
     fn callable_output_shape(&self, decl_id: DeclarationId) -> Option<TypeShape> {
@@ -442,6 +460,44 @@ impl Dag {
             TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
             | TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Conj { .. }
+            | TypeConnective::Disj { .. }
+            | TypeConnective::Cardinality(_) => None,
+        }
+    }
+
+    fn walk_to_conj_decl_with_subst(
+        &self,
+        current: DeclarationId,
+        subst: &mut Vec<Vec<TemplateArgument>>,
+        depth: usize,
+    ) -> Option<DeclarationId> {
+        if depth >= BUILDER_TYPE_WALK_DEPTH_LIMIT {
+            return None;
+        }
+        match &self.declaration(current).connective {
+            TypeConnective::Conj { .. } => Some(current),
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                let result = self.walk_to_conj_decl_with_subst(*template, subst, depth + 1);
+                if result.is_none() {
+                    subst.pop();
+                }
+                result
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.walk_to_conj_decl_with_subst(*next, subst, depth + 1)
+            }
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+                let bound = self.lookup_template_argument(current, subst)?;
+                self.walk_to_conj_decl_with_subst(bound, subst, depth + 1)
+            }
+            TypeConnective::Atom(AtomPayload::Literal(_))
+            | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+            | TypeConnective::Arrow { .. }
             | TypeConnective::Disj { .. }
             | TypeConnective::Cardinality(_) => None,
         }
@@ -759,7 +815,8 @@ impl Dag {
                     );
                 }
             }
-            TransformTarget::FieldProject { .. } => {
+            TransformTarget::UnresolvedFieldProject { .. }
+            | TransformTarget::ResolvedFieldProject { .. } => {
                 assert!(
                     inputs.len() == 1,
                     "push_transform(FieldProject) requires exactly one input port"
@@ -1324,22 +1381,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "push_transform(target.field_child): unknown declaration")]
-    fn push_transform_rejects_unknown_field_project_child() {
+    #[should_panic(expected = "push_transform(FieldProject) requires exactly one input port")]
+    fn push_transform_rejects_resolved_field_project_bad_arity() {
         let mut dag = Dag::new();
-        let parent = dag.alloc_port_with_shape(
-            dag.declaration_by_name("Dag")
-                .expect("bootstrap Dag declaration")
-                .id
-                .into(),
-        );
 
         let _ = dag.push_transform(
-            TransformTarget::FieldProject {
+            TransformTarget::ResolvedFieldProject {
                 field_label: "nodes".to_string(),
-                field_child: Some(DeclarationId(u32::MAX)),
             },
-            vec![parent],
+            vec![],
             span(),
         );
     }

@@ -533,12 +533,11 @@ fn render_transform_target(target: &TransformTarget) -> String {
         TransformTarget::Callable(id) => {
             format!("TransformTarget::Callable({})", render_declaration_id(*id))
         }
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => format!(
-            "TransformTarget::FieldProject {{ field_label: {field_label:?}.to_string(), field_child: {} }}",
-            render_opt_declaration_id(*field_child),
+        TransformTarget::UnresolvedFieldProject { field_label } => {
+            format!("TransformTarget::UnresolvedFieldProject {{ field_label: {field_label:?}.to_string() }}")
+        }
+        TransformTarget::ResolvedFieldProject { field_label } => format!(
+            "TransformTarget::ResolvedFieldProject {{ field_label: {field_label:?}.to_string() }}"
         ),
         TransformTarget::Operator(kind) => {
             format!("TransformTarget::Operator({})", render_operator_kind(kind))

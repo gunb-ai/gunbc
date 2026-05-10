@@ -84,7 +84,9 @@ fn eligibility_walk_transform(
     }
     match &t.target {
         TransformTarget::Operator(OperatorKind::Logical(_)) => false,
-        TransformTarget::Operator(_) | TransformTarget::FieldProject { .. } => true,
+        TransformTarget::Operator(_)
+        | TransformTarget::UnresolvedFieldProject { .. }
+        | TransformTarget::ResolvedFieldProject { .. } => true,
         TransformTarget::Callable(callee) => {
             eligibility_walk_callable(dag, *callee, visited, depth + 1)
         }
@@ -563,10 +565,8 @@ impl<'a> EvalCtx<'a> {
             TransformTarget::Operator(OperatorKind::Logical(_)) => Err(
                 LensApplyError::UnsupportedConstruct("logical operator in lens apply"),
             ),
-            TransformTarget::FieldProject {
-                field_label,
-                field_child: _,
-            } => {
+            TransformTarget::UnresolvedFieldProject { field_label }
+            | TransformTarget::ResolvedFieldProject { field_label } => {
                 if t.inputs.len() != 1 {
                     return Err(LensApplyError::ArityMismatch {
                         expected: 1,
@@ -1706,16 +1706,6 @@ mod substrate_reflection {
         Ok(tail)
     }
 
-    fn reflect_optional_declaration_id(
-        dag: &Dag,
-        cardinality_decl_id: DeclarationId,
-        opt: Option<DeclarationId>,
-    ) -> ReflectResult<FieldValue> {
-        reflect_optional_sum(dag, cardinality_decl_id, opt, |_d, id| {
-            Ok(FieldValue::Reference(id))
-        })
-    }
-
     fn reflect_unit_variant(dag: &Dag, sum_name: &str, label: &str) -> ReflectResult<FieldValue> {
         sum_variant_payload(dag, sum_name, label, vec![])
     }
@@ -2060,25 +2050,22 @@ mod substrate_reflection {
                 "Callable",
                 vec![FieldValue::Reference(*callee)],
             ),
-            TransformTarget::FieldProject {
-                field_label,
-                field_child,
-            } => {
-                let fp_conj = disj_variant_ty(dag, "TransformTarget", "FieldProject")?;
-                let field_child_card = peel_to_optional_cardinality_decl(
-                    dag,
-                    conj_field_ty(dag, fp_conj, "field_child")?,
-                )?;
-                sum_variant_payload(
-                    dag,
-                    "TransformTarget",
-                    "FieldProject",
-                    vec![
-                        FieldValue::Literal(LiteralBits::String(field_label.clone())),
-                        reflect_optional_declaration_id(dag, field_child_card, *field_child)?,
-                    ],
-                )
-            }
+            TransformTarget::UnresolvedFieldProject { field_label } => sum_variant_payload(
+                dag,
+                "TransformTarget",
+                "UnresolvedFieldProject",
+                vec![FieldValue::Literal(LiteralBits::String(
+                    field_label.clone(),
+                ))],
+            ),
+            TransformTarget::ResolvedFieldProject { field_label } => sum_variant_payload(
+                dag,
+                "TransformTarget",
+                "ResolvedFieldProject",
+                vec![FieldValue::Literal(LiteralBits::String(
+                    field_label.clone(),
+                ))],
+            ),
             TransformTarget::Operator(op) => sum_variant_payload(
                 dag,
                 "TransformTarget",
@@ -2814,7 +2801,8 @@ fn get_x(point: Point) -> Int = point.x
                 .iter()
                 .find_map(|b| match b {
                     Behavior::Transform(t) if t.span.file == file => match &t.target {
-                        TransformTarget::FieldProject { .. } => Some(t),
+                        TransformTarget::UnresolvedFieldProject { .. }
+                        | TransformTarget::ResolvedFieldProject { .. } => Some(t),
                         _ => None,
                     },
                     _ => None,
