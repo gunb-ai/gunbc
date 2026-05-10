@@ -2292,7 +2292,7 @@ pub(crate) fn clone_predicate_body(
 /// - `ResolvedFieldProject { field_ref }`: route `field_ref` through
 ///   `concretize_decl_with_subst`. When the parent record is generic
 ///   (e.g., `Box<T>` scoped under `fn f<T>(x: Box<T> where ...)`),
-///   substitution re-roots `field_child` to the concrete
+///   substitution re-roots `field_ref` to the concrete
 ///   instantiation (e.g., `Box<Int>`).
 /// - `Callable(id)`: route `id` through `concretize_decl_with_subst`.
 ///   When `id` is an `Instantiation` whose arguments reference

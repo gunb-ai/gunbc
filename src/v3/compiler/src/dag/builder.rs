@@ -1326,7 +1326,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "push_transform(target.field_child): unknown declaration")]
+    #[should_panic(expected = "push_transform(target.field_ref): unknown declaration")]
     fn push_transform_rejects_unknown_field_project_child() {
         let mut dag = Dag::new();
         let parent = dag.alloc_port_with_shape(
