@@ -8,7 +8,8 @@
 //! `BinaryDimensionReportEquals` author-now/fire-later shape.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::test_runner::{ClaimResult, TestRunner};
+use v3_compiler::emit_rust::emit_rust;
+use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
 use crate::common::run_on_larger_stack;
@@ -75,6 +76,7 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
                     "expected {expected_name} (R3 gate #49) to Pass, got {:?}",
                     result.result
                 );
+                assert_repeated_pure_call_claim_emits_cached_target_code(&dag, expected_name);
             }
             _ => {
                 assert!(
@@ -90,4 +92,33 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
             }
         }
     }
+}
+
+fn assert_repeated_pure_call_claim_emits_cached_target_code(
+    fixture_dag: &v3_compiler::dag::Dag,
+    claim_name: &str,
+) {
+    let claim_decl = fixture_dag
+        .declaration_by_name(claim_name)
+        .unwrap_or_else(|| panic!("fixture must declare TestClaim `{claim_name}`"));
+    let claim = TestClaimValue::from_declaration(claim_decl)
+        .unwrap_or_else(|err| panic!("fixture TestClaim `{claim_name}` must parse: {err}"));
+    let program_dag = compile_to_dag(&claim.source, &claim.file_name)
+        .unwrap_or_else(|err| panic!("claim source `{}` must compile: {err:?}", claim.file_name));
+    let emitted = emit_rust(&program_dag)
+        .unwrap_or_else(|err| panic!("claim source `{}` must emit Rust: {err:?}", claim.file_name));
+
+    assert_eq!(
+        emitted.matches("expensive(x)").count(),
+        1,
+        "gate #49 must emit the repeated pure call once, then reuse the cached bind; emitted:\n{emitted}"
+    );
+    assert!(
+        emitted.contains("let first: i64 = expensive(x);"),
+        "gate #49 must materialize the first pure call bind; emitted:\n{emitted}"
+    );
+    assert!(
+        emitted.contains("let second: i64 = first;"),
+        "gate #49 must render the repeated pure call as a cached reuse of `first`; emitted:\n{emitted}"
+    );
 }
