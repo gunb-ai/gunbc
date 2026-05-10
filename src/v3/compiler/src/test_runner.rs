@@ -1977,9 +1977,7 @@ impl PerfMeasurementResolveError {
 
 enum ProgramInputRole {
     ProgramInput,
-    ProgramOutputBind {
-        output_bind_name: String,
-    },
+    ProgramOutputBind { output_bind_name: String },
 }
 
 impl ProgramInputRole {
