@@ -1212,11 +1212,13 @@ fn e_p_per_call_pattern_preserves_induction_child_accessor_projection() {
 
 /// T-E-P-Producer-Broadening **gate (2)** — `e_p_call_pattern_lookup_authoritative`.
 ///
-/// Pins `per_call_descent_evidence` as the **single** lookup authority for
-/// per-call `SubValueRelation` evidence over `TransformTarget::Callable`
-/// transforms. The gate guards against parallel producer growth while the
-/// other two gates (`_full_coverage`, `_per_call_landed`) extend the
-/// producer's coverage and move evidence onto a substrate carrier.
+/// Pins `per_call_pattern_at` as the **single** lens-facing lookup authority
+/// for per-call `CallPattern` facts over `TransformTarget::Callable`
+/// transforms. The public lookup is intentionally a projection of
+/// `per_call_descent_evidence`; this gate guards against parallel
+/// call-pattern derivation while the sibling gates (`_full_coverage`,
+/// `_per_call_landed`) extend the producer's coverage and move evidence onto
+/// a substrate carrier.
 ///
 /// **Authoritativeness check (behavioral):**
 /// - For every `Behavior::Transform` whose target is `TransformTarget::Callable`
@@ -1230,6 +1232,10 @@ fn e_p_per_call_pattern_preserves_induction_child_accessor_projection() {
 ///   a `Callable` target — no synthetic entries.
 /// - The producer-emitted set (filtered to the fixture file) **equals**
 ///   the candidate set — totality over the fixture-file domain.
+/// - The public `per_call_pattern_at` lookup reads the same entry set:
+///   the recursive self-call projects to `ArithmeticSubtractCall`, while
+///   the cross-template call remains `None` because its authoritative row is
+///   `SubValueUnknown`.
 ///
 /// **Why a behavioral test over a source-grep ratchet:** the helpers
 /// `classify_call_argument` / `arithmetic_descent_relation` are already
@@ -1241,7 +1247,7 @@ fn e_p_per_call_pattern_preserves_induction_child_accessor_projection() {
 /// Future drift (a second producer adding entries; a missing call site) is
 /// caught by these structural assertions without coupling to source text.
 #[test]
-fn per_call_descent_evidence_is_single_lookup_authority_over_callable_transforms() {
+fn e_p_call_pattern_lookup_authoritative() {
     use std::collections::HashSet;
     use v3_compiler::dag::{Behavior, NodeId, TransformTarget};
 
@@ -1370,6 +1376,38 @@ fn caller(n: Int) -> Int = helper(n)
          authority because something else covers what the producer drops) or (b) the \
          producer reaching outside body-owned transforms (gate violation: producer \
          overshoots its scope)"
+    );
+
+    let countdown_entry = entries
+        .iter()
+        .find(|entry| entry.caller == "countdown" && entry.callee == "countdown")
+        .expect("expected countdown self-recursive callable edge");
+    assert_eq!(
+        per_call_pattern_at(&dag, countdown_entry.call),
+        Some(CallPattern::ArithmeticSubtractCall {
+            steps: PositiveDescentAmount::OneStep,
+            ring_param: String::from("param_0"),
+        }),
+        "per_call_pattern_at must project the recursive self-call pattern from \
+         the authoritative per-call evidence row"
+    );
+
+    let cross_template_entry = entries
+        .iter()
+        .find(|entry| entry.caller == "caller" && entry.callee == "helper")
+        .expect("expected caller→helper callable edge");
+    assert_eq!(
+        cross_template_entry.evidence,
+        vec![SubValueRelation::SubValueUnknown],
+        "cross-template callable edges must be represented in the authority row \
+         even when their call pattern fails closed"
+    );
+    assert_eq!(
+        per_call_pattern_at(&dag, cross_template_entry.call),
+        None,
+        "per_call_pattern_at must fail closed from the authoritative \
+         SubValueUnknown row instead of deriving a parallel SameArgumentCall \
+         or arithmetic pattern from the transform inputs"
     );
 }
 
