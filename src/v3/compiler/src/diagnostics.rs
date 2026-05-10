@@ -100,7 +100,6 @@ pub enum CorrectionValidationError {
 
 pub fn apply_correction(
     source: &str,
-    _file: &str,
     correction: &Correction,
 ) -> Result<String, CorrectionApplyError> {
     let start = correction.span.byte_start as usize;
@@ -135,8 +134,7 @@ pub fn apply_correction_and_reparse(
     file: &str,
     correction: &Correction,
 ) -> Result<String, CorrectionValidationError> {
-    let updated =
-        apply_correction(source, file, correction).map_err(CorrectionValidationError::Apply)?;
+    let updated = apply_correction(source, correction).map_err(CorrectionValidationError::Apply)?;
     let tokens =
         crate::tokenize::tokenize(&updated, file).map_err(CorrectionValidationError::Tokenize)?;
     crate::parse::parse(&tokens, file).map_err(CorrectionValidationError::Parse)?;
@@ -976,7 +974,6 @@ mod tests {
     fn apply_correction_replaces_the_requested_span() {
         let updated = apply_correction(
             "let x: Int = 1\n",
-            "apply_fix.v3",
             &Correction {
                 description: "replace the literal".to_string(),
                 span: SourceSpan::new("apply_fix.v3", 13, 14),
@@ -991,7 +988,6 @@ mod tests {
     fn apply_correction_uses_span_offsets_not_file_participation() {
         let updated = apply_correction(
             "let x: Int = 1\n",
-            "actual.v3",
             &Correction {
                 description: "replace the literal".to_string(),
                 span: SourceSpan::new("expected.v3", 13, 14),
@@ -1008,7 +1004,6 @@ mod tests {
         let accent = source.find('é').expect("fixture contains accent") as u32;
         let error = apply_correction(
             source,
-            "utf8_fix.v3",
             &Correction {
                 description: "split the accent".to_string(),
                 span: SourceSpan::new("utf8_fix.v3", accent, accent + 1),
