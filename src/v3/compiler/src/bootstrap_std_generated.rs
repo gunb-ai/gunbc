@@ -7,9 +7,9 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
         declarations: bootstrapped_std_fixture_dag_declarations(),
         ports: bootstrapped_std_fixture_dag_ports(),
         diagnostics: bootstrapped_std_fixture_dag_diagnostics(),
-        next_node_id: 33,
-        next_declaration_id: 683,
-        next_port_id: 33,
+        next_node_id: 171,
+        next_declaration_id: 684,
+        next_port_id: 171,
         primitives: PrimitiveCache::default(),
         substrate_markers: SubstrateMarkers::default(),
         realization_metas: RealizationMetaCache::default(),
@@ -24,14 +24,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
         emit_model_variants: EmitModelVariants::default(),
         clusters: bootstrapped_std_fixture_dag_clusters(),
         optional_match_disjs: bootstrapped_std_fixture_dag_optional_match_disjs(),
-        declaration_append_begin_after_bootstrap: 683,
+        declaration_append_begin_after_bootstrap: 684,
     }
 }
 
 #[allow(clippy::vec_init_then_push)]
 fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
     {
-        let mut nodes = Vec::with_capacity(33);
+        let mut nodes = Vec::with_capacity(171);
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(0),
             data: LiteralBits::Int("0".to_string()),
@@ -48,7 +48,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(2),
-            name: "<refinement:PositiveInt>".to_string(),
+            name: "<registry-refinement:PositiveInt>".to_string(),
             value: PortId(2),
             params: vec![PortId(0)],
             span: SourceSpan::new("dsl/std/integer.dag", 9551, 9558),
@@ -57,9 +57,9 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(3),
-            data: LiteralBits::Int("1".to_string()),
+            data: LiteralBits::Int("0".to_string()),
             output: PortId(4),
-            span: SourceSpan::new("dsl/std/types.dag", 10914, 10935),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -67,13 +67,13 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
             inputs: vec![PortId(3), PortId(4)],
             output: PortId(5),
-            span: SourceSpan::new("dsl/std/types.dag", 10914, 10935),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(5),
-            data: LiteralBits::Int("5".to_string()),
+            data: LiteralBits::Int("55295".to_string()),
             output: PortId(6),
-            span: SourceSpan::new("dsl/std/types.dag", 10914, 10935),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -81,117 +81,113 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)),
             inputs: vec![PortId(3), PortId(6)],
             output: PortId(7),
-            span: SourceSpan::new("dsl/std/types.dag", 10914, 10935),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(7),
             target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
             inputs: vec![PortId(5), PortId(7)],
             output: PortId(8),
-            span: SourceSpan::new("dsl/std/types.dag", 10914, 10935),
-        }));
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(8),
-            name: "<refinement:RetryCount>".to_string(),
-            value: PortId(8),
-            params: vec![PortId(3)],
-            span: SourceSpan::new("dsl/std/types.dag", 10914, 10935),
-            lane2_workflow: None,
-            emit_participation: None,
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(9),
-            data: LiteralBits::Int("100".to_string()),
-            output: PortId(10),
-            span: SourceSpan::new("dsl/std/types.dag", 10966, 10991),
+            id: NodeId(8),
+            data: LiteralBits::Int("57344".to_string()),
+            output: PortId(9),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(10),
+            id: NodeId(9),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
-            inputs: vec![PortId(9), PortId(10)],
-            output: PortId(11),
-            span: SourceSpan::new("dsl/std/types.dag", 10966, 10991),
+            inputs: vec![PortId(3), PortId(9)],
+            output: PortId(10),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(11),
-            data: LiteralBits::Int("599".to_string()),
-            output: PortId(12),
-            span: SourceSpan::new("dsl/std/types.dag", 10966, 10991),
+            id: NodeId(10),
+            data: LiteralBits::Int("1114111".to_string()),
+            output: PortId(11),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
             lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(11),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)),
+            inputs: vec![PortId(3), PortId(11)],
+            output: PortId(12),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(12),
-            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)),
-            inputs: vec![PortId(9), PortId(12)],
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(10), PortId(12)],
             output: PortId(13),
-            span: SourceSpan::new("dsl/std/types.dag", 10966, 10991),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(13),
-            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
-            inputs: vec![PortId(11), PortId(13)],
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::Or)),
+            inputs: vec![PortId(8), PortId(13)],
             output: PortId(14),
-            span: SourceSpan::new("dsl/std/types.dag", 10966, 10991),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8476),
         }));
-        nodes.push(Behavior::Bind(BindNode {
+        nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(14),
-            name: "<refinement:HttpStatus>".to_string(),
-            value: PortId(14),
-            params: vec![PortId(9)],
-            span: SourceSpan::new("dsl/std/types.dag", 10966, 10991),
-            lane2_workflow: None,
-            emit_participation: None,
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(3), PortId(3)],
+            output: PortId(15),
+            span: SourceSpan::new("dsl/std/types.dag", 8478, 8491),
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(15),
-            data: LiteralBits::Int("1".to_string()),
+            data: LiteralBits::String("Char".to_string()),
             output: PortId(16),
-            span: SourceSpan::new("dsl/std/types.dag", 11122, 11147),
+            span: SourceSpan::new("dsl/std/types.dag", 8478, 8491),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(16),
+            data: LiteralBits::String("Char".to_string()),
+            output: PortId(17),
+            span: SourceSpan::new("dsl/std/types.dag", 8478, 8491),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(16),
-            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
-            inputs: vec![PortId(15), PortId(16)],
-            output: PortId(17),
-            span: SourceSpan::new("dsl/std/types.dag", 11122, 11147),
-        }));
-        nodes.push(Behavior::Value(ValueNode {
             id: NodeId(17),
-            data: LiteralBits::Int("65535".to_string()),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(16), PortId(17)],
             output: PortId(18),
-            span: SourceSpan::new("dsl/std/types.dag", 11122, 11147),
-            lane2_workflow: None,
+            span: SourceSpan::new("dsl/std/types.dag", 8478, 8491),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(18),
-            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
             inputs: vec![PortId(15), PortId(18)],
             output: PortId(19),
-            span: SourceSpan::new("dsl/std/types.dag", 11122, 11147),
+            span: SourceSpan::new("dsl/std/types.dag", 8478, 8491),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(19),
             target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
-            inputs: vec![PortId(17), PortId(19)],
+            inputs: vec![PortId(14), PortId(19)],
             output: PortId(20),
-            span: SourceSpan::new("dsl/std/types.dag", 11122, 11147),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8491),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(20),
-            name: "<refinement:Port>".to_string(),
+            name: "<registry-refinement:Char>".to_string(),
             value: PortId(20),
-            params: vec![PortId(15)],
-            span: SourceSpan::new("dsl/std/types.dag", 11122, 11147),
+            params: vec![PortId(3)],
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8491),
             lane2_workflow: None,
             emit_participation: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(21),
-            data: LiteralBits::Int("0".to_string()),
+            data: LiteralBits::Int("1".to_string()),
             output: PortId(22),
-            span: SourceSpan::new("dsl/std/types.dag", 13409, 13422),
+            span: SourceSpan::new("dsl/std/types.dag", 10887, 10908),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -199,45 +195,43 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
             inputs: vec![PortId(21), PortId(22)],
             output: PortId(23),
-            span: SourceSpan::new("dsl/std/types.dag", 13409, 13422),
-        }));
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(23),
-            name: "<refinement:EpochMs>".to_string(),
-            value: PortId(23),
-            params: vec![PortId(21)],
-            span: SourceSpan::new("dsl/std/types.dag", 13409, 13422),
-            lane2_workflow: None,
-            emit_participation: None,
+            span: SourceSpan::new("dsl/std/types.dag", 10887, 10908),
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(24),
-            data: LiteralBits::Int("0".to_string()),
-            output: PortId(25),
-            span: SourceSpan::new("dsl/std/types.dag", 13454, 13467),
+            id: NodeId(23),
+            data: LiteralBits::Int("5".to_string()),
+            output: PortId(24),
+            span: SourceSpan::new("dsl/std/types.dag", 10887, 10908),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(24),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)),
+            inputs: vec![PortId(21), PortId(24)],
+            output: PortId(25),
+            span: SourceSpan::new("dsl/std/types.dag", 10887, 10908),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(25),
-            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
-            inputs: vec![PortId(24), PortId(25)],
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(23), PortId(25)],
             output: PortId(26),
-            span: SourceSpan::new("dsl/std/types.dag", 13454, 13467),
+            span: SourceSpan::new("dsl/std/types.dag", 10887, 10908),
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(26),
-            name: "<refinement:Duration>".to_string(),
+            name: "<registry-refinement:RetryCount>".to_string(),
             value: PortId(26),
-            params: vec![PortId(24)],
-            span: SourceSpan::new("dsl/std/types.dag", 13454, 13467),
+            params: vec![PortId(21)],
+            span: SourceSpan::new("dsl/std/types.dag", 10887, 10908),
             lane2_workflow: None,
             emit_participation: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
             id: NodeId(27),
-            data: LiteralBits::Int("0".to_string()),
+            data: LiteralBits::Int("100".to_string()),
             output: PortId(28),
-            span: SourceSpan::new("dsl/std/types.dag", 13980, 13993),
+            span: SourceSpan::new("dsl/std/types.dag", 10939, 10964),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
@@ -245,37 +239,1047 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
             inputs: vec![PortId(27), PortId(28)],
             output: PortId(29),
-            span: SourceSpan::new("dsl/std/types.dag", 13980, 13993),
+            span: SourceSpan::new("dsl/std/types.dag", 10939, 10964),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(29),
+            data: LiteralBits::Int("599".to_string()),
+            output: PortId(30),
+            span: SourceSpan::new("dsl/std/types.dag", 10939, 10964),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(30),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)),
+            inputs: vec![PortId(27), PortId(30)],
+            output: PortId(31),
+            span: SourceSpan::new("dsl/std/types.dag", 10939, 10964),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(31),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(29), PortId(31)],
+            output: PortId(32),
+            span: SourceSpan::new("dsl/std/types.dag", 10939, 10964),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(29),
-            name: "<refinement:Milliseconds>".to_string(),
-            value: PortId(29),
+            id: NodeId(32),
+            name: "<registry-refinement:HttpStatus>".to_string(),
+            value: PortId(32),
             params: vec![PortId(27)],
-            span: SourceSpan::new("dsl/std/types.dag", 13980, 13993),
+            span: SourceSpan::new("dsl/std/types.dag", 10939, 10964),
             lane2_workflow: None,
             emit_participation: None,
         }));
         nodes.push(Behavior::Value(ValueNode {
-            id: NodeId(30),
-            data: LiteralBits::Int("0".to_string()),
-            output: PortId(31),
-            span: SourceSpan::new("dsl/std/types.dag", 14025, 14038),
+            id: NodeId(33),
+            data: LiteralBits::Int("1".to_string()),
+            output: PortId(34),
+            span: SourceSpan::new("dsl/std/types.dag", 11095, 11120),
             lane2_workflow: None,
         }));
         nodes.push(Behavior::Transform(TransformNode {
-            id: NodeId(31),
+            id: NodeId(34),
             target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
-            inputs: vec![PortId(30), PortId(31)],
-            output: PortId(32),
-            span: SourceSpan::new("dsl/std/types.dag", 14025, 14038),
+            inputs: vec![PortId(33), PortId(34)],
+            output: PortId(35),
+            span: SourceSpan::new("dsl/std/types.dag", 11095, 11120),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(35),
+            data: LiteralBits::Int("65535".to_string()),
+            output: PortId(36),
+            span: SourceSpan::new("dsl/std/types.dag", 11095, 11120),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(36),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)),
+            inputs: vec![PortId(33), PortId(36)],
+            output: PortId(37),
+            span: SourceSpan::new("dsl/std/types.dag", 11095, 11120),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(37),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(35), PortId(37)],
+            output: PortId(38),
+            span: SourceSpan::new("dsl/std/types.dag", 11095, 11120),
         }));
         nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(32),
-            name: "<refinement:Seconds>".to_string(),
-            value: PortId(32),
-            params: vec![PortId(30)],
-            span: SourceSpan::new("dsl/std/types.dag", 14025, 14038),
+            id: NodeId(38),
+            name: "<registry-refinement:Port>".to_string(),
+            value: PortId(38),
+            params: vec![PortId(33)],
+            span: SourceSpan::new("dsl/std/types.dag", 11095, 11120),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(39),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(39), PortId(39)],
+            output: PortId(40),
+            span: SourceSpan::new("dsl/std/types.dag", 12318, 12338),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(40),
+            data: LiteralBits::String("PathSegment".to_string()),
+            output: PortId(41),
+            span: SourceSpan::new("dsl/std/types.dag", 12318, 12338),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(41),
+            data: LiteralBits::String("PathSegment".to_string()),
+            output: PortId(42),
+            span: SourceSpan::new("dsl/std/types.dag", 12318, 12338),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(42),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(41), PortId(42)],
+            output: PortId(43),
+            span: SourceSpan::new("dsl/std/types.dag", 12318, 12338),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(43),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(40), PortId(43)],
+            output: PortId(44),
+            span: SourceSpan::new("dsl/std/types.dag", 12318, 12338),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(44),
+            name: "<registry-refinement:PathSegment>".to_string(),
+            value: PortId(44),
+            params: vec![PortId(39)],
+            span: SourceSpan::new("dsl/std/types.dag", 12318, 12338),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(45),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(45), PortId(45)],
+            output: PortId(46),
+            span: SourceSpan::new("dsl/std/types.dag", 12378, 12398),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(46),
+            data: LiteralBits::String("GlobSegment".to_string()),
+            output: PortId(47),
+            span: SourceSpan::new("dsl/std/types.dag", 12378, 12398),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(47),
+            data: LiteralBits::String("GlobSegment".to_string()),
+            output: PortId(48),
+            span: SourceSpan::new("dsl/std/types.dag", 12378, 12398),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(48),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(47), PortId(48)],
+            output: PortId(49),
+            span: SourceSpan::new("dsl/std/types.dag", 12378, 12398),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(49),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(46), PortId(49)],
+            output: PortId(50),
+            span: SourceSpan::new("dsl/std/types.dag", 12378, 12398),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(50),
+            name: "<registry-refinement:GlobSegment>".to_string(),
+            value: PortId(50),
+            params: vec![PortId(45)],
+            span: SourceSpan::new("dsl/std/types.dag", 12378, 12398),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(51),
+            data: LiteralBits::Int("0".to_string()),
+            output: PortId(52),
+            span: SourceSpan::new("dsl/std/types.dag", 13382, 13395),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(52),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
+            inputs: vec![PortId(51), PortId(52)],
+            output: PortId(53),
+            span: SourceSpan::new("dsl/std/types.dag", 13382, 13395),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(53),
+            name: "<registry-refinement:EpochMs>".to_string(),
+            value: PortId(53),
+            params: vec![PortId(51)],
+            span: SourceSpan::new("dsl/std/types.dag", 13382, 13395),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(54),
+            data: LiteralBits::Int("0".to_string()),
+            output: PortId(55),
+            span: SourceSpan::new("dsl/std/types.dag", 13427, 13440),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(55),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
+            inputs: vec![PortId(54), PortId(55)],
+            output: PortId(56),
+            span: SourceSpan::new("dsl/std/types.dag", 13427, 13440),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(56),
+            name: "<registry-refinement:Duration>".to_string(),
+            value: PortId(56),
+            params: vec![PortId(54)],
+            span: SourceSpan::new("dsl/std/types.dag", 13427, 13440),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(57),
+            data: LiteralBits::Int("0".to_string()),
+            output: PortId(58),
+            span: SourceSpan::new("dsl/std/types.dag", 13472, 13485),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(58),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
+            inputs: vec![PortId(57), PortId(58)],
+            output: PortId(59),
+            span: SourceSpan::new("dsl/std/types.dag", 13472, 13485),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(59),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(57), PortId(57)],
+            output: PortId(60),
+            span: SourceSpan::new("dsl/std/types.dag", 13487, 13508),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(60),
+            data: LiteralBits::String("Milliseconds".to_string()),
+            output: PortId(61),
+            span: SourceSpan::new("dsl/std/types.dag", 13487, 13508),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(61),
+            data: LiteralBits::String("Milliseconds".to_string()),
+            output: PortId(62),
+            span: SourceSpan::new("dsl/std/types.dag", 13487, 13508),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(62),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(61), PortId(62)],
+            output: PortId(63),
+            span: SourceSpan::new("dsl/std/types.dag", 13487, 13508),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(63),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(60), PortId(63)],
+            output: PortId(64),
+            span: SourceSpan::new("dsl/std/types.dag", 13487, 13508),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(64),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(59), PortId(64)],
+            output: PortId(65),
+            span: SourceSpan::new("dsl/std/types.dag", 13472, 13508),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(65),
+            name: "<registry-refinement:Milliseconds>".to_string(),
+            value: PortId(65),
+            params: vec![PortId(57)],
+            span: SourceSpan::new("dsl/std/types.dag", 13472, 13508),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(66),
+            data: LiteralBits::Int("0".to_string()),
+            output: PortId(67),
+            span: SourceSpan::new("dsl/std/types.dag", 13540, 13553),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(67),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)),
+            inputs: vec![PortId(66), PortId(67)],
+            output: PortId(68),
+            span: SourceSpan::new("dsl/std/types.dag", 13540, 13553),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(68),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(66), PortId(66)],
+            output: PortId(69),
+            span: SourceSpan::new("dsl/std/types.dag", 13555, 13571),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(69),
+            data: LiteralBits::String("Seconds".to_string()),
+            output: PortId(70),
+            span: SourceSpan::new("dsl/std/types.dag", 13555, 13571),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(70),
+            data: LiteralBits::String("Seconds".to_string()),
+            output: PortId(71),
+            span: SourceSpan::new("dsl/std/types.dag", 13555, 13571),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(71),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(70), PortId(71)],
+            output: PortId(72),
+            span: SourceSpan::new("dsl/std/types.dag", 13555, 13571),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(72),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(69), PortId(72)],
+            output: PortId(73),
+            span: SourceSpan::new("dsl/std/types.dag", 13555, 13571),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(73),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(68), PortId(73)],
+            output: PortId(74),
+            span: SourceSpan::new("dsl/std/types.dag", 13540, 13571),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(74),
+            name: "<registry-refinement:Seconds>".to_string(),
+            value: PortId(74),
+            params: vec![PortId(66)],
+            span: SourceSpan::new("dsl/std/types.dag", 13540, 13571),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(75),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(75), PortId(75)],
+            output: PortId(76),
+            span: SourceSpan::new("dsl/std/types.dag", 14133, 14150),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(76),
+            data: LiteralBits::String("IntentId".to_string()),
+            output: PortId(77),
+            span: SourceSpan::new("dsl/std/types.dag", 14133, 14150),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(77),
+            data: LiteralBits::String("IntentId".to_string()),
+            output: PortId(78),
+            span: SourceSpan::new("dsl/std/types.dag", 14133, 14150),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(78),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(77), PortId(78)],
+            output: PortId(79),
+            span: SourceSpan::new("dsl/std/types.dag", 14133, 14150),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(79),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(76), PortId(79)],
+            output: PortId(80),
+            span: SourceSpan::new("dsl/std/types.dag", 14133, 14150),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(80),
+            name: "<registry-refinement:IntentId>".to_string(),
+            value: PortId(80),
+            params: vec![PortId(75)],
+            span: SourceSpan::new("dsl/std/types.dag", 14133, 14150),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(81),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(81), PortId(81)],
+            output: PortId(82),
+            span: SourceSpan::new("dsl/std/types.dag", 14189, 14205),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(82),
+            data: LiteralBits::String("IssueId".to_string()),
+            output: PortId(83),
+            span: SourceSpan::new("dsl/std/types.dag", 14189, 14205),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(83),
+            data: LiteralBits::String("IssueId".to_string()),
+            output: PortId(84),
+            span: SourceSpan::new("dsl/std/types.dag", 14189, 14205),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(84),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(83), PortId(84)],
+            output: PortId(85),
+            span: SourceSpan::new("dsl/std/types.dag", 14189, 14205),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(85),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(82), PortId(85)],
+            output: PortId(86),
+            span: SourceSpan::new("dsl/std/types.dag", 14189, 14205),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(86),
+            name: "<registry-refinement:IssueId>".to_string(),
+            value: PortId(86),
+            params: vec![PortId(81)],
+            span: SourceSpan::new("dsl/std/types.dag", 14189, 14205),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(87),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(87), PortId(87)],
+            output: PortId(88),
+            span: SourceSpan::new("dsl/std/types.dag", 14244, 14259),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(88),
+            data: LiteralBits::String("RunKey".to_string()),
+            output: PortId(89),
+            span: SourceSpan::new("dsl/std/types.dag", 14244, 14259),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(89),
+            data: LiteralBits::String("RunKey".to_string()),
+            output: PortId(90),
+            span: SourceSpan::new("dsl/std/types.dag", 14244, 14259),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(90),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(89), PortId(90)],
+            output: PortId(91),
+            span: SourceSpan::new("dsl/std/types.dag", 14244, 14259),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(91),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(88), PortId(91)],
+            output: PortId(92),
+            span: SourceSpan::new("dsl/std/types.dag", 14244, 14259),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(92),
+            name: "<registry-refinement:RunKey>".to_string(),
+            value: PortId(92),
+            params: vec![PortId(87)],
+            span: SourceSpan::new("dsl/std/types.dag", 14244, 14259),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(93),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(93), PortId(93)],
+            output: PortId(94),
+            span: SourceSpan::new("dsl/std/types.dag", 14298, 14317),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(94),
+            data: LiteralBits::String("ArtifactId".to_string()),
+            output: PortId(95),
+            span: SourceSpan::new("dsl/std/types.dag", 14298, 14317),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(95),
+            data: LiteralBits::String("ArtifactId".to_string()),
+            output: PortId(96),
+            span: SourceSpan::new("dsl/std/types.dag", 14298, 14317),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(96),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(95), PortId(96)],
+            output: PortId(97),
+            span: SourceSpan::new("dsl/std/types.dag", 14298, 14317),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(97),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(94), PortId(97)],
+            output: PortId(98),
+            span: SourceSpan::new("dsl/std/types.dag", 14298, 14317),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(98),
+            name: "<registry-refinement:ArtifactId>".to_string(),
+            value: PortId(98),
+            params: vec![PortId(93)],
+            span: SourceSpan::new("dsl/std/types.dag", 14298, 14317),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(99),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(99), PortId(99)],
+            output: PortId(100),
+            span: SourceSpan::new("dsl/std/types.dag", 14356, 14375),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(100),
+            data: LiteralBits::String("LeaseToken".to_string()),
+            output: PortId(101),
+            span: SourceSpan::new("dsl/std/types.dag", 14356, 14375),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(101),
+            data: LiteralBits::String("LeaseToken".to_string()),
+            output: PortId(102),
+            span: SourceSpan::new("dsl/std/types.dag", 14356, 14375),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(102),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(101), PortId(102)],
+            output: PortId(103),
+            span: SourceSpan::new("dsl/std/types.dag", 14356, 14375),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(103),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(100), PortId(103)],
+            output: PortId(104),
+            span: SourceSpan::new("dsl/std/types.dag", 14356, 14375),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(104),
+            name: "<registry-refinement:LeaseToken>".to_string(),
+            value: PortId(104),
+            params: vec![PortId(99)],
+            span: SourceSpan::new("dsl/std/types.dag", 14356, 14375),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(105),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(105), PortId(105)],
+            output: PortId(106),
+            span: SourceSpan::new("dsl/std/types.dag", 14414, 14431),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(106),
+            data: LiteralBits::String("WorkerId".to_string()),
+            output: PortId(107),
+            span: SourceSpan::new("dsl/std/types.dag", 14414, 14431),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(107),
+            data: LiteralBits::String("WorkerId".to_string()),
+            output: PortId(108),
+            span: SourceSpan::new("dsl/std/types.dag", 14414, 14431),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(108),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(107), PortId(108)],
+            output: PortId(109),
+            span: SourceSpan::new("dsl/std/types.dag", 14414, 14431),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(109),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(106), PortId(109)],
+            output: PortId(110),
+            span: SourceSpan::new("dsl/std/types.dag", 14414, 14431),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(110),
+            name: "<registry-refinement:WorkerId>".to_string(),
+            value: PortId(110),
+            params: vec![PortId(105)],
+            span: SourceSpan::new("dsl/std/types.dag", 14414, 14431),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(111),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(111), PortId(111)],
+            output: PortId(112),
+            span: SourceSpan::new("dsl/std/types.dag", 14470, 14488),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(112),
+            data: LiteralBits::String("CommentId".to_string()),
+            output: PortId(113),
+            span: SourceSpan::new("dsl/std/types.dag", 14470, 14488),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(113),
+            data: LiteralBits::String("CommentId".to_string()),
+            output: PortId(114),
+            span: SourceSpan::new("dsl/std/types.dag", 14470, 14488),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(114),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(113), PortId(114)],
+            output: PortId(115),
+            span: SourceSpan::new("dsl/std/types.dag", 14470, 14488),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(115),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(112), PortId(115)],
+            output: PortId(116),
+            span: SourceSpan::new("dsl/std/types.dag", 14470, 14488),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(116),
+            name: "<registry-refinement:CommentId>".to_string(),
+            value: PortId(116),
+            params: vec![PortId(111)],
+            span: SourceSpan::new("dsl/std/types.dag", 14470, 14488),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(117),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(117), PortId(117)],
+            output: PortId(118),
+            span: SourceSpan::new("dsl/std/types.dag", 14527, 14545),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(118),
+            data: LiteralBits::String("SignalKey".to_string()),
+            output: PortId(119),
+            span: SourceSpan::new("dsl/std/types.dag", 14527, 14545),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(119),
+            data: LiteralBits::String("SignalKey".to_string()),
+            output: PortId(120),
+            span: SourceSpan::new("dsl/std/types.dag", 14527, 14545),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(120),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(119), PortId(120)],
+            output: PortId(121),
+            span: SourceSpan::new("dsl/std/types.dag", 14527, 14545),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(121),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(118), PortId(121)],
+            output: PortId(122),
+            span: SourceSpan::new("dsl/std/types.dag", 14527, 14545),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(122),
+            name: "<registry-refinement:SignalKey>".to_string(),
+            value: PortId(122),
+            params: vec![PortId(117)],
+            span: SourceSpan::new("dsl/std/types.dag", 14527, 14545),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(123),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(123), PortId(123)],
+            output: PortId(124),
+            span: SourceSpan::new("dsl/std/types.dag", 14584, 14604),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(124),
+            data: LiteralBits::String("ContentHash".to_string()),
+            output: PortId(125),
+            span: SourceSpan::new("dsl/std/types.dag", 14584, 14604),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(125),
+            data: LiteralBits::String("ContentHash".to_string()),
+            output: PortId(126),
+            span: SourceSpan::new("dsl/std/types.dag", 14584, 14604),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(126),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(125), PortId(126)],
+            output: PortId(127),
+            span: SourceSpan::new("dsl/std/types.dag", 14584, 14604),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(127),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(124), PortId(127)],
+            output: PortId(128),
+            span: SourceSpan::new("dsl/std/types.dag", 14584, 14604),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(128),
+            name: "<registry-refinement:ContentHash>".to_string(),
+            value: PortId(128),
+            params: vec![PortId(123)],
+            span: SourceSpan::new("dsl/std/types.dag", 14584, 14604),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(129),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(129), PortId(129)],
+            output: PortId(130),
+            span: SourceSpan::new("dsl/std/types.dag", 14879, 14906),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(130),
+            data: LiteralBits::String("WorkflowProducerId".to_string()),
+            output: PortId(131),
+            span: SourceSpan::new("dsl/std/types.dag", 14879, 14906),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(131),
+            data: LiteralBits::String("WorkflowProducerId".to_string()),
+            output: PortId(132),
+            span: SourceSpan::new("dsl/std/types.dag", 14879, 14906),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(132),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(131), PortId(132)],
+            output: PortId(133),
+            span: SourceSpan::new("dsl/std/types.dag", 14879, 14906),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(133),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(130), PortId(133)],
+            output: PortId(134),
+            span: SourceSpan::new("dsl/std/types.dag", 14879, 14906),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(134),
+            name: "<registry-refinement:WorkflowProducerId>".to_string(),
+            value: PortId(134),
+            params: vec![PortId(129)],
+            span: SourceSpan::new("dsl/std/types.dag", 14879, 14906),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(135),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(135), PortId(135)],
+            output: PortId(136),
+            span: SourceSpan::new("dsl/std/types.dag", 14951, 14978),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(136),
+            data: LiteralBits::String("WorkflowObserverId".to_string()),
+            output: PortId(137),
+            span: SourceSpan::new("dsl/std/types.dag", 14951, 14978),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(137),
+            data: LiteralBits::String("WorkflowObserverId".to_string()),
+            output: PortId(138),
+            span: SourceSpan::new("dsl/std/types.dag", 14951, 14978),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(138),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(137), PortId(138)],
+            output: PortId(139),
+            span: SourceSpan::new("dsl/std/types.dag", 14951, 14978),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(139),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(136), PortId(139)],
+            output: PortId(140),
+            span: SourceSpan::new("dsl/std/types.dag", 14951, 14978),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(140),
+            name: "<registry-refinement:WorkflowObserverId>".to_string(),
+            value: PortId(140),
+            params: vec![PortId(135)],
+            span: SourceSpan::new("dsl/std/types.dag", 14951, 14978),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(141),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(141), PortId(141)],
+            output: PortId(142),
+            span: SourceSpan::new("dsl/std/types.dag", 15021, 15046),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(142),
+            data: LiteralBits::String("WorkflowProverId".to_string()),
+            output: PortId(143),
+            span: SourceSpan::new("dsl/std/types.dag", 15021, 15046),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(143),
+            data: LiteralBits::String("WorkflowProverId".to_string()),
+            output: PortId(144),
+            span: SourceSpan::new("dsl/std/types.dag", 15021, 15046),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(144),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(143), PortId(144)],
+            output: PortId(145),
+            span: SourceSpan::new("dsl/std/types.dag", 15021, 15046),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(145),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(142), PortId(145)],
+            output: PortId(146),
+            span: SourceSpan::new("dsl/std/types.dag", 15021, 15046),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(146),
+            name: "<registry-refinement:WorkflowProverId>".to_string(),
+            value: PortId(146),
+            params: vec![PortId(141)],
+            span: SourceSpan::new("dsl/std/types.dag", 15021, 15046),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(147),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(147), PortId(147)],
+            output: PortId(148),
+            span: SourceSpan::new("dsl/std/types.dag", 15086, 15108),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(148),
+            data: LiteralBits::String("WorkflowRunId".to_string()),
+            output: PortId(149),
+            span: SourceSpan::new("dsl/std/types.dag", 15086, 15108),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(149),
+            data: LiteralBits::String("WorkflowRunId".to_string()),
+            output: PortId(150),
+            span: SourceSpan::new("dsl/std/types.dag", 15086, 15108),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(150),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(149), PortId(150)],
+            output: PortId(151),
+            span: SourceSpan::new("dsl/std/types.dag", 15086, 15108),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(151),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(148), PortId(151)],
+            output: PortId(152),
+            span: SourceSpan::new("dsl/std/types.dag", 15086, 15108),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(152),
+            name: "<registry-refinement:WorkflowRunId>".to_string(),
+            value: PortId(152),
+            params: vec![PortId(147)],
+            span: SourceSpan::new("dsl/std/types.dag", 15086, 15108),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(153),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(153), PortId(153)],
+            output: PortId(154),
+            span: SourceSpan::new("dsl/std/types.dag", 21695, 21720),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(154),
+            data: LiteralBits::String("FilesystemHandle".to_string()),
+            output: PortId(155),
+            span: SourceSpan::new("dsl/std/types.dag", 21695, 21720),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(155),
+            data: LiteralBits::String("FilesystemHandle".to_string()),
+            output: PortId(156),
+            span: SourceSpan::new("dsl/std/types.dag", 21695, 21720),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(156),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(155), PortId(156)],
+            output: PortId(157),
+            span: SourceSpan::new("dsl/std/types.dag", 21695, 21720),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(157),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(154), PortId(157)],
+            output: PortId(158),
+            span: SourceSpan::new("dsl/std/types.dag", 21695, 21720),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(158),
+            name: "<registry-refinement:FilesystemHandle>".to_string(),
+            value: PortId(158),
+            params: vec![PortId(153)],
+            span: SourceSpan::new("dsl/std/types.dag", 21695, 21720),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(159),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(159), PortId(159)],
+            output: PortId(160),
+            span: SourceSpan::new("dsl/std/types.dag", 21756, 21778),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(160),
+            data: LiteralBits::String("NetworkHandle".to_string()),
+            output: PortId(161),
+            span: SourceSpan::new("dsl/std/types.dag", 21756, 21778),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(161),
+            data: LiteralBits::String("NetworkHandle".to_string()),
+            output: PortId(162),
+            span: SourceSpan::new("dsl/std/types.dag", 21756, 21778),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(162),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(161), PortId(162)],
+            output: PortId(163),
+            span: SourceSpan::new("dsl/std/types.dag", 21756, 21778),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(163),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(160), PortId(163)],
+            output: PortId(164),
+            span: SourceSpan::new("dsl/std/types.dag", 21756, 21778),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(164),
+            name: "<registry-refinement:NetworkHandle>".to_string(),
+            value: PortId(164),
+            params: vec![PortId(159)],
+            span: SourceSpan::new("dsl/std/types.dag", 21756, 21778),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(165),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(165), PortId(165)],
+            output: PortId(166),
+            span: SourceSpan::new("dsl/std/types.dag", 21816, 21835),
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(166),
+            data: LiteralBits::String("ToolHandle".to_string()),
+            output: PortId(167),
+            span: SourceSpan::new("dsl/std/types.dag", 21816, 21835),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(167),
+            data: LiteralBits::String("ToolHandle".to_string()),
+            output: PortId(168),
+            span: SourceSpan::new("dsl/std/types.dag", 21816, 21835),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(168),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)),
+            inputs: vec![PortId(167), PortId(168)],
+            output: PortId(169),
+            span: SourceSpan::new("dsl/std/types.dag", 21816, 21835),
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(169),
+            target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+            inputs: vec![PortId(166), PortId(169)],
+            output: PortId(170),
+            span: SourceSpan::new("dsl/std/types.dag", 21816, 21835),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(170),
+            name: "<registry-refinement:ToolHandle>".to_string(),
+            value: PortId(170),
+            params: vec![PortId(165)],
+            span: SourceSpan::new("dsl/std/types.dag", 21816, 21835),
             lane2_workflow: None,
             emit_participation: None,
         }));
@@ -286,7 +1290,7 @@ fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
 #[allow(clippy::vec_init_then_push)]
 fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
     {
-        let mut declarations = Vec::with_capacity(683);
+        let mut declarations = Vec::with_capacity(684);
         declarations.push(Declaration {
             id: DeclarationId(0),
             name: Some("Classical".to_string()),
@@ -3384,7 +4388,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
-            inhabits: Some(DeclarationId(682)),
+            inhabits: Some(DeclarationId(683)),
             value_body: None,
             refinement: None,
             nominal_opacity: None,
@@ -3435,19 +4439,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(132),
             name: Some("Char".to_string()),
-            connective: TypeConnective::Instantiation {
-                template: DeclarationId(93),
-                arguments: vec![],
-            },
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(DeclarationId(93))),
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: None,
+            refinement: Some(DeclarationId(630)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 8503, 8518),
+            span: SourceSpan::new("dsl/std/types.dag", 8440, 8491),
         });
         declarations.push(Declaration {
             id: DeclarationId(133),
@@ -3467,7 +4468,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 9282, 9322),
+            span: SourceSpan::new("dsl/std/types.dag", 9255, 9295),
         });
         declarations.push(Declaration {
             id: DeclarationId(134),
@@ -3481,7 +4482,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 9282, 9322),
+            span: SourceSpan::new("dsl/std/types.dag", 9255, 9295),
         });
         declarations.push(Declaration {
             id: DeclarationId(135),
@@ -3501,7 +4502,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 9323, 9366),
+            span: SourceSpan::new("dsl/std/types.dag", 9296, 9339),
         });
         declarations.push(Declaration {
             id: DeclarationId(136),
@@ -3515,7 +4516,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 9323, 9366),
+            span: SourceSpan::new("dsl/std/types.dag", 9296, 9339),
         });
         declarations.push(Declaration {
             id: DeclarationId(137),
@@ -3541,7 +4542,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 9367, 9417),
+            span: SourceSpan::new("dsl/std/types.dag", 9340, 9390),
         });
         declarations.push(Declaration {
             id: DeclarationId(138),
@@ -3555,7 +4556,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 9367, 9417),
+            span: SourceSpan::new("dsl/std/types.dag", 9340, 9390),
         });
         declarations.push(Declaration {
             id: DeclarationId(139),
@@ -3569,7 +4570,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 9367, 9417),
+            span: SourceSpan::new("dsl/std/types.dag", 9340, 9390),
         });
         declarations.push(Declaration {
             id: DeclarationId(140),
@@ -3586,7 +4587,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 10763, 10789),
+            span: SourceSpan::new("dsl/std/types.dag", 10736, 10762),
         });
         declarations.push(Declaration {
             id: DeclarationId(141),
@@ -3603,7 +4604,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 10857, 10883),
+            span: SourceSpan::new("dsl/std/types.dag", 10830, 10856),
         });
         declarations.push(Declaration {
             id: DeclarationId(142),
@@ -3615,9 +4616,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(630)),
+            refinement: Some(DeclarationId(631)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 10884, 10935),
+            span: SourceSpan::new("dsl/std/types.dag", 10857, 10908),
         });
         declarations.push(Declaration {
             id: DeclarationId(143),
@@ -3629,9 +4630,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(631)),
+            refinement: Some(DeclarationId(632)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 10936, 10991),
+            span: SourceSpan::new("dsl/std/types.dag", 10909, 10964),
         });
         declarations.push(Declaration {
             id: DeclarationId(144),
@@ -3648,7 +4649,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11065, 11091),
+            span: SourceSpan::new("dsl/std/types.dag", 11038, 11064),
         });
         declarations.push(Declaration {
             id: DeclarationId(145),
@@ -3660,9 +4661,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(632)),
+            refinement: Some(DeclarationId(633)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11092, 11147),
+            span: SourceSpan::new("dsl/std/types.dag", 11065, 11120),
         });
         declarations.push(Declaration {
             id: DeclarationId(146),
@@ -3679,7 +4680,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11236, 11262),
+            span: SourceSpan::new("dsl/std/types.dag", 11209, 11235),
         });
         declarations.push(Declaration {
             id: DeclarationId(147),
@@ -3698,7 +4699,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             nominal_opacity: Some(NominalOpacity {
                 permitted_accessors: vec![],
             }),
-            span: SourceSpan::new("dsl/std/types.dag", 11263, 11304),
+            span: SourceSpan::new("dsl/std/types.dag", 11236, 11277),
         });
         declarations.push(Declaration {
             id: DeclarationId(148),
@@ -3710,9 +4711,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(633)),
+            refinement: Some(DeclarationId(634)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11305, 11347),
+            span: SourceSpan::new("dsl/std/types.dag", 11278, 11320),
         });
         declarations.push(Declaration {
             id: DeclarationId(149),
@@ -3729,7 +4730,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11408, 11434),
+            span: SourceSpan::new("dsl/std/types.dag", 11381, 11407),
         });
         declarations.push(Declaration {
             id: DeclarationId(150),
@@ -3746,7 +4747,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11507, 11533),
+            span: SourceSpan::new("dsl/std/types.dag", 11480, 11506),
         });
         declarations.push(Declaration {
             id: DeclarationId(151),
@@ -3758,9 +4759,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(634)),
+            refinement: Some(DeclarationId(635)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11534, 11579),
+            span: SourceSpan::new("dsl/std/types.dag", 11507, 11552),
         });
         declarations.push(Declaration {
             id: DeclarationId(152),
@@ -3772,9 +4773,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(635)),
+            refinement: Some(DeclarationId(636)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11580, 11625),
+            span: SourceSpan::new("dsl/std/types.dag", 11553, 11598),
         });
         declarations.push(Declaration {
             id: DeclarationId(153),
@@ -3786,9 +4787,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(636)),
+            refinement: Some(DeclarationId(637)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11626, 11671),
+            span: SourceSpan::new("dsl/std/types.dag", 11599, 11644),
         });
         declarations.push(Declaration {
             id: DeclarationId(154),
@@ -3800,9 +4801,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(637)),
+            refinement: Some(DeclarationId(638)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 12306, 12365),
+            span: SourceSpan::new("dsl/std/types.dag", 12279, 12338),
         });
         declarations.push(Declaration {
             id: DeclarationId(155),
@@ -3814,9 +4815,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(638)),
+            refinement: Some(DeclarationId(639)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 12366, 12425),
+            span: SourceSpan::new("dsl/std/types.dag", 12339, 12398),
         });
         declarations.push(Declaration {
             id: DeclarationId(156),
@@ -3835,7 +4836,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 12426, 12478),
+            span: SourceSpan::new("dsl/std/types.dag", 12399, 12451),
         });
         declarations.push(Declaration {
             id: DeclarationId(157),
@@ -3854,7 +4855,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 12479, 12529),
+            span: SourceSpan::new("dsl/std/types.dag", 12452, 12502),
         });
         declarations.push(Declaration {
             id: DeclarationId(158),
@@ -3866,9 +4867,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(639)),
+            refinement: Some(DeclarationId(640)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 12530, 12573),
+            span: SourceSpan::new("dsl/std/types.dag", 12503, 12546),
         });
         declarations.push(Declaration {
             id: DeclarationId(159),
@@ -3897,7 +4898,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 13191, 13251),
+            span: SourceSpan::new("dsl/std/types.dag", 13164, 13224),
         });
         declarations.push(Declaration {
             id: DeclarationId(160),
@@ -3914,7 +4915,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 13351, 13377),
+            span: SourceSpan::new("dsl/std/types.dag", 13324, 13350),
         });
         declarations.push(Declaration {
             id: DeclarationId(161),
@@ -3926,9 +4927,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(640)),
+            refinement: Some(DeclarationId(641)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 13378, 13422),
+            span: SourceSpan::new("dsl/std/types.dag", 13351, 13395),
         });
         declarations.push(Declaration {
             id: DeclarationId(162),
@@ -3940,9 +4941,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(641)),
+            refinement: Some(DeclarationId(642)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 13423, 13467),
+            span: SourceSpan::new("dsl/std/types.dag", 13396, 13440),
         });
         declarations.push(Declaration {
             id: DeclarationId(163),
@@ -3954,9 +4955,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(642)),
+            refinement: Some(DeclarationId(643)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 13949, 13993),
+            span: SourceSpan::new("dsl/std/types.dag", 13441, 13508),
         });
         declarations.push(Declaration {
             id: DeclarationId(164),
@@ -3968,9 +4969,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(643)),
+            refinement: Some(DeclarationId(644)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 13994, 14038),
+            span: SourceSpan::new("dsl/std/types.dag", 13509, 13571),
         });
         declarations.push(Declaration {
             id: DeclarationId(165),
@@ -3982,9 +4983,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(644)),
+            refinement: Some(DeclarationId(645)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14562, 14617),
+            span: SourceSpan::new("dsl/std/types.dag", 14095, 14150),
         });
         declarations.push(Declaration {
             id: DeclarationId(166),
@@ -3996,9 +4997,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(645)),
+            refinement: Some(DeclarationId(646)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14618, 14672),
+            span: SourceSpan::new("dsl/std/types.dag", 14151, 14205),
         });
         declarations.push(Declaration {
             id: DeclarationId(167),
@@ -4010,9 +5011,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(646)),
+            refinement: Some(DeclarationId(647)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14673, 14726),
+            span: SourceSpan::new("dsl/std/types.dag", 14206, 14259),
         });
         declarations.push(Declaration {
             id: DeclarationId(168),
@@ -4024,9 +5025,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(647)),
+            refinement: Some(DeclarationId(648)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14727, 14784),
+            span: SourceSpan::new("dsl/std/types.dag", 14260, 14317),
         });
         declarations.push(Declaration {
             id: DeclarationId(169),
@@ -4038,9 +5039,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(648)),
+            refinement: Some(DeclarationId(649)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14785, 14842),
+            span: SourceSpan::new("dsl/std/types.dag", 14318, 14375),
         });
         declarations.push(Declaration {
             id: DeclarationId(170),
@@ -4052,9 +5053,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(649)),
+            refinement: Some(DeclarationId(650)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14843, 14898),
+            span: SourceSpan::new("dsl/std/types.dag", 14376, 14431),
         });
         declarations.push(Declaration {
             id: DeclarationId(171),
@@ -4066,9 +5067,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(650)),
+            refinement: Some(DeclarationId(651)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14899, 14955),
+            span: SourceSpan::new("dsl/std/types.dag", 14432, 14488),
         });
         declarations.push(Declaration {
             id: DeclarationId(172),
@@ -4080,9 +5081,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(651)),
+            refinement: Some(DeclarationId(652)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14956, 15012),
+            span: SourceSpan::new("dsl/std/types.dag", 14489, 14545),
         });
         declarations.push(Declaration {
             id: DeclarationId(173),
@@ -4094,9 +5095,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(652)),
+            refinement: Some(DeclarationId(653)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15013, 15071),
+            span: SourceSpan::new("dsl/std/types.dag", 14546, 14604),
         });
         declarations.push(Declaration {
             id: DeclarationId(174),
@@ -4108,9 +5109,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(653)),
+            refinement: Some(DeclarationId(654)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15302, 15373),
+            span: SourceSpan::new("dsl/std/types.dag", 14835, 14906),
         });
         declarations.push(Declaration {
             id: DeclarationId(175),
@@ -4122,9 +5123,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(654)),
+            refinement: Some(DeclarationId(655)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15374, 15445),
+            span: SourceSpan::new("dsl/std/types.dag", 14907, 14978),
         });
         declarations.push(Declaration {
             id: DeclarationId(176),
@@ -4136,9 +5137,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(655)),
+            refinement: Some(DeclarationId(656)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15446, 15513),
+            span: SourceSpan::new("dsl/std/types.dag", 14979, 15046),
         });
         declarations.push(Declaration {
             id: DeclarationId(177),
@@ -4150,9 +5151,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(656)),
+            refinement: Some(DeclarationId(657)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15514, 15575),
+            span: SourceSpan::new("dsl/std/types.dag", 15047, 15108),
         });
         declarations.push(Declaration {
             id: DeclarationId(178),
@@ -4164,9 +5165,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(657)),
+            refinement: Some(DeclarationId(658)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15655, 15697),
+            span: SourceSpan::new("dsl/std/types.dag", 15188, 15230),
         });
         declarations.push(Declaration {
             id: DeclarationId(179),
@@ -4178,9 +5179,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(658)),
+            refinement: Some(DeclarationId(659)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16082, 16124),
+            span: SourceSpan::new("dsl/std/types.dag", 15615, 15657),
         });
         declarations.push(Declaration {
             id: DeclarationId(180),
@@ -4197,7 +5198,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16249, 16282),
+            span: SourceSpan::new("dsl/std/types.dag", 15782, 15815),
         });
         declarations.push(Declaration {
             id: DeclarationId(181),
@@ -4226,7 +5227,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16668, 16711),
+            span: SourceSpan::new("dsl/std/types.dag", 16201, 16244),
         });
         declarations.push(Declaration {
             id: DeclarationId(182),
@@ -4259,7 +5260,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16839, 16894),
+            span: SourceSpan::new("dsl/std/types.dag", 16372, 16427),
         });
         declarations.push(Declaration {
             id: DeclarationId(183),
@@ -4288,7 +5289,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16895, 16948),
+            span: SourceSpan::new("dsl/std/types.dag", 16428, 16481),
         });
         declarations.push(Declaration {
             id: DeclarationId(184),
@@ -4325,7 +5326,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16950, 16987),
+            span: SourceSpan::new("dsl/std/types.dag", 16483, 16520),
         });
         declarations.push(Declaration {
             id: DeclarationId(185),
@@ -4362,7 +5363,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17235, 17557),
+            span: SourceSpan::new("dsl/std/types.dag", 16768, 17090),
         });
         declarations.push(Declaration {
             id: DeclarationId(186),
@@ -4423,7 +5424,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17632, 17735),
+            span: SourceSpan::new("dsl/std/types.dag", 17165, 17268),
         });
         declarations.push(Declaration {
             id: DeclarationId(187),
@@ -4456,7 +5457,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17736, 17782),
+            span: SourceSpan::new("dsl/std/types.dag", 17269, 17315),
         });
         declarations.push(Declaration {
             id: DeclarationId(188),
@@ -4501,7 +5502,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17783, 17849),
+            span: SourceSpan::new("dsl/std/types.dag", 17316, 17382),
         });
         declarations.push(Declaration {
             id: DeclarationId(189),
@@ -4554,7 +5555,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17850, 17942),
+            span: SourceSpan::new("dsl/std/types.dag", 17383, 17475),
         });
         declarations.push(Declaration {
             id: DeclarationId(190),
@@ -4591,7 +5592,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17943, 18003),
+            span: SourceSpan::new("dsl/std/types.dag", 17476, 17536),
         });
         declarations.push(Declaration {
             id: DeclarationId(191),
@@ -4624,7 +5625,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18005, 18080),
+            span: SourceSpan::new("dsl/std/types.dag", 17538, 17613),
         });
         declarations.push(Declaration {
             id: DeclarationId(192),
@@ -4649,7 +5650,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18082, 18147),
+            span: SourceSpan::new("dsl/std/types.dag", 17615, 17680),
         });
         declarations.push(Declaration {
             id: DeclarationId(193),
@@ -4686,7 +5687,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18456, 18534),
+            span: SourceSpan::new("dsl/std/types.dag", 17989, 18067),
         });
         declarations.push(Declaration {
             id: DeclarationId(194),
@@ -4715,7 +5716,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18664, 18722),
+            span: SourceSpan::new("dsl/std/types.dag", 18197, 18255),
         });
         declarations.push(Declaration {
             id: DeclarationId(195),
@@ -4732,7 +5733,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 19883, 19913),
+            span: SourceSpan::new("dsl/std/types.dag", 19416, 19446),
         });
         declarations.push(Declaration {
             id: DeclarationId(196),
@@ -4749,7 +5750,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 19994, 20024),
+            span: SourceSpan::new("dsl/std/types.dag", 19527, 19557),
         });
         declarations.push(Declaration {
             id: DeclarationId(197),
@@ -4766,7 +5767,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 20241, 20263),
+            span: SourceSpan::new("dsl/std/types.dag", 19774, 19796),
         });
         declarations.push(Declaration {
             id: DeclarationId(198),
@@ -4811,7 +5812,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21007, 21075),
+            span: SourceSpan::new("dsl/std/types.dag", 20540, 20608),
         });
         declarations.push(Declaration {
             id: DeclarationId(199),
@@ -4844,7 +5845,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21543, 21639),
+            span: SourceSpan::new("dsl/std/types.dag", 21076, 21172),
         });
         declarations.push(Declaration {
             id: DeclarationId(200),
@@ -4873,7 +5874,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21761, 21894),
+            span: SourceSpan::new("dsl/std/types.dag", 21294, 21427),
         });
         declarations.push(Declaration {
             id: DeclarationId(201),
@@ -4914,7 +5915,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21896, 22046),
+            span: SourceSpan::new("dsl/std/types.dag", 21429, 21579),
         });
         declarations.push(Declaration {
             id: DeclarationId(202),
@@ -4926,9 +5927,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(659)),
+            refinement: Some(DeclarationId(660)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22123, 22187),
+            span: SourceSpan::new("dsl/std/types.dag", 21656, 21720),
         });
         declarations.push(Declaration {
             id: DeclarationId(203),
@@ -4940,9 +5941,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(660)),
+            refinement: Some(DeclarationId(661)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22188, 22245),
+            span: SourceSpan::new("dsl/std/types.dag", 21721, 21778),
         });
         declarations.push(Declaration {
             id: DeclarationId(204),
@@ -4954,9 +5955,9 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(661)),
+            refinement: Some(DeclarationId(662)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22246, 22302),
+            span: SourceSpan::new("dsl/std/types.dag", 21779, 21835),
         });
         declarations.push(Declaration {
             id: DeclarationId(205),
@@ -4989,7 +5990,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22379, 22470),
+            span: SourceSpan::new("dsl/std/types.dag", 21912, 22003),
         });
         declarations.push(Declaration {
             id: DeclarationId(206),
@@ -5018,7 +6019,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22472, 22543),
+            span: SourceSpan::new("dsl/std/types.dag", 22005, 22076),
         });
         declarations.push(Declaration {
             id: DeclarationId(207),
@@ -5047,7 +6048,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22545, 22615),
+            span: SourceSpan::new("dsl/std/types.dag", 22078, 22148),
         });
         declarations.push(Declaration {
             id: DeclarationId(208),
@@ -5076,7 +6077,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22617, 22690),
+            span: SourceSpan::new("dsl/std/types.dag", 22150, 22223),
         });
         declarations.push(Declaration {
             id: DeclarationId(209),
@@ -5105,7 +6106,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22692, 22756),
+            span: SourceSpan::new("dsl/std/types.dag", 22225, 22289),
         });
         declarations.push(Declaration {
             id: DeclarationId(210),
@@ -5142,7 +6143,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22833, 22940),
+            span: SourceSpan::new("dsl/std/types.dag", 22366, 22473),
         });
         declarations.push(Declaration {
             id: DeclarationId(211),
@@ -5171,7 +6172,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22942, 22999),
+            span: SourceSpan::new("dsl/std/types.dag", 22475, 22532),
         });
         declarations.push(Declaration {
             id: DeclarationId(212),
@@ -5208,7 +6209,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23001, 23102),
+            span: SourceSpan::new("dsl/std/types.dag", 22534, 22635),
         });
         declarations.push(Declaration {
             id: DeclarationId(213),
@@ -5237,7 +6238,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23255, 23327),
+            span: SourceSpan::new("dsl/std/types.dag", 22788, 22860),
         });
         declarations.push(Declaration {
             id: DeclarationId(214),
@@ -5266,7 +6267,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23329, 23415),
+            span: SourceSpan::new("dsl/std/types.dag", 22862, 22948),
         });
         declarations.push(Declaration {
             id: DeclarationId(215),
@@ -5303,7 +6304,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23417, 23554),
+            span: SourceSpan::new("dsl/std/types.dag", 22950, 23087),
         });
         declarations.push(Declaration {
             id: DeclarationId(216),
@@ -5328,7 +6329,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23556, 23609),
+            span: SourceSpan::new("dsl/std/types.dag", 23089, 23142),
         });
         declarations.push(Declaration {
             id: DeclarationId(217),
@@ -5353,7 +6354,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23611, 23669),
+            span: SourceSpan::new("dsl/std/types.dag", 23144, 23202),
         });
         declarations.push(Declaration {
             id: DeclarationId(218),
@@ -5382,7 +6383,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23746, 23820),
+            span: SourceSpan::new("dsl/std/types.dag", 23279, 23353),
         });
         declarations.push(Declaration {
             id: DeclarationId(219),
@@ -5401,7 +6402,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23822, 23868),
+            span: SourceSpan::new("dsl/std/types.dag", 23355, 23401),
         });
         declarations.push(Declaration {
             id: DeclarationId(220),
@@ -5430,7 +6431,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24127, 24237),
+            span: SourceSpan::new("dsl/std/types.dag", 23660, 23770),
         });
         declarations.push(Declaration {
             id: DeclarationId(221),
@@ -5463,7 +6464,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24239, 24359),
+            span: SourceSpan::new("dsl/std/types.dag", 23772, 23892),
         });
         declarations.push(Declaration {
             id: DeclarationId(222),
@@ -5492,7 +6493,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24361, 24426),
+            span: SourceSpan::new("dsl/std/types.dag", 23894, 23959),
         });
         declarations.push(Declaration {
             id: DeclarationId(223),
@@ -5521,7 +6522,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24428, 24514),
+            span: SourceSpan::new("dsl/std/types.dag", 23961, 24047),
         });
         declarations.push(Declaration {
             id: DeclarationId(224),
@@ -5558,7 +6559,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24583, 24717),
+            span: SourceSpan::new("dsl/std/types.dag", 24116, 24250),
         });
         declarations.push(Declaration {
             id: DeclarationId(225),
@@ -5591,7 +6592,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24719, 24761),
+            span: SourceSpan::new("dsl/std/types.dag", 24252, 24294),
         });
         declarations.push(Declaration {
             id: DeclarationId(226),
@@ -5620,7 +6621,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24763, 24834),
+            span: SourceSpan::new("dsl/std/types.dag", 24296, 24367),
         });
         declarations.push(Declaration {
             id: DeclarationId(227),
@@ -5645,7 +6646,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24975, 25032),
+            span: SourceSpan::new("dsl/std/types.dag", 24508, 24565),
         });
         declarations.push(Declaration {
             id: DeclarationId(228),
@@ -5659,7 +6660,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 26966, 26985),
+            span: SourceSpan::new("dsl/std/types.dag", 26499, 26518),
         });
         declarations.push(Declaration {
             id: DeclarationId(229),
@@ -5673,7 +6674,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 26966, 26985),
+            span: SourceSpan::new("dsl/std/types.dag", 26499, 26518),
         });
         declarations.push(Declaration {
             id: DeclarationId(230),
@@ -5693,7 +6694,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/string_type.dag", 520, 550),
+            span: SourceSpan::new("dsl/std/string_type.dag", 606, 636),
         });
         declarations.push(Declaration {
             id: DeclarationId(231),
@@ -5702,19 +6703,19 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Whitespace".to_string(),
-                        ty: DeclarationId(662),
-                    },
-                    Field {
-                        label: "Digit".to_string(),
                         ty: DeclarationId(663),
                     },
                     Field {
-                        label: "IdentStart".to_string(),
+                        label: "Digit".to_string(),
                         ty: DeclarationId(664),
                     },
                     Field {
-                        label: "IdentContinue".to_string(),
+                        label: "IdentStart".to_string(),
                         ty: DeclarationId(665),
+                    },
+                    Field {
+                        label: "IdentContinue".to_string(),
+                        ty: DeclarationId(666),
                     },
                 ],
             },
@@ -5753,15 +6754,15 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "ZeroWidth".to_string(),
-                        ty: DeclarationId(666),
-                    },
-                    Field {
-                        label: "Narrow".to_string(),
                         ty: DeclarationId(667),
                     },
                     Field {
-                        label: "Wide".to_string(),
+                        label: "Narrow".to_string(),
                         ty: DeclarationId(668),
+                    },
+                    Field {
+                        label: "Wide".to_string(),
+                        ty: DeclarationId(669),
                     },
                 ],
             },
@@ -5838,7 +6839,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             },
             type_params: vec![],
             phantom_params: Vec::new(),
-            meta_tag: Some(DeclarationId(669)),
+            meta_tag: Some(DeclarationId(670)),
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
@@ -5860,7 +6861,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(666),
+                            constructor: DeclarationId(667),
                             payload: vec![],
                         },
                     ),
@@ -5883,7 +6884,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(666),
+                            constructor: DeclarationId(667),
                             payload: vec![],
                         },
                     ),
@@ -5906,7 +6907,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(666),
+                            constructor: DeclarationId(667),
                             payload: vec![],
                         },
                     ),
@@ -5929,7 +6930,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(666),
+                            constructor: DeclarationId(667),
                             payload: vec![],
                         },
                     ),
@@ -5950,7 +6951,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(666),
+                            constructor: DeclarationId(667),
                             payload: vec![],
                         },
                     ),
@@ -5973,7 +6974,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(666),
+                            constructor: DeclarationId(667),
                             payload: vec![],
                         },
                     ),
@@ -5995,7 +6996,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             },
             type_params: vec![],
             phantom_params: Vec::new(),
-            meta_tag: Some(DeclarationId(670)),
+            meta_tag: Some(DeclarationId(671)),
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
@@ -6020,7 +7021,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             },
             type_params: vec![],
             phantom_params: Vec::new(),
-            meta_tag: Some(DeclarationId(671)),
+            meta_tag: Some(DeclarationId(672)),
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
@@ -6040,7 +7041,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6063,7 +7064,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6086,7 +7087,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6107,7 +7108,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6130,7 +7131,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6153,7 +7154,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6174,7 +7175,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6197,7 +7198,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6220,7 +7221,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6241,7 +7242,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6262,7 +7263,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6283,7 +7284,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6304,7 +7305,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6327,7 +7328,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6350,7 +7351,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -6371,7 +7372,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "default_width".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(668),
+                            constructor: DeclarationId(669),
                             payload: vec![],
                         },
                     ),
@@ -7944,23 +8945,23 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "AsAuthored".to_string(),
-                        ty: DeclarationId(672),
-                    },
-                    Field {
-                        label: "SnakeCase".to_string(),
                         ty: DeclarationId(673),
                     },
                     Field {
-                        label: "StripPrefixAndSnakeCase".to_string(),
+                        label: "SnakeCase".to_string(),
                         ty: DeclarationId(674),
                     },
                     Field {
-                        label: "StripSuffixAndSnakeCase".to_string(),
+                        label: "StripPrefixAndSnakeCase".to_string(),
                         ty: DeclarationId(675),
                     },
                     Field {
-                        label: "StripPrefixSuffixAndSnakeCase".to_string(),
+                        label: "StripSuffixAndSnakeCase".to_string(),
                         ty: DeclarationId(676),
+                    },
+                    Field {
+                        label: "StripPrefixSuffixAndSnakeCase".to_string(),
+                        ty: DeclarationId(677),
                     },
                 ],
             },
@@ -7981,15 +8982,15 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "StringVariant".to_string(),
-                        ty: DeclarationId(677),
-                    },
-                    Field {
-                        label: "InternallyTaggedObject".to_string(),
                         ty: DeclarationId(678),
                     },
                     Field {
-                        label: "TaggedVariant".to_string(),
+                        label: "InternallyTaggedObject".to_string(),
                         ty: DeclarationId(679),
+                    },
+                    Field {
+                        label: "TaggedVariant".to_string(),
+                        ty: DeclarationId(680),
                     },
                 ],
             },
@@ -8054,11 +9055,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Json".to_string(),
-                        ty: DeclarationId(680),
+                        ty: DeclarationId(681),
                     },
                     Field {
                         label: "Text".to_string(),
-                        ty: DeclarationId(681),
+                        ty: DeclarationId(682),
                     },
                 ],
             },
@@ -11786,7 +12787,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 12459, 12476),
+            span: SourceSpan::new("dsl/std/types.dag", 12432, 12449),
         });
         declarations.push(Declaration {
             id: DeclarationId(521),
@@ -11806,7 +12807,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 12510, 12527),
+            span: SourceSpan::new("dsl/std/types.dag", 12483, 12500),
         });
         declarations.push(Declaration {
             id: DeclarationId(522),
@@ -11820,7 +12821,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16688, 16693),
+            span: SourceSpan::new("dsl/std/types.dag", 16221, 16226),
         });
         declarations.push(Declaration {
             id: DeclarationId(523),
@@ -11834,7 +12835,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16696, 16701),
+            span: SourceSpan::new("dsl/std/types.dag", 16229, 16234),
         });
         declarations.push(Declaration {
             id: DeclarationId(524),
@@ -11848,7 +12849,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16704, 16711),
+            span: SourceSpan::new("dsl/std/types.dag", 16237, 16244),
         });
         declarations.push(Declaration {
             id: DeclarationId(525),
@@ -11862,7 +12863,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16863, 16867),
+            span: SourceSpan::new("dsl/std/types.dag", 16396, 16400),
         });
         declarations.push(Declaration {
             id: DeclarationId(526),
@@ -11876,7 +12877,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16870, 16879),
+            span: SourceSpan::new("dsl/std/types.dag", 16403, 16412),
         });
         declarations.push(Declaration {
             id: DeclarationId(527),
@@ -11890,7 +12891,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16882, 16888),
+            span: SourceSpan::new("dsl/std/types.dag", 16415, 16421),
         });
         declarations.push(Declaration {
             id: DeclarationId(528),
@@ -11904,7 +12905,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16891, 16894),
+            span: SourceSpan::new("dsl/std/types.dag", 16424, 16427),
         });
         declarations.push(Declaration {
             id: DeclarationId(529),
@@ -11918,7 +12919,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16919, 16927),
+            span: SourceSpan::new("dsl/std/types.dag", 16452, 16460),
         });
         declarations.push(Declaration {
             id: DeclarationId(530),
@@ -11932,7 +12933,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16930, 16939),
+            span: SourceSpan::new("dsl/std/types.dag", 16463, 16472),
         });
         declarations.push(Declaration {
             id: DeclarationId(531),
@@ -11946,7 +12947,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16942, 16948),
+            span: SourceSpan::new("dsl/std/types.dag", 16475, 16481),
         });
         declarations.push(Declaration {
             id: DeclarationId(532),
@@ -11960,7 +12961,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16968, 16970),
+            span: SourceSpan::new("dsl/std/types.dag", 16501, 16503),
         });
         declarations.push(Declaration {
             id: DeclarationId(533),
@@ -11974,7 +12975,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16973, 16974),
+            span: SourceSpan::new("dsl/std/types.dag", 16506, 16507),
         });
         declarations.push(Declaration {
             id: DeclarationId(534),
@@ -11988,7 +12989,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16977, 16978),
+            span: SourceSpan::new("dsl/std/types.dag", 16510, 16511),
         });
         declarations.push(Declaration {
             id: DeclarationId(535),
@@ -12002,7 +13003,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16981, 16982),
+            span: SourceSpan::new("dsl/std/types.dag", 16514, 16515),
         });
         declarations.push(Declaration {
             id: DeclarationId(536),
@@ -12016,7 +13017,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16985, 16987),
+            span: SourceSpan::new("dsl/std/types.dag", 16518, 16520),
         });
         declarations.push(Declaration {
             id: DeclarationId(537),
@@ -12035,7 +13036,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17259, 17294),
+            span: SourceSpan::new("dsl/std/types.dag", 16792, 16827),
         });
         declarations.push(Declaration {
             id: DeclarationId(538),
@@ -12054,7 +13055,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17299, 17340),
+            span: SourceSpan::new("dsl/std/types.dag", 16832, 16873),
         });
         declarations.push(Declaration {
             id: DeclarationId(539),
@@ -12073,7 +13074,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17415, 17435),
+            span: SourceSpan::new("dsl/std/types.dag", 16948, 16968),
         });
         declarations.push(Declaration {
             id: DeclarationId(540),
@@ -12093,7 +13094,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17450, 17462),
+            span: SourceSpan::new("dsl/std/types.dag", 16983, 16995),
         });
         declarations.push(Declaration {
             id: DeclarationId(541),
@@ -12122,7 +13123,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17345, 17468),
+            span: SourceSpan::new("dsl/std/types.dag", 16878, 17001),
         });
         declarations.push(Declaration {
             id: DeclarationId(542),
@@ -12142,7 +13143,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17499, 17511),
+            span: SourceSpan::new("dsl/std/types.dag", 17032, 17044),
         });
         declarations.push(Declaration {
             id: DeclarationId(543),
@@ -12161,7 +13162,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17473, 17513),
+            span: SourceSpan::new("dsl/std/types.dag", 17006, 17046),
         });
         declarations.push(Declaration {
             id: DeclarationId(544),
@@ -12181,7 +13182,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17535, 17555),
+            span: SourceSpan::new("dsl/std/types.dag", 17068, 17088),
         });
         declarations.push(Declaration {
             id: DeclarationId(545),
@@ -12200,7 +13201,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17518, 17557),
+            span: SourceSpan::new("dsl/std/types.dag", 17051, 17090),
         });
         declarations.push(Declaration {
             id: DeclarationId(546),
@@ -12214,7 +13215,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17644, 17650),
+            span: SourceSpan::new("dsl/std/types.dag", 17177, 17183),
         });
         declarations.push(Declaration {
             id: DeclarationId(547),
@@ -12228,7 +13229,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17653, 17656),
+            span: SourceSpan::new("dsl/std/types.dag", 17186, 17189),
         });
         declarations.push(Declaration {
             id: DeclarationId(548),
@@ -12242,7 +13243,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17659, 17666),
+            span: SourceSpan::new("dsl/std/types.dag", 17192, 17199),
         });
         declarations.push(Declaration {
             id: DeclarationId(549),
@@ -12256,7 +13257,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17669, 17672),
+            span: SourceSpan::new("dsl/std/types.dag", 17202, 17205),
         });
         declarations.push(Declaration {
             id: DeclarationId(550),
@@ -12270,7 +13271,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17675, 17680),
+            span: SourceSpan::new("dsl/std/types.dag", 17208, 17213),
         });
         declarations.push(Declaration {
             id: DeclarationId(551),
@@ -12284,7 +13285,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17683, 17687),
+            span: SourceSpan::new("dsl/std/types.dag", 17216, 17220),
         });
         declarations.push(Declaration {
             id: DeclarationId(552),
@@ -12298,7 +13299,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17690, 17696),
+            span: SourceSpan::new("dsl/std/types.dag", 17223, 17229),
         });
         declarations.push(Declaration {
             id: DeclarationId(553),
@@ -12312,7 +13313,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17699, 17705),
+            span: SourceSpan::new("dsl/std/types.dag", 17232, 17238),
         });
         declarations.push(Declaration {
             id: DeclarationId(554),
@@ -12326,7 +13327,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17708, 17716),
+            span: SourceSpan::new("dsl/std/types.dag", 17241, 17249),
         });
         declarations.push(Declaration {
             id: DeclarationId(555),
@@ -12340,7 +13341,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17719, 17726),
+            span: SourceSpan::new("dsl/std/types.dag", 17252, 17259),
         });
         declarations.push(Declaration {
             id: DeclarationId(556),
@@ -12354,7 +13355,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17729, 17735),
+            span: SourceSpan::new("dsl/std/types.dag", 17262, 17268),
         });
         declarations.push(Declaration {
             id: DeclarationId(557),
@@ -12368,7 +13369,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17750, 17763),
+            span: SourceSpan::new("dsl/std/types.dag", 17283, 17296),
         });
         declarations.push(Declaration {
             id: DeclarationId(558),
@@ -12382,7 +13383,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17766, 17768),
+            span: SourceSpan::new("dsl/std/types.dag", 17299, 17301),
         });
         declarations.push(Declaration {
             id: DeclarationId(559),
@@ -12396,7 +13397,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17771, 17776),
+            span: SourceSpan::new("dsl/std/types.dag", 17304, 17309),
         });
         declarations.push(Declaration {
             id: DeclarationId(560),
@@ -12410,7 +13411,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17779, 17782),
+            span: SourceSpan::new("dsl/std/types.dag", 17312, 17315),
         });
         declarations.push(Declaration {
             id: DeclarationId(561),
@@ -12424,7 +13425,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17793, 17798),
+            span: SourceSpan::new("dsl/std/types.dag", 17326, 17331),
         });
         declarations.push(Declaration {
             id: DeclarationId(562),
@@ -12438,7 +13439,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17801, 17806),
+            span: SourceSpan::new("dsl/std/types.dag", 17334, 17339),
         });
         declarations.push(Declaration {
             id: DeclarationId(563),
@@ -12452,7 +13453,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17809, 17816),
+            span: SourceSpan::new("dsl/std/types.dag", 17342, 17349),
         });
         declarations.push(Declaration {
             id: DeclarationId(564),
@@ -12466,7 +13467,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17819, 17826),
+            span: SourceSpan::new("dsl/std/types.dag", 17352, 17359),
         });
         declarations.push(Declaration {
             id: DeclarationId(565),
@@ -12480,7 +13481,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17829, 17836),
+            span: SourceSpan::new("dsl/std/types.dag", 17362, 17369),
         });
         declarations.push(Declaration {
             id: DeclarationId(566),
@@ -12494,7 +13495,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17839, 17842),
+            span: SourceSpan::new("dsl/std/types.dag", 17372, 17375),
         });
         declarations.push(Declaration {
             id: DeclarationId(567),
@@ -12508,7 +13509,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17845, 17849),
+            span: SourceSpan::new("dsl/std/types.dag", 17378, 17382),
         });
         declarations.push(Declaration {
             id: DeclarationId(568),
@@ -12522,7 +13523,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17864, 17871),
+            span: SourceSpan::new("dsl/std/types.dag", 17397, 17404),
         });
         declarations.push(Declaration {
             id: DeclarationId(569),
@@ -12536,7 +13537,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17874, 17877),
+            span: SourceSpan::new("dsl/std/types.dag", 17407, 17410),
         });
         declarations.push(Declaration {
             id: DeclarationId(570),
@@ -12550,7 +13551,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17880, 17887),
+            span: SourceSpan::new("dsl/std/types.dag", 17413, 17420),
         });
         declarations.push(Declaration {
             id: DeclarationId(571),
@@ -12564,7 +13565,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17890, 17899),
+            span: SourceSpan::new("dsl/std/types.dag", 17423, 17432),
         });
         declarations.push(Declaration {
             id: DeclarationId(572),
@@ -12578,7 +13579,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17902, 17906),
+            span: SourceSpan::new("dsl/std/types.dag", 17435, 17439),
         });
         declarations.push(Declaration {
             id: DeclarationId(573),
@@ -12592,7 +13593,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17909, 17913),
+            span: SourceSpan::new("dsl/std/types.dag", 17442, 17446),
         });
         declarations.push(Declaration {
             id: DeclarationId(574),
@@ -12606,7 +13607,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17916, 17926),
+            span: SourceSpan::new("dsl/std/types.dag", 17449, 17459),
         });
         declarations.push(Declaration {
             id: DeclarationId(575),
@@ -12620,7 +13621,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17929, 17933),
+            span: SourceSpan::new("dsl/std/types.dag", 17462, 17466),
         });
         declarations.push(Declaration {
             id: DeclarationId(576),
@@ -12634,7 +13635,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17936, 17942),
+            span: SourceSpan::new("dsl/std/types.dag", 17469, 17475),
         });
         declarations.push(Declaration {
             id: DeclarationId(577),
@@ -12648,7 +13649,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17963, 17969),
+            span: SourceSpan::new("dsl/std/types.dag", 17496, 17502),
         });
         declarations.push(Declaration {
             id: DeclarationId(578),
@@ -12662,7 +13663,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17972, 17975),
+            span: SourceSpan::new("dsl/std/types.dag", 17505, 17508),
         });
         declarations.push(Declaration {
             id: DeclarationId(579),
@@ -12676,7 +13677,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17978, 17987),
+            span: SourceSpan::new("dsl/std/types.dag", 17511, 17520),
         });
         declarations.push(Declaration {
             id: DeclarationId(580),
@@ -12690,7 +13691,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17990, 17992),
+            span: SourceSpan::new("dsl/std/types.dag", 17523, 17525),
         });
         declarations.push(Declaration {
             id: DeclarationId(581),
@@ -12704,7 +13705,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17995, 18003),
+            span: SourceSpan::new("dsl/std/types.dag", 17528, 17536),
         });
         declarations.push(Declaration {
             id: DeclarationId(582),
@@ -12723,7 +13724,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18071, 18078),
+            span: SourceSpan::new("dsl/std/types.dag", 17604, 17611),
         });
         declarations.push(Declaration {
             id: DeclarationId(583),
@@ -12737,7 +13738,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18475, 18486),
+            span: SourceSpan::new("dsl/std/types.dag", 18008, 18019),
         });
         declarations.push(Declaration {
             id: DeclarationId(584),
@@ -12751,7 +13752,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18491, 18500),
+            span: SourceSpan::new("dsl/std/types.dag", 18024, 18033),
         });
         declarations.push(Declaration {
             id: DeclarationId(585),
@@ -12765,7 +13766,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18505, 18512),
+            span: SourceSpan::new("dsl/std/types.dag", 18038, 18045),
         });
         declarations.push(Declaration {
             id: DeclarationId(586),
@@ -12779,7 +13780,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18517, 18524),
+            span: SourceSpan::new("dsl/std/types.dag", 18050, 18057),
         });
         declarations.push(Declaration {
             id: DeclarationId(587),
@@ -12793,7 +13794,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18529, 18534),
+            span: SourceSpan::new("dsl/std/types.dag", 18062, 18067),
         });
         declarations.push(Declaration {
             id: DeclarationId(588),
@@ -12807,7 +13808,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18687, 18697),
+            span: SourceSpan::new("dsl/std/types.dag", 18220, 18230),
         });
         declarations.push(Declaration {
             id: DeclarationId(589),
@@ -12821,7 +13822,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18702, 18711),
+            span: SourceSpan::new("dsl/std/types.dag", 18235, 18244),
         });
         declarations.push(Declaration {
             id: DeclarationId(590),
@@ -12835,7 +13836,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 18716, 18722),
+            span: SourceSpan::new("dsl/std/types.dag", 18249, 18255),
         });
         declarations.push(Declaration {
             id: DeclarationId(591),
@@ -12849,7 +13850,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21025, 21028),
+            span: SourceSpan::new("dsl/std/types.dag", 20558, 20561),
         });
         declarations.push(Declaration {
             id: DeclarationId(592),
@@ -12863,7 +13864,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21031, 21035),
+            span: SourceSpan::new("dsl/std/types.dag", 20564, 20568),
         });
         declarations.push(Declaration {
             id: DeclarationId(593),
@@ -12877,7 +13878,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21038, 21041),
+            span: SourceSpan::new("dsl/std/types.dag", 20571, 20574),
         });
         declarations.push(Declaration {
             id: DeclarationId(594),
@@ -12891,7 +13892,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21044, 21049),
+            span: SourceSpan::new("dsl/std/types.dag", 20577, 20582),
         });
         declarations.push(Declaration {
             id: DeclarationId(595),
@@ -12905,7 +13906,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21052, 21058),
+            span: SourceSpan::new("dsl/std/types.dag", 20585, 20591),
         });
         declarations.push(Declaration {
             id: DeclarationId(596),
@@ -12919,7 +13920,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21061, 21065),
+            span: SourceSpan::new("dsl/std/types.dag", 20594, 20598),
         });
         declarations.push(Declaration {
             id: DeclarationId(597),
@@ -12933,7 +13934,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21068, 21075),
+            span: SourceSpan::new("dsl/std/types.dag", 20601, 20608),
         });
         declarations.push(Declaration {
             id: DeclarationId(598),
@@ -12947,7 +13948,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21563, 21569),
+            span: SourceSpan::new("dsl/std/types.dag", 21096, 21102),
         });
         declarations.push(Declaration {
             id: DeclarationId(599),
@@ -12966,7 +13967,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21574, 21597),
+            span: SourceSpan::new("dsl/std/types.dag", 21107, 21130),
         });
         declarations.push(Declaration {
             id: DeclarationId(600),
@@ -12985,7 +13986,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21602, 21628),
+            span: SourceSpan::new("dsl/std/types.dag", 21135, 21161),
         });
         declarations.push(Declaration {
             id: DeclarationId(601),
@@ -12999,7 +14000,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21633, 21639),
+            span: SourceSpan::new("dsl/std/types.dag", 21166, 21172),
         });
         declarations.push(Declaration {
             id: DeclarationId(602),
@@ -13018,7 +14019,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21831, 21841),
+            span: SourceSpan::new("dsl/std/types.dag", 21364, 21374),
         });
         declarations.push(Declaration {
             id: DeclarationId(603),
@@ -13037,7 +14038,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 21966, 21973),
+            span: SourceSpan::new("dsl/std/types.dag", 21499, 21506),
         });
         declarations.push(Declaration {
             id: DeclarationId(604),
@@ -13057,7 +14058,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22013, 22025),
+            span: SourceSpan::new("dsl/std/types.dag", 21546, 21558),
         });
         declarations.push(Declaration {
             id: DeclarationId(605),
@@ -13076,7 +14077,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22040, 22044),
+            span: SourceSpan::new("dsl/std/types.dag", 21573, 21577),
         });
         declarations.push(Declaration {
             id: DeclarationId(606),
@@ -13096,7 +14097,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23395, 23413),
+            span: SourceSpan::new("dsl/std/types.dag", 22928, 22946),
         });
         declarations.push(Declaration {
             id: DeclarationId(607),
@@ -13116,7 +14117,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23506, 23527),
+            span: SourceSpan::new("dsl/std/types.dag", 23039, 23060),
         });
         declarations.push(Declaration {
             id: DeclarationId(608),
@@ -13135,7 +14136,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23811, 23818),
+            span: SourceSpan::new("dsl/std/types.dag", 23344, 23351),
         });
         declarations.push(Declaration {
             id: DeclarationId(609),
@@ -13155,7 +14156,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23851, 23866),
+            span: SourceSpan::new("dsl/std/types.dag", 23384, 23399),
         });
         declarations.push(Declaration {
             id: DeclarationId(610),
@@ -13175,7 +14176,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24155, 24173),
+            span: SourceSpan::new("dsl/std/types.dag", 23688, 23706),
         });
         declarations.push(Declaration {
             id: DeclarationId(611),
@@ -13195,7 +14196,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24183, 24201),
+            span: SourceSpan::new("dsl/std/types.dag", 23716, 23734),
         });
         declarations.push(Declaration {
             id: DeclarationId(612),
@@ -13215,7 +14216,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24223, 24235),
+            span: SourceSpan::new("dsl/std/types.dag", 23756, 23768),
         });
         declarations.push(Declaration {
             id: DeclarationId(613),
@@ -13234,7 +14235,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24323, 24330),
+            span: SourceSpan::new("dsl/std/types.dag", 23856, 23863),
         });
         declarations.push(Declaration {
             id: DeclarationId(614),
@@ -13253,7 +14254,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24417, 24424),
+            span: SourceSpan::new("dsl/std/types.dag", 23950, 23957),
         });
         declarations.push(Declaration {
             id: DeclarationId(615),
@@ -13273,7 +14274,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24452, 24464),
+            span: SourceSpan::new("dsl/std/types.dag", 23985, 23997),
         });
         declarations.push(Declaration {
             id: DeclarationId(616),
@@ -13293,7 +14294,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24476, 24488),
+            span: SourceSpan::new("dsl/std/types.dag", 24009, 24021),
         });
         declarations.push(Declaration {
             id: DeclarationId(617),
@@ -13313,7 +14314,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24500, 24512),
+            span: SourceSpan::new("dsl/std/types.dag", 24033, 24045),
         });
         declarations.push(Declaration {
             id: DeclarationId(618),
@@ -13332,7 +14333,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24647, 24662),
+            span: SourceSpan::new("dsl/std/types.dag", 24180, 24195),
         });
         declarations.push(Declaration {
             id: DeclarationId(619),
@@ -13351,7 +14352,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24673, 24686),
+            span: SourceSpan::new("dsl/std/types.dag", 24206, 24219),
         });
         declarations.push(Declaration {
             id: DeclarationId(620),
@@ -13370,7 +14371,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24702, 24715),
+            span: SourceSpan::new("dsl/std/types.dag", 24235, 24248),
         });
         declarations.push(Declaration {
             id: DeclarationId(621),
@@ -13384,7 +14385,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24741, 24745),
+            span: SourceSpan::new("dsl/std/types.dag", 24274, 24278),
         });
         declarations.push(Declaration {
             id: DeclarationId(622),
@@ -13398,7 +14399,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24748, 24750),
+            span: SourceSpan::new("dsl/std/types.dag", 24281, 24283),
         });
         declarations.push(Declaration {
             id: DeclarationId(623),
@@ -13412,7 +14413,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24753, 24754),
+            span: SourceSpan::new("dsl/std/types.dag", 24286, 24287),
         });
         declarations.push(Declaration {
             id: DeclarationId(624),
@@ -13426,7 +14427,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24757, 24761),
+            span: SourceSpan::new("dsl/std/types.dag", 24290, 24294),
         });
         declarations.push(Declaration {
             id: DeclarationId(625),
@@ -13445,7 +14446,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24825, 24832),
+            span: SourceSpan::new("dsl/std/types.dag", 24358, 24365),
         });
         declarations.push(Declaration {
             id: DeclarationId(626),
@@ -13557,42 +14558,6 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(93)],
                 output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(8))),
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 10914, 10935),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(631),
-            name: None,
-            connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(93)],
-                output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(14))),
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 10966, 10991),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(632),
-            name: None,
-            connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(93)],
-                output: DeclarationId(128),
                 body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(20))),
             },
             type_params: vec![],
@@ -13603,126 +14568,10 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11122, 11147),
+            span: SourceSpan::new("dsl/std/types.dag", 8462, 8491),
         });
         declarations.push(Declaration {
-            id: DeclarationId(633),
-            name: Some("<registered predicate not lowered: SecretValue>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11305, 11347),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(634),
-            name: Some("<registered predicate not lowered: NonEmptyStr>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11534, 11579),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(635),
-            name: Some("<registered predicate not lowered: LanguageId>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11580, 11625),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(636),
-            name: Some("<registered predicate not lowered: SecretName>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 11626, 11671),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(637),
-            name: Some("<registered predicate not lowered: PathSegment>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 12306, 12365),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(638),
-            name: Some("<registered predicate not lowered: GlobSegment>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 12366, 12425),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(639),
-            name: Some("<registered predicate not lowered: FilePath>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 12530, 12573),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(640),
-            name: None,
-            connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(93)],
-                output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(23))),
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 13409, 13422),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(641),
+            id: DeclarationId(631),
             name: None,
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(93)],
@@ -13737,28 +14586,10 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 13454, 13467),
+            span: SourceSpan::new("dsl/std/types.dag", 10887, 10908),
         });
         declarations.push(Declaration {
-            id: DeclarationId(642),
-            name: None,
-            connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(93)],
-                output: DeclarationId(128),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(29))),
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 13980, 13993),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(643),
+            id: DeclarationId(632),
             name: None,
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(93)],
@@ -13773,12 +14604,194 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14025, 14038),
+            span: SourceSpan::new("dsl/std/types.dag", 10939, 10964),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(633),
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(93)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(38))),
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 11095, 11120),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(634),
+            name: Some("<registered predicate not lowered: SecretValue>".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 11278, 11320),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(635),
+            name: Some("<registered predicate not lowered: NonEmptyStr>".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 11507, 11552),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(636),
+            name: Some("<registered predicate not lowered: LanguageId>".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 11553, 11598),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(637),
+            name: Some("<registered predicate not lowered: SecretName>".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 11599, 11644),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(638),
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(44))),
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 12318, 12338),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(639),
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(50))),
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 12378, 12398),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(640),
+            name: Some("<registered predicate not lowered: FilePath>".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 12503, 12546),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(641),
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(93)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(53))),
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 13382, 13395),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(642),
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(93)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(56))),
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 13427, 13440),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(643),
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(93)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(65))),
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 13472, 13508),
         });
         declarations.push(Declaration {
             id: DeclarationId(644),
-            name: Some("<registered predicate not lowered: IntentId>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(93)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(74))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13787,12 +14800,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14562, 14617),
+            span: SourceSpan::new("dsl/std/types.dag", 13540, 13571),
         });
         declarations.push(Declaration {
             id: DeclarationId(645),
-            name: Some("<registered predicate not lowered: IssueId>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(80))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13801,12 +14818,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14618, 14672),
+            span: SourceSpan::new("dsl/std/types.dag", 14133, 14150),
         });
         declarations.push(Declaration {
             id: DeclarationId(646),
-            name: Some("<registered predicate not lowered: RunKey>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(86))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13815,12 +14836,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14673, 14726),
+            span: SourceSpan::new("dsl/std/types.dag", 14189, 14205),
         });
         declarations.push(Declaration {
             id: DeclarationId(647),
-            name: Some("<registered predicate not lowered: ArtifactId>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(92))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13829,12 +14854,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14727, 14784),
+            span: SourceSpan::new("dsl/std/types.dag", 14244, 14259),
         });
         declarations.push(Declaration {
             id: DeclarationId(648),
-            name: Some("<registered predicate not lowered: LeaseToken>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(98))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13843,12 +14872,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14785, 14842),
+            span: SourceSpan::new("dsl/std/types.dag", 14298, 14317),
         });
         declarations.push(Declaration {
             id: DeclarationId(649),
-            name: Some("<registered predicate not lowered: WorkerId>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(104))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13857,12 +14890,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14843, 14898),
+            span: SourceSpan::new("dsl/std/types.dag", 14356, 14375),
         });
         declarations.push(Declaration {
             id: DeclarationId(650),
-            name: Some("<registered predicate not lowered: CommentId>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(110))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13871,12 +14908,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14899, 14955),
+            span: SourceSpan::new("dsl/std/types.dag", 14414, 14431),
         });
         declarations.push(Declaration {
             id: DeclarationId(651),
-            name: Some("<registered predicate not lowered: SignalKey>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(116))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13885,12 +14926,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 14956, 15012),
+            span: SourceSpan::new("dsl/std/types.dag", 14470, 14488),
         });
         declarations.push(Declaration {
             id: DeclarationId(652),
-            name: Some("<registered predicate not lowered: ContentHash>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(122))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13899,12 +14944,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15013, 15071),
+            span: SourceSpan::new("dsl/std/types.dag", 14527, 14545),
         });
         declarations.push(Declaration {
             id: DeclarationId(653),
-            name: Some("<registered predicate not lowered: WorkflowProducerId>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(128))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13913,12 +14962,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15302, 15373),
+            span: SourceSpan::new("dsl/std/types.dag", 14584, 14604),
         });
         declarations.push(Declaration {
             id: DeclarationId(654),
-            name: Some("<registered predicate not lowered: WorkflowObserverId>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(134))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13927,12 +14980,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15374, 15445),
+            span: SourceSpan::new("dsl/std/types.dag", 14879, 14906),
         });
         declarations.push(Declaration {
             id: DeclarationId(655),
-            name: Some("<registered predicate not lowered: WorkflowProverId>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(140))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13941,12 +14998,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15446, 15513),
+            span: SourceSpan::new("dsl/std/types.dag", 14951, 14978),
         });
         declarations.push(Declaration {
             id: DeclarationId(656),
-            name: Some("<registered predicate not lowered: WorkflowRunId>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(146))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -13955,10 +15016,28 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15514, 15575),
+            span: SourceSpan::new("dsl/std/types.dag", 15021, 15046),
         });
         declarations.push(Declaration {
             id: DeclarationId(657),
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(151)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(152))),
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 15086, 15108),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(658),
             name: Some("<registered predicate not lowered: GitRef>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -13969,10 +15048,10 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 15655, 15697),
+            span: SourceSpan::new("dsl/std/types.dag", 15188, 15230),
         });
         declarations.push(Declaration {
-            id: DeclarationId(658),
+            id: DeclarationId(659),
             name: Some("<registered predicate not lowered: GcpProjectId>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -13983,26 +15062,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 16082, 16124),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(659),
-            name: Some("<registered predicate not lowered: FilesystemHandle>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22123, 22187),
+            span: SourceSpan::new("dsl/std/types.dag", 15615, 15657),
         });
         declarations.push(Declaration {
             id: DeclarationId(660),
-            name: Some("<registered predicate not lowered: NetworkHandle>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(158)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(158))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -14011,12 +15080,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22188, 22245),
+            span: SourceSpan::new("dsl/std/types.dag", 21695, 21720),
         });
         declarations.push(Declaration {
             id: DeclarationId(661),
-            name: Some("<registered predicate not lowered: ToolHandle>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(129)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(164))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -14025,12 +15098,16 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 22246, 22302),
+            span: SourceSpan::new("dsl/std/types.dag", 21756, 21778),
         });
         declarations.push(Declaration {
             id: DeclarationId(662),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(230)],
+                output: DeclarationId(128),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(170))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -14039,7 +15116,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/unicode.dag", 3679, 3689),
+            span: SourceSpan::new("dsl/std/types.dag", 21816, 21835),
         });
         declarations.push(Declaration {
             id: DeclarationId(663),
@@ -14053,7 +15130,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/unicode.dag", 3692, 3697),
+            span: SourceSpan::new("dsl/std/unicode.dag", 3679, 3689),
         });
         declarations.push(Declaration {
             id: DeclarationId(664),
@@ -14067,7 +15144,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/unicode.dag", 3700, 3710),
+            span: SourceSpan::new("dsl/std/unicode.dag", 3692, 3697),
         });
         declarations.push(Declaration {
             id: DeclarationId(665),
@@ -14081,7 +15158,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/unicode.dag", 3713, 3726),
+            span: SourceSpan::new("dsl/std/unicode.dag", 3700, 3710),
         });
         declarations.push(Declaration {
             id: DeclarationId(666),
@@ -14095,7 +15172,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/unicode.dag", 4762, 4771),
+            span: SourceSpan::new("dsl/std/unicode.dag", 3713, 3726),
         });
         declarations.push(Declaration {
             id: DeclarationId(667),
@@ -14109,7 +15186,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/unicode.dag", 4774, 4780),
+            span: SourceSpan::new("dsl/std/unicode.dag", 4762, 4771),
         });
         declarations.push(Declaration {
             id: DeclarationId(668),
@@ -14123,10 +15200,24 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/unicode.dag", 4783, 4787),
+            span: SourceSpan::new("dsl/std/unicode.dag", 4774, 4780),
         });
         declarations.push(Declaration {
             id: DeclarationId(669),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/unicode.dag", 4783, 4787),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(670),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(133),
@@ -14146,7 +15237,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/unicode.dag", 5335, 5353),
         });
         declarations.push(Declaration {
-            id: DeclarationId(670),
+            id: DeclarationId(671),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(133),
@@ -14166,7 +15257,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/unicode.dag", 6155, 6164),
         });
         declarations.push(Declaration {
-            id: DeclarationId(671),
+            id: DeclarationId(672),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(133),
@@ -14186,7 +15277,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/unicode.dag", 6404, 6422),
         });
         declarations.push(Declaration {
-            id: DeclarationId(672),
+            id: DeclarationId(673),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -14200,7 +15291,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/serialization.dag", 1873, 1883),
         });
         declarations.push(Declaration {
-            id: DeclarationId(673),
+            id: DeclarationId(674),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -14214,7 +15305,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/serialization.dag", 1888, 1897),
         });
         declarations.push(Declaration {
-            id: DeclarationId(674),
+            id: DeclarationId(675),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -14233,7 +15324,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/serialization.dag", 1902, 1944),
         });
         declarations.push(Declaration {
-            id: DeclarationId(675),
+            id: DeclarationId(676),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -14252,7 +15343,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/serialization.dag", 1949, 1991),
         });
         declarations.push(Declaration {
-            id: DeclarationId(676),
+            id: DeclarationId(677),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -14277,7 +15368,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/serialization.dag", 1996, 2060),
         });
         declarations.push(Declaration {
-            id: DeclarationId(677),
+            id: DeclarationId(678),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -14296,7 +15387,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/serialization.dag", 2416, 2455),
         });
         declarations.push(Declaration {
-            id: DeclarationId(678),
+            id: DeclarationId(679),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -14321,7 +15412,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/serialization.dag", 2460, 2527),
         });
         declarations.push(Declaration {
-            id: DeclarationId(679),
+            id: DeclarationId(680),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -14335,7 +15426,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/serialization.dag", 2532, 2545),
         });
         declarations.push(Declaration {
-            id: DeclarationId(680),
+            id: DeclarationId(681),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -14349,7 +15440,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/serialization.dag", 3264, 3268),
         });
         declarations.push(Declaration {
-            id: DeclarationId(681),
+            id: DeclarationId(682),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -14363,7 +15454,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/std/serialization.dag", 3271, 3275),
         });
         declarations.push(Declaration {
-            id: DeclarationId(682),
+            id: DeclarationId(683),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(45),
@@ -14465,8 +15556,8 @@ fn bootstrapped_std_fixture_dag_ports() -> HashMap<PortId, Port> {
             PortId(9),
             Port {
                 id: PortId(9),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(8)),
             },
         );
         ports.insert(
@@ -14513,8 +15604,8 @@ fn bootstrapped_std_fixture_dag_ports() -> HashMap<PortId, Port> {
             PortId(15),
             Port {
                 id: PortId(15),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(14)),
             },
         );
         ports.insert(
@@ -14585,8 +15676,8 @@ fn bootstrapped_std_fixture_dag_ports() -> HashMap<PortId, Port> {
             PortId(24),
             Port {
                 id: PortId(24),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(23)),
             },
         );
         ports.insert(
@@ -14633,8 +15724,8 @@ fn bootstrapped_std_fixture_dag_ports() -> HashMap<PortId, Port> {
             PortId(30),
             Port {
                 id: PortId(30),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
-                produced_by: None,
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(29)),
             },
         );
         ports.insert(
@@ -14651,6 +15742,1110 @@ fn bootstrapped_std_fixture_dag_ports() -> HashMap<PortId, Port> {
                 id: PortId(32),
                 state: PortState::Uninferred,
                 produced_by: Some(NodeId(31)),
+            },
+        );
+        ports.insert(
+            PortId(33),
+            Port {
+                id: PortId(33),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(34),
+            Port {
+                id: PortId(34),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(33)),
+            },
+        );
+        ports.insert(
+            PortId(35),
+            Port {
+                id: PortId(35),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(34)),
+            },
+        );
+        ports.insert(
+            PortId(36),
+            Port {
+                id: PortId(36),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(35)),
+            },
+        );
+        ports.insert(
+            PortId(37),
+            Port {
+                id: PortId(37),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(36)),
+            },
+        );
+        ports.insert(
+            PortId(38),
+            Port {
+                id: PortId(38),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(37)),
+            },
+        );
+        ports.insert(
+            PortId(39),
+            Port {
+                id: PortId(39),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(40),
+            Port {
+                id: PortId(40),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(39)),
+            },
+        );
+        ports.insert(
+            PortId(41),
+            Port {
+                id: PortId(41),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(40)),
+            },
+        );
+        ports.insert(
+            PortId(42),
+            Port {
+                id: PortId(42),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(41)),
+            },
+        );
+        ports.insert(
+            PortId(43),
+            Port {
+                id: PortId(43),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(42)),
+            },
+        );
+        ports.insert(
+            PortId(44),
+            Port {
+                id: PortId(44),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(43)),
+            },
+        );
+        ports.insert(
+            PortId(45),
+            Port {
+                id: PortId(45),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(46),
+            Port {
+                id: PortId(46),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(45)),
+            },
+        );
+        ports.insert(
+            PortId(47),
+            Port {
+                id: PortId(47),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(46)),
+            },
+        );
+        ports.insert(
+            PortId(48),
+            Port {
+                id: PortId(48),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(47)),
+            },
+        );
+        ports.insert(
+            PortId(49),
+            Port {
+                id: PortId(49),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(48)),
+            },
+        );
+        ports.insert(
+            PortId(50),
+            Port {
+                id: PortId(50),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(49)),
+            },
+        );
+        ports.insert(
+            PortId(51),
+            Port {
+                id: PortId(51),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(52),
+            Port {
+                id: PortId(52),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(51)),
+            },
+        );
+        ports.insert(
+            PortId(53),
+            Port {
+                id: PortId(53),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(52)),
+            },
+        );
+        ports.insert(
+            PortId(54),
+            Port {
+                id: PortId(54),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(55),
+            Port {
+                id: PortId(55),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(54)),
+            },
+        );
+        ports.insert(
+            PortId(56),
+            Port {
+                id: PortId(56),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(55)),
+            },
+        );
+        ports.insert(
+            PortId(57),
+            Port {
+                id: PortId(57),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(58),
+            Port {
+                id: PortId(58),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(57)),
+            },
+        );
+        ports.insert(
+            PortId(59),
+            Port {
+                id: PortId(59),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(58)),
+            },
+        );
+        ports.insert(
+            PortId(60),
+            Port {
+                id: PortId(60),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(59)),
+            },
+        );
+        ports.insert(
+            PortId(61),
+            Port {
+                id: PortId(61),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(60)),
+            },
+        );
+        ports.insert(
+            PortId(62),
+            Port {
+                id: PortId(62),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(61)),
+            },
+        );
+        ports.insert(
+            PortId(63),
+            Port {
+                id: PortId(63),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(62)),
+            },
+        );
+        ports.insert(
+            PortId(64),
+            Port {
+                id: PortId(64),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(63)),
+            },
+        );
+        ports.insert(
+            PortId(65),
+            Port {
+                id: PortId(65),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(64)),
+            },
+        );
+        ports.insert(
+            PortId(66),
+            Port {
+                id: PortId(66),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(93))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(67),
+            Port {
+                id: PortId(67),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(66)),
+            },
+        );
+        ports.insert(
+            PortId(68),
+            Port {
+                id: PortId(68),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(67)),
+            },
+        );
+        ports.insert(
+            PortId(69),
+            Port {
+                id: PortId(69),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(68)),
+            },
+        );
+        ports.insert(
+            PortId(70),
+            Port {
+                id: PortId(70),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(69)),
+            },
+        );
+        ports.insert(
+            PortId(71),
+            Port {
+                id: PortId(71),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(70)),
+            },
+        );
+        ports.insert(
+            PortId(72),
+            Port {
+                id: PortId(72),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(71)),
+            },
+        );
+        ports.insert(
+            PortId(73),
+            Port {
+                id: PortId(73),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(72)),
+            },
+        );
+        ports.insert(
+            PortId(74),
+            Port {
+                id: PortId(74),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(73)),
+            },
+        );
+        ports.insert(
+            PortId(75),
+            Port {
+                id: PortId(75),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(76),
+            Port {
+                id: PortId(76),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(75)),
+            },
+        );
+        ports.insert(
+            PortId(77),
+            Port {
+                id: PortId(77),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(76)),
+            },
+        );
+        ports.insert(
+            PortId(78),
+            Port {
+                id: PortId(78),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(77)),
+            },
+        );
+        ports.insert(
+            PortId(79),
+            Port {
+                id: PortId(79),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(78)),
+            },
+        );
+        ports.insert(
+            PortId(80),
+            Port {
+                id: PortId(80),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(79)),
+            },
+        );
+        ports.insert(
+            PortId(81),
+            Port {
+                id: PortId(81),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(82),
+            Port {
+                id: PortId(82),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(81)),
+            },
+        );
+        ports.insert(
+            PortId(83),
+            Port {
+                id: PortId(83),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(82)),
+            },
+        );
+        ports.insert(
+            PortId(84),
+            Port {
+                id: PortId(84),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(83)),
+            },
+        );
+        ports.insert(
+            PortId(85),
+            Port {
+                id: PortId(85),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(84)),
+            },
+        );
+        ports.insert(
+            PortId(86),
+            Port {
+                id: PortId(86),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(85)),
+            },
+        );
+        ports.insert(
+            PortId(87),
+            Port {
+                id: PortId(87),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(88),
+            Port {
+                id: PortId(88),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(87)),
+            },
+        );
+        ports.insert(
+            PortId(89),
+            Port {
+                id: PortId(89),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(88)),
+            },
+        );
+        ports.insert(
+            PortId(90),
+            Port {
+                id: PortId(90),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(89)),
+            },
+        );
+        ports.insert(
+            PortId(91),
+            Port {
+                id: PortId(91),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(90)),
+            },
+        );
+        ports.insert(
+            PortId(92),
+            Port {
+                id: PortId(92),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(91)),
+            },
+        );
+        ports.insert(
+            PortId(93),
+            Port {
+                id: PortId(93),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(94),
+            Port {
+                id: PortId(94),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(93)),
+            },
+        );
+        ports.insert(
+            PortId(95),
+            Port {
+                id: PortId(95),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(94)),
+            },
+        );
+        ports.insert(
+            PortId(96),
+            Port {
+                id: PortId(96),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(95)),
+            },
+        );
+        ports.insert(
+            PortId(97),
+            Port {
+                id: PortId(97),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(96)),
+            },
+        );
+        ports.insert(
+            PortId(98),
+            Port {
+                id: PortId(98),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(97)),
+            },
+        );
+        ports.insert(
+            PortId(99),
+            Port {
+                id: PortId(99),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(100),
+            Port {
+                id: PortId(100),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(99)),
+            },
+        );
+        ports.insert(
+            PortId(101),
+            Port {
+                id: PortId(101),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(100)),
+            },
+        );
+        ports.insert(
+            PortId(102),
+            Port {
+                id: PortId(102),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(101)),
+            },
+        );
+        ports.insert(
+            PortId(103),
+            Port {
+                id: PortId(103),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(102)),
+            },
+        );
+        ports.insert(
+            PortId(104),
+            Port {
+                id: PortId(104),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(103)),
+            },
+        );
+        ports.insert(
+            PortId(105),
+            Port {
+                id: PortId(105),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(106),
+            Port {
+                id: PortId(106),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(105)),
+            },
+        );
+        ports.insert(
+            PortId(107),
+            Port {
+                id: PortId(107),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(106)),
+            },
+        );
+        ports.insert(
+            PortId(108),
+            Port {
+                id: PortId(108),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(107)),
+            },
+        );
+        ports.insert(
+            PortId(109),
+            Port {
+                id: PortId(109),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(108)),
+            },
+        );
+        ports.insert(
+            PortId(110),
+            Port {
+                id: PortId(110),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(109)),
+            },
+        );
+        ports.insert(
+            PortId(111),
+            Port {
+                id: PortId(111),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(112),
+            Port {
+                id: PortId(112),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(111)),
+            },
+        );
+        ports.insert(
+            PortId(113),
+            Port {
+                id: PortId(113),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(112)),
+            },
+        );
+        ports.insert(
+            PortId(114),
+            Port {
+                id: PortId(114),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(113)),
+            },
+        );
+        ports.insert(
+            PortId(115),
+            Port {
+                id: PortId(115),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(114)),
+            },
+        );
+        ports.insert(
+            PortId(116),
+            Port {
+                id: PortId(116),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(115)),
+            },
+        );
+        ports.insert(
+            PortId(117),
+            Port {
+                id: PortId(117),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(118),
+            Port {
+                id: PortId(118),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(117)),
+            },
+        );
+        ports.insert(
+            PortId(119),
+            Port {
+                id: PortId(119),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(118)),
+            },
+        );
+        ports.insert(
+            PortId(120),
+            Port {
+                id: PortId(120),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(119)),
+            },
+        );
+        ports.insert(
+            PortId(121),
+            Port {
+                id: PortId(121),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(120)),
+            },
+        );
+        ports.insert(
+            PortId(122),
+            Port {
+                id: PortId(122),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(121)),
+            },
+        );
+        ports.insert(
+            PortId(123),
+            Port {
+                id: PortId(123),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(124),
+            Port {
+                id: PortId(124),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(123)),
+            },
+        );
+        ports.insert(
+            PortId(125),
+            Port {
+                id: PortId(125),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(124)),
+            },
+        );
+        ports.insert(
+            PortId(126),
+            Port {
+                id: PortId(126),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(125)),
+            },
+        );
+        ports.insert(
+            PortId(127),
+            Port {
+                id: PortId(127),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(126)),
+            },
+        );
+        ports.insert(
+            PortId(128),
+            Port {
+                id: PortId(128),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(127)),
+            },
+        );
+        ports.insert(
+            PortId(129),
+            Port {
+                id: PortId(129),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(130),
+            Port {
+                id: PortId(130),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(129)),
+            },
+        );
+        ports.insert(
+            PortId(131),
+            Port {
+                id: PortId(131),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(130)),
+            },
+        );
+        ports.insert(
+            PortId(132),
+            Port {
+                id: PortId(132),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(131)),
+            },
+        );
+        ports.insert(
+            PortId(133),
+            Port {
+                id: PortId(133),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(132)),
+            },
+        );
+        ports.insert(
+            PortId(134),
+            Port {
+                id: PortId(134),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(133)),
+            },
+        );
+        ports.insert(
+            PortId(135),
+            Port {
+                id: PortId(135),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(136),
+            Port {
+                id: PortId(136),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(135)),
+            },
+        );
+        ports.insert(
+            PortId(137),
+            Port {
+                id: PortId(137),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(136)),
+            },
+        );
+        ports.insert(
+            PortId(138),
+            Port {
+                id: PortId(138),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(137)),
+            },
+        );
+        ports.insert(
+            PortId(139),
+            Port {
+                id: PortId(139),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(138)),
+            },
+        );
+        ports.insert(
+            PortId(140),
+            Port {
+                id: PortId(140),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(139)),
+            },
+        );
+        ports.insert(
+            PortId(141),
+            Port {
+                id: PortId(141),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(142),
+            Port {
+                id: PortId(142),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(141)),
+            },
+        );
+        ports.insert(
+            PortId(143),
+            Port {
+                id: PortId(143),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(142)),
+            },
+        );
+        ports.insert(
+            PortId(144),
+            Port {
+                id: PortId(144),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(143)),
+            },
+        );
+        ports.insert(
+            PortId(145),
+            Port {
+                id: PortId(145),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(144)),
+            },
+        );
+        ports.insert(
+            PortId(146),
+            Port {
+                id: PortId(146),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(145)),
+            },
+        );
+        ports.insert(
+            PortId(147),
+            Port {
+                id: PortId(147),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(151))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(148),
+            Port {
+                id: PortId(148),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(147)),
+            },
+        );
+        ports.insert(
+            PortId(149),
+            Port {
+                id: PortId(149),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(148)),
+            },
+        );
+        ports.insert(
+            PortId(150),
+            Port {
+                id: PortId(150),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(149)),
+            },
+        );
+        ports.insert(
+            PortId(151),
+            Port {
+                id: PortId(151),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(150)),
+            },
+        );
+        ports.insert(
+            PortId(152),
+            Port {
+                id: PortId(152),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(151)),
+            },
+        );
+        ports.insert(
+            PortId(153),
+            Port {
+                id: PortId(153),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(158))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(154),
+            Port {
+                id: PortId(154),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(153)),
+            },
+        );
+        ports.insert(
+            PortId(155),
+            Port {
+                id: PortId(155),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(154)),
+            },
+        );
+        ports.insert(
+            PortId(156),
+            Port {
+                id: PortId(156),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(155)),
+            },
+        );
+        ports.insert(
+            PortId(157),
+            Port {
+                id: PortId(157),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(156)),
+            },
+        );
+        ports.insert(
+            PortId(158),
+            Port {
+                id: PortId(158),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(157)),
+            },
+        );
+        ports.insert(
+            PortId(159),
+            Port {
+                id: PortId(159),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(129))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(160),
+            Port {
+                id: PortId(160),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(159)),
+            },
+        );
+        ports.insert(
+            PortId(161),
+            Port {
+                id: PortId(161),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(160)),
+            },
+        );
+        ports.insert(
+            PortId(162),
+            Port {
+                id: PortId(162),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(161)),
+            },
+        );
+        ports.insert(
+            PortId(163),
+            Port {
+                id: PortId(163),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(162)),
+            },
+        );
+        ports.insert(
+            PortId(164),
+            Port {
+                id: PortId(164),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(163)),
+            },
+        );
+        ports.insert(
+            PortId(165),
+            Port {
+                id: PortId(165),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(230))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(166),
+            Port {
+                id: PortId(166),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(165)),
+            },
+        );
+        ports.insert(
+            PortId(167),
+            Port {
+                id: PortId(167),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(166)),
+            },
+        );
+        ports.insert(
+            PortId(168),
+            Port {
+                id: PortId(168),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(167)),
+            },
+        );
+        ports.insert(
+            PortId(169),
+            Port {
+                id: PortId(169),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(168)),
+            },
+        );
+        ports.insert(
+            PortId(170),
+            Port {
+                id: PortId(170),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(169)),
             },
         );
         ports
