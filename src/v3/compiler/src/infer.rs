@@ -436,7 +436,7 @@ fn ensure_optional_match_disj(
 /// Materialize `Some`/`None` match sums for every `Cardinality(_, AtMostOne)` row so
 /// downstream structural consumers (substrate reflection, lenses) can use
 /// `Dag::optional_match_disj` without requiring an optional scrutinee on a Branch.
-fn ensure_all_optional_match_disjs(dag: &mut Dag) {
+pub(crate) fn ensure_all_optional_match_disjs(dag: &mut Dag) {
     let decl_ids: Vec<DeclarationId> = dag.declarations().iter().map(|d| d.id).collect();
     for decl_id in decl_ids {
         if matches!(

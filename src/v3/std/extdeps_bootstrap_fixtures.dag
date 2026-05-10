@@ -38,6 +38,9 @@ type BootstrapFixtureSet {
   go_method_template_contracts: BootstrapFixture
   anthropic_operations: BootstrapFixture
   cross_target_coverage: BootstrapFixture
+  extdeps_cron: BootstrapFixture
+  extdeps_github_github: BootstrapFixture
+  extdeps_github_actions: BootstrapFixture
 }
 
 data bootstrap_fixture_authority: BootstrapFixtureSet = {
@@ -58,5 +61,14 @@ data bootstrap_fixture_authority: BootstrapFixtureSet = {
   },
   cross_target_coverage: {
     virtual_path: "src/v3/std/cross_target_coverage.dag"
+  },
+  extdeps_cron: {
+    virtual_path: "dsl/extdeps/cron_schedule_model.dag"
+  },
+  extdeps_github_github: {
+    virtual_path: "dsl/extdeps/github/github.dag"
+  },
+  extdeps_github_actions: {
+    virtual_path: "dsl/extdeps/github/actions.dag"
   }
 }
