@@ -1975,7 +1975,9 @@ enum ProgramInputRole {
     ProgramInput,
     /// R3 gate #44: claim-program top-level bind schedule witness input (structural dispatch).
     BindClusterScheduleProgramInput,
-    ProgramOutputBind { output_bind_name: String },
+    ProgramOutputBind {
+        output_bind_name: String,
+    },
 }
 
 impl ProgramInputRole {
@@ -3014,7 +3016,10 @@ impl<'a> TestRunner<'a> {
     }
 
     fn program_input_role(&self, decl: &Declaration) -> Result<Option<ProgramInputRole>, String> {
-        if let Some(role_decl) = self.dag.declaration_by_name("BindClusterScheduleProgramInput") {
+        if let Some(role_decl) = self
+            .dag
+            .declaration_by_name("BindClusterScheduleProgramInput")
+        {
             if Self::declaration_carries_role_tag(decl, role_decl.id) {
                 return Ok(Some(ProgramInputRole::BindClusterScheduleProgramInput));
             }
