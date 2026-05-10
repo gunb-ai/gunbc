@@ -4,11 +4,20 @@
 //! Stage 2b). For [`crate::dag::WorkflowEffect::ParallelEffect`], checks that
 //! linear branches can be scheduled concurrently without reorder hazards,
 //! projecting through [`crate::dag::CompositionVerdict`] per DB-18 / PR #529.
+//!
+//! [`register_independent_bind_parallelism`] is the R3 free-consequence hook:
+//! when every top-level `Bind` is pairwise dataflow-independent, the compiler
+//! records a `ParallelEffect` of empty `LinearEffect` branches on the workflow
+//! root (α: last `Bind`). Effect-commutativity and cost witnesses remain
+//! future lenses; this pass is intentionally conservative on side-effecting
+//! RHS (not modeled here).
+
+use std::collections::HashSet;
 
 use crate::dag::{
-    CompositionVerdict, Dag, EffectShape, ElementRef, IdempotentShape, NodeId, NonSingletonList,
-    OperationEffect, ParallelismUnsupportedDetail, ParallelismUnsupportedKind, WorkflowEffect,
-    WorkflowParallelismReport,
+    Behavior, BindNode, CompositionVerdict, Dag, EffectShape, ElementRef, IdempotentShape, NodeId,
+    NonSingletonList, OperationEffect, ParallelismUnsupportedDetail, ParallelismUnsupportedKind,
+    PortId, WorkflowEffect, WorkflowParallelismReport,
 };
 
 const DOWNSTREAM: &str = "lane2_stage2e_parallelism_lens";
@@ -146,5 +155,138 @@ pub fn analyze_parallelism(d: &Dag, workflow_root: NodeId) -> WorkflowParallelis
             ParallelismUnsupportedKind::PairwiseNonCommute,
             format!("operations `{a}` and `{b}` do not commute under parallel scheduling"),
         ),
+    }
+}
+
+fn expand_behavior_backward_ports(
+    d: &Dag,
+    node: NodeId,
+    frontier: &mut Vec<PortId>,
+    visited_nodes: &mut HashSet<NodeId>,
+) {
+    if !visited_nodes.insert(node) {
+        return;
+    }
+    let Some(behavior) = d.node_opt(&node) else {
+        return;
+    };
+    match behavior {
+        Behavior::Value(_) => {}
+        Behavior::Transform(transform) => {
+            for input in &transform.inputs {
+                frontier.push(*input);
+            }
+        }
+        Behavior::Branch(branch) => {
+            frontier.push(branch.input);
+            for path in &branch.paths {
+                expand_behavior_backward_ports(d, path.body, frontier, visited_nodes);
+                frontier.push(path.output);
+            }
+        }
+        Behavior::Loop(loop_node) => {
+            frontier.push(loop_node.source);
+            frontier.push(loop_node.init);
+            if let Some(count) = loop_node.bound.count_port() {
+                frontier.push(count);
+            }
+            expand_behavior_backward_ports(d, loop_node.body, frontier, visited_nodes);
+        }
+        Behavior::Bind(bind) => {
+            for param in &bind.params {
+                frontier.push(*param);
+            }
+            frontier.push(bind.value);
+        }
+    }
+}
+
+/// Behaviors reachable backward from `start` port's producer walk (same spine
+/// rules as DB-3 dimension backward slices).
+fn backward_reachable_nodes_from_port(d: &Dag, start: PortId) -> HashSet<NodeId> {
+    let mut visited_nodes = HashSet::new();
+    let mut visited_ports: HashSet<PortId> = HashSet::new();
+    let mut frontier = vec![start];
+    while let Some(port) = frontier.pop() {
+        if !visited_ports.insert(port) {
+            continue;
+        }
+        let Some(p) = d.port_opt(&port) else {
+            continue;
+        };
+        let Some(producer) = p.produced_by else {
+            continue;
+        };
+        expand_behavior_backward_ports(d, producer, &mut frontier, &mut visited_nodes);
+    }
+    visited_nodes
+}
+
+fn bind_rhs_reaches_node(d: &Dag, bind: &BindNode, target: NodeId) -> bool {
+    backward_reachable_nodes_from_port(d, bind.value).contains(&target)
+}
+
+/// When there are two or more top-level [`Behavior::Bind`] nodes in `nodes`
+/// order and every later bind's RHS is dataflow-independent of every earlier
+/// bind (no backward path from `bind.value` reaches a prior bind), installs
+/// [`WorkflowEffect::ParallelEffect`] on the workflow root (last bind).
+///
+/// Skips when any bind already carries `lane2_workflow` or when the pairwise
+/// check fails. Side-effect / commutativity certification is **not** performed
+/// here — pair with future `Lens<Effect-Commutativity>` before widening beyond
+/// pure-looking programs.
+pub fn register_independent_bind_parallelism(dag: &mut Dag) {
+    let binds: Vec<&BindNode> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
+    if binds.len() < 2 {
+        return;
+    }
+    if binds.iter().any(|b| b.lane2_workflow().is_some()) {
+        return;
+    }
+    for (i, bi) in binds.iter().enumerate() {
+        for bj in binds.iter().skip(i + 1) {
+            if bind_rhs_reaches_node(dag, bj, bi.id) {
+                return;
+            }
+        }
+    }
+    let last_id = binds.last().expect("len >= 2").id;
+    let branches: Vec<Box<WorkflowEffect>> = (0..binds.len())
+        .map(|_| {
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: Vec::new(),
+            })
+        })
+        .collect();
+    let Some(ns) = NonSingletonList::from_vec(branches) else {
+        return;
+    };
+    let wf = WorkflowEffect::ParallelEffect { branches: ns };
+    dag.try_register_lane2_workflow_effect(last_id, wf);
+}
+
+#[cfg(test)]
+mod register_parallelism_tests {
+    use super::*;
+    use crate::compile_to_dag;
+
+    #[test]
+    fn independent_binds_register_parallel_on_last_bind() {
+        let dag = compile_to_dag("let a: Int = 1\nlet b: Int = 2", "t.v3").expect("compile");
+        let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
+        assert_eq!(binds.len(), 2);
+        let last = binds[1].id();
+        let wf = dag
+            .lane2_workflow_effect_at(&last)
+            .expect("parallelism registered");
+        assert!(matches!(wf, WorkflowEffect::ParallelEffect { .. }));
+    }
+
+    #[test]
+    fn dependent_binds_do_not_register_parallel() {
+        let dag = compile_to_dag("let a: Int = 1\nlet b: Int = a + 1", "t.v3").expect("compile");
+        let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
+        let last = binds[1].id();
+        assert!(dag.lane2_workflow_effect_at(&last).is_none());
     }
 }

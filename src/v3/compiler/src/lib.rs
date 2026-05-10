@@ -5029,6 +5029,7 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
         lower::lower(&surface)
     };
     infer::infer(&mut dag);
+    workflow_parallelism::register_independent_bind_parallelism(&mut dag);
     if dag.diagnostics().is_empty() {
         Ok(dag)
     } else {
