@@ -101,6 +101,8 @@ const R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME: &str =
 /// memoization scaffolding. Repeated-call caching remains deferred to the purity+cost lens
 /// composition producer.
 const R3_ONE_SHOT_NO_MEMO_WITNESS_LENS_NAME: &str = "r3_auto_memoization_one_shot_no_cache_witness";
+const L5_REQUIRED_TOOLCHAINS: &[&str] =
+    &["L5RustcToolchain", "L5Python3Toolchain", "L5GoToolchain"];
 
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
@@ -2422,7 +2424,9 @@ impl<'a> TestRunner<'a> {
     pub fn run_claim(&self, claim: &TestClaimValue) -> ClaimEvaluation {
         let result = match self.variant_value(&claim.predicate) {
             Some((label, payload)) => {
-                if !claim.requires.is_empty() && label != "MockBackedInvariant" {
+                if !claim.requires.is_empty()
+                    && !matches!(label.as_str(), "MockBackedInvariant" | "ForAllTargets")
+                {
                     ClaimResult::Fail(format!(
                         "TestClaim `{}` declares {} resource requirement(s), but predicate `{}` does not consume `requires`",
                         claim.claim_name,
@@ -4023,6 +4027,9 @@ impl<'a> TestRunner<'a> {
     }
 
     fn eval_for_all_targets(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
+        if let Err(reason) = self.validate_for_all_targets_resource_requirements(claim) {
+            return ClaimResult::Fail(reason);
+        }
         let Some((command, args, expect_exit_code)) = parse_execute_command_fields(payload) else {
             return ClaimResult::Fail(
                 "ForAllTargets payload should be (String, List<String>, Int) — see verification.dag"
@@ -4038,6 +4045,47 @@ impl<'a> TestRunner<'a> {
             ));
         }
         l5_cross_target_outputs_int(claim)
+    }
+
+    fn validate_for_all_targets_resource_requirements(
+        &self,
+        claim: &TestClaimValue,
+    ) -> Result<(), String> {
+        let mut actual = BTreeSet::new();
+        for (idx, requirement) in claim.requires.iter().enumerate() {
+            let Some(fields) = record_fields(requirement) else {
+                return Err(format!(
+                    "ForAllTargets(L5): `requires[{idx}]` must be a ResourceReference record"
+                ));
+            };
+            let Some(target) = field(fields, "target") else {
+                return Err(format!(
+                    "ForAllTargets(L5): `requires[{idx}]` is missing `target`"
+                ));
+            };
+            let FieldValue::Reference(id) = target else {
+                return Err(format!(
+                    "ForAllTargets(L5): `requires[{idx}].target` must be a DeclarationRef edge, got {target:?}"
+                ));
+            };
+            let Some(name) = self.dag.declaration(*id).name.as_deref() else {
+                return Err(format!(
+                    "ForAllTargets(L5): `requires[{idx}].target` must name a toolchain marker"
+                ));
+            };
+            actual.insert(name.to_string());
+        }
+        let expected: BTreeSet<String> = L5_REQUIRED_TOOLCHAINS
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect();
+        if actual != expected {
+            return Err(format!(
+                "ForAllTargets(L5): `TestClaim.requires` must declare exactly {:?}; got {:?}",
+                L5_REQUIRED_TOOLCHAINS, actual
+            ));
+        }
+        Ok(())
     }
 
     fn eval_cost_bounded(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {

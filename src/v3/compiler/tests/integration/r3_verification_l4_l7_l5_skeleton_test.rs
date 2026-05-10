@@ -18,7 +18,7 @@
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::Dag;
+use v3_compiler::dag::{Dag, FieldValue};
 use v3_compiler::test_runner::{ClaimEvaluation, ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
@@ -325,6 +325,31 @@ fn l5_cross_target_consistency_passes_seed_corpus_for_all_targets() {
     assert_eq!(
         claim.source, L5_AUTHORITY_PROGRAM,
         "`TestClaim.source` must equal `add_then_branch_seed.v3` bytes (single program authority)"
+    );
+    let required_toolchains: Vec<_> = claim
+        .requires
+        .iter()
+        .map(|requirement| match requirement {
+            FieldValue::Record(fields) => match fields.as_slice() {
+                [(label, FieldValue::Reference(id))] if label == "target" => dag
+                    .declaration(*id)
+                    .name
+                    .as_deref()
+                    .unwrap_or("<anonymous>")
+                    .to_string(),
+                other => panic!(
+                    "L5 `requires` entry must be ResourceReference {{ target }}, got {other:?}"
+                ),
+            },
+            other => {
+                panic!("L5 `requires` entry must be a ResourceReference record, got {other:?}")
+            }
+        })
+        .collect();
+    assert_eq!(
+        required_toolchains,
+        ["L5RustcToolchain", "L5Python3Toolchain", "L5GoToolchain"],
+        "L5 ForAllTargets must declare host toolchain requirements structurally on TestClaim.requires"
     );
     let results = TestRunner::new(dag).run_suite(L5_SUITE);
     assert_eq!(results.len(), 1);
