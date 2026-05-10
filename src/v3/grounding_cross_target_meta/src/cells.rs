@@ -96,6 +96,9 @@ impl ShapeATarget {
             .as_deref()
             .unwrap_or("<anonymous_language_spec>");
         match name {
+            "rust_shape_a_target" => "Rust".to_string(),
+            "python_shape_a_target" => "Python".to_string(),
+            "go_shape_a_target" => "Go".to_string(),
             "rust_language" => "Rust".to_string(),
             "python_language" => "Python".to_string(),
             "go_language" => "Go".to_string(),

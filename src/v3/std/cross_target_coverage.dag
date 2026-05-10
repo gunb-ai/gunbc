@@ -35,7 +35,6 @@ module v3.std.cross_target_coverage
 
 import v3.std.methods { MethodRef }
 import v3.std.emit_model { LanguageSpec }
-import v3.spec.v3_l1 { DeclarationRef }
 import v3.spec.rust { rust_language }
 import v3.spec.python { python_language }
 import v3.spec.go { go_language }
@@ -62,17 +61,16 @@ import std.methods {
 //
 // PRACTICE 4 DISSOLUTION RECEIPT: the former closed
 // `Rust | Python | Go` coproduct duplicated `LanguageSpec` as a second
-// target authority. Target identity is now a typed reference to the
-// target's `LanguageSpec` data declaration; adding a target is
-// data-driven by adding a new `LanguageSpec` declaration and the
-// corresponding row authorities, without editing this carrier.
-type ShapeATarget {
-  spec: DeclarationRef
-}
+// target authority. `ShapeATarget` is now a type alias for `LanguageSpec`;
+// row identities point directly at the target's `LanguageSpec` data
+// declaration. Adding a target is data-driven by adding a new
+// `LanguageSpec` declaration and the corresponding row authorities,
+// without editing this carrier.
+type ShapeATarget = LanguageSpec
 
-data rust_shape_a_target: ShapeATarget = { spec: rust_language }
-data python_shape_a_target: ShapeATarget = { spec: python_language }
-data go_shape_a_target: ShapeATarget = { spec: go_language }
+data rust_shape_a_target: ShapeATarget = rust_language
+data python_shape_a_target: ShapeATarget = python_language
+data go_shape_a_target: ShapeATarget = go_language
 
 // --- FormAxis -------------------------------------------------------------
 //
@@ -145,47 +143,47 @@ type EmissionPathProjection {
 // source row lists at HEAD; `go_method_template_contracts.dag` documents why
 // Go `chars` is not part of Phase 1.
 data emission_path_projections: List<EmissionPathProjection> = [
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: last_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: first_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: enumerate_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: chars_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: rust_language }, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: last_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: first_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: enumerate_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: chars_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: sort_by_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: append_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: python_language }, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: sort_by_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: append_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
-  { row_identity: { target: { spec: go_language }, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] }
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: last_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: first_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: enumerate_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: chars_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: rust_shape_a_target, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: last_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: first_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: enumerate_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: chars_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: sort_by_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: append_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: python_shape_a_target, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: sort_by_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: append_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: go_shape_a_target, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] }
 ]
 
 // TEST CLAIM RECEIPT: `shape_a_target_language_spec_ref_invariant` is

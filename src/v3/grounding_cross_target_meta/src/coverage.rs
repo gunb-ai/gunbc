@@ -141,7 +141,7 @@ pub(crate) fn language_spec_emission_cells_covered(dag: &Dag) -> HashSet<Cell> {
 }
 
 pub(crate) fn language_spec_targets(dag: &Dag) -> Option<Vec<ShapeATarget>> {
-    let meta = dag.declaration_by_name("LanguageSpec")?.id;
+    let meta = dag.declaration_by_name("ShapeATarget")?.id;
     let mut targets = dag
         .declarations()
         .iter()
@@ -341,6 +341,9 @@ fn shape_target(
 ) -> Result<ShapeATarget, ProjectionCoverageError> {
     let value = match value {
         FieldValue::Reference(target) => {
+            if is_shape_a_target(dag, *target) {
+                return Ok(ShapeATarget::new(*target));
+            }
             let declaration = dag
                 .declarations()
                 .iter()
@@ -382,6 +385,12 @@ fn shape_target(
         );
     }
     Ok(ShapeATarget::new(*spec))
+}
+
+fn is_shape_a_target(dag: &Dag, declaration: DeclarationId) -> bool {
+    dag.declaration_by_name("ShapeATarget")
+        .map(|meta| dag.declaration(declaration).meta_tag == Some(meta.id))
+        .unwrap_or(false)
 }
 
 fn is_language_spec(dag: &Dag, declaration: DeclarationId) -> bool {

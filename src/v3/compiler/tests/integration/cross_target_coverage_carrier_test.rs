@@ -85,17 +85,25 @@ fn conj_field_label_and_type_names<'a>(
 }
 
 #[test]
-fn shape_a_target_record_carries_language_spec_ref() {
+fn shape_a_target_aliases_language_spec() {
     let dag = generated_full_bootstrap_dag();
     let decl = dag
         .declaration_by_name(SHAPE_A_TARGET)
         .expect("ShapeATarget must exist");
-    let fields = conj_field_label_and_type_names(&dag, decl, SHAPE_A_TARGET);
-    assert_eq!(
-        fields,
-        vec![("spec", "DeclarationRef")],
-        "ShapeATarget must dissolve the closed Rust/Python/Go enum into a declaration ref \
-         that consumers fail-closed refine to LanguageSpec"
+    let language_spec = dag
+        .declaration_by_name("LanguageSpec")
+        .expect("LanguageSpec must exist");
+    assert!(
+        matches!(
+            decl.connective,
+            TypeConnective::Instantiation {
+                template,
+                ref arguments,
+            } if template == language_spec.id && arguments.is_empty()
+        ),
+        "ShapeATarget must dissolve the closed Rust/Python/Go enum into a LanguageSpec alias, \
+         so carrier construction is structurally limited to LanguageSpec declarations; got {:?}",
+        decl.connective
     );
 }
 
@@ -249,6 +257,13 @@ fn projection_target(dag: &Dag, value: &FieldValue) -> ProjectionTarget {
     let fields = match value {
         FieldValue::Record(fields) => fields,
         FieldValue::Reference(target) => {
+            if Some(*target) == dag.rust_language_spec() {
+                return ProjectionTarget::Rust;
+            } else if Some(*target) == dag.python_language_spec() {
+                return ProjectionTarget::Python;
+            } else if Some(*target) == dag.go_language_spec() {
+                return ProjectionTarget::Go;
+            }
             let target_decl = dag.declaration(*target);
             let Some(ValueBody::Structural { fields }) = target_decl.value_body.as_ref() else {
                 panic!(

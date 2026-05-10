@@ -30913,11 +30913,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(957),
             name: Some("ShapeATarget".to_string()),
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "spec".to_string(),
-                    ty: DeclarationId(1268),
-                }],
+            connective: TypeConnective::Instantiation {
+                template: DeclarationId(1041),
+                arguments: vec![],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -30927,7 +30925,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2832, 2876),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2839, 2871),
         });
         declarations.push(Declaration {
             id: DeclarationId(958),
@@ -30941,15 +30939,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             meta_tag: Some(DeclarationId(957)),
             specialization_parent: None,
             inhabits: None,
-            value_body: Some(ValueBody::Structural {
-                fields: vec![(
-                    "spec".to_string(),
-                    FieldValue::Reference(DeclarationId(1615)),
-                )],
-            }),
+            value_body: Some(ValueBody::Unparsed(SourceSpan::new(
+                "src/v3/std/cross_target_coverage.dag",
+                2914,
+                2927,
+            ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2878, 2942),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2873, 2927),
         });
         declarations.push(Declaration {
             id: DeclarationId(959),
@@ -30963,15 +30960,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             meta_tag: Some(DeclarationId(957)),
             specialization_parent: None,
             inhabits: None,
-            value_body: Some(ValueBody::Structural {
-                fields: vec![(
-                    "spec".to_string(),
-                    FieldValue::Reference(DeclarationId(1402)),
-                )],
-            }),
+            value_body: Some(ValueBody::Unparsed(SourceSpan::new(
+                "src/v3/std/cross_target_coverage.dag",
+                2971,
+                2986,
+            ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2943, 3011),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2928, 2986),
         });
         declarations.push(Declaration {
             id: DeclarationId(960),
@@ -30985,15 +30981,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             meta_tag: Some(DeclarationId(957)),
             specialization_parent: None,
             inhabits: None,
-            value_body: Some(ValueBody::Structural {
-                fields: vec![(
-                    "spec".to_string(),
-                    FieldValue::Reference(DeclarationId(1386)),
-                )],
-            }),
+            value_body: Some(ValueBody::Unparsed(SourceSpan::new(
+                "src/v3/std/cross_target_coverage.dag",
+                3026,
+                3037,
+            ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3012, 3072),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2987, 3037),
         });
         declarations.push(Declaration {
             id: DeclarationId(961),
@@ -31034,7 +31029,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3872, 3944),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3837, 3909),
         });
         declarations.push(Declaration {
             id: DeclarationId(962),
@@ -31071,7 +31066,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4504, 4564),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4469, 4529),
         });
         declarations.push(Declaration {
             id: DeclarationId(963),
@@ -31096,7 +31091,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4948, 5029),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4913, 4994),
         });
         declarations.push(Declaration {
             id: DeclarationId(964),
@@ -31121,7 +31116,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5462, 5531),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5427, 5496),
         });
         declarations.push(Declaration {
             id: DeclarationId(965),
@@ -31146,7 +31141,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5877, 5978),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5842, 5943),
         });
         declarations.push(Declaration {
             id: DeclarationId(966),
@@ -31170,10 +31165,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31210,10 +31202,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31250,10 +31239,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31290,10 +31276,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31330,10 +31313,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31370,10 +31350,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31410,10 +31387,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31450,10 +31424,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31490,10 +31461,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31530,10 +31498,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31570,10 +31535,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31610,10 +31572,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31650,10 +31609,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1615)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(958)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31690,10 +31646,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31730,10 +31683,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31770,10 +31720,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31810,10 +31757,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31850,10 +31794,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31890,10 +31831,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31930,10 +31868,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -31970,10 +31905,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32010,10 +31942,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32050,10 +31979,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32090,10 +32016,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32130,10 +32053,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32170,10 +32090,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32210,10 +32127,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32250,10 +32164,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32290,10 +32201,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1402)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(959)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32330,10 +32238,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32370,10 +32275,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32410,10 +32312,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32450,10 +32349,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32490,10 +32386,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32530,10 +32423,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32570,10 +32460,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32610,10 +32497,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32650,10 +32534,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32690,10 +32571,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32730,10 +32608,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32770,10 +32645,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         FieldValue::Record(vec![
                             (
                                 "target".to_string(),
-                                FieldValue::Record(vec![(
-                                    "spec".to_string(),
-                                    FieldValue::Reference(DeclarationId(1386)),
-                                )]),
+                                FieldValue::Reference(DeclarationId(960)),
                             ),
                             (
                                 "dag_method".to_string(),
@@ -32807,7 +32679,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ])),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6399, 12727),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6364, 12528),
         });
         declarations.push(Declaration {
             id: DeclarationId(967),
@@ -70795,7 +70667,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3888, 3892),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3853, 3857),
         });
         declarations.push(Declaration {
             id: DeclarationId(2191),
@@ -70809,7 +70681,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3895, 3899),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3860, 3864),
         });
         declarations.push(Declaration {
             id: DeclarationId(2192),
@@ -70823,7 +70695,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3902, 3906),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3867, 3871),
         });
         declarations.push(Declaration {
             id: DeclarationId(2193),
@@ -70837,7 +70709,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3909, 3914),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3874, 3879),
         });
         declarations.push(Declaration {
             id: DeclarationId(2194),
@@ -70851,7 +70723,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3917, 3928),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3882, 3893),
         });
         declarations.push(Declaration {
             id: DeclarationId(2195),
@@ -70865,7 +70737,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3931, 3944),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3896, 3909),
         });
         declarations.push(Declaration {
             id: DeclarationId(2196),
@@ -70879,7 +70751,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4524, 4529),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4489, 4494),
         });
         declarations.push(Declaration {
             id: DeclarationId(2197),
@@ -70893,7 +70765,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4532, 4541),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4497, 4506),
         });
         declarations.push(Declaration {
             id: DeclarationId(2198),
@@ -70907,7 +70779,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4544, 4550),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4509, 4515),
         });
         declarations.push(Declaration {
             id: DeclarationId(2199),
@@ -70921,7 +70793,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4553, 4557),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4518, 4522),
         });
         declarations.push(Declaration {
             id: DeclarationId(2200),
@@ -70935,7 +70807,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4560, 4564),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4525, 4529),
         });
         declarations.push(Declaration {
             id: DeclarationId(2201),
@@ -70955,7 +70827,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5958, 5976),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5923, 5941),
         });
         declarations.push(Declaration {
             id: DeclarationId(2202),
@@ -70975,7 +70847,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6431, 6459),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6396, 6424),
         });
         declarations.push(Declaration {
             id: DeclarationId(2203),
