@@ -4356,10 +4356,9 @@ const WALK_DEPTH_LIMIT: usize = 32;
 ///
 /// **Not yet covered** (tracked in DOWNSTREAM_REQUIREMENTS.md as
 /// class-5 gaps):
-/// - `Bool`: ~~no structural link~~ now uses `Declaration.inhabits` on
-///   the kernel `Bool` sum in `dsl/std/types.dag`, populated at bootstrap
-///   (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`) so v2
-///   keeps a plain `type Bool = True | False` surface. The walk follows
+/// - `Bool`: uses `Declaration.inhabits` on the kernel `Bool` sum authored as
+///   `type Bool inhabits BooleanAlgebra<Bool> = True | False` in
+///   `dsl/std/types.dag` (v3 bootstrap lower). The walk follows
 ///   `Declaration.inhabits` when the connective chain hits a `Disj`
 ///   without an inline algebra.
 /// - `String` / collection-level algebras whose receiver is

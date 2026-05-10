@@ -724,8 +724,8 @@ pub(crate) fn witness_correction_for_decl(
 /// `bootstrap_authority` set declared by
 /// `src/v3/std/bootstrap_authority.dag`. Held internally as a
 /// `&'static str` because the only minters are the bootstrap loader
-/// (`bootstrap_regen_fresh::parse_fixture`) and bootstrap kernel-patch
-/// helpers (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`),
+/// (`bootstrap_regen_fresh::parse_fixture`) and the historical test-only
+/// `bootstrap::patch_kernel_bool_boolean_algebra_inhabits` helper,
 /// both of which iterate the `&'static`-keyed authority arrays
 /// produced by `build.rs` (`STAGED_FILES`/`V3_SPECS`/`COMPILER_FILES`/
 /// `EXTDEPS_FILES`) — derivations of the same substrate
@@ -748,13 +748,12 @@ impl BootstrapAuthorityKey {
         Self(path)
     }
 
-    /// Typed witness for the kernel-`Bool` `inhabits` patch authority
-    /// (`dsl/std/types.dag` row of the substrate `bootstrap_authority`
-    /// set, classified `StdAuthority`). Encapsulates the path-string so
-    /// `bootstrap.rs` consumers do not name `dsl/std/types.dag` directly
-    /// — audit-row #2 retirement (bootstrap.rs slice 1 of 2). Reviewers
-    /// must treat new `for_*` accessors as additions to the witness
-    /// surface; each one represents a hand-Rust authority site.
+    /// Typed witness for the kernel-`Bool` authority row
+    /// (`dsl/std/types.dag` in the substrate `bootstrap_authority` set,
+    /// classified `StdAuthority`). Used by **unit tests** that exercise
+    /// the retired post-parse `inhabits` patch path; production bootstrap
+    /// wires `Bool` inhabits from the authored `.dag` surface instead.
+    #[cfg(test)]
     pub(crate) fn for_kernel_bool() -> Self {
         Self::new("dsl/std/types.dag")
     }

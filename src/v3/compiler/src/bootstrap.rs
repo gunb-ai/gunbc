@@ -67,14 +67,17 @@
 // go through. A failed bootstrap is visible to callers without a
 // side channel.
 //
-// **PB-1-e split — what stays here:** `patch_kernel_bool_boolean_algebra_inhabits`,
-// `materialize_pipeline_realizations`, and `report_pipeline_authority_error` remain
+// **PB-1-e split — what stays here:** `materialize_pipeline_realizations`,
+// `report_pipeline_authority_error`, and the `#[cfg(test)]` kernel-`Bool` patch
+// helper remain
 // in this file because the `#[cfg(test)]` module below exercises them on
 // `Dag::new()` snapshots. The regen-only fresh tokenize/parse/lower loop lives in
 // `bootstrap_regen_fresh.rs` (feature `bootstrap-regen-fresh`); do not duplicate
 // pipeline materialization there without relocating or rewriting these unit tests.
 
-use crate::dag::{ArrowBody, Dag, Declaration, TemplateArgument, TypeConnective};
+use crate::dag::{ArrowBody, Dag, TypeConnective};
+#[cfg(test)]
+use crate::dag::{Declaration, TemplateArgument};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::pipeline_authority::ordered_pipeline_stages;
 
@@ -103,23 +106,16 @@ pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
     "src/v3/std/cross_target_coverage.dag",
 ];
 
-/// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
+/// **Test-only** reconstruction of the historical Lane 1e-2b Path A bootstrap
+/// patch for kernel `Bool` → `BooleanAlgebra<Bool>` `inhabits`.
 ///
-/// `dsl/std/types.dag` must stay free of `inhabits` so v2 can parse every
-/// `dsl/` file. After the std fixtures lower, wire `Bool` to
-/// `BooleanAlgebra<Bool>` the same way surface `inhabits` lowering would,
-/// without shadowing `Bool` (which would reallocate sum variants and break
-/// `src/v3/std/algebra.dag` pattern wiring).
-///
-/// Preconditions are checked: any failure attaches a bootstrap
-/// `Diagnostic::ResolveError` via `Dag::attach_diagnostic` so compilation
-/// fails closed instead of silently omitting `inhabits`.
-///
-/// **Dissolution:** remove this patch once the v2 compiler surface accepts
-/// `type … inhabits … =` in `dsl/` (then express
-/// `type Bool inhabits BooleanAlgebra<Bool> = True | False` in
-/// `dsl/std/types.dag` and delete `patch_kernel_bool_boolean_algebra_inhabits`).
-#[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
+/// Production bootstrap now authors `type Bool inhabits BooleanAlgebra<Bool> = …`
+/// in `dsl/std/types.dag` (v3 tokenize/parse/lower during `regen_bootstrap`);
+/// the committed snapshot carries the lowered `Declaration.inhabits` edge.
+/// This helper remains so unit tests below can strip `inhabits` and assert
+/// Path A failure diagnostics still attach with
+/// [`BootstrapAuthorityKey::for_kernel_bool`] witnesses.
+#[cfg(test)]
 pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
     // Audit row #2 retirement (bootstrap.rs slice 1 of 2):
     // The path-string `dsl/std/types.dag` is encapsulated behind
