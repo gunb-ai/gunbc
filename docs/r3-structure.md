@@ -73,7 +73,7 @@ Each lane owns one or more concrete `.dag` `TestClaim` gates. Authored as delive
   - `lens_apply_dot_rs_retired` — `src/v3/compiler/src/lens_apply.rs` deleted; lens application routes through PB-Runtime interpreter-as-data
   - `lens_testgen_dot_rs_retired` — `src/v3/compiler/src/lens_testgen.rs` deleted
   - `regen_lens_dot_rs_retired` — `src/v3/compiler/src/bin/regen_lens.rs` deleted
-  - `sg0_non_test_zero` — SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` count reaches 0 per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)
+  - `sg0_non_test_zero` — SG-0 T-PB-A non-test ratchet reaches 0: `EXPECTED_HAND_AUTHORED_NON_TEST` count = 0 and `EXPECTED_HAND_AUTHORED_FRAGMENTS` count = 0 per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)
 - **T-Verification-L4-L7-Direct** (Evaluator-direct).
   - `l4_emit_eval_match` — for every `.dag` program in the certification corpus, emitted target output equals `.dag` evaluation output (algebraic equality, not byte-equal)
   - `l7_algebraic_laws_witnessed` — every algebra declared in `dsl/std/algebra.dag` has a runtime-constructed witness for each of its laws (associativity, commutativity, identity, distributivity as applicable) — `AlgebraicLaw` TestPredicate evaluates via Evaluator-constructed witnesses, not host-mediated harness
