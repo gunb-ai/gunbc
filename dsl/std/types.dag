@@ -164,12 +164,12 @@ fn canonical_container_names() -> List<String> {
 // require v3 to resolve aliases in Branch input type-checking
 // (currently pins Bool as a direct Disj for if/else). Deferred until
 // that compiler work lands; keeps intent-signaling via distinct names.
-// v3 Path A (Lane 1e-2b): `Bool` still parses here for v2 (`dsl/` is v2-scanned);
-// `Declaration.inhabits` → `BooleanAlgebra<Bool>` is applied in v3 bootstrap
-// (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`). Surface
-// `type … inhabits … =` is v3-only under `src/v3/compiler/` (generated parser).
-// Dissolution: when v2 accepts `inhabits` on types, move the clause here and
-// delete `patch_kernel_bool_boolean_algebra_inhabits` (see that function's doc).
+// v3 Path A (Lane 1e-2b): `Bool` still parses here for v2 (`dsl/` is v2-scanned;
+// see `v2-compiler-tests` `gist_transitive_closure_parse` and stage0 self-host
+// fixtures). `Declaration.inhabits` → `BooleanAlgebra<Bool>` is applied in v3
+// bootstrap after std fixtures lower (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`).
+// Surface `type … inhabits … =` is v3-only under `src/v3/compiler/` (generated
+// parser) and cannot appear in this file until v2 gains a compatible parse path.
 type Bool = True | False
 
 // Unit: terminal object (zero-field product, single inhabitant).
