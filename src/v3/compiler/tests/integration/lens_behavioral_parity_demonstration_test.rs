@@ -6,6 +6,13 @@
 //! named by T-Lens-Behavioral-Parity. It consumes the current frozen expectations
 //! directly rather than calling a live v2 oracle, so it remains compatible with
 //! `v2_oracle_no_remaining_test_consumers`.
+//!
+//! P5 receipt: this hand-written Rust test exists only as the gate #73 host
+//! receipt while `LensOutputEquals` / frozen-oracle claims are still migrating to
+//! data. Dissolution is tracked by `docs/r3-program-plan.md` §1.8 row 73
+//! (`lens_behavioral_parity_demonstration`) and the T-Tests-As-Data rows 84/87;
+//! when those rows can express this four-lens snapshot as `.dag` TestClaim data,
+//! delete this module and its `tests/integration.rs` registration.
 
 use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
