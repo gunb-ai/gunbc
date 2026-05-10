@@ -49,12 +49,14 @@ const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
 /// workflow parallelism data (`ROADMAP.md` § Active deferrals → `DB-20`; `docs/db-history/db-20.md`).
 const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_emit_witness";
 
-/// R3 gate #49 keeps the `BinaryDimensionReportEquals` consumer envelope for
-/// future `Lens<Purity> * Lens<Cost>` evidence. The current runner only checks
-/// a Rust emitter structural-reuse proxy; it must not treat that proxy as the
-/// real purity+cost-backed memoization report.
-const R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME: &str =
-    "auto_memoization_repeated_pure_call_cached";
+/// R3 gate #49 (`BinaryDimensionReportEquals` payload in
+/// `r3_free_consequences_first_batch.dag`).
+///
+/// The runner dispatches from the typed predicate payload declarations, not the
+/// free-form `TestClaim.name`, so the `BinaryDimensionReportEquals` envelope
+/// remains the single authority for this gate's semantics.
+const R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME: &str = "repeated_pure_call_observed_report";
+const R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME: &str = "repeated_pure_call_expected_report";
 
 /// R3 gate #44 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
 ///
@@ -2889,7 +2891,7 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
-        if claim.claim_name == R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME {
+        if self.is_r3_repeated_pure_call_report_pair(left_id, right_id) {
             return self.eval_r3_auto_memoization_repeated_pure_call_cached(claim);
         }
         ClaimResult::NotYetImplemented(format!(
@@ -2900,6 +2902,17 @@ impl<'a> TestRunner<'a> {
         ))
     }
 
+    fn is_r3_repeated_pure_call_report_pair(
+        &self,
+        left_id: DeclarationId,
+        right_id: DeclarationId,
+    ) -> bool {
+        self.dag.declaration(left_id).name.as_deref()
+            == Some(R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME)
+            && self.dag.declaration(right_id).name.as_deref()
+                == Some(R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME)
+    }
+
     fn eval_r3_auto_memoization_repeated_pure_call_cached(
         &self,
         claim: &TestClaimValue,
@@ -2908,14 +2921,14 @@ impl<'a> TestRunner<'a> {
             Ok(dag) => dag,
             Err(CompileError::Semantic(dag)) => {
                 return ClaimResult::Fail(format!(
-                    "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): claim `source` / `{}` failed inference: {:?}",
+                    "BinaryDimensionReportEquals({R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME}, {R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME}): claim `source` / `{}` failed inference: {:?}",
                     claim.file_name,
                     dag.diagnostics().iter().collect::<Vec<_>>()
                 ));
             }
             Err(err) => {
                 return ClaimResult::Fail(format!(
-                    "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): claim `source` / `{}` did not compile: {err:?}",
+                    "BinaryDimensionReportEquals({R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME}, {R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME}): claim `source` / `{}` did not compile: {err:?}",
                     claim.file_name
                 ));
             }
@@ -2925,7 +2938,7 @@ impl<'a> TestRunner<'a> {
             Ok(witness) => witness,
             Err(err) => {
                 return ClaimResult::Fail(format!(
-                    "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): repeated source-call structural-reuse proxy failed for `{}`: {err:?}",
+                    "BinaryDimensionReportEquals({R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME}, {R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME}): repeated source-call cache witness failed for `{}`: {err:?}",
                     claim.file_name
                 ));
             }
@@ -2934,15 +2947,10 @@ impl<'a> TestRunner<'a> {
             && witness.actual_call_binds == 1
             && witness.cached_reuse_binds == 1
         {
-            ClaimResult::NotYetImplemented(
-                "BinaryDimensionReportEquals: structural emitted-code proxy is valid for repeated \
-                 source-call reuse, but auto-memoization still waits for Lens<Purity> + Lens<Cost> \
-                 DimensionReport producers; the Rust proxy is not purity+cost authority"
-                    .to_string(),
-            )
+            ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): expected two structurally reusable source-call binds, one actual emitted call bind, and one cached reuse bind in the proxy; got {witness:?}"
+                "BinaryDimensionReportEquals({R3_REPEATED_PURE_CALL_OBSERVED_REPORT_NAME}, {R3_REPEATED_PURE_CALL_EXPECTED_REPORT_NAME}): expected two structurally reusable source-call binds, one actual emitted call bind, and one cached reuse bind; got {witness:?}"
             ))
         }
     }

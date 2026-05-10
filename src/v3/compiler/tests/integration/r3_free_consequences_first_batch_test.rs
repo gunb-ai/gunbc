@@ -1,12 +1,12 @@
 //! **Layer:** integration
 //!
-//! R3 T-Free-Consequences first-batch author-now/fire-later claims.
+//! R3 T-Free-Consequences first-batch claims.
 //! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust schedule;
 //! gate `#44` asserts dependent binds omit the parallel `thread::scope` emit path (sequential);
 //! gate `#45` asserts a Bool branch lowers to `if … else` with no `thread::scope` scheduling on
-//! the arms. Gate `#49` keeps its `BinaryDimensionReportEquals` author-now/fire-later shape while
-//! this test separately pins today's target-level structural reuse proxy; gate `#50` keeps the
-//! remaining `BinaryDimensionReportEquals` author-now/fire-later shape.
+//! the arms. Gate `#49` asserts repeated pure-call target caching through its
+//! `BinaryDimensionReportEquals` declaration pair; gate `#50` keeps the remaining
+//! `BinaryDimensionReportEquals` author-now/fire-later shape.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::emit_rust;
@@ -73,13 +73,8 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
             }
             "auto_memoization_repeated_pure_call_cached" => {
                 assert!(
-                    matches!(
-                        &result.result,
-                        ClaimResult::NotYetImplemented(reason)
-                            if reason.contains("BinaryDimensionReportEquals")
-                                && reason.contains("purity+cost")
-                    ),
-                    "expected {expected_name} (R3 gate #49) to stay author-now/fire-later until purity+cost reports exist, got {:?}",
+                    matches!(&result.result, ClaimResult::Pass),
+                    "expected {expected_name} (R3 gate #49) to Pass, got {:?}",
                     result.result
                 );
                 assert_repeated_pure_call_claim_emits_cached_target_code(&dag, expected_name);
