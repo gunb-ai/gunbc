@@ -10,17 +10,11 @@
 //! `r3_free_consequences_auto_loop_parallelism_dependence.v3` so lowering still exercises a real
 //! loop body; integration tests ratchet embedded `TestClaim.source` against that file byte-for-byte
 //! and assert the claim program lowers to `Behavior::Loop` so the fold is exercised on the compile
-<<<<<<< HEAD
-//! path, not only carried as inert text. The constant-fold cross-target-optimization claim still
-//! locks the cost-related `BinaryDimensionReportEquals` shape. Gate #52 now executes a narrow
-//! structural cost comparison over the symbolic-cost lens and Rust `LanguageSpec` realization rows.
-=======
 //! path, not only carried as inert text. The first cross-target-optimization claim (#51) is
 //! executable through the symbolic-cost lens: the host test proves a constant arithmetic subtree has
-//! cost `1` before the folded literal target (`3`) is applied. The second claim (#52) keeps the
-//! cost-related `BinaryDimensionReportEquals` shape and stays `NotYetImplemented` until generic
-//! `DimensionReport<C>` evaluation lands.
->>>>>>> origin/main
+//! cost `1` before the folded literal target (`3`) is applied. Gate #52 executes a structural
+//! cost comparison over claim-program operator transforms, the symbolic-cost lens, and Rust
+//! `LanguageSpec` realization rows.
 
 use std::sync::OnceLock;
 
@@ -113,28 +107,13 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
     let results = TestRunner::new(dag).run_suite(SUITE_NAME);
     assert_eq!(results.len(), EXPECTED_CLAIMS.len());
 
-    for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
+    for (result, expected_name) in results.iter().zip(EXPECTED_CLAIMS) {
         assert_eq!(result.claim_name, expected_name);
-<<<<<<< HEAD
-        if idx < 3 || idx == 4 {
-            assert!(
-                matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to pass (loop indicator or structural cost comparison), got {:?}",
-=======
-        if idx < 4 {
-            assert!(
-                matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to pass (loop witnesses use staged LensOutputEquals; gate #51 uses executable SymbolicCostExprEquals), got {:?}",
->>>>>>> origin/main
-                result.result
-            );
-        } else {
-            assert!(
-                matches!(&result.result, ClaimResult::NotYetImplemented(_)),
-                "expected {expected_name} to stay author-now/fire-later on BinaryDimensionReportEquals, got {:?}",
-                result.result
-            );
-        }
+        assert!(
+            matches!(&result.result, ClaimResult::Pass),
+            "expected {expected_name} to pass (loop witnesses use staged LensOutputEquals; gate #51 uses executable SymbolicCostExprEquals; gate #52 uses structural cost comparison), got {:?}",
+            result.result
+        );
     }
 }
 
