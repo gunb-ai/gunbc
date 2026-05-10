@@ -67,14 +67,14 @@
 // go through. A failed bootstrap is visible to callers without a
 // side channel.
 //
-// **PB-1-e split — what stays here:** `patch_kernel_bool_boolean_algebra_inhabits`,
-// `materialize_pipeline_realizations`, and `report_pipeline_authority_error` remain
-// in this file because the `#[cfg(test)]` module below exercises them on
-// `Dag::new()` snapshots. The regen-only fresh tokenize/parse/lower loop lives in
+// **PB-1-e split — what stays here:** `materialize_pipeline_realizations` and
+// `report_pipeline_authority_error` remain in this file because the
+// `#[cfg(test)]` module below exercises them on `Dag::new()` snapshots.
+// The regen-only fresh tokenize/parse/lower loop lives in
 // `bootstrap_regen_fresh.rs` (feature `bootstrap-regen-fresh`); do not duplicate
 // pipeline materialization there without relocating or rewriting these unit tests.
 
-use crate::dag::{ArrowBody, Dag, Declaration, TemplateArgument, TypeConnective};
+use crate::dag::{ArrowBody, Dag, TypeConnective};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::pipeline_authority::ordered_pipeline_stages;
 
@@ -102,113 +102,6 @@ pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
     "src/v3/std/anthropic_operations.dag",
     "src/v3/std/cross_target_coverage.dag",
 ];
-
-/// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
-///
-/// `dsl/std/types.dag` must stay free of `inhabits` so v2 can parse every
-/// `dsl/` file. After the std fixtures lower, wire `Bool` to
-/// `BooleanAlgebra<Bool>` the same way surface `inhabits` lowering would,
-/// without shadowing `Bool` (which would reallocate sum variants and break
-/// `src/v3/std/algebra.dag` pattern wiring).
-///
-/// Preconditions are checked: any failure attaches a bootstrap
-/// `Diagnostic::ResolveError` via `Dag::attach_diagnostic` so compilation
-/// fails closed instead of silently omitting `inhabits`.
-///
-/// **Dissolution:** remove this patch once the v2 compiler surface accepts
-/// `type … inhabits … =` in `dsl/` (then express
-/// `type Bool inhabits BooleanAlgebra<Bool> = True | False` in
-/// `dsl/std/types.dag` and delete `patch_kernel_bool_boolean_algebra_inhabits`).
-#[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
-pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
-    // Audit row #2 retirement (bootstrap.rs slice 1 of 2):
-    // The path-string `dsl/std/types.dag` is encapsulated behind
-    // `BootstrapAuthorityKey::for_kernel_bool()` and is no longer named
-    // in this file outside doc-comments. The participation gate is
-    // retained — `declaration_by_name` still rank-biases on `span.file`
-    // (audit row #14, separate owner) so a bare lookup could surface a
-    // non-kernel duplicate; we walk the declarations directly and gate
-    // by the authority's `path()` egress so the witness, not a free
-    // constant, is the structural source. Full dissolution (delete the
-    // gate; rely on a structural kernel-`Bool` `DeclarationId` accessor)
-    // lands when row #14 retires.
-    let bool_authority = crate::diagnostics::BootstrapAuthorityKey::for_kernel_bool();
-    let Some(bool_decl) = dag
-        .declarations()
-        .iter()
-        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == bool_authority.path())
-    else {
-        let authority_span = SourceSpan::new(bool_authority.path(), 0, 0);
-        dag.attach_bootstrap_diagnostic(
-            bool_authority,
-            Diagnostic::ResolveError {
-                name: "bootstrap: Lane 1e-2b Path A — kernel `Bool` not found in bootstrap Dag; \
-                     cannot set `Declaration.inhabits` for `BooleanAlgebra<Bool>`"
-                    .to_string(),
-                span: authority_span,
-                fixes: Vec::new(),
-            },
-        );
-        return;
-    };
-    let bool_id = bool_decl.id;
-    let span_for_inst = bool_decl.span.clone();
-    if dag.declaration(bool_id).inhabits.is_some() {
-        return;
-    }
-    let (ba_template, param_id) = {
-        let Some(ba) = dag.declaration_by_name("BooleanAlgebra") else {
-            dag.attach_bootstrap_diagnostic(
-                bool_authority,
-                Diagnostic::ResolveError {
-                    name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` not present in the \
-                           bootstrap Dag; cannot wire kernel `Bool` `inhabits`"
-                        .to_string(),
-                    span: span_for_inst.clone(),
-                    fixes: Vec::new(),
-                },
-            );
-            return;
-        };
-        let Some(&param_id) = ba.type_params.first() else {
-            dag.attach_bootstrap_diagnostic(
-                bool_authority,
-                Diagnostic::ResolveError {
-                    name:
-                        "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` has no type parameters; \
-                           cannot instantiate `BooleanAlgebra<Bool>` for kernel `Bool` `inhabits`"
-                            .to_string(),
-                    span: span_for_inst.clone(),
-                    fixes: Vec::new(),
-                },
-            );
-            return;
-        };
-        (ba.id, param_id)
-    };
-    let inst_id = dag.alloc_declaration_id();
-    dag.push_declaration(Declaration {
-        id: inst_id,
-        name: None,
-        connective: TypeConnective::Instantiation {
-            template: ba_template,
-            arguments: vec![TemplateArgument {
-                parameter: param_id,
-                value: bool_id,
-            }],
-        },
-        type_params: Vec::new(),
-        phantom_params: Vec::new(),
-        meta_tag: None,
-        specialization_parent: None,
-        inhabits: None,
-        value_body: None,
-        refinement: None,
-        nominal_opacity: None,
-        span: span_for_inst,
-    });
-    dag.declaration_mut(bool_id).inhabits = Some(inst_id);
-}
 
 // DB-14 substrate accessors (`port` / `node` / `resolve_producer`) are
 // deliberately NOT materialized at bootstrap. Their Arrow bodies stay
@@ -521,105 +414,6 @@ mod tests {
         assert_eq!(
             matched, 1,
             "expected exactly one bootstrap-attributed pipeline-stage diagnostic, got {matched}"
-        );
-    }
-
-    #[test]
-    fn kernel_bool_path_a_attaches_diagnostic_when_boolean_algebra_unresolvable() {
-        let mut dag = Dag::new();
-        assert!(
-            dag.diagnostics().is_empty(),
-            "production bootstrap should satisfy Path A preconditions: {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
-        );
-
-        let bool_id = dag
-            .declaration_by_name("Bool")
-            .expect("kernel Bool from std")
-            .id;
-        dag.declaration_mut(bool_id).inhabits = None;
-
-        let ba_id = dag
-            .declaration_by_name("BooleanAlgebra")
-            .expect("BooleanAlgebra from std")
-            .id;
-        dag.declaration_mut(ba_id).name = Some("__test_hidden_BooleanAlgebra".to_string());
-
-        super::patch_kernel_bool_boolean_algebra_inhabits(&mut dag);
-
-        assert!(
-            dag.declaration(bool_id).inhabits.is_none(),
-            "inhabits must stay unset when the patch cannot complete"
-        );
-        assert!(
-            dag.diagnostics().iter().any(|(_, diag)| {
-                matches!(
-                    diag,
-                    Diagnostic::ResolveError { name, .. }
-                        if name.contains("Lane 1e-2b Path A") && name.contains("BooleanAlgebra")
-                )
-            }),
-            "expected bootstrap Path A diagnostic, got {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
-        );
-    }
-
-    /// PB row 82 surface: detached phantom-port bootstrap diagnostics
-    /// must carry [`DiagnosticAttribution::BootstrapAuthority`] so
-    /// Verification can recover bootstrap origin without comparing
-    /// `SourceSpan.file` against a known authority path. Drives the
-    /// same Path A failure as the sibling test above and asserts the
-    /// attribution surface; consumer-side dispatch uses
-    /// `attribution.is_bootstrap()` and witness identity.
-    #[test]
-    fn kernel_bool_path_a_diagnostic_carries_bootstrap_authority_attribution() {
-        use crate::diagnostics::{BootstrapAuthorityKey, DiagnosticAttribution};
-
-        let mut dag = Dag::new();
-        let bool_id = dag.declaration_by_name("Bool").expect("kernel Bool").id;
-        dag.declaration_mut(bool_id).inhabits = None;
-        let ba_id = dag
-            .declaration_by_name("BooleanAlgebra")
-            .expect("BooleanAlgebra")
-            .id;
-        dag.declaration_mut(ba_id).name = Some("__test_hidden_BooleanAlgebra".to_string());
-
-        super::patch_kernel_bool_boolean_algebra_inhabits(&mut dag);
-
-        let expected_key = BootstrapAuthorityKey::for_kernel_bool();
-        let mut bootstrap_attributed = 0usize;
-        for (port, diag, attribution) in dag.diagnostics().iter_attributed() {
-            // Sanity-check: the message we expect from this scenario.
-            let Diagnostic::ResolveError { name, .. } = diag else {
-                continue;
-            };
-            if !(name.contains("Lane 1e-2b Path A") && name.contains("BooleanAlgebra")) {
-                continue;
-            }
-            // Consumer-side dispatch: no `span.file ==` compare here.
-            assert!(
-                attribution.is_bootstrap(),
-                "Path A diagnostic at port {port:?} must be DiagnosticAttribution::BootstrapAuthority(_), got {attribution:?}"
-            );
-            assert_eq!(
-                attribution.as_bootstrap_authority(),
-                Some(&expected_key),
-                "attribution witness must match dsl/std/types.dag bootstrap-authority key"
-            );
-            // Same answer through the per-port accessor.
-            assert_eq!(
-                dag.diagnostics().attribution(port),
-                Some(&DiagnosticAttribution::BootstrapAuthority(
-                    expected_key.clone()
-                ))
-            );
-            bootstrap_attributed += 1;
-        }
-        assert_eq!(
-            bootstrap_attributed, 1,
-            "expected exactly one bootstrap-attributed Path A diagnostic, got {bootstrap_attributed} \
-             (table: {:?})",
-            dag.diagnostics().iter_attributed().collect::<Vec<_>>()
         );
     }
 }

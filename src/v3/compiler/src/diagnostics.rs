@@ -723,10 +723,9 @@ pub(crate) fn witness_correction_for_decl(
 /// Opaque, validated witness to a path in the substrate
 /// `bootstrap_authority` set declared by
 /// `src/v3/std/bootstrap_authority.dag`. Held internally as a
-/// `&'static str` because the only minters are the bootstrap loader
-/// (`bootstrap_regen_fresh::parse_fixture`) and bootstrap kernel-patch
-/// helpers (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`),
-/// both of which iterate the `&'static`-keyed authority arrays
+/// `&'static str` because the only minters are bootstrap loading paths
+/// such as `bootstrap_regen_fresh::parse_fixture`, which iterate
+/// the `&'static`-keyed authority arrays
 /// produced by `build.rs` (`STAGED_FILES`/`V3_SPECS`/`COMPILER_FILES`/
 /// `EXTDEPS_FILES`) — derivations of the same substrate
 /// `bootstrap_authority` set.
@@ -746,17 +745,6 @@ impl BootstrapAuthorityKey {
     /// — see type-level doc for the witness contract.
     pub(crate) fn new(path: &'static str) -> Self {
         Self(path)
-    }
-
-    /// Typed witness for the kernel-`Bool` `inhabits` patch authority
-    /// (`dsl/std/types.dag` row of the substrate `bootstrap_authority`
-    /// set, classified `StdAuthority`). Encapsulates the path-string so
-    /// `bootstrap.rs` consumers do not name `dsl/std/types.dag` directly
-    /// — audit-row #2 retirement (bootstrap.rs slice 1 of 2). Reviewers
-    /// must treat new `for_*` accessors as additions to the witness
-    /// surface; each one represents a hand-Rust authority site.
-    pub(crate) fn for_kernel_bool() -> Self {
-        Self::new("dsl/std/types.dag")
     }
 
     /// Typed witness for the pipeline-authority row

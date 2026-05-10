@@ -198,7 +198,6 @@ fn load_fixtures(dag: &mut Dag, fixtures: &[(&'static str, &'static str)]) {
     }
 
     resolve_pending_identifiers(dag);
-    crate::bootstrap::patch_kernel_bool_boolean_algebra_inhabits(dag);
 }
 
 fn parse_fixture(dag: &mut Dag, source: &str, file: &'static str) -> Option<SurfaceModule> {

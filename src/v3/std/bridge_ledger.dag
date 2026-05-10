@@ -55,13 +55,12 @@ import v3.spec.v3_l1 { DeclarationRef }
 //     so compile-body stage order is not yet a structural Dag fact;
 //     full gate for this site awaits derivation / lowered compile
 //     witness."
-//   - `bridge_exact_string_patching_residual_retired` — Open. Per
-//     `r3-structure.md:83`: PB lower-helper slice (Tier-2 / #1014
-//     lineage) is pinned at zero, BUT "Other exact-string patching
-//     classes (outside this retired lower-helper post-process bridge)
-//     remain out of scope for this receipt and keep their own
-//     dissolution triggers" — the umbrella row stays Open until those
-//     other classes land their own retirement receipts.
+//   - `bridge_exact_string_patching_residual_retired` — Retired.
+//     The lower-helper exact-string patch class remains pinned at zero
+//     by `bridge_lower_helpers_patch_zero_residual_test.rs`, and the
+//     live BR-19 Bool-inhabits class now authors
+//     `Bool inhabits BooleanAlgebra<Bool>` directly in `dsl/std/types.dag`
+//     instead of mutating `Declaration.inhabits` from bootstrap Rust.
 
 // 🟢 TERMINAL. Closed retirement-state coproduct for ledger rows. Two
 // states are sufficient at this scope: a bridge has either landed its
@@ -154,17 +153,7 @@ data bridge_ledger: List<BridgeLedgerRow> = [
   {
     name:      "bridge_exact_string_patching_residual_retired",
     owner:     "PB-Tier-2",
-    status:    Open,
-    // Umbrella row — `bridge_lower_helpers_patch_zero_residual_test.rs`
-    // ratchets only the retired sub-slice (PR #1014 lineage); the row
-    // stays Open because *other* exact-string patching classes remain
-    // outside that receipt's scope. Point `authority` at the prose
-    // row where the umbrella's open-scope framing is defined,
-    // not at the closed sub-slice's ratchet (the residual debt the
-    // open status tracks is exactly the "other classes" the prose
-    // row names — those classes' own dissolution triggers cover the
-    // remaining scope, and the umbrella retires when those triggers
-    // all fire).
-    authority: "docs/r3-structure.md:83"
+    status:    Retired,
+    authority: "dsl/std/types.dag Bool inhabits BooleanAlgebra<Bool> + src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs"
   }
 ]
