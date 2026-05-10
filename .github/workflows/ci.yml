@@ -182,16 +182,13 @@ jobs:
     # Revert when the OnceLock/module-cache structural fix brings warmed runs below 1200s;
     # keep job timeout above the in-step budget so Actions does not cancel final steps first.
     timeout-minutes: 60
+    env:
+      RUSTFLAGS: -D warnings -C linker=rust-lld
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
-      - name: Install v3 host toolchains
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential python3 golang-go
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
@@ -200,6 +197,16 @@ jobs:
           components: rustfmt, clippy
           cache: false
           rustflags: ""
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "stable"
 
       - name: Cache Cargo (v3)
         uses: actions/cache@v4
