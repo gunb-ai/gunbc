@@ -1,0 +1,24 @@
+// R3 gate #87 — `LensRegistryEntry` `cost_symbolic` (`cost.dag`) cementing in `.dag` form.
+// `SymbolicCostExprEquals` applies the emitted symbolic-cost lens to `TestClaim.source`
+// and compares against a frozen `SymbolicCost` witness (same pattern as
+// `symbolic_cost_expr_equals_smoke` in `m1_5_verification_test.rs`).
+
+module v3.compiler.tests.t_r3.gate_87_cementing_regen_cost_symbolic
+
+import std.algebra { SymbolicCost }
+import std.verification { SymbolicCostExprEquals, TestClaim, TestSuite }
+
+data gate87_symbolic_cost_expected: SymbolicCost = ConstantCost(0)
+
+data cementing_regen_cost_symbolic_claim: TestClaim = {
+  name: "cementing_regen_cost_symbolic",
+  source: "let lit: Int = 7",
+  file_name: "r3_gate_87_symbolic_lit.v3",
+  predicate: SymbolicCostExprEquals(gate87_symbolic_cost_expected),
+  requires: []
+}
+
+data r3_gate_87_cementing_regen_cost_symbolic_suite: TestSuite = {
+  name: "r3-gate-87/cementing/regen/cost_symbolic",
+  claims: [cementing_regen_cost_symbolic_claim]
+}
