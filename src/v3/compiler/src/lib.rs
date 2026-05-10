@@ -4512,7 +4512,10 @@ pub mod lens_cost_symbolic {
         include!("lens_cost_symbolic_generated.rs");
     }
 
-    pub fn symbolic_cost_of(dag: &crate::dag::Dag, port: &crate::dag::PortId) -> crate::dag::Lookup<crate::dag::SymbolicCost> {
+    pub fn symbolic_cost_of(
+        dag: &crate::dag::Dag,
+        port: &crate::dag::PortId,
+    ) -> crate::dag::Lookup<crate::dag::SymbolicCost> {
         match generated::symbolic_cost_of(dag, port) {
             crate::dag::Lookup::Miss => crate::dag::Lookup::Miss,
             crate::dag::Lookup::Hit(cost) => crate::dag::Lookup::Hit(

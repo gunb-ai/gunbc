@@ -1426,9 +1426,11 @@ pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
     bind_value_port: PortId,
     cost: SymbolicCost,
 ) -> SymbolicCost {
-    let Some(bind) = dag.nodes().iter().find_map(|node| {
-        Behavior::as_bind(node).filter(|bind| bind.value == bind_value_port)
-    }) else {
+    let Some(bind) = dag
+        .nodes()
+        .iter()
+        .find_map(|node| Behavior::as_bind(node).filter(|bind| bind.value == bind_value_port))
+    else {
         return cost;
     };
     if bind.params.len() != 1 {
