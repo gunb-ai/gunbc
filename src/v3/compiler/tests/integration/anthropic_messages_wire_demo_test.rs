@@ -10,7 +10,7 @@
 //! through the typed response mirror, and assert the projected result.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
 use v3_compiler::generated_full_bootstrap_dag;
 
@@ -72,9 +72,6 @@ enum ResponseContentBlock {
 struct Usage {
     input_tokens: i64,
     output_tokens: i64,
-    cache_creation_input_tokens: Option<i64>,
-    cache_read_input_tokens: Option<i64>,
-    service_tier: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -88,7 +85,6 @@ struct AnthropicMessages200Body {
     stop_reason: StopReason,
     stop_sequence: Option<String>,
     usage: Usage,
-    container: Option<Value>,
 }
 
 fn canonical_ty(dag: &Dag, ty: DeclarationId) -> String {
@@ -135,6 +131,81 @@ fn anthropic_messages_signature(dag: &Dag) -> (Vec<String>, String) {
         inputs.iter().map(|id| canonical_ty(dag, *id)).collect(),
         canonical_ty(dag, *output),
     )
+}
+
+fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
+    match &decl.connective {
+        TypeConnective::Conj { children } => children.iter().map(|f| f.label.clone()).collect(),
+        other => panic!("`{name}` is not a Conj: {other:?}"),
+    }
+}
+
+fn disj_variant_labels(dag: &Dag, name: &str) -> Vec<String> {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
+    match &decl.connective {
+        TypeConnective::Disj { variants } => variants.iter().map(|v| v.label.clone()).collect(),
+        other => panic!("`{name}` is not a Disj: {other:?}"),
+    }
+}
+
+#[test]
+fn anthropic_messages_demo_projection_is_locked_to_modeled_dag_surface() {
+    let dag = generated_full_bootstrap_dag();
+
+    let body_fields = conj_field_labels(&dag, "AnthropicMessages200Body");
+    for field in [
+        "id",
+        "type",
+        "role",
+        "content",
+        "model",
+        "stop_reason",
+        "stop_sequence",
+        "usage",
+    ] {
+        assert!(
+            body_fields.iter().any(|actual| actual == field),
+            "demo response projection field `{field}` must exist on AnthropicMessages200Body"
+        );
+    }
+
+    let usage_fields = conj_field_labels(&dag, "AnthropicMessages200Usage");
+    for field in ["input_tokens", "output_tokens"] {
+        assert!(
+            usage_fields.iter().any(|actual| actual == field),
+            "demo usage projection field `{field}` must exist on AnthropicMessages200Usage"
+        );
+    }
+
+    assert_eq!(
+        disj_variant_labels(&dag, "AnthropicMessages200Role"),
+        vec!["Assistant"],
+        "demo response role enum must stay locked to the modeled response role"
+    );
+    assert_eq!(
+        disj_variant_labels(&dag, "AnthropicStopReason"),
+        vec![
+            "EndTurn",
+            "MaxTokens",
+            "StopSequence",
+            "ToolUse",
+            "PauseTurn",
+            "Refusal",
+            "ModelContextWindowExceeded",
+        ],
+        "demo stop-reason enum must stay locked to AnthropicStopReason"
+    );
+    assert!(
+        disj_variant_labels(&dag, "AnthropicMessages200ContentBlock")
+            .iter()
+            .any(|variant| variant == "MessagesTextBlock"),
+        "demo text response block must be backed by the modeled MessagesTextBlock variant"
+    );
 }
 
 #[test]
