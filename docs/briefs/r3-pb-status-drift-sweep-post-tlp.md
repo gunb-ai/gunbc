@@ -13,7 +13,6 @@
 | #6 | `lens_testgen_dot_rs_retired` | PR #2392 (`b11c8014`, 06:03Z producer-retirement) + PR #2594 (`484c719e`, 15:40Z consumer regression-guard) | DECLARED → CONSUMER_LANDED + PASSING |
 | #33 | `bridge_canonical_lens_name_dispatch_retired` | PR #2449 (`MERGED 01:14Z`) | DECLARED → CONSUMER_LANDED |
 | #34 | `bridge_include_str_side_channels_retired` | PR #2459 (`MERGED 00:05Z`) — `pipeline.dag` slice retirement | DECLARED → CONSUMER_LANDED (slice scope only; standalone closure brief #1976 remains STOP-blocked on Substrate-T1 / #1939) |
-| #66 | `lens_producer_retirement_executable_witness` | PR #2595 (`a085f6e9`, 15:52Z substrate-impl: TestRunner reports residual) | DECLARED → CONSUMER_LANDED (substrate-plumbing only); F3 deferral keeps PASSING gated on aggregate Row-4 evidence |
 | #5 | `lens_apply_dot_rs_retired` | PR-pending (worker valiant-otter-715 on #2374) | DECLARED → CONSUMER_LANDED (when PR lands) |
 | #7 | `regen_lens_dot_rs_retired` | PR-pending (worker warm-crab-600 on #2378) | DECLARED → CONSUMER_LANDED (when PR lands) |
 | #8 | `sg0_non_test_zero` | PR #2569 (definition alignment) + ratchet trip post T-PB-A non-test = 0 | DECLARED → CONSUMER_LANDED + PASSING (when ratchet trips zero) |
@@ -34,7 +33,9 @@ Spawn worker sub-issue under #2074 when:
 1. PR for G5 #2374 (lens_apply.rs retirement) MERGED; AND
 2. PR for G7 #2378 (regen_lens.rs retirement) MERGED.
 
-(G6 / G33 / G34 / G66 evidence already exists; G8 ratchet trip + #5/#7 PRs are gating events. Note: ledger gate id `#66` per `r3-program-plan.md` §1.8 row #66 — `#64` is `substrate_gap_reflection_closure_closed`, a separate row.)
+(G6 / G33 / G34 evidence already landed via PR #2631; G8 ratchet trip + #5/#7 PRs are gating events for this brief.)
+
+**Excluded by canonical-acceptance scope:** Gate **#66** `lens_producer_retirement_executable_witness` is **NOT** included in this promotion set despite PR #2595 substrate-impl landing. Per `r3-structure.md:184`, the canonical Pass-condition is "lens_apply reflection routes via PB-Runtime on representative lens program; **execution-ready witness DEFERRED** to Row-4 equivalence receipt landing"; the PR #2595 `lens_producer_files_remaining` state-check is the canonical text's "near-term demo = retirement state-check + doc receipts" placeholder, **not** the canonical demonstration consumer. CONSUMER_LANDED for #66 only triggers when Row-4 + Item 4 receipts exist (PB-Runtime lens-reflection witness on representative lens program). Codex BLOCKING review on PR #2631 + briansrls inline review caught this distinction — preserved here.
 
 If T-LP cascades earlier (e.g., G5 + G7 land together with sg0_non_test_zero ratchet trip in same wave), this brief absorbs all rows in one PR. If T-LP cascades partial, the brief can split: T-LP wave first, then T-Bridge follow-on.
 
