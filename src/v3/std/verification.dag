@@ -246,8 +246,9 @@ type TestPredicate
       right_report_ref: DeclarationRef
     }
   // **🟡 Scaffold — AlgebraicLaw.** Check a named algebraic law (see `AlgebraicLawKind`)
-  // against a named lens (T-LensAPI composition). `Associativity` today: runner applies the
-  // compiled lens on every Int triple in `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES` (D1/D3),
+  // against a named lens (T-LensAPI composition). `Associativity`, `Commutativity`, and `Identity`
+  // today: runner applies the compiled lens on bounded Int witness tables in `lens_apply`
+  // (`ASSOCIATIVITY_WITNESS_TRIPLES`, `COMMUTATIVITY_WITNESS_PAIRS`, identity candidate search),
   // not declared law
   // facts from `std.algebra` — see `eval_algebraic_law_for_claim_program` in `test_runner.rs`.
   // Dissolution trigger: consume substrate law / witness metadata on the carrier; then either
