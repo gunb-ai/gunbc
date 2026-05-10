@@ -1406,8 +1406,15 @@ fn per_call_pattern_and_descent_operand_index(
 ///
 /// `call_site` must identify a [`Behavior::Transform`] in `dag`; input ports are read from that
 /// transform only (P2: no parallel list from the consumer that could desync from substrate).
+///
+/// **`SameArgumentCall`:** returns [`None`]. Preserved-value rows classify as same-argument for the
+/// [`CallPattern`] projection, but there is **no** arithmetic-descent witness — publishing an input
+/// index would fabricate a descent operand (P3).
 pub fn per_call_descent_operand_port(dag: &Dag, call_site: NodeId) -> Option<PortId> {
-    let (_, idx) = per_call_pattern_and_descent_operand_index(dag, call_site)?;
+    let (pattern, idx) = per_call_pattern_and_descent_operand_index(dag, call_site)?;
+    if matches!(pattern, CallPattern::SameArgumentCall) {
+        return None;
+    }
     let transform = dag.node_opt(&call_site).and_then(Behavior::as_transform)?;
     transform.inputs.get(idx).copied()
 }
