@@ -2,7 +2,7 @@
 // Hand-written infrastructure (same category as parser, tokenizer, v2_rt).
 // I-1: pure evaluation. I-2: shell service dispatch.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::rc::Rc;
 
@@ -94,6 +94,8 @@ pub enum Value {
     Str(String),
     List(Rc<Vec<Value>>),
     Map(Rc<HashMap<String, Value>>),
+    /// String membership sets (`Set<String>` in .dag).
+    Set(Rc<BTreeSet<String>>),
     Record {
         type_name: String,
         fields: Rc<HashMap<String, Value>>,
@@ -121,6 +123,7 @@ impl Value {
             Value::Str(_) => "String",
             Value::List(_) => "List",
             Value::Map(_) => "Map",
+            Value::Set(_) => "Set",
             Value::Record { .. } => "Record",
             Value::Variant { .. } => "Variant",
             Value::Closure { .. } => "Closure",
@@ -162,6 +165,16 @@ impl fmt::Display for Value {
                         write!(f, ", ")?;
                     }
                     write!(f, "{}: {}", k, v)?;
+                }
+                write!(f, "}}")
+            }
+            Value::Set(members) => {
+                write!(f, "{{")?;
+                for (i, k) in members.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", k)?;
                 }
                 write!(f, "}}")
             }
@@ -209,6 +222,8 @@ impl PartialEq for Value {
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Unit, Value::Unit) => true,
             (Value::List(a), Value::List(b)) => a == b,
+            (Value::Map(a), Value::Map(b)) => a == b,
+            (Value::Set(a), Value::Set(b)) => a == b,
             (
                 Value::Variant {
                     variant_name: a,
@@ -2154,6 +2169,12 @@ fn value_to_json(val: &Value) -> serde_json::Value {
             serde_json::Value::String(s.clone())
         }
         Value::List(items) => serde_json::Value::Array(items.iter().map(value_to_json).collect()),
+        Value::Set(members) => serde_json::Value::Array(
+            members
+                .iter()
+                .map(|s| serde_json::Value::String(s.clone()))
+                .collect(),
+        ),
         Value::Map(m) => {
             let obj: serde_json::Map<String, serde_json::Value> = m
                 .iter()
@@ -2443,6 +2464,31 @@ fn eval_builtin(
         },
 
         "empty_map" => Ok(Some(Value::Map(Rc::new(HashMap::new())))),
+
+        "empty_set" => Ok(Some(Value::Set(Rc::new(BTreeSet::new())))),
+
+        "set_insert" => match positional.as_slice() {
+            [Value::Set(s), Value::Str(k)] => {
+                let mut result = s.as_ref().clone();
+                result.insert(k.clone());
+                Ok(Some(Value::Set(Rc::new(result))))
+            }
+            _ => Ok(None),
+        },
+
+        "set_union" => match positional.as_slice() {
+            [Value::Set(a), Value::Set(b)] => {
+                let mut result = a.as_ref().clone();
+                result.extend(b.iter().cloned());
+                Ok(Some(Value::Set(Rc::new(result))))
+            }
+            _ => Ok(None),
+        },
+
+        "set_contains" => match positional.as_slice() {
+            [Value::Set(s), Value::Str(k)] => Ok(Some(Value::Bool(s.contains(k.as_str())))),
+            _ => Ok(None),
+        },
 
         "map_insert" => match positional.as_slice() {
             [Value::Map(m), Value::Str(k), v] => {

@@ -87,7 +87,7 @@ Rust mirrors of `.dag` typed carriers that should dissolve when v3 evaluator aut
 | FieldProject dual-authority (`field_label` ↔ `field_child` disagreement) | C | `dag.rs:1890-1892` + `infer.rs:4198-4208` | UnresolvedFieldProject/ResolvedFieldProject lifecycle split | YELLOW | brief #2373 | Substrate |
 | CallGraph forward-only authority (illegal-state-representable in product) | C | brief: `r3-bug-callgraph-forward-only-authority-worker.md` | dispatch worker | YELLOW | brief #2373 | Substrate |
 | `MissingEmissionPath` stringifies typed axes (connective/behavior/target as String) | C | gpt-5-5-pro Finding 1 | typed-carrier diagnostic boundary | YELLOW | PR #2358 | Substrate |
-| `ComposedEffect { idempotent, breaking_operation }` illegal product | C | gpt-5-5-pro Finding 5 | sum-typed effect-composition carrier | YELLOW | PR #2358 | Substrate |
+| `ComposedEffect { idempotent, breaking_operation }` illegal product | C | gpt-5-5-pro Finding 5 | sum-typed effect-composition carrier (`CompositionVerdict` in `dsl/std/effects.dag` + v2 stage0) | GREEN | PR #2491 / #2469 | Substrate |
 | `derive_op_effect(method_str, path_str)` string parser at structural boundary | C | gpt-5-5-pro Finding 6 | typed dispatch over Method × Path carriers | YELLOW | PR #2358 | Substrate |
 | `EmitModelVariants` manually-enumerated cache (label-string mirror) | C | `dag.rs` EmitModelVariants | generate from `emit_model.dag` OR exhaustiveness ratchet | YELLOW | pre-R3 | Substrate |
 | `EmissionDiagnostic` Rust mirror | C | `src/v3/compiler/src/diagnostics.rs` | v3 evaluator authoritative on diagnostic emission | YELLOW | pre-R3 | Substrate |
