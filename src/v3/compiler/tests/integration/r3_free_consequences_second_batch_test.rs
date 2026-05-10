@@ -359,7 +359,7 @@ fn field_ref(dag: &Dag, decl_name: &str, field_name: &str) -> DeclarationId {
     fields
         .iter()
         .find_map(|(key, value)| {
-            (key == field_name).then_some(match value {
+            (key == field_name).then(|| match value {
                 v3_compiler::dag::FieldValue::Reference(id) => *id,
                 other => {
                     panic!("`{decl_name}.{field_name}` should be DeclarationRef, got {other:?}")
