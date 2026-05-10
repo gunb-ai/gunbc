@@ -15,6 +15,8 @@
 //! when those rows can express this four-lens snapshot as `.dag` TestClaim data,
 //! delete this module and its `tests/integration.rs` registration.
 
+use std::sync::OnceLock;
+
 use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
@@ -28,6 +30,26 @@ use v3_compiler::lens_effect_enumeration::{
     enumerate_effects, EffectEnumerationReport, StructuralEffectShape, TransactionalPattern,
 };
 use v3_compiler::Dag;
+
+static COUNTDOWN_DAG: OnceLock<Dag> = OnceLock::new();
+static EFFECTS_DAG: OnceLock<Dag> = OnceLock::new();
+
+fn countdown_dag() -> &'static Dag {
+    COUNTDOWN_DAG.get_or_init(|| {
+        compile_to_dag(
+            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
+            "r3_gate_73_countdown.v3",
+        )
+        .expect("recursive countdown fixture compiles")
+    })
+}
+
+fn effects_dag() -> &'static Dag {
+    EFFECTS_DAG.get_or_init(|| {
+        compile_to_dag("let answer: Int = 1 + 2", "r3_gate_73_effects.v3")
+            .expect("effect enumeration fixture compiles")
+    })
+}
 
 fn find_bind(dag: &Dag, name: &str) -> v3_compiler::dag::BindNode {
     dag.nodes()
@@ -82,21 +104,21 @@ fn run_with_parity_demo_stack(f: impl FnOnce() + Send + 'static) {
         .expect("lens behavioral parity demo thread should not panic");
 }
 
-#[test]
-fn r3_gate_73_demonstrates_complexity_and_cost_parity_snapshot() {
-    run_with_parity_demo_stack(|| {
-        let dag = compile_to_dag(
-            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
-            "r3_gate_73_countdown.v3",
-        )
-        .expect("recursive countdown fixture compiles");
-        let countdown = find_bind(&dag, "countdown");
-        let parameter = countdown
-            .params
-            .first()
-            .copied()
-            .expect("countdown should expose one size-bearing parameter");
+fn countdown_fixture() -> (Dag, v3_compiler::dag::BindNode, PortId) {
+    let dag = countdown_dag().clone();
+    let countdown = find_bind(&dag, "countdown");
+    let parameter = countdown
+        .params
+        .first()
+        .copied()
+        .expect("countdown should expose one size-bearing parameter");
+    (dag, countdown, parameter)
+}
 
+#[test]
+fn r3_gate_73_demonstrates_complexity_work_is_linear_in_countdown_parameter() {
+    run_with_parity_demo_stack(|| {
+        let (dag, countdown, parameter) = countdown_fixture();
         let complexity = match complexity_of(&dag, &countdown.value) {
             ComplexityLookup::Hit(summary) => summary,
             ComplexityLookup::Miss => panic!("complexity lens returned Miss for countdown"),
@@ -106,19 +128,58 @@ fn r3_gate_73_demonstrates_complexity_and_cost_parity_snapshot() {
             "complexity work should consume the recursive CallPattern as linear parameter cost, got {:?}",
             complexity.work
         );
+    });
+}
+
+#[test]
+fn r3_gate_73_demonstrates_complexity_span_is_linear_in_countdown_parameter() {
+    run_with_parity_demo_stack(|| {
+        let (dag, countdown, parameter) = countdown_fixture();
+        let complexity = match complexity_of(&dag, &countdown.value) {
+            ComplexityLookup::Hit(summary) => summary,
+            ComplexityLookup::Miss => panic!("complexity lens returned Miss for countdown"),
+        };
         assert!(
             contains_linear(&complexity.span, parameter),
             "complexity span should consume the recursive CallPattern as linear parameter cost, got {:?}",
             complexity.span
         );
+    });
+}
+
+#[test]
+fn r3_gate_73_demonstrates_complexity_classification_is_conservative() {
+    run_with_parity_demo_stack(|| {
+        let (dag, countdown, _) = countdown_fixture();
+        let complexity = match complexity_of(&dag, &countdown.value) {
+            ComplexityLookup::Hit(summary) => summary,
+            ComplexityLookup::Miss => panic!("complexity lens returned Miss for countdown"),
+        };
         assert_eq!(
             complexity.asymptotic_class,
             AsymptoticClass::ClassUnknown,
             "frozen snapshot keeps composite countdown classification conservative"
         );
+    });
+}
+
+#[test]
+fn r3_gate_73_demonstrates_complexity_certainty_is_proven() {
+    run_with_parity_demo_stack(|| {
+        let (dag, countdown, _) = countdown_fixture();
+        let complexity = match complexity_of(&dag, &countdown.value) {
+            ComplexityLookup::Hit(summary) => summary,
+            ComplexityLookup::Miss => panic!("complexity lens returned Miss for countdown"),
+        };
         assert!(matches!(complexity.work_certainty, Certainty::Proven));
         assert!(matches!(complexity.span_certainty, Certainty::Proven));
+    });
+}
 
+#[test]
+fn r3_gate_73_demonstrates_symbolic_cost_is_linear() {
+    run_with_parity_demo_stack(|| {
+        let (dag, countdown, _) = countdown_fixture();
         let symbolic_cost = match symbolic_cost_of(&dag, &countdown.value) {
             SymbolicCostLookup::Hit(cost) => cost,
             SymbolicCostLookup::Miss => panic!("cost lens returned Miss for countdown"),
@@ -127,6 +188,17 @@ fn r3_gate_73_demonstrates_complexity_and_cost_parity_snapshot() {
             matches!(symbolic_cost, SymbolicCost::LinearCost { .. }),
             "cost lens frozen snapshot expects countdown symbolic cost to normalize to LinearCost, got {symbolic_cost:?}"
         );
+    });
+}
+
+#[test]
+fn r3_gate_73_demonstrates_symbolic_cost_is_keyed_by_countdown_parameter() {
+    run_with_parity_demo_stack(|| {
+        let (dag, countdown, parameter) = countdown_fixture();
+        let symbolic_cost = match symbolic_cost_of(&dag, &countdown.value) {
+            SymbolicCostLookup::Hit(cost) => cost,
+            SymbolicCostLookup::Miss => panic!("cost lens returned Miss for countdown"),
+        };
         assert!(
             contains_linear(&symbolic_cost, parameter),
             "cost lens linear SizeVariable should be keyed by countdown parameter {parameter:?}, got {symbolic_cost:?}"
@@ -167,21 +239,38 @@ fn r3_gate_73_demonstrates_parallelism_parity_snapshot() {
 }
 
 #[test]
-fn r3_gate_73_demonstrates_effect_enumeration_parity_snapshot() {
+fn r3_gate_73_demonstrates_effect_enumeration_publishes_facts() {
     run_with_parity_demo_stack(|| {
-        let dag = compile_to_dag("let answer: Int = 1 + 2", "r3_gate_73_effects.v3")
-            .expect("effect enumeration fixture compiles");
+        let dag = effects_dag().clone();
         let report = enumerate_effects(&dag);
 
         assert!(
             !report.facts.is_empty(),
             "effect enumeration should publish facts for the representative fixture"
         );
+    });
+}
+
+#[test]
+fn r3_gate_73_demonstrates_effect_enumeration_preserves_non_arrow_callable_gap() {
+    run_with_parity_demo_stack(|| {
+        let dag = effects_dag().clone();
+        let report = enumerate_effects(&dag);
+
         assert!(
             has_non_arrow_callable_gap(&dag, &report),
             "effect enumeration frozen snapshot should preserve the current non-arrow callable coverage gap, got {:?}",
             report.coverage_gaps
         );
+    });
+}
+
+#[test]
+fn r3_gate_73_demonstrates_effect_enumeration_proves_no_effect_fact() {
+    run_with_parity_demo_stack(|| {
+        let dag = effects_dag().clone();
+        let report = enumerate_effects(&dag);
+
         assert!(
             report
                 .facts
@@ -190,7 +279,25 @@ fn r3_gate_73_demonstrates_effect_enumeration_parity_snapshot() {
             "effect enumeration should still prove at least one source fact NoEffect, got {:?}",
             report.facts
         );
+    });
+}
+
+#[test]
+fn r3_gate_73_demonstrates_effect_enumeration_has_no_redundant_reads() {
+    run_with_parity_demo_stack(|| {
+        let dag = effects_dag().clone();
+        let report = enumerate_effects(&dag);
+
         assert!(report.redundant_reads.is_empty());
+    });
+}
+
+#[test]
+fn r3_gate_73_demonstrates_effect_enumeration_has_no_transaction() {
+    run_with_parity_demo_stack(|| {
+        let dag = effects_dag().clone();
+        let report = enumerate_effects(&dag);
+
         assert!(matches!(
             report.transaction,
             TransactionalPattern::NoTransaction
