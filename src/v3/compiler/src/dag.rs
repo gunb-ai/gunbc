@@ -1657,7 +1657,11 @@ fn self_call_under_param_bound_loop(
 /// Joint structural witness for gate **#78** iterate-alias collapse: same owning declaration
 /// self-call as [`per_call_descent_evidence`], `other_port` as [`per_call_descent_operand_port`], and
 /// that call appears under a param-sourced loop body (links [`LoopNode::source`] with per-call
-/// recurrence wiring — not descent-port coincidence alone).
+/// recurrence wiring — not descent-port coincidence alone). This is **not** "any self-call
+/// anywhere": [`bind_body_transform_ids`] limits candidates to transforms in the bind body, and
+/// [`self_call_under_param_bound_loop`] requires the call site to sit under a `Loop` whose
+/// `source` is the unary `param`, matching the `loop_cost` × `combine_iterate` join that produced
+/// the spurious `ProductCost` in the first place.
 fn unary_bind_duplicate_iter_alias_evidence(
     dag: &Dag,
     bind: &BindNode,
