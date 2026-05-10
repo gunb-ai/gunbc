@@ -211,16 +211,16 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // `tier3_mirror_dissolution_perf_within_budget` per
     // `docs/briefs/r3-pb-tier3-perf-budget-worker.md` deliverable 0b
     // (parent brief #1331; readiness matrix #1358; this PR #1362).
-    // Intentionally hand-authored: it measures live public mirror
-    // entrypoints (`merge_evidence`, `positive_descent_count`,
-    // `lower_call_pattern`, `type_iteration_dimension`,
-    // `lane2_workflow_idempotency_report`) before T-Tier3-Dissolution
-    // retires them — generated output cannot exist yet because the
-    // measurement target is the not-yet-dissolved Rust code.
-    // Dissolution trigger: deletes alongside the mirror-dissolution PRs
-    // per parent brief §"Phase 1 deliverables" — the bench harness has
-    // no role post-Phase-1; only the frozen `tier3_baseline.json` data
-    // survives.
+    // Intentionally hand-authored: it measures the remaining live public
+    // mirror entrypoints (`positive_descent_count`, `lower_call_pattern`,
+    // `type_iteration_dimension`, `lane2_workflow_idempotency_report`)
+    // before T-Tier3-Dissolution retires them — generated output cannot
+    // exist yet because the measurement target is the not-yet-dissolved
+    // Rust code. The termination entrypoint retired with
+    // `tier3_termination_mirror_dissolved`.
+    // Dissolution trigger: deletes alongside the remaining mirror-dissolution
+    // PRs per parent brief §"Phase 1 deliverables" — the bench harness has no
+    // role post-Phase-1; only the frozen `tier3_baseline.json` data survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
     // R3 row 85 / PB #1560 Gap 4 build-step shim: invokes

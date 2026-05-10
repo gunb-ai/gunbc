@@ -1020,84 +1020,8 @@ pub struct ProofEdge {
     pub evidence: Vec<DescentEvidence>,
 }
 
-pub fn evidence_rank(evidence: DescentEvidence) -> i64 {
-    match evidence {
-        DescentEvidence::Strict => 2,
-        DescentEvidence::NonIncreasing => 1,
-        DescentEvidence::DescentUnknown => 0,
-    }
-}
-
-pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-    match a {
-        DescentEvidence::Strict => match b {
-            DescentEvidence::Strict => DescentEvidence::Strict,
-            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-        },
-        DescentEvidence::NonIncreasing => match b {
-            DescentEvidence::Strict => DescentEvidence::NonIncreasing,
-            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-        },
-        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-    }
-}
-
-pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-    match a {
-        DescentEvidence::DescentUnknown => b,
-        DescentEvidence::NonIncreasing => match b {
-            DescentEvidence::Strict => DescentEvidence::Strict,
-            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-            DescentEvidence::DescentUnknown => DescentEvidence::NonIncreasing,
-        },
-        DescentEvidence::Strict => DescentEvidence::Strict,
-    }
-}
-
-/// Legacy E-T helper name retained for carrier API parity.
-///
-/// Fail-closed behavior means no unary helper may fabricate `Strict` from
-/// weaker evidence; strict promotion requires a separate structural witness.
-///
-/// P5 bridge: identifier suggests promotion; this mirror is identity on the
-/// three `DescentEvidence` variants today (same fail-closed contract as
-/// `std.termination`). Dissolution: rename to e.g. `evidence_passthrough_preserving_strict`
-/// and/or remove `v2.compiler.complexity` call sites when parser progress threads
-/// `Strict` at the witness site.
-pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
-    evidence
-}
-
-pub fn optional_evidence_meet(
-    a: Option<DescentEvidence>,
-    b: Option<DescentEvidence>,
-) -> Option<DescentEvidence> {
-    match a {
-        None => b,
-        Some(va) => match b {
-            None => a,
-            Some(vb) => Some(merge_evidence(va, vb)),
-        },
-    }
-}
-
-pub fn map_evidence_merge_at(
-    mut base: HashMap<String, DescentEvidence>,
-    key: String,
-    new_val: DescentEvidence,
-) -> HashMap<String, DescentEvidence> {
-    let merged = match base.get(&key).copied() {
-        Some(existing) => merge_evidence(existing, new_val),
-        None => new_val,
-    };
-    base.insert(key, merged);
-    base
-}
-
 // Continuation: Rust execution mirror for `src/v3/std/computation.dag` (Lane E-C).
-// Same staging contract as the termination mirror above (`ArrowBody::Unparsed` std bodies).
+// The termination lattice mirror has dissolved; computation still waits on evaluated std bodies.
 // `m2_substrate_inhabitance_test::{computation_*}` pins carrier shape + lowering helpers.
 
 /// 🟡 SCAFFOLD — `SizeBound` coproduct (`docs/modeling-discipline.md` §4).
