@@ -7,11 +7,11 @@ use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
     Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
 };
+use crate::diagnostics::Diagnostic;
+use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
 use crate::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
 };
-use crate::diagnostics::Diagnostic;
-use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
@@ -2868,8 +2868,8 @@ impl<'a> TestRunner<'a> {
         }
 
         let eval_under = |order: InputEvaluationOrder| {
-            let frame = EvalFrame::from_bindings(Vec::<(PortId, Value)>::new())
-                .expect("empty root frame");
+            let frame =
+                EvalFrame::from_bindings(Vec::<(PortId, Value)>::new()).expect("empty root frame");
             let mut state = EvalStateStack::with_root_frame(frame);
             let strategy = EvalStrategy::ApplicativeOrder { input_order: order };
             evaluate_body(&program_dag, bind.id, &mut state, strategy)
