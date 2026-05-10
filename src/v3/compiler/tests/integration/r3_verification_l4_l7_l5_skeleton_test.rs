@@ -313,6 +313,8 @@ fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
 
 #[test]
 fn l5_cross_target_consistency_passes_seed_corpus_for_all_targets() {
+    // L5 is a real target-execution receipt: this test expects the CI host to provide
+    // `rustc`, `python3`, and `go` so `ForAllTargets` can observe all three emitted programs.
     let dag = cached_compile(L5_FIXTURE, L5_FIXTURE_PATH, &L5_DAG);
     let claim_decl = dag
         .declaration_by_name(L5_CLAIM)
