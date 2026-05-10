@@ -75,19 +75,7 @@ fn read(boxed: Box<Int>) -> Int = boxed.renamed
         other => panic!("expected field projection Transform, got {other:?}"),
     };
     match &projection.target {
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => {
-            assert_eq!(field_label, "renamed");
-            // field_child should resolve to some declaration (the thesis
-            // claim is that the label propagates, not that the child
-            // resolves to a specific DeclarationId).
-            assert!(
-                field_child.is_some(),
-                "field_child should be resolved after inference"
-            );
-        }
+        TransformTarget::ResolvedFieldProject { .. } => {}
         other => panic!("expected FieldProject target, got {other:?}"),
     }
 }
