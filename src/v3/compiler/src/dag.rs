@@ -1416,11 +1416,16 @@ pub fn per_call_descent_operand_port(dag: &Dag, call_site: NodeId) -> Option<Por
 /// factor keys off the formal parameter port and the other keys off a **distinct** port from the
 /// same tail-recurrence induction chain (loop iterate bound × recurrence operand wiring).
 ///
-/// `SizeVariable` equality is structural (`PortId`), so `iterate` composes those factors as a
-/// multiplicative product even when both witness the same asymptotic parameter — exactly the
-/// double-count family gate **#78** eliminates by skipping the descent operand in the spine sum.
-/// Folding to a single [`SymbolicCost::LinearCost`] on the parameter port restores the intended
-/// **O(n)** carrier without rewriting the algebra emitter.
+/// **Residual flow (why this exists):** `recursive_transform_cost` / `sum_costs_excluding_descent_operand`
+/// already prevent double-counting **within** the recursive call’s operand list. They do **not**
+/// merge the **outer** `LoopNode` bound (`linear_at(loop.source)`, usually the parameter port) with
+/// the **inner** `pattern_to_iter_bound` keyed on `per_call_descent_operand_port` (the call’s input
+/// port — a different `PortId` than the formal parameter). `iterate` in `algebra.dag` multiplies
+/// those two `LinearCost` shells structurally, yielding a binary `ProductCost` that overstates the
+/// asymptotic carrier until alias-aware folding exists in the algebra.
+///
+/// **P5:** transitional host pass until dissolution — explicit ROADMAP row **“R3 gate #78 — unary-bind
+/// `SymbolicCost` iterate alias collapse post-pass”** (`ROADMAP.md`, § Post-merge debt 2026-05-08).
 pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
     dag: &Dag,
     bind_value_port: PortId,
