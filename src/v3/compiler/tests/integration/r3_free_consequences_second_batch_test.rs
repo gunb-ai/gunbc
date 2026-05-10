@@ -10,13 +10,22 @@
 //! `r3_free_consequences_auto_loop_parallelism_dependence.v3` so lowering still exercises a real
 //! loop body; integration tests ratchet embedded `TestClaim.source` against that file byte-for-byte
 //! and assert the claim program lowers to `Behavior::Loop` so the fold is exercised on the compile
+<<<<<<< HEAD
 //! path, not only carried as inert text. Gate #51 still locks the cost-related
 //! `BinaryDimensionReportEquals` shape and stays `NotYetImplemented`; gate #52 adds a host-side
 //! executable receipt that composes `Lens<SymbolicCost>` with `LanguageSpec` realization rows.
+=======
+//! path, not only carried as inert text. The first cross-target-optimization claim (#51) is
+//! executable through the symbolic-cost lens: the host test proves a constant arithmetic subtree has
+//! cost `1` before the folded literal target (`3`) is applied. The second claim (#52) keeps the
+//! cost-related `BinaryDimensionReportEquals` shape and stays `NotYetImplemented` until generic
+//! `DimensionReport<C>` evaluation lands.
+>>>>>>> origin/main
 
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
+<<<<<<< HEAD
 use v3_compiler::dag::{
     sequential, ArithmeticOp, Behavior, ComparisonOp, Dag, DeclarationId, OperatorKind,
     SymbolicCost, TransformTarget,
@@ -25,6 +34,11 @@ use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::realization_cost::{RealizationCostKey, RealizationCostTable};
+=======
+use v3_compiler::dag::Dag;
+use v3_compiler::dag::{ArithmeticOp, Behavior, OperatorKind, SymbolicCost};
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+>>>>>>> origin/main
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
@@ -63,6 +77,14 @@ fn second_batch_dag() -> &'static Dag {
         ),
         Err(other) => panic!("unexpected compile error for {FIXTURE_PATH}: {other:?}"),
     })
+}
+
+fn claim_by_name(name: &str) -> TestClaimValue {
+    let dag = second_batch_dag();
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("{name} TestClaim declaration"));
+    TestClaimValue::from_declaration(decl).unwrap_or_else(|_| panic!("{name} TestClaimValue"))
 }
 
 #[test]
@@ -105,10 +127,10 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
 
     for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
         assert_eq!(result.claim_name, expected_name);
-        if idx < 3 {
+        if idx < 4 {
             assert!(
                 matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to pass (LensOutputEquals matches staged loop-parallelism indicator), got {:?}",
+                "expected {expected_name} to pass (loop witnesses use staged LensOutputEquals; gate #51 uses executable SymbolicCostExprEquals), got {:?}",
                 result.result
             );
         } else if idx == 3 {
@@ -129,6 +151,7 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
 }
 
 #[test]
+<<<<<<< HEAD
 fn cross_target_optimization_cost_structurally_derived_receipt() {
     run_on_larger_stack(|| {
         let boot = generated_full_bootstrap_dag();
@@ -374,3 +397,46 @@ fn mentions_linear(cost: &SymbolicCost) -> bool {
         _ => false,
     }
 }
+=======
+fn cross_target_optimization_constant_fold_consistent_has_symbolic_cost_witness() {
+    run_on_larger_stack(|| {
+        let claim = claim_by_name("cross_target_optimization_constant_fold_consistent");
+        let dag = compile_to_dag(&claim.source, &claim.file_name)
+            .expect("gate #51 claim source compiles");
+        let folded_bind = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .find(|bind| bind.name == "folded")
+            .expect("gate #51 folded bind");
+        let pre_fold_cost = match symbolic_cost_of(&dag, &folded_bind.value) {
+            SymbolicCostLookup::Hit(cost) => cost,
+            SymbolicCostLookup::Miss => panic!("gate #51 symbolic_cost_of returned Miss"),
+        };
+        assert!(
+            matches!(pre_fold_cost, SymbolicCost::ConstantCost { _0: 1 }),
+            "gate #51 pre-fold arithmetic subtree cost should be ConstantCost(1), got {pre_fold_cost:?}"
+        );
+        // This witness intentionally observes the pre-fold DAG; if lowering starts folding
+        // `1 + 2` earlier, update this Add-shape check and the expected symbolic cost together.
+        let transform = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_transform)
+            .find(|t| {
+                matches!(
+                    &t.target,
+                    v3_compiler::dag::TransformTarget::Operator(OperatorKind::Arithmetic(
+                        ArithmeticOp::Add
+                    ))
+                )
+            })
+            .expect("gate #51 should lower `1 + 2` to an Add transform before folding");
+        assert_eq!(
+            transform.inputs.len(),
+            2,
+            "gate #51 Add transform should have two operands"
+        );
+    });
+}
+>>>>>>> origin/main
