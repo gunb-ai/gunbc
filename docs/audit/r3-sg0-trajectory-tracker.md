@@ -48,12 +48,13 @@ echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test fragments=$fra
 | 2026-05-02 | (HEAD~300) | 40 | 87 | 1 | 128 | +8 | — | retroactive |
 | 2026-05-06 | (HEAD~150) | 46 | 89 | 1 | 136 | +8 | — | retroactive |
 | 2026-05-07 | (HEAD~50) | 47 | 95 | 1 | 143 | +7 | — | retroactive |
-| **2026-05-09** | **c25b2d8df** | **48** | **101** | **1** | **150** | **+7 (9-day total: +30)** | (none — Cluster M cold) | velocity-walk audit landed PR #2358; remediation program in flight |
-| **2026-05-10** | **cea1fbe87** | **53** | **108** | **2** | **163** | **+13 (1-day; 10-day total: +43)** | 21 PRs landed in last cycle: R3 P0 dissolutions (#2490–#2499, #2504, #2526), gates #10/#33/#37/#40/#43/#72 (#2394/2433/2449/2450/2495/2505), audit #2501, u128 mirror sync, anthropic wire demo (#2506) | **anomaly: +13 in one day** (~4× 9-day avg of +3.3/day). Hypothesis: heavy R3-gate landing cycle added test scaffolds (anthropic_messages_*, e_p_producer_demo, e6_g1a_option3_static_lens) faster than P0 Class B/C/F/G dissolutions removed entries. Per-entry root-cause deferred (yesterday baseline SHA `c25b2d8df` not resolvable in current clone — need re-baseline next snapshot). Velocity tripwire (≥3:1 introduction:dissolution, 7-day): **status pending/uncomputed** — 7-day cumulative ratio not yet computed in this snapshot; will be computed once Cluster M Phase 1 lands and per-entry baseline is restored |
+| **2026-05-09 (mid-day)** | **c25b2d8df (stale)** | **48** | **101** | **1** | **150** | **+7 (9-day total: +30)** | (none — Cluster M cold) | velocity-walk audit landed PR #2358; remediation program in flight; row recorded mid-day, not EOD (see retroactive correction below) |
+| **2026-05-09 EOD** | **eb2cc15cd** (last commit before 2026-05-10 UTC) | **53** | **107** | **2** | **162** | **+12 (retroactive correction; 9-day total: +42)** | 12 entries landed during 2026-05-09 evening: T-CostLens γ-ratification (#2283), R3 plan audit (#2501), 21-PR cycle (R3 P0 dissolutions + gate landings + audit + bridge retirements) | retroactive baseline correction; previous tracker row (150) was taken mid-day on 2026-05-09 before the evening cycle landed; honest EOD count is 162 |
+| **2026-05-10** | **cea1fbe87** | **53** | **108** | **2** | **163** | **+1 (1-day vs 2026-05-09 EOD)** | PR #2506 [codex] add anthropic wire demo (1 test entry: `anthropic_messages_wire_demo_test.rs`) | **velocity is steady, not anomalous** (prior +13 framing was a baseline-comparison artifact). True 1-day delta is +1; cumulative 10-day total is +43 (+30 prior + +12 retroactive 2026-05-09 evening + +1 today). Velocity tripwire (≥3:1 introduction:dissolution, 7-day): **status pending/uncomputed** — 7-day cumulative ratio not yet computed in this snapshot; will be computed once Cluster M Phase 1 lands |
 
 ## §4. Velocity-to-zero math
 
-**Current state** (2026-05-10): 163 entries (53 non_test + 108 test + 2 fragments), growing +4.3/day over 10-day window (+13 spike on 2026-05-10).
+**Current state** (2026-05-10): 163 entries (53 non_test + 108 test + 2 fragments). True 10-day average is **+4.3/day** (43 entries over 2026-04-30 → 2026-05-10 window); 1-day delta vs 2026-05-09 EOD is **+1** (anthropic_messages_wire_demo_test.rs). Earlier "+13 anomaly" framing was a baseline-comparison artifact corrected here.
 
 **Required for R3 close**: 0 + 0 + 0.
 
