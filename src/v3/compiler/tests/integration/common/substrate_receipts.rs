@@ -113,7 +113,7 @@ fn peel_zero_arg_alias(dag: &Dag, mut current: DeclarationId) -> DeclarationId {
             _ => return current,
         }
     }
-    current
+    panic!("zero-arg alias chain exceeded receipt peel bound at {current:?}")
 }
 
 fn assert_compose_with_machine_width(
