@@ -2,11 +2,10 @@
 //!
 //! R3 T-Free-Consequences first-batch author-now/fire-later claims.
 //! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust
-//! schedule, and gate `#45` asserts a Bool branch lowers to `if … else` with no
-//! `thread::scope` scheduling on the arms (both `LensOutputEquals` + runner
-//! witnesses). Gate `#44` stays fail-closed on the scalar parallelism
-//! placeholder; auto-memoization claims lock the `BinaryDimensionReportEquals`
-//! shape.
+//! schedule; gate `#44` stays fail-closed on the scalar parallelism placeholder;
+//! gate `#45` asserts a Bool branch lowers to `if … else` with no `thread::scope`
+//! scheduling on the arms; gate `#50` asserts one-shot pure calls do not emit
+//! memo/cache scaffolding. Repeated-call memoization remains deferred.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -76,8 +75,7 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
                     result.result
                 );
             }
-            "auto_memoization_repeated_pure_call_cached"
-            | "auto_memoization_no_caching_for_one_shot" => {
+            "auto_memoization_repeated_pure_call_cached" => {
                 assert!(
                     matches!(
                         &result.result,
@@ -86,6 +84,13 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
                                 && reason.contains("structural shape is valid")
                     ),
                     "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
+                    result.result
+                );
+            }
+            "auto_memoization_no_caching_for_one_shot" => {
+                assert!(
+                    matches!(&result.result, ClaimResult::Pass),
+                    "expected {expected_name} to Pass (one-shot memoization absence witness), got {:?}",
                     result.result
                 );
             }
