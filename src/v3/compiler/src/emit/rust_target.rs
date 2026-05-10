@@ -3137,6 +3137,7 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
     if mode == EmitRustMode::Program {
         let body_joined = if top_level_binds.len() >= 2
             && top_level_binds_pairwise_independent(dag, &top_level_binds)
+            && ctx.top_level_binds_parallel_spawn_send_safe(&top_level_binds)?
         {
             let mut ty_parts: Vec<String> = Vec::with_capacity(top_level_binds.len());
             let mut expr_parts: Vec<String> = Vec::with_capacity(top_level_binds.len());
@@ -3222,6 +3223,24 @@ pub(crate) fn last_emit_rust_program_top_level_value_bind_name(
         .map(|b| b.name.clone()))
 }
 
+/// Conservative P3 realizability gate for [`emit_rust`] parallel scheduling: each `spawn` closure
+/// must be [`Send`]. Until Send/Sync are modeled structurally, reject the parallel path when the
+/// lowered Rust type string names known non-`Send`-friendly surfaces (`Rc<dyn Fn…>`,
+/// `impl Fn + Clone`, interior mutability carriers the emitter spells explicitly).
+///
+/// **Fail closed:** return `false` → caller emits sequential `let` binds instead of scheduling Rust
+/// that `rustc` rejects at `spawn`.
+fn rust_type_name_parallel_spawn_send_safe(ty: &str) -> bool {
+    // Callable-storage carriers (`arrow_rust_emit_policy_for_arrow_decl`, api-review #676).
+    if ty.contains("dyn Fn") || ty.contains("impl Fn") {
+        return false;
+    }
+    if ty.contains("RefCell") || ty.contains("UnsafeCell") {
+        return false;
+    }
+    true
+}
+
 /// Bundled emission context. Carries the typed indexes, substrate
 /// marker handles, and bound-name index through the recursive
 /// render walk. Replaces the pre-unwind multi-arg threading where
@@ -3286,6 +3305,22 @@ enum InputConsumer<'a> {
 }
 
 impl<'a> Ctx<'a> {
+    /// P3 parallel-schedule realizability: [`std::thread::spawn`] requires `Send` closures.
+    /// Fail closed to sequential `let` emission when any bind's lowered Rust type may include
+    /// non-`Send` callable surfaces (`Rc<dyn Fn…>`, `impl Fn + Clone`, …).
+    fn top_level_binds_parallel_spawn_send_safe(
+        &self,
+        binds: &[&BindNode],
+    ) -> Result<bool, EmitError> {
+        for bind in binds {
+            let ty = self.rust_type_name_for_port(bind.value)?;
+            if !rust_type_name_parallel_spawn_send_safe(&ty) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     fn elide_explicit_borrow(&self, expr: &str) -> String {
         expr.strip_prefix('&').unwrap_or(expr).to_string()
     }
@@ -6764,5 +6799,29 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
             named_disj_enum_name_for_rust_match_emit(&dag, template_id).as_deref(),
             Some("Classical")
         );
+    }
+
+    #[test]
+    fn rust_type_name_parallel_spawn_send_safe_accepts_plain_types() {
+        assert!(rust_type_name_parallel_spawn_send_safe("i64"));
+        assert!(rust_type_name_parallel_spawn_send_safe("bool"));
+        assert!(rust_type_name_parallel_spawn_send_safe("Vec<i64>"));
+    }
+
+    #[test]
+    fn rust_type_name_parallel_spawn_send_safe_rejects_first_class_callable_surfaces() {
+        assert!(!rust_type_name_parallel_spawn_send_safe(
+            "std::rc::Rc<dyn Fn(i64) -> i64>"
+        ));
+        assert!(!rust_type_name_parallel_spawn_send_safe(
+            "impl Fn(i64) -> i64 + Clone"
+        ));
+    }
+
+    #[test]
+    fn rust_type_name_parallel_spawn_send_safe_rejects_interior_mutability_spellings() {
+        assert!(!rust_type_name_parallel_spawn_send_safe(
+            "::std::cell::RefCell<i64>"
+        ));
     }
 }
