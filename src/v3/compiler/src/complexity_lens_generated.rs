@@ -185,7 +185,10 @@ pub fn recursive_transform_summary(
         [] => miss_complexity_summary_lookup(),
         [__list_head, __list_tail @ ..] => combine_iterate(
             &(summary_from_iter_bound(pattern_to_iter_bound(p1, p2))),
-            &(compose_many_inputs_excluding_descent_operand(p0, p3, p2)),
+            &(combine_sequential(
+                &(lookup_summary(p0, p2)),
+                &(compose_many_inputs_excluding_descent_operand(p0, p3, p2)),
+            )),
         ),
     }
 }

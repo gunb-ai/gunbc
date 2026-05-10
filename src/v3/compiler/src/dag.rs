@@ -1385,13 +1385,13 @@ pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> 
     per_call_pattern_and_descent_operand_index(dag, call_site).map(|(p, _)| p)
 }
 
-/// Same projection surface as [`per_call_pattern_at`], plus the evidence index of the
-/// [`SubValueRelation`] row that [`call_pattern_from_relations_with_index`] selected for that pattern.
+/// Same projection as [`per_call_pattern_at`], plus the evidence index (crate-internal).
 ///
-/// Lenses use this index against the [`TransformNode::inputs`] slice at `call_site` (read from
-/// the `Dag`, not a parallel list) so multi-argument self-calls still bind
-/// `pattern_to_iter_bound` to the port that proved descent.
-pub fn per_call_pattern_and_descent_operand_index(
+/// Only [`per_call_descent_operand_port`] may publish substrate coupling to callers:
+/// it maps this index through [`TransformNode::inputs`] on the `Dag`. Keeping the
+/// index off the public API avoids consumers re-aligning evidence rows against a
+/// stale parallel port list (P2).
+fn per_call_pattern_and_descent_operand_index(
     dag: &Dag,
     call_site: NodeId,
 ) -> Option<(CallPattern, usize)> {

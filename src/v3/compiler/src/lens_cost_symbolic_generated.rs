@@ -318,7 +318,7 @@ pub fn sum_costs_excluding_descent_operand(
     p2: &PortId,
 ) -> Lookup<SymbolicCost> {
     (p1).iter().fold(
-        Lookup::Hit(SymbolicCost::ConstantCost { _0: 1 }),
+        Lookup::Hit(SymbolicCost::ConstantCost { _0: 0 }),
         |__fold_acc, __fold_item| {
             if ((*(__fold_item)) == (*(p2))) {
                 __fold_acc

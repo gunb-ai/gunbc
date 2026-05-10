@@ -456,7 +456,7 @@ fn sum_costs_excluding_descent_operand(
   ports: List<PortId>,
   descent_port: PortId
 ) -> Lookup<SymbolicCost> =
-  fold(ports, hit_symbolic_cost_lookup(ConstantCost(1)), |running, port_id|
+  fold(ports, hit_symbolic_cost_lookup(ConstantCost(0)), |running, port_id|
     if port_id == descent_port then
       running
     else
