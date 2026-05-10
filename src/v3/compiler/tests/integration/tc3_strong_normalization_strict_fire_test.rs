@@ -96,18 +96,18 @@ fn tc3_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape(
         results[0].claim_name, "tc3_pattern_a_second_mover_executable",
         "claim name must be the §1.8 #13 canonical gate name"
     );
-    // Today: shape-valid NotYetImplemented (runner waits on stage (b): T-FixedPoint
-    // termination semantics + Evaluator eval-step producer). When (a)+(b) land, this
-    // assertion flips from NotYetImplemented to Pass — that is the §1.8 #13
-    // CONSUMER_LANDED → PASSING transition without further fixture edits.
+    // R3 §1.8 gate #13 CONSUMER_LANDED + PASSING: bounded-runner second-mover proxy compares
+    // baseline eval-step vs compare projection `DimensionReport<Dag>` for the embedded program
+    // (`succ(succ(0))`). Both projections evaluate the top-level value bind and return the same
+    // `Value`; equivalence under `BinaryDimensionReportEquals` per
+    // `tc3_pattern_a_second_mover_dimension_reports_equivalent_under_binary_equals`. Single
+    // forward dissolution trigger: eval-step / bounded-step producer surface +
+    // G1.a static-lens-fold producer-surface-wiring (per
+    // `docs/briefs/r3-evaluator-tc3-d4-eval-step-producer-worker.md`) — when those land, this arm
+    // migrates to live producer-emitted reports without changing fixture or claim name.
     assert!(
-        matches!(
-            &results[0].result,
-            ClaimResult::NotYetImplemented(reason)
-                if reason.contains("BinaryDimensionReportEquals")
-                    && reason.contains("structural shape is valid")
-        ),
-        "expected BinaryDimensionReportEquals shape-valid NotYetImplemented, got {:?}",
+        matches!(&results[0].result, ClaimResult::Pass),
+        "expected gate #13 BinaryDimensionReportEquals Pass, got {:?}",
         results[0].result
     );
 }
