@@ -1,0 +1,8 @@
+// Program authority for R3 gate #48 (`auto_loop_parallelism_dependence_emits_sequential`).
+module user.r3_free_consequences_auto_loop_parallelism_dependence
+
+import std.list { List, cons, empty, fold }
+
+let r3_fc_loop_dep_vals: List<Int> = cons(1, cons(2, cons(3, empty())))
+let r3_fc_loop_dep_out: Int =
+  fold(r3_fc_loop_dep_vals, 0, |acc, x| acc + x)
