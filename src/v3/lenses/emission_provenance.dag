@@ -100,8 +100,8 @@ fn iterate_provenance(
   c
 
 // Aggregate validation. Record form makes "rule absent" structurally
-// impossible; `OptionalSourceSpan::NoSourceSpan` is structurally legal
-// and NOT a diagnostic. Worker greps producer-side at PR-author time:
+// impossible; absence of optional structural source attribution is
+// structurally legal and NOT a diagnostic. Worker greps producer-side at PR-author time:
 // no rule field-path that doesn't resolve to a real `*SyntaxBinding` /
 // `*OpsBinding` field at HEAD should be authored. (When real producer
 // wiring lands, this validate body lifts to round-trip the field-path
