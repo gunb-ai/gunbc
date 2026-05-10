@@ -353,6 +353,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // until then, this hand-Rust ratchet IS the slice's structural gate.
     "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
     "src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs",
+    // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
+    // COMPLETE promotion against frozen v2-oracle values. Temporarily stays Rust
+    // because `.dag` TestClaims cannot yet express `ComplexitySummary` /
+    // nested `SymbolicCost` expected values (M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA,
+    // Gate73_ReportPredicateCarriers).
+    "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
