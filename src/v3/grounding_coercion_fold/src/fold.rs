@@ -149,9 +149,24 @@ fn reference_field(fields: &[(String, FieldValue)], label: &str) -> Option<Decla
     }
 }
 
+/// Parses `LiteralBits::Int` lexical text as `i64`. Malformed non-empty text is a substrate bug;
+/// we still return `None` (same as other shape mismatches) but `debug_assert` catches it in dev.
+fn i64_from_substrate_int_text(s: &str) -> Option<i64> {
+    match s.parse::<i64>() {
+        Ok(value) => Some(value),
+        Err(error) => {
+            debug_assert!(
+                s.is_empty(),
+                "substrate Int literal must be valid decimal i64 text when non-empty (got {s:?}: {error})"
+            );
+            None
+        }
+    }
+}
+
 fn int_literal_field(fields: &[(String, FieldValue)], label: &str) -> Option<i64> {
     match field(fields, label)? {
-        FieldValue::Literal(LiteralBits::Int(value)) => value.parse().ok(),
+        FieldValue::Literal(LiteralBits::Int(value)) => i64_from_substrate_int_text(value),
         _ => None,
     }
 }
@@ -189,7 +204,7 @@ fn parse_positive_interval_width(dag: &Dag, value: &FieldValue) -> Option<Positi
         "UnitCount" => {
             if let [FieldValue::Literal(LiteralBits::Int(units))] = payload.as_slice() {
                 return Some(PositiveIntervalWidth::UnitCount {
-                    units: units.parse().ok()?,
+                    units: i64_from_substrate_int_text(units)?,
                 });
             }
             if let [FieldValue::Record(fields)] = payload.as_slice() {
@@ -250,7 +265,7 @@ fn parse_int_interval(dag: &Dag, value: &FieldValue) -> Option<Interval<i64>> {
         "BoundedInterval" => {
             if let [FieldValue::Literal(LiteralBits::Int(lower)), width] = payload.as_slice() {
                 return Some(Interval::BoundedInterval {
-                    lower: lower.parse().ok()?,
+                    lower: i64_from_substrate_int_text(lower)?,
                     width: parse_interval_width(dag, width)?,
                 });
             }
