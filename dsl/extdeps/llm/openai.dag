@@ -111,7 +111,8 @@ type OpenAiChatMessageRole = System | Developer | User | Assistant | Tool | Func
 // Chat Completions accepts either a scalar text string or typed content parts.
 // Wire uses untagged string-or-array alternatives via
 // `openai_chat_message_content_wire_contract`; `OpenAiChatMessagePart` carries
-// the tagged part rows.
+// the tagged part rows. Trigger: split this content carrier by message role if
+// OpenAI role-specific content-part legality is modeled structurally.
 type OpenAiChatMessageContent
   = OpenAiChatMessageText { text: String }
   | OpenAiChatMessageParts { parts: List<OpenAiChatMessagePart> }
