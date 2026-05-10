@@ -33,6 +33,7 @@ use crate::common::run_on_larger_stack;
 const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_free_consequences_second_batch.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_free_consequences_second_batch.dag";
 const SUITE_NAME: &str = "r3_free_consequences_second_batch_suite";
+const GATE_52_PROGRAM_FILE: &str = "r3_free_consequences_gate52_cost_structurally_derived.v3";
 /// Byte-sync authority for gate #48 `TestClaim.source` (`include_str` ↔ embedded `.dag` string).
 const GATE_48_PROGRAM_AUTHORITY: &str =
     include_str!("../fixtures/r3_free_consequences_auto_loop_parallelism_dependence.v3");
@@ -143,7 +144,7 @@ fn countdown(n: Int) -> Int =
 
 let demo: Int = countdown(3) + 1
 ",
-            "r3_free_consequences_gate52_cost_structurally_derived.v3",
+            GATE_52_PROGRAM_FILE,
         )
         .expect("gate #52 representative program compiles");
         let emitted = emit_rust(&user).expect("gate #52 representative program emits to Rust");
@@ -199,9 +200,7 @@ fn realized_primitive_costs_from_program(
         .nodes()
         .iter()
         .filter_map(Behavior::as_transform)
-        .filter(|transform| {
-            transform.span.file == "r3_free_consequences_gate52_cost_structurally_derived.v3"
-        })
+        .filter(|transform| transform.span.file == GATE_52_PROGRAM_FILE)
     {
         let Some(op_row) = operator_row_for_transform(boot, &transform.target, int_decl) else {
             continue;
@@ -227,6 +226,8 @@ fn compose_expected_structural_cost(
     table: &RealizationCostTable,
     int_decl: DeclarationId,
 ) -> SymbolicCost {
+    // Mirrors the gate #52 fixture body exactly: one recursive decrement (`n - 1`),
+    // one branch equality (`n == 0`), and two additions (recursive body plus `demo + 1`).
     [
         "rust_int_add",
         "rust_int_add",
