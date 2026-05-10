@@ -44,8 +44,8 @@ use crate::int_literal_ranges::{
     IntegerRangeLookup,
 };
 use crate::lower_helpers::{pattern_binding_names, surface_item_span};
-use crate::parse::expr_span as surface_expr_span;
 use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
+use crate::parse::expr_span as surface_expr_span;
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
     SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, VariantPayload,
@@ -5565,7 +5565,7 @@ fn lower_scalar_literal_for_type(
     }
     LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
         name: "scalar literal does not match declared type".to_string(),
-                    span: surface_expr_span(expr).clone(),
+        span: surface_expr_span(expr).clone(),
         fixes: Vec::new(),
     })
 }

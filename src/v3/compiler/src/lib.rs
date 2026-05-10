@@ -4954,8 +4954,8 @@ pub(crate) mod infer_helpers {
     pub(crate) use generated::{
         behavior_output_port, normalize_instantiation_arguments, payload_binding_span,
         push_template_argument_binding, resolve_template_argument_value, template_argument_value,
-        template_arguments_match as generated_template_arguments_match, NormalizedInstantiationArgs,
-        TemplateArgumentBinding, TemplateArgumentsMatch,
+        template_arguments_match as generated_template_arguments_match,
+        NormalizedInstantiationArgs, TemplateArgumentBinding, TemplateArgumentsMatch,
     };
 
     #[cfg(test)]
