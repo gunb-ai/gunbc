@@ -13211,6 +13211,102 @@ pub fn wire_child_for_segment(
     }
 }
 
+fn payload_field_child_matching_seg(
+    payload: Rc<Node>,
+    seg: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    if !is_product_type(payload.clone()) {
+        return None;
+    }
+    let normed = normalize_access_type_node(payload);
+    for ch in normed.children.iter().cloned() {
+        let authored = authored_name_at(source_indices.clone(), &ch);
+        let wire_key = match child_from_key(ch.clone(), source_indices.clone()) {
+            Some(k) => k.clone(),
+            None => authored.clone(),
+        };
+        if wire_key.as_str() == seg.as_str() {
+            return Some(ch.clone());
+        }
+    }
+    None
+}
+
+fn try_wire_path_coproduct_field(
+    state: &Rc<WirePathProjection>,
+    seg: &String,
+    full_path: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<WirePathProjection>> {
+    let n = state.node.clone()?;
+    let normed = normalize_access_type_node(n.clone());
+    if !is_coproduct_type(normed.clone()) {
+        return None;
+    }
+    let mut hit_variant: Option<Rc<Node>> = None;
+    let mut hit_field: Option<Rc<Node>> = None;
+    for variant_arm in normed.children.iter().cloned() {
+        let payload = resolved_type(variant_arm.clone());
+        if let Some(fch) =
+            payload_field_child_matching_seg(payload, seg.clone(), source_indices.clone())
+        {
+            if hit_variant.is_some() {
+                return None;
+            }
+            hit_variant = Some(variant_arm.clone());
+            hit_field = Some(fch);
+        }
+    }
+    let variant_arm = hit_variant?;
+    let fch = hit_field?;
+    let enum_name = authored_name_at(source_indices.clone(), &normed);
+    let variant_name = authored_name_at(source_indices.clone(), &variant_arm);
+    let field_rust = emit_ident(
+        authored_name_at(source_indices.clone(), &fch),
+        RenderTarget::Rust,
+    );
+    let match_expr = v2_rt::concat(
+        v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat("match &*(".to_string(), state.expr.clone()),
+                    ") { ".to_string(),
+                ),
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(v2_rt::concat(enum_name, "::".to_string()), variant_name.clone()),
+                            " { ".to_string(),
+                        ),
+                        field_rust.clone(),
+                    ),
+                    ", .. } => ".to_string(),
+                ),
+            ),
+            field_rust,
+        ),
+        v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        ", _ => return Err(format!(\"REST typed response path ".to_string(),
+                        full_path,
+                    ),
+                    ": expected ".to_string(),
+                ),
+                variant_name,
+            ),
+            " arm\").into()) }".to_string(),
+        ),
+    );
+    Some(Rc::new(WirePathProjection {
+        expr: match_expr,
+        node: Some(resolved_type(fch.clone())),
+        ok: true,
+    }))
+}
+
 pub fn advance_wire_path_projection(
     state: &Rc<WirePathProjection>,
     seg: &String,
@@ -13275,11 +13371,19 @@ pub fn advance_wire_path_projection(
                             node: Some(resolved_type(ch.clone())),
                             ok: true,
                         }),
-                        None => Rc::new(WirePathProjection {
-                            expr: state.expr.clone(),
-                            node: None,
-                            ok: false,
-                        }),
+                        None => match try_wire_path_coproduct_field(
+                            &state,
+                            &seg,
+                            full_path.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Some(proj) => proj,
+                            None => Rc::new(WirePathProjection {
+                                expr: state.expr.clone(),
+                                node: None,
+                                ok: false,
+                            }),
+                        },
                     }
                 }
                 None => Rc::new(WirePathProjection {
