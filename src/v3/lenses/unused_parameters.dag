@@ -9,7 +9,7 @@ import std.list {
   List, empty, singleton, cons, concat, fold, contains, is_empty, length
 }
 import std.substrate {
-  Dag, DagPort, Behavior, BranchPath, BindNode, LoopNode, NodeId, PortId, SourceSpan,
+  Dag, DagPort, Behavior, BranchPath, BindNode, LoopNode, NodeId, PortId,
   port, node
 }
 
@@ -17,7 +17,6 @@ type UnusedParameter {
   function: NodeId
   parameter: PortId
   parameter_index: Int
-  function_span: SourceSpan
 }
 
 fn check(d: Dag) -> List<UnusedParameter> =
@@ -58,7 +57,6 @@ fn collect_unused_params(params: List<PortId>, bind: BindNode, referenced: List<
             function: bind.id
             parameter: payload.head
             parameter_index: index
-            function_span: bind.span
           },
           collect_unused_params(payload.tail, bind, referenced, index + 1)
         )

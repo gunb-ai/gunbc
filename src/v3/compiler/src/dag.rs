@@ -2401,6 +2401,16 @@ impl Behavior {
         }
     }
 
+    pub fn span(&self) -> &SourceSpan {
+        match self {
+            Behavior::Value(v) => &v.span,
+            Behavior::Transform(t) => &t.span,
+            Behavior::Branch(b) => &b.span,
+            Behavior::Loop(l) => &l.span,
+            Behavior::Bind(b) => &b.span,
+        }
+    }
+
     pub fn as_value(&self) -> Option<&ValueNode> {
         if let Behavior::Value(v) = self {
             Some(v)
