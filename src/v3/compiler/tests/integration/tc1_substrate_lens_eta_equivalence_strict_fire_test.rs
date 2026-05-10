@@ -7,10 +7,10 @@
 //! Cross-Mgr split: Verification authors the .dag-side η-pair + lens consumer envelope; Evaluator
 //! wires the non-vacuous lens-fold-over-`Dag` substrate-fact projection.
 //!
-//! Executable receipt: `BinaryDimensionReportEquals` resolves gate #11 by comparing
-//! `analyze_symbolic_cost_dimension` at two η-pair workflow roots declared in `TestClaim.source`
-//! (`tc1_eta_exec_direct` vs `tc1_eta_exec_eta_expanded`). Typed refs remain
-//! `DimensionReport<Tc1EtaLensObservation>` per Pattern-A envelope authority.
+//! Executable receipt: gate #11 **Passes** on a Path A **proxy** — workflow-root **`composed`
+//! `SymbolicCost`** from [`analyze_symbolic_cost_dimension`] on the two η-pair entry binds in
+//! `TestClaim.source`, **not** native `DimensionReport<Tc1EtaLensObservation>` equality (that path is
+//! gunbc#1972). Typed `.dag` refs stay `DimensionReport<Tc1EtaLensObservation>` for Pattern-A shape only.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -56,8 +56,10 @@ fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape_
     );
     assert!(
         matches!(&results[0].result, ClaimResult::Pass),
-        "expected tc1_eta_equivalence_executable to Pass (symbolic-cost dimension spine equality \
-         on η-pair roots), got {:?}",
+        "expected tc1_eta_equivalence_executable to Pass (Path A proxy: identical workflow-root \
+         composed SymbolicCost via analyze_symbolic_cost_dimension on η-pair roots — not \
+         Tc1EtaLensObservation report parity; see try_eval_tc1_eta_equivalence_executable rustdoc \
+         / gunbc#1972), got {:?}",
         results[0].result
     );
 }
