@@ -4518,24 +4518,35 @@ pub mod lens_cost_symbolic {
 
     /// Same fold order as regen’d [`generated::compute_symbolic_costs`], plus
     /// [`crate::dag::collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction`] on
-    /// each `Hit` row (P5 receipt: `ROADMAP.md` Post-merge debt (2026-05-08), **R3 gate #78**).
+    /// each `Hit` row **before it enters the fold accumulator** (P5 receipt: `ROADMAP.md`
+    /// Post-merge debt (2026-05-08), **R3 gate #78**).
+    ///
+    /// The generated lens reads operand costs via [`generated::lookup_cost`] against entries built
+    /// earlier in the fold; applying collapse only after the full vector would leave those lookups
+    /// observing uncollapsed `ProductCost` shells (facts-forward / single-authority for composed
+    /// rows).
     /// **Single public authority** for symbolic-cost facts: [`symbolic_cost_of`] is just
     /// [`generated::lookup_cost`] over this table — no parallel uncollapsed export (P2).
     pub fn compute_symbolic_costs(dag: &crate::dag::Dag) -> Vec<SymbolicCostEntry> {
-        generated::compute_symbolic_costs(dag)
-            .into_iter()
-            .map(|SymbolicCostEntry { port, cost }| SymbolicCostEntry {
-                port,
-                cost: match cost {
-                    crate::dag::Lookup::Miss => crate::dag::Lookup::Miss,
-                    crate::dag::Lookup::Hit(c) => crate::dag::Lookup::Hit(
+        use crate::dag::Lookup;
+
+        dag.nodes()
+            .iter()
+            .fold(generated::seed_bind_params(dag.nodes()), |fold_acc, fold_item| {
+                let mut row = generated::entry_for(dag, &fold_acc, fold_item);
+                let port = row.port;
+                row.cost = match row.cost {
+                    Lookup::Miss => Lookup::Miss,
+                    Lookup::Hit(c) => Lookup::Hit(
                         crate::dag::collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
                             dag, port, c,
                         ),
                     ),
-                },
+                };
+                let mut list = fold_acc.clone();
+                list.insert(0, row);
+                list
             })
-            .collect()
     }
 
     /// [`generated::lookup_cost`] over [`compute_symbolic_costs`] — the normalized lens surface (see
