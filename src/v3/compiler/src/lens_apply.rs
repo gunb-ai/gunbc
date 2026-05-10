@@ -11,6 +11,9 @@ use crate::dag::{
     Declaration, DeclarationId, FieldValue, LiteralBits, OperatorKind, PortId, ProducerLookup,
     TransformNode, TransformTarget, TypeConnective, ValueBody,
 };
+use crate::evaluator::{
+    evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
+};
 use crate::infer_helpers::resolve_template_argument_value;
 
 fn is_fold_instantiation(dag: &Dag, decl: &Declaration) -> bool {
@@ -255,6 +258,52 @@ fn find_fold_step_bind_via_instantiation(
     None
 }
 
+/// WIP gate #2374: R2 evaluator path for lenses whose **runtime inputs are scalar literals only**
+/// (`FieldValue::Literal`). Matches PB-runtime-shaped `evaluate` / `evaluate_body` semantics on the
+/// lowered lens graph; falls back to [`EvalCtx`] when preconditions fail or evaluation returns a
+/// non-literal `Value` this bridge cannot yet map back to [`FieldValue`].
+///
+/// **Merge:** still gated on §7.1 Row-4 green; this is early signal only — expand coverage until
+/// `lens_apply.rs` can retire entirely.
+fn try_apply_lens_via_evaluator_literals_only(
+    lens_program: &Dag,
+    root_bind: &BindNode,
+    inputs: &[FieldValue],
+) -> Option<FieldValue> {
+    if !inputs.iter().all(|a| matches!(a, FieldValue::Literal(_))) {
+        return None;
+    }
+    let producer = match lens_program.resolve_producer_lookup(&root_bind.value) {
+        ProducerLookup::Found(b) => b,
+        ProducerLookup::NoProducer | ProducerLookup::MissingPort { .. } => return None,
+        ProducerLookup::MissingNode { .. } | ProducerLookup::BindCycle { .. } => return None,
+    };
+    let entry = producer.id();
+    let runtime_inputs: Vec<Value> = inputs
+        .iter()
+        .map(|fv| match fv {
+            FieldValue::Literal(bits) => Value::LiteralValue(bits.clone()),
+            _ => unreachable!("filtered to literals above"),
+        })
+        .collect();
+    let bindings: Vec<(PortId, Value)> = root_bind
+        .params
+        .iter()
+        .zip(runtime_inputs.into_iter())
+        .map(|(p, v)| (*p, v))
+        .collect();
+    let frame = EvalFrame::from_bindings(bindings).ok()?;
+    let mut state = EvalStateStack::with_root_frame(frame);
+    let strategy = EvalStrategy::ApplicativeOrder {
+        input_order: InputEvaluationOrder::LeftFirst,
+    };
+    let out = evaluate_body(lens_program, entry, &mut state, strategy).ok()?;
+    match out {
+        Value::LiteralValue(bits) => Some(FieldValue::Literal(bits)),
+        _ => None,
+    }
+}
+
 /// Apply a named lens (`Arrow` + `UserDefined` body) from `lens_program` to positional
 /// `inputs` (left-to-right with the arrow's formal parameters).
 ///
@@ -310,6 +359,13 @@ pub fn apply_lens_declaration(
             expected: root_bind.params.len(),
             got: inputs.len(),
         });
+    }
+    if program_under_test.is_none() {
+        if let Some(out) =
+            try_apply_lens_via_evaluator_literals_only(lens_program, root_bind, inputs)
+        {
+            return Ok(out);
+        }
     }
     let mut ctx = EvalCtx::new(lens_program);
     for (port, arg) in root_bind.params.iter().zip(inputs.iter()) {
