@@ -878,7 +878,7 @@ data suite: TestSuite = {
 
 #[test]
 fn r1_canonical_complexity_lens_bytes_declare_complexity_of() {
-    let bytes = v3_compiler::test_runner::R1_CANONICAL_COMPLEXITY_LENS;
+    let bytes = include_str!("../../../lenses/complexity.dag");
     // Post-PR #2271 widening: `cost_of` (int-depth adapter) renamed/widened
     // to `complexity_of` returning `Lookup<ComplexitySummary>` per
     // `docs/v3-lens-capability-register.md` complexity.dag row promotion.
@@ -963,6 +963,68 @@ data spoof_suite: TestSuite = {
         results[0].result,
         ClaimResult::Pass,
         "expected Fail: name-only collision must not select claim-program reflection (structural `ProgramInput` only)"
+    );
+}
+
+#[test]
+fn lens_output_equals_program_output_bind_rejects_non_cost_lens() {
+    let source = r#"
+module test.lens_output_equals_output_bind_wrong_lens
+
+import std.list { fold }
+import std.substrate { Dag, Behavior }
+import std.types { Int }
+import std.verification { LensOutputEquals, ProgramOutputBind, TestClaim, TestSuite }
+
+fn count_named_bind(behavior: Behavior) -> Int =
+  match behavior {
+    Value(v) => 0
+    Transform(t) => 0
+    Branch(b) => 0
+    Loop(l) => 0
+    Bind(bind) => if bind.name == "" then 0 else 1
+  }
+
+fn named_function_count(d: Dag) -> Int =
+  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
+
+data out: Int = 0
+
+data program_output: ProgramOutputBind = {
+  output_ref: out
+}
+
+data expected: Int = 1
+
+data wrong_lens_claim: TestClaim = {
+  name: "wrong_lens_output_bind",
+  source: "let out: Int = 1\n",
+  file_name: "lens_output_equals_wrong_output_bind.v3",
+  predicate: LensOutputEquals(
+    named_function_count,
+    program_output,
+    expected
+  ),
+  requires: []
+}
+
+data wrong_lens_suite: TestSuite = {
+  name: "wrong_lens_suite",
+  claims: [wrong_lens_claim]
+}
+"#;
+    let dag = compile_clean(source, "lens_output_equals_wrong_output_bind_harness.dag");
+    let results = TestRunner::new(&dag).run_suite("wrong_lens_suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::Fail(reason)
+                if reason.contains("does not have the structural cost signature")
+        ),
+        "expected structural cost-signature failure, got {:?}",
+        results[0].result
     );
 }
 
