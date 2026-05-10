@@ -172,15 +172,12 @@ jobs:
     if: github.event.pull_request.draft != true
     # Heavy compute (cargo release builds, full v3 test suite at the
     # 2400s budget + clippy + lens gates). 2-core ubuntu-latest blows
-    # the 60min cap reliably; ubicloud-standard-8 (8 vCPU, ~$0.0256/hr)
-    # finishes the workload in well under cap and is cheaper than the
-    # equivalent self-hosted-electricity bill in the operator's market
-    # (Manhattan rates make running an i9-10900K dedicated CI box
-    # ~$35/mo while ubicloud-standard-8 at this volume ≈ $25/mo). The
-    # `vars.CI_RUNNER` indirection is gone for this job because the
-    # core-count requirement is structural — no orchestrator should
-    # route this onto a 2-core runner regardless of cost-routing.
-    runs-on: ubicloud-standard-8
+    # the 60min cap reliably. Run the heavy job on the gunb-ci ephemeral
+    # GCE Spot runner pool: each queued job gets one n2d-standard-8 VM,
+    # the VM registers as an ephemeral GitHub runner, runs one job, then
+    # self-deletes. Spot preemption is acceptable here; the companion
+    # ci-spot-rerun workflow gives failed runs one automatic retry.
+    runs-on: [self-hosted, linux, x64, gunbc-ci]
     # Full suite is transitionally capped at 2400s, plus clippy + lens gates + cold compile.
     # Revert when the OnceLock/module-cache structural fix brings warmed runs below 1200s;
     # keep job timeout above the in-step budget so Actions does not cancel final steps first.
@@ -391,11 +388,12 @@ jobs:
     # merge-blocking before Lane 1e graduation.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # Same sizing rationale as `v3` above: DB-8 release builds + determinism_test (5× matrix) +
-    # `self_host_fixed_point` run on `ubicloud-standard-8` (#1814); small/default runners saw
-    # mid-compile shutdown on #1794. **60m** wall so cold-cache / full release `cargo` is unlikely
-    # to cancel mid-job; ratchet remains non-blocking. (Runner label is orthogonal to P2:
+    # `self_host_fixed_point` run on the same ephemeral GCE Spot runner pool as `v3`;
+    # small/default runners saw mid-compile shutdown on #1794. **60m** wall so cold-cache
+    # / full release `cargo` is unlikely to cancel mid-job; ratchet remains non-blocking.
+    # (Runner label is orthogonal to P2:
     # `rust-toolchain.toml` + no workflow `toolchain:` input.)
-    runs-on: ubicloud-standard-8
+    runs-on: [self-hosted, linux, x64, gunbc-ci]
     timeout-minutes: 60
     needs: [v3]
     continue-on-error: true
