@@ -2,7 +2,7 @@
 // declarations for the Rust target.
 //
 // PILOT SCOPE (T-Ground-Pilot): {i8, i16, i32, i64, i128, u8, u16, u32, u64,
-// u128, bool, ()} only. No containers, no floats, no coercion paths.
+// u128, f32, f64, bool, ()} only. No containers, no coercion paths.
 //
 // T-Int128 SLICE B1 / B2 (RESOLVED 2026-05-06): both signed `i128` and
 // unsigned `u128` rows are present. The prior B2 deferral of `u128`
@@ -106,8 +106,9 @@ import std.bit { Bit, Byte, Word16, Word32, Word64, Word128 }
 //     SemiringAlgebra     <-> std.algebra.Semiring<C>       (unsigned integers)
 //
 //   NonIntegerAlgebra
-//     BooleanAlgebraAlgebra<-> std.algebra.BooleanAlgebra<C> (Bool)
-//     TerminalAlgebra      <-> single-inhabitant terminal    (Unit; DB-11)
+//     ApproximateFieldAlgebra<-> v3.std.approximate_field.ApproximateField<F> (Float)
+//     BooleanAlgebraAlgebra  <-> std.algebra.BooleanAlgebra<C> (Bool)
+//     TerminalAlgebra        <-> single-inhabitant terminal    (Unit; DB-11)
 //
 // Substrate-gap flag #2: these tags are bridges to algebra references.
 // =========================================================================
@@ -117,7 +118,8 @@ type IntegerAlgebra
   | SemiringAlgebra
 
 type NonIntegerAlgebra
-  = BooleanAlgebraAlgebra
+  = ApproximateFieldAlgebra
+  | BooleanAlgebraAlgebra
   | TerminalAlgebra
 
 
@@ -131,8 +133,8 @@ type NonIntegerAlgebra
 //   BitCarrier     <-> std.bit.Bit         (BooleanAlgebra value-domain: 2-element set)
 //   ByteCarrier    <-> std.bit.Byte        (Ring/Semiring value-domain over 2^8)
 //   Word16Carrier  <-> std.bit.Word16      (Ring/Semiring value-domain over 2^16)
-//   Word32Carrier  <-> std.bit.Word32      (Ring/Semiring value-domain over 2^32)
-//   Word64Carrier  <-> std.bit.Word64      (Ring/Semiring value-domain over 2^64)
+//   Word32Carrier  <-> std.bit.Word32      (Ring/Semiring or ApproximateField width axis)
+//   Word64Carrier  <-> std.bit.Word64      (Ring/Semiring or ApproximateField width axis)
 //   Word128Carrier <-> std.bit.Word128     (Ring/Semiring value-domain over 2^128)
 //   TerminalCarrier<-> single inhabitant   (Unit; DB-11 -> Cardinality 1)
 //
@@ -214,8 +216,8 @@ type RustPrimitive
 // =========================================================================
 // Pilot-set declarations.
 //
-// Ordering: signed machine integers (i8..i64, i128), unsigned machine integers
-// (u8..u64, u128), bool, (). No other types in pilot scope.
+// Ordering: signed integers (i8..i128), unsigned integers (u8..u128), floats
+// (f32, f64), bool, (). No other types in pilot scope.
 // =========================================================================
 
 data rust_pilot_primitives: List<RustPrimitive> = [
@@ -277,6 +279,20 @@ data rust_pilot_primitives: List<RustPrimitive> = [
     range_min_inclusive: "0",
     range_max_inclusive: "340282366920938463463374607431768211455",
     is_copy: true, overflow: TwoComplementWrap },
+
+
+  // -- Floats : ApproximateField over machine-width refinements ----------
+  // Rust Reference §3.4. Floating-point types are IEEE 754 binary32/binary64.
+  // Substrate authority: `dsl/std/float.dag` declares Float32/Float64 as
+  // `Compose<Ieee754Float, MachineWidth<Word32|Word64>>`; `Real` is
+  // `ApproximateField<FieldOfFractions<Int>>`, keeping exact-rational carrier
+  // and approximate witness layers distinct.
+
+  NonIntegerPrimitive { target_name: "f32", algebra: ApproximateFieldAlgebra, carrier: Word32Carrier,
+    is_copy: true },
+
+  NonIntegerPrimitive { target_name: "f64", algebra: ApproximateFieldAlgebra, carrier: Word64Carrier,
+    is_copy: true },
 
 
   // -- Bool : BooleanAlgebra over Bit -----------------------------------
