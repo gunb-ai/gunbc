@@ -17,7 +17,10 @@
 //!
 //! Gate **#78** (`e_p_sub_value_relation_per_call_landed`): **`e_p78_descent_operand_port_follows_evidence_index_not_first_input`**
 //! proves **`per_call_descent_operand_port`** tracks the evidence-selected **`Transform.inputs`** slot,
-//! not callee-input position heuristics — the unary countdown tests remain linear-family smoke only.
+//! not **`inputs[0]`**. Unary Int tail recursion cannot put descent only on a later argument (termination
+//! expects the first parameter to descend); this regression uses **preserved head `Int` + list-tail structural
+//! descent** so evidence row `0` is **`PreservedValue`** and the relation chosen for **`CallPattern`** is on
+//! **`inputs[1]`**.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
@@ -155,21 +158,29 @@ fn e_p_sub_value_relation_per_call_landed_cost_lens_routes_through_per_call_patt
 }
 
 /// R3 gate **#78** — regression that matters for **descent index discipline**: when evidence slot 0 is
-/// **`PreservedValue`** and arithmetic descent is on a **later** operand, `per_call_descent_operand_port`
-/// must resolve **`TransformNode::inputs[k]`** for that row — **not** `inputs[0]`.
+/// **`PreservedValue`** and the first selectable **`SubValueRelation`** maps to a **`CallPattern`** on a
+/// **later** operand, `per_call_descent_operand_port` must resolve **`TransformNode::inputs[k]`** for that
+/// row — **not** `inputs[0]`.
 #[test]
 fn e_p78_descent_operand_port_follows_evidence_index_not_first_input() {
     run_with_symbolic_cost_stack(|| {
         let dag = compile_to_dag(
-            "fn tail_only(acc: Int, n: Int) -> Int =\n  if n == 0 then acc else tail_only(acc, n - 1)",
+            "\
+type EpListP = EpNilP | EpConsP(EpListP)
+fn ep_g78_acc(i: Int, xs: EpListP) -> Int =
+  match xs {
+    EpConsP(tail) => ep_g78_acc(i, tail),
+    EpNilP => i
+  }
+",
             "e_p78_non_head_descent.v3",
         )
-        .expect("compile two-arg tail recursion");
+        .expect("compile preserved-head + list-tail self-call");
 
         let entry = per_call_descent_evidence(&dag)
             .into_iter()
-            .find(|e| e.caller == "tail_only" && e.callee == "tail_only")
-            .expect("expected tail_only self-call in per-call descent evidence");
+            .find(|e| e.caller == "ep_g78_acc" && e.callee == "ep_g78_acc")
+            .expect("expected ep_g78_acc self-call in per-call descent evidence");
 
         assert!(
             entry.evidence.len() >= 2,
@@ -178,12 +189,12 @@ fn e_p78_descent_operand_port_follows_evidence_index_not_first_input() {
         );
         assert!(
             matches!(entry.evidence[0], SubValueRelation::PreservedValue),
-            "first arg acc must be preserved — first evidence row should be PreservedValue; got {:?}",
+            "first arg `i` must be preserved — first evidence row should be PreservedValue; got {:?}",
             entry.evidence[0]
         );
         assert!(
-            matches!(entry.evidence[1], SubValueRelation::ArithmeticDescent { .. }),
-            "second arg n-1 must carry arithmetic descent; got {:?}",
+            matches!(entry.evidence[1], SubValueRelation::StrictSubValue { .. }),
+            "second arg `tail` must carry structural descent; got {:?}",
             entry.evidence[1]
         );
 
@@ -195,7 +206,7 @@ fn e_p78_descent_operand_port_follows_evidence_index_not_first_input() {
 
         assert!(
             transform.inputs.len() >= 2,
-            "tail_only call should have at least two operand ports; got {}",
+            "ep_g78_acc call should have at least two operand ports; got {}",
             transform.inputs.len()
         );
 
@@ -213,7 +224,7 @@ fn e_p78_descent_operand_port_follows_evidence_index_not_first_input() {
             "gate #78 regression: must not treat head operand as descent when evidence selects arg 1"
         );
 
-        let cost = expect_symbolic_cost(&dag, "tail_only");
+        let cost = expect_symbolic_cost(&dag, "ep_g78_acc");
         let mut ports = Vec::new();
         linear_size_ports(&cost, &mut ports);
         assert!(
