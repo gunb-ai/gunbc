@@ -39,6 +39,12 @@ data r3_l4_emit_eval_nested_program_input: ProgramOutputBind = {
   output_ref: l4_nested_out
 }
 
+data l4_add_then_branch_out: Int = 0
+
+data r3_l4_emit_eval_add_then_branch_program_input: ProgramOutputBind = {
+  output_ref: l4_add_then_branch_out
+}
+
 // §1.8 gate #9 `l4_emit_eval_match` — slice-1 certification seed (Rust / Int stdout); lane closure
 // still requires exhaustive corpus growth per `r3-structure.md` §Acceptance.
 data l4_emit_eval_match: TestClaim = {
@@ -77,6 +83,18 @@ data r3_verification_l4_emit_eval_nested_branch: TestClaim = {
   requires: []
 }
 
+data r3_verification_l4_emit_eval_add_then_branch: TestClaim = {
+  name: "r3_verification_l4_emit_eval_add_then_branch",
+  source: "// R3 L4 — corpus seed from the Lane 1 brief: function call + Int arithmetic + branch lowering + one named output bind.\n\nfn l4_add(a: Int, b: Int) -> Int = a + b\n\nlet l4_acc: Int = l4_add(1, 2)\nlet l4_add_then_branch_out: Int =\n  match l4_acc == 3 {\n    True => l4_acc\n    False => 0\n  }\n",
+  file_name: "r3_verification_l4_emit_eval_add_then_branch.v3",
+  predicate: DifferentialEquals(
+    rust_emit_output,
+    dag_eval_output,
+    r3_l4_emit_eval_add_then_branch_program_input
+  ),
+  requires: []
+}
+
 // Declaration id is fixture-local and distinct from `r3_verification_l7_algebraic_laws.dag` so two
 // modules are never ambiguous under one loader. L7 claims join this suite name when lane 1 closes
 // under one loader module (parent brief); until then this suite lists L4 certification seeds only.
@@ -85,6 +103,7 @@ data r3_verification_l4_l7_direct_suite: TestSuite = {
   claims: [
     l4_emit_eval_match,
     r3_verification_l4_emit_eval_false_branch,
-    r3_verification_l4_emit_eval_nested_branch
+    r3_verification_l4_emit_eval_nested_branch,
+    r3_verification_l4_emit_eval_add_then_branch
   ]
 }
