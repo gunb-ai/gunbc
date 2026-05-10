@@ -1578,6 +1578,99 @@ fn bind_body_transform_ids(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
     transforms
 }
 
+fn bind_body_reachable_nodes(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
+    let mut transforms = HashSet::new();
+    let mut visited_ports = HashSet::new();
+    let mut visited_nodes = HashSet::new();
+    collect_body_port(
+        dag,
+        bind.value,
+        &mut visited_ports,
+        &mut visited_nodes,
+        &mut transforms,
+    );
+    visited_nodes
+}
+
+/// True when `call_site` lies in the subgraph rooted at [`LoopNode::body`] for some [`LoopNode`]
+/// in `bind`'s body whose [`LoopNode::source`] is the unary formal `param`.
+///
+/// This is the spatial half of the gate **#78** duplicate-induction witness: `cost.dag` composes
+/// `loop_cost` (`Linear(loop.source)`) with `combine_iterate` only along this lowered shape — so we
+/// must not collapse param×descent products arising from unrelated linear work outside that loop
+/// envelope.
+fn self_call_under_param_bound_loop(
+    dag: &Dag,
+    bind: &BindNode,
+    param: PortId,
+    call_site: NodeId,
+) -> bool {
+    for node_id in bind_body_reachable_nodes(dag, bind) {
+        let Some(Behavior::Loop(loop_node)) = dag.node_opt(&node_id) else {
+            continue;
+        };
+        if loop_node.source != param {
+            continue;
+        }
+        let mut visited_ports = HashSet::new();
+        let mut visited_nodes = HashSet::new();
+        let mut transforms = HashSet::new();
+        collect_body_node(
+            dag,
+            loop_node.body,
+            &mut visited_ports,
+            &mut visited_nodes,
+            &mut transforms,
+        );
+        if visited_nodes.contains(&call_site) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Joint structural witness for gate **#78** iterate-alias collapse: same owning declaration
+/// self-call as [`per_call_descent_evidence`], `other_port` as [`per_call_descent_operand_port`], and
+/// that call appears under a param-sourced loop body (links [`LoopNode::source`] with per-call
+/// recurrence wiring — not descent-port coincidence alone).
+fn unary_bind_duplicate_iter_alias_evidence(
+    dag: &Dag,
+    bind: &BindNode,
+    param: PortId,
+    other_port: PortId,
+) -> bool {
+    let Some(owning_decl) = declaration_id_owning_bind_root(dag, bind.id) else {
+        return false;
+    };
+    let caller_template = callable_target_template_for_provenance(dag, owning_decl);
+    let CallableProvenance::Resolved(caller_tpl) = caller_template else {
+        return false;
+    };
+
+    for call_site in bind_body_transform_ids(dag, bind) {
+        let Some(transform) = dag.node_opt(&call_site).and_then(Behavior::as_transform) else {
+            continue;
+        };
+        let TransformTarget::Callable(target_decl) = transform.target else {
+            continue;
+        };
+        let callee_template = callable_target_template_for_provenance(dag, target_decl);
+        let CallableProvenance::Resolved(callee_tpl) = callee_template else {
+            continue;
+        };
+        if caller_tpl != callee_tpl {
+            continue;
+        }
+        if per_call_descent_operand_port(dag, call_site) != Some(other_port) {
+            continue;
+        }
+        if self_call_under_param_bound_loop(dag, bind, param, call_site) {
+            return true;
+        }
+    }
+    false
+}
+
 fn collect_body_port(
     dag: &Dag,
     port: PortId,
@@ -5011,7 +5104,7 @@ mod tests {
     }
 
     #[test]
-    fn collapse_unary_bind_product_requires_self_call_descent_operand_witness() {
+    fn collapse_unary_bind_product_requires_joint_iter_alias_witness() {
         let dag = crate::compile_to_dag(
             "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
             "collapse_evidence_unit.v3",
@@ -5057,8 +5150,8 @@ mod tests {
         );
         assert!(
             matches!(collapsed, SymbolicCost::LinearCost { .. }),
-            "duplicate-induction artifact should collapse when second factor is descent operand: \
-             {collapsed:?}"
+            "gate #78 duplicate iterate-alias (param loop × descent operand, call under loop body) \
+             should collapse: {collapsed:?}"
         );
 
         let bogus = PortId::test_raw(999_999);
@@ -5069,7 +5162,7 @@ mod tests {
         );
         assert!(
             matches!(unchanged, SymbolicCost::ProductCost { .. }),
-            "non-descent second linear factor must not collapse: {unchanged:?}"
+            "bogus second factor must not collapse without joint witness: {unchanged:?}"
         );
     }
 
