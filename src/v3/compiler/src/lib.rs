@@ -5134,6 +5134,7 @@ pub(crate) mod variant_payload {
         variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
     };
 }
+mod r3_fc_lane2_loop_witness;
 pub(crate) mod workflow_idempotency;
 pub(crate) mod workflow_parallelism;
 
@@ -5157,7 +5158,7 @@ pub use workflow_idempotency::{
     lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
 };
 /// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
-pub use workflow_parallelism::analyze_parallelism;
+pub use workflow_parallelism::{analyze_parallelism, loop_iteration_parallel_emission_indicator};
 
 /// Lane 2 Stage 2f — DB-3 dimension abstraction (`std/dimensions.dag` types;
 /// `analyze_symbolic_cost_dimension` is the first migrated lens path).
@@ -5323,6 +5324,7 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
         lower::lower(&surface)
     };
     infer::infer(&mut dag);
+    r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, source, file);
     if dag.diagnostics().is_empty() {
         Ok(dag)
     } else {
@@ -5360,6 +5362,7 @@ fn compile_onto_parse_surface_free_bootstrap(
     lower::lower_into(&mut dag, &surface);
     lower::finalize_strict_user_lower_range(&mut dag, user_start);
     infer::infer(&mut dag);
+    r3_fc_lane2_loop_witness::apply_authored_lane2_loop_witness(&mut dag, source, file);
     if dag.diagnostics().is_empty() {
         Ok(dag)
     } else {
