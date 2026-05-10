@@ -257,6 +257,13 @@ fn projection_target(dag: &Dag, value: &FieldValue) -> ProjectionTarget {
     let fields = match value {
         FieldValue::Record(fields) => fields,
         FieldValue::Reference(target) => {
+            let target_decl = dag.declaration(*target);
+            match target_decl.name.as_deref() {
+                Some("rust_shape_a_target") => return ProjectionTarget::Rust,
+                Some("python_shape_a_target") => return ProjectionTarget::Python,
+                Some("go_shape_a_target") => return ProjectionTarget::Go,
+                _ => {}
+            }
             if Some(*target) == dag.rust_language_spec() {
                 return ProjectionTarget::Rust;
             } else if Some(*target) == dag.python_language_spec() {
@@ -264,7 +271,6 @@ fn projection_target(dag: &Dag, value: &FieldValue) -> ProjectionTarget {
             } else if Some(*target) == dag.go_language_spec() {
                 return ProjectionTarget::Go;
             }
-            let target_decl = dag.declaration(*target);
             let Some(ValueBody::Structural { fields }) = target_decl.value_body.as_ref() else {
                 panic!(
                     "ShapeATarget reference must resolve to structural data, got {target_decl:?}"

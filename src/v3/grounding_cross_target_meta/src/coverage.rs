@@ -526,10 +526,18 @@ mod tests {
     use super::*;
     use v3_compiler::generated_full_bootstrap_dag;
 
+    fn shape_target(dag: &Dag, name: &str) -> ShapeATarget {
+        ShapeATarget::new(
+            dag.declaration_by_name(name)
+                .unwrap_or_else(|| panic!("{name}"))
+                .id,
+        )
+    }
+
     fn bootstrap_key_pair() -> (ProjectionKey, ProjectionKey) {
         let dag = generated_full_bootstrap_dag();
-        let rust_target = ShapeATarget::new(dag.rust_language_spec().expect("rust language"));
-        let python_target = ShapeATarget::new(dag.python_language_spec().expect("python language"));
+        let rust_target = shape_target(&dag, "rust_shape_a_target");
+        let python_target = shape_target(&dag, "python_shape_a_target");
         let rows = projection_rows(&dag).expect("bootstrap projection rows");
         let rust_count = rows
             .iter()
@@ -649,7 +657,7 @@ mod tests {
             })
         ));
 
-        let target = ShapeATarget::new(dag.rust_language_spec().expect("rust language"));
+        let target = shape_target(&dag, "rust_shape_a_target");
         let empty_cells = FieldValue::List(vec![]);
         assert!(matches!(
             projection_cells(&dag, 0, target, &empty_cells),

@@ -1,15 +1,14 @@
 //! L6 cross-product walker. Pure function over the bootstrap [`Dag`];
-//! reports per-cell coverage against landed LanguageSpec **row**
-//! authorities (Phase 1 `MethodTemplateContract` lists — see
-//! [`crate::coverage`]).
+//! reports per-cell coverage against landed `EmissionPathProjection`
+//! row authorities (see [`crate::coverage`]).
 //!
 //! ## Coverage lookup
 //!
-//! Coverage is derived from substrate-loaded `List<MethodTemplateContract>`
-//! declarations per Shape A target (`*_method_template_contracts.dag`), not
-//! from a dedicated `emission_paths` map. [`walk_cross_product`] builds the
-//! covered-cell set via [`crate::coverage::language_spec_emission_cells_covered`],
-//! then partitions [`crate::cells::Cell::all`] with `covered.contains(&cell)`.
+//! Coverage is derived from substrate-loaded
+//! `List<EmissionPathProjection>` declarations per Shape A target.
+//! [`walk_cross_product`] builds the covered-cell set via
+//! [`crate::coverage::language_spec_emission_cells_covered`], then
+//! partitions [`crate::cells::Cell::all`] with `covered.contains(&cell)`.
 
 use std::collections::HashSet;
 

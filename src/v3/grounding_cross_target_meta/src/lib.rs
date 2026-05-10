@@ -88,6 +88,14 @@ mod tests {
     use super::*;
     use v3_compiler::generated_full_bootstrap_dag;
 
+    fn shape_target(dag: &v3_compiler::dag::Dag, name: &str) -> ShapeATarget {
+        ShapeATarget::new(
+            dag.declaration_by_name(name)
+                .unwrap_or_else(|| panic!("{name}"))
+                .id,
+        )
+    }
+
     /// Expected L6 coverage at HEAD from Step 1 audit of
     /// `rust_method_template_contracts` / `python_method_template_contracts` /
     /// `go_method_template_contracts`: each list is non-empty (Rust 13, Python 17,
@@ -123,17 +131,17 @@ mod tests {
             Cell {
                 connective: FormAxis::Cardinality,
                 behavior: BehaviorAxis::Transform,
-                target: ShapeATarget::new(dag.rust_language_spec().expect("rust language")),
+                target: shape_target(&dag, "rust_shape_a_target"),
             },
             Cell {
                 connective: FormAxis::Cardinality,
                 behavior: BehaviorAxis::Transform,
-                target: ShapeATarget::new(dag.python_language_spec().expect("python language")),
+                target: shape_target(&dag, "python_shape_a_target"),
             },
             Cell {
                 connective: FormAxis::Cardinality,
                 behavior: BehaviorAxis::Transform,
-                target: ShapeATarget::new(dag.go_language_spec().expect("go language")),
+                target: shape_target(&dag, "go_shape_a_target"),
             },
         ];
         for cell in expected_present {
