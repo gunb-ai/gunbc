@@ -12,9 +12,10 @@ import std.termination {
   TerminationProof
 }
 
-// Bidirectional adjacency representation: forward (caller→callee) and
-// reverse (callee→caller) edges, keyed by node name.
-// M4 note: String keys are a textual identity proxy. Post-M4, vertices
+// Forward adjacency representation: caller → callee, keyed by node
+// name. Reverse adjacency is derived on demand via `reverse_adjacency`
+// — single authority dissolves the dual-authority illegal state where
+// `forward` and `reverse` could disagree.
 // M4 debt: String keys are textual identity proxies. Post-M4, vertices
 // should be structural Node references so SCC/cycle facts derive from
 // structure, not name equality. Currently safe because function names
@@ -22,7 +23,6 @@ import std.termination {
 // compilation unit). Blocked on Map<K,V> supporting non-String keys.
 type CallGraph {
   forward: Map<String, List<String>>
-  reverse: Map<String, List<String>>
 }
 
 // DFS accumulator for Kosaraju pass 1: finish order computation.
@@ -58,19 +58,34 @@ fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
 // (they are handled separately by cycle detection callers).
 fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
   let initial_forward = seed_adjacency_map(names: names)
-  let initial_reverse = seed_adjacency_map(names: names)
-  edges |> filter(e => e.caller != e.callee) |> fold(init: CallGraph { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+  edges |> filter(e => e.caller != e.callee) |> fold(init: CallGraph { forward: initial_forward }, f: (acc, edge) =>
     let forward_neighbors = match map_get(acc.forward, edge.caller) {
       Some { value: ns } => concat(ns, [edge.callee])
       None => [edge.callee]
     }
-    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
-      Some { value: ns } => concat(ns, [edge.caller])
-      None => [edge.caller]
-    }
     CallGraph {
-      forward: map_insert(acc.forward, edge.caller, forward_neighbors),
-      reverse: map_insert(acc.reverse, edge.callee, reverse_neighbors)
+      forward: map_insert(acc.forward, edge.caller, forward_neighbors)
+    }
+  )
+}
+
+// Derive reverse adjacency (callee → callers) from the forward edge
+// authority. Visits each forward edge once and inverts it. Result is
+// not seeded with caller-side empty lists, because all consumers
+// (DFS over names, worklist lookups) fall back to `[]` on missing
+// keys via `map_get` and don't depend on key presence.
+fn reverse_adjacency(graph: CallGraph) -> Map<String, List<String>> {
+  map_keys(graph.forward) |> fold(init: empty_map(), f: (acc, caller) =>
+    match map_get(graph.forward, caller) {
+      Some { value: callees } =>
+        callees |> fold(init: acc, f: (inner, callee) =>
+          let existing = match map_get(inner, callee) {
+            Some { value: ns } => ns
+            None => []
+          }
+          map_insert(inner, callee, concat(existing, [caller]))
+        )
+      None => acc
     }
   )
 }
@@ -119,6 +134,7 @@ fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc
 // Detect whether the graph contains a strongly connected component with
 // more than one node (Kosaraju's algorithm: 2-pass DFS).
 fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
+  let reverse_view = reverse_adjacency(graph: graph)
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
   )
@@ -126,7 +142,7 @@ fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
     if acc.has_cycle || set_has(m: acc.visited, key: name) {
       acc
     } else {
-      let component = dfs_collect_component(node: name, adjacency: graph.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
+      let component = dfs_collect_component(node: name, adjacency: reverse_view, acc: SccComponentAcc { visited: acc.visited, members: [] })
       SccCycleAcc {
         visited: component.visited,
         has_cycle: (component.members |> count) > 1

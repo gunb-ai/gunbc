@@ -82,7 +82,7 @@ import std.algebra {
 }
 import std.graph {
   CallGraph, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
-  seed_adjacency_map, build_call_graph_from_proof_edges,
+  seed_adjacency_map, build_call_graph_from_proof_edges, reverse_adjacency,
   dfs_finish_order, dfs_collect_component, graph_has_multi_node_scc,
   is_lexicographic_descent, is_valid_proof
 }
@@ -1163,7 +1163,7 @@ fn infer_parser_always_advancing_members(members: List<String>, func_index: Map<
       None => []
     }
   )
-  let reverse_graph = build_call_graph(func_entries: parser_entries, si: si).reverse
+  let reverse_graph = reverse_adjacency(graph: build_call_graph(func_entries: parser_entries, si: si))
   infer_parser_always_advancing_members_worklist(
     queue: members,
     func_index: func_index,
@@ -1211,19 +1211,13 @@ fn seed_func_entry_map(key: String, value: FuncEntry) -> Map<String, FuncEntry> 
 
 fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
   let initial_forward = seed_adjacency_map(names: names)
-  let initial_reverse = seed_adjacency_map(names: names)
-  edges |> fold(init: CallGraph { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+  edges |> fold(init: CallGraph { forward: initial_forward }, f: (acc, edge) =>
     let forward_neighbors = match map_get(acc.forward, edge.caller) {
       Some { value: ns } => ns
       None => []
     }
-    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
-      Some { value: ns } => ns
-      None => []
-    }
     CallGraph {
-      forward: map_insert(acc.forward, edge.caller, list_push(forward_neighbors, edge.callee)),
-      reverse: map_insert(acc.reverse, edge.callee, list_push(reverse_neighbors, edge.caller))
+      forward: map_insert(acc.forward, edge.caller, list_push(forward_neighbors, edge.callee))
     }
   )
 }
@@ -3221,19 +3215,13 @@ fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, NewlineIndex>
     collect_local_call_edges_in_expr(caller: entry.name, body: entry.body, local_func_set: local_func_set, si: si)
   )
   let initial_forward = seed_adjacency_map(names: names)
-  let initial_reverse = seed_adjacency_map(names: names)
-  edges |> fold(init: CallGraph { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+  edges |> fold(init: CallGraph { forward: initial_forward }, f: (acc, edge) =>
     let forward_neighbors = match map_get(acc.forward, edge.caller) {
       Some { value: ns } => ns
       None => []
     }
-    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
-      Some { value: ns } => ns
-      None => []
-    }
     CallGraph {
-      forward: map_insert(acc.forward, edge.caller, list_push(forward_neighbors, edge.callee)),
-      reverse: map_insert(acc.reverse, edge.callee, list_push(reverse_neighbors, edge.caller))
+      forward: map_insert(acc.forward, edge.caller, list_push(forward_neighbors, edge.callee))
     }
   )
 }
@@ -3943,6 +3931,7 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
 fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEntry>, si: Map<String, NewlineIndex>) -> SccResult {
   let names = func_entries |> map(entry => entry.name)
   let graph = build_call_graph(func_entries: func_entries, si: si)
+  let reverse_view = reverse_adjacency(graph: graph)
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
   )
@@ -3951,7 +3940,7 @@ fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEn
     if set_has(m: acc.assigned, key: name) {
       acc
     } else {
-      let component = dfs_collect_component(node: name, adjacency: graph.reverse, acc: SccComponentAcc { visited: acc.assigned, members: [] })
+      let component = dfs_collect_component(node: name, adjacency: reverse_view, acc: SccComponentAcc { visited: acc.assigned, members: [] })
       let member_set = component.members |> fold(init: empty_map(), f: (inner, member) =>
         map_insert(inner, member, true)
       )
