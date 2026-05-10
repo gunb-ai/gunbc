@@ -93,8 +93,9 @@ fn shape_a_target_record_carries_language_spec_ref() {
     let fields = conj_field_label_and_type_names(&dag, decl, SHAPE_A_TARGET);
     assert_eq!(
         fields,
-        vec![("spec", "LanguageSpec")],
-        "ShapeATarget must dissolve the closed Rust/Python/Go enum into a typed LanguageSpec ref"
+        vec![("spec", "DeclarationRef")],
+        "ShapeATarget must dissolve the closed Rust/Python/Go enum into a declaration ref \
+         that consumers fail-closed refine to LanguageSpec"
     );
 }
 
@@ -250,7 +251,9 @@ fn projection_target(dag: &Dag, value: &FieldValue) -> ProjectionTarget {
         FieldValue::Reference(target) => {
             let target_decl = dag.declaration(*target);
             let Some(ValueBody::Structural { fields }) = target_decl.value_body.as_ref() else {
-                panic!("ShapeATarget reference must resolve to structural data, got {target_decl:?}");
+                panic!(
+                    "ShapeATarget reference must resolve to structural data, got {target_decl:?}"
+                );
             };
             owned_fields = fields.clone();
             &owned_fields

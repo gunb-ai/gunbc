@@ -407,12 +407,14 @@ fn shape_target(
 ) -> Result<ShapeATarget, ProjectionCoverageError> {
     let value = match value {
         FieldValue::Reference(target) => {
-            let declaration = dag.declarations().iter().find(|decl| decl.id == *target).ok_or(
-                ProjectionCoverageError::RowIdentityTargetReferenceMissing {
+            let declaration = dag
+                .declarations()
+                .iter()
+                .find(|decl| decl.id == *target)
+                .ok_or(ProjectionCoverageError::RowIdentityTargetReferenceMissing {
                     row_index,
                     target: *target,
-                },
-            )?;
+                })?;
             declaration
                 .value_body
                 .as_ref()

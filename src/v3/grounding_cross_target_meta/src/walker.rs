@@ -13,7 +13,7 @@
 
 use v3_compiler::dag::Dag;
 
-use crate::cells::{Cell, ShapeATarget};
+use crate::cells::Cell;
 use crate::coverage::{language_spec_emission_cells_covered, language_spec_targets};
 use crate::diagnostic::EmissionDiagnostic;
 
@@ -42,10 +42,13 @@ impl CrossProductReport {
 pub fn walk_cross_product(dag: &Dag) -> CrossProductReport {
     let covered = language_spec_emission_cells_covered(dag);
     let targets = language_spec_targets(dag).unwrap_or_else(|| {
-        covered
-            .iter()
-            .map(|cell| cell.target)
-            .collect::<Vec<ShapeATarget>>()
+        let mut targets = Vec::new();
+        for cell in &covered {
+            if !targets.contains(&cell.target) {
+                targets.push(cell.target);
+            }
+        }
+        targets
     });
     let mut present = Vec::new();
     let mut missing = Vec::new();

@@ -16,9 +16,11 @@
 //!   this?" — anchored by #1229.
 //! - **Behavior axis** — five [`v3_compiler::dag::Behavior`] variants
 //!   per L1 model (`Value`, `Transform`, `Branch`, `Loop`, `Bind`).
-//! - **Target axis** — three Shape A targets (Rust / Python / Go).
+//! - **Target axis** — loaded `LanguageSpec` declarations. The current
+//!   bootstrap corpus contains Rust, Python, and Go.
 //!
-//! Total: `6 × 5 × 3 = 90` cells. Today's LanguageSpec has intentional
+//! Total: `6 × 5 × |LanguageSpec targets|` cells (90 for today's
+//! three-target bootstrap corpus). Today's LanguageSpec has intentional
 //! gaps named in deferral receipts elsewhere in the program (Rust
 //! higher-order Phase 1.5; Go `chars` tokenizer; per-input fields
 //! parser-grammar; etc.); the walker reports those as
@@ -51,7 +53,7 @@
 //! ## Status
 //!
 //! **R2 closure-pre-pass — real coverage fold.** The walker enumerates
-//! all 90 cells and resolves each against landed `MethodTemplateContract`
+//! 30 cells per loaded target and resolves each against landed `MethodTemplateContract`
 //! row authorities (`src/v3/std/*_method_template_contracts.dag`). At
 //! HEAD, Phase 1 rows cover **Cardinality × Transform × Shape A target**
 //! for each non-empty per-target list (see `coverage` module audit); all

@@ -105,8 +105,8 @@ impl ShapeATarget {
 }
 
 /// One cell in the (form × behavior × target) cross product. The
-/// L6 walker enumerates all 90 of these and reports per-cell coverage
-/// against the LanguageSpec emission-path table.
+/// L6 walker enumerates 30 cells per target and reports per-cell
+/// coverage against the LanguageSpec emission-path table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cell {
     pub connective: FormAxis,
