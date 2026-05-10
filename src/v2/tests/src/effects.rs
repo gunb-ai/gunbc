@@ -7,6 +7,7 @@ use v2_compiler::rest_transport_facts::{
 };
 use v2_compiler::std_effects::*;
 use v2_compiler::std_http_path::{has_path_params, last_path_param, parse_path_template};
+use v2_compiler::std_types::HttpMethod;
 use v2_compiler::v2_compiler_parse::parse;
 use v2_compiler::v2_compiler_tokenize::tokenize;
 use v2_compiler::v2_std_core::{build_newline_index, NewlineIndex, Node};
@@ -18,8 +19,13 @@ fn parse_ok(path: &str) -> Rc<PathTemplate> {
     }
 }
 
+fn parse_method_ok(method: &str) -> HttpMethod {
+    parse_http_method(&method.to_string())
+        .unwrap_or_else(|| panic!("expected known HTTP method, got {method}"))
+}
+
 fn derive_result(name: &str, method: &str, path: &str) -> Rc<DeriveOpEffectResult> {
-    derive_op_effect(name.to_string(), &method.to_string(), path.to_string())
+    derive_op_effect(name.to_string(), parse_method_ok(method), parse_ok(path))
 }
 
 fn derive(name: &str, method: &str, path: &str) -> Rc<DerivedOpEffect> {
@@ -122,7 +128,7 @@ fn parse_path_rejects_multiple_params_in_one_segment() {
 }
 
 // =========================================================================
-// Effect derivation (fail-closed)
+// Effect derivation (typed structural inputs)
 // =========================================================================
 
 #[test]
@@ -178,22 +184,21 @@ fn delete_without_path_key_fails_closed() {
 }
 
 #[test]
-fn malformed_path_fails_closed_at_derivation_boundary() {
+fn derivation_consumes_typed_method_and_path_template_without_parsing_strings() {
+    let path = parse_ok("/repos/{owner}/{repo}");
+    let result = derive_op_effect("TypedBoundary".to_string(), HttpMethod::PUT, path);
     assert!(matches!(
-        &*derive_result("Broken", "PUT", "/repos/{owner/pulls"),
-        DeriveOpEffectResult::MalformedPathInput { .. }
+        &*result,
+        DeriveOpEffectResult::DerivedEffect { .. }
     ));
 }
 
 #[test]
-fn unknown_method_and_malformed_path_are_distinct_failures() {
+fn method_and_path_string_failures_remain_at_surface_parsers() {
+    assert!(parse_http_method(&"TRACE".to_string()).is_none());
     assert!(matches!(
-        &*derive_result("Broken", "TRACE", "/repos/{owner}/{repo}"),
-        DeriveOpEffectResult::UnknownHttpMethodInput { .. }
-    ));
-    assert!(matches!(
-        &*derive_result("Broken", "PUT", "/repos/{owner/pulls"),
-        DeriveOpEffectResult::MalformedPathInput { .. }
+        &*parse_path_template(&"/repos/{owner/pulls".to_string()),
+        PathTemplateParseResult::MalformedPathTemplate { .. }
     ));
 }
 
