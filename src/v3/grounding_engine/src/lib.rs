@@ -5,7 +5,7 @@
 //!
 //! **Phase 2 (sharpened-(b), enumeration slice)** walks
 //! `rust_pilot_primitives.value_body` as [`ValueBody::List`] and checks that
-//! the first pilot row matches the authority ordering in
+//! each pilot row matches the authority ordering in
 //! `dsl/extdeps/languages/rust/primitives.dag` (asserted here via the pilot
 //! crate's `RUST_PILOT_PRIMITIVES` mirror until mirror retirement completes).
 //!
@@ -131,7 +131,11 @@ pub fn validate_rust_primitive_type_structure(
     let non_integer_algebra = expect_enum_shape(
         dag,
         "NonIntegerAlgebra",
-        &["BooleanAlgebraAlgebra", "TerminalAlgebra"],
+        &[
+            "ApproximateFieldAlgebra",
+            "BooleanAlgebraAlgebra",
+            "TerminalAlgebra",
+        ],
     )?;
     let target_carrier = expect_enum_shape(
         dag,
@@ -172,12 +176,12 @@ pub fn validate_mirror_consistency() -> StructureResult<()> {
     }
     validate_pilot_values_with_shape(&shape)?;
     validate_rust_pilot_primitives_target_name_multiset_matches_mirror()?;
-    validate_first_rust_pilot_row_matches_mirror()
+    validate_rust_pilot_rows_match_mirror()
 }
 
 /// Cementing receipt (R3 / gunbc#2461): every `target_name` in the lowered
 /// `rust_pilot_primitives` list matches the multiset carried by
-/// `RUST_PILOT_PRIMITIVES`, with substrate (`.dag`) as authority — fail-closed
+/// `RUST_PILOT_PRIMITIVES`, with substrate (`.dag`) as authority - fail-closed
 /// if either side introduces or drops a name the other lacks.
 pub fn validate_rust_pilot_primitives_target_name_multiset_matches_mirror() -> StructureResult<()> {
     let dag = Dag::new();
@@ -235,9 +239,9 @@ pub fn validate_rust_pilot_primitives_target_name_multiset_matches_mirror() -> S
     Ok(())
 }
 
-/// Phase 2: the first lowered `rust_pilot_primitives` list element must match
-/// `RUST_PILOT_PRIMITIVES[0]` (authority ordering in `primitives.dag`).
-pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
+/// Phase 2: every lowered `rust_pilot_primitives` list element must match the
+/// mirror row at the same position (authority ordering in `primitives.dag`).
+pub fn validate_rust_pilot_rows_match_mirror() -> StructureResult<()> {
     let dag = Dag::new();
     let pilot_list = dag
         .rust_pilot_primitives()
@@ -270,53 +274,62 @@ pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
             actual: value_body_kind(body),
         });
     };
-    let first = elements.first().ok_or_else(|| StructureMismatch {
-        location: "rust_pilot_primitives.value_body".to_string(),
-        expected: "non-empty pilot list".to_string(),
-        actual: "empty list".to_string(),
-    })?;
+    if elements.len() != RUST_PILOT_PRIMITIVES.len() {
+        return Err(StructureMismatch {
+            location: "rust_pilot_primitives.value_body".to_string(),
+            expected: format!("{} mirror rows", RUST_PILOT_PRIMITIVES.len()),
+            actual: format!("{} loaded rows", elements.len()),
+        });
+    }
+
+    for (idx, (element, mirror)) in elements.iter().zip(RUST_PILOT_PRIMITIVES).enumerate() {
+        assert_rust_pilot_row_matches_mirror(&dag, &disj_variants, idx, element, mirror)?;
+    }
+    Ok(())
+}
+
+fn assert_rust_pilot_row_matches_mirror(
+    dag: &Dag,
+    disj_variants: &[Field],
+    idx: usize,
+    element: &FieldValue,
+    mirror: &PilotRustPrimitive,
+) -> StructureResult<()> {
+    let location = format!("rust_pilot_primitives[{idx}]");
     let FieldValue::Variant {
         constructor,
         payload,
-    } = first
+    } = element
     else {
         return Err(StructureMismatch {
-            location: "rust_pilot_primitives[0]".to_string(),
+            location,
             expected: "FieldValue::Variant".to_string(),
-            actual: field_value_kind(first),
+            actual: field_value_kind(element),
         });
     };
 
-    let variant_label = rust_primitive_variant_label(&disj_variants, *constructor)?;
-    let mirror0 = RUST_PILOT_PRIMITIVES
-        .first()
-        .ok_or_else(|| StructureMismatch {
-            location: "RUST_PILOT_PRIMITIVES".to_string(),
-            expected: "non-empty mirror slice".to_string(),
-            actual: "empty".to_string(),
-        })?;
-
+    let variant_label = rust_primitive_variant_label(disj_variants, *constructor, idx)?;
     let label = variant_label.as_str();
-    match mirror0 {
+    match mirror {
         PilotRustPrimitive::IntegerPrimitive { .. } => {
             if label != "IntegerPrimitive" {
                 return Err(StructureMismatch {
-                    location: "rust_pilot_primitives[0]".to_string(),
-                    expected: "IntegerPrimitive (first authority row)".to_string(),
+                    location,
+                    expected: "IntegerPrimitive authority row".to_string(),
                     actual: label.to_string(),
                 });
             }
-            assert_integer_primitive_payload_matches(&dag, payload, mirror0)
+            assert_integer_primitive_payload_matches(dag, payload, mirror)
         }
         PilotRustPrimitive::NonIntegerPrimitive { .. } => {
             if label != "NonIntegerPrimitive" {
                 return Err(StructureMismatch {
-                    location: "rust_pilot_primitives[0]".to_string(),
-                    expected: "NonIntegerPrimitive (first authority row)".to_string(),
+                    location,
+                    expected: "NonIntegerPrimitive authority row".to_string(),
                     actual: label.to_string(),
                 });
             }
-            assert_non_integer_primitive_payload_matches(&dag, payload, mirror0)
+            assert_non_integer_primitive_payload_matches(dag, payload, mirror)
         }
     }
 }
@@ -511,7 +524,11 @@ fn expected_mirror_shape() -> RustPrimitiveTypeShape {
         integer_algebra: enum_shape("IntegerAlgebra", &["OrderedRingAlgebra", "SemiringAlgebra"]),
         non_integer_algebra: enum_shape(
             "NonIntegerAlgebra",
-            &["BooleanAlgebraAlgebra", "TerminalAlgebra"],
+            &[
+                "ApproximateFieldAlgebra",
+                "BooleanAlgebraAlgebra",
+                "TerminalAlgebra",
+            ],
         ),
         target_carrier: enum_shape(
             "TargetCarrier",
@@ -635,6 +652,7 @@ fn pilot_integer_algebra_name(algebra: PilotIntegerAlgebra) -> &'static str {
 
 fn pilot_non_integer_algebra_name(algebra: PilotNonIntegerAlgebra) -> &'static str {
     match algebra {
+        PilotNonIntegerAlgebra::ApproximateField => "ApproximateFieldAlgebra",
         PilotNonIntegerAlgebra::BooleanAlgebra => "BooleanAlgebraAlgebra",
         PilotNonIntegerAlgebra::Terminal => "TerminalAlgebra",
     }
@@ -684,13 +702,14 @@ fn field_value_kind(value: &FieldValue) -> String {
 fn rust_primitive_variant_label(
     disj_variants: &[Field],
     constructor: DeclarationId,
+    row_index: usize,
 ) -> StructureResult<String> {
     disj_variants
         .iter()
         .find(|variant| variant.ty == constructor)
         .map(|variant| variant.label.clone())
         .ok_or_else(|| StructureMismatch {
-            location: "rust_pilot_primitives[0].constructor".to_string(),
+            location: format!("rust_pilot_primitives[{row_index}].constructor"),
             expected: "constructor id belonging to RustPrimitive".to_string(),
             actual: "unknown constructor".to_string(),
         })
@@ -804,7 +823,7 @@ fn assert_integer_primitive_payload_matches(
     } = pilot
     else {
         return Err(StructureMismatch {
-            location: "validate_first_rust_pilot_row_matches_mirror".to_string(),
+            location: "validate_rust_pilot_rows_match_mirror".to_string(),
             expected: "IntegerPrimitive mirror row".to_string(),
             actual: "NonIntegerPrimitive".to_string(),
         });
@@ -879,7 +898,7 @@ fn assert_non_integer_primitive_payload_matches(
     } = pilot
     else {
         return Err(StructureMismatch {
-            location: "validate_first_rust_pilot_row_matches_mirror".to_string(),
+            location: "validate_rust_pilot_rows_match_mirror".to_string(),
             expected: "NonIntegerPrimitive mirror row".to_string(),
             actual: "IntegerPrimitive".to_string(),
         });
@@ -897,7 +916,11 @@ fn assert_non_integer_primitive_payload_matches(
     let alg = expect_nullary_variant_label(
         dag,
         "NonIntegerAlgebra",
-        &["BooleanAlgebraAlgebra", "TerminalAlgebra"],
+        &[
+            "ApproximateFieldAlgebra",
+            "BooleanAlgebraAlgebra",
+            "TerminalAlgebra",
+        ],
         &payload[1],
         &format!("{ctx}.algebra"),
     )?;
@@ -951,9 +974,9 @@ mod tests {
     }
 
     #[test]
-    fn first_enumerated_pilot_row_matches_mirror_i8() {
-        validate_first_rust_pilot_row_matches_mirror()
-            .expect("first lowered list row matches RUST_PILOT_PRIMITIVES[0] (i8)");
+    fn all_enumerated_pilot_rows_match_mirror_including_floats() {
+        validate_rust_pilot_rows_match_mirror()
+            .expect("all lowered list rows match RUST_PILOT_PRIMITIVES, including f32/f64");
     }
 
     #[test]
