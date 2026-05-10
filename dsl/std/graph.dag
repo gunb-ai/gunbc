@@ -37,24 +37,20 @@ type CallGraphAdjacencyViews {
 
 // DFS accumulator for Kosaraju pass 1: finish order computation.
 type DfsFinishAcc {
-  visited: Map<String, Bool>
+  visited: Set<String>
   order: List<String>
 }
 
 // DFS accumulator for Kosaraju pass 2: component collection.
 type SccComponentAcc {
-  visited: Map<String, Bool>
+  visited: Set<String>
   members: List<String>
 }
 
 // SCC cycle detection result.
 type SccCycleAcc {
-  visited: Map<String, Bool>
+  visited: Set<String>
   has_cycle: Bool
-}
-
-fn set_has(m: Map<String, Bool>, key: String) -> Bool {
-  map_get(m, key) != none
 }
 
 // Initialize an adjacency map with empty neighbor lists for all names.
@@ -108,10 +104,10 @@ fn reverse_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<
 // primitive from ROADMAP I1/I2). Origin: graph DFS is inherently stack-based;
 // the .dag language lacks a stack-drain primitive.
 fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: DfsFinishAcc) -> DfsFinishAcc {
-  if set_has(m: acc.visited, key: node) {
+  if set_contains(acc.visited, node) {
     acc
   } else {
-    let next_visited = map_insert(acc.visited, node, true)
+    let next_visited = set_insert(acc.visited, node)
     let neighbors = match map_get(adjacency, node) {
       Some { value: ns } => ns
       None => []
@@ -127,10 +123,10 @@ fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: Dfs
 // REVIEW #9: Same visited-set-bounded recursion as dfs_finish_order.
 // Same fix direction: worklist iteration (ROADMAP I1/I2).
 fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc: SccComponentAcc) -> SccComponentAcc {
-  if set_has(m: acc.visited, key: node) {
+  if set_contains(acc.visited, node) {
     acc
   } else {
-    let next_visited = map_insert(acc.visited, node, true)
+    let next_visited = set_insert(acc.visited, node)
     let next_members = list_push(acc.members, node)
     let neighbors = match map_get(adjacency, node) {
       Some { value: ns } => ns
@@ -146,11 +142,11 @@ fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc
 // more than one node (Kosaraju's algorithm: 2-pass DFS).
 fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
   let adjacency = build_adjacency_views(names: names, graph: graph)
-  let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
+  let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
   )
-  let result = finish.order |> reverse |> fold(init: SccCycleAcc { visited: empty_map(), has_cycle: false }, f: (acc, name) =>
-    if acc.has_cycle || set_has(m: acc.visited, key: name) {
+  let result = finish.order |> reverse |> fold(init: SccCycleAcc { visited: empty_set(), has_cycle: false }, f: (acc, name) =>
+    if acc.has_cycle || set_contains(acc.visited, name) {
       acc
     } else {
       let component = dfs_collect_component(node: name, adjacency: adjacency.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })

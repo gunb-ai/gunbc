@@ -243,12 +243,12 @@ type CallEdge {
 
 type SccInfo {
   members: List<String>
-  member_set: Map<String, Bool>
+  member_set: Set<String>
   pattern: LoweringTarget
 }
 
 type SccBuildAcc {
-  assigned: Map<String, Bool>
+  assigned: Set<String>
   index: Map<String, SccInfo>
 }
 
@@ -3925,20 +3925,20 @@ fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEn
   let graph = build_call_graph(func_entries: func_entries, si: si)
   let adjacency = forward_adjacency(names: names, graph: graph)
   let reverse_graph = reverse_adjacency(names: names, graph: graph)
-  let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
+  let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: adjacency, acc: acc)
   )
   let topo_order = finish.order |> reverse
-  let result = topo_order |> fold(init: SccBuildAcc { assigned: empty_map(), index: empty_map() }, f: fn(acc, name) {
-    if set_has(m: acc.assigned, key: name) {
+  let result = topo_order |> fold(init: SccBuildAcc { assigned: empty_set(), index: empty_map() }, f: fn(acc, name) {
+    if set_contains(acc.assigned, name) {
       acc
     } else {
       let component = dfs_collect_component(node: name, adjacency: reverse_graph, acc: SccComponentAcc { visited: acc.assigned, members: [] })
-      let member_set = component.members |> fold(init: empty_map(), f: (inner, member) =>
-        map_insert(inner, member, true)
+      let member_set = component.members |> fold(init: empty_set(), f: (inner, member) =>
+        set_insert(inner, member)
       )
       let members = names |> filter(member =>
-        set_has(m: member_set, key: member)
+        set_contains(member_set, member)
       )
       let next_assigned = component.visited
       if members |> count > 1 {
@@ -5408,7 +5408,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
           si: si)
           let info = SccInfo {
             members: [entry.name],
-            member_set: map_insert(empty_map(), entry.name, true),
+            member_set: set_insert(empty_set(), entry.name),
             pattern: pattern
           }
           map_insert(acc, entry.name, info)
