@@ -244,8 +244,18 @@ fn variant_label<'a>(dag: &'a Dag, axis_name: &str, value: &FieldValue) -> &'a s
 }
 
 fn projection_target(dag: &Dag, value: &FieldValue) -> ProjectionTarget {
-    let FieldValue::Record(fields) = value else {
-        panic!("ShapeATarget must be a record carrying `spec`, got {value:?}");
+    let owned_fields;
+    let fields = match value {
+        FieldValue::Record(fields) => fields,
+        FieldValue::Reference(target) => {
+            let target_decl = dag.declaration(*target);
+            let Some(ValueBody::Structural { fields }) = target_decl.value_body.as_ref() else {
+                panic!("ShapeATarget reference must resolve to structural data, got {target_decl:?}");
+            };
+            owned_fields = fields.clone();
+            &owned_fields
+        }
+        other => panic!("ShapeATarget must be a record or reference, got {other:?}"),
     };
     let spec = field(fields, "spec");
     let FieldValue::Reference(spec) = spec else {
@@ -258,7 +268,11 @@ fn projection_target(dag: &Dag, value: &FieldValue) -> ProjectionTarget {
     } else if Some(*spec) == dag.go_language_spec() {
         ProjectionTarget::Go
     } else {
-        let name = dag.declaration(*spec).name.as_deref().unwrap_or("<anonymous>");
+        let name = dag
+            .declaration(*spec)
+            .name
+            .as_deref()
+            .unwrap_or("<anonymous>");
         panic!("unknown ShapeATarget LanguageSpec `{name}`")
     }
 }

@@ -90,11 +90,17 @@ impl ShapeATarget {
     }
 
     pub fn label(self, dag: &Dag) -> String {
-        dag.declaration(self.spec)
+        let name = dag
+            .declaration(self.spec)
             .name
             .as_deref()
-            .unwrap_or("<anonymous_language_spec>")
-            .to_string()
+            .unwrap_or("<anonymous_language_spec>");
+        match name {
+            "rust_language" => "Rust".to_string(),
+            "python_language" => "Python".to_string(),
+            "go_language" => "Go".to_string(),
+            other => other.to_string(),
+        }
     }
 }
 
@@ -112,7 +118,7 @@ impl Cell {
     /// Iterator over all cells, in nested-loop order
     /// (form outer, behavior middle, target inner).
     pub fn all(targets: &[ShapeATarget]) -> impl Iterator<Item = Cell> + '_ {
-        FormAxis::ALL.iter().copied().flat_map(|connective| {
+        FormAxis::ALL.iter().copied().flat_map(move |connective| {
             BehaviorAxis::ALL.iter().copied().flat_map(move |behavior| {
                 targets.iter().copied().map(move |target| Cell {
                     connective,

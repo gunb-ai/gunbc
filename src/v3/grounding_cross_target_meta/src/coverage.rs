@@ -52,11 +52,12 @@ pub(crate) enum ProjectionCoverageError {
     RowIdentityNotRecord {
         row_index: usize,
     },
-    RowIdentityTargetNotVariant {
-        row_index: usize,
-    },
     RowIdentityTargetNotRecord {
         row_index: usize,
+    },
+    RowIdentityTargetReferenceMissing {
+        row_index: usize,
+        target: DeclarationId,
     },
     RowIdentityTargetMissingSpec {
         row_index: usize,
@@ -67,10 +68,6 @@ pub(crate) enum ProjectionCoverageError {
     RowIdentityTargetSpecNotLanguageSpec {
         row_index: usize,
         spec: DeclarationId,
-    },
-    UnknownTargetLabel {
-        row_index: usize,
-        label: String,
     },
     DagMethodNotMethodRefRecord {
         row_index: usize,
@@ -408,23 +405,45 @@ fn shape_target(
     row_index: usize,
     value: &FieldValue,
 ) -> Result<ShapeATarget, ProjectionCoverageError> {
+    let value = match value {
+        FieldValue::Reference(target) => {
+            let declaration = dag.declarations().iter().find(|decl| decl.id == *target).ok_or(
+                ProjectionCoverageError::RowIdentityTargetReferenceMissing {
+                    row_index,
+                    target: *target,
+                },
+            )?;
+            declaration
+                .value_body
+                .as_ref()
+                .ok_or(ProjectionCoverageError::RowIdentityTargetNotRecord { row_index })
+                .and_then(|body| {
+                    if let ValueBody::Structural { fields } = body {
+                        Ok(FieldValue::Record(fields.clone()))
+                    } else {
+                        Err(ProjectionCoverageError::RowIdentityTargetNotRecord { row_index })
+                    }
+                })?
+        }
+        other => other.clone(),
+    };
     let FieldValue::Record(fields) = value else {
         return Err(ProjectionCoverageError::RowIdentityTargetNotRecord { row_index });
     };
-    let lookup = field_lookup(row_index, fields, &["spec"])?;
+    let lookup = field_lookup(row_index, &fields, &["spec"])?;
     let spec = lookup
         .get("spec")
-        .ok_or(ProjectionCoverageError::RowIdentityTargetMissingSpec {
-            row_index,
-        })?;
+        .ok_or(ProjectionCoverageError::RowIdentityTargetMissingSpec { row_index })?;
     let FieldValue::Reference(spec) = spec else {
         return Err(ProjectionCoverageError::RowIdentityTargetSpecNotReference { row_index });
     };
     if !is_language_spec(dag, *spec) {
-        return Err(ProjectionCoverageError::RowIdentityTargetSpecNotLanguageSpec {
-            row_index,
-            spec: *spec,
-        });
+        return Err(
+            ProjectionCoverageError::RowIdentityTargetSpecNotLanguageSpec {
+                row_index,
+                spec: *spec,
+            },
+        );
     }
     Ok(ShapeATarget::new(*spec))
 }
