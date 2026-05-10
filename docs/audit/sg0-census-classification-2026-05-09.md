@@ -86,7 +86,7 @@
 | 12 | `…tegration/bridge_lower_helpers_patch_zero_residual_test.rs` | G | Local/small bridge (default) | ✓ |
 | 13 | `…er/tests/integration/canonical_lens_bridge_ratchet_test.rs` | E | T-LensProducer-Retirement | ✓ |
 | 14 | `…gration/cementing/cementing_lens_registry_dispatch_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 15 | `…/dag/t_r3_gate_87_cementing_regen_cost.dag` | C5 | Cementing TestClaim successor for retired complexity Rust module | ✓ |
+| 15 | `…gration/cementing/complexity_lens_behavioral_completion.rs` | C5 | Temporary Rust cementing receipt for published `ComplexitySummary` carrier; blocked from `.dag` by M1(2.8) structural expected-value literals | ✓ |
 | 16 | `…tests/integration/cementing/memory_peak_cost_basis_demo.rs` | G | Local/small bridge (default) | ✓ |
 | 17 | `src/v3/compiler/tests/integration/common/budgeted.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 18 | `src/v3/compiler/tests/integration/common/cached_compile.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |

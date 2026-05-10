@@ -114,11 +114,18 @@ struct CementingReceipt {
 /// not `N/A` per `TESTING.md` Band-C). Land the new `.dag` TestClaim harness in
 /// the same PR unless the published carrier still needs a temporary Rust receipt
 /// with a named blocker.
-const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[CementingReceipt] = &[CementingReceipt {
-    registry_name: "cost",
-    stem: "complexity_lens_behavioral_completion",
-    kind: CementingReceiptKind::TemporaryRustModule,
-}];
+const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[CementingReceipt] = &[
+    CementingReceipt {
+        registry_name: "cost",
+        stem: "t_r3_gate_87_cementing_regen_cost",
+        kind: CementingReceiptKind::DagHarness,
+    },
+    CementingReceipt {
+        registry_name: "cost",
+        stem: "complexity_lens_behavioral_completion",
+        kind: CementingReceiptKind::TemporaryRustModule,
+    },
+];
 
 fn run_with_cementing_stack(f: impl FnOnce() + Send + 'static) {
     std::thread::Builder::new()
