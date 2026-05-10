@@ -4985,6 +4985,7 @@ pub(crate) mod lower_helpers {
         include!("lower_helpers_generated.rs");
     }
 
+    #[allow(unused_imports)] // `item_span` is only referenced from this module's unit tests.
     pub(crate) use generated::{expr_span, item_span, pattern_binding_names};
 
     /// Byte extent of a surface item within its compilation unit (no `SourceSpan.file`

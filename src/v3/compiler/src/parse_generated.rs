@@ -1033,8 +1033,8 @@ impl<'a> Parser<'a> {
         }
         let mut lhs = parts.remove(0);
         for rhs in parts {
-            let start = crate::lower_helpers::expr_span(&lhs).byte_start;
-            let end = crate::lower_helpers::expr_span(&rhs).byte_end;
+            let start = expr_span(&lhs).byte_start;
+            let end = expr_span(&rhs).byte_end;
             lhs = SurfaceExpr::Operator {
                 op: OperatorKind::Logical(LogicalOp::And),
                 args: vec![lhs, rhs],
@@ -1073,8 +1073,7 @@ impl<'a> Parser<'a> {
             self.bump();
             parts.push(self.parse_expr()?);
         }
-        let end = crate::lower_helpers::expr_span(parts.last().expect("at least one where-part"))
-            .byte_end;
+        let end = expr_span(parts.last().expect("at least one where-part")).byte_end;
         let combined = self.fold_type_alias_where_parts(parts);
         Ok((Some(combined), end))
     }

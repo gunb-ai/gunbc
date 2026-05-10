@@ -6372,7 +6372,7 @@ fn lower_fn_item_expr_body(
     } else {
         lowered_body_return_port
     };
-    let body_span = surface_expr_span(body);
+    let body_span = surface_expr_span(body).clone();
     let body_end_index = dag.nodes().len();
 
     let mutual_cluster = mutual_recursion.cluster_for_member(fn_decl_id);
