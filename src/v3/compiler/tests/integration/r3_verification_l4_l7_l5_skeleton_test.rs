@@ -15,6 +15,7 @@
 //! the seed corpus row through `ForAllTargets` over Rust/Python/Go Int observations.
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
+use std::process::Command;
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
@@ -327,9 +328,22 @@ fn l5_cross_target_consistency_passes_seed_corpus_for_all_targets() {
     let results = TestRunner::new(dag).run_suite(L5_SUITE);
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].claim_name, L5_CLAIM);
-    assert!(
-        matches!(results[0].result, ClaimResult::Pass),
-        "expected ForAllTargets Rust/Python/Go Int observations to agree, got {:?}",
-        results[0].result
-    );
+    if Command::new("go").arg("version").output().is_ok() {
+        assert!(
+            matches!(results[0].result, ClaimResult::Pass),
+            "expected ForAllTargets Rust/Python/Go Int observations to agree, got {:?}",
+            results[0].result
+        );
+    } else {
+        let ClaimResult::Fail(msg) = &results[0].result else {
+            panic!(
+                "expected ForAllTargets to fail closed when `go` is unavailable, got {:?}",
+                results[0].result
+            );
+        };
+        assert!(
+            msg.contains("L5 go_emit_output: go run: failed to spawn host child"),
+            "missing-Go failure must surface as unverified Go execution, got {msg}"
+        );
+    }
 }
