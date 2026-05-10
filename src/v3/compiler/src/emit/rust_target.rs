@@ -2836,9 +2836,9 @@ fn transform_input_disposition(
     dispositions: &HashMap<DeclarationId, Vec<ParameterDispositionBinding>>,
 ) -> ParameterDispositionBinding {
     match &transform.target {
-        TransformTarget::Operator(_) | TransformTarget::FieldProject { .. } => {
-            ParameterDispositionBinding::Borrowed
-        }
+        TransformTarget::Operator(_)
+        | TransformTarget::UnresolvedFieldProject { .. }
+        | TransformTarget::ResolvedFieldProject { .. } => ParameterDispositionBinding::Borrowed,
         TransformTarget::Callable(target) => {
             callable_input_disposition_for_target(dag, *target, slot, dispositions)
         }
@@ -3688,10 +3688,14 @@ impl<'a> Ctx<'a> {
                 let expr = self.render_operator(t, *op, locals)?;
                 self.adjust_owned_expr(t.output, expr, mode)
             }
-            TransformTarget::FieldProject {
-                field_label,
-                field_child,
-            } => self.render_field_project(t, field_label, locals, *field_child, mode),
+            TransformTarget::UnresolvedFieldProject { field_label } => {
+                Err(EmitError::UnsupportedBehavior(format!(
+                    "field projection .{field_label} is unresolved; emit_rust expects post-infer FieldProject targets"
+                )))
+            }
+            TransformTarget::ResolvedFieldProject { field_label } => {
+                self.render_field_project(t, field_label, locals, mode)
+            }
             TransformTarget::Callable(target) => {
                 let expr = self.render_callable_transform(t, *target, locals)?;
                 self.adjust_owned_expr(t.output, expr, mode)
@@ -3723,17 +3727,11 @@ impl<'a> Ctx<'a> {
         t: &TransformNode,
         field_label: &str,
         locals: &RenderLocals,
-        field_child: Option<DeclarationId>,
         mode: RenderMode,
     ) -> Result<String, EmitError> {
-        if field_child.is_none() {
-            return Err(EmitError::UnsupportedBehavior(format!(
-                "field projection .{field_label} is missing its resolved field child carrier; emit_rust expects post-infer FieldProject targets"
-            )));
-        }
         if t.inputs.len() != 1 {
             return Err(EmitError::UnsupportedBehavior(format!(
-                "field projection .{field_label} arity {} is not supported; expected exactly one parent input",
+                "field projection arity {} is not supported; expected exactly one parent input",
                 t.inputs.len()
             )));
         }
@@ -6218,9 +6216,8 @@ not user `fn` data; must not set return-carrier / Rc on callable params (PR #676
         let output = dag.alloc_port(Some(node_id));
         dag.push_node(Behavior::Transform(TransformNode {
             id: node_id,
-            target: TransformTarget::FieldProject {
+            target: TransformTarget::ResolvedFieldProject {
                 field_label: "nodes".to_string(),
-                field_child: Some(dag_nodes_type),
             },
             inputs: vec![parent_port],
             output,
@@ -6274,9 +6271,8 @@ not user `fn` data; must not set return-carrier / Rc on callable params (PR #676
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Transform(TransformNode {
                 id: node_id,
-                target: TransformTarget::FieldProject {
+                target: TransformTarget::ResolvedFieldProject {
                     field_label: "nodes".to_string(),
-                    field_child: Some(dag_nodes_type),
                 },
                 inputs: vec![parent_port],
                 output,
