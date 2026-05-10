@@ -320,22 +320,27 @@ fn segment_matches(template: &str, path: &str) -> bool {
             let Some(boundary) = remainder.find(next_literal) else {
                 return false;
             };
-            if boundary == 0 {
+            let param_value = &remainder[..boundary];
+            if !slash_free_non_empty(param_value) {
                 return false;
             }
             remainder = &remainder[boundary..];
             rest = after_param;
         } else {
             if after_param.is_empty() {
-                return !remainder.is_empty();
+                return slash_free_non_empty(remainder);
             }
             let Some(value) = remainder.strip_suffix(after_param) else {
                 return false;
             };
-            return !value.is_empty();
+            return slash_free_non_empty(value);
         }
     }
     remainder == rest
+}
+
+fn slash_free_non_empty(value: &str) -> bool {
+    !value.is_empty() && !value.contains('/')
 }
 
 fn respond(request: &str) -> String {

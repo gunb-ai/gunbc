@@ -493,6 +493,11 @@ fn omni_openapi_backend_emission_demo_generates_runnable_matching_backend() {
     }
     assert_eq!(backend_probe(&backend_bin, "GET", "/missing"), "404");
     assert_eq!(backend_probe(&backend_bin, "DELETE", "/users"), "404");
+    assert_eq!(backend_probe(&backend_bin, "GET", "/users/42/extra"), "404");
+    assert_eq!(
+        backend_probe(&backend_bin, "POST", "/secrets/api/key:addVersion"),
+        "404"
+    );
 }
 
 #[test]
