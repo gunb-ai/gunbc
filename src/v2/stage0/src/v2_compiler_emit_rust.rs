@@ -1711,6 +1711,7 @@ pub fn emit_rust(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
             type_summaries: base_info.type_summaries.clone(),
             recursive_type_set: base_info.recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
+            untagged_json_tuple_variants: base_info.untagged_json_tuple_variants.clone(),
             shared_types: shared,
             ownership_index: ownership.ownership_index.clone(),
             movable: v2_rt::rc_empty_map::<String, bool>(),
@@ -1966,6 +1967,7 @@ pub fn emit_module(
             type_summaries: base_info.type_summaries.clone(),
             recursive_type_set: base_info.recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
+            untagged_json_tuple_variants: base_info.untagged_json_tuple_variants.clone(),
             shared_types: shared,
             ownership_index: base_info.ownership_index.clone(),
             movable: base_info.movable.clone(),
@@ -2695,6 +2697,9 @@ pub fn emit_typed_item(
                                 type_summaries: emit_info.type_summaries.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
                                 fielded_variants: emit_info.fielded_variants.clone(),
+                                untagged_json_tuple_variants: emit_info
+                                    .untagged_json_tuple_variants
+                                    .clone(),
                                 shared_types: emit_info.shared_types.clone(),
                                 ownership_index: emit_info.ownership_index.clone(),
                                 movable: fn_movable,
@@ -4962,10 +4967,12 @@ pub fn emit_variant_pattern(
                                             };
                                             if is_shorthand {
                                                 v2_rt::concat(
-                                                    v2_rt::concat(qualified.clone(), "(".to_string()),
-                                                    emit_ident(fb_name.clone(), RenderTarget::Rust),
+                                                    v2_rt::concat(
+                                                        v2_rt::concat(qualified.clone(), "(".to_string()),
+                                                        emit_ident(fb_name.clone(), RenderTarget::Rust),
+                                                    ),
+                                                    ")".to_string(),
                                                 )
-                                                + ")"
                                             } else {
                                                 let pat_str = emit_pattern(
                                                     fb_pat.clone(),
@@ -4975,10 +4982,12 @@ pub fn emit_variant_pattern(
                                                     emit_info.clone(),
                                                 );
                                                 v2_rt::concat(
-                                                    v2_rt::concat(qualified.clone(), "(".to_string()),
-                                                    pat_str,
+                                                    v2_rt::concat(
+                                                        v2_rt::concat(qualified.clone(), "(".to_string()),
+                                                        pat_str,
+                                                    ),
+                                                    ")".to_string(),
                                                 )
-                                                + ")"
                                             }
                                         }
                                     }
@@ -5358,21 +5367,38 @@ pub fn emit_variant_pattern_rc_aware(
                         ),
                         None => name.clone(),
                     };
-                    let is_fielded =
-                        match v2_rt::map_get(&emit_info.fielded_variants.clone(), fielded_key) {
+                    let is_untagged_tuple = match v2_rt::map_get(
+                        &emit_info.untagged_json_tuple_variants.clone(),
+                        fielded_key.clone(),
+                    ) {
+                        Some(true) => true,
+                        _ => match v2_rt::map_get(
+                            &emit_info.untagged_json_tuple_variants.clone(),
+                            qualified.clone(),
+                        ) {
                             Some(true) => true,
-                            _ => match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                qualified.clone(),
-                            ) {
-                                Some(true) => true,
-                                _ => false,
-                            },
-                        };
-                    if is_fielded {
-                        v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                            _ => false,
+                        },
+                    };
+                    if is_untagged_tuple {
+                        v2_rt::concat(qualified.clone(), "(..)".to_string())
                     } else {
-                        qualified.clone()
+                        let is_fielded =
+                            match v2_rt::map_get(&emit_info.fielded_variants.clone(), fielded_key) {
+                                Some(true) => true,
+                                _ => match v2_rt::map_get(
+                                    &emit_info.fielded_variants.clone(),
+                                    qualified.clone(),
+                                ) {
+                                    Some(true) => true,
+                                    _ => false,
+                                },
+                            };
+                        if is_fielded {
+                            v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                        } else {
+                            qualified.clone()
+                        }
                     }
                 }
             } else {
@@ -5398,27 +5424,139 @@ pub fn emit_variant_pattern_rc_aware(
                                 ),
                                 None => name.clone(),
                             };
-                            let is_fielded2 = match v2_rt::map_get(
-                                &emit_info.fielded_variants.clone(),
-                                fielded_key2,
+                            let is_untagged_tuple2 = match v2_rt::map_get(
+                                &emit_info.untagged_json_tuple_variants.clone(),
+                                fielded_key2.clone(),
                             ) {
                                 Some(true) => true,
                                 _ => match v2_rt::map_get(
-                                    &emit_info.fielded_variants.clone(),
+                                    &emit_info.untagged_json_tuple_variants.clone(),
                                     qualified.clone(),
                                 ) {
                                     Some(true) => true,
                                     _ => false,
                                 },
                             };
-                            if is_fielded2 {
-                                v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                            if is_untagged_tuple2 {
+                                v2_rt::concat(qualified.clone(), "(..)".to_string())
                             } else {
-                                qualified.clone()
+                                let is_fielded2 = match v2_rt::map_get(
+                                    &emit_info.fielded_variants.clone(),
+                                    fielded_key2,
+                                ) {
+                                    Some(true) => true,
+                                    _ => match v2_rt::map_get(
+                                        &emit_info.fielded_variants.clone(),
+                                        qualified.clone(),
+                                    ) {
+                                        Some(true) => true,
+                                        _ => false,
+                                    },
+                                };
+                                if is_fielded2 {
+                                    v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                                } else {
+                                    qualified.clone()
+                                }
                             }
                         }
                     } else {
                         {
+                            let tuple_key = match resolved_parent.clone() {
+                                Some(parent) => v2_rt::concat(
+                                    v2_rt::concat(parent.clone(), "::".to_string()),
+                                    name.clone(),
+                                ),
+                                None => qualified.clone(),
+                            };
+                            let is_untagged_tuple3 = match v2_rt::map_get(
+                                &emit_info.untagged_json_tuple_variants.clone(),
+                                tuple_key,
+                            ) {
+                                Some(true) => true,
+                                _ => match v2_rt::map_get(
+                                    &emit_info.untagged_json_tuple_variants.clone(),
+                                    qualified.clone(),
+                                ) {
+                                    Some(true) => true,
+                                    _ => false,
+                                },
+                            };
+                            if (is_untagged_tuple3
+                                && ((effective_bindings.clone().len() as i64) == 1))
+                            {
+                                match effective_bindings.clone().first().cloned() {
+                                    Some(fb) => {
+                                        let fb_name = field_binding_name_at(
+                                            fb.clone(),
+                                            source_indices.clone(),
+                                        );
+                                        let fb_pat = field_binding_pattern(fb.clone());
+                                        if is_string_lit_pattern(fb_pat.clone()) {
+                                            v2_rt::concat(
+                                                v2_rt::concat(
+                                                    v2_rt::concat(qualified.clone(), "(ref ".to_string()),
+                                                    emit_ident(fb_name.clone(), RenderTarget::Rust),
+                                                ),
+                                                ")".to_string(),
+                                            )
+                                        } else {
+                                            if field_needs_rc_ref(
+                                                fb_name.clone(),
+                                                rc_analysis.clone(),
+                                            ) {
+                                                v2_rt::concat(
+                                                    v2_rt::concat(
+                                                        v2_rt::concat(qualified.clone(), "(ref ".to_string()),
+                                                        emit_ident(fb_name.clone(), RenderTarget::Rust),
+                                                    ),
+                                                    ")".to_string(),
+                                                )
+                                            } else {
+                                                let is_shorthand = match (*fb_pat.clone()).clone() {
+                                                    MatchPattern::Bind { name: n, .. } => {
+                                                        (n.clone().as_str() == fb_name.clone().as_str())
+                                                    }
+                                                    _ => false,
+                                                };
+                                                if is_shorthand {
+                                                    v2_rt::concat(
+                                                        v2_rt::concat(
+                                                            v2_rt::concat(qualified.clone(), "(".to_string()),
+                                                            emit_ident(fb_name.clone(), RenderTarget::Rust),
+                                                        ),
+                                                        ")".to_string(),
+                                                    )
+                                                } else {
+                                                    let inner_analysis = analyze_rc_pattern(
+                                                        fb_pat.clone(),
+                                                        "".to_string(),
+                                                        &shared_types,
+                                                        &emit_info,
+                                                        source_indices.clone(),
+                                                    );
+                                                    let pat_str = emit_pattern_rc_aware(
+                                                        fb_pat.clone(),
+                                                        inner_analysis.clone(),
+                                                        shared_types.clone(),
+                                                        "".to_string(),
+                                                        source_indices.clone(),
+                                                        emit_info.clone(),
+                                                    );
+                                                    v2_rt::concat(
+                                                        v2_rt::concat(
+                                                            v2_rt::concat(qualified.clone(), "(".to_string()),
+                                                            pat_str,
+                                                        ),
+                                                        ")".to_string(),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    None => v2_rt::concat(qualified.clone(), " { .. }".to_string()),
+                                }
+                            } else {
                             let binding_strs = Rc::new({
                                 let mut __result = Vec::new();
                                 for fb in effective_bindings.clone().iter().cloned() {
@@ -5502,6 +5640,7 @@ pub fn emit_variant_pattern_rc_aware(
                                 ),
                                 ", .. }".to_string(),
                             )
+                            }
                         }
                     }
                 }
@@ -8315,6 +8454,9 @@ pub fn emit_rust_fold_method_call(
                             type_summaries: emit_info.type_summaries.clone(),
                             recursive_type_set: emit_info.recursive_type_set.clone(),
                             fielded_variants: emit_info.fielded_variants.clone(),
+                            untagged_json_tuple_variants: emit_info
+                                .untagged_json_tuple_variants
+                                .clone(),
                             shared_types: emit_info.shared_types.clone(),
                             ownership_index: emit_info.ownership_index.clone(),
                             movable: emit_info.movable.clone(),
@@ -8345,6 +8487,9 @@ pub fn emit_rust_fold_method_call(
                                 type_summaries: emit_info.type_summaries.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
                                 fielded_variants: emit_info.fielded_variants.clone(),
+                                untagged_json_tuple_variants: emit_info
+                                    .untagged_json_tuple_variants
+                                    .clone(),
                                 shared_types: emit_info.shared_types.clone(),
                                 ownership_index: emit_info.ownership_index.clone(),
                                 movable: v2_rt::rc_map_insert(
