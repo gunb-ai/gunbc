@@ -39,6 +39,8 @@ mod common;
 
 #[path = "integration/anthropic_messages_callable_test.rs"]
 mod anthropic_messages_callable_test;
+#[path = "integration/anthropic_messages_wire_demo_test.rs"]
+mod anthropic_messages_wire_demo_test;
 #[path = "integration/anthropic_operations_test.rs"]
 mod anthropic_operations_test;
 #[path = "integration/anthropic_schema_lockstep_test.rs"]
