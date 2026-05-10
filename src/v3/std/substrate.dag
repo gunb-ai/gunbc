@@ -353,9 +353,11 @@ type OperatorKind
 // variant corresponds to a live runtime carrier in dag.rs.
 type TransformTarget
   = Callable(DeclarationId)
-  | FieldProject {
+  | UnresolvedFieldProject {
       field_label: String
-      field_child: DeclarationId?
+    }
+  | ResolvedFieldProject {
+      field_label: String
     }
   | Operator(OperatorKind)
 
