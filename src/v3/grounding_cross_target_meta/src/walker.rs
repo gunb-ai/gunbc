@@ -57,11 +57,14 @@ pub fn walk_cross_product(dag: &Dag) -> CrossProductReport {
 
 fn fallback_targets(dag: &Dag, covered: &HashSet<Cell>) -> Vec<ShapeATarget> {
     // Defense-in-depth for malformed bootstrap metadata; steady-state target
-    // discovery stays data-driven through `language_spec_targets`.
+    // discovery stays data-driven through `language_spec_targets`. Keep this
+    // degraded path in the same ShapeATarget declaration-id space as
+    // projection rows.
     let mut targets = [
-        dag.rust_language_spec(),
-        dag.python_language_spec(),
-        dag.go_language_spec(),
+        dag.declaration_by_name("rust_shape_a_target").map(|decl| decl.id),
+        dag.declaration_by_name("python_shape_a_target")
+            .map(|decl| decl.id),
+        dag.declaration_by_name("go_shape_a_target").map(|decl| decl.id),
     ]
     .into_iter()
     .flatten()
@@ -90,9 +93,21 @@ mod tests {
         assert_eq!(
             targets,
             vec![
-                ShapeATarget::new(dag.rust_language_spec().expect("rust language")),
-                ShapeATarget::new(dag.python_language_spec().expect("python language")),
-                ShapeATarget::new(dag.go_language_spec().expect("go language")),
+                ShapeATarget::new(
+                    dag.declaration_by_name("rust_shape_a_target")
+                        .expect("rust ShapeATarget")
+                        .id
+                ),
+                ShapeATarget::new(
+                    dag.declaration_by_name("python_shape_a_target")
+                        .expect("python ShapeATarget")
+                        .id
+                ),
+                ShapeATarget::new(
+                    dag.declaration_by_name("go_shape_a_target")
+                        .expect("go ShapeATarget")
+                        .id
+                ),
             ]
         );
     }
