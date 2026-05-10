@@ -19,6 +19,10 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
+/// Single source of truth for the gate #78 regression fixture label (`compile_to_dag` second
+/// argument and `TransformNode.span.file` filter — keep them paired).
+const E_P78_PER_CALL_PATTERN_FIXTURE_FILE: &str = "e_p78_cost_lens.v3";
+
 fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
     dag.nodes()
         .iter()
@@ -125,7 +129,7 @@ fn e_p_sub_value_relation_per_call_landed_cost_lens_routes_through_per_call_patt
     run_with_symbolic_cost_stack(|| {
         let dag = compile_to_dag(
             "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
-            "e_p78_cost_lens.v3",
+            E_P78_PER_CALL_PATTERN_FIXTURE_FILE,
         )
         .expect("compile");
         let pattern_hits = dag
@@ -133,7 +137,7 @@ fn e_p_sub_value_relation_per_call_landed_cost_lens_routes_through_per_call_patt
             .iter()
             .filter_map(Behavior::as_transform)
             .filter(|t| {
-                t.span.file == "e_p78_cost_lens.v3"
+                t.span.file == E_P78_PER_CALL_PATTERN_FIXTURE_FILE
                     && v3_compiler::dag::per_call_pattern_at(&dag, t.id).is_some()
             })
             .count();
