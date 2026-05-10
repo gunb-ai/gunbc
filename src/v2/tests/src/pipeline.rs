@@ -7620,9 +7620,12 @@ fn anthropic_messages_uses_typed_200_body_projection() {
     );
     assert!(
         content.contains("(__rest_wire).content")
-            && content.contains(".text.clone()")
             && content.contains("(__rest_wire).usage).input_tokens.clone()"),
-        "expected Anthropic Messages output fields to project from the typed 200 body, got:\n{content}"
+        "expected Anthropic Messages usage + content paths to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        content.contains("MessagesTextBlock") && content.contains("match &*("),
+        "expected variant-aware typed projection for assistant text (`MessagesTextBlock` + `match &*(`), got:\n{content}"
     );
     assert!(
         !content.contains("json_body.pointer(\"/content/0/text\")"),
