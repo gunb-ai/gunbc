@@ -95,8 +95,9 @@ type ToolCall {
 // roles. The value is projected from `OpenAiChatMessage` variant identity, not
 // caller-authored as a free payload field.
 //
-// Request wire for this row (`messages[].role` as system/developer/user/assistant)
-// is ratcheted by pipeline tests in `src/v2/tests/src/pipeline.rs`:
+// Request wire for this row (`messages[].role` as
+// system/developer/user/assistant/tool/function) is ratcheted by pipeline tests
+// in `src/v2/tests/src/pipeline.rs`:
 // `openai_chat_message_role_wire_matches_llm_snake_contract` (emitted serde attrs)
 // and `openai_chat_message_row_json_matches_chat_completions_wire_tags` (golden JSON).
 type OpenAiChatMessageRole = System | Developer | User | Assistant | Tool | Function
