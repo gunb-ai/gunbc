@@ -706,9 +706,21 @@ fn shared_std_types_accepts_type_inhabits_clause() {
     let result = parse_source(source);
     assert!(
         result.error.is_none(),
-        "v2 parser should accept and ignore shared type inhabits clauses: {:?}",
+        "v2 parser should accept shared type inhabits clauses: {:?}",
         result.error
     );
+    let module = result.module.clone().expect("module");
+    let type_item = module.children[0].clone();
+    let inhabits = type_item
+        .properties
+        .iter()
+        .find(|property| property.name == "inhabits")
+        .expect("type inhabits clause should be carried as a structural property");
+    let inhabits_expr = inhabits
+        .children
+        .first()
+        .expect("inhabits property should contain the parsed relation type");
+    assert_eq!(inhabits_expr.name, "BooleanAlgebra");
 }
 
 // ── keyword-as-name regression (dag_non_name_keywords authority) ───────

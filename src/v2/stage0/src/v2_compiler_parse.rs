@@ -1195,21 +1195,33 @@ pub fn type_body_tokens_after_modifiers(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc
 
 pub fn parse_optional_type_inhabits_clause(
     tokens: &Rc<Vec<Rc<Token>>>,
-    ctx: &Rc<ParseContext>,
+    ctx: Rc<ParseContext>,
 ) -> Rc<TypeResult> {
-    if tok_is_ident_text(tokens.first().cloned(), "inhabits".to_string()) {
-        let r = parse_type_expr(&Rc::new(tokens.iter().skip(1).cloned().collect()), ctx);
-        Rc::new(TypeResult {
-            type_expr: r.type_expr.clone(),
-            tokens: skip_newlines(r.tokens.clone()),
-            ctx: r.ctx.clone(),
-            err: r.err.clone(),
-        })
+    if tok_is_ident_text(tokens.clone().first().cloned(), "inhabits".to_string()) {
+        {
+            let r = parse_type_expr(
+                &Rc::new(
+                    tokens
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                ),
+                &ctx,
+            );
+            Rc::new(TypeResult {
+                type_expr: r.type_expr.clone(),
+                tokens: skip_newlines(r.tokens.clone()),
+                ctx: r.ctx.clone(),
+                err: r.err.clone(),
+            })
+        }
     } else {
         Rc::new(TypeResult {
             type_expr: leaf_type_node(&"".to_string(), &no_span()),
             tokens: tokens.clone(),
-            ctx: ctx.clone(),
+            ctx: ctx,
             err: None,
         })
     }
@@ -3004,7 +3016,7 @@ pub fn parse_type_after_kw(
         let r = expect_ident(&tokens);
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
-                item: dummy,
+                item: dummy.clone(),
                 tokens: r.tokens.clone(),
                 ctx: ctx.clone(),
                 err: r.err.clone(),
@@ -3018,10 +3030,10 @@ pub fn parse_type_after_kw(
         let tokens = skip_newlines(type_params_result.tokens.clone());
         let ctx = type_params_result.ctx.clone();
         let tokens = type_body_tokens_after_modifiers(tokens.clone());
-        let inhabits_result = parse_optional_type_inhabits_clause(&tokens, &ctx);
+        let inhabits_result = parse_optional_type_inhabits_clause(&tokens, ctx.clone());
         if has_err(inhabits_result.err.clone()) {
             return Rc::new(ItemResult {
-                item: dummy,
+                item: dummy.clone(),
                 tokens: inhabits_result.tokens.clone(),
                 ctx: inhabits_result.ctx.clone(),
                 err: inhabits_result.err.clone(),
@@ -3184,7 +3196,7 @@ pub fn parse_type_body_from_prefix(
             ident: None,
         });
         let tokens = type_body_tokens_after_modifiers(skip_newlines(prefix.tokens.clone()));
-        let inhabits_result = parse_optional_type_inhabits_clause(&tokens, &ctx);
+        let inhabits_result = parse_optional_type_inhabits_clause(&tokens, ctx.clone());
         if has_err(inhabits_result.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
