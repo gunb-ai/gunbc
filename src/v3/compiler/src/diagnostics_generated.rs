@@ -18,6 +18,21 @@ impl SourceSpan {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceByteSpan {
+    pub byte_start: u32,
+    pub byte_end: u32,
+}
+
+impl SourceByteSpan {
+    pub const fn new(byte_start: u32, byte_end: u32) -> Self {
+        Self {
+            byte_start,
+            byte_end,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Correction {
     pub description: String,

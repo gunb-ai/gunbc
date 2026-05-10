@@ -56,7 +56,7 @@ module lenses.infer_helpers
 
 import std.list { List, empty, cons }
 import v3.std.substrate {
-  Behavior, BranchPath, BranchPattern, DeclarationId, SourceSpan,
+  Behavior, BranchPath, BranchPattern, DeclarationId, SourceByteSpan, SourceSpan,
   TemplateArgument, TypeConnective,
   hit_declaration_id_lookup,
   miss_declaration_id_lookup
@@ -121,27 +121,18 @@ fn behavior_output_port(behavior: Behavior) -> PortId =
     Bind(bind) => bind.result_port
   }
 
-// SG-4b-2 span-utility tranche — structurally twin to
-// `behavior_output_port`; reads the reflected `span` field that every
-// `Behavior` variant already carries on the substrate.
-fn behavior_span(behavior: Behavior) -> SourceSpan =
-  match behavior {
-    Value(v) => v.span
-    Transform(t) => t.span
-    Branch(b) => b.span
-    Loop(l) => l.span
-    Bind(bind) => bind.span
-  }
-
 // Pure match over reflected `BranchPattern`; total — the
-// `branch_span` fallback covers the resolved-variant case.
+// `branch_span` fallback covers the resolved-variant case. Returns
+// `SourceByteSpan` so lens output does not surface `SourceSpan.file`
+// participation (R3 gate #31).
 fn payload_binding_span(
   path: BranchPath,
   branch_span: SourceSpan
-) -> SourceSpan =
+) -> SourceByteSpan =
   match path.pattern {
-    UnresolvedVariant(u) => u.span
-    ResolvedVariant(_) => branch_span
+    UnresolvedVariant(u) => { byte_start: u.span.start, byte_end: u.span.end }
+    ResolvedVariant(_) =>
+      { byte_start: branch_span.start, byte_end: branch_span.end }
   }
 
 fn template_argument_value(
