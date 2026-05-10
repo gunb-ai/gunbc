@@ -1,20 +1,21 @@
 //! L6 cross-product walker. Pure function over the bootstrap [`Dag`];
-//! reports per-cell coverage against landed LanguageSpec **row**
-//! authorities (Phase 1 `MethodTemplateContract` lists — see
-//! [`crate::coverage`]).
+//! reports per-cell coverage against landed `EmissionPathProjection`
+//! row authorities (see [`crate::coverage`]).
 //!
 //! ## Coverage lookup
 //!
-//! Coverage is derived from substrate-loaded `List<MethodTemplateContract>`
-//! declarations per Shape A target (`*_method_template_contracts.dag`), not
-//! from a dedicated `emission_paths` map. [`walk_cross_product`] builds the
-//! covered-cell set via [`crate::coverage::language_spec_emission_cells_covered`],
-//! then partitions [`crate::cells::Cell::all`] with `covered.contains(&cell)`.
+//! Coverage is derived from substrate-loaded
+//! `List<EmissionPathProjection>` declarations per Shape A target.
+//! [`walk_cross_product`] builds the covered-cell set via
+//! [`crate::coverage::language_spec_emission_cells_covered`], then
+//! partitions [`crate::cells::Cell::all`] with `covered.contains(&cell)`.
+
+use std::collections::HashSet;
 
 use v3_compiler::dag::Dag;
 
-use crate::cells::Cell;
-use crate::coverage::language_spec_emission_cells_covered;
+use crate::cells::{Cell, ShapeATarget};
+use crate::coverage::{language_spec_emission_cells_covered, language_spec_targets};
 use crate::diagnostic::EmissionDiagnostic;
 
 /// Per-cell coverage report produced by the L6 walker.
@@ -29,8 +30,7 @@ pub struct CrossProductReport {
 }
 
 impl CrossProductReport {
-    /// Total cells walked. Always 6 × 5 × 3 = 90 (the cross-product
-    /// shape is structural; only coverage of each cell varies).
+    /// Total cells walked.
     pub fn total_cells(&self) -> usize {
         self.present.len() + self.missing.len()
     }
@@ -42,9 +42,10 @@ impl CrossProductReport {
 /// **Pure function** — no mutation, no side effects, no panics.
 pub fn walk_cross_product(dag: &Dag) -> CrossProductReport {
     let covered = language_spec_emission_cells_covered(dag);
+    let targets = language_spec_targets(dag).unwrap_or_else(|| fallback_targets(dag, &covered));
     let mut present = Vec::new();
     let mut missing = Vec::new();
-    for cell in Cell::all() {
+    for cell in Cell::all(&targets) {
         if covered.contains(&cell) {
             present.push(cell);
         } else {
@@ -52,4 +53,64 @@ pub fn walk_cross_product(dag: &Dag) -> CrossProductReport {
         }
     }
     CrossProductReport { present, missing }
+}
+
+fn fallback_targets(dag: &Dag, covered: &HashSet<Cell>) -> Vec<ShapeATarget> {
+    // Defense-in-depth for malformed bootstrap metadata; steady-state target
+    // discovery stays data-driven through `language_spec_targets`. Keep this
+    // degraded path in the same ShapeATarget declaration-id space as
+    // projection rows.
+    let mut targets = [
+        dag.declaration_by_name("rust_shape_a_target")
+            .map(|decl| decl.id),
+        dag.declaration_by_name("python_shape_a_target")
+            .map(|decl| decl.id),
+        dag.declaration_by_name("go_shape_a_target")
+            .map(|decl| decl.id),
+    ]
+    .into_iter()
+    .flatten()
+    .map(ShapeATarget::new)
+    .collect::<Vec<_>>();
+
+    for cell in covered {
+        if !targets.contains(&cell.target) {
+            targets.push(cell.target);
+        }
+    }
+
+    targets
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use v3_compiler::generated_full_bootstrap_dag;
+
+    #[test]
+    fn fallback_targets_keep_bootstrap_axis_when_coverage_is_empty() {
+        let dag = generated_full_bootstrap_dag();
+        let targets = fallback_targets(&dag, &HashSet::new());
+
+        assert_eq!(
+            targets,
+            vec![
+                ShapeATarget::new(
+                    dag.declaration_by_name("rust_shape_a_target")
+                        .expect("rust ShapeATarget")
+                        .id
+                ),
+                ShapeATarget::new(
+                    dag.declaration_by_name("python_shape_a_target")
+                        .expect("python ShapeATarget")
+                        .id
+                ),
+                ShapeATarget::new(
+                    dag.declaration_by_name("go_shape_a_target")
+                        .expect("go ShapeATarget")
+                        .id
+                ),
+            ]
+        );
+    }
 }
