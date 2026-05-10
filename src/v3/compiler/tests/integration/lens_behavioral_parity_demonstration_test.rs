@@ -18,12 +18,13 @@ use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     AsymptoticClass, Behavior, CompositionVerdict, EffectShape, IdempotentShape, NonSingletonList,
-    OperationEffect, PortId, SymbolicCost, WorkflowEffect, WorkflowParallelismReport,
+    OperationEffect, PortId, SymbolicCost, TransformTarget, TypeConnective, WorkflowEffect,
+    WorkflowParallelismReport,
 };
 use v3_compiler::lens_cost::{complexity_of, Certainty, ComplexityLookup};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::lens_effect_enumeration::{
-    enumerate_effects, StructuralEffectShape, TransactionalPattern,
+    enumerate_effects, EffectEnumerationReport, StructuralEffectShape, TransactionalPattern,
 };
 use v3_compiler::Dag;
 
@@ -51,6 +52,23 @@ fn read_op(name: &str) -> OperationEffect {
         operation_name: name.to_string(),
         shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
     }
+}
+
+fn has_non_arrow_callable_gap(dag: &Dag, report: &EffectEnumerationReport) -> bool {
+    report.coverage_gaps.iter().any(|gap| {
+        let Some(Behavior::Transform(transform)) = dag
+            .nodes()
+            .iter()
+            .find(|behavior| behavior.id() == gap.node)
+        else {
+            return false;
+        };
+        let TransformTarget::Callable(target) = &transform.target else {
+            return false;
+        };
+        dag.declaration_opt(target)
+            .is_some_and(|decl| !matches!(decl.connective, TypeConnective::Arrow { .. }))
+    })
 }
 
 fn run_with_parity_demo_stack(f: impl FnOnce() + Send + 'static) {
@@ -159,10 +177,8 @@ fn r3_gate_73_demonstrates_effect_enumeration_parity_snapshot() {
             "effect enumeration should publish facts for the representative fixture"
         );
         assert!(
-            report.coverage_gaps.iter().any(|gap| gap
-                .reason
-                .contains("transform target is not an arrow declaration")),
-            "effect enumeration frozen snapshot should preserve the current signature-shape coverage gap, got {:?}",
+            has_non_arrow_callable_gap(&dag, &report),
+            "effect enumeration frozen snapshot should preserve the current non-arrow callable coverage gap, got {:?}",
             report.coverage_gaps
         );
         assert!(
