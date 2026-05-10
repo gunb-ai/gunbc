@@ -358,6 +358,36 @@ type TestClaim {
   requires: List<ResourceReference>
 }
 
+// A quantified claim ranges over a generated family instead of one
+// enumerated `source` / `file_name` pair. The generator declaration is
+// the authority for that family; richer generated program-shape carriers
+// land with the ProgramGenerator lane.
+type ProgramGenerator {
+  generator: DeclarationRef
+}
+
+// Closed quantifier over a generated program family. This lives at the
+// claim layer, not inside `TestPredicate`, so predicates keep their
+// "property of one program" meaning.
+type Quantifier
+  = ForAll
+  | Exists
+
+type QuantifiedTestClaim {
+  name: String
+  generator: ProgramGenerator
+  quantifier: Quantifier
+  predicate: TestPredicate
+  requires: List<ResourceReference>
+}
+
+// Ordered suite entries admit both existing enumerated claims and new
+// quantified family claims without splitting reporting/dependency order
+// across parallel lists.
+type SuiteClaim
+  = Enumerated(TestClaim)
+  | Quantified(QuantifiedTestClaim)
+
 type TestSuite {
   name: String
   claims: List<TestClaim>

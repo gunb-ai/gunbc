@@ -82,6 +82,28 @@ fn bootstrap_loads_verification_authority_types() {
         record_fields(&dag, "TestClaim"),
         vec!["name", "source", "file_name", "predicate", "requires"]
     );
+    assert_eq!(
+        record_fields(&dag, "ProgramGenerator"),
+        vec!["generator"]
+    );
+    assert_eq!(
+        sum_variants(&dag, "Quantifier"),
+        vec![
+            (String::from("ForAll"), Vec::new()),
+            (String::from("Exists"), Vec::new()),
+        ]
+    );
+    assert_eq!(
+        record_fields(&dag, "QuantifiedTestClaim"),
+        vec!["name", "generator", "quantifier", "predicate", "requires"]
+    );
+    assert_eq!(
+        sum_variants(&dag, "SuiteClaim"),
+        vec![
+            (String::from("Enumerated"), vec![String::from("_0")]),
+            (String::from("Quantified"), vec![String::from("_0")]),
+        ]
+    );
     assert_eq!(record_fields(&dag, "TestSuite"), vec!["name", "claims"]);
     assert_eq!(
         sum_variants(&dag, "DiagnosticKind"),
