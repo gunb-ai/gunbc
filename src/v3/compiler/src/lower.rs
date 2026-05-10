@@ -8042,7 +8042,7 @@ fn user_defined_arrow_body_node(dag: &Dag, mut decl_id: DeclarationId) -> Option
             TypeConnective::Arrow {
                 body: ArrowBody::UserDefined(bind_id),
                 ..
-            } => return Some(bind_id.node_id()),
+            } => return dag.port(bind_id.bind(dag).value).produced_by,
             TypeConnective::Instantiation { template, .. } => decl_id = *template,
             _ => return None,
         }
