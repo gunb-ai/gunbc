@@ -23,6 +23,9 @@
 // declaration, no name-based inhabitance walk at infer time.
 
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
+
+use num_bigint::BigInt;
 
 use crate::dag::{
     type_connective_cardinality, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
@@ -783,6 +786,29 @@ fn carrier_chain_names(dag: &Dag, decl_id: DeclarationId) -> Vec<String> {
     out
 }
 
+/// Follow only `Atom(ResolvedByName)` edges — bounded forward walk (INVARIANTS
+/// §P3/P4). Same discipline as [`carrier_chain_names`] (which also caps hops);
+/// this helper is for template resolution where only import stubs use `ResolvedByName`.
+///
+/// Returns `None` when more than `max_depth` consecutive `ResolvedByName` edges
+/// remain (cycle or excessive depth).
+fn follow_resolved_by_name_bounded(
+    dag: &Dag,
+    mut id: DeclarationId,
+    max_depth: usize,
+) -> Option<DeclarationId> {
+    for _ in 0..max_depth {
+        match &dag.declaration(id).connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => id = *next,
+            _ => return Some(id),
+        }
+    }
+    match &dag.declaration(id).connective {
+        TypeConnective::Atom(AtomPayload::ResolvedByName(_)) => None,
+        _ => Some(id),
+    }
+}
+
 /// Outcome of validating a single registered-predicate clause against
 /// [`KNOWN_PREDICATES`]. Path (a) RATIFIED at gunbc#828
 /// `issuecomment-4390760353`: registered predicates must validate carrier
@@ -991,7 +1017,7 @@ fn synthesize_predicate_body(
         span: span.clone(),
     };
     let int_literal = |value: i64| SurfaceExpr::Literal {
-        value: SurfaceLiteral::Int(value),
+        value: SurfaceLiteral::Int(value.to_string()),
         span: span.clone(),
     };
     match spec.name {
@@ -1035,8 +1061,12 @@ fn synthesize_predicate_body(
             let SurfaceExpr::Record { fields, .. } = args.first()? else {
                 return None;
             };
-            let mut min_value: Option<i64> = None;
-            let mut max_value: Option<i64> = None;
+            let int_literal_decimal = |decimal: String| SurfaceExpr::Literal {
+                value: SurfaceLiteral::Int(decimal),
+                span: span.clone(),
+            };
+            let mut min_value: Option<String> = None;
+            let mut max_value: Option<String> = None;
             for field in fields {
                 let SurfaceExpr::Literal {
                     value: SurfaceLiteral::Int(n),
@@ -1045,9 +1075,15 @@ fn synthesize_predicate_body(
                 else {
                     return None;
                 };
+                // Reject ill-formed decimals; accept any magnitude that parses as `BigInt` so
+                // `range` synthesis cannot silently fall back to placeholders merely because the
+                // bound exceeds host `i64` (R3 full-magnitude Int literal carrier).
+                if BigInt::from_str(n.as_str()).is_err() {
+                    return None;
+                }
                 match field.name.as_str() {
-                    "min" => min_value = Some(*n),
-                    "max" => max_value = Some(*n),
+                    "min" => min_value = Some(n.clone()),
+                    "max" => max_value = Some(n.clone()),
                     _ => return None,
                 }
             }
@@ -1055,14 +1091,14 @@ fn synthesize_predicate_body(
             if let Some(m) = min_value {
                 clauses.push(SurfaceExpr::Operator {
                     op: OperatorKind::Comparison(ComparisonOp::Ge),
-                    args: vec![subject_var(), int_literal(m)],
+                    args: vec![subject_var(), int_literal_decimal(m)],
                     span: span.clone(),
                 });
             }
             if let Some(m) = max_value {
                 clauses.push(SurfaceExpr::Operator {
                     op: OperatorKind::Comparison(ComparisonOp::Le),
-                    args: vec![subject_var(), int_literal(m)],
+                    args: vec![subject_var(), int_literal_decimal(m)],
                     span: span.clone(),
                 });
             }
@@ -3286,7 +3322,15 @@ fn build_template_arguments(
         }
         return Vec::new();
     }
-    let template_param_count = dag.declaration(template).type_params.len();
+    let Some(template_for_params) =
+        resolve_template_for_type_parameters(dag, template, template_name, span)
+    else {
+        for arg in args {
+            let _ = type_to_declaration_id(arg, symbols, local, dag);
+        }
+        return Vec::new();
+    };
+    let template_param_count = dag.declaration(template_for_params).type_params.len();
     if template_param_count != args.len() {
         report_declaration_error(
             dag,
@@ -3312,7 +3356,7 @@ fn build_template_arguments(
         .enumerate()
         .map(|(idx, arg)| {
             let value = type_to_declaration_id(arg, symbols, local, dag);
-            let parameter = template_param_id(dag, template, idx).expect(
+            let parameter = template_param_id(dag, template_for_params, idx).expect(
                 "template_param_count equality was checked immediately above — \
                  param lookup at idx < count must succeed",
             );
@@ -3518,6 +3562,44 @@ fn template_param_id(dag: &Dag, template: DeclarationId, idx: usize) -> Option<D
     dag.declaration(template).type_params.get(idx).copied()
 }
 
+/// Upper bound on `ResolvedByName` hops while resolving an imported type to the
+/// declaration that carries `type_params` for generic application (INVARIANTS
+/// §P3/P4 — bounded lowering). Longer chains (including cyclic forwarding)
+/// fail closed with [`Diagnostic::ResolveError`].
+const MAX_TEMPLATE_IMPORT_ALIAS_DEPTH: usize = 64;
+
+/// `import std.other { Foo }` introduces a forwarding declaration whose
+/// connective is `Atom(ResolvedByName(target))` with an empty `type_params`
+/// slot. Generic instantiation must read params from the **target** template
+/// (e.g. `ApproximateField<F>` in `src/v3/std/approximate_field.dag`), not the
+/// import stub — otherwise `Foo<Bar>` lowers as arity-0 and drops arguments.
+///
+/// Returns `None` after attaching `ResolveError` when the chain exceeds
+/// [`MAX_TEMPLATE_IMPORT_ALIAS_DEPTH`] (cycle or pathological depth).
+fn resolve_template_for_type_parameters(
+    dag: &mut Dag,
+    template: DeclarationId,
+    template_name: &str,
+    span: &SourceSpan,
+) -> Option<DeclarationId> {
+    match follow_resolved_by_name_bounded(dag, template, MAX_TEMPLATE_IMPORT_ALIAS_DEPTH) {
+        Some(id) => Some(id),
+        None => {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "type `{template_name}`: import-alias chain exceeds bound ({MAX_TEMPLATE_IMPORT_ALIAS_DEPTH} `ResolvedByName` hops)"
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            None
+        }
+    }
+}
+
 // DB-11 (3a.3) single-construction-authority cleanup:
 // `lower_fn_item_unparsed` used to run a full parameter-decl walk
 // and an Arrow overwrite here — duplicating the work that
@@ -3704,7 +3786,7 @@ fn try_lower_repeat_string_string_data(
                 SurfaceExpr::Literal {
                     value: SurfaceLiteral::Int(n),
                     ..
-                } => n_value = Some(*n),
+                } => n_value = Some(i64::from_str(n.as_str()).ok()?),
                 _ => return None,
             },
             _ => return None,
@@ -4412,12 +4494,27 @@ fn enforce_non_negative_unit_count_payload(
         });
     };
     match first {
-        crate::dag::FieldValue::Literal(LiteralBits::Int(n)) if *n >= 0 => Ok(()),
-        crate::dag::FieldValue::Literal(LiteralBits::Int(n)) => Err(Diagnostic::ResolveError {
-            name: crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message(*n),
-            span: span.clone(),
-            fixes: Vec::new(),
-        }),
+        crate::dag::FieldValue::Literal(LiteralBits::Int(s)) => {
+            let Ok(n) = i128::from_str(s.as_str()) else {
+                return Err(Diagnostic::ResolveError {
+                    name: "PositiveIntervalWidth.UnitCount requires a literal Int `units` field"
+                        .to_string(),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                });
+            };
+            if n >= 0 {
+                Ok(())
+            } else {
+                Err(Diagnostic::ResolveError {
+                    name: crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
+                        s.as_str(),
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                })
+            }
+        }
         _ => Err(Diagnostic::ResolveError {
             name: "PositiveIntervalWidth.UnitCount requires a literal Int `units` field"
                 .to_string(),
@@ -4997,7 +5094,7 @@ fn lower_scalar_literal_for_type(
         return LowerScalarLiteralOutcome::NotApplicable;
     };
     let literal_bits = match value {
-        SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
+        SurfaceLiteral::Int(v) => LiteralBits::Int(v.clone()),
         SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
         SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
     };
@@ -5005,12 +5102,19 @@ fn lower_scalar_literal_for_type(
     let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
     let type_ok = match &literal_bits {
-        LiteralBits::Int(value) => {
+        LiteralBits::Int(s) => {
+            let Ok(int_value) = BigInt::from_str(s.as_str()) else {
+                return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
+                    name: "internal: malformed decimal integer literal".to_string(),
+                    span: expr_span(expr),
+                    fixes: Vec::new(),
+                });
+            };
             int_decl_id
                 .map(|id| walks_to(dag, expected_type, id))
                 .unwrap_or(false)
                 || matches!(
-                    int_literal_fits_expected_type(dag, *value, expected_type),
+                    int_literal_fits_expected_type(dag, &int_value, expected_type),
                     Ok(Some(true))
                 )
         }
@@ -5032,11 +5136,18 @@ fn lower_scalar_literal_for_type(
         }
         return LowerScalarLiteralOutcome::Literal(literal_bits);
     }
-    if let LiteralBits::Int(value) = literal_bits {
+    if let LiteralBits::Int(s) = &literal_bits {
+        let Ok(int_value) = BigInt::from_str(s.as_str()) else {
+            return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
+                name: "internal: malformed decimal integer literal".to_string(),
+                span: expr_span(expr),
+                fixes: Vec::new(),
+            });
+        };
         match integer_range_for_decl(dag, expected_type) {
             IntegerRangeLookup::Found(range) => {
                 return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range_for_interval(
-                    value,
+                    &int_value,
                     TypeShape::new(expected_type),
                     range,
                     expr_span(expr),
@@ -7447,7 +7558,7 @@ fn lower_expr(
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             let data = match value {
-                SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
+                SurfaceLiteral::Int(v) => LiteralBits::Int(v.clone()),
                 SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
                 SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
             };
@@ -8835,7 +8946,7 @@ fn is_strictly_smaller(
         &args[1],
         SurfaceExpr::Literal {
             value: SurfaceLiteral::Int(v), ..
-        } if (1..=MAX_PEANO_MATERIALIZATION).contains(v)
+        } if v.parse::<i64>().ok().is_some_and(|n| (1..=MAX_PEANO_MATERIALIZATION).contains(&n))
     );
     lhs_is_param && rhs_in_descent_range
 }
@@ -9578,7 +9689,7 @@ mod tests {
                     key: "one".to_string(),
                     key_span: span.clone(),
                     value: SurfaceExpr::Literal {
-                        value: SurfaceLiteral::Int(1),
+                        value: SurfaceLiteral::Int("1".to_string()),
                         span: span.clone(),
                     },
                     span: span.clone(),
@@ -9601,7 +9712,7 @@ mod tests {
             map.entries(),
             &[(
                 "one".to_string(),
-                crate::dag::FieldValue::Literal(LiteralBits::Int(1))
+                crate::dag::FieldValue::Literal(LiteralBits::Int("1".to_string()))
             )]
         );
 
@@ -9648,7 +9759,7 @@ mod tests {
                     key: "one".to_string(),
                     key_span: span.clone(),
                     value: SurfaceExpr::Literal {
-                        value: SurfaceLiteral::Int(1),
+                        value: SurfaceLiteral::Int("1".to_string()),
                         span: span.clone(),
                     },
                     span: span.clone(),
@@ -9671,7 +9782,7 @@ mod tests {
             map.entries(),
             &[(
                 "one".to_string(),
-                crate::dag::FieldValue::Literal(LiteralBits::Int(1))
+                crate::dag::FieldValue::Literal(LiteralBits::Int("1".to_string()))
             )]
         );
     }
@@ -9694,7 +9805,9 @@ mod tests {
                     .expect("UnitCount variant")
                     .ty;
                 let span = test_span();
-                let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int(-1))];
+                let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int(
+                    "-1".to_string(),
+                ))];
                 let err = enforce_non_negative_unit_count_payload(
                     &dag,
                     unit_count_payload_ty,
@@ -9708,7 +9821,7 @@ mod tests {
                 assert_eq!(
                     name,
                     positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
-                        -1
+                        "-1"
                     )
                 );
             })
@@ -9936,7 +10049,7 @@ mod tests {
             span: span.clone(),
         };
         let body = SurfaceExpr::Literal {
-            value: SurfaceLiteral::Int(1),
+            value: SurfaceLiteral::Int("1".into()),
             span: span.clone(),
         };
         let module = SurfaceModule {
@@ -10020,7 +10133,9 @@ mod tests {
             .nodes()
             .iter()
             .find_map(|node| match node {
-                Behavior::Value(value) if value.data == LiteralBits::Int(1) => Some(value),
+                Behavior::Value(value) if value.data == LiteralBits::Int("1".to_string()) => {
+                    Some(value)
+                }
                 _ => None,
             })
             .expect("literal function body should still lower to a ValueNode");

@@ -35,6 +35,7 @@
 //! | Method-template / emit-model carriers (**#1227**) | **N/A** — template contracts; unrelated to int-literal narrowing. |
 
 use std::collections::HashSet;
+use std::str::FromStr;
 
 use num_bigint::BigInt;
 
@@ -65,7 +66,7 @@ pub(crate) enum IntervalInt {
         max: BigInt,
     },
     /// Value-domain unbounded integer (e.g. arbitrary-precision target). Universal-accept for any
-    /// i64-representable literal magnitude.
+    /// tokenized decimal literal magnitude (through `u128::MAX` / signed `|m| ≤ 2^127`).
     ///
     /// **Dissolution trigger (when this variant is constructed from [`integer_range_for_decl`]):**
     /// a `rust_pilot_primitives` `IntegerPrimitive` row (or successor multi-target table) is
@@ -73,7 +74,7 @@ pub(crate) enum IntervalInt {
     /// check — e.g. Python `int` per [`docs/design-emission-model.md`](../../../../docs/design-emission-model.md)
     /// fold example (T-Ground cross-target / language `primitives.dag` work, not this consumer).
     /// Until that producer exists, only [`IntervalInt::ExactInterval`] is returned from the pilot
-    /// list; [`Unbounded`] remains for `contains_i64` / Q1 algebra completeness and unit tests.
+    /// list; [`Unbounded`] remains for `contains_bigint` / Q1 algebra completeness and unit tests.
     #[allow(dead_code)]
     Unbounded,
 }
@@ -92,14 +93,11 @@ pub(crate) struct ExactIntIntervalFacts {
 }
 
 impl IntervalInt {
-    /// Reconciliation receives only literals that already fit [`LiteralBits::Int(i64)`]. Declared
-    /// range facts may exceed `i64` (e.g. `u64::MAX`); literals above `i64::MAX` are rejected at
-    /// tokenization until the deferred Int128 carrier lane lands.
-    pub(crate) fn contains_i64(&self, value: i64) -> bool {
-        let value = BigInt::from(value);
+    /// Range check for a surface literal magnitude carried as decimal [`LiteralBits::Int`].
+    pub(crate) fn contains_bigint(&self, value: &BigInt) -> bool {
         match self {
             IntervalInt::Unbounded => true,
-            IntervalInt::ExactInterval { min, max, .. } => *min <= value && value <= *max,
+            IntervalInt::ExactInterval { min, max, .. } => min <= value && value <= max,
         }
     }
 
@@ -148,8 +146,8 @@ pub(crate) fn integer_routing_witness_for_decl(
     integer_routing_witness_walk(dag, decl, 0)
 }
 
-/// `Nat` (`dsl/std/nat.dag`: `Semiring<Magnitude>`). Decimal literals narrow like nonnegative
-/// fixed-width ints: \([0, i64::MAX]\) until a distinct magnitude literal carrier ships.
+/// `Nat` (`dsl/std/nat.dag`: `Semiring<Magnitude>`). Nonnegative literals share the tokenizer's
+/// `u128` magnitude carrier; narrowing still rejects negative values structurally.
 fn type_is_nat(dag: &Dag, mut decl: DeclarationId) -> bool {
     let Some(nat_id) = dag.declaration_by_name("Nat").map(|d| d.id) else {
         return false;
@@ -188,9 +186,9 @@ fn nat_decimal_literal_interval() -> IntervalInt {
     IntervalInt::ExactInterval {
         target_name: "Nat".to_string(),
         min_decimal: "0".to_string(),
-        max_decimal: i64::MAX.to_string(),
-        min: BigInt::from(0),
-        max: BigInt::from(i64::MAX),
+        max_decimal: u128::MAX.to_string(),
+        min: BigInt::from(0u8),
+        max: BigInt::from(u128::MAX),
     }
 }
 
@@ -488,23 +486,24 @@ fn literal_string(value: &FieldValue) -> Option<String> {
     }
 }
 
-pub(crate) fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
-    match dag.resolve_producer_opt(&port)? {
+pub(crate) fn literal_bigint_at(dag: &Dag, port: PortId) -> Option<BigInt> {
+    let s = match dag.resolve_producer_opt(&port)? {
         Behavior::Value(value) => match &value.data {
-            LiteralBits::Int(n) => Some(*n),
-            _ => None,
+            LiteralBits::Int(s) => s.as_str(),
+            _ => return None,
         },
-        _ => None,
-    }
+        _ => return None,
+    };
+    BigInt::from_str(s).ok()
 }
 
 pub(crate) fn int_literal_fits_expected_type(
     dag: &Dag,
-    literal: i64,
+    literal: &BigInt,
     expected: DeclarationId,
 ) -> Result<Option<bool>, Diagnostic> {
     match integer_range_for_decl(dag, expected) {
-        IntegerRangeLookup::Found(bound) => Ok(Some(bound.contains_i64(literal))),
+        IntegerRangeLookup::Found(bound) => Ok(Some(bound.contains_bigint(literal))),
         IntegerRangeLookup::Missing => Ok(None),
         IntegerRangeLookup::Invalid(diag) => Err(diag),
     }
@@ -515,7 +514,7 @@ pub(crate) fn int_literal_fits_expected_type(
 /// For a bound that may be [`IntervalInt::Unbounded`], use [`magnitude_out_of_range_for_interval`]
 /// instead — this function does not accept [`IntervalInt`].
 pub(crate) fn magnitude_out_of_range(
-    literal: i64,
+    literal: &BigInt,
     expected: TypeShape,
     facts: ExactIntIntervalFacts,
     span: SourceSpan,
@@ -533,9 +532,9 @@ pub(crate) fn magnitude_out_of_range(
 
 /// OOB diagnostic when the only available model is [`IntervalInt`] (e.g. from
 /// [`integer_range_for_decl`]). Unbounded domains never produce `MagnitudeOutOfRange` for
-/// i64-bounded literals; if that combination appears, fail closed without `unreachable!`.
+/// finite literals; if that combination appears, fail closed without `unreachable!`.
 pub(crate) fn magnitude_out_of_range_for_interval(
-    literal: i64,
+    literal: &BigInt,
     expected: TypeShape,
     bound: IntervalInt,
     span: SourceSpan,
@@ -829,7 +828,7 @@ mod tests {
         let dag = Dag::new();
         let u8_decl = dag.declaration_by_name("UInt8").expect("UInt8").id;
         let d = magnitude_out_of_range(
-            256,
+            &BigInt::from(256),
             TypeShape::new(u8_decl),
             ExactIntIntervalFacts {
                 target_name: "u8".to_string(),
@@ -856,7 +855,7 @@ mod tests {
         let dag = Dag::new();
         let int_decl = dag.declaration_by_name("Int").expect("Int in bootstrap").id;
         let d = magnitude_out_of_range_for_interval(
-            0,
+            &BigInt::from(0),
             TypeShape::new(int_decl),
             IntervalInt::Unbounded,
             SourceSpan::new("t.v3", 0, 0),
@@ -868,9 +867,9 @@ mod tests {
     }
 
     #[test]
-    fn interval_int_unbounded_accepts_all_i64_literals() {
-        assert!(IntervalInt::Unbounded.contains_i64(i64::MIN));
-        assert!(IntervalInt::Unbounded.contains_i64(i64::MAX));
+    fn interval_int_unbounded_accepts_sample_literals() {
+        assert!(IntervalInt::Unbounded.contains_bigint(&BigInt::from(i64::MIN)));
+        assert!(IntervalInt::Unbounded.contains_bigint(&BigInt::from(i64::MAX)));
     }
 
     #[test]
@@ -921,9 +920,9 @@ mod tests {
     }
 
     #[test]
-    fn int128_range_lookup_accepts_all_i64_literals() {
+    fn int128_range_lookup_accepts_all_i64_magnitudes() {
         // i128 row's range covers all i64 magnitudes; reconciliation passes
-        // any i64 literal through `contains_i64`.
+        // typical literals through `contains_bigint`.
         let dag = Dag::new();
         let int128 = dag
             .declaration_by_name("Int128")
@@ -931,9 +930,9 @@ mod tests {
             .id;
         match integer_range_for_decl(&dag, int128) {
             IntegerRangeLookup::Found(bound) => {
-                assert!(bound.contains_i64(i64::MIN));
-                assert!(bound.contains_i64(0));
-                assert!(bound.contains_i64(i64::MAX));
+                assert!(bound.contains_bigint(&BigInt::from(i64::MIN)));
+                assert!(bound.contains_bigint(&BigInt::from(0)));
+                assert!(bound.contains_bigint(&BigInt::from(i64::MAX)));
             }
             IntegerRangeLookup::Missing => panic!("expected Found range for Int128, got Missing"),
             IntegerRangeLookup::Invalid(d) => {
