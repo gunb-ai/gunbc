@@ -49,10 +49,11 @@ echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test fragments=$fra
 | 2026-05-06 | (HEAD~150) | 46 | 89 | 1 | 136 | +8 | — | retroactive |
 | 2026-05-07 | (HEAD~50) | 47 | 95 | 1 | 143 | +7 | — | retroactive |
 | **2026-05-09** | **c25b2d8df** | **48** | **101** | **1** | **150** | **+7 (9-day total: +30)** | (none — Cluster M cold) | velocity-walk audit landed PR #2358; remediation program in flight |
+| **2026-05-10** | **f1588bcc8** | **53** | **107** | **1** | **161** | **+11 (24h)** | none-dissolved-yet; queued: gate #6 (wise-crane-831 ACTIVE → bin-shim retirement), F2 (crisp-raven-202 PR #2473), T-Tier3 D2a (PR #2285), carve-promotion lanes (#81/#82/#83/#95) | per Director re-task at gunbc#828 c#4414054598. **Trajectory not yet inflected toward shrink** — bulk events queued + workers ACTIVE but pre-land at this snapshot. 10 work items #2461-#2470 spawned 2026-05-09 ~23:25Z (8 Substrate READY-pending-capacity / 1 Grounding ACTIVE / 1 ratification cycle). Alarm 1 + Alarm 2 still tripped (+11/24h ≥ +10/7-day threshold; 11-day total +41 ≥ 0). Inflection expected at next reading once gate #6 bin-shim + F2 PR #2473 + T-Tier3 D2a land. |
 
 ## §4. Velocity-to-zero math
 
-**Current state** (2026-05-09): 150 entries (48 non_test + 101 test + 1 fragments), growing +3.3/day.
+**Current state** (2026-05-10): 161 entries (53 non_test + 107 test + 1 fragments). Per-day rate accelerated: +11 over 24h (vs +3.3/day prior 9-day average). Trajectory NOT yet inflected toward shrink — bulk-dissolution events queued (gate #6 bin-shim, F2 #2473, T-Tier3 D2a, carve-promotion lanes), workers ACTIVE on multiple, but pre-land at this snapshot. 10 work items spawned 2026-05-09 ~23:25Z under Debt-Paydown central tracker (#2461-#2470) — 8 Substrate READY-pending-capacity (16/16 saturated), 1 Grounding ACTIVE, 1 self-author ratification cycle.
 
 **Required for R3 close**: 0 + 0 + 0.
 
