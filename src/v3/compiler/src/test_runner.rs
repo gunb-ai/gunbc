@@ -63,6 +63,21 @@ const TC2_CHURCH_ROSSER_STRICT_FIRE_LEFT_REPORT: &str =
 const TC2_CHURCH_ROSSER_STRICT_FIRE_RIGHT_REPORT: &str =
     "tc2_church_rosser_strict_fire_right_dimension_report";
 
+/// R3 §1.8 gate #13 — canonical `TestClaim.name` for the TC3 Pattern-A second-mover executable.
+const TC3_PATTERN_A_SECOND_MOVER_EXECUTABLE_CLAIM: &str = "tc3_pattern_a_second_mover_executable";
+
+/// `TC3_PATTERN_A_*_REPORT`: fixture-local `DimensionReport<Dag>` role declarations (carrier `Dag`
+/// per Q-Reification Option A) the runner pattern-matches to dispatch the gate-#13 executable
+/// arm. Names mirror `tc3_strong_normalization_strict_fire.dag` lines 41-42.
+const TC3_PATTERN_A_BASELINE_REPORT: &str = "tc3_evaluation_step_baseline_dimension_report";
+const TC3_PATTERN_A_COMPARE_REPORT: &str = "tc3_evaluation_step_compare_dimension_report";
+
+/// Dimension-name keys for the TC3 second-mover bounded-runner reports. Distinct strings so the
+/// equivalence check sees a non-vacuous projection-pair (baseline eval-step vs compare /
+/// termination-evidence projection).
+const TC3_PATTERN_A_BASELINE_DIMENSION_NAME: &str = "tc3_pattern_a_second_mover:eval_step:baseline";
+const TC3_PATTERN_A_COMPARE_DIMENSION_NAME: &str = "tc3_pattern_a_second_mover:eval_step:compare";
+
 /// R3 gate #43 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
 ///
 /// Compared as `Some(R3_PARALLEL_EMIT_WITNESS_LENS_NAME)` — **not** `Some("…")` inline — so
@@ -2037,6 +2052,77 @@ fn declaration_has_exact_name(dag: &Dag, id: DeclarationId, expected: &str) -> b
     dag.declaration(id).name.as_deref() == Some(expected)
 }
 
+fn tc3_pattern_a_second_mover_strict_fire_report_role_ids(
+    dag: &Dag,
+    left_id: DeclarationId,
+    right_id: DeclarationId,
+) -> bool {
+    declaration_has_exact_name(dag, left_id, TC3_PATTERN_A_BASELINE_REPORT)
+        && declaration_has_exact_name(dag, right_id, TC3_PATTERN_A_COMPARE_REPORT)
+}
+
+/// Build one TC3 second-mover projection report by evaluating the program under the supplied
+/// applicative `InputEvaluationOrder`. The baseline projection runs `LeftFirst`; the compare
+/// projection runs `RightFirst`. Strong-normalization is the load-bearing claim — under any
+/// terminating reduction order the program reaches the same top-level `Value`, so the two
+/// projections (genuinely distinct evaluator runs through `evaluate_body`) must agree on
+/// `Value` for `BinaryDimensionReportEquals` to Pass. The resulting envelope carries the
+/// projection's `dimension_name` so the report-pair is non-vacuous in the equivalence check.
+fn build_tc3_pattern_a_second_mover_projection_report(
+    program_dag: &Dag,
+    bind_id: NodeId,
+    dimension_name: &str,
+    order: InputEvaluationOrder,
+) -> Result<(DimensionReport<Dag>, Value), EvalError> {
+    let frame = EvalFrame::from_bindings(Vec::<(PortId, Value)>::new()).expect("empty root frame");
+    let mut state = EvalStateStack::with_root_frame(frame);
+    let strategy = EvalStrategy::ApplicativeOrder { input_order: order };
+    let value = evaluate_body(program_dag, bind_id, &mut state, strategy)?;
+    let report = DimensionReport::DimensionOk {
+        dimension_name: dimension_name.to_string(),
+        composed: program_dag.clone(),
+        witnesses: Vec::new(),
+    };
+    Ok((report, value))
+}
+
+/// Receipt for the TC3 Pattern-A second-mover **host slice** (bounded runner bridge).
+///
+/// Load-bearing: identical evaluated top-level [`Value`]s under genuinely distinct evaluator
+/// runs — `LeftFirst` (baseline projection) vs `RightFirst` (compare projection). For
+/// strongly-normalizing programs every reduction order yields the same value; disagreement here
+/// is a strong-normalization counterexample on this representative. Envelope: both sides are
+/// [`DimensionReport::DimensionOk`] with empty witness lists (scaffold) and distinct
+/// `dimension_name` strings so the two projection roles were exercised. `composed` is the same
+/// lowered-program `Dag` clone by construction; a future substrate-side eval-step / bounded-step
+/// producer (per `r3-evaluator-tc3-d4-eval-step-producer-worker.md`) would supply non-vacuous
+/// witnesses / divergent carriers.
+fn tc3_pattern_a_second_mover_dimension_reports_equivalent_under_binary_equals(
+    left: &DimensionReport<Dag>,
+    left_value: &Value,
+    right: &DimensionReport<Dag>,
+    right_value: &Value,
+) -> bool {
+    if left_value != right_value {
+        return false;
+    }
+    match (left, right) {
+        (
+            DimensionReport::DimensionOk {
+                witnesses: lw,
+                dimension_name: na,
+                ..
+            },
+            DimensionReport::DimensionOk {
+                witnesses: rw,
+                dimension_name: nb,
+                ..
+            },
+        ) => na != nb && lw.is_empty() && rw.is_empty(),
+        _ => false,
+    }
+}
+
 fn tc2_church_rosser_strategy_dimension_name(order: InputEvaluationOrder) -> String {
     match order {
         InputEvaluationOrder::LeftFirst => {
@@ -2904,6 +2990,16 @@ impl<'a> TestRunner<'a> {
                 &right_name,
             );
         }
+        if self.type_ref_normalizes_to_named(left_carrier, "Dag")
+            && tc3_pattern_a_second_mover_strict_fire_report_role_ids(self.dag, left_id, right_id)
+            && claim.claim_name == TC3_PATTERN_A_SECOND_MOVER_EXECUTABLE_CLAIM
+        {
+            return self.eval_tc3_pattern_a_second_mover_binary_dimension_report_equals_claim(
+                claim,
+                &left_name,
+                &right_name,
+            );
+        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
@@ -3125,6 +3221,145 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Fail(format!(
                 "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
                  strategy-keyed `DimensionReport<Dag>` disagree — left={left_report:?} \
+                 (value={left_value:?}) vs right={right_report:?} (value={right_value:?})"
+            ))
+        }
+    }
+
+    /// R3 §1.8 gate #13 (`tc3_strong_normalization_strict_fire.dag`): `BinaryDimensionReportEquals`
+    /// payload references the fixture-local `tc3_evaluation_step_baseline_dimension_report` /
+    /// `tc3_evaluation_step_compare_dimension_report` `DimensionReport<Dag>` roles. The runner
+    /// materializes one [`DimensionReport::DimensionOk`] per projection role for the claim
+    /// program's top-level bind (`succ(succ(0))` per fixture) and applies the bounded
+    /// second-mover receipt in
+    /// [`tc3_pattern_a_second_mover_dimension_reports_equivalent_under_binary_equals`].
+    ///
+    /// **Bounded proxy.** This is a host-runner second-mover bridge analogous to
+    /// gate-#12 TC2 Church-Rosser: it verifies that the program evaluates to the same `Value`
+    /// under both projection roles (a strong-normalization receipt for this representative).
+    /// **Single forward dissolution trigger:** the eval-step / bounded-step producer surface +
+    /// G1.a static-lens-fold producer-surface-wiring per
+    /// `docs/briefs/r3-evaluator-tc3-d4-eval-step-producer-worker.md` — when both producers
+    /// land on `origin/main`, this arm should migrate to consuming live
+    /// `DimensionReport<Dag>` values from those producers (replacing the proxy `composed`
+    /// clone + empty witness lists with the substrate-emitted carriers / witnesses) without
+    /// changing the gate-#13 claim name or fixture.
+    ///
+    /// Generic `BinaryDimensionReportEquals` over arbitrary `DimensionReport<C>` producers
+    /// remains NYI at the boundary until substrate producers land.
+    fn eval_tc3_pattern_a_second_mover_binary_dimension_report_equals_claim(
+        &self,
+        claim: &TestClaimValue,
+        left_report_label: &str,
+        right_report_label: &str,
+    ) -> ClaimResult {
+        if claim.source.trim().is_empty() {
+            return ClaimResult::NotYetImplemented(format!(
+                "BinaryDimensionReportEquals: structural shape is valid for `{left_report_label}` \
+                 and `{right_report_label}`, but executable TC3 second-mover comparison requires \
+                 a non-empty `TestClaim.source` program slice"
+            ));
+        }
+
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                     claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                     claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+        if !program_dag.diagnostics().is_empty() {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                 expected empty diagnostics on `{}`, got {:?}",
+                claim.file_name,
+                program_dag.diagnostics().iter().collect::<Vec<_>>()
+            ));
+        }
+
+        let bind_name = match last_emit_rust_program_top_level_value_bind_name(&program_dag) {
+            Ok(Some(name)) => name,
+            Ok(None) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                     program has no top-level value bind (same convention as \
+                     `last_emit_rust_program_top_level_value_bind_name`)"
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                     cannot resolve top-level value bind for `{}`: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+        let Some(bind) = find_bind(&program_dag, &bind_name, &claim.file_name) else {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                 bind `{bind_name}` not found in `{}`",
+                claim.file_name
+            ));
+        };
+        if !bind.params.is_empty() {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                 bind `{bind_name}` must be a value bind with no parameters (got {} parameter port(s))",
+                bind.params.len()
+            ));
+        }
+
+        let (left_report, left_value) = match build_tc3_pattern_a_second_mover_projection_report(
+            &program_dag,
+            bind.id,
+            TC3_PATTERN_A_BASELINE_DIMENSION_NAME,
+            InputEvaluationOrder::LeftFirst,
+        ) {
+            Ok(pair) => pair,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{left_report_label}`: baseline projection \
+                     evaluation failed while materializing `DimensionReport<Dag>`: {err:?}"
+                ));
+            }
+        };
+        let (right_report, right_value) = match build_tc3_pattern_a_second_mover_projection_report(
+            &program_dag,
+            bind.id,
+            TC3_PATTERN_A_COMPARE_DIMENSION_NAME,
+            InputEvaluationOrder::RightFirst,
+        ) {
+            Ok(pair) => pair,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{right_report_label}`: compare projection \
+                     evaluation failed while materializing `DimensionReport<Dag>`: {err:?}"
+                ));
+            }
+        };
+
+        if tc3_pattern_a_second_mover_dimension_reports_equivalent_under_binary_equals(
+            &left_report,
+            &left_value,
+            &right_report,
+            &right_value,
+        ) {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                 projection-keyed `DimensionReport<Dag>` disagree — left={left_report:?} \
                  (value={left_value:?}) vs right={right_report:?} (value={right_value:?})"
             ))
         }
