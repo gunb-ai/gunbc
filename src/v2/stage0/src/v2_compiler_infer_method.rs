@@ -65,15 +65,23 @@ pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node
 
 pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
     v2_rt::concat(
-        make_map_type(
-            type_variable_node("map_key".to_string()),
-            type_variable_node("map_value".to_string()),
-        )
-        .diagnostics
-        .clone(),
+        v2_rt::concat(
+            make_map_type(
+                type_variable_node("map_key".to_string()),
+                type_variable_node("map_value".to_string()),
+            )
+            .diagnostics
+            .clone(),
+            make_container_type(
+                &"List".to_string(),
+                type_variable_node("collection_element".to_string()),
+            )
+            .diagnostics
+            .clone(),
+        ),
         make_container_type(
-            &"List".to_string(),
-            type_variable_node("collection_element".to_string()),
+            &"Set".to_string(),
+            type_variable_node("set_elem".to_string()),
         )
         .diagnostics
         .clone(),
@@ -104,9 +112,19 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v2_rt::rc_map_insert(m.clone(), "map_insert".to_string(), map_of_type_variables());
         let m = v2_rt::rc_map_insert(m.clone(), "map_merge".to_string(), map_of_type_variables());
         let m = v2_rt::rc_map_insert(m.clone(), "with".to_string(), map_of_type_variables());
+        let set_ty = make_container_type(
+            &"Set".to_string(),
+            type_variable_node("set_elem".to_string()),
+        )
+        .ty
+        .clone();
+        let m = v2_rt::rc_map_insert(m.clone(), "empty_set".to_string(), set_ty.clone());
+        let m = v2_rt::rc_map_insert(m.clone(), "set_insert".to_string(), set_ty.clone());
+        let m = v2_rt::rc_map_insert(m.clone(), "set_union".to_string(), set_ty);
         let m = v2_rt::rc_map_insert(m.clone(), "map_contains_key".to_string(), bool_type());
         let m = v2_rt::rc_map_insert(m.clone(), "map_has".to_string(), bool_type());
         let m = v2_rt::rc_map_insert(m.clone(), "emit_map_has".to_string(), bool_type());
+        let m = v2_rt::rc_map_insert(m.clone(), "set_contains".to_string(), bool_type());
         let m = v2_rt::rc_map_insert(
             m.clone(),
             "lookup".to_string(),

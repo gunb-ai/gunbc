@@ -11,25 +11,17 @@ module v2.compiler.infer_cycle
 
 import v2.compiler.infer_env { TypeBinding }
 
-fn set_has(m: Map<String, Bool>, key: String) -> Bool {
-  let result = match map_get(m, key) {
-    Some { value: _ } => true
-    None => false
-  }
-  result
-}
-
 // Filter each binding's deps to only names present in the binding set.
 // Primitives and external names are excluded -- they can't participate in cycles.
 fn compute_in_graph_deps(
     all_names: List<String>,
     deps_map: Map<String, List<String>>,
-    name_set: Map<String, Bool>
+    name_set: Set<String>
 ) -> Map<String, List<String>> {
   let result = fold(all_names, init: empty_map(), f: (acc, name) =>
     match map_get(deps_map, name) {
       Some { value: deps } =>
-        let local = filter(deps, d => d != name && set_has(m: name_set, key: d))
+        let local = filter(deps, d => d != name && set_contains(name_set, d))
         map_insert(acc, name, local)
       None => map_insert(acc, name, [])
     }
@@ -135,7 +127,7 @@ fn detect_type_cycles_kahn(
     bindings: Map<String, TypeBinding>
 ) -> List<String> {
   let all_names = map(map_values(bindings), b => b.name)
-  let name_set = fold(all_names, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
+  let name_set = fold(all_names, init: empty_set(), f: (acc, n) => set_insert(acc, n))
   let local_deps = compute_in_graph_deps(all_names: all_names, deps_map: deps_map, name_set: name_set)
   // Self-referencing types (SCC of size 1): Kahn's excludes self-loops from
   // local_deps (d != name filter), so self-referencing types would get removed.
@@ -148,9 +140,9 @@ fn detect_type_cycles_kahn(
   )
   let cycle_members = kahn_remove_loop(remaining: all_names, local_deps: local_deps)
   // Union: multi-node cycles + self-referencing types
-  let sr_set = fold(self_refs, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
-  let cm_set = fold(cycle_members, init: sr_set, f: (acc, n) => map_insert(acc, n, true))
+  let sr_set = fold(self_refs, init: empty_set(), f: (acc, n) => set_insert(acc, n))
+  let cm_set = fold(cycle_members, init: sr_set, f: (acc, n) => set_insert(acc, n))
   // Extract names from the union set, preserving original order
-  let result = filter(all_names, n => set_has(m: cm_set, key: n))
+  let result = filter(all_names, n => set_contains(cm_set, n))
   result
 }
