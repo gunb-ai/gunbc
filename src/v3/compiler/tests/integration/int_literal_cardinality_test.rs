@@ -393,6 +393,35 @@ fn uint64_upper_half_literal_tokenizes_and_narrows() {
 }
 
 #[test]
+fn uint128_full_magnitude_literal_tokenizes_and_narrows() {
+    // R3 gate #22: the literal carrier stores the full decimal magnitude, so
+    // the maximum UInt128 value is accepted without truncating through i128.
+    let max_u128 = "340282366920938463463374607431768211455";
+    let dag = compile_to_dag(
+        &format!("data x: UInt128 = {max_u128}"),
+        "uint128_full_magnitude_literal.v3",
+    )
+    .expect("u128::MAX must compile for UInt128 under full-magnitude literal carrier");
+    let decl = dag.declaration_by_name("x").expect("data `x` declaration");
+    let ty = decl
+        .meta_tag
+        .expect("scalar data item should carry meta_tag to its type decl");
+    assert_eq!(
+        dag.declaration(ty).name.as_deref(),
+        Some("UInt128"),
+        "literal should narrow to UInt128"
+    );
+    assert!(
+        matches!(
+            &decl.value_body,
+            Some(ValueBody::Scalar(LiteralBits::Int(s))) if s == max_u128
+        ),
+        "expected preserved decimal magnitude on declaration, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
 fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
     let err = compile_to_dag("data x: UInt8 = 256", "int_literal_u8_oob.v3")
         .expect_err("UInt8 overflow must fail closed");
