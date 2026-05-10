@@ -12,6 +12,7 @@
 //   Var (local)              → scope lookup
 //   Var (unresolved)         → placeholder port + ResolveError
 //   Call                     → Transform { target: TransformTarget::Callable(DeclarationId), inputs }
+//                              except resolved std.list.fold, which lowers to LoopNode
 //   Operator                 → Transform { target: TransformTarget::Operator(OperatorKind), inputs }
 //   If                       → Branch with 2 Paths
 //   Fn item                  → Bind with non-empty params + optional Loop wrapper
@@ -7844,6 +7845,7 @@ fn lower_resolved_callable_invocation(
     let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
     let mut input_ports: Vec<PortId> = Vec::new();
     let mut template_arguments: Vec<TemplateArgument> = Vec::new();
+    let mut fold_step_callable: Option<DeclarationId> = None;
     if let (Some(expected_result), Some(target_output)) = (
         expected_decl,
         declaration_callable_output(dag, base_target_decl, 0),
@@ -7914,6 +7916,9 @@ fn lower_resolved_callable_invocation(
                     );
                     return port;
                 }
+                if is_std_list_fold_decl(dag, base_target_decl) {
+                    fold_step_callable = Some(actual_callable);
+                }
                 continue;
             }
         }
@@ -7946,6 +7951,23 @@ fn lower_resolved_callable_invocation(
         retained_arguments,
         span,
     );
+    if is_std_list_fold_decl(dag, target_decl) {
+        if let (Some(source), Some(init), Some(step_callable)) = (
+            input_ports.first().copied(),
+            input_ports.get(1).copied(),
+            fold_step_callable,
+        ) {
+            if let Some(body) = user_defined_arrow_body_node(dag, step_callable) {
+                return dag.push_loop(
+                    source,
+                    init,
+                    body,
+                    LoopBound::Cardinality { count: source },
+                    span.clone(),
+                );
+            }
+        }
+    }
     let node_id = dag.alloc_node_id();
     let output = dag.alloc_port(Some(node_id));
     dag.push_node(Behavior::Transform(TransformNode {
@@ -7956,6 +7978,33 @@ fn lower_resolved_callable_invocation(
         span: span.clone(),
     }));
     output
+}
+
+fn is_std_list_fold_decl(dag: &Dag, mut decl_id: DeclarationId) -> bool {
+    for _ in 0..16 {
+        if dag.std_list_fold_decl() == Some(decl_id) {
+            return true;
+        }
+        match &dag.declaration(decl_id).connective {
+            TypeConnective::Instantiation { template, .. } => decl_id = *template,
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn user_defined_arrow_body_node(dag: &Dag, mut decl_id: DeclarationId) -> Option<NodeId> {
+    for _ in 0..16 {
+        match &dag.declaration(decl_id).connective {
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(bind_id),
+                ..
+            } => return Some(bind_id.node_id()),
+            TypeConnective::Instantiation { template, .. } => decl_id = *template,
+            _ => return None,
+        }
+    }
+    None
 }
 
 fn lower_expr(
