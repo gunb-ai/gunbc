@@ -185,7 +185,9 @@ fn test_3a5_match_arm_dotted_path_compiles() {
             v3_compiler::dag::Behavior::Transform(t)
             if matches!(
                 &t.target,
-                v3_compiler::dag::TransformTarget::UnresolvedFieldProject { field_label } if field_label == "x"
+                v3_compiler::dag::TransformTarget::UnresolvedFieldProject { field_label }
+                | v3_compiler::dag::TransformTarget::ResolvedFieldProject { field_label }
+                    if field_label == "x"
             )
         )
     });
