@@ -6,14 +6,17 @@
 //! native `auto_loop_parallelism_pending_lens` path — see `ROADMAP.md` §"R3 second-batch auto-loop
 //! scaffold". The directive lines are **author attestation**, not a compiler proof of iteration
 //! independence or dependence; full `Lens<Iteration-Independence> * …` composition is out of scope
-//! here. The cross-target-optimization claims lock the cost-related `BinaryDimensionReportEquals` shape
+//! here. Gate **#48** additionally keeps a structural `std.list.fold` program in
+//! `r3_free_consequences_auto_loop_parallelism_dependence.v3` so lowering still exercises a real
+//! loop body; integration tests ratchet embedded `TestClaim.source` against that file byte-for-byte.
+//! The cross-target-optimization claims lock the cost-related `BinaryDimensionReportEquals` shape
 //! and stay `NotYetImplemented` until cost facts land.
 
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
-use v3_compiler::test_runner::{ClaimResult, TestRunner};
+use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
 use crate::common::run_on_larger_stack;
@@ -21,6 +24,9 @@ use crate::common::run_on_larger_stack;
 const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_free_consequences_second_batch.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_free_consequences_second_batch.dag";
 const SUITE_NAME: &str = "r3_free_consequences_second_batch_suite";
+/// Byte-sync authority for gate #48 `TestClaim.source` (`include_str` ↔ embedded `.dag` string).
+const GATE_48_PROGRAM_AUTHORITY: &str =
+    include_str!("../fixtures/r3_free_consequences_auto_loop_parallelism_dependence.v3");
 const EXPECTED_CLAIMS: [&str; 5] = [
     "auto_loop_parallelism_provable_independence_emits_parallel",
     "auto_loop_parallelism_unproven_falls_back_sequential",
@@ -57,7 +63,18 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes() {
 }
 
 fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
-    let results = TestRunner::new(second_batch_dag()).run_suite(SUITE_NAME);
+    let dag = second_batch_dag();
+    let gate_48 = dag
+        .declaration_by_name("auto_loop_parallelism_dependence_emits_sequential")
+        .expect("gate #48 TestClaim declaration");
+    let claim_48 = TestClaimValue::from_declaration(gate_48).expect("TestClaimValue");
+    assert_eq!(
+        claim_48.source,
+        GATE_48_PROGRAM_AUTHORITY,
+        "embedded `TestClaim.source` must match `r3_free_consequences_auto_loop_parallelism_dependence.v3` byte-for-byte"
+    );
+
+    let results = TestRunner::new(dag).run_suite(SUITE_NAME);
     assert_eq!(results.len(), EXPECTED_CLAIMS.len());
 
     for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
