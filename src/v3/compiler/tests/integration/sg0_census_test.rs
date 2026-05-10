@@ -264,8 +264,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/int_literal_ranges.rs",
     "src/v3/compiler/src/lens_apply.rs",
     "src/v3/compiler/src/lens_t_las_carrier.rs",
-    // T-PB-A: `lens_depth.rs` retired — unused observational lens (no in-tree consumer).
-    "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
     // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
@@ -293,6 +291,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
     // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
     "src/v3/compiler/src/r1c_e_gates.rs",
+    // R3 T-Free-Consequences: authored comment → `lane2_workflow` staging until lowering owns it.
+    "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
@@ -635,7 +635,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
 // itself `foo.txt` would silently escape the ratchet otherwise.
 // Every entry here names a dissolution trigger in its own file header.
 // Sorted; one path per line, relative to the workspace root.
-const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/parse_parser_body.txt"];
+const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[
+    "src/v3/compiler/parse_parser_body.txt",
+    "src/v3/compiler/src/lens_testgen_body.txt",
+];
 
 // Non-`.rs` files under `src/v3/compiler/` whose content is produced
 // by a named generator (an `#[ignore]`'d refresh test, a `regen_*`

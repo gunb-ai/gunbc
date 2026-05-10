@@ -148,3 +148,96 @@ pub fn analyze_parallelism(d: &Dag, workflow_root: NodeId) -> WorkflowParallelis
         ),
     }
 }
+
+/// Scalar scheduling hint for R3 T-Free-Consequences `Lens<Iteration-Independence>` demos.
+///
+/// Returns `1` when `lane2_workflow` at `workflow_root` is a [`WorkflowEffect::LoopEffect`] whose
+/// body is a [`WorkflowEffect::LinearEffect`] consisting **only** of read-shaped idempotent
+/// operations — the v1 conservative witness that cross-iteration reorder is as safe as
+/// cross-branch read-only [`WorkflowEffect::ParallelEffect`] scheduling (DB-20 pairwise read
+/// commutativity). Any other workflow shape, empty body, or missing projection returns `0`
+/// (sequential emission / fail-closed).
+pub fn loop_iteration_parallel_emission_indicator(d: &Dag, workflow_root: NodeId) -> i64 {
+    let Some(workflow) = d.lane2_workflow_effect_at(&workflow_root) else {
+        return 0;
+    };
+    let WorkflowEffect::LoopEffect { body } = workflow else {
+        return 0;
+    };
+    let WorkflowEffect::LinearEffect { ops } = body.as_ref() else {
+        return 0;
+    };
+    if ops.is_empty() {
+        return 0;
+    }
+    for op in ops {
+        if !matches!(
+            op.shape,
+            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+        ) {
+            return 0;
+        }
+    }
+    1
+}
+
+#[cfg(test)]
+mod loop_iteration_parallel_emission_indicator_tests {
+    use super::*;
+    use crate::compile_to_dag;
+    use crate::dag::{Behavior, KeySource, NodeId};
+
+    fn trivial_anchor(dag: &Dag) -> NodeId {
+        dag.nodes()
+            .iter()
+            .find(|b| matches!(b, Behavior::Value(_) | Behavior::Bind(_)))
+            .expect("trivial program anchor")
+            .id()
+    }
+
+    #[test]
+    fn read_only_loop_body_projects_parallel_indicator() {
+        let mut dag =
+            compile_to_dag("let _: Int = 0", "loop_iter_indicator_fixture.v3").expect("compile");
+        let root = trivial_anchor(&dag);
+        let wf = WorkflowEffect::LoopEffect {
+            body: Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![OperationEffect {
+                    operation_name: "r".to_string(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                }],
+            }),
+        };
+        assert!(dag.try_register_lane2_workflow_effect(root, wf));
+        assert_eq!(loop_iteration_parallel_emission_indicator(&dag, root), 1);
+    }
+
+    #[test]
+    fn upsert_loop_body_projects_sequential_indicator() {
+        let mut dag =
+            compile_to_dag("let _: Int = 0", "loop_iter_indicator_fixture.v3").expect("compile");
+        let root = trivial_anchor(&dag);
+        let wf = WorkflowEffect::LoopEffect {
+            body: Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![OperationEffect {
+                    operation_name: "u".to_string(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+                        key_source: KeySource::PathParam {
+                            param: "id".to_string(),
+                        },
+                    }),
+                }],
+            }),
+        };
+        assert!(dag.try_register_lane2_workflow_effect(root, wf));
+        assert_eq!(loop_iteration_parallel_emission_indicator(&dag, root), 0);
+    }
+
+    #[test]
+    fn missing_lane2_workflow_projects_sequential_indicator() {
+        let dag =
+            compile_to_dag("let _: Int = 0", "loop_iter_indicator_fixture.v3").expect("compile");
+        let root = trivial_anchor(&dag);
+        assert_eq!(loop_iteration_parallel_emission_indicator(&dag, root), 0);
+    }
+}
