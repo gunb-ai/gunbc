@@ -92,18 +92,17 @@ fn expected_origin_from_producer_behavior(behavior: &Behavior) -> Origin {
     }
 }
 
-/// Pairs of (`regen_lens --lens <name>` registry key, cementing module stem
-/// under `tests/integration/cementing/` without `.rs`).
+/// Pairs of (`regen_lens --lens <name>` registry key, cementing `.dag` harness
+/// stem under `tests/dag/` without `.dag`).
 ///
 /// **Must match register + regen mechanically** — see
 /// `cementing_escalation_slice_matches_capability_register`. Append when the
 /// capability table row is plain `COMPLETE` (not `**PROXY**` / `**STUB**` / `N/A`)
 /// **and** the v2 counterpart cell names a real v2 path (not `None (v3-native)` /
-/// not `N/A` per `TESTING.md` Band-C). Land the new
-/// `cementing/<stem>.rs` module and a `#[path = ...]` line in
-/// `tests/integration.rs` in the same PR.
+/// not `N/A` per `TESTING.md` Band-C). Land the new `.dag` TestClaim harness in
+/// the same PR.
 const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] =
-    &[("cost", "complexity_lens_behavioral_completion")];
+    &[("cost", "t_r3_gate_87_cementing_regen_cost")];
 
 fn run_with_cementing_stack(f: impl FnOnce() + Send + 'static) {
     std::thread::Builder::new()
@@ -406,28 +405,6 @@ fn registry_names_required_by_register_and_regen() -> BTreeSet<String> {
     names
 }
 
-fn integration_rs_text() -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("integration.rs");
-    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
-}
-
-fn assert_cementing_stem_wired_in_integration_rs(
-    integration_rs: &str,
-    stem: &str,
-    registry_name: &str,
-) {
-    let expected = format!(r#"#[path = "integration/cementing/{stem}.rs"]"#);
-    assert!(
-        integration_rs_cementing_path_attr_binds_mod_stem(integration_rs, stem),
-        "registry lens `{registry_name}` lists cementing stem `{stem}` but \
-         `tests/integration.rs` does not bind `{expected}` to `mod {stem};` in the same item \
-         (Band-C dispatch — not a stray `#[path]` plus an unrelated `mod` line). \
-         Land both lines in the same PR as the on-disk `cementing/{stem}.rs` module."
-    );
-}
-
 fn find_bind_value_port(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::PortId {
     dag.nodes()
         .iter()
@@ -468,27 +445,24 @@ fn cementing_escalation_slice_matches_capability_register() {
             "`CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` must list exactly the registry `name` keys \
              for rows where docs/v3-lens-capability-register.md marks `COMPLETE` with a real v2 \
              counterpart (not `None (v3-native)` / not `N/A` per `TESTING.md`) — update the slice \
-             (and cementing modules + `#[path]` wiring) in the same PR as the register promotion."
+             (and cementing `.dag` TestClaim harnesses) in the same PR as the register promotion."
         );
     });
 }
 
 #[test]
-fn cementing_test_modules_exist_for_escalated_v2_complete_registry_claims() {
+fn cementing_test_claims_exist_for_escalated_v2_complete_registry_claims() {
     run_with_cementing_stack(|| {
-        let cementing_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        let dag_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests")
-            .join("integration")
-            .join("cementing");
-        let integration_rs = integration_rs_text();
+            .join("dag");
         for (registry_name, stem) in CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS {
-            let path = cementing_dir.join(format!("{stem}.rs"));
+            let path = dag_dir.join(format!("{stem}.dag"));
             assert!(
                 path.is_file(),
-                "registry lens `{registry_name}` is listed for v2-complete cementing; expected cementing module at {}",
+                "registry lens `{registry_name}` is listed for v2-complete cementing; expected cementing TestClaim harness at {}",
                 path.display()
             );
-            assert_cementing_stem_wired_in_integration_rs(&integration_rs, stem, registry_name);
         }
     });
 }
