@@ -10,7 +10,7 @@ data missing_emission_path_rejects_string_axes: TestClaim = {
   name: "MissingEmissionPath rejects string discriminant axes",
   source: "import v3.std.diagnostics { EmissionDiagnostic, MissingEmissionPath }\n\nfn diag() -> EmissionDiagnostic = MissingEmissionPath(\"Atom\", \"Value\", \"rust\")\n",
   file_name: "missing_emission_path_typed_axes.v3",
-  predicate: FailsWithDiagnostic({ kind: TypeMismatch, detail_contains: AnyDetail }),
+  predicate: FailsWithDiagnostic({ kind: ResolveError, detail_contains: Contains("FormAxis` against `String") }),
   requires: []
 }
 
