@@ -188,6 +188,11 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Install v3 host toolchains
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential python3 golang-go
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
