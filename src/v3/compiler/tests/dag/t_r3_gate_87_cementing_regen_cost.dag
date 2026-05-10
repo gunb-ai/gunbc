@@ -1,6 +1,9 @@
-// R3 gate #87 — `LensRegistryEntry` `cost` (complexity.dag) cementing in `.dag` form.
-// Lane-E `DifferentialEquals(v3_program_cost, v2_oracle_cost, …)` on the merge-sort
-// witness (same program authority as `r1_gates.dag` / `r1_merge_sort_pair.v3`).
+// R3 gate #87 — `LensRegistryEntry` `cost` (complexity.dag) Lane-E harness on merge-sort
+// (`r1_merge_sort_pair.v3` program text; same authority as `r1_gates.dag` `complexity_merge_sort_v3_matches_v2_oracle`).
+//
+// T-LaneE stubs: `DeclarationRef` lowering only (bodies `miss_int_lookup()` — **not** consulted).
+// `DifferentialEquals(v3_program_cost, v2_oracle_cost, …)` → `test_runner::eval_lane_e_differential_cost_lineage`:
+// host forward-fold vs emit `lens_cost::cost_of` (see `r1_gates.dag` comment block ~`v3_program_cost`).
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_cost
 
