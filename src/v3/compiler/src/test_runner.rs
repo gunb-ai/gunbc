@@ -2864,8 +2864,9 @@ impl<'a> TestRunner<'a> {
             .declaration_by_name("Int")
             .map(|decl| decl.id)
             .ok_or_else(|| "missing Int declaration".to_string())?;
-        let table = RealizationCostTable::for_language(&boot, rust_language)
-            .map_err(|err| format!("could not read Rust LanguageSpec realization table: {err:?}"))?;
+        let table = RealizationCostTable::for_language(&boot, rust_language).map_err(|err| {
+            format!("could not read Rust LanguageSpec realization table: {err:?}")
+        })?;
         let int_cost = table
             .cost(&RealizationCostKey::Type(int_decl))
             .ok_or_else(|| "missing Rust Int TypeRealization cost".to_string())?
@@ -4996,132 +4997,48 @@ fn r3_operator_realization_keys(
         .iter()
         .filter_map(Behavior::as_transform)
     {
-        let op_decl = match transform.target {
-            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => {
-                "rust_int_add"
-            }
-            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)) => {
-                "rust_int_sub"
-            }
-            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Mul)) => {
-                "rust_int_mul"
-            }
-            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)) => {
-                "rust_int_div"
-            }
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => "rust_int_eq",
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ne)) => "rust_int_ne",
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)) => "rust_int_lt",
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)) => "rust_int_le",
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)) => "rust_int_gt",
-            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)) => "rust_int_ge",
-            _ => continue,
-        };
-        let op = match field_value(boot, op_decl, "op") {
-            Some(FieldValue::Reference(id)) => *id,
-            Some(other) => {
-                return Err(format!(
-                    "BinaryDimensionReportEquals(r3 cross-target cost): `{op_decl}.op` should be a DeclarationRef, got {other:?}"
-                ));
-            }
-            None => {
-                return Err(format!(
-                    "BinaryDimensionReportEquals(r3 cross-target cost): missing `{op_decl}.op` field"
-                ));
-            }
-        };
-        let key = RealizationCostKey::Operator {
-            target: int_decl,
-            op,
-        };
-        if !keys.contains(&key) {
+        if let Some(key) = r3_operator_realization_key(boot, int_decl, transform)? {
             keys.push(key);
         }
     }
     Ok(keys)
 }
 
-struct R3RustIntCosts {
-    int: i64,
-    add: i64,
-    sub: i64,
-    mul: i64,
-    div: i64,
-    eq: i64,
-    ne: i64,
-    lt: i64,
-    le: i64,
-    gt: i64,
-    ge: i64,
-}
-
-fn r3_rust_int_costs(boot: &Dag) -> Result<R3RustIntCosts, String> {
-    let rust_language = boot
-        .declaration_by_name("rust_language")
-        .map(|decl| decl.id)
-        .ok_or_else(|| {
-            "BinaryDimensionReportEquals(r3 cross-target cost): missing rust_language LanguageSpec"
-                .to_string()
-        })?;
-    let int_decl = boot
-        .declaration_by_name("Int")
-        .map(|decl| decl.id)
-        .ok_or_else(|| {
-            "BinaryDimensionReportEquals(r3 cross-target cost): missing Int declaration".to_string()
-        })?;
-    let table = RealizationCostTable::for_language(boot, rust_language).map_err(|err| {
-        format!(
-            "BinaryDimensionReportEquals(r3 cross-target cost): could not read Rust LanguageSpec realization table: {err:?}"
-        )
-    })?;
-    let int = table
-        .cost(&RealizationCostKey::Type(int_decl))
-        .ok_or_else(|| {
-            "BinaryDimensionReportEquals(r3 cross-target cost): missing Rust Int TypeRealization cost"
-                .to_string()
-        })?
-        .value();
-
-    let op_cost = |decl_name: &str| -> Result<i64, String> {
-        let op = match field_value(boot, decl_name, "op") {
-            Some(FieldValue::Reference(id)) => *id,
-            Some(other) => {
-                return Err(format!(
-                    "BinaryDimensionReportEquals(r3 cross-target cost): `{decl_name}.op` should be a DeclarationRef, got {other:?}"
-                ));
-            }
-            None => {
-                return Err(format!(
-                    "BinaryDimensionReportEquals(r3 cross-target cost): missing `{decl_name}.op` field"
-                ));
-            }
-        };
-        table
-            .cost(&RealizationCostKey::Operator {
-                target: int_decl,
-                op,
-            })
-            .ok_or_else(|| {
-                format!(
-                    "BinaryDimensionReportEquals(r3 cross-target cost): missing Rust operator realization cost for `{decl_name}`"
-                )
-            })
-            .map(|cost| cost.value())
+fn r3_operator_realization_key(
+    boot: &Dag,
+    int_decl: DeclarationId,
+    transform: &crate::dag::TransformNode,
+) -> Result<Option<RealizationCostKey>, String> {
+    let op_decl = match transform.target {
+        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => "rust_int_add",
+        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)) => "rust_int_sub",
+        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Mul)) => "rust_int_mul",
+        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)) => "rust_int_div",
+        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => "rust_int_eq",
+        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ne)) => "rust_int_ne",
+        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)) => "rust_int_lt",
+        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)) => "rust_int_le",
+        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)) => "rust_int_gt",
+        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)) => "rust_int_ge",
+        _ => return Ok(None),
     };
-
-    Ok(R3RustIntCosts {
-        int,
-        add: op_cost("rust_int_add")?,
-        sub: op_cost("rust_int_sub")?,
-        mul: op_cost("rust_int_mul")?,
-        div: op_cost("rust_int_div")?,
-        eq: op_cost("rust_int_eq")?,
-        ne: op_cost("rust_int_ne")?,
-        lt: op_cost("rust_int_lt")?,
-        le: op_cost("rust_int_le")?,
-        gt: op_cost("rust_int_gt")?,
-        ge: op_cost("rust_int_ge")?,
-    })
+    let op = match field_value(boot, op_decl, "op") {
+        Some(FieldValue::Reference(id)) => *id,
+        Some(other) => {
+            return Err(format!(
+                "BinaryDimensionReportEquals(r3 cross-target cost): `{op_decl}.op` should be a DeclarationRef, got {other:?}"
+            ));
+        }
+        None => {
+            return Err(format!(
+                "BinaryDimensionReportEquals(r3 cross-target cost): missing `{op_decl}.op` field"
+            ));
+        }
+    };
+    Ok(Some(RealizationCostKey::Operator {
+        target: int_decl,
+        op,
+    }))
 }
 
 fn field_value<'a>(dag: &'a Dag, decl_name: &str, field_name: &str) -> Option<&'a FieldValue> {
