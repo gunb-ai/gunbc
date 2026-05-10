@@ -207,6 +207,11 @@ fn compile_backend_service(source: &str) -> (TmpDir, PathBuf) {
     let src_path = tmp_dir.path().join("omni_backend.rs");
     let bin_path = tmp_dir.path().join("omni_backend");
     std::fs::write(&src_path, source).expect("write generated backend service");
+    // P5 bridge bound: this direct rustc invocation exists only because the
+    // current `.dag` TestClaim runner cannot yet materialize generated source,
+    // compile it, and reuse the binary for multiple route probes. When that
+    // boundary exists, this helper moves into the `.dag` ExecuteCommand path
+    // alongside the backend projection's retirement from hand-Rust.
     let compile = Command::new("rustc")
         .env_remove("RUSTC_BOOTSTRAP")
         .arg("--edition=2021")

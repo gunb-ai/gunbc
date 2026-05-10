@@ -5,6 +5,15 @@
 //! `emit.rs` remains scoped to Shape A programming-language targets. This
 //! module provides the narrow Rust-side receipt used by the R3 demo until the
 //! equivalent `.dag` programs can own the artifact projections.
+//!
+//! P5 bridge bound: `project_openapi_yaml`, `project_markdown_documentation`,
+//! and `project_rust_backend_service` are one fixture-scoped R3
+//! T-Omni-Shape-B receipt over `RestEndpointBinding` rows. They are not new
+//! compiler targets and must not grow into a general backend framework.
+//! Dissolution trigger: when Shape B `.dag` emitters can materialize artifacts
+//! and `.dag` `TestClaim` can drive the generated backend roundtrip, these
+//! Rust projections and their Rust harness retire together under the SG-0
+//! T-PB-A/T-PB-B hand-Rust census rows in `ROADMAP.md`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -250,6 +259,13 @@ pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenAp
     Ok(out)
 }
 
+/// Emits the narrow runnable-backend side of the R3 omni OpenAPI demo.
+///
+/// This is deliberately fixture-scoped bridge code. It consumes the same
+/// canonical `RestRoute` projection as OpenAPI/Markdown to prove the full-stack
+/// same-DAG property now, then dissolves into `.dag` artifact emission plus the
+/// normal Shape A Rust path when those TestClaim/materialization capabilities
+/// are available.
 pub fn project_rust_backend_service(dag: &Dag) -> Result<String, ProjectOpenApiError> {
     let routes = extract_rest_routes(dag)?;
     let mut out = String::from(
