@@ -12,7 +12,7 @@
 //! and assert the claim program lowers to `Behavior::Loop` so the fold is exercised on the compile
 //! path, not only carried as inert text. The first cross-target-optimization claim (#51) is
 //! executable through the symbolic-cost lens: the host test proves a constant arithmetic subtree has
-//! cost `1` before the folded literal target (`0`) is applied. The second claim (#52) keeps the
+//! cost `1` before the folded literal target (`3`) is applied. The second claim (#52) keeps the
 //! cost-related `BinaryDimensionReportEquals` shape and stays `NotYetImplemented` until generic
 //! `DimensionReport<C>` evaluation lands.
 
