@@ -3032,20 +3032,71 @@ fn program_mode_top_level_value_binds<'a>(
         .collect()
 }
 
-fn top_level_bind_cache_key(dag: &Dag, bind: &BindNode) -> Option<PureCallCacheKey> {
+fn rust_port_is_copy_for_cache(
+    dag: &Dag,
+    indexes: &RealizationIndexes,
+    port: PortId,
+) -> Result<bool, EmitError> {
+    let ty = dag
+        .port(port)
+        .value_type()
+        .ok_or(EmitError::UntypedPort(port))?;
+    let mut visited = HashSet::new();
+    rust_decl_is_copy_for_cache(dag, indexes, ty.declaration, &mut visited)
+}
+
+fn rust_decl_is_copy_for_cache(
+    dag: &Dag,
+    indexes: &RealizationIndexes,
+    declaration: DeclarationId,
+    visited: &mut HashSet<DeclarationId>,
+) -> Result<bool, EmitError> {
+    if !visited.insert(declaration) {
+        return Ok(false);
+    }
+    let decl = dag.declaration(declaration);
+    if let Some(binding) = indexes.types.get(&declaration) {
+        return Ok(binding.is_copy);
+    }
+    match &decl.connective {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            rust_decl_is_copy_for_cache(dag, indexes, *next, visited)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn top_level_bind_cache_key(
+    dag: &Dag,
+    indexes: &RealizationIndexes,
+    bind: &BindNode,
+) -> Result<Option<PureCallCacheKey>, EmitError> {
     let Some(node_id) = dag.port(bind.value).produced_by else {
-        return None;
+        return Ok(None);
     };
     match dag.node(node_id) {
         Behavior::Transform(TransformNode {
             target: TransformTarget::Callable(target),
             inputs,
             ..
-        }) => Some(PureCallCacheKey {
-            target: *target,
-            inputs: inputs.clone(),
-        }),
-        _ => None,
+        }) => {
+            let TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(_),
+                ..
+            } = &dag.declaration(*target).connective
+            else {
+                return Ok(None);
+            };
+            if !rust_port_is_copy_for_cache(dag, indexes, bind.value)? {
+                return Ok(None);
+            }
+            Ok(Some(PureCallCacheKey {
+                target: *target,
+                inputs: inputs.clone(),
+            }))
+        }
+        _ => Ok(None),
     }
 }
 
@@ -3061,7 +3112,7 @@ pub(crate) fn repeated_pure_call_cache_witness(
         cached_reuse_binds: 0,
     };
     for bind in top_level_binds {
-        let Some(cache_key) = top_level_bind_cache_key(dag, bind) else {
+        let Some(cache_key) = top_level_bind_cache_key(dag, &indexes, bind)? else {
             continue;
         };
         witness.cacheable_call_binds += 1;
@@ -3257,7 +3308,8 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
             for bind in &top_level_binds {
                 let ty_name = ctx.rust_type_name_for_port(bind.value)?;
                 let value_expr = ctx.render_top_level_value(bind.value)?;
-                let value = if let Some(cache_key) = top_level_bind_cache_key(dag, bind) {
+                let value = if let Some(cache_key) = top_level_bind_cache_key(dag, &indexes, bind)?
+                {
                     match repeated_pure_call_cache.get(&cache_key) {
                         Some(cached_name) => cached_name.clone(),
                         None => {
