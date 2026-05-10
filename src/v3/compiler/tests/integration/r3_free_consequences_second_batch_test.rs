@@ -140,7 +140,7 @@ fn cross_target_optimization_cost_structurally_derived_receipt() {
         let user = compile_to_dag(
             "\
 fn countdown(n: Int) -> Int =
-  if n == 0 then 0 else countdown(n - 1)
+  if n == 0 then 0 else countdown(n - 1) + 1
 
 let demo: Int = countdown(3) + 1
 ",
@@ -150,7 +150,7 @@ let demo: Int = countdown(3) + 1
         let emitted = emit_rust(&user).expect("gate #52 representative program emits to Rust");
         assert!(
             emitted.contains("fn countdown")
-                && emitted.contains("countdown(&(((*(p0)) - 1)))")
+                && emitted.contains("(countdown(&(((*(p0)) - 1))) + 1)")
                 && emitted.contains("let demo: i64 = (countdown(&(3)) + 1);"),
             "gate #52 must exercise the emitted target program, got:\n{emitted}"
         );
@@ -161,22 +161,40 @@ let demo: Int = countdown(3) + 1
             SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `countdown`"),
         };
 
-        let realized_costs = realized_primitive_costs_from_program(&boot, &table, &user, int_decl);
+        let realized_rows = realized_primitive_rows_from_program(&boot, &user, int_decl);
+        assert_eq!(
+            realized_rows
+                .iter()
+                .map(|row| (row.name, row.op))
+                .collect::<Vec<_>>(),
+            expected_gate_52_realization_rows(&boot, int_decl)
+                .iter()
+                .map(|row| (row.name, row.op))
+                .collect::<Vec<_>>(),
+            "gate #52 fixture should derive Add/Add/Eq/Eq/Sub primitive row identities from the program DAG"
+        );
+        let realized_costs = realized_rows
+            .iter()
+            .map(|row| realization_cost(&table, int_decl, row.op))
+            .collect::<Vec<_>>();
         assert_eq!(
             realized_costs,
-            vec![1, 1, 1, 1],
-            "gate #52 fixture should derive Add/Add/Eq/Sub primitive costs from Rust LanguageSpec rows"
+            vec![1, 1, 1, 1, 1],
+            "gate #52 fixture should derive Add/Add/Eq/Eq/Sub primitive costs from Rust LanguageSpec rows"
         );
 
-        let observed_target_cost =
-            realized_costs
-                .iter()
-                .copied()
-                .fold(algebra_cost.clone(), |acc, primitive_cost| {
-                    sequential(acc, SymbolicCost::ConstantCost { _0: primitive_cost })
-                });
-        let expected_structural_cost =
-            compose_expected_structural_cost(algebra_cost, &boot, &table, int_decl);
+        let observed_target_cost = compose_observed_structural_cost(
+            algebra_cost.clone(),
+            &table,
+            int_decl,
+            &realized_rows,
+        );
+        let expected_structural_cost = compose_expected_structural_cost(
+            algebra_cost,
+            &table,
+            int_decl,
+            expected_gate_52_realization_rows(&boot, int_decl),
+        );
 
         assert_eq!(
             observed_target_cost, expected_structural_cost,
@@ -189,78 +207,111 @@ let demo: Int = countdown(3) + 1
     });
 }
 
-fn realized_primitive_costs_from_program(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RealizedPrimitiveRow {
+    name: &'static str,
+    op: DeclarationId,
+}
+
+fn realized_primitive_rows_from_program(
     boot: &Dag,
-    table: &RealizationCostTable,
     program: &Dag,
     int_decl: DeclarationId,
-) -> Vec<i64> {
-    let mut costs = Vec::new();
+) -> Vec<RealizedPrimitiveRow> {
+    let mut rows = Vec::new();
     for transform in program
         .nodes()
         .iter()
         .filter_map(Behavior::as_transform)
         .filter(|transform| transform.span.file == GATE_52_PROGRAM_FILE)
     {
-        let Some(op_row) = operator_row_for_transform(boot, &transform.target, int_decl) else {
+        let Some(row) = operator_row_for_transform(boot, &transform.target, int_decl) else {
             continue;
         };
-        let cost = table
-            .cost(&RealizationCostKey::Operator {
-                target: int_decl,
-                op: op_row,
-            })
-            .unwrap_or_else(|| {
-                panic!("missing Rust LanguageSpec realization cost for operator row {op_row:?}")
-            })
-            .value();
-        costs.push(cost);
+        rows.push(row);
     }
-    costs.sort_unstable();
-    costs
+    rows.sort_by_key(|row| row.name);
+    rows
 }
 
 fn compose_expected_structural_cost(
     algebra_cost: SymbolicCost,
-    boot: &Dag,
     table: &RealizationCostTable,
     int_decl: DeclarationId,
+    rows: Vec<RealizedPrimitiveRow>,
 ) -> SymbolicCost {
-    // Mirrors the gate #52 fixture body exactly: one recursive decrement (`n - 1`),
-    // one branch equality (`n == 0`), and two additions (recursive body plus `demo + 1`).
+    // Mirrors the gate #52 fixture's lowered program DAG exactly: one recursive decrement
+    // (`n - 1`), two equality transforms for the conditional path, and two additions
+    // (recursive body plus `demo + 1`).
+    rows.into_iter()
+        .map(|row| realization_cost(table, int_decl, row.op))
+        .fold(algebra_cost, |acc, primitive_cost| {
+            sequential(acc, SymbolicCost::ConstantCost { _0: primitive_cost })
+        })
+}
+
+fn expected_gate_52_realization_rows(
+    boot: &Dag,
+    int_decl: DeclarationId,
+) -> Vec<RealizedPrimitiveRow> {
     [
-        "rust_int_add",
-        "rust_int_add",
-        "rust_int_eq",
-        "rust_int_sub",
+        operator_realization_row(boot, "rust_int_add", int_decl),
+        operator_realization_row(boot, "rust_int_add", int_decl),
+        operator_realization_row(boot, "rust_int_eq", int_decl),
+        operator_realization_row(boot, "rust_int_eq", int_decl),
+        operator_realization_row(boot, "rust_int_sub", int_decl),
     ]
-    .into_iter()
-    .map(|decl_name| {
-        let op = field_ref(boot, decl_name, "op");
-        table
-            .cost(&RealizationCostKey::Operator {
-                target: int_decl,
-                op,
-            })
-            .unwrap_or_else(|| panic!("missing Rust LanguageSpec cost for `{decl_name}`"))
-            .value()
-    })
-    .fold(algebra_cost, |acc, primitive_cost| {
-        sequential(acc, SymbolicCost::ConstantCost { _0: primitive_cost })
-    })
+    .into()
+}
+
+fn realization_cost(
+    table: &RealizationCostTable,
+    int_decl: DeclarationId,
+    op: DeclarationId,
+) -> i64 {
+    table
+        .cost(&RealizationCostKey::Operator {
+            target: int_decl,
+            op,
+        })
+        .unwrap_or_else(|| {
+            panic!("missing Rust LanguageSpec realization cost for operator row {op:?}")
+        })
+        .value()
+}
+
+fn compose_observed_structural_cost(
+    algebra_cost: SymbolicCost,
+    table: &RealizationCostTable,
+    int_decl: DeclarationId,
+    rows: &[RealizedPrimitiveRow],
+) -> SymbolicCost {
+    rows.iter()
+        .map(|row| realization_cost(table, int_decl, row.op))
+        .fold(algebra_cost, |acc, primitive_cost| {
+            sequential(acc, SymbolicCost::ConstantCost { _0: primitive_cost })
+        })
 }
 
 fn operator_row_for_transform(
     boot: &Dag,
     target: &TransformTarget,
     int_decl: DeclarationId,
-) -> Option<DeclarationId> {
+) -> Option<RealizedPrimitiveRow> {
     let row = match target {
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => "rust_int_add",
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)) => "rust_int_sub",
         TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => "rust_int_eq",
         _ => return None,
     };
+    Some(operator_realization_row(boot, row, int_decl))
+}
+
+fn operator_realization_row(
+    boot: &Dag,
+    row: &'static str,
+    int_decl: DeclarationId,
+) -> RealizedPrimitiveRow {
     let row_decl = boot
         .declaration_by_name(row)
         .unwrap_or_else(|| panic!("missing `{row}` OperatorRealization row"));
@@ -269,13 +320,14 @@ fn operator_row_for_transform(
         int_decl,
         "`{row}` should realize the bootstrap Int target"
     );
-    Some(
-        row_decl
-            .value_body
-            .as_ref()
-            .map(|_| field_ref(boot, row, "op"))
-            .expect("OperatorRealization row should have a structural body"),
-    )
+    assert!(
+        row_decl.value_body.is_some(),
+        "OperatorRealization row should have a structural body"
+    );
+    RealizedPrimitiveRow {
+        name: row,
+        op: field_ref(boot, row, "op"),
+    }
 }
 
 fn find_bind_value(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
