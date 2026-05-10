@@ -46,7 +46,10 @@ enum WitnessKind {
 
 enum WitnessScan {
     Absent,
-    Ok(WitnessKind),
+    Ok {
+        kind: WitnessKind,
+        directive_span: SourceSpan,
+    },
     Malformed { span: SourceSpan, message: String },
 }
 
@@ -84,7 +87,10 @@ fn scan_witness(source: &str, file: &str) -> WitnessScan {
                     };
                 }
             };
-            return WitnessScan::Ok(kind);
+            return WitnessScan::Ok {
+                kind,
+                directive_span: SourceSpan::new(file, trimmed_start as u32, trimmed_end as u32),
+            };
         }
 
         i = if line_end < source.len() {
@@ -96,15 +102,11 @@ fn scan_witness(source: &str, file: &str) -> WitnessScan {
     WitnessScan::Absent
 }
 
-fn workflow_host(dag: &Dag) -> Option<NodeId> {
-    match dag.workflow_root_port() {
-        WorkflowRoot::SingleRoot(port) => dag.port(port).produced_by,
-        WorkflowRoot::NoRoot | WorkflowRoot::AmbiguousRoot { .. } => None,
-    }
-}
-
 /// If `source` carries a `lane2_loop_witness` directive, register the matching
-/// [`WorkflowEffect::LoopEffect`] on [`Dag::workflow_root_port`].
+/// [`WorkflowEffect::LoopEffect`] on [`Dag::workflow_lane2_subject`] (last `Bind` shell).
+///
+/// Fail-closed: a `read_only` / `upsert_dependent` directive **must** stage `lane2_workflow` or emit
+/// a diagnostic (no silent collapse into the same sequential scalar as a missing carrier).
 pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str) {
     match scan_witness(source, file) {
         WitnessScan::Absent => {}
@@ -115,13 +117,13 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                 fixes: vec![],
             });
         }
-        WitnessScan::Ok(kind) => {
+        WitnessScan::Ok {
+            kind,
+            directive_span,
+        } => {
             if matches!(kind, WitnessKind::Unproven) {
                 return;
             }
-            let Some(root) = workflow_host(dag) else {
-                return;
-            };
             let wf = match kind {
                 WitnessKind::ReadOnlyLoop => WorkflowEffect::LoopEffect {
                     body: Box::new(WorkflowEffect::LinearEffect {
@@ -145,7 +147,21 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                 },
                 WitnessKind::Unproven => unreachable!("filtered above"),
             };
-            dag.try_register_lane2_workflow_effect(root, wf);
+            let Some(subject) = dag.workflow_lane2_subject() else {
+                dag.attach_diagnostic(Diagnostic::ParseError {
+                    message: "`lane2_loop_witness` directive requires a workflow shell `Bind` to attach `lane2_workflow`; this program has no `Bind`".to_string(),
+                    span: directive_span,
+                    fixes: vec![],
+                });
+                return;
+            };
+            if !dag.try_register_lane2_workflow_effect(subject, wf) {
+                dag.attach_diagnostic(Diagnostic::ParseError {
+                    message: "`lane2_loop_witness`: cannot attach `lane2_workflow` (substrate supports Value/Bind nodes only)".to_string(),
+                    span: directive_span,
+                    fixes: vec![],
+                });
+            }
         }
     }
 }
