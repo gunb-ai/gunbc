@@ -303,8 +303,10 @@ fn route_status(method: &str, path: &str) -> u16 {
 }
 
 fn path_matches(template: &str, path: &str) -> bool {
-    let template_parts: Vec<_> = template.trim_matches('/').split('/').collect();
-    let path_parts: Vec<_> = path.trim_matches('/').split('/').collect();
+    let template = strip_leading_slash(template);
+    let path = strip_leading_slash(path);
+    let template_parts: Vec<_> = template.split('/').collect();
+    let path_parts: Vec<_> = path.split('/').collect();
     if template_parts.len() != path_parts.len() {
         return false;
     }
@@ -312,6 +314,10 @@ fn path_matches(template: &str, path: &str) -> bool {
         .iter()
         .zip(path_parts.iter())
         .all(|(template_part, path_part)| segment_matches(template_part, path_part))
+}
+
+fn strip_leading_slash(value: &str) -> &str {
+    value.strip_prefix('/').unwrap_or(value)
 }
 
 fn segment_matches(template: &str, path: &str) -> bool {
