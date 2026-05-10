@@ -393,10 +393,9 @@ budgeted_test! {
         );
         let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
         assert!(
-            matches!(cost, SymbolicCost::LinearCost { .. })
-                || matches!(cost, SymbolicCost::ProductCost { .. }),
-            "recursive fn should report iterate-shaped recurrence cost (linear or product \
-             normalization), got {cost:?}"
+            matches!(cost, SymbolicCost::LinearCost { .. }),
+            "recursive countdown must normalize to LinearCost(O(n) in the parameter), not a \
+             carrier that could admit unrelated iterate-shaped growth; got {cost:?}"
         );
     }
 }
