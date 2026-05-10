@@ -1,73 +1,73 @@
 // AUTO-GENERATED from `src/v3/lenses/lower_helpers.dag` via
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
-pub fn expr_span(p0: &parse_surface::SurfaceExpr) -> SourceSpan {
+pub fn expr_span(p0: &parse_surface::SurfaceExpr) -> SourceByteSpan {
     match p0 {
         SurfaceExpr::Literal {
             value: __e_value,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::Var {
             name: __e_name,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::Path {
             segments: __e_segments,
             segment_spans: __e_segment_spans,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::Call {
             target: __e_target,
             args: __e_args,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::VariantRecord {
             target: __e_target,
             fields: __e_fields,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::Operator {
             op: __e_op,
             args: __e_args,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::Lambda {
             params: __e_params,
             body: __e_body,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::If {
             cond: __e_cond,
             then_branch: __e_then_branch,
             else_branch: __e_else_branch,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::Match {
             scrutinee: __e_scrutinee,
             arms: __e_arms,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::Record {
             fields: __e_fields,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::List {
             elements: __e_elements,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::Map {
             entries: __e_entries,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
         SurfaceExpr::PathCall {
             segments: __e_segments,
             segment_spans: __e_segment_spans,
             args: __e_args,
             span: __e_span,
-        } => (__e_span).clone(),
+        } => SourceByteSpan::new(__e_span.byte_start, __e_span.byte_end),
     }
 }
-pub fn item_span(p0: &parse_surface::SurfaceItem) -> SourceSpan {
+pub fn item_span(p0: &parse_surface::SurfaceItem) -> SourceByteSpan {
     match p0 {
         SurfaceItem::Let {
             name: __i_name,
@@ -81,7 +81,7 @@ pub fn item_span(p0: &parse_surface::SurfaceItem) -> SourceSpan {
             return_type: __i_return_type,
             body: __i_body,
             span: __i_span,
-        } => (__i_span).clone(),
+        } => SourceByteSpan::new(__i_span.byte_start, __i_span.byte_end),
         SurfaceItem::FnExternalBody {
             name: __i_name,
             type_params: __i_type_params,
@@ -89,41 +89,41 @@ pub fn item_span(p0: &parse_surface::SurfaceItem) -> SourceSpan {
             return_type: __i_return_type,
             body_span: __i_body_span,
             span: __i_span,
-        } => (__i_span).clone(),
+        } => SourceByteSpan::new(__i_span.byte_start, __i_span.byte_end),
         SurfaceItem::Data {
             name: __i_name,
             ty: __i_ty,
             body: __i_body,
             body_span: __i_body_span,
             span: __i_span,
-        } => (__i_span).clone(),
+        } => SourceByteSpan::new(__i_span.byte_start, __i_span.byte_end),
         SurfaceItem::Module {
             path: __i_path,
             span: __i_span,
-        } => (__i_span).clone(),
+        } => SourceByteSpan::new(__i_span.byte_start, __i_span.byte_end),
         SurfaceItem::Import {
             path: __i_path,
             names: __i_names,
             span: __i_span,
-        } => (__i_span).clone(),
+        } => SourceByteSpan::new(__i_span.byte_start, __i_span.byte_end),
         SurfaceItem::TypeAtom {
             name: __i_name,
             type_params: __i_type_params,
             span: __i_span,
-        } => (__i_span).clone(),
+        } => SourceByteSpan::new(__i_span.byte_start, __i_span.byte_end),
         SurfaceItem::TypeRecord {
             name: __i_name,
             type_params: __i_type_params,
             fields: __i_fields,
             span: __i_span,
-        } => (__i_span).clone(),
+        } => SourceByteSpan::new(__i_span.byte_start, __i_span.byte_end),
         SurfaceItem::TypeSum {
             name: __i_name,
             type_params: __i_type_params,
             variants: __i_variants,
             inhabits: __i_inhabits,
             span: __i_span,
-        } => (__i_span).clone(),
+        } => SourceByteSpan::new(__i_span.byte_start, __i_span.byte_end),
         SurfaceItem::TypeAlias {
             name: __i_name,
             type_params: __i_type_params,
@@ -131,7 +131,7 @@ pub fn item_span(p0: &parse_surface::SurfaceItem) -> SourceSpan {
             target: __i_target,
             refinement: __i_refinement,
             span: __i_span,
-        } => (__i_span).clone(),
+        } => SourceByteSpan::new(__i_span.byte_start, __i_span.byte_end),
     }
 }
 pub fn pattern_binding_names(p0: &parse_surface::SurfacePattern) -> Vec<String> {

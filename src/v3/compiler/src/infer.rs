@@ -43,7 +43,7 @@ use crate::diagnostics::{
     Diagnostic, SourceSpan,
 };
 use crate::infer_helpers::{
-    behavior_output_port, behavior_span, generated_template_arguments_match,
+    behavior_output_port, generated_template_arguments_match,
     normalize_instantiation_arguments, payload_binding_span as generated_payload_binding_span,
     push_template_argument_binding as generated_push_template_argument_binding,
     resolve_template_argument_value as generated_resolve_template_argument_value,
@@ -686,6 +686,15 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
     changed
 }
 
+fn branch_payload_binding_span(path: &crate::dag::Path, branch_span: &SourceSpan) -> SourceSpan {
+    let extent = generated_payload_binding_span(path, branch_span.clone());
+    let file = match &path.pattern {
+        crate::dag::BranchPattern::UnresolvedVariant { span, .. } => span.file.clone(),
+        crate::dag::BranchPattern::ResolvedVariant(_) => branch_span.file.clone(),
+    };
+    SourceSpan::new(file, extent.byte_start, extent.byte_end)
+}
+
 fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     struct BindingRewrite {
         port: PortId,
@@ -709,10 +718,10 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                     };
                     rewrites.push(BindingRewrite {
                         port: binding.payload_port,
-                        span: generated_payload_binding_span(path, b.span.clone()),
+                        span: branch_payload_binding_span(path, &b.span),
                         result: Err(Diagnostic::ResolveError {
                             name: "(upstream failure in match payload binding)".to_string(),
-                            span: generated_payload_binding_span(path, b.span.clone()),
+                            span: branch_payload_binding_span(path, &b.span),
                             fixes: Vec::new(),
                         }),
                     });
@@ -741,7 +750,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                     let Some(binding) = &path.binding else {
                         continue;
                     };
-                    let span = generated_payload_binding_span(path, b.span.clone());
+                    let span = branch_payload_binding_span(path, &b.span);
                     let result = match &variants {
                         None => Err(Diagnostic::ResolveError {
                             name: format!(
@@ -5050,7 +5059,7 @@ fn transform_target_display_name(dag: &Dag, target: &TransformTarget) -> String 
 fn node_span_for_port(dag: &Dag, port: PortId) -> Option<SourceSpan> {
     dag.port(port)
         .produced_by
-        .map(|node_id| behavior_span(dag.node(node_id)))
+        .map(|node_id| dag.node(node_id).span().clone())
 }
 
 fn synthetic_span() -> SourceSpan {

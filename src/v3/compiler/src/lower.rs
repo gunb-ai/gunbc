@@ -43,7 +43,8 @@ use crate::int_literal_ranges::{
     int_literal_fits_expected_type, integer_range_for_decl, magnitude_out_of_range_for_interval,
     IntegerRangeLookup,
 };
-use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
+use crate::lower_helpers::{pattern_binding_names, surface_item_span};
+use crate::parse::expr_span as surface_expr_span;
 use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
@@ -582,7 +583,7 @@ fn build_refinement_predicate_declaration(
     subject_span: SourceSpan,
     registry_synthesized_body: bool,
 ) -> DeclarationId {
-    let pred_span = expr_span(predicate);
+    let pred_span = surface_expr_span(predicate);
     let pred_param_port = dag.alloc_port(None);
     match declaration_to_port_shape(base_decl_id, dag, &subject_span) {
         Ok(shape) => dag.set_port_type(pred_param_port, shape),
@@ -1060,7 +1061,7 @@ fn synthesize_predicate_body(
     bind_name: &str,
     _carrier_chain: &[String],
 ) -> Option<SurfaceExpr> {
-    let span = expr_span(predicate);
+    let span = surface_expr_span(predicate);
     let subject_var = || SurfaceExpr::Var {
         name: bind_name.to_string(),
         span: span.clone(),
@@ -2272,7 +2273,7 @@ fn narrow_scope_for_predicate(
         &narrow_name,
     )?;
     let narrow_port = dag.alloc_port(None);
-    match declaration_to_port_shape(refined_decl, dag, &expr_span(cond)) {
+    match declaration_to_port_shape(refined_decl, dag, &surface_expr_span(cond)) {
         Ok(shape) => dag.set_port_type(narrow_port, shape),
         Err(_) => return None,
     }
@@ -2345,11 +2346,11 @@ fn build_narrowed_refinement(
             narrow_name,
             symbols,
             dag,
-            expr_span(new_cond),
+            surface_expr_span(new_cond),
         ));
     };
 
-    let pred_span = expr_span(new_cond);
+    let pred_span = surface_expr_span(new_cond);
     // Allocate a fresh composite parameter port typed as the true
     // base — the composite predicate's sole parameter slot.
     let composite_param_port = dag.alloc_port(None);
@@ -2844,7 +2845,7 @@ fn collect_symbols(
                 name, type_params, ..
             } => (name.clone(), type_params.as_slice()),
         };
-        let span = item_span(item);
+        let span = surface_item_span(item).clone();
         let id = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
             id,
@@ -3032,7 +3033,7 @@ fn lower_item(
             let bind_id = dag.alloc_node_id();
             let bind_span = match type_ann {
                 Some(ty) => ty.span().clone(),
-                None => expr_span(expr),
+                None => surface_expr_span(expr),
             };
             dag.push_node(Behavior::Bind(BindNode {
                 id: bind_id,
@@ -4253,7 +4254,7 @@ fn lower_list_to_structural(
                 name: format!(
                     "data `{name}` has a list body but its declared type is not a List<_>"
                 ),
-                span: expr_span(expr),
+                span: surface_expr_span(expr),
                 fixes: Vec::new(),
             },
         );
@@ -4273,7 +4274,7 @@ fn lower_list_to_structural(
             symbols,
             dag,
             None,
-            &expr_span(element),
+            &surface_expr_span(element),
             pending_refined_function_refs,
         )?);
     }
@@ -4300,7 +4301,7 @@ fn lower_map_to_structural(
                 name: format!(
                     "data `{name}` has a map body but its declared type is not a {expected_shape}"
                 ),
-                span: expr_span(expr),
+                span: surface_expr_span(expr),
                 fixes: Vec::new(),
             },
         );
@@ -4355,7 +4356,7 @@ fn lower_string_map_entries(
                 symbols,
                 dag,
                 None,
-                &expr_span(&entry.value),
+                &surface_expr_span(&entry.value),
                 pending_refined_function_refs,
             )?,
         ));
@@ -5083,7 +5084,7 @@ fn lower_structural_field_value(
                 symbols,
                 dag,
                 None,
-                &expr_span(element),
+                &surface_expr_span(element),
                 pending_refined_function_refs,
             )?);
         }
@@ -5373,7 +5374,7 @@ fn lower_structural_field_value(
                     symbols,
                     dag,
                     None,
-                    &expr_span(arg),
+                    &surface_expr_span(arg),
                     pending_refined_function_refs,
                 )?);
             }
@@ -5511,7 +5512,7 @@ fn lower_scalar_literal_for_type(
             let Ok(int_value) = BigInt::from_str(s.as_str()) else {
                 return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                     name: "internal: malformed decimal integer literal".to_string(),
-                    span: expr_span(expr),
+                    span: surface_expr_span(expr),
                     fixes: Vec::new(),
                 });
             };
@@ -5531,7 +5532,7 @@ fn lower_scalar_literal_for_type(
             .unwrap_or(false),
     };
     if type_ok {
-        let span = expr_span(expr);
+        let span = surface_expr_span(expr);
         if scalar_literal_must_reject_for_refinement(dag, &literal_bits, expected_type) {
             return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                 name: "scalar literal does not satisfy the expected `where` refinement — no narrowing branch in scope".to_string(),
@@ -5545,7 +5546,7 @@ fn lower_scalar_literal_for_type(
         let Ok(int_value) = BigInt::from_str(s.as_str()) else {
             return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                 name: "internal: malformed decimal integer literal".to_string(),
-                span: expr_span(expr),
+                span: surface_expr_span(expr),
                 fixes: Vec::new(),
             });
         };
@@ -5555,7 +5556,7 @@ fn lower_scalar_literal_for_type(
                     &int_value,
                     TypeShape::new(expected_type),
                     range,
-                    expr_span(expr),
+                    surface_expr_span(expr),
                 ));
             }
             IntegerRangeLookup::Invalid(diag) => return LowerScalarLiteralOutcome::Reject(diag),
@@ -5564,7 +5565,7 @@ fn lower_scalar_literal_for_type(
     }
     LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
         name: "scalar literal does not match declared type".to_string(),
-        span: expr_span(expr),
+        span: surface_expr_span(expr),
         fixes: Vec::new(),
     })
 }
@@ -6320,7 +6321,7 @@ fn lower_fn_item_expr_body(
     //    shape via the common bottom-of-function code.
     if let Some(invalid_cluster) = mutual_recursion.invalid_by_member.get(&fn_decl_id) {
         let err_port = dag.alloc_port(None);
-        let body_span = expr_span(body);
+        let body_span = surface_expr_span(body);
         dag.mark_unresolved(
             err_port,
             Diagnostic::ResolveError {
@@ -6371,7 +6372,7 @@ fn lower_fn_item_expr_body(
     } else {
         lowered_body_return_port
     };
-    let body_span = expr_span(body);
+    let body_span = surface_expr_span(body);
     let body_end_index = dag.nodes().len();
 
     let mutual_cluster = mutual_recursion.cluster_for_member(fn_decl_id);
@@ -6881,7 +6882,7 @@ fn resolve_callable_reference(
         SurfaceExpr::Path { segments, span, .. } => {
             alloc_identifier_stub(dag, &segments.join("."), span)
         }
-        other => alloc_identifier_stub(dag, "__callable_argument__", &expr_span(other)),
+        other => alloc_identifier_stub(dag, "__callable_argument__", &surface_expr_span(other)),
     }
 }
 
@@ -7909,7 +7910,7 @@ fn lower_resolved_callable_invocation(
                         callable_binding_conflict_diagnostic(
                             callable_diagnostic_name,
                             idx,
-                            &expr_span(arg),
+                            &surface_expr_span(arg),
                         ),
                     );
                     return port;
@@ -8188,7 +8189,7 @@ fn lower_expr(
                         output: then_port,
                         pattern: BranchPattern::UnresolvedVariant {
                             name: "True".to_string(),
-                            span: expr_span(then_branch),
+                            span: surface_expr_span(then_branch),
                         },
                         binding: None,
                     },
@@ -8197,7 +8198,7 @@ fn lower_expr(
                         output: else_port,
                         pattern: BranchPattern::UnresolvedVariant {
                             name: "False".to_string(),
-                            span: expr_span(else_branch),
+                            span: surface_expr_span(else_branch),
                         },
                         binding: None,
                     },
@@ -8895,7 +8896,7 @@ fn lower_list_literal_expr(
         dag,
         singleton_decl,
         vec![last],
-        expr_span(elements.last().expect("non-empty")),
+        surface_expr_span(elements.last().expect("non-empty")),
     );
     while let Some(head) = element_ports.pop() {
         current = lower_constructor_invocation(dag, cons_decl, vec![head, current], span.clone());

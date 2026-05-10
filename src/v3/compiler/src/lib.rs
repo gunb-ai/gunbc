@@ -4946,7 +4946,7 @@ pub(crate) mod infer_helpers {
     )]
     mod generated {
         use crate::dag::*;
-        use crate::diagnostics::SourceSpan;
+        use crate::diagnostics::{SourceByteSpan, SourceSpan};
 
         include!("infer_helpers_generated.rs");
     }
@@ -4991,19 +4991,19 @@ pub(crate) mod lower_helpers {
     /// on the lens surface — R3 gate #31). For a full [`SourceSpan`], use
     /// [`crate::parse::expr_span`] on the underlying expression or read the item's
     /// own `span` fields.
-    pub(crate) fn surface_item_span(item: &parse_surface::SurfaceItem) -> &SourceSpan {
+    pub(crate) fn surface_item_span(item: &crate::parse_surface::SurfaceItem) -> &SourceSpan {
         use crate::parse_surface::SurfaceItem;
         match item {
-            SurfaceItem::Let(i) => crate::parse::expr_span(&i.expr),
-            SurfaceItem::Fn(i) => &i.span,
-            SurfaceItem::FnExternalBody(i) => &i.span,
-            SurfaceItem::Data(i) => &i.span,
-            SurfaceItem::Module(i) => &i.span,
-            SurfaceItem::Import(i) => &i.span,
-            SurfaceItem::TypeAtom(i) => &i.span,
-            SurfaceItem::TypeRecord(i) => &i.span,
-            SurfaceItem::TypeSum(i) => &i.span,
-            SurfaceItem::TypeAlias(i) => &i.span,
+            SurfaceItem::Let { expr, .. } => crate::parse::expr_span(expr),
+            SurfaceItem::Fn { span, .. } => span,
+            SurfaceItem::FnExternalBody { span, .. } => span,
+            SurfaceItem::Data { span, .. } => span,
+            SurfaceItem::Module { span, .. } => span,
+            SurfaceItem::Import { span, .. } => span,
+            SurfaceItem::TypeAtom { span, .. } => span,
+            SurfaceItem::TypeRecord { span, .. } => span,
+            SurfaceItem::TypeSum { span, .. } => span,
+            SurfaceItem::TypeAlias { span, .. } => span,
         }
     }
 
