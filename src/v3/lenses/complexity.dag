@@ -191,6 +191,23 @@ fn compose_many_inputs(
     combine_sequential(running, lookup_summary(acc, port_id))
   )
 
+fn compose_many_inputs_excluding_descent_operand(
+  acc: List<ComplexityEntry>,
+  ports: List<PortId>,
+  descent_port: PortId
+) -> Lookup<ComplexitySummary> =
+  fold(ports, hit_complexity_summary_lookup(unit_summary()), |running, port_id|
+    if port_id == descent_port then
+      running
+    else
+      combine_sequential(running, lookup_summary(acc, port_id))
+  )
+
+// Same “descent operand once” story as `cost.dag` `recursive_transform_cost` /
+// `sum_costs_excluding_descent_operand`: `summary_from_iter_bound` ·
+// `pattern_to_iter_bound(pattern, descent_port)` already carries the recurrence
+// dimension on `descent_port`; composing **every** input would double-count that
+// operand alongside `combine_iterate`.
 fn recursive_transform_summary(
   acc: List<ComplexityEntry>,
   pattern: CallPattern,
@@ -202,7 +219,7 @@ fn recursive_transform_summary(
     Cons(_) =>
       combine_iterate(
         summary_from_iter_bound(pattern_to_iter_bound(pattern, descent_port)),
-        compose_many_inputs(acc, inputs)
+        compose_many_inputs_excluding_descent_operand(acc, inputs, descent_port)
       )
   }
 

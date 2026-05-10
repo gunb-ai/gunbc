@@ -159,6 +159,22 @@ pub fn compose_many_inputs(p0: &[ComplexityEntry], p1: &[PortId]) -> Lookup<Comp
         },
     )
 }
+pub fn compose_many_inputs_excluding_descent_operand(
+    p0: &[ComplexityEntry],
+    p1: &[PortId],
+    p2: &PortId,
+) -> Lookup<ComplexitySummary> {
+    (p1).iter().fold(
+        hit_complexity_summary_lookup(unit_summary()),
+        |__fold_acc, __fold_item| {
+            if ((*(__fold_item)) == (*(p2))) {
+                __fold_acc
+            } else {
+                combine_sequential(&__fold_acc, &(lookup_summary(p0, __fold_item)))
+            }
+        },
+    )
+}
 pub fn recursive_transform_summary(
     p0: &[ComplexityEntry],
     p1: &CallPattern,
@@ -169,7 +185,7 @@ pub fn recursive_transform_summary(
         [] => miss_complexity_summary_lookup(),
         [__list_head, __list_tail @ ..] => combine_iterate(
             &(summary_from_iter_bound(pattern_to_iter_bound(p1, p2))),
-            &(compose_many_inputs(p0, p3)),
+            &(compose_many_inputs_excluding_descent_operand(p0, p3, p2)),
         ),
     }
 }
