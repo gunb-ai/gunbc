@@ -429,10 +429,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // declaration-resolution claims under the T-Tests-As-Data umbrella (#1966
     // §3 ratchet predicate scope). Gate #70 additionally factors into
     // TestClaims over the representative recursive fixture: emitted target
-    // program contains the recursive call, lowered DAG has >=2 algebra-instance
-    // operator transforms, `per_call_descent_evidence` observes the self-call,
-    // and the Rust-side cost composition preserves the observable linear
-    // `SymbolicCost` bound. Until that landing, hand-Rust is the consumption
+    // program contains the recursive call, lowered DAG has Add/Sub/Eq
+    // algebra-instance operator transforms, `per_call_descent_evidence` observes
+    // the self-call, and the Rust-side cost composition preserves the observable
+    // linear `SymbolicCost` bound. Until that landing, hand-Rust is the consumption
     // path for `.dag`-fn-from-Rust and emitted-target cost-composition
     // assertions; Mgr standing-authority approval at gunbc#2221
     // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1 / gate
