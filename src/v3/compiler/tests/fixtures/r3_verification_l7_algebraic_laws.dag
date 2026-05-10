@@ -54,10 +54,15 @@ data r3_verification_l7_algebraic_laws_skeleton: TestClaim = {
 // `Identity`). Lattice meet/join **associativity/commutativity** tags are **not** green-lit here on
 // `Int` `+` (that would read as lattice laws without meet/join carriers). Bounded-lattice /
 // Boolean-algebra / free-monoid identity placeholders likewise stay **out** of the passing matrix.
-data r3_l7_semigroup_associativity: TestClaim = {
-  name: "r3_l7_semigroup_associativity",
+//
+// §1.8 gate #10 canonical `TestClaim.name` / declaration id (`docs/r3-program-plan.md`): bounded
+// `AlgebraicLaw::Associativity` on honest `Int` `+` (Semigroup slice). **PASSING** on the §Acceptance
+// ledger remains exhaustive per-(algebra, inhabitant, law) coverage per `r3-structure.md`; this row
+// is the executable consumer hook matching gate id `l7_algebraic_laws_witnessed`.
+data l7_algebraic_laws_witnessed: TestClaim = {
+  name: "l7_algebraic_laws_witnessed",
   source: "fn r3_l7_semigroup_associativity_op(a: Int, b: Int) -> Int = a + b\n",
-  file_name: "r3_l7_semigroup_associativity.v3",
+  file_name: "l7_algebraic_laws_witnessed.v3",
   predicate: AlgebraicLaw(Associativity, r3_l7_semigroup_associativity_op),
   requires: []
 }
@@ -195,7 +200,7 @@ data r3_verification_l7_algebra_skeleton_suite: TestSuite = {
 data r3_verification_l7_algebra_matrix_suite: TestSuite = {
   name: "r3_verification_l7_algebra_matrix_suite",
   claims: [
-    r3_l7_semigroup_associativity,
+    l7_algebraic_laws_witnessed,
     r3_l7_monoid_identity,
     r3_l7_commutative_monoid_commutativity,
     r3_l7_group_identity,
