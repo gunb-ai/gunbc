@@ -199,7 +199,19 @@ fn complexity_when_descent_unknown(
             UnknownCost("same-argument recursive call has no descent")
           )
       }
-    _ =>
+    ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
+      miss_complexity_summary_lookup()
+    ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
+      miss_complexity_summary_lookup()
+    ChildAccessorCall { accessor: accessor } =>
+      miss_complexity_summary_lookup()
+    CollectionShrinkCall { amount: amount, collection: collection } =>
+      miss_complexity_summary_lookup()
+    FoldBodyCall { outer_collection: outer_collection } =>
+      miss_complexity_summary_lookup()
+    ParserAdvanceCall { witness: witness } =>
+      miss_complexity_summary_lookup()
+    WorklistDrainCall { element: element } =>
       miss_complexity_summary_lookup()
   }
 
