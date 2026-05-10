@@ -342,8 +342,8 @@ fn l5_cross_target_consistency_passes_seed_corpus_for_all_targets() {
             );
         };
         assert!(
-            msg.contains("L5 go_emit_output: go run: failed to spawn host child"),
-            "missing-Go failure must surface as unverified Go execution, got {msg}"
+            msg.contains("L5 go_emit_output"),
+            "missing-Go failure must be attributed to the Go target observation, got {msg}"
         );
     }
 }

@@ -3794,6 +3794,8 @@ impl<'a> TestRunner<'a> {
                     .to_string(),
             );
         };
+        // Dissolution trigger: replace this ExecuteCommand-shaped scaffold once
+        // `std.verification.ForAllTargets` carries typed target-observation edges.
         if command != "true" || !args.is_empty() || expect_exit_code != 0 {
             return ClaimResult::Fail(format!(
                 "ForAllTargets(L5) expects inert scaffold payload true/[]/0; got command=`{command}`, args={args:?}, expect_exit_code={expect_exit_code}. \
