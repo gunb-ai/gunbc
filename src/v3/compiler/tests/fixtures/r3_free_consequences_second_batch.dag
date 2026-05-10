@@ -19,9 +19,11 @@ import std.verification {
   BinaryDimensionReportEquals,
   LensOutputEquals,
   ProgramInput,
+  SymbolicCostExprEquals,
   TestClaim,
   TestSuite
 }
+import std.algebra { SymbolicCost, ConstantCost }
 
 type CrossTargetOptimizationEvidence {}
 
@@ -43,6 +45,8 @@ type constant_fold_observed_report = DimensionReport<CrossTargetOptimizationEvid
 type constant_fold_expected_report = DimensionReport<CrossTargetOptimizationEvidence>
 type cost_structurally_derived_observed_report = DimensionReport<CrossTargetOptimizationEvidence>
 type cost_structurally_derived_expected_report = DimensionReport<CrossTargetOptimizationEvidence>
+
+data constant_fold_pre_emission_cost: SymbolicCost = ConstantCost(1)
 
 data auto_loop_parallelism_provable_independence_emits_parallel: TestClaim = {
   name: "auto_loop_parallelism_provable_independence_emits_parallel",
@@ -82,12 +86,9 @@ data auto_loop_parallelism_dependence_emits_sequential: TestClaim = {
 
 data cross_target_optimization_constant_fold_consistent: TestClaim = {
   name: "cross_target_optimization_constant_fold_consistent",
-  source: "// free-consequences fixture: constant folding stays semantically consistent across target language specs when cost facts land.\nlet _: Int = 0\n",
+  source: "// free-consequences fixture: constant folding applies the same structural cost shrink across target language specs.\nlet folded: Int = 1 + 2\n",
   file_name: "r3_free_consequences_cross_target_constant_fold_consistent.v3",
-  predicate: BinaryDimensionReportEquals(
-    constant_fold_observed_report,
-    constant_fold_expected_report
-  ),
+  predicate: SymbolicCostExprEquals(constant_fold_pre_emission_cost),
   requires: []
 }
 
