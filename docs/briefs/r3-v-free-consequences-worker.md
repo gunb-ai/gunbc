@@ -88,7 +88,7 @@ Preserve these gate names from `r3-structure.md`, with gate 10 following the
 until that structure-doc update merges:
 
 1. `auto_parallelism_independent_binds_emit_parallel`
-2. `auto_parallelism_dependent_binds_emit_sequential`
+2. `auto_parallelism_dependent_binds_pending_lens_fail_closed`
 3. `auto_parallelism_branch_arms_serialize`
 4. `auto_loop_parallelism_provable_independence_emits_parallel`
 5. `auto_loop_parallelism_unproven_falls_back_sequential`

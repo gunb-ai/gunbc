@@ -267,7 +267,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 | 41 | `v2_oracle_no_remaining_test_consumers` | state-check | T-V2-Retirement | DECLARED | no .rs test consumes src/v2/ |
 | 42 | `v2_directory_deleted` | state-check | T-V2-Retirement | DECLARED | src/v2/ removed from workspace |
 | 43 | `auto_parallelism_independent_binds_emit_parallel` | demonstration | T-Free-Consequences-Demonstration | DECLARED | bind-independent → parallel emit |
-| 44 | `auto_parallelism_dependent_binds_emit_sequential` | demonstration | T-Free-Consequences-Demonstration | DECLARED | bind-dependence → serialized |
+| 44 | `auto_parallelism_dependent_binds_pending_lens_fail_closed` | demonstration | T-Free-Consequences-Demonstration | DECLARED | dependent-bind fixture fails closed on pending scalar parallelism lens until real schedule lands |
 | 45 | `auto_parallelism_branch_arms_serialize` | demonstration | T-Free-Consequences-Demonstration | DECLARED | branch arms sequenced |
 | 46 | `auto_loop_parallelism_provable_independence_emits_parallel` | demonstration | T-Free-Consequences-Demonstration | DECLARED | opt-in `Lens<Iteration-Independence>` |
 | 47 | `auto_loop_parallelism_unproven_falls_back_sequential` | demonstration | T-Free-Consequences-Demonstration | DECLARED | no heuristic auto-parallelization |

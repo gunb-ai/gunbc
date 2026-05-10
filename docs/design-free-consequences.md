@@ -46,7 +46,7 @@ lands.
 **Testcase anchors:**
 
 - `auto_parallelism_independent_binds_emit_parallel`
-- `auto_parallelism_dependent_binds_emit_sequential`
+- `auto_parallelism_dependent_binds_pending_lens_fail_closed`
 - `auto_parallelism_branch_arms_serialize`
 
 The first gate is the positive shape; the second and third are the safety

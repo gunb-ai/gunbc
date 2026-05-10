@@ -6,6 +6,11 @@ T-Free-Consequences-Demonstration gates. It does not authorize substrate edits,
 new `TestPredicate` variants, new lens carriers, runner changes, or fixture
 rewrites.
 
+**Implementation authority (landed separately):** The temporary magic-comment
+staging + native `auto_loop_parallelism_pending_lens` read for gates #46–#48 is
+budgeted explicitly in `ROADMAP.md` under §"Reflective integration patterns" (R3
+second-batch auto-loop scaffold), not by this PROPOSAL text.
+
 **Parent:** [`r3-v-free-consequences-worker.md`](r3-v-free-consequences-worker.md);
 fixture surface: `src/v3/compiler/tests/fixtures/r3_free_consequences_second_batch.dag`.
 
