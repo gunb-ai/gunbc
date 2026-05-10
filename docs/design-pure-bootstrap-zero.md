@@ -149,6 +149,7 @@ The rewrite is structurally separable from this design doc. **Director-call at p
 R2 / future release acceptance for this program:
 
 - `EXPECTED_HAND_AUTHORED_NON_TEST` count = 0
+- `EXPECTED_HAND_AUTHORED_FRAGMENTS` count = 0
 - `EXPECTED_HAND_AUTHORED_TEST` count = 0
 - TESTING.md "Post-R2 shape" residual rewritten to 0-residual
 - DB-8 `self_host_fixed_point` converges bit-identically (the no-compromise gate; same as PB-1's)
