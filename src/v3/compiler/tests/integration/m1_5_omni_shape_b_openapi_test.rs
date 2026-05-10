@@ -8,12 +8,18 @@
 //! cross-target TestPredicate variant exists.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::omni_shape_b_openapi::{
-    extract_rest_routes, project_markdown_documentation, project_openapi_yaml, RestRoute,
+    extract_rest_routes, project_markdown_documentation, project_openapi_yaml,
+    project_rust_backend_service, RestRoute,
 };
+
+static BACKEND_ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
 
 const OMNI_SERVICE_FIXTURE: &str = r#"
 module t.openapi_demo
@@ -169,6 +175,69 @@ fn expected_routes() -> BTreeSet<RestRoute> {
             path_parameters: vec![],
         },
     ])
+}
+
+struct TmpDir(PathBuf);
+
+impl TmpDir {
+    fn new() -> Self {
+        let id = BACKEND_ROUNDTRIP_ID.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "v3_omni_openapi_backend_{}_{}",
+            std::process::id(),
+            id
+        ));
+        std::fs::create_dir_all(&path).expect("create backend temp dir");
+        TmpDir(path)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TmpDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn compile_backend_service(source: &str) -> (TmpDir, PathBuf) {
+    let tmp_dir = TmpDir::new();
+    let src_path = tmp_dir.path().join("omni_backend.rs");
+    let bin_path = tmp_dir.path().join("omni_backend");
+    std::fs::write(&src_path, source).expect("write generated backend service");
+    // P5 bridge bound: this direct rustc invocation retires through the queued
+    // brief `docs/briefs/r3-omni-openapi-backend-bridge-dissolution.md`.
+    let compile = Command::new("rustc")
+        .env_remove("RUSTC_BOOTSTRAP")
+        .arg("--edition=2021")
+        .arg(&src_path)
+        .arg("-o")
+        .arg(&bin_path)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .expect("invoke rustc for generated backend service");
+    assert!(
+        compile.success(),
+        "rustc failed on generated backend service:\n{source}"
+    );
+    (tmp_dir, bin_path)
+}
+
+fn backend_probe(bin_path: &Path, method: &str, path: &str) -> String {
+    let output = Command::new(bin_path)
+        .arg("--probe")
+        .arg(method)
+        .arg(path)
+        .output()
+        .expect("run generated backend probe");
+    assert!(
+        output.status.success(),
+        "generated backend probe exits zero"
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
 fn openapi_yaml_routes(yaml: &str) -> BTreeSet<RestRoute> {
@@ -347,6 +416,8 @@ fn omni_layers_share_one_node_tree() {
 
     let _canonical_routes = extract_rest_routes(&dag).expect("canonical route projection extracts");
     let _openapi = project_openapi_yaml(&dag).expect("Shape B OpenAPI projects from shared DAG");
+    let _backend =
+        project_rust_backend_service(&dag).expect("backend service projects from shared DAG");
     let _markdown =
         project_markdown_documentation(&dag).expect("Shape B Markdown projects from shared DAG");
     let _rust = emit_rust(&dag).expect("Shape A Rust emit consumes shared DAG");
@@ -354,7 +425,7 @@ fn omni_layers_share_one_node_tree() {
     assert_eq!(
         compile_count, 1,
         "Shape A + Shape B layers must consume the same compile_to_dag result \
-         (routes + OpenAPI + Markdown + emit_rust); recompiling per layer would \
+         (routes + OpenAPI + backend + Markdown + emit_rust); recompiling per layer would \
          break the structural-fold receipt."
     );
 }
@@ -393,6 +464,43 @@ fn openapi_routes_match_canonical_dag_routes_interim() {
 
     assert_eq!(canonical_routes, expected_routes());
     assert_eq!(openapi_routes, canonical_routes);
+}
+
+#[test]
+fn omni_openapi_backend_emission_demo_generates_runnable_matching_backend() {
+    let dag = compile_omni_service_fixture();
+
+    let canonical_routes = extract_rest_routes(&dag).expect("canonical route projection extracts");
+    let openapi_routes =
+        openapi_yaml_routes(&project_openapi_yaml(&dag).expect("OpenAPI YAML projects"));
+    let backend_source =
+        project_rust_backend_service(&dag).expect("backend service projects from shared DAG");
+    let (_tmp_dir, backend_bin) = compile_backend_service(&backend_source);
+
+    assert_eq!(openapi_routes, canonical_routes);
+    for route in &canonical_routes {
+        let concrete_path = route
+            .path
+            .replace("{id}", "42")
+            .replace("{org}", "gunb-ai")
+            .replace("{repo}", "gunbc")
+            .replace("{secret_name}", "api-key");
+        assert_eq!(
+            backend_probe(&backend_bin, &route.method, &concrete_path),
+            "200",
+            "generated backend accepts route {} {}",
+            route.method,
+            concrete_path
+        );
+    }
+    assert_eq!(backend_probe(&backend_bin, "GET", "/missing"), "404");
+    assert_eq!(backend_probe(&backend_bin, "DELETE", "/users"), "404");
+    assert_eq!(backend_probe(&backend_bin, "GET", "/users/"), "404");
+    assert_eq!(backend_probe(&backend_bin, "GET", "/users/42/extra"), "404");
+    assert_eq!(
+        backend_probe(&backend_bin, "POST", "/secrets/api/key:addVersion"),
+        "404"
+    );
 }
 
 #[test]
