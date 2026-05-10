@@ -61,10 +61,12 @@ fn fallback_targets(dag: &Dag, covered: &HashSet<Cell>) -> Vec<ShapeATarget> {
     // degraded path in the same ShapeATarget declaration-id space as
     // projection rows.
     let mut targets = [
-        dag.declaration_by_name("rust_shape_a_target").map(|decl| decl.id),
+        dag.declaration_by_name("rust_shape_a_target")
+            .map(|decl| decl.id),
         dag.declaration_by_name("python_shape_a_target")
             .map(|decl| decl.id),
-        dag.declaration_by_name("go_shape_a_target").map(|decl| decl.id),
+        dag.declaration_by_name("go_shape_a_target")
+            .map(|decl| decl.id),
     ]
     .into_iter()
     .flatten()
