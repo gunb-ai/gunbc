@@ -62,8 +62,8 @@ gunbc#828 #issuecomment-4385530115, the user-facing surface is
 `Real<N>` (not `Float<N>`); `Float` is target-language name for the
 Rust primitive, `Real` is the algebraic-concept name. Substrate
 elaboration is `Compose<Real, MachineWidth<N>>` — first slot is
-the fully-applied algebraic concept `Real` (= `ApproximateField<Rational>`
-per S8), NOT bare `ApproximateField` witness or `ApproximateField<Real>`
+the fully-applied algebraic concept `Real` (= `ApproximateField<FieldOfFractions<Int>>`
+per the Option A STOP resolution), NOT bare `ApproximateField` witness or `ApproximateField<Real>`
 parameterization. Same correction shape that applies to Int/UInt
 slot-1 spellings: witness shape doesn't go in slot-1; the named
 concept does.

@@ -25,8 +25,8 @@ G2 audit: the modeling is wrong on two axes —
    `ApproximateField<F>` — which is the substrate target.
 2. **Width independence**: `Word32` / `Word64` is the wrong axis.
    Per S3 (`MachineConstraint<C>` carrier), machine width is an
-   independent axis from algebra. Float32 = `ApproximateField<Rational>` ×
-   `MachineWidth<32>`; Float64 = `ApproximateField<Rational>` ×
+   independent axis from algebra. Float32 = `ApproximateField<FieldOfFractions<Int>>` ×
+   `MachineWidth<32>`; Float64 = `ApproximateField<FieldOfFractions<Int>>` ×
    `MachineWidth<64>`. The base carrier `F` is the algebraic field
    being approximated (`Real` for IEEE-754 floats; potentially
    `Rational` or `Complex` for other approximation regimes).
@@ -66,8 +66,9 @@ S3 carriers; consumer work synthesizes both axes at the
    The `F` parameter on `ApproximateField<F>` is the field being
    approximated. Per Q-MachineConstraint sub-decision 4 RATIFIED
    (gunbc#828 #issuecomment-4385530115): `Real<64>` ≡
-   `Compose<ApproximateField<Rational>, MachineWidth<64>>` —
-   `Rational` is the algebra side, `MachineWidth<N>` is the machine
+   `Compose<Real, MachineWidth<64>>`, with `Real =
+   ApproximateField<FieldOfFractions<Int>>` —
+   `FieldOfFractions<Int>` is the exact-field carrier, `MachineWidth<N>` is the machine
    side, and `ApproximateField<...>` carries the algebra
    approximation. Both algebra-approximation and machine-
    approximation compose as independent axes per S3 ratified
@@ -85,21 +86,21 @@ S3 carriers; consumer work synthesizes both axes at the
    notes record `Field<Word*>` shape but state may have drifted.
 
 2. **Migrate each consumer** from `Field<Word32>` /
-   `Field<Word64>` → parametric `Compose<ApproximateField<Rational>,
+   `Field<Word64>` → parametric `Compose<Real,
    MachineWidth<N>>` per S3 sub-decision 2 RATIFIED. Consumers
    fall into two classes:
    - **Algebra-only consumers** (e.g., type inference, lens
-     analysis): consume `ApproximateField<Rational>`; do not need
+     analysis): consume `Real = ApproximateField<FieldOfFractions<Int>>`; do not need
      machine width.
    - **Emission consumers** (e.g., Grounding Rust target): consume
-     the parametric instantiation `Compose<ApproximateField<Rational>,
+     the parametric instantiation `Compose<Real,
      MachineWidth<N>>` (S3 carrier).
 
 3. **Cross-reference S3** parametric instantiations:
 
    ```
-   Float<32> ≡ Compose<ApproximateField<Rational>, MachineWidth<32>>  // → Rust f32
-   Float<64> ≡ Compose<ApproximateField<Rational>, MachineWidth<64>>  // → Rust f64
+   Float<32> ≡ Compose<Real, MachineWidth<32>>  // → Rust f32
+   Float<64> ≡ Compose<Real, MachineWidth<64>>  // → Rust f64
    ```
 
    These are **demonstration entries** for Class 1 Pass criterion
