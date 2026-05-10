@@ -1412,9 +1412,71 @@ pub fn per_call_descent_operand_port(dag: &Dag, call_site: NodeId) -> Option<Por
     transform.inputs.get(idx).copied()
 }
 
+fn declaration_id_owning_bind_root(dag: &Dag, bind_node_id: NodeId) -> Option<DeclarationId> {
+    for decl in dag.declarations() {
+        let TypeConnective::Arrow {
+            body: ArrowBody::UserDefined(bind_id),
+            ..
+        } = &decl.connective
+        else {
+            continue;
+        };
+        if bind_id.node_id() == bind_node_id {
+            return Some(decl.id);
+        }
+    }
+    None
+}
+
+/// Structural witness for gate **#78** unary-bind iterate alias collapse (not a port-inequality
+/// heuristic): `other_port` must be exactly [`per_call_descent_operand_port`] for some **self-call**
+/// [`TransformNode`] inside [`bind`]'s body graph (same callable template as the owning declaration).
+///
+/// Fail-closed when the bind is not `ArrowBody::UserDefined` or template provenance is unresolved.
+fn unary_bind_duplicate_induction_other_factor_is_self_call_descent_operand(
+    dag: &Dag,
+    bind: &BindNode,
+    other_port: PortId,
+) -> bool {
+    let Some(owning_decl) = declaration_id_owning_bind_root(dag, bind.id) else {
+        return false;
+    };
+    let caller_template = callable_target_template_for_provenance(dag, owning_decl);
+    let CallableProvenance::Resolved(caller_tpl) = caller_template else {
+        return false;
+    };
+
+    for call_site in bind_body_transform_ids(dag, bind) {
+        let Some(transform) = dag.node_opt(&call_site).and_then(Behavior::as_transform) else {
+            continue;
+        };
+        let TransformTarget::Callable(target_decl) = transform.target else {
+            continue;
+        };
+        let callee_template = callable_target_template_for_provenance(dag, target_decl);
+        let CallableProvenance::Resolved(callee_tpl) = callee_template else {
+            continue;
+        };
+        if caller_tpl != callee_tpl {
+            continue;
+        }
+        if per_call_descent_operand_port(dag, call_site) == Some(other_port) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Collapses an accidental `ProductCost(Linear, Linear)` on **unary-parameter** binds when one
-/// factor keys off the formal parameter port and the other keys off a **distinct** port from the
-/// same tail-recurrence induction chain (loop iterate bound × recurrence operand wiring).
+/// factor keys off the formal parameter port and the other keys off the **descent operand port**
+/// for a **self-call** in this bind’s body — the same duplicate-induction artifact described in
+/// gate **#78** (`iterate` multiplies loop-bound `Linear(param)` with `pattern_to_iter_bound` on the
+/// descent wire; distinct `PortId`s, same chain).
+///
+/// **Does not** collapse `Linear(param) × Linear(other)` when `other` is only structurally distinct:
+/// `other` must match [`unary_bind_duplicate_induction_other_factor_is_self_call_descent_operand`]
+/// so genuine multiplicative carriers (independent linear factors) are not erased (P1 / modeling
+/// discipline).
 ///
 /// **Residual flow (why this exists):** `recursive_transform_cost` / `sum_costs_excluding_descent_operand`
 /// already prevent double-counting **within** the recursive call’s operand list. They do **not**
@@ -1425,7 +1487,7 @@ pub fn per_call_descent_operand_port(dag: &Dag, call_site: NodeId) -> Option<Por
 /// asymptotic carrier until alias-aware folding exists in the algebra.
 ///
 /// **P5:** transitional host pass until dissolution — explicit ROADMAP row **“R3 gate #78 — unary-bind
-/// `SymbolicCost` iterate alias collapse post-pass”** (`ROADMAP.md`, § Post-merge debt 2026-05-08).
+/// `SymbolicCost` iterate alias collapse post-pass”** (`ROADMAP.md`, Post-merge debt 2026-05-08).
 pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
     dag: &Dag,
     bind_value_port: PortId,
@@ -1452,22 +1514,25 @@ pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
 
     match (terms.first.as_ref(), terms.second.as_ref()) {
         (SymbolicCost::LinearCost { _0: va }, SymbolicCost::LinearCost { _0: vb }) => {
-            if va.source_port == param && vb.source_port != param {
-                SymbolicCost::LinearCost {
-                    _0: SizeVariable {
-                        source_port: param,
-                        display_name: None,
-                    },
-                }
+            let non_param_port = if va.source_port == param && vb.source_port != param {
+                vb.source_port
             } else if vb.source_port == param && va.source_port != param {
-                SymbolicCost::LinearCost {
-                    _0: SizeVariable {
-                        source_port: param,
-                        display_name: None,
-                    },
-                }
+                va.source_port
             } else {
-                cost
+                return cost;
+            };
+            if !unary_bind_duplicate_induction_other_factor_is_self_call_descent_operand(
+                dag,
+                bind,
+                non_param_port,
+            ) {
+                return cost;
+            }
+            SymbolicCost::LinearCost {
+                _0: SizeVariable {
+                    source_port: param,
+                    display_name: None,
+                },
             }
         }
         _ => cost,
@@ -4985,6 +5050,71 @@ mod tests {
         assert!(
             matches!(pattern, CallPattern::ArithmeticSubtractCall { .. }),
             "expected arithmetic descent pattern, got {pattern:?}"
+        );
+    }
+
+    #[test]
+    fn collapse_unary_bind_product_requires_self_call_descent_operand_witness() {
+        let dag = crate::compile_to_dag(
+            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
+            "collapse_evidence_unit.v3",
+        )
+        .expect("compile countdown fixture");
+
+        let bind = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .find(|b| b.name == "countdown")
+            .expect("countdown bind");
+        let param = bind.params[0];
+
+        let descent_port = per_call_descent_evidence(&dag)
+            .into_iter()
+            .filter(|e| e.caller == bind.name)
+            .find_map(|e| per_call_descent_operand_port(&dag, e.call))
+            .expect("self-call descent operand port");
+
+        let mk_product = |other: PortId| {
+            SymbolicCost::ProductCost {
+                _0: NonSingletonList::from_vec(vec![
+                    Box::new(SymbolicCost::LinearCost {
+                        _0: SizeVariable {
+                            source_port: param,
+                            display_name: None,
+                        },
+                    }),
+                    Box::new(SymbolicCost::LinearCost {
+                        _0: SizeVariable {
+                            source_port: other,
+                            display_name: None,
+                        },
+                    }),
+                ])
+                .expect("two linear factors"),
+            }
+        };
+
+        let collapsed = collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+            &dag,
+            bind.value,
+            mk_product(descent_port),
+        );
+        assert!(
+            matches!(collapsed, SymbolicCost::LinearCost { .. }),
+            "duplicate-induction artifact should collapse when second factor is descent operand: \
+             {collapsed:?}"
+        );
+
+        let bogus = PortId::test_raw(999_999);
+        let unchanged = collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+            &dag,
+            bind.value,
+            mk_product(bogus),
+        );
+        assert!(
+            matches!(unchanged, SymbolicCost::ProductCost { .. }),
+            "non-descent second linear factor must not collapse: {unchanged:?}"
         );
     }
 

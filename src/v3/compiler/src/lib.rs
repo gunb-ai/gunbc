@@ -4514,8 +4514,10 @@ pub mod lens_cost_symbolic {
 
     /// [`generated::symbolic_cost_of`] is the regen’d `cost.dag` lens. This function applies only
     /// [`crate::dag::collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction`] (P5
-    /// receipt: `ROADMAP.md` § Post-merge debt (2026-05-08), row **R3 gate #78 — unary-bind …**).
-    /// The wrapper is explicit normalization — not a parallel lens authority.
+    /// receipt: `ROADMAP.md` Post-merge debt (2026-05-08), row **R3 gate #78 — unary-bind …**).
+    /// That collapse is fail-closed to **self-call descent-operand evidence** (same template,
+    /// [`crate::dag::per_call_descent_operand_port`]) — not port inequality alone. The wrapper is
+    /// explicit normalization — not a parallel lens authority.
     pub fn symbolic_cost_of(
         dag: &crate::dag::Dag,
         port: &crate::dag::PortId,
