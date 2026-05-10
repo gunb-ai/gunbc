@@ -10,7 +10,18 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GraphEdge {
+    pub caller: String,
+    pub callee: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallGraph {
+    pub edges: Rc<Vec<Rc<GraphEdge>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CallGraphAdjacencyViews {
     pub forward: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub reverse: Rc<HashMap<String, Rc<Vec<String>>>>,
 }
@@ -47,29 +58,47 @@ pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<S
 }
 
 pub fn build_call_graph_from_proof_edges(
-    names: &Rc<Vec<String>>,
+    names: Rc<Vec<String>>,
     edges: Rc<Vec<Rc<ProofEdge>>>,
 ) -> Rc<CallGraph> {
+    Rc::new(CallGraph {
+        edges: Rc::new({
+            let mut __result = Vec::new();
+            for e in Rc::new({
+                let mut __result = Vec::new();
+                for e in edges.iter().cloned() {
+                    if (e.caller.clone().as_str() != e.callee.clone().as_str()) {
+                        __result.push(e);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(Rc::new(GraphEdge {
+                    caller: e.caller.clone(),
+                    callee: e.callee.clone(),
+                }));
+            }
+            __result
+        }),
+    })
+}
+
+pub fn build_adjacency_views(
+    names: &Rc<Vec<String>>,
+    graph: Rc<CallGraph>,
+) -> Rc<CallGraphAdjacencyViews> {
     {
         let initial_forward = seed_adjacency_map(names.clone());
         let initial_reverse = seed_adjacency_map(names.clone());
-        Rc::new({
-            let mut __result = Vec::new();
-            for e in edges.iter().cloned() {
-                if (e.caller.clone().as_str() != e.callee.clone().as_str()) {
-                    __result.push(e);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(CallGraph {
+        graph.edges.clone().iter().cloned().fold(
+            Rc::new(CallGraphAdjacencyViews {
                 forward: initial_forward,
                 reverse: initial_reverse,
             }),
-            |acc: Rc<CallGraph>, edge: Rc<ProofEdge>| {
+            |acc: Rc<CallGraphAdjacencyViews>, edge: Rc<GraphEdge>| {
                 let forward_neighbors =
                     match v2_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
                         Some(ns) => v2_rt::concat(ns.clone(), Rc::new(vec![edge.callee.clone()])),
@@ -80,7 +109,7 @@ pub fn build_call_graph_from_proof_edges(
                         Some(ns) => v2_rt::concat(ns.clone(), Rc::new(vec![edge.caller.clone()])),
                         None => Rc::new(vec![edge.caller.clone()]),
                     };
-                Rc::new(CallGraph {
+                Rc::new(CallGraphAdjacencyViews {
                     forward: v2_rt::rc_map_insert(
                         acc.forward.clone(),
                         edge.caller.clone(),
@@ -95,6 +124,20 @@ pub fn build_call_graph_from_proof_edges(
             },
         )
     }
+}
+
+pub fn forward_adjacency(
+    names: Rc<Vec<String>>,
+    graph: Rc<CallGraph>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    build_adjacency_views(&names, graph).forward.clone()
+}
+
+pub fn reverse_adjacency(
+    names: Rc<Vec<String>>,
+    graph: Rc<CallGraph>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    build_adjacency_views(&names, graph).reverse.clone()
 }
 
 pub fn dfs_finish_order(
@@ -160,15 +203,16 @@ pub fn dfs_collect_component(
     })
 }
 
-pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {
+pub fn graph_has_multi_node_scc(names: &Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {
     {
-        let finish = names.iter().cloned().fold(
+        let adjacency = build_adjacency_views(&names, graph);
+        let finish = names.clone().iter().cloned().fold(
             Rc::new(DfsFinishAcc {
                 visited: v2_rt::rc_empty_map::<String, bool>(),
                 order: Rc::new(vec![]),
             }),
             |acc: Rc<DfsFinishAcc>, name: String| {
-                dfs_finish_order(&name, &graph.forward.clone(), &acc)
+                dfs_finish_order(&name, &adjacency.forward.clone(), &acc)
             },
         );
         let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(
@@ -183,7 +227,7 @@ pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) ->
                     {
                         let component = dfs_collect_component(
                             &name,
-                            &graph.reverse.clone(),
+                            &adjacency.reverse.clone(),
                             &Rc::new(SccComponentAcc {
                                 visited: acc.visited.clone(),
                                 members: Rc::new(vec![]),
@@ -269,8 +313,9 @@ pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: &Rc<Vec<Rc<ProofEdge>>
                     }
                     __result
                 });
-                let nd_graph = build_call_graph_from_proof_edges(&members, non_descending.clone());
-                (graph_has_multi_node_scc(members.clone(), nd_graph) == false)
+                let nd_graph =
+                    build_call_graph_from_proof_edges(members.clone(), non_descending.clone());
+                (graph_has_multi_node_scc(&members, nd_graph) == false)
             }
         }
     }

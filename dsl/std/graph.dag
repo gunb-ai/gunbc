@@ -12,8 +12,14 @@ import std.termination {
   TerminationProof
 }
 
-// Bidirectional adjacency representation: forward (caller→callee) and
-// reverse (callee→caller) edges, keyed by node name.
+type GraphEdge {
+  caller: String
+  callee: String
+}
+
+// Single-authority graph representation: edges are the stored fact.
+// Forward and reverse adjacency maps are derived views, not fields that can
+// drift independently.
 // M4 note: String keys are a textual identity proxy. Post-M4, vertices
 // M4 debt: String keys are textual identity proxies. Post-M4, vertices
 // should be structural Node references so SCC/cycle facts derive from
@@ -21,6 +27,10 @@ import std.termination {
 // are module-qualified from the typed IR (no collisions within a
 // compilation unit). Blocked on Map<K,V> supporting non-String keys.
 type CallGraph {
+  edges: List<GraphEdge>
+}
+
+type CallGraphAdjacencyViews {
   forward: Map<String, List<String>>
   reverse: Map<String, List<String>>
 }
@@ -53,9 +63,17 @@ fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
 // Build a call graph from ProofEdge values. Self-loops are excluded
 // (they are handled separately by cycle detection callers).
 fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
+  CallGraph {
+    edges: edges
+      |> filter(e => e.caller != e.callee)
+      |> map(e => GraphEdge { caller: e.caller, callee: e.callee })
+  }
+}
+
+fn build_adjacency_views(names: List<String>, graph: CallGraph) -> CallGraphAdjacencyViews {
   let initial_forward = seed_adjacency_map(names: names)
   let initial_reverse = seed_adjacency_map(names: names)
-  edges |> filter(e => e.caller != e.callee) |> fold(init: CallGraph { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+  graph.edges |> fold(init: CallGraphAdjacencyViews { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
     let forward_neighbors = match map_get(acc.forward, edge.caller) {
       Some { value: ns } => concat(ns, [edge.callee])
       None => [edge.callee]
@@ -64,11 +82,19 @@ fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>
       Some { value: ns } => concat(ns, [edge.caller])
       None => [edge.caller]
     }
-    CallGraph {
+    CallGraphAdjacencyViews {
       forward: map_insert(acc.forward, edge.caller, forward_neighbors),
       reverse: map_insert(acc.reverse, edge.callee, reverse_neighbors)
     }
   )
+}
+
+fn forward_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<String>> {
+  build_adjacency_views(names: names, graph: graph).forward
+}
+
+fn reverse_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<String>> {
+  build_adjacency_views(names: names, graph: graph).reverse
 }
 
 // Kosaraju pass 1: DFS on forward graph to compute finish order.
@@ -115,14 +141,15 @@ fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc
 // Detect whether the graph contains a strongly connected component with
 // more than one node (Kosaraju's algorithm: 2-pass DFS).
 fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
+  let adjacency = build_adjacency_views(names: names, graph: graph)
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
-    dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
+    dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
   )
   let result = finish.order |> reverse |> fold(init: SccCycleAcc { visited: empty_set(), has_cycle: false }, f: (acc, name) =>
     if acc.has_cycle || set_contains(acc.visited, name) {
       acc
     } else {
-      let component = dfs_collect_component(node: name, adjacency: graph.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
+      let component = dfs_collect_component(node: name, adjacency: adjacency.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
       SccCycleAcc {
         visited: component.visited,
         has_cycle: (component.members |> count) > 1
