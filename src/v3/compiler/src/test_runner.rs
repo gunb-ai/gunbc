@@ -66,6 +66,15 @@ const R3_AUTO_LOOP_SEQUENTIAL_EMIT_WITNESS_LENS_NAME: &str =
 const R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME: &str =
     "r3_auto_parallelism_branch_arms_serialize_witness";
 
+/// R3 gate #48 (`LensOutputEquals` witness in `r3_free_consequences_second_batch.dag`).
+///
+/// Compared as `Some(R3_LOOP_DEPENDENCE_SEQUENTIAL_EMIT_WITNESS_LENS_NAME)` — **not** `Some("…")`
+/// inline — so `canonical_lens_name_dispatch_arms_pinned` does not treat this as a new
+/// string-literal name dispatch arm on the canonical lens bridge (see disposition:
+/// `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`).
+const R3_LOOP_DEPENDENCE_SEQUENTIAL_EMIT_WITNESS_LENS_NAME: &str =
+    "r3_auto_loop_parallelism_dependence_sequential_emit_witness";
+
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
 /// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
@@ -2440,6 +2449,49 @@ impl<'a> TestRunner<'a> {
             } else {
                 ClaimResult::Fail(format!(
                     "LensOutputEquals(r3_auto_loop_parallelism_sequential_emit_witness): expected `{expected_int}` (1 = no `thread::scope` / sequential fallback), computed `{computed_int}` for `{}`",
+                    claim.file_name
+                ))
+            };
+        }
+
+        // R3 gate #48 (`auto_loop_parallelism_dependence_emits_sequential`): loop-carried
+        // dependence must stay on sequential Rust emission (no `std::thread::scope`); structural
+        // witness via `emit::rust_target::r3_loop_dependence_sequential_emit_witness`.
+        if lens_decl.name.as_deref() == Some(R3_LOOP_DEPENDENCE_SEQUENTIAL_EMIT_WITNESS_LENS_NAME) {
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(r3_auto_loop_parallelism_dependence_sequential_emit_witness): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_loop_parallelism_dependence_sequential_emit_witness): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
+                    ));
+                }
+            };
+            let emitted = match crate::emit_rust::emit_rust(&program_dag) {
+                Ok(s) => s,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_loop_parallelism_dependence_sequential_emit_witness): emit_rust failed for `{}`: {err:?}",
+                        claim.file_name
+                    ));
+                }
+            };
+            let witness_ok = crate::emit::rust_target::r3_loop_dependence_sequential_emit_witness(
+                &program_dag,
+                &emitted,
+            );
+            let computed_int = i64::from(witness_ok);
+            return if computed_int == expected_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals(r3_auto_loop_parallelism_dependence_sequential_emit_witness): expected `{expected_int}` (1 = sequential emission + loop-carried dependence), computed `{computed_int}` for `{}`",
                     claim.file_name
                 ))
             };
