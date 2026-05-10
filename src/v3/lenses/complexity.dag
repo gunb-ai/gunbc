@@ -177,10 +177,30 @@ fn transform_summary(
     Some(pattern) =>
       match per_call_descent_operand_port(d, call_site) {
         None =>
-          miss_complexity_summary_lookup()
+          complexity_when_descent_unknown(pattern, inputs)
         Some(descent_port) =>
           recursive_transform_summary(acc, pattern, descent_port, inputs)
       }
+  }
+
+fn complexity_when_descent_unknown(
+  pattern: CallPattern,
+  inputs: List<PortId>
+) -> Lookup<ComplexitySummary> =
+  match pattern {
+    SameArgumentCall =>
+      match inputs {
+        Cons(payload) =>
+          summary_from_iter_bound(
+            pattern_to_iter_bound(SameArgumentCall, payload.head)
+          )
+        Empty =>
+          summary_from_iter_bound(
+            UnknownCost("same-argument recursive call has no descent")
+          )
+      }
+    _ =>
+      miss_complexity_summary_lookup()
   }
 
 fn compose_many_inputs(
