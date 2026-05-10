@@ -281,17 +281,21 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(33),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "count".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "count".to_string(),
+            },
             inputs: vec![PortId(34)],
             output: PortId(35),
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18045, 18050),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18085, 18090),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(34),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "measure".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "measure".to_string(),
+            },
             inputs: vec![PortId(36)],
             output: PortId(37),
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18083, 18090),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18123, 18130),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(35),
@@ -302,7 +306,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(35),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cardinality".to_string(),
-                        span: SourceSpan::new("src/v3/std/substrate.dag", 18013, 18033),
+                        span: SourceSpan::new("src/v3/std/substrate.dag", 18053, 18073),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -314,7 +318,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(37),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Descent".to_string(),
-                        span: SourceSpan::new("src/v3/std/substrate.dag", 18055, 18071),
+                        span: SourceSpan::new("src/v3/std/substrate.dag", 18095, 18111),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -323,7 +327,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(38),
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17995, 18094),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18035, 18134),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -331,20 +335,24 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "loop_bound_measure".to_string(),
             value: PortId(38),
             params: vec![PortId(33)],
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17995, 18094),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18035, 18134),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(37),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(702) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(702),
+            },
             inputs: vec![PortId(39)],
             output: PortId(41),
             span: SourceSpan::new("src/v3/std/algebra.dag", 7604, 7615),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(38),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(702) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(702),
+            },
             inputs: vec![PortId(40)],
             output: PortId(42),
             span: SourceSpan::new("src/v3/std/algebra.dag", 7621, 7632),
@@ -503,7 +511,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(56),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "previous".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "previous".to_string(),
+            },
             inputs: vec![PortId(64)],
             output: PortId(65),
             span: SourceSpan::new("src/v3/std/algebra.dag", 11994, 12002),
@@ -1074,7 +1084,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(102),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "var".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "var".to_string(),
+            },
             inputs: vec![PortId(131)],
             output: PortId(137),
             span: SourceSpan::new("src/v3/std/algebra.dag", 15934, 15937),
@@ -1088,14 +1100,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(104),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "var".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "var".to_string(),
+            },
             inputs: vec![PortId(131)],
             output: PortId(140),
             span: SourceSpan::new("src/v3/std/algebra.dag", 16008, 16011),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(105),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "var".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "var".to_string(),
+            },
             inputs: vec![PortId(139)],
             output: PortId(141),
             span: SourceSpan::new("src/v3/std/algebra.dag", 16016, 16019),
@@ -1109,7 +1125,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(107),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "degree".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "degree".to_string(),
+            },
             inputs: vec![PortId(131)],
             output: PortId(143),
             span: SourceSpan::new("src/v3/std/algebra.dag", 16052, 16058),
@@ -1123,7 +1141,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(109),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "degree".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "degree".to_string(),
+            },
             inputs: vec![PortId(139)],
             output: PortId(145),
             span: SourceSpan::new("src/v3/std/algebra.dag", 16077, 16083),
@@ -1755,7 +1775,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(148),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "degree".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "degree".to_string(),
+            },
             inputs: vec![PortId(200)],
             output: PortId(201),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18747, 18758),
@@ -1776,7 +1798,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(151),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "degree".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "degree".to_string(),
+            },
             inputs: vec![PortId(204)],
             output: PortId(205),
             span: SourceSpan::new("src/v3/std/algebra.dag", 18870, 18881),
@@ -2938,21 +2962,27 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(223),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(708) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(708),
+            },
             inputs: vec![PortId(285)],
             output: PortId(286),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22286, 22291),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(224),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(708) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(708),
+            },
             inputs: vec![PortId(285)],
             output: PortId(287),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22304, 22310),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(225),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(1672) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(1672),
+            },
             inputs: vec![PortId(285)],
             output: PortId(288),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22318, 22322),
@@ -2989,7 +3019,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(230),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(293)],
             output: PortId(294),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22666, 22670),
@@ -3003,7 +3035,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(232),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(293)],
             output: PortId(296),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22712, 22716),
@@ -3017,14 +3051,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(234),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(293)],
             output: PortId(298),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22750, 22754),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(235),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(293)],
             output: PortId(299),
             span: SourceSpan::new("src/v3/std/algebra.dag", 22783, 22787),
@@ -3198,7 +3236,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(250),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(314)],
             output: PortId(315),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23297, 23301),
@@ -3212,7 +3252,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(252),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(314)],
             output: PortId(317),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23323, 23327),
@@ -3288,7 +3330,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(259),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(324)],
             output: PortId(325),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23659, 23663),
@@ -3302,7 +3346,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(261),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(324)],
             output: PortId(327),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23710, 23714),
@@ -3316,14 +3362,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(263),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(324)],
             output: PortId(329),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23748, 23752),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(264),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(324)],
             output: PortId(330),
             span: SourceSpan::new("src/v3/std/algebra.dag", 23786, 23790),
@@ -3749,28 +3799,36 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(293),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(373)],
             output: PortId(374),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25237, 25241),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(294),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(373)],
             output: PortId(375),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25269, 25273),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(295),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(373)],
             output: PortId(377),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25330, 25334),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(296),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(373)],
             output: PortId(378),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25344, 25348),
@@ -3881,35 +3939,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(305),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(387)],
             output: PortId(388),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25508, 25512),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(306),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(387)],
             output: PortId(389),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25540, 25544),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(307),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(387)],
             output: PortId(391),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25596, 25600),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(308),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(390)],
             output: PortId(392),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25609, 25613),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(309),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(390)],
             output: PortId(393),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25622, 25626),
@@ -4013,35 +4081,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(317),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(401)],
             output: PortId(402),
             span: SourceSpan::new("src/v3/std/algebra.dag", 25974, 25978),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(318),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(401)],
             output: PortId(403),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26006, 26010),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(319),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(404)],
             output: PortId(405),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26058, 26062),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(320),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(401)],
             output: PortId(406),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26117, 26121),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(321),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(404)],
             output: PortId(407),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26130, 26134),
@@ -4055,21 +4133,27 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(323),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(401)],
             output: PortId(410),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26190, 26194),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(324),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(404)],
             output: PortId(411),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26203, 26207),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(325),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(404)],
             output: PortId(412),
             span: SourceSpan::new("src/v3/std/algebra.dag", 26216, 26220),
@@ -4571,14 +4655,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(358),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(126) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(126),
+            },
             inputs: vec![PortId(465)],
             output: PortId(467),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27733, 27736),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(359),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(828) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(828),
+            },
             inputs: vec![PortId(465)],
             output: PortId(468),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27757, 27762),
@@ -4599,7 +4687,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(362),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(828) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(828),
+            },
             inputs: vec![PortId(465)],
             output: PortId(471),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27777, 27782),
@@ -4622,7 +4712,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(365),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(126) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(126),
+            },
             inputs: vec![PortId(473)],
             output: PortId(474),
             span: SourceSpan::new("src/v3/std/algebra.dag", 27838, 27841),
@@ -4645,7 +4737,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(368),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(478)],
             output: PortId(479),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28052, 28056),
@@ -4659,7 +4753,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(370),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(478)],
             output: PortId(481),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28103, 28107),
@@ -4673,14 +4769,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(372),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(478)],
             output: PortId(483),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28149, 28153),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(373),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "tail".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "tail".to_string(),
+            },
             inputs: vec![PortId(478)],
             output: PortId(484),
             span: SourceSpan::new("src/v3/std/algebra.dag", 28187, 28191),
@@ -4884,7 +4984,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(392),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "cost".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "cost".to_string(),
+            },
             inputs: vec![PortId(504)],
             output: PortId(505),
             span: SourceSpan::new("src/v3/std/induction.dag", 29133, 29140),
@@ -4898,7 +5000,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(394),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "factors".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "factors".to_string(),
+            },
             inputs: vec![PortId(507)],
             output: PortId(508),
             span: SourceSpan::new("src/v3/std/induction.dag", 29192, 29203),
@@ -4912,7 +5016,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(396),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "terms".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "terms".to_string(),
+            },
             inputs: vec![PortId(510)],
             output: PortId(511),
             span: SourceSpan::new("src/v3/std/induction.dag", 29264, 29273),
@@ -4926,7 +5032,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(398),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "terms".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "terms".to_string(),
+            },
             inputs: vec![PortId(513)],
             output: PortId(514),
             span: SourceSpan::new("src/v3/std/induction.dag", 29323, 29332),
@@ -5070,14 +5178,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(407),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "param".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "param".to_string(),
+            },
             inputs: vec![PortId(523)],
             output: PortId(524),
             span: SourceSpan::new("src/v3/std/induction.dag", 29612, 29620),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(408),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "exponent".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "exponent".to_string(),
+            },
             inputs: vec![PortId(523)],
             output: PortId(525),
             span: SourceSpan::new("src/v3/std/induction.dag", 29622, 29633),
@@ -5100,7 +5212,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(411),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "param".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "param".to_string(),
+            },
             inputs: vec![PortId(528)],
             output: PortId(529),
             span: SourceSpan::new("src/v3/std/induction.dag", 29741, 29749),
@@ -5241,7 +5355,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(426),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "duration".to_string(),
+            },
             inputs: vec![PortId(544)],
             output: PortId(545),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 6747, 6758),
@@ -5324,7 +5440,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(432),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "duration".to_string(),
+            },
             inputs: vec![PortId(551)],
             output: PortId(552),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 6917, 6928),
@@ -5386,7 +5504,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(435),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "duration".to_string(),
+            },
             inputs: vec![PortId(555)],
             output: PortId(556),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 6967, 6979),
@@ -5414,21 +5534,27 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(439),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "duration".to_string(),
+            },
             inputs: vec![PortId(560)],
             output: PortId(561),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7107, 7119),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(440),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "count".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "count".to_string(),
+            },
             inputs: vec![PortId(556)],
             output: PortId(562),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7199, 7204),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(441),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "count".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "count".to_string(),
+            },
             inputs: vec![PortId(561)],
             output: PortId(563),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7210, 7215),
@@ -5456,14 +5582,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(445),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "count".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "count".to_string(),
+            },
             inputs: vec![PortId(556)],
             output: PortId(567),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7288, 7293),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(446),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "count".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "count".to_string(),
+            },
             inputs: vec![PortId(561)],
             output: PortId(568),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 7299, 7304),
@@ -5751,35 +5881,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(468),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "span".to_string(),
+            },
             inputs: vec![PortId(589)],
             output: PortId(590),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 8243, 8247),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(469),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "span".to_string(),
+            },
             inputs: vec![PortId(591)],
             output: PortId(592),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 8270, 8274),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(470),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "span".to_string(),
+            },
             inputs: vec![PortId(593)],
             output: PortId(594),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 8296, 8300),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(471),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "span".to_string(),
+            },
             inputs: vec![PortId(595)],
             output: PortId(596),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 8318, 8322),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(472),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "span".to_string(),
+            },
             inputs: vec![PortId(597)],
             output: PortId(598),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 8346, 8350),
@@ -5945,21 +6085,27 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(486),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(1852) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(1852),
+            },
             inputs: vec![PortId(610)],
             output: PortId(613),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9781, 9793),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(487),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(614)],
             output: PortId(615),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9916, 9920),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(488),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "span".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "span".to_string(),
+            },
             inputs: vec![PortId(615)],
             output: PortId(616),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 9921, 9925),
@@ -6031,7 +6177,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(495),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "head".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "head".to_string(),
+            },
             inputs: vec![PortId(623)],
             output: PortId(624),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10321, 10325),
@@ -6098,7 +6246,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(501),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "duration".to_string(),
+            },
             inputs: vec![PortId(631)],
             output: PortId(632),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 10799, 10810),
@@ -6653,7 +6803,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(547),
-            target: TransformTarget::UnresolvedFieldProject { field_label: "duration".to_string() },
+            target: TransformTarget::UnresolvedFieldProject {
+                field_label: "duration".to_string(),
+            },
             inputs: vec![PortId(687)],
             output: PortId(688),
             span: SourceSpan::new("src/v3/std/timing_lens.dag", 12758, 12769),
@@ -6796,7 +6948,9 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(561),
-            target: TransformTarget::ResolvedFieldProject { field_ref: DeclarationId(1853) },
+            target: TransformTarget::ResolvedFieldProject {
+                field_ref: DeclarationId(1853),
+            },
             inputs: vec![PortId(701)],
             output: PortId(702),
             span: SourceSpan::new("src/v3/std/workflows.dag", 1013, 1018),
@@ -23760,7 +23914,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         ty: DeclarationId(1827),
                     },
                     Field {
-                        label: "FieldProject".to_string(),
+                        label: "UnresolvedFieldProject".to_string(),
+                        ty: DeclarationId(1828),
+                    },
+                    Field {
+                        label: "ResolvedFieldProject".to_string(),
                         ty: DeclarationId(1829),
                     },
                     Field {
@@ -23777,7 +23935,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14623, 14783),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14623, 14823),
         });
         declarations.push(Declaration {
             id: DeclarationId(787),
@@ -23802,7 +23960,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14885, 14995),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14925, 15035),
         });
         declarations.push(Declaration {
             id: DeclarationId(788),
@@ -23827,7 +23985,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14997, 15066),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15037, 15106),
         });
         declarations.push(Declaration {
             id: DeclarationId(789),
@@ -23860,7 +24018,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15068, 15176),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15108, 15216),
         });
         declarations.push(Declaration {
             id: DeclarationId(790),
@@ -23885,7 +24043,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15775, 15821),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15815, 15861),
         });
         declarations.push(Declaration {
             id: DeclarationId(791),
@@ -23904,7 +24062,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16333, 16369),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16373, 16409),
         });
         declarations.push(Declaration {
             id: DeclarationId(792),
@@ -23923,7 +24081,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16986, 17027),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17026, 17067),
         });
         declarations.push(Declaration {
             id: DeclarationId(793),
@@ -23937,7 +24095,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16986, 17027),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17026, 17067),
         });
         declarations.push(Declaration {
             id: DeclarationId(794),
@@ -23956,7 +24114,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17029, 17069),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17069, 17109),
         });
         declarations.push(Declaration {
             id: DeclarationId(795),
@@ -23975,7 +24133,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17071, 17122),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17111, 17162),
         });
         declarations.push(Declaration {
             id: DeclarationId(796),
@@ -24000,7 +24158,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17124, 17237),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17164, 17277),
         });
         declarations.push(Declaration {
             id: DeclarationId(797),
@@ -24025,7 +24183,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17839, 17939),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17879, 17979),
         });
         declarations.push(Declaration {
             id: DeclarationId(798),
@@ -24043,7 +24201,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17941, 18094),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17981, 18134),
         });
         declarations.push(Declaration {
             id: DeclarationId(799),
@@ -24080,7 +24238,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18096, 18225),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18136, 18265),
         });
         declarations.push(Declaration {
             id: DeclarationId(800),
@@ -24117,7 +24275,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18227, 18352),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18267, 18392),
         });
         declarations.push(Declaration {
             id: DeclarationId(801),
@@ -24136,7 +24294,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18517, 18559),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18557, 18599),
         });
         declarations.push(Declaration {
             id: DeclarationId(802),
@@ -24177,7 +24335,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18561, 18723),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18601, 18763),
         });
         declarations.push(Declaration {
             id: DeclarationId(803),
@@ -24222,7 +24380,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18725, 18862),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18765, 18902),
         });
         declarations.push(Declaration {
             id: DeclarationId(804),
@@ -24241,7 +24399,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19104, 19147),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19144, 19187),
         });
         declarations.push(Declaration {
             id: DeclarationId(805),
@@ -24286,7 +24444,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19149, 19337),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19189, 19377),
         });
         declarations.push(Declaration {
             id: DeclarationId(806),
@@ -24323,7 +24481,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19409, 19533),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19449, 19573),
         });
         declarations.push(Declaration {
             id: DeclarationId(807),
@@ -24356,7 +24514,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19535, 19654),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19575, 19694),
         });
         declarations.push(Declaration {
             id: DeclarationId(808),
@@ -24375,7 +24533,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21006, 21061),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 21046, 21101),
         });
         declarations.push(Declaration {
             id: DeclarationId(809),
@@ -24404,7 +24562,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21828, 21945),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 21868, 21985),
         });
         declarations.push(Declaration {
             id: DeclarationId(810),
@@ -24414,8 +24572,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1738),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    21987,
-                    22002,
+                    22027,
+                    22042,
                 )),
             },
             type_params: vec![],
@@ -24426,7 +24584,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21947, 22002),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 21987, 22042),
         });
         declarations.push(Declaration {
             id: DeclarationId(811),
@@ -24436,8 +24594,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1739),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    22045,
-                    22060,
+                    22085,
+                    22100,
                 )),
             },
             type_params: vec![],
@@ -24448,7 +24606,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22004, 22060),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22044, 22100),
         });
         declarations.push(Declaration {
             id: DeclarationId(812),
@@ -24458,8 +24616,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1740),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    22120,
-                    22147,
+                    22160,
+                    22187,
                 )),
             },
             type_params: vec![],
@@ -24470,7 +24628,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22062, 22147),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22102, 22187),
         });
         declarations.push(Declaration {
             id: DeclarationId(813),
@@ -24480,8 +24638,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1741),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    22509,
-                    22537,
+                    22549,
+                    22577,
                 )),
             },
             type_params: vec![],
@@ -24492,7 +24650,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22445, 22537),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22485, 22577),
         });
         declarations.push(Declaration {
             id: DeclarationId(814),
@@ -24502,8 +24660,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1742),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    23384,
-                    23414,
+                    23424,
+                    23454,
                 )),
             },
             type_params: vec![],
@@ -24514,7 +24672,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 23323, 23414),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 23363, 23454),
         });
         declarations.push(Declaration {
             id: DeclarationId(815),
@@ -24524,8 +24682,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1743),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    23710,
-                    23745,
+                    23750,
+                    23785,
                 )),
             },
             type_params: vec![],
@@ -24536,7 +24694,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 23650, 23745),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 23690, 23785),
         });
         declarations.push(Declaration {
             id: DeclarationId(816),
@@ -24565,7 +24723,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 25713, 25823),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 25753, 25863),
         });
         declarations.push(Declaration {
             id: DeclarationId(817),
@@ -24575,8 +24733,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(816),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    27329,
-                    27358,
+                    27369,
+                    27398,
                 )),
             },
             type_params: vec![],
@@ -24587,7 +24745,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 27283, 27358),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 27323, 27398),
         });
         declarations.push(Declaration {
             id: DeclarationId(818),
@@ -24597,8 +24755,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1744),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    27715,
-                    27725,
+                    27755,
+                    27765,
                 )),
             },
             type_params: vec![],
@@ -24609,7 +24767,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 27658, 27725),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 27698, 27765),
         });
         declarations.push(Declaration {
             id: DeclarationId(819),
@@ -24619,8 +24777,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1745),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    27800,
-                    27813,
+                    27840,
+                    27853,
                 )),
             },
             type_params: vec![],
@@ -24631,7 +24789,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 27727, 27813),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 27767, 27853),
         });
         declarations.push(Declaration {
             id: DeclarationId(820),
@@ -59416,7 +59574,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 21978, 21986),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22018, 22026),
         });
         declarations.push(Declaration {
             id: DeclarationId(1739),
@@ -59435,7 +59593,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22035, 22044),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22075, 22084),
         });
         declarations.push(Declaration {
             id: DeclarationId(1740),
@@ -59454,7 +59612,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22110, 22119),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22150, 22159),
         });
         declarations.push(Declaration {
             id: DeclarationId(1741),
@@ -59473,7 +59631,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22496, 22508),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22536, 22548),
         });
         declarations.push(Declaration {
             id: DeclarationId(1742),
@@ -59492,7 +59650,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 23371, 23383),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 23411, 23423),
         });
         declarations.push(Declaration {
             id: DeclarationId(1743),
@@ -59511,7 +59669,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 23694, 23709),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 23734, 23749),
         });
         declarations.push(Declaration {
             id: DeclarationId(1744),
@@ -59531,7 +59689,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 27693, 27714),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 27733, 27754),
         });
         declarations.push(Declaration {
             id: DeclarationId(1745),
@@ -59551,7 +59709,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 27778, 27799),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 27818, 27839),
         });
         declarations.push(Declaration {
             id: DeclarationId(1746),
@@ -61053,36 +61211,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(1828),
             name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(703),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14736, 14750),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(1829),
-            name: None,
             connective: TypeConnective::Conj {
-                children: vec![
-                    Field {
-                        label: "field_label".to_string(),
-                        ty: DeclarationId(228),
-                    },
-                    Field {
-                        label: "field_child".to_string(),
-                        ty: DeclarationId(1828),
-                    },
-                ],
+                children: vec![Field {
+                    label: "field_label".to_string(),
+                    ty: DeclarationId(228),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -61092,7 +61225,26 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14676, 14756),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14676, 14732),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(1829),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "field_ref".to_string(),
+                    ty: DeclarationId(703),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14737, 14796),
         });
         declarations.push(Declaration {
             id: DeclarationId(1830),
@@ -61111,7 +61263,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14761, 14783),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14801, 14823),
         });
         declarations.push(Declaration {
             id: DeclarationId(1831),
@@ -61136,7 +61288,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14908, 14960),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14948, 15000),
         });
         declarations.push(Declaration {
             id: DeclarationId(1832),
@@ -61155,7 +61307,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14965, 14995),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15005, 15035),
         });
         declarations.push(Declaration {
             id: DeclarationId(1833),
@@ -61174,7 +61326,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15159, 15174),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15199, 15214),
         });
         declarations.push(Declaration {
             id: DeclarationId(1834),
@@ -61194,7 +61346,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17150, 17181),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17190, 17221),
         });
         declarations.push(Declaration {
             id: DeclarationId(1835),
@@ -61214,7 +61366,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17205, 17235),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17245, 17275),
         });
         declarations.push(Declaration {
             id: DeclarationId(1836),
@@ -61233,7 +61385,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17858, 17887),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17898, 17927),
         });
         declarations.push(Declaration {
             id: DeclarationId(1837),
@@ -61258,7 +61410,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17892, 17939),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17932, 17979),
         });
         declarations.push(Declaration {
             id: DeclarationId(1838),
@@ -61277,7 +61429,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18208, 18223),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18248, 18263),
         });
         declarations.push(Declaration {
             id: DeclarationId(1839),
@@ -61297,7 +61449,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18297, 18309),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18337, 18349),
         });
         declarations.push(Declaration {
             id: DeclarationId(1840),
@@ -61311,7 +61463,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18550, 18559),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18590, 18599),
         });
         declarations.push(Declaration {
             id: DeclarationId(1841),
@@ -61331,7 +61483,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18617, 18633),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18657, 18673),
         });
         declarations.push(Declaration {
             id: DeclarationId(1842),
@@ -61350,7 +61502,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18697, 18721),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18737, 18761),
         });
         declarations.push(Declaration {
             id: DeclarationId(1843),
@@ -61364,7 +61516,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19135, 19147),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19175, 19187),
         });
         declarations.push(Declaration {
             id: DeclarationId(1844),
@@ -61384,7 +61536,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19225, 19237),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19265, 19277),
         });
         declarations.push(Declaration {
             id: DeclarationId(1845),
@@ -61403,7 +61555,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19275, 19290),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19315, 19330),
         });
         declarations.push(Declaration {
             id: DeclarationId(1846),
@@ -61422,7 +61574,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19313, 19335),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19353, 19375),
         });
         declarations.push(Declaration {
             id: DeclarationId(1847),
@@ -61441,7 +61593,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19427, 19443),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19467, 19483),
         });
         declarations.push(Declaration {
             id: DeclarationId(1848),
@@ -61460,7 +61612,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19448, 19472),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19488, 19512),
         });
         declarations.push(Declaration {
             id: DeclarationId(1849),
@@ -61479,7 +61631,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19477, 19495),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19517, 19535),
         });
         declarations.push(Declaration {
             id: DeclarationId(1850),
@@ -61498,7 +61650,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19500, 19514),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19540, 19554),
         });
         declarations.push(Declaration {
             id: DeclarationId(1851),
@@ -61517,7 +61669,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19519, 19533),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19559, 19573),
         });
         declarations.push(Declaration {
             id: DeclarationId(1852),
@@ -61537,7 +61689,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19562, 19579),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19602, 19619),
         });
         declarations.push(Declaration {
             id: DeclarationId(1853),
@@ -61557,7 +61709,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19589, 19603),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19629, 19643),
         });
         declarations.push(Declaration {
             id: DeclarationId(1854),
@@ -61577,7 +61729,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19613, 19626),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19653, 19666),
         });
         declarations.push(Declaration {
             id: DeclarationId(1855),
@@ -61597,7 +61749,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19639, 19652),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19679, 19692),
         });
         declarations.push(Declaration {
             id: DeclarationId(1856),
@@ -61616,7 +61768,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 25735, 25753),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 25775, 25793),
         });
         declarations.push(Declaration {
             id: DeclarationId(1857),
@@ -61630,7 +61782,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 25758, 25764),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 25798, 25804),
         });
         declarations.push(Declaration {
             id: DeclarationId(1858),
@@ -61650,7 +61802,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 25797, 25821),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 25837, 25861),
         });
         declarations.push(Declaration {
             id: DeclarationId(1859),
@@ -61669,7 +61821,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 25769, 25823),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 25809, 25863),
         });
         declarations.push(Declaration {
             id: DeclarationId(1860),

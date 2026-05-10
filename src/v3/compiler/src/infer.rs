@@ -1133,7 +1133,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
             return decide_field_project(dag, t, field_label);
         }
         TransformTarget::ResolvedFieldProject { field_ref } => {
-            return Decision::Set(t.output, TypeShape::new(*field_ref));
+            return decide_resolved_field_project(dag, t, *field_ref);
         }
         TransformTarget::Operator(op_kind) => {
             let lhs_type = match t.inputs.first() {
@@ -4260,6 +4260,101 @@ fn decide_field_project(dag: &Dag, t: &TransformNode, field_label: &str) -> Deci
         FieldProjectResolution::Fail(diag) => Decision::Fail(t.output, diag),
         FieldProjectResolution::Resolved { output_ty, .. } => Decision::Set(t.output, output_ty),
     }
+}
+
+fn decide_resolved_field_project(
+    dag: &Dag,
+    t: &TransformNode,
+    field_ref: DeclarationId,
+) -> Decision {
+    if t.inputs.len() != 1 {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::ArityMismatch {
+                function: "resolved field projection".to_string(),
+                expected: 1,
+                actual: t.inputs.len(),
+                span: t.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    }
+
+    let input_ty = match dag.port(t.inputs[0]).state() {
+        PortState::Uninferred => return Decision::Retry,
+        PortState::Unresolved => {
+            return Decision::Fail(
+                t.output,
+                Diagnostic::ResolveError {
+                    name: "(upstream failure in resolved field projection)".to_string(),
+                    span: t.span.clone(),
+                    fixes: Vec::new(),
+                },
+            )
+        }
+        PortState::Resolved(ty) => *ty,
+    };
+
+    let mut subst = SubstStack::new();
+    if let Some(opaque_decl) = first_nominal_opaque_on_conj_walk(dag, input_ty.declaration, &subst)
+    {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::NominalOpacityViolation {
+                declaration: opaque_decl,
+                accessor: None,
+                span: t.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    }
+    let Some(actual_conj_id) = walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
+    else {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "field declaration `{}` cannot be projected from `{}` because it does not walk to a Conj type",
+                    target_display_name(dag, field_ref),
+                    target_display_name(dag, input_ty.declaration),
+                ),
+                span: t.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    };
+    let TypeConnective::Conj { children } = &dag.declaration(actual_conj_id).connective else {
+        unreachable!("walk_to_conj_decl returned a non-Conj declaration")
+    };
+    if !children.iter().any(|field| field.ty == field_ref) {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "resolved field declaration `{}` is not a field of `{}`",
+                    target_display_name(dag, field_ref),
+                    target_display_name(dag, input_ty.declaration),
+                ),
+                span: t.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    }
+    let Some(output_ty) = walk_to_type_shape(dag, field_ref, &subst, 0) else {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "field declaration `{}` on `{}` does not resolve to a port type",
+                    target_display_name(dag, field_ref),
+                    target_display_name(dag, input_ty.declaration),
+                ),
+                span: t.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    };
+    Decision::Set(t.output, output_ty)
 }
 
 fn resolve_field_project_targets(dag: &mut Dag) -> bool {

@@ -196,8 +196,12 @@ fn e_m_method_semantics_subsumption_receipt_is_verifiable() {
         vec![
             (String::from("Callable"), vec![String::from("_0")]),
             (
-                String::from("FieldProject"),
-                vec![String::from("field_label"), String::from("field_child")],
+                String::from("UnresolvedFieldProject"),
+                vec![String::from("field_label")],
+            ),
+            (
+                String::from("ResolvedFieldProject"),
+                vec![String::from("field_ref")],
             ),
             (String::from("Operator"), vec![String::from("_0")]),
         ],
@@ -1990,8 +1994,12 @@ fn substrate_coproducts_match_runtime_carriers() {
         vec![
             (String::from("Callable"), vec![String::from("_0")]),
             (
-                String::from("FieldProject"),
-                vec![String::from("field_label"), String::from("field_child")],
+                String::from("UnresolvedFieldProject"),
+                vec![String::from("field_label")],
+            ),
+            (
+                String::from("ResolvedFieldProject"),
+                vec![String::from("field_ref")],
             ),
             (String::from("Operator"), vec![String::from("_0")]),
         ]

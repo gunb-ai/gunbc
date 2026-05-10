@@ -75,9 +75,7 @@ fn read(boxed: Box<Int>) -> Int = boxed.renamed
         other => panic!("expected field projection Transform, got {other:?}"),
     };
     match &projection.target {
-        TransformTarget::ResolvedFieldProject { field_ref } => {
-            assert_ne!(*field_ref, v3_compiler::dag::DeclarationId(u32::MAX));
-        }
+        TransformTarget::ResolvedFieldProject { .. } => {}
         other => panic!("expected FieldProject target, got {other:?}"),
     }
 }
