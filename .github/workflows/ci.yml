@@ -196,6 +196,30 @@ jobs:
           cache: false
           rustflags: ""
 
+      - name: Setup Zig C toolchain
+        uses: goto-bus-stop/setup-zig@v2
+
+      - name: Configure user-space C linker
+        run: |
+          mkdir -p "${RUNNER_TEMP}/gunbc-bin"
+          cat > "${RUNNER_TEMP}/gunbc-bin/zig-cc" <<'EOF'
+          #!/usr/bin/env bash
+          exec zig cc "$@"
+          EOF
+          chmod +x "${RUNNER_TEMP}/gunbc-bin/zig-cc"
+          echo "CC=${RUNNER_TEMP}/gunbc-bin/zig-cc" >> "${GITHUB_ENV}"
+          echo "RUSTFLAGS=-D warnings -C linker=${RUNNER_TEMP}/gunbc-bin/zig-cc" >> "${GITHUB_ENV}"
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "stable"
+
       - name: Cache Cargo (v3)
         uses: actions/cache@v4
         with:
