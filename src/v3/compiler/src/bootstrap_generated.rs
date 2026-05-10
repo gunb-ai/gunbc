@@ -73925,11 +73925,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 children: vec![
                     Field {
                         label: "connective".to_string(),
-                        ty: DeclarationId(958),
+                        ty: DeclarationId(961),
                     },
                     Field {
                         label: "behavior".to_string(),
-                        ty: DeclarationId(959),
+                        ty: DeclarationId(962),
                     },
                     Field {
                         label: "target".to_string(),

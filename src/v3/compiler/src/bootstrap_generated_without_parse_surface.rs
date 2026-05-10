@@ -71218,11 +71218,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 children: vec![
                     Field {
                         label: "connective".to_string(),
-                        ty: DeclarationId(958),
+                        ty: DeclarationId(961),
                     },
                     Field {
                         label: "behavior".to_string(),
-                        ty: DeclarationId(959),
+                        ty: DeclarationId(962),
                     },
                     Field {
                         label: "target".to_string(),
