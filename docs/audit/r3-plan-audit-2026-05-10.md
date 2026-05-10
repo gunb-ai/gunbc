@@ -85,30 +85,32 @@ Plus implicit-but-load-bearing within the 96 gates:
 
 ## §3. Gate-coverage matrix — 96 R3-load-bearing gates × Mgr ownership
 
-Lane-to-Mgr mapping (PM-derived from lane scope + r3-structure.md Mgr columns):
+**Scope clarification** (per codex BLOCKING 2026-05-10): the table below maps **gate-owning program** to Mgr, not strictly canonical R3 lane to Mgr. The 18 canonical R3 lanes (per `r3-structure.md` line 23 + `r3-program-plan.md` §1.5) own 80 of 96 R3-load-bearing gates; the remaining 16 R3-load-bearing gates split as 5 substrate-gap-class (cross-lane), 10 demonstration (T-Free-Consequences-Demonstration which IS one of the 18 lanes), and 1 PR-anticipation-discipline (gate #75, R3 Debt-Paydown standing program). Gate #97 attributes to R2-Grounding-Rust per `r3-program-plan.md` §1.5 line 90 ("R2-Grounding-Rust / Gunbc #1982") — that's the gate's canonical owner per single-authority, even though R2-Grounding-Rust is an R2 lane (not in the canonical R3 18). Including R2-Grounding-Rust + R3 Debt-Paydown standing in the matrix is necessary for R3-load-bearing gate-coverage completeness, but they're labeled as **"gate-owning program (non-R3-lane)"** below.
 
-| Lane | Mgr (primary) | Gate count |
-|---|---|---|
-| T-Tier3-Dissolution | Substrate Mgr | 5 |
-| T-LensProducer-Retirement | PB Mgr | 6 |
-| T-V-L4-L7-Direct | Verification Mgr | 7 (includes #96) |
-| T-V-L5-Corpus | Verification Mgr | 1 (#15) |
-| T-FixedPoint | PB Mgr | 1 |
-| T-Numeric-Construction | Substrate Mgr | 9 |
-| T-Omni-Shape-B | Grounding Mgr | 4 |
-| T-Anthropic-Wire | Grounding Mgr | 3 |
-| T-Bridge-Retirement | PB Mgr (3) + Substrate Mgr (3) | 7 |
-| T-CostLens-Composition | Verification Mgr | 5 |
-| T-V2-Retirement | PB Mgr | 4 |
-| T-Free-Consequences-Demonstration | Verification Mgr | 10 |
-| T-E-P-Producer-Broadening | Substrate Mgr | 5 |
-| T-Lens-Behavioral-Parity | Substrate Mgr / Cluster F | 6 |
-| T-Tests-As-Data-Completeness | Verification Mgr / Substrate (Phase 1) | 5 |
-| T-Lens-Application-Surface | Substrate Mgr | 7 |
-| T-Workflow-As-Data | Substrate Mgr | 5 |
-| T-Lens-Self-Application | (?) — see Finding F2 | 4 |
-| R2-Grounding-Rust (#97 only) | Grounding Mgr | 1 |
-| R3 Debt-Paydown (standing #75) | Debt-Paydown Mgr | 1 |
+Gate-owning program → Mgr mapping (PM-derived from lane scope + r3-structure.md Mgr columns + §1.8 owner-lane attributions):
+
+| Gate-owning program | R3-lane status | Mgr (primary) | Gate count |
+|---|---|---|---|
+| T-Tier3-Dissolution | R3 lane (1/18) | Substrate Mgr | 5 |
+| T-LensProducer-Retirement | R3 lane (2/18) | PB Mgr | 6 |
+| T-V-L4-L7-Direct | R3 lane (3/18) | Verification Mgr | 7 (includes #96) |
+| T-V-L5-Corpus | R3 lane (4/18) | Verification Mgr | 1 (#15) |
+| T-FixedPoint | R3 lane (5/18) | PB Mgr | 1 |
+| T-Numeric-Construction | R3 lane (6/18) | Substrate Mgr | 9 |
+| T-Omni-Shape-B | R3 lane (7/18) | Grounding Mgr | 4 |
+| T-Anthropic-Wire | R3 lane (8/18) | Grounding Mgr | 3 |
+| T-Bridge-Retirement | R3 lane (9/18) | PB Mgr (3) + Substrate Mgr (3) | 7 |
+| T-CostLens-Composition | R3 lane (10/18) | Verification Mgr | 5 |
+| T-V2-Retirement | R3 lane (11/18) | PB Mgr | 4 |
+| T-Free-Consequences-Demonstration | R3 lane (12/18) | Verification Mgr | 10 |
+| T-E-P-Producer-Broadening | R3 lane (13/18) | Substrate Mgr | 5 |
+| T-Lens-Behavioral-Parity | R3 lane (14/18) | Substrate Mgr / Cluster F | 6 |
+| T-Tests-As-Data-Completeness | R3 lane (15/18) | Verification Mgr / Substrate (Phase 1) | 5 |
+| T-Lens-Application-Surface | R3 lane (16/18) | Substrate Mgr | 7 |
+| T-Workflow-As-Data | R3 lane (17/18) | Substrate Mgr | 5 |
+| T-Lens-Self-Application | R3 lane (18/18) | (?) — see Finding F2 | 4 |
+| **R2-Grounding-Rust** (gate #97 only) | **non-R3-lane** (R2 lane owning 1 R3-load-bearing gate per §1.5 attribution) | Grounding Mgr | 1 |
+| **R3 Debt-Paydown (standing program, gate #75)** | **non-R3-lane** (standing program per §1.5 + r3-structure.md "+ 1 standing program") | Debt-Paydown Mgr | 1 |
 
 **Mgr-by-Mgr gate load** (rough; lanes split across Mgrs counted by their share):
 
