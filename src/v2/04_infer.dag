@@ -5957,7 +5957,7 @@ fn build_untagged_json_tuple_variants(modules: List<TypedModule>) -> Set<String>
   modules |> fold(init: empty_set(), f: (acc, m) =>
     let si = m.type_env.source_indices
     m.items |> fold(init: acc, f: (inner, item) =>
-      if item_kind(item: item) == DataItem {
+      if (item_kind(item: item) == DataItem) {
         match item.body {
           Some { value: body } =>
             match infer_record_string_field(record: body, field_name: "coproduct", source_indices: si) {
