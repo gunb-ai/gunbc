@@ -1,3 +1,3 @@
 // gunbc::r3_free_consequences::lane2_loop_witness: upsert_dependent
-// free-consequences fixture: detected loop-carried dependence emits sequential loop code.
+// free-consequences fixture: staged harness — upsert_dependent directive is author attestation for gate #48; no loop-carried dependence is derived from this body (ROADMAP second-batch auto-loop scaffold).
 let _: Int = 0

@@ -46,7 +46,7 @@ type cost_structurally_derived_expected_report = DimensionReport<CrossTargetOpti
 
 data auto_loop_parallelism_provable_independence_emits_parallel: TestClaim = {
   name: "auto_loop_parallelism_provable_independence_emits_parallel",
-  source: "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n// free-consequences fixture: provable iteration independence may emit a parallel loop schedule when iteration-independence, effect-commutativity, and cost witnesses land.\nlet _: Int = 0\n",
+  source: "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n// free-consequences fixture: staged harness — read_only directive is author attestation for gate #46, not a composed iteration-independence proof on this trivial body.\nlet _: Int = 0\n",
   file_name: "r3_free_consequences_auto_loop_parallelism_provable_independence.v3",
   predicate: LensOutputEquals(
     auto_loop_parallelism_pending_lens,
@@ -58,7 +58,7 @@ data auto_loop_parallelism_provable_independence_emits_parallel: TestClaim = {
 
 data auto_loop_parallelism_unproven_falls_back_sequential: TestClaim = {
   name: "auto_loop_parallelism_unproven_falls_back_sequential",
-  source: "// gunbc::r3_free_consequences::lane2_loop_witness: unproven\n// free-consequences fixture: unproven iteration independence falls back to sequential loop emission.\nlet _: Int = 0\n",
+  source: "// gunbc::r3_free_consequences::lane2_loop_witness: unproven\n// free-consequences fixture: staged harness — unproven directive is author attestation of sequential fallback for gate #47, not compiler-inferred unprovenness.\nlet _: Int = 0\n",
   file_name: "r3_free_consequences_auto_loop_parallelism_unproven.v3",
   predicate: LensOutputEquals(
     auto_loop_parallelism_pending_lens,
@@ -70,7 +70,7 @@ data auto_loop_parallelism_unproven_falls_back_sequential: TestClaim = {
 
 data auto_loop_parallelism_dependence_emits_sequential: TestClaim = {
   name: "auto_loop_parallelism_dependence_emits_sequential",
-  source: "// gunbc::r3_free_consequences::lane2_loop_witness: upsert_dependent\n// free-consequences fixture: detected loop-carried dependence emits sequential loop code.\nlet _: Int = 0\n",
+  source: "// gunbc::r3_free_consequences::lane2_loop_witness: upsert_dependent\n// free-consequences fixture: staged harness — upsert_dependent directive is author attestation for gate #48; no loop-carried dependence is derived from this body (ROADMAP second-batch auto-loop scaffold).\nlet _: Int = 0\n",
   file_name: "r3_free_consequences_auto_loop_parallelism_dependence.v3",
   predicate: LensOutputEquals(
     auto_loop_parallelism_pending_lens,
