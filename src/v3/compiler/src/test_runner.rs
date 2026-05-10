@@ -2012,34 +2012,50 @@ fn find_named_bind_workflow_root(dag: &Dag, bind_name: &str) -> Result<NodeId, S
         })
 }
 
-fn symbolic_cost_dimension_reports_equal(
-    left: &crate::DimensionReport<SymbolicCost>,
-    right: &crate::DimensionReport<SymbolicCost>,
-) -> bool {
-    use crate::{DimensionReport, Witness};
-    match (left, right) {
-        (
-            DimensionReport::DimensionOk {
-                dimension_name: ln,
-                composed: lc,
-                witnesses: lw,
-            },
-            DimensionReport::DimensionOk {
-                dimension_name: rn,
-                composed: rc,
-                witnesses: rw,
-            },
-        ) => {
-            if ln != rn || lc != rc || lw.len() != rw.len() {
-                return false;
-            }
-            lw.iter().zip(rw.iter()).all(|(a, b)| match (a, b) {
-                (Witness::Inhabits(ac), Witness::Inhabits(bc)) => ac == bc,
-                _ => false,
-            })
-        }
-        _ => false,
+/// R3 gate #51 — `BinaryDimensionReportEquals` consumer surface.
+///
+/// Compares two [`crate::DimensionReport<SymbolicCost>`] values produced from **different**
+/// workflow roots (`fold_pre` vs `fold_post`): the backward slices differ, so witness vectors are
+/// intentionally **not** required to match. The load-bearing behavioral contract is that the
+/// `composed` [`SymbolicCost`] at each root agrees after constant folding (same semantic Int),
+/// plus the caller’s cross-target `TypeRealization` overlay check on that shared bound.
+fn gate51_constant_fold_dimension_ok_composed_match(
+    observed: &crate::DimensionReport<SymbolicCost>,
+    expected: &crate::DimensionReport<SymbolicCost>,
+) -> Result<(), String> {
+    use crate::DimensionReport;
+    let (
+        DimensionReport::DimensionOk {
+            dimension_name: on,
+            composed: oc,
+            witnesses: _ow,
+        },
+        DimensionReport::DimensionOk {
+            dimension_name: en,
+            composed: ec,
+            witnesses: _ew,
+        },
+    ) = (observed, expected)
+    else {
+        return Err(format!(
+            "gate #51 requires both `DimensionReport<SymbolicCost>` arms to be DimensionOk; \
+             observed={observed:?}; expected={expected:?}"
+        ));
+    };
+    if on != en {
+        return Err(format!(
+            "gate #51 `dimension_name` mismatch between fold_pre and fold_post workflow roots: \
+             {on:?} vs {en:?}"
+        ));
     }
+    if oc != ec {
+        return Err(format!(
+            "gate #51 composed `SymbolicCost` mismatch between pre-fold (`fold_pre`) and post-fold \
+             (`fold_post`) workflow roots — constant-fold cost consistency violated: \
+             fold_pre={oc:?} fold_post={ec:?}"
+        ));
+    }
+    Ok(())
 }
 
 impl<'a> TestRunner<'a> {
