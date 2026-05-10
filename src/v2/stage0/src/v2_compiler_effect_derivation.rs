@@ -36,7 +36,31 @@ pub fn re_export_derive_op_effect(
     method_str: String,
     path_str: String,
 ) -> Rc<DeriveOpEffectResult> {
-    derive_op_effect(operation_name, &method_str, path_str)
+    match parse_http_method(&method_str) {
+        None => Rc::new(DeriveOpEffectResult::UnknownHttpMethodInput {
+            operation_name: operation_name,
+            method_str: method_str.clone(),
+        }),
+        Some(method) => match (*parse_path_template(&path_str)).clone() {
+            PathTemplateParseResult::ParsedPathTemplate { template: path, .. } => {
+                Rc::new(DeriveOpEffectResult::DerivedEffect {
+                    effect: derive_op_effect(operation_name, method, path),
+                })
+            }
+            PathTemplateParseResult::MalformedPathTemplate {
+                raw: raw_path,
+                segment,
+                reason,
+                ..
+            } => Rc::new(DeriveOpEffectResult::MalformedPathInput {
+                operation_name: operation_name,
+                method: method.clone(),
+                raw_path: raw_path.clone(),
+                segment: segment.clone(),
+                reason: reason.clone(),
+            }),
+        },
+    }
 }
 
 pub fn re_export_check_modifier(

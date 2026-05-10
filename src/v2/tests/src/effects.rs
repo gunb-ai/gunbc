@@ -7,6 +7,7 @@ use v2_compiler::rest_transport_facts::{
 };
 use v2_compiler::std_effects::*;
 use v2_compiler::std_http_path::{has_path_params, last_path_param, parse_path_template};
+use v2_compiler::v2_compiler_effect_derivation::re_export_derive_op_effect;
 use v2_compiler::v2_compiler_parse::parse;
 use v2_compiler::v2_compiler_tokenize::tokenize;
 use v2_compiler::v2_std_core::{build_newline_index, NewlineIndex, Node};
@@ -19,7 +20,7 @@ fn parse_ok(path: &str) -> Rc<PathTemplate> {
 }
 
 fn derive_result(name: &str, method: &str, path: &str) -> Rc<DeriveOpEffectResult> {
-    derive_op_effect(name.to_string(), &method.to_string(), path.to_string())
+    re_export_derive_op_effect(name.to_string(), method.to_string(), path.to_string())
 }
 
 fn derive(name: &str, method: &str, path: &str) -> Rc<DerivedOpEffect> {
@@ -27,6 +28,16 @@ fn derive(name: &str, method: &str, path: &str) -> Rc<DerivedOpEffect> {
         DeriveOpEffectResult::DerivedEffect { effect } => effect.clone(),
         other => panic!("expected derived effect, got {other:?}"),
     }
+}
+
+#[test]
+fn derive_op_effect_consumes_typed_transport_carriers() {
+    let path = parse_ok("/repos/{owner}/{repo}/pulls/{pull_number}");
+    let op = derive_op_effect("Update".to_string(), HttpMethod::PUT, path.clone());
+
+    assert_eq!(op.method, HttpMethod::PUT);
+    assert_eq!(op.path_template, path);
+    assert!(is_upsert(&op.shape));
 }
 
 fn check(op: &Rc<DerivedOpEffect>, idempotent: bool, readonly: bool) -> Rc<ModifierCheck> {

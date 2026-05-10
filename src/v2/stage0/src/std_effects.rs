@@ -212,40 +212,16 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
 
 pub fn derive_op_effect(
     operation_name: String,
-    method_str: &String,
-    path_str: String,
-) -> Rc<DeriveOpEffectResult> {
-    match parse_http_method(&method_str) {
-        None => Rc::new(DeriveOpEffectResult::UnknownHttpMethodInput {
-            operation_name: operation_name,
-            method_str: method_str.clone(),
-        }),
-        Some(method) => match (*parse_path_template(&path_str)).clone() {
-            PathTemplateParseResult::ParsedPathTemplate { template: path, .. } => {
-                let shape = derive_effect_shape(method.clone(), path.clone());
-                Rc::new(DeriveOpEffectResult::DerivedEffect {
-                    effect: Rc::new(DerivedOpEffect {
-                        operation_name: operation_name,
-                        method: method.clone(),
-                        path_template: path.clone(),
-                        shape: shape,
-                    }),
-                })
-            }
-            PathTemplateParseResult::MalformedPathTemplate {
-                raw: raw_path,
-                segment,
-                reason,
-                ..
-            } => Rc::new(DeriveOpEffectResult::MalformedPathInput {
-                operation_name: operation_name,
-                method: method.clone(),
-                raw_path: raw_path.clone(),
-                segment: segment.clone(),
-                reason: reason.clone(),
-            }),
-        },
-    }
+    method: HttpMethod,
+    path: Rc<PathTemplate>,
+) -> Rc<DerivedOpEffect> {
+    let shape = derive_effect_shape(method.clone(), path.clone());
+    Rc::new(DerivedOpEffect {
+        operation_name: operation_name,
+        method: method.clone(),
+        path_template: path.clone(),
+        shape: shape,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
