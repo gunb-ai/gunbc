@@ -1,9 +1,10 @@
 //! **Layer:** integration
 //!
-//! R3 T-Free-Consequences second-batch author-now/fire-later claims. The
-//! auto-loop-parallelism claims exercise the ordinary lens-data path; the
-//! cross-target-optimization claims lock the cost-related
-//! `BinaryDimensionReportEquals` shape.
+//! R3 T-Free-Consequences second-batch author-now/fire-later claims. Gate `#47`
+//! asserts sequential fallback via `LensOutputEquals` + `emit_rust` witness
+//! (`r3_auto_loop_parallelism_sequential_emit_witness`); the other auto-loop
+//! claims stay fail-closed on the scalar placeholder lens; the cross-target
+//! optimization claims lock the cost-related `BinaryDimensionReportEquals` shape.
 
 use std::sync::OnceLock;
 
@@ -59,11 +60,19 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
     for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
         assert_eq!(result.claim_name, expected_name);
         if idx < 3 {
-            assert!(
-                matches!(&result.result, ClaimResult::Fail(_)),
-                "expected {expected_name} to fail closed on the pending ordinary loop-parallelism lens, got {:?}",
-                result.result
-            );
+            if idx == 1 {
+                assert!(
+                    matches!(&result.result, ClaimResult::Pass),
+                    "expected {expected_name} to Pass (sequential emit witness — no thread::scope), got {:?}",
+                    result.result
+                );
+            } else {
+                assert!(
+                    matches!(&result.result, ClaimResult::Fail(_)),
+                    "expected {expected_name} to fail closed on the pending ordinary loop-parallelism lens, got {:?}",
+                    result.result
+                );
+            }
         } else {
             assert!(
                 matches!(&result.result, ClaimResult::NotYetImplemented(_)),
