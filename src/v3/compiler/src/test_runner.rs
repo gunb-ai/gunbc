@@ -45,6 +45,8 @@ const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
 /// dispatch arm on the canonical lens bridge (see disposition:
 /// `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`).
 const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_emit_witness";
+const R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME: &str =
+    "auto_memoization_repeated_pure_call_cached";
 
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
@@ -2638,7 +2640,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_binary_dimension_report_equals_shape(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [left_fv, right_fv] = payload else {
@@ -2674,12 +2676,55 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
+        if claim.claim_name == R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME {
+            return self.eval_r3_auto_memoization_repeated_pure_call_cached(claim);
+        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
              production/evaluation substrate; serialized report comparison is intentionally \
              unsupported"
         ))
+    }
+
+    fn eval_r3_auto_memoization_repeated_pure_call_cached(
+        &self,
+        claim: &TestClaimValue,
+    ) -> ClaimResult {
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+        let emitted = match crate::emit_rust::emit_rust(&program_dag) {
+            Ok(s) => s,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): emit_rust failed for `{}`: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+        let actual_calls = emitted.matches(" = expensive(").count();
+        let cached_reuse = emitted.contains("let second: i64 = first;");
+        if actual_calls == 1 && cached_reuse {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): expected one emitted `expensive(x)` call and `second` to reuse `first`; got {actual_calls} call(s), cached_reuse={cached_reuse}; emitted Rust: {emitted}"
+            ))
+        }
     }
 
     fn validate_dimension_report_ref(

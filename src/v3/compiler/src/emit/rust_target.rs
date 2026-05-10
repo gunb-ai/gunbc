@@ -2984,6 +2984,19 @@ fn program_mode_top_level_value_binds<'a>(
         .collect()
 }
 
+fn top_level_bind_is_cacheable_pure_call(dag: &Dag, bind: &BindNode) -> bool {
+    let Some(node_id) = dag.port(bind.value).produced_by else {
+        return false;
+    };
+    matches!(
+        dag.node(node_id),
+        Behavior::Transform(TransformNode {
+            target: TransformTarget::Callable(_),
+            ..
+        })
+    )
+}
+
 pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
     if !indexes.execution.is_lexically_scoped() {
@@ -3162,16 +3175,24 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
             )
         } else {
             let mut rendered_binds: Vec<String> = Vec::with_capacity(top_level_binds.len());
+            let mut repeated_pure_call_cache: HashMap<String, String> = HashMap::new();
             for bind in &top_level_binds {
                 let ty_name = ctx.rust_type_name_for_port(bind.value)?;
                 let value_expr = ctx.render_top_level_value(bind.value)?;
+                let value = if top_level_bind_is_cacheable_pure_call(dag, bind) {
+                    match repeated_pure_call_cache.get(&value_expr) {
+                        Some(cached_name) => cached_name.clone(),
+                        None => {
+                            repeated_pure_call_cache.insert(value_expr.clone(), bind.name.clone());
+                            value_expr
+                        }
+                    }
+                } else {
+                    value_expr
+                };
                 let rendered = render_named_template(
                     &indexes.syntax.statements.let_binding,
-                    &[
-                        ("name", &bind.name),
-                        ("type", &ty_name),
-                        ("value", &value_expr),
-                    ],
+                    &[("name", &bind.name), ("type", &ty_name), ("value", &value)],
                 );
                 rendered_binds.push(rendered);
             }
