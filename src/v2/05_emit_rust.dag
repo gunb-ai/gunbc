@@ -4616,6 +4616,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         // Rc wrapping is the caller's responsibility (data_decl_body, emit_typed_expr, etc.).
         // emit_typed_record_lit produces raw struct expressions.
         raw
+        }
       }
   }
 }
