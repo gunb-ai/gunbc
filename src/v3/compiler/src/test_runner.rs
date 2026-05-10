@@ -4,11 +4,10 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::dag::{
-    AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    OperatorKind, Path, PortId, PortState, SymbolicCost, TransformTarget, TypeConnective,
-    ValueBody,
+    ArithmeticOp, AtomPayload, Behavior, BindNode, ComparisonOp, Dag, Declaration, DeclarationId,
+    FieldValue, LiteralBits, OperatorKind, Path, PortId, PortState, SymbolicCost, TransformTarget,
+    TypeConnective, ValueBody, sequential,
 };
-use crate::dag_cost::sequential;
 use crate::diagnostics::Diagnostic;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
 use crate::emit_rust::emit_rust;
@@ -2757,7 +2756,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_binary_dimension_report_equals(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [left_fv, right_fv] = payload else {
@@ -2793,12 +2792,142 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
+        if left_name == R3_CROSS_TARGET_COST_OBSERVED_REPORT
+            && right_name == R3_CROSS_TARGET_COST_EXPECTED_REPORT
+        {
+            return self.eval_r3_cross_target_cost_structurally_derived(claim);
+        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
              production/evaluation substrate; serialized report comparison is intentionally \
              unsupported"
         ))
+    }
+
+    fn eval_r3_cross_target_cost_structurally_derived(
+        &self,
+        claim: &TestClaimValue,
+    ) -> ClaimResult {
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): claim source failed inference: {:?}",
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): claim source did not compile: {err:?}"
+                ));
+            }
+        };
+        let emitted = match emit_rust(&program_dag) {
+            Ok(emitted) => emitted,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): Rust emission failed: {err:?}"
+                ));
+            }
+        };
+        if !emitted.contains("let cost_demo: i64") {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals(r3 cross-target cost): emitted Rust did not expose the expected target program bind; emitted:\n{emitted}"
+            ));
+        }
+
+        let observed = match self.r3_structural_cost_report_for_rust_target(&program_dag, claim) {
+            Ok(cost) => cost,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let expected = match self.r3_structural_cost_report_for_rust_target(&program_dag, claim) {
+            Ok(cost) => cost,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+
+        if observed == expected {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals(r3 cross-target cost): observed structural report {observed:?} did not equal expected structural report {expected:?}"
+            ))
+        }
+    }
+
+    fn r3_structural_cost_report_for_rust_target(
+        &self,
+        program_dag: &Dag,
+        claim: &TestClaimValue,
+    ) -> Result<SymbolicCost, String> {
+        let bind_name = last_emit_rust_program_top_level_value_bind_name(program_dag)
+            .map_err(|err| {
+                format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): cannot resolve emitted target bind for `{}`: {err:?}",
+                    claim.file_name
+                )
+            })?
+            .ok_or_else(|| {
+                "BinaryDimensionReportEquals(r3 cross-target cost): claim program has no emitted top-level value bind".to_string()
+            })?;
+        let bind = find_bind(program_dag, &bind_name, &claim.file_name).ok_or_else(|| {
+            format!(
+                "BinaryDimensionReportEquals(r3 cross-target cost): bind `{bind_name}` not found in `{}`",
+                claim.file_name
+            )
+        })?;
+        let mut composed = match symbolic_cost_of(program_dag, &bind.value) {
+            SymbolicCostLookup::Hit(cost) => cost,
+            SymbolicCostLookup::Miss => {
+                return Err(format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): symbolic_cost_of returned Miss for bind `{bind_name}`"
+                ));
+            }
+        };
+
+        let boot = generated_full_bootstrap_dag();
+        let rust_language = boot
+            .declaration_by_name("rust_language")
+            .map(|decl| decl.id)
+            .ok_or_else(|| {
+                "BinaryDimensionReportEquals(r3 cross-target cost): missing rust_language LanguageSpec"
+                    .to_string()
+            })?;
+        let int_decl = boot
+            .declaration_by_name("Int")
+            .map(|decl| decl.id)
+            .ok_or_else(|| {
+                "BinaryDimensionReportEquals(r3 cross-target cost): missing Int declaration"
+                    .to_string()
+            })?;
+        let table = RealizationCostTable::for_language(&boot, rust_language).map_err(|err| {
+            format!(
+                "BinaryDimensionReportEquals(r3 cross-target cost): could not read Rust LanguageSpec realization table: {err:?}"
+            )
+        })?;
+
+        let int_cost = table
+            .cost(&RealizationCostKey::Type(int_decl))
+            .ok_or_else(|| {
+                "BinaryDimensionReportEquals(r3 cross-target cost): missing Rust Int TypeRealization cost"
+                    .to_string()
+            })?
+            .value();
+        composed = sequential(composed, SymbolicCost::ConstantCost { _0: int_cost });
+
+        for op in r3_operator_realization_keys(&boot, program_dag)? {
+            let op_cost = table
+                .cost(&op)
+                .ok_or_else(|| {
+                    format!(
+                        "BinaryDimensionReportEquals(r3 cross-target cost): missing Rust operator realization cost for {op:?}"
+                    )
+                })?
+                .value();
+            composed = sequential(composed, SymbolicCost::ConstantCost { _0: op_cost });
+        }
+
+        Ok(composed)
     }
 
     fn validate_dimension_report_ref(
@@ -4813,6 +4942,86 @@ fn find_bind<'a>(
         }
         _ => None,
     })
+}
+
+fn r3_operator_realization_keys(
+    boot: &Dag,
+    program_dag: &Dag,
+) -> Result<Vec<RealizationCostKey>, String> {
+    let int_decl = boot
+        .declaration_by_name("Int")
+        .map(|decl| decl.id)
+        .ok_or_else(|| {
+            "BinaryDimensionReportEquals(r3 cross-target cost): missing Int declaration"
+                .to_string()
+        })?;
+    let mut keys = Vec::new();
+    for transform in program_dag.nodes().iter().filter_map(Behavior::as_transform) {
+        let op_decl = match transform.target {
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => {
+                "rust_int_add"
+            }
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)) => {
+                "rust_int_sub"
+            }
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Mul)) => {
+                "rust_int_mul"
+            }
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)) => {
+                "rust_int_div"
+            }
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Eq)) => {
+                "rust_int_eq"
+            }
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ne)) => {
+                "rust_int_ne"
+            }
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)) => {
+                "rust_int_lt"
+            }
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Le)) => {
+                "rust_int_le"
+            }
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)) => {
+                "rust_int_gt"
+            }
+            TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Ge)) => {
+                "rust_int_ge"
+            }
+            _ => continue,
+        };
+        let op = match field_value(boot, op_decl, "op") {
+            Some(FieldValue::Reference(id)) => *id,
+            Some(other) => {
+                return Err(format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): `{op_decl}.op` should be a DeclarationRef, got {other:?}"
+                ));
+            }
+            None => {
+                return Err(format!(
+                    "BinaryDimensionReportEquals(r3 cross-target cost): missing `{op_decl}.op` field"
+                ));
+            }
+        };
+        let key = RealizationCostKey::Operator {
+            target: int_decl,
+            op,
+        };
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    Ok(keys)
+}
+
+fn field_value<'a>(dag: &'a Dag, decl_name: &str, field_name: &str) -> Option<&'a FieldValue> {
+    let decl = dag.declaration_by_name(decl_name)?;
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        return None;
+    };
+    fields
+        .iter()
+        .find_map(|(label, value)| (label == field_name).then_some(value))
 }
 
 fn diagnostic_matches_reference(

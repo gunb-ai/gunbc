@@ -93,7 +93,7 @@ data cross_target_optimization_constant_fold_consistent: TestClaim = {
 
 data cross_target_optimization_cost_structurally_derived: TestClaim = {
   name: "cross_target_optimization_cost_structurally_derived",
-  source: "// free-consequences fixture: cross-target optimization cost is structurally derived from Lens<Cost> and LanguageSpec facts.\nlet _: Int = 0\n",
+  source: "// free-consequences fixture: cross-target optimization cost is structurally derived from Lens<Cost> and LanguageSpec facts.\nlet cost_demo: Int = 1 + 2\n",
   file_name: "r3_free_consequences_cross_target_cost_structurally_derived.v3",
   predicate: BinaryDimensionReportEquals(
     cost_structurally_derived_observed_report,

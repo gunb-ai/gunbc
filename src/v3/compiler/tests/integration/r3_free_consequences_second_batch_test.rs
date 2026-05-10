@@ -10,8 +10,9 @@
 //! `r3_free_consequences_auto_loop_parallelism_dependence.v3` so lowering still exercises a real
 //! loop body; integration tests ratchet embedded `TestClaim.source` against that file byte-for-byte
 //! and assert the claim program lowers to `Behavior::Loop` so the fold is exercised on the compile
-//! path, not only carried as inert text. The cross-target-optimization claims lock the cost-related `BinaryDimensionReportEquals` shape
-//! and stay `NotYetImplemented` until cost facts land.
+//! path, not only carried as inert text. The constant-fold cross-target-optimization claim still
+//! locks the cost-related `BinaryDimensionReportEquals` shape. Gate #52 now executes a narrow
+//! structural cost comparison over the symbolic-cost lens and Rust `LanguageSpec` realization rows.
 
 use std::sync::OnceLock;
 
@@ -97,10 +98,10 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes_inner() {
 
     for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
         assert_eq!(result.claim_name, expected_name);
-        if idx < 3 {
+        if idx < 3 || idx == 4 {
             assert!(
                 matches!(&result.result, ClaimResult::Pass),
-                "expected {expected_name} to pass (LensOutputEquals matches staged loop-parallelism indicator), got {:?}",
+                "expected {expected_name} to pass (loop indicator or structural cost comparison), got {:?}",
                 result.result
             );
         } else {
