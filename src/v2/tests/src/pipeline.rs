@@ -4505,7 +4505,7 @@ fn type_rendering_bare_list_not_map() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let list_node = test_leaf_node("List");
-    let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
+    let shared_types = Rc::new(std::collections::BTreeSet::from(["List".to_string()]));
 
     let rendered = render_node_type(
         &list_node,
@@ -4531,7 +4531,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let map_node = test_leaf_node("Map");
-    let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
+    let shared_types = Rc::new(std::collections::BTreeSet::from(["Map".to_string()]));
 
     let rendered = render_node_type(
         &map_node,
@@ -4562,7 +4562,7 @@ fn type_rendering_named_conj_with_container_template() {
         })),
         ..(*test_leaf_node("")).clone()
     });
-    let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
+    let shared_types = Rc::new(std::collections::BTreeSet::from(["FreeMonoid".to_string()]));
 
     let rendered = render_node_type(
         &free_monoid_conj,
@@ -10001,7 +10001,7 @@ fn count_ownership_violations(
 
     for proof in result.ownership.iter() {
         let movable = build_movable_set(proof.clone());
-        for (name, _) in movable.iter() {
+        for name in movable.iter() {
             // The proof says this binding should move.
             // Check if the emitted code clones it instead.
             let clone_pattern = format!("{}.clone()", name);

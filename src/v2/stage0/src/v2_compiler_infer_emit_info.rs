@@ -6,7 +6,9 @@ pub use crate::v2_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node,
 };
 use crate::v2_rt;
-use crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};
+use crate::v2_rt::{
+    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
+};
 use crate::v2_std_core::Cardinality::CardOptional;
 use crate::v2_std_core::Connective::{Arrow, Conj, NoConnective};
 use crate::v2_std_core::FieldAccessStyle::{EnumAccessor, StoredField, TupleFirst, TupleSecond};

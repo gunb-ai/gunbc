@@ -252,7 +252,10 @@ pub fn rc_set_insert<T: Ord + Clone>(set: Rc<BTreeSet<T>>, value: T) -> Rc<BTree
     result
 }
 
-pub fn rc_set_union<T: Ord + Clone>(left: Rc<BTreeSet<T>>, right: Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>> {
+pub fn rc_set_union<T: Ord + Clone>(
+    left: Rc<BTreeSet<T>>,
+    right: Rc<BTreeSet<T>>,
+) -> Rc<BTreeSet<T>> {
     let mut result = left;
     Rc::make_mut(&mut result).extend(right.iter().cloned());
     result

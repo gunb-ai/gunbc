@@ -403,10 +403,18 @@ fn type_body_tokens_after_modifiers(tokens: List<Token>) -> List<Token> {
 fn parse_optional_type_inhabits_clause(tokens: List<Token>, ctx: ParseContext) -> TypeInhabitsResult {
   if tok_is_ident_text(tok: tokens |> first, text: "inhabits") {
     let r = parse_type_expr(tokens: tokens |> skip(1), ctx: ctx)
-    TypeInhabitsResult { type_expr: Some { value: r.type_expr }, tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: r.err }
+    let after_type = skip_newlines(tokens: r.tokens)
+    if has_err(err: r.err) || type_inhabits_clause_follow(tokens: after_type) {
+      TypeInhabitsResult { type_expr: Some { value: r.type_expr }, tokens: after_type, ctx: r.ctx, err: r.err }
+    } else {
+      TypeInhabitsResult { type_expr: none, tokens: tokens, ctx: ctx, err: none }
+    }
   } else {
     TypeInhabitsResult { type_expr: none, tokens: tokens, ctx: ctx, err: none }
   }
+}
+fn type_inhabits_clause_follow(tokens: List<Token>) -> Bool {
+  tok_is_eq(tok: tokens |> first) || tok_is_lbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first)
 }
 fn type_inhabits_properties(type_expr: Node?) -> List<Node> {
   match type_expr {

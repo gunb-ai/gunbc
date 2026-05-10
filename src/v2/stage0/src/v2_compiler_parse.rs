@@ -1218,12 +1218,22 @@ pub fn parse_optional_type_inhabits_clause(
                 ),
                 &ctx,
             );
-            Rc::new(TypeInhabitsResult {
-                type_expr: Some(r.type_expr.clone()),
-                tokens: skip_newlines(r.tokens.clone()),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            })
+            let after_type = skip_newlines(r.tokens.clone());
+            if (has_err(r.err.clone()) || type_inhabits_clause_follow(after_type.clone())) {
+                Rc::new(TypeInhabitsResult {
+                    type_expr: Some(r.type_expr.clone()),
+                    tokens: after_type,
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                })
+            } else {
+                Rc::new(TypeInhabitsResult {
+                    type_expr: None,
+                    tokens: tokens.clone(),
+                    ctx: ctx,
+                    err: None,
+                })
+            }
         }
     } else {
         Rc::new(TypeInhabitsResult {
@@ -1233,6 +1243,11 @@ pub fn parse_optional_type_inhabits_clause(
             err: None,
         })
     }
+}
+
+pub fn type_inhabits_clause_follow(tokens: Rc<Vec<Rc<Token>>>) -> bool {
+    ((tok_is_eq(tokens.clone().first().cloned()) || tok_is_lbrace(tokens.clone().first().cloned()))
+        || tok_is_eof(tokens.clone().first().cloned()))
 }
 
 pub fn type_inhabits_properties(type_expr: Option<Rc<Node>>) -> Rc<Vec<Rc<Node>>> {

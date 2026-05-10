@@ -49,7 +49,9 @@ pub use crate::v2_compiler_languages::{
     TcoSyntax, TestConventions, TestNameStyle, VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v2_rt;
-use crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};
+use crate::v2_rt::{
+    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
+};
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;

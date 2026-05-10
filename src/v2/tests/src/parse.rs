@@ -723,6 +723,27 @@ fn shared_std_types_accepts_type_inhabits_clause() {
     assert_eq!(inhabits_expr.name, "BooleanAlgebra");
 }
 
+#[test]
+fn type_body_keeps_inhabits_as_identifier() {
+    let source = "module test\ntype X = inhabits | Other\n";
+    let result = parse_source(source);
+    assert!(
+        result.error.is_none(),
+        "inhabits should remain a valid type-body identifier: {:?}",
+        result.error
+    );
+    let module = result.module.clone().expect("module");
+    let type_item = module.children[0].clone();
+    assert!(
+        type_item
+            .properties
+            .iter()
+            .all(|property| property.name != "inhabits"),
+        "identifier-form type body must not become an inhabits property"
+    );
+    assert_eq!(type_item.children[0].name, "inhabits");
+}
+
 // ── keyword-as-name regression (dag_non_name_keywords authority) ───────
 
 /// Keywords that ARE valid as field/type names should parse.

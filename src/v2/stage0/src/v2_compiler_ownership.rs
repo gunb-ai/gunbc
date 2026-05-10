@@ -5,7 +5,9 @@ use self::EdgeKind::*;
 use self::OwnershipDecision::*;
 pub use crate::v2_compiler_emit::to_string;
 use crate::v2_rt;
-use crate::v2_rt::{rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains};
+use crate::v2_rt::{
+    rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
+};
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::ExprData::{
     ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,
@@ -711,8 +713,9 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTre
     .cloned()
     .fold(
         empty_set(),
-        |acc: Rc<std::collections::BTreeSet<String>>,
-         usage: Rc<BindingUsage>| set_insert(acc, usage.name.clone()),
+        |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
+            set_insert(acc, usage.name.clone())
+        },
     )
 }
 
@@ -754,8 +757,9 @@ pub fn build_read_only_params(
     .cloned()
     .fold(
         empty_set(),
-        |acc: Rc<std::collections::BTreeSet<String>>,
-         usage: Rc<BindingUsage>| set_insert(acc, usage.name.clone()),
+        |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
+            set_insert(acc, usage.name.clone())
+        },
     )
 }
 
@@ -780,8 +784,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
                 empty_set(),
-                |acc: Rc<std::collections::BTreeSet<String>>,
-                 a: Rc<Node>| {
+                |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
                     set_union(acc, collect_callable_refs(&arg_value(&a), &si))
                 },
             ),
@@ -821,8 +824,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
                 empty_set(),
-                |acc: Rc<std::collections::BTreeSet<String>>,
-                 child: Rc<Node>| {
+                |acc: Rc<std::collections::BTreeSet<String>>, child: Rc<Node>| {
                     set_union(acc, collect_callable_refs(&child, &si))
                 },
             ),
@@ -840,8 +842,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
                 empty_set(),
-                |acc: Rc<std::collections::BTreeSet<String>>,
-                 field: Rc<Node>| {
+                |acc: Rc<std::collections::BTreeSet<String>>, field: Rc<Node>| {
                     set_union(acc, collect_callable_refs(&arg_value(&field), &si))
                 },
             ),
