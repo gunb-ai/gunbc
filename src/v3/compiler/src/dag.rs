@@ -3788,7 +3788,7 @@ impl Dag {
     /// substrate equivalence to absence is the intended semantics
     /// (e.g., callers that already wrap `None` in a fail-closed
     /// diagnostic via `ok_or`); prefer `resolve_producer_lookup` when
-    /// the consumer must distinguish the four states.
+    /// the consumer must distinguish the five variants.
     pub fn resolve_producer_opt(&self, port_id: &PortId) -> Option<&Behavior> {
         match self.resolve_producer_lookup(port_id) {
             ProducerLookup::Found(b) => Some(b),
@@ -5386,12 +5386,12 @@ mod tests {
     }
 
     /// Cementing test for issue #2463: `resolve_producer_lookup` must
-    /// discriminate the four states (`NoProducer`, `Found`,
+    /// discriminate the five variants (`NoProducer`, `Found`,
     /// `MissingPort`, `MissingNode`, `BindCycle`) so consumers can
     /// fail-closed on malformed substrate per INVARIANTS P3.
-    /// `resolve_producer_opt` (compat wrapper) collapses all four miss
-    /// shapes into `None`; the typed surface preserves the
-    /// distinction.
+    /// `resolve_producer_opt` (compat wrapper) collapses the four
+    /// miss shapes (legitimate `NoProducer` plus three malformed) into
+    /// `None`; the typed surface preserves the distinction.
     #[test]
     fn resolve_producer_lookup_discriminates_malformed_substrate() {
         let dag = Dag::new();
