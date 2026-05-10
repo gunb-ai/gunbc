@@ -22,8 +22,8 @@
 use std::collections::BTreeMap;
 
 use v3_compiler::dag::{
-    Dag, Declaration, DeclarationId, FieldValue, Interval, IntervalWidth, LiteralBits,
-    PositiveIntervalWidth, TypeConnective, ValueBody,
+    literal_decimal_i64, Dag, Declaration, DeclarationId, FieldValue, Interval, IntervalWidth,
+    LiteralBits, PositiveIntervalWidth, TypeConnective, ValueBody,
 };
 use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 
@@ -149,24 +149,9 @@ fn reference_field(fields: &[(String, FieldValue)], label: &str) -> Option<Decla
     }
 }
 
-/// Parses `LiteralBits::Int` lexical text as `i64`. Malformed non-empty text is a substrate bug;
-/// we still return `None` (same as other shape mismatches) but `debug_assert` catches it in dev.
-fn i64_from_substrate_int_text(s: &str) -> Option<i64> {
-    match s.parse::<i64>() {
-        Ok(value) => Some(value),
-        Err(error) => {
-            debug_assert!(
-                s.is_empty(),
-                "substrate Int literal must be valid decimal i64 text when non-empty (got {s:?}: {error})"
-            );
-            None
-        }
-    }
-}
-
 fn int_literal_field(fields: &[(String, FieldValue)], label: &str) -> Option<i64> {
     match field(fields, label)? {
-        FieldValue::Literal(LiteralBits::Int(value)) => i64_from_substrate_int_text(value),
+        FieldValue::Literal(LiteralBits::Int(value)) => literal_decimal_i64(value.as_str()),
         _ => None,
     }
 }
@@ -204,7 +189,7 @@ fn parse_positive_interval_width(dag: &Dag, value: &FieldValue) -> Option<Positi
         "UnitCount" => {
             if let [FieldValue::Literal(LiteralBits::Int(units))] = payload.as_slice() {
                 return Some(PositiveIntervalWidth::UnitCount {
-                    units: i64_from_substrate_int_text(units)?,
+                    units: literal_decimal_i64(units.as_str())?,
                 });
             }
             if let [FieldValue::Record(fields)] = payload.as_slice() {
@@ -265,7 +250,7 @@ fn parse_int_interval(dag: &Dag, value: &FieldValue) -> Option<Interval<i64>> {
         "BoundedInterval" => {
             if let [FieldValue::Literal(LiteralBits::Int(lower)), width] = payload.as_slice() {
                 return Some(Interval::BoundedInterval {
-                    lower: i64_from_substrate_int_text(lower)?,
+                    lower: literal_decimal_i64(lower.as_str())?,
                     width: parse_interval_width(dag, width)?,
                 });
             }

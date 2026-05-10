@@ -60,13 +60,28 @@ type ContentBlock
   = TextContent { text: String }
   | ImageContent { source: ImageSource }
 
+// 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicToolResultBlock`
+// (`dsl/extdeps/llm/anthropic.dag:89-94`). Nested tool-result array rows use
+// Anthropic-prefixed wire `type` tags (`anthropic_tool_result_block_wire_contract`);
+// text/image arms mirror shared shapes under those tags, not `ContentBlock`.
+type AnthropicToolResultBlock
+  = AnthropicTextBlock { text: String }
+  | AnthropicImageBlock { source: ImageSource }
+  | AnthropicDocumentBlock { source: Json }
+  | AnthropicSearchResultBlock {
+      content: List<AnthropicTextBlock>
+      source: String
+      title: String
+    }
+  | AnthropicToolReferenceBlock { tool_name: String }
+
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicToolResultContent`
 // (`dsl/extdeps/llm/anthropic.dag`). Scalar text and nested content blocks are
 // alternatives in Anthropic's tool-result content slot, not optional sibling
 // fields on the tool-result row.
 type AnthropicToolResultContent
   = ToolResultText { text: String }
-  | ToolResultBlocks { blocks: List<ContentBlock> }
+  | ToolResultBlocks { blocks: List<AnthropicToolResultBlock> }
 
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicUserContentBlock`
 // (`dsl/extdeps/llm/anthropic.dag`). Tool-result content is optional on the
