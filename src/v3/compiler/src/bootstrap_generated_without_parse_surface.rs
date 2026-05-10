@@ -8,7 +8,7 @@ pub(crate) fn bootstrapped_fixture_without_parse_surface_dag() -> Dag {
         ports: bootstrapped_fixture_without_parse_surface_dag_ports(),
         diagnostics: bootstrapped_fixture_without_parse_surface_dag_diagnostics(),
         next_node_id: 597,
-        next_declaration_id: 2492,
+        next_declaration_id: 2493,
         next_port_id: 743,
         primitives: PrimitiveCache::default(),
         substrate_markers: SubstrateMarkers::default(),
@@ -24,7 +24,7 @@ pub(crate) fn bootstrapped_fixture_without_parse_surface_dag() -> Dag {
         emit_model_variants: EmitModelVariants::default(),
         clusters: bootstrapped_fixture_without_parse_surface_dag_clusters(),
         optional_match_disjs: bootstrapped_fixture_without_parse_surface_dag_optional_match_disjs(),
-        declaration_append_begin_after_bootstrap: 2492,
+        declaration_append_begin_after_bootstrap: 2493,
     }
 }
 
@@ -7594,7 +7594,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
 #[allow(clippy::vec_init_then_push)]
 fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declaration> {
     {
-        let mut declarations = Vec::with_capacity(2492);
+        let mut declarations = Vec::with_capacity(2493);
         declarations.push(Declaration {
             id: DeclarationId(0),
             name: Some("Classical".to_string()),
@@ -57319,7 +57319,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6104, 6166),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6194, 6256),
         });
         declarations.push(Declaration {
             id: DeclarationId(1633),
@@ -57327,12 +57327,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
-                        label: "BooleanAlgebraAlgebra".to_string(),
+                        label: "ApproximateFieldAlgebra".to_string(),
                         ty: DeclarationId(2477),
                     },
                     Field {
-                        label: "TerminalAlgebra".to_string(),
+                        label: "BooleanAlgebraAlgebra".to_string(),
                         ty: DeclarationId(2478),
+                    },
+                    Field {
+                        label: "TerminalAlgebra".to_string(),
+                        ty: DeclarationId(2479),
                     },
                 ],
             },
@@ -57344,7 +57348,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6168, 6236),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6258, 6354),
         });
         declarations.push(Declaration {
             id: DeclarationId(1634),
@@ -57353,31 +57357,31 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "BitCarrier".to_string(),
-                        ty: DeclarationId(2479),
-                    },
-                    Field {
-                        label: "ByteCarrier".to_string(),
                         ty: DeclarationId(2480),
                     },
                     Field {
-                        label: "Word16Carrier".to_string(),
+                        label: "ByteCarrier".to_string(),
                         ty: DeclarationId(2481),
                     },
                     Field {
-                        label: "Word32Carrier".to_string(),
+                        label: "Word16Carrier".to_string(),
                         ty: DeclarationId(2482),
                     },
                     Field {
-                        label: "Word64Carrier".to_string(),
+                        label: "Word32Carrier".to_string(),
                         ty: DeclarationId(2483),
                     },
                     Field {
-                        label: "Word128Carrier".to_string(),
+                        label: "Word64Carrier".to_string(),
                         ty: DeclarationId(2484),
                     },
                     Field {
-                        label: "TerminalCarrier".to_string(),
+                        label: "Word128Carrier".to_string(),
                         ty: DeclarationId(2485),
+                    },
+                    Field {
+                        label: "TerminalCarrier".to_string(),
+                        ty: DeclarationId(2486),
                     },
                 ],
             },
@@ -57389,7 +57393,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7810, 7952),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7944, 8086),
         });
         declarations.push(Declaration {
             id: DeclarationId(1635),
@@ -57398,15 +57402,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "TwoComplementWrap".to_string(),
-                        ty: DeclarationId(2486),
-                    },
-                    Field {
-                        label: "Saturating".to_string(),
                         ty: DeclarationId(2487),
                     },
                     Field {
-                        label: "Trap".to_string(),
+                        label: "Saturating".to_string(),
                         ty: DeclarationId(2488),
+                    },
+                    Field {
+                        label: "Trap".to_string(),
+                        ty: DeclarationId(2489),
                     },
                 ],
             },
@@ -57418,7 +57422,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8669, 8735),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8803, 8869),
         });
         declarations.push(Declaration {
             id: DeclarationId(1636),
@@ -57427,11 +57431,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "IntegerPrimitive".to_string(),
-                        ty: DeclarationId(2489),
+                        ty: DeclarationId(2490),
                     },
                     Field {
                         label: "NonIntegerPrimitive".to_string(),
-                        ty: DeclarationId(2490),
+                        ty: DeclarationId(2491),
                     },
                 ],
             },
@@ -57443,7 +57447,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 9490, 10272),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 9624, 10406),
         });
         declarations.push(Declaration {
             id: DeclarationId(1637),
@@ -57457,35 +57461,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             },
             type_params: vec![],
             phantom_params: Vec::new(),
-            meta_tag: Some(DeclarationId(2491)),
+            meta_tag: Some(DeclarationId(2492)),
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
                 FieldValue::Variant {
-                    constructor: DeclarationId(2489),
+                    constructor: DeclarationId(2490),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("i8".to_string())),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(2475),
-                            payload: vec![],
-                        },
-                        FieldValue::Variant {
-                            constructor: DeclarationId(2480),
-                            payload: vec![],
-                        },
-                        FieldValue::Literal(LiteralBits::String("-128".to_string())),
-                        FieldValue::Literal(LiteralBits::String("127".to_string())),
-                        FieldValue::Literal(LiteralBits::Bool(true)),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(2486),
-                            payload: vec![],
-                        },
-                    ],
-                },
-                FieldValue::Variant {
-                    constructor: DeclarationId(2489),
-                    payload: vec![
-                        FieldValue::Literal(LiteralBits::String("i16".to_string())),
                         FieldValue::Variant {
                             constructor: DeclarationId(2475),
                             payload: vec![],
@@ -57494,19 +57477,19 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             constructor: DeclarationId(2481),
                             payload: vec![],
                         },
-                        FieldValue::Literal(LiteralBits::String("-32768".to_string())),
-                        FieldValue::Literal(LiteralBits::String("32767".to_string())),
+                        FieldValue::Literal(LiteralBits::String("-128".to_string())),
+                        FieldValue::Literal(LiteralBits::String("127".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2486),
+                            constructor: DeclarationId(2487),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2489),
+                    constructor: DeclarationId(2490),
                     payload: vec![
-                        FieldValue::Literal(LiteralBits::String("i32".to_string())),
+                        FieldValue::Literal(LiteralBits::String("i16".to_string())),
                         FieldValue::Variant {
                             constructor: DeclarationId(2475),
                             payload: vec![],
@@ -57515,19 +57498,19 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             constructor: DeclarationId(2482),
                             payload: vec![],
                         },
-                        FieldValue::Literal(LiteralBits::String("-2147483648".to_string())),
-                        FieldValue::Literal(LiteralBits::String("2147483647".to_string())),
+                        FieldValue::Literal(LiteralBits::String("-32768".to_string())),
+                        FieldValue::Literal(LiteralBits::String("32767".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2486),
+                            constructor: DeclarationId(2487),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2489),
+                    constructor: DeclarationId(2490),
                     payload: vec![
-                        FieldValue::Literal(LiteralBits::String("i64".to_string())),
+                        FieldValue::Literal(LiteralBits::String("i32".to_string())),
                         FieldValue::Variant {
                             constructor: DeclarationId(2475),
                             payload: vec![],
@@ -57536,19 +57519,40 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             constructor: DeclarationId(2483),
                             payload: vec![],
                         },
+                        FieldValue::Literal(LiteralBits::String("-2147483648".to_string())),
+                        FieldValue::Literal(LiteralBits::String("2147483647".to_string())),
+                        FieldValue::Literal(LiteralBits::Bool(true)),
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2487),
+                            payload: vec![],
+                        },
+                    ],
+                },
+                FieldValue::Variant {
+                    constructor: DeclarationId(2490),
+                    payload: vec![
+                        FieldValue::Literal(LiteralBits::String("i64".to_string())),
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2475),
+                            payload: vec![],
+                        },
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2484),
+                            payload: vec![],
+                        },
                         FieldValue::Literal(LiteralBits::String(
                             "-9223372036854775808".to_string(),
                         )),
                         FieldValue::Literal(LiteralBits::String("9223372036854775807".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2486),
+                            constructor: DeclarationId(2487),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2489),
+                    constructor: DeclarationId(2490),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("i128".to_string())),
                         FieldValue::Variant {
@@ -57556,7 +57560,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2484),
+                            constructor: DeclarationId(2485),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String(
@@ -57567,36 +57571,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         )),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2486),
+                            constructor: DeclarationId(2487),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2489),
+                    constructor: DeclarationId(2490),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("u8".to_string())),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(2476),
-                            payload: vec![],
-                        },
-                        FieldValue::Variant {
-                            constructor: DeclarationId(2480),
-                            payload: vec![],
-                        },
-                        FieldValue::Literal(LiteralBits::String("0".to_string())),
-                        FieldValue::Literal(LiteralBits::String("255".to_string())),
-                        FieldValue::Literal(LiteralBits::Bool(true)),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(2486),
-                            payload: vec![],
-                        },
-                    ],
-                },
-                FieldValue::Variant {
-                    constructor: DeclarationId(2489),
-                    payload: vec![
-                        FieldValue::Literal(LiteralBits::String("u16".to_string())),
                         FieldValue::Variant {
                             constructor: DeclarationId(2476),
                             payload: vec![],
@@ -57606,18 +57589,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String("0".to_string())),
-                        FieldValue::Literal(LiteralBits::String("65535".to_string())),
+                        FieldValue::Literal(LiteralBits::String("255".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2486),
+                            constructor: DeclarationId(2487),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2489),
+                    constructor: DeclarationId(2490),
                     payload: vec![
-                        FieldValue::Literal(LiteralBits::String("u32".to_string())),
+                        FieldValue::Literal(LiteralBits::String("u16".to_string())),
                         FieldValue::Variant {
                             constructor: DeclarationId(2476),
                             payload: vec![],
@@ -57627,18 +57610,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String("0".to_string())),
-                        FieldValue::Literal(LiteralBits::String("4294967295".to_string())),
+                        FieldValue::Literal(LiteralBits::String("65535".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2486),
+                            constructor: DeclarationId(2487),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2489),
+                    constructor: DeclarationId(2490),
                     payload: vec![
-                        FieldValue::Literal(LiteralBits::String("u64".to_string())),
+                        FieldValue::Literal(LiteralBits::String("u32".to_string())),
                         FieldValue::Variant {
                             constructor: DeclarationId(2476),
                             payload: vec![],
@@ -57648,20 +57631,18 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String("0".to_string())),
-                        FieldValue::Literal(LiteralBits::String(
-                            "18446744073709551615".to_string(),
-                        )),
+                        FieldValue::Literal(LiteralBits::String("4294967295".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2486),
+                            constructor: DeclarationId(2487),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2489),
+                    constructor: DeclarationId(2490),
                     payload: vec![
-                        FieldValue::Literal(LiteralBits::String("u128".to_string())),
+                        FieldValue::Literal(LiteralBits::String("u64".to_string())),
                         FieldValue::Variant {
                             constructor: DeclarationId(2476),
                             payload: vec![],
@@ -57672,11 +57653,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         },
                         FieldValue::Literal(LiteralBits::String("0".to_string())),
                         FieldValue::Literal(LiteralBits::String(
-                            "340282366920938463463374607431768211455".to_string(),
+                            "18446744073709551615".to_string(),
                         )),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2486),
+                            constructor: DeclarationId(2487),
                             payload: vec![],
                         },
                     ],
@@ -57684,28 +57665,81 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 FieldValue::Variant {
                     constructor: DeclarationId(2490),
                     payload: vec![
-                        FieldValue::Literal(LiteralBits::String("bool".to_string())),
+                        FieldValue::Literal(LiteralBits::String("u128".to_string())),
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2476),
+                            payload: vec![],
+                        },
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2485),
+                            payload: vec![],
+                        },
+                        FieldValue::Literal(LiteralBits::String("0".to_string())),
+                        FieldValue::Literal(LiteralBits::String(
+                            "340282366920938463463374607431768211455".to_string(),
+                        )),
+                        FieldValue::Literal(LiteralBits::Bool(true)),
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2487),
+                            payload: vec![],
+                        },
+                    ],
+                },
+                FieldValue::Variant {
+                    constructor: DeclarationId(2491),
+                    payload: vec![
+                        FieldValue::Literal(LiteralBits::String("f32".to_string())),
                         FieldValue::Variant {
                             constructor: DeclarationId(2477),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2479),
+                            constructor: DeclarationId(2483),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2490),
+                    constructor: DeclarationId(2491),
                     payload: vec![
-                        FieldValue::Literal(LiteralBits::String("()".to_string())),
+                        FieldValue::Literal(LiteralBits::String("f64".to_string())),
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2477),
+                            payload: vec![],
+                        },
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2484),
+                            payload: vec![],
+                        },
+                        FieldValue::Literal(LiteralBits::Bool(true)),
+                    ],
+                },
+                FieldValue::Variant {
+                    constructor: DeclarationId(2491),
+                    payload: vec![
+                        FieldValue::Literal(LiteralBits::String("bool".to_string())),
                         FieldValue::Variant {
                             constructor: DeclarationId(2478),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2485),
+                            constructor: DeclarationId(2480),
+                            payload: vec![],
+                        },
+                        FieldValue::Literal(LiteralBits::Bool(true)),
+                    ],
+                },
+                FieldValue::Variant {
+                    constructor: DeclarationId(2491),
+                    payload: vec![
+                        FieldValue::Literal(LiteralBits::String("()".to_string())),
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2479),
+                            payload: vec![],
+                        },
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2486),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::Bool(true)),
@@ -57714,7 +57748,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ])),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10572, 14594),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10727, 15423),
         });
         declarations.push(Declaration {
             id: DeclarationId(1638),
@@ -72944,7 +72978,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6128, 6146),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6218, 6236),
         });
         declarations.push(Declaration {
             id: DeclarationId(2476),
@@ -72958,7 +72992,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6151, 6166),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6241, 6256),
         });
         declarations.push(Declaration {
             id: DeclarationId(2477),
@@ -72972,7 +73006,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6195, 6216),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6285, 6308),
         });
         declarations.push(Declaration {
             id: DeclarationId(2478),
@@ -72986,7 +73020,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6221, 6236),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6313, 6334),
         });
         declarations.push(Declaration {
             id: DeclarationId(2479),
@@ -73000,7 +73034,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7833, 7843),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6339, 6354),
         });
         declarations.push(Declaration {
             id: DeclarationId(2480),
@@ -73014,7 +73048,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7848, 7859),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7967, 7977),
         });
         declarations.push(Declaration {
             id: DeclarationId(2481),
@@ -73028,7 +73062,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7864, 7877),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7982, 7993),
         });
         declarations.push(Declaration {
             id: DeclarationId(2482),
@@ -73042,7 +73076,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7882, 7895),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7998, 8011),
         });
         declarations.push(Declaration {
             id: DeclarationId(2483),
@@ -73056,7 +73090,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7900, 7913),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8016, 8029),
         });
         declarations.push(Declaration {
             id: DeclarationId(2484),
@@ -73070,7 +73104,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7918, 7932),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8034, 8047),
         });
         declarations.push(Declaration {
             id: DeclarationId(2485),
@@ -73084,7 +73118,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7937, 7952),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8052, 8066),
         });
         declarations.push(Declaration {
             id: DeclarationId(2486),
@@ -73098,7 +73132,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8694, 8711),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8071, 8086),
         });
         declarations.push(Declaration {
             id: DeclarationId(2487),
@@ -73112,7 +73146,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8716, 8726),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8828, 8845),
         });
         declarations.push(Declaration {
             id: DeclarationId(2488),
@@ -73126,10 +73160,24 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8731, 8735),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8850, 8860),
         });
         declarations.push(Declaration {
             id: DeclarationId(2489),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8865, 8869),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2490),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -73171,10 +73219,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 9513, 10085),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 9647, 10219),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2490),
+            id: DeclarationId(2491),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -73204,10 +73252,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10090, 10272),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10224, 10406),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2491),
+            id: DeclarationId(2492),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(665),
@@ -73224,7 +73272,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10600, 10619),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10755, 10774),
         });
         declarations
     }

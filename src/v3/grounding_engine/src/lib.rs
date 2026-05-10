@@ -125,7 +125,11 @@ pub fn validate_rust_primitive_type_structure(
     let non_integer_algebra = expect_enum_shape(
         dag,
         "NonIntegerAlgebra",
-        &["BooleanAlgebraAlgebra", "TerminalAlgebra"],
+        &[
+            "ApproximateFieldAlgebra",
+            "BooleanAlgebraAlgebra",
+            "TerminalAlgebra",
+        ],
     )?;
     let target_carrier = expect_enum_shape(
         dag,
@@ -444,7 +448,11 @@ fn expected_mirror_shape() -> RustPrimitiveTypeShape {
         integer_algebra: enum_shape("IntegerAlgebra", &["OrderedRingAlgebra", "SemiringAlgebra"]),
         non_integer_algebra: enum_shape(
             "NonIntegerAlgebra",
-            &["BooleanAlgebraAlgebra", "TerminalAlgebra"],
+            &[
+                "ApproximateFieldAlgebra",
+                "BooleanAlgebraAlgebra",
+                "TerminalAlgebra",
+            ],
         ),
         target_carrier: enum_shape(
             "TargetCarrier",
@@ -568,6 +576,7 @@ fn pilot_integer_algebra_name(algebra: PilotIntegerAlgebra) -> &'static str {
 
 fn pilot_non_integer_algebra_name(algebra: PilotNonIntegerAlgebra) -> &'static str {
     match algebra {
+        PilotNonIntegerAlgebra::ApproximateField => "ApproximateFieldAlgebra",
         PilotNonIntegerAlgebra::BooleanAlgebra => "BooleanAlgebraAlgebra",
         PilotNonIntegerAlgebra::Terminal => "TerminalAlgebra",
     }
@@ -830,7 +839,11 @@ fn assert_non_integer_primitive_payload_matches(
     let alg = expect_nullary_variant_label(
         dag,
         "NonIntegerAlgebra",
-        &["BooleanAlgebraAlgebra", "TerminalAlgebra"],
+        &[
+            "ApproximateFieldAlgebra",
+            "BooleanAlgebraAlgebra",
+            "TerminalAlgebra",
+        ],
         &payload[1],
         &format!("{ctx}.algebra"),
     )?;

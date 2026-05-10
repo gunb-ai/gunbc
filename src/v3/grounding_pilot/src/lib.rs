@@ -4,7 +4,7 @@
 //   Validate that algebra-homomorphism inhabitance search reproduces
 //   today's name-keyed table-lookup routing for the Rust target on a
 //   bounded primitive set: {i8, i16, i32, i64, i128, u8, u16, u32, u64, u128,
-//   bool, ()}.
+//   f32, f64, bool, ()}.
 //   (T-Int128 Slice B1 added i128. R3 Phase B-1 (commit `59511503e`) closed the
 //   prior `u128` deferral by widening `IntervalInt::ExactInterval` to a BigInt
 //   host repr — `u128::MAX` now fits — and the substrate `u128` row landed in
@@ -87,6 +87,7 @@ pub enum IntegerAlgebra {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NonIntegerAlgebra {
+    ApproximateField,
     BooleanAlgebra,
     Terminal,
 }
@@ -282,6 +283,19 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
+    // Floats — ApproximateField over machine-width carriers.
+    RustPrimitive::NonIntegerPrimitive {
+        target_name: "f32",
+        algebra: NonIntegerAlgebra::ApproximateField,
+        carrier: TargetCarrier::Word32,
+        is_copy: true,
+    },
+    RustPrimitive::NonIntegerPrimitive {
+        target_name: "f64",
+        algebra: NonIntegerAlgebra::ApproximateField,
+        carrier: TargetCarrier::Word64,
+        is_copy: true,
+    },
     // Bool — BooleanAlgebra over Bit.
     RustPrimitive::NonIntegerPrimitive {
         target_name: "bool",
@@ -301,10 +315,10 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
 // =============================================================================
 // Structural .dag-side facts.
 //
-// Mirrors dsl/std/integer.dag (Int8..Int64 + Int128, UInt8..UInt64 + UInt128)
-// and the std-side declarations of Bool and Unit. Each .dag-side type unfolds
-// to a RoutingKey; production resolution will read the real type-alias
-// chain via the v3 substrate's resolve_item_types.
+// Mirrors dsl/std/integer.dag (Int8..Int64 + Int128, UInt8..UInt64 + UInt128),
+// dsl/std/float.dag (Float32/Float64), and the std-side declarations of Bool
+// and Unit. Each .dag-side type unfolds to a RoutingKey; production resolution
+// will read the real type-alias chain via the v3 substrate's resolve_item_types.
 // =============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -319,6 +333,8 @@ pub enum DagType {
     UInt32,
     UInt64,
     UInt128,
+    Float32,
+    Float64,
     Bool,
     Unit,
 }
@@ -334,15 +350,17 @@ pub const DAG_PILOT_TYPES: &[DagType] = &[
     DagType::UInt32,
     DagType::UInt64,
     DagType::UInt128,
+    DagType::Float32,
+    DagType::Float64,
     DagType::Bool,
     DagType::Unit,
 ];
 
 /// Unfold a pilot .dag-side type to its routing-key facts.
 ///
-/// Authority: dsl/std/integer.dag (Int8..Int64 + Int128, UInt8..UInt64 + UInt128), plus the
-/// canonical std modeling of Bool as BooleanAlgebra<Bit> and Unit as the
-/// terminal object.
+/// Authority: dsl/std/integer.dag (Int8..Int64 + Int128, UInt8..UInt64 + UInt128),
+/// dsl/std/float.dag (Float32/Float64), plus the canonical std modeling of Bool
+/// as BooleanAlgebra<Bit> and Unit as the terminal object.
 pub fn dag_type_facts(t: DagType) -> RoutingKey {
     match t {
         DagType::Int8 => RoutingKey::Integer {
@@ -384,6 +402,14 @@ pub fn dag_type_facts(t: DagType) -> RoutingKey {
         DagType::UInt128 => RoutingKey::Integer {
             algebra: IntegerAlgebra::Semiring,
             carrier: TargetCarrier::Word128,
+        },
+        DagType::Float32 => RoutingKey::NonInteger {
+            algebra: NonIntegerAlgebra::ApproximateField,
+            carrier: TargetCarrier::Word32,
+        },
+        DagType::Float64 => RoutingKey::NonInteger {
+            algebra: NonIntegerAlgebra::ApproximateField,
+            carrier: TargetCarrier::Word64,
         },
         DagType::Bool => RoutingKey::NonInteger {
             algebra: NonIntegerAlgebra::BooleanAlgebra,
@@ -454,11 +480,11 @@ pub fn ground(t: DagType) -> Result<&'static RustPrimitive, GroundingError> {
 //
 // Two strata (see PR description):
 //   A. Name-keyed parity. dsl/extdeps/languages/rust/types.dag's
-//      rust_type_checkpoints declares 3 of the 10 pilot types: Int (= Int64)
+//      rust_type_checkpoints declares 3 of the 14 pilot types: Int (= Int64)
 //      → "i64", Bool → "bool", Unit → "()". The engine must produce the
 //      same target_name on these.
-//   B. Algebra-homomorphism extension. The remaining 7 pilot types
-//      (Int8/16/32, UInt8..UInt64) have no name-keyed checkpoint in
+//   B. Algebra-homomorphism extension. The remaining pilot types
+//      (Int8/16/32/128, UInt8..UInt128, Float32/Float64) have no name-keyed checkpoint in
 //      types.dag — the only fallback is the OrderedRing → "i64"
 //      algebra-inhabitant entry, which is width-blind and would
 //      mis-route Int8 to i64. The engine must produce the
@@ -553,6 +579,28 @@ mod tests {
         }
     }
 
+    /// Stratum B — width-distinct floats route via ApproximateField plus the
+    /// machine-width carrier. These rows are post-S8 Float coverage:
+    /// `Float32/Float64 = Compose<Ieee754Float, MachineWidth<Word*>>`.
+    #[test]
+    fn stratum_b_float_widths_route_correctly() {
+        for (dag, expected, carrier) in [
+            (DagType::Float32, "f32", TargetCarrier::Word32),
+            (DagType::Float64, "f64", TargetCarrier::Word64),
+        ] {
+            let p = ground(dag).unwrap_or_else(|e| panic!("{dag:?} must ground: {e:?}"));
+            assert_eq!(target_name(p), expected, "routing for {dag:?}");
+            assert!(matches!(
+                p,
+                RustPrimitive::NonIntegerPrimitive {
+                    algebra: NonIntegerAlgebra::ApproximateField,
+                    carrier: actual,
+                    ..
+                } if *actual == carrier
+            ));
+        }
+    }
+
     /// Coverage — every type in DAG_PILOT_TYPES grounds to exactly one
     /// primitive. Asserts the pilot set is fully covered.
     #[test]
@@ -564,7 +612,7 @@ mod tests {
     }
 
     /// Coverage — engine output names exactly match the canonical
-    /// expectation across all 10 pilot types in one place.
+    /// expectation across all 14 pilot types in one place.
     #[test]
     fn full_pilot_routing_table() {
         let expected: &[(DagType, &str)] = &[
@@ -578,6 +626,8 @@ mod tests {
             (DagType::UInt32, "u32"),
             (DagType::UInt64, "u64"),
             (DagType::UInt128, "u128"),
+            (DagType::Float32, "f32"),
+            (DagType::Float64, "f64"),
             (DagType::Bool, "bool"),
             (DagType::Unit, "()"),
         ];
