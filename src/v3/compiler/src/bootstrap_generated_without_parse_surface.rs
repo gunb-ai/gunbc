@@ -48,7 +48,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(2),
-            name: "<refinement:PositiveInt>".to_string(),
+            name: "<registry-refinement:PositiveInt>".to_string(),
             value: PortId(2),
             params: vec![PortId(0)],
             span: SourceSpan::new("dsl/std/integer.dag", 9551, 9558),
@@ -176,7 +176,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(20),
-            name: "<refinement:Char>".to_string(),
+            name: "<registry-refinement:Char>".to_string(),
             value: PortId(20),
             params: vec![PortId(3)],
             span: SourceSpan::new("dsl/std/types.dag", 8462, 8491),
@@ -220,7 +220,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(26),
-            name: "<refinement:RetryCount>".to_string(),
+            name: "<registry-refinement:RetryCount>".to_string(),
             value: PortId(26),
             params: vec![PortId(21)],
             span: SourceSpan::new("dsl/std/types.dag", 10887, 10908),
@@ -264,7 +264,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(32),
-            name: "<refinement:HttpStatus>".to_string(),
+            name: "<registry-refinement:HttpStatus>".to_string(),
             value: PortId(32),
             params: vec![PortId(27)],
             span: SourceSpan::new("dsl/std/types.dag", 10939, 10964),
@@ -308,7 +308,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(38),
-            name: "<refinement:Port>".to_string(),
+            name: "<registry-refinement:Port>".to_string(),
             value: PortId(38),
             params: vec![PortId(33)],
             span: SourceSpan::new("dsl/std/types.dag", 11095, 11120),
@@ -352,7 +352,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(44),
-            name: "<refinement:PathSegment>".to_string(),
+            name: "<registry-refinement:PathSegment>".to_string(),
             value: PortId(44),
             params: vec![PortId(39)],
             span: SourceSpan::new("dsl/std/types.dag", 12318, 12338),
@@ -396,7 +396,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(50),
-            name: "<refinement:GlobSegment>".to_string(),
+            name: "<registry-refinement:GlobSegment>".to_string(),
             value: PortId(50),
             params: vec![PortId(45)],
             span: SourceSpan::new("dsl/std/types.dag", 12378, 12398),
@@ -419,7 +419,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(53),
-            name: "<refinement:EpochMs>".to_string(),
+            name: "<registry-refinement:EpochMs>".to_string(),
             value: PortId(53),
             params: vec![PortId(51)],
             span: SourceSpan::new("dsl/std/types.dag", 13382, 13395),
@@ -442,7 +442,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(56),
-            name: "<refinement:Duration>".to_string(),
+            name: "<registry-refinement:Duration>".to_string(),
             value: PortId(56),
             params: vec![PortId(54)],
             span: SourceSpan::new("dsl/std/types.dag", 13427, 13440),
@@ -507,7 +507,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(65),
-            name: "<refinement:Milliseconds>".to_string(),
+            name: "<registry-refinement:Milliseconds>".to_string(),
             value: PortId(65),
             params: vec![PortId(57)],
             span: SourceSpan::new("dsl/std/types.dag", 13472, 13508),
@@ -572,7 +572,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(74),
-            name: "<refinement:Seconds>".to_string(),
+            name: "<registry-refinement:Seconds>".to_string(),
             value: PortId(74),
             params: vec![PortId(66)],
             span: SourceSpan::new("dsl/std/types.dag", 13540, 13571),
@@ -616,7 +616,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(80),
-            name: "<refinement:IntentId>".to_string(),
+            name: "<registry-refinement:IntentId>".to_string(),
             value: PortId(80),
             params: vec![PortId(75)],
             span: SourceSpan::new("dsl/std/types.dag", 14133, 14150),
@@ -660,7 +660,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(86),
-            name: "<refinement:IssueId>".to_string(),
+            name: "<registry-refinement:IssueId>".to_string(),
             value: PortId(86),
             params: vec![PortId(81)],
             span: SourceSpan::new("dsl/std/types.dag", 14189, 14205),
@@ -704,7 +704,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(92),
-            name: "<refinement:RunKey>".to_string(),
+            name: "<registry-refinement:RunKey>".to_string(),
             value: PortId(92),
             params: vec![PortId(87)],
             span: SourceSpan::new("dsl/std/types.dag", 14244, 14259),
@@ -748,7 +748,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(98),
-            name: "<refinement:ArtifactId>".to_string(),
+            name: "<registry-refinement:ArtifactId>".to_string(),
             value: PortId(98),
             params: vec![PortId(93)],
             span: SourceSpan::new("dsl/std/types.dag", 14298, 14317),
@@ -792,7 +792,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(104),
-            name: "<refinement:LeaseToken>".to_string(),
+            name: "<registry-refinement:LeaseToken>".to_string(),
             value: PortId(104),
             params: vec![PortId(99)],
             span: SourceSpan::new("dsl/std/types.dag", 14356, 14375),
@@ -836,7 +836,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(110),
-            name: "<refinement:WorkerId>".to_string(),
+            name: "<registry-refinement:WorkerId>".to_string(),
             value: PortId(110),
             params: vec![PortId(105)],
             span: SourceSpan::new("dsl/std/types.dag", 14414, 14431),
@@ -880,7 +880,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(116),
-            name: "<refinement:CommentId>".to_string(),
+            name: "<registry-refinement:CommentId>".to_string(),
             value: PortId(116),
             params: vec![PortId(111)],
             span: SourceSpan::new("dsl/std/types.dag", 14470, 14488),
@@ -924,7 +924,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(122),
-            name: "<refinement:SignalKey>".to_string(),
+            name: "<registry-refinement:SignalKey>".to_string(),
             value: PortId(122),
             params: vec![PortId(117)],
             span: SourceSpan::new("dsl/std/types.dag", 14527, 14545),
@@ -968,7 +968,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(128),
-            name: "<refinement:ContentHash>".to_string(),
+            name: "<registry-refinement:ContentHash>".to_string(),
             value: PortId(128),
             params: vec![PortId(123)],
             span: SourceSpan::new("dsl/std/types.dag", 14584, 14604),
@@ -1012,7 +1012,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(134),
-            name: "<refinement:WorkflowProducerId>".to_string(),
+            name: "<registry-refinement:WorkflowProducerId>".to_string(),
             value: PortId(134),
             params: vec![PortId(129)],
             span: SourceSpan::new("dsl/std/types.dag", 14879, 14906),
@@ -1056,7 +1056,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(140),
-            name: "<refinement:WorkflowObserverId>".to_string(),
+            name: "<registry-refinement:WorkflowObserverId>".to_string(),
             value: PortId(140),
             params: vec![PortId(135)],
             span: SourceSpan::new("dsl/std/types.dag", 14951, 14978),
@@ -1100,7 +1100,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(146),
-            name: "<refinement:WorkflowProverId>".to_string(),
+            name: "<registry-refinement:WorkflowProverId>".to_string(),
             value: PortId(146),
             params: vec![PortId(141)],
             span: SourceSpan::new("dsl/std/types.dag", 15021, 15046),
@@ -1144,7 +1144,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(152),
-            name: "<refinement:WorkflowRunId>".to_string(),
+            name: "<registry-refinement:WorkflowRunId>".to_string(),
             value: PortId(152),
             params: vec![PortId(147)],
             span: SourceSpan::new("dsl/std/types.dag", 15086, 15108),
@@ -1188,7 +1188,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(158),
-            name: "<refinement:FilesystemHandle>".to_string(),
+            name: "<registry-refinement:FilesystemHandle>".to_string(),
             value: PortId(158),
             params: vec![PortId(153)],
             span: SourceSpan::new("dsl/std/types.dag", 21695, 21720),
@@ -1232,7 +1232,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(164),
-            name: "<refinement:NetworkHandle>".to_string(),
+            name: "<registry-refinement:NetworkHandle>".to_string(),
             value: PortId(164),
             params: vec![PortId(159)],
             span: SourceSpan::new("dsl/std/types.dag", 21756, 21778),
@@ -1276,7 +1276,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         }));
         nodes.push(Behavior::Bind(BindNode {
             id: NodeId(170),
-            name: "<refinement:ToolHandle>".to_string(),
+            name: "<registry-refinement:ToolHandle>".to_string(),
             value: PortId(170),
             params: vec![PortId(165)],
             span: SourceSpan::new("dsl/std/types.dag", 21816, 21835),

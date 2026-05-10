@@ -568,6 +568,11 @@ fn pending_refined_function_refs(
 /// **value being refined**; it is not a second name for the type. The single
 /// `Var` in scope is bound to a port of shape `base_decl_id` (the base type
 /// for that value).
+///
+/// When `registry_synthesized_body` is true, the predicate `Bind` is tagged
+/// `<registry-refinement:{bind_name}>` so downstream literal discharge can
+/// distinguish registry ladder bodies from user-written refinements (same
+/// fragment shapes must not imply discharge equivalence).
 fn build_refinement_predicate_declaration(
     base_decl_id: DeclarationId,
     predicate: &SurfaceExpr,
@@ -575,6 +580,7 @@ fn build_refinement_predicate_declaration(
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
     subject_span: SourceSpan,
+    registry_synthesized_body: bool,
 ) -> DeclarationId {
     let pred_span = expr_span(predicate);
     let pred_param_port = dag.alloc_port(None);
@@ -600,9 +606,14 @@ fn build_refinement_predicate_declaration(
     );
 
     let bind_id = dag.alloc_node_id();
+    let bind_tag = if registry_synthesized_body {
+        format!("<registry-refinement:{bind_name}>")
+    } else {
+        format!("<refinement:{bind_name}>")
+    };
     dag.push_node(Behavior::Bind(BindNode {
         id: bind_id,
-        name: format!("<refinement:{bind_name}>"),
+        name: bind_tag,
         value: pred_value_port,
         params: vec![pred_param_port],
         span: pred_span.clone(),
@@ -1445,6 +1456,7 @@ fn lower_parameter_refinement(
         symbols,
         dag,
         param_span.clone(),
+        false,
     );
     let refined_id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
@@ -1720,6 +1732,7 @@ fn lower_type_alias_refinements_phase(
                             symbols,
                             dag,
                             span.clone(),
+                            true,
                         );
                         dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
                     }
@@ -1784,6 +1797,7 @@ fn lower_type_alias_refinements_phase(
             symbols,
             dag,
             span.clone(),
+            false,
         );
         dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
     }
@@ -1946,11 +1960,39 @@ fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> b
         .is_some_and(|name| name.starts_with("<registered predicate not lowered: "))
 }
 
+/// Predicate bodies lowered from the registered-predicate synthesis ladder tag
+/// their `Bind` as `<registry-refinement:…>`. User-written alias/`where`
+/// predicates keep `<refinement:…>`. Static literal discharge runs **only** on
+/// the former so shapes like `PositiveInt > 0` cannot be accidentally proven
+/// merely because they lower to the same `Transform` operators as synthesized
+/// registry bodies (`int_literal_cardinality_test` discharge traps).
+fn refinement_predicate_allows_registry_literal_static_discharge(
+    dag: &Dag,
+    pred_decl: DeclarationId,
+) -> bool {
+    let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_node_id),
+        ..
+    } = &dag.declaration(pred_decl).connective
+    else {
+        return false;
+    };
+    let Some(bind) = bind_node_id.bind_opt(dag) else {
+        return false;
+    };
+    bind.name.starts_with("<registry-refinement:")
+}
+
 /// Gate on scalar literals / structural `data` bodies when the declared type
 /// carries a **non-placeholder** refinement: reject unless we can **prove**
 /// the literal satisfies the lowered predicate body by evaluating the same
 /// `Transform(Value|Operator)` fragment produced by `synthesize_predicate_body`
 /// (`gt_zero`, `unicode_scalar`, `range`, `brand`, and nested `And`/`Or`).
+///
+/// Proof is attempted **only** when the refinement predicate `Bind` carries the
+/// `<registry-refinement:…>` tag from [`build_refinement_predicate_declaration`]
+/// (`registry_synthesized_body: true`). User-written predicates always fail this
+/// gate and keep the historic “no narrowing / no discharge evidence” boundary.
 ///
 /// Deferred placeholders intentionally return `false` — no proof obligation.
 ///
@@ -1966,6 +2008,9 @@ fn scalar_literal_must_reject_for_refinement(
         if let Some(refinement) = decl.refinement {
             if is_deferred_refinement_placeholder(dag, refinement) {
                 return false;
+            }
+            if !refinement_predicate_allows_registry_literal_static_discharge(dag, refinement) {
+                return true;
             }
             return !literal_statically_satisfies_refinement_predicate(dag, literal, refinement);
         }
