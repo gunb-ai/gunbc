@@ -5075,24 +5075,22 @@ mod tests {
             .find_map(|e| per_call_descent_operand_port(&dag, e.call))
             .expect("self-call descent operand port");
 
-        let mk_product = |other: PortId| {
-            SymbolicCost::ProductCost {
-                _0: NonSingletonList::from_vec(vec![
-                    Box::new(SymbolicCost::LinearCost {
-                        _0: SizeVariable {
-                            source_port: param,
-                            display_name: None,
-                        },
-                    }),
-                    Box::new(SymbolicCost::LinearCost {
-                        _0: SizeVariable {
-                            source_port: other,
-                            display_name: None,
-                        },
-                    }),
-                ])
-                .expect("two linear factors"),
-            }
+        let mk_product = |other: PortId| SymbolicCost::ProductCost {
+            _0: NonSingletonList::from_vec(vec![
+                Box::new(SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: param,
+                        display_name: None,
+                    },
+                }),
+                Box::new(SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: other,
+                        display_name: None,
+                    },
+                }),
+            ])
+            .expect("two linear factors"),
         };
 
         let collapsed = collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
