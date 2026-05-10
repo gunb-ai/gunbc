@@ -299,18 +299,16 @@ fn try_apply_lens_via_evaluator_literals_only(
         }
     };
     let entry = producer.id();
-    let runtime_inputs: Vec<Value> = inputs
-        .iter()
-        .map(|fv| match fv {
-            FieldValue::Literal(bits) => Value::LiteralValue(bits.clone()),
-            _ => unreachable!("filtered to literals above"),
-        })
-        .collect();
     let bindings: Vec<(PortId, Value)> = root_bind
         .params
         .iter()
-        .zip(runtime_inputs)
-        .map(|(p, v)| (*p, v))
+        .zip(inputs.iter())
+        .map(|(p, fv)| {
+            let FieldValue::Literal(bits) = fv else {
+                unreachable!("filtered to literals above")
+            };
+            (*p, Value::LiteralValue(bits.clone()))
+        })
         .collect();
     let frame = match EvalFrame::from_bindings(bindings) {
         Ok(f) => f,
