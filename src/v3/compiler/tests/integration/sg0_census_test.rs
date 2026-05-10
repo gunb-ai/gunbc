@@ -408,6 +408,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
     "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
+    // R3 gate #73 (`lens_behavioral_parity_demonstration`): temporary host
+    // receipt for the four-lens parity snapshot while LensOutputEquals /
+    // frozen-oracle claims migrate to `.dag` TestClaim data. Dissolution is
+    // tracked by `docs/r3-program-plan.md` §1.8 row 73 plus T-Tests-As-Data
+    // rows 84/87; delete with the module's `tests/integration.rs` registration.
+    "src/v3/compiler/tests/integration/lens_behavioral_parity_demonstration_test.rs",
     // T-CostLens-Composition Slice 1a.1 (#2141 ε scope per gunbc#2181 ratification):
     // Rust integration tests exercising `lens_cost_target_realization` `.dag`-tier
     // consumer of `declaration_by_name` (introduced by Slice 1a.0 / PR #2194).
@@ -424,12 +430,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // #issuecomment-4404395097 ratifies this bridge for the Slice 1a.1
     // window.
     "src/v3/compiler/tests/integration/lens_cost_target_realization_test.rs",
-    // R3 gate #73 (`lens_behavioral_parity_demonstration`): temporary host
-    // receipt for the four-lens parity snapshot while LensOutputEquals /
-    // frozen-oracle claims migrate to `.dag` TestClaim data. Dissolution is
-    // tracked by `docs/r3-program-plan.md` §1.8 row 73 plus T-Tests-As-Data
-    // rows 84/87; delete with the module's `tests/integration.rs` registration.
-    "src/v3/compiler/tests/integration/lens_behavioral_parity_demonstration_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
     // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
