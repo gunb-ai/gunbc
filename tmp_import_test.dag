@@ -1,5 +1,0 @@
-module std.tmp_import_test
-
-import lenses.unused_parameters { check as unused_check }
-
-fn f(d: Dag) -> List<UnusedParameter> = unused_check(d)

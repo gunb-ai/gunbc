@@ -211,3 +211,76 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
         &["testgen_structural_coverage"],
     );
 }
+
+// R3 gate #87 — every `LensRegistryEntry` in `src/v3/compiler/regen.dag` has a
+// `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` harness evaluated here.
+const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_cost.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost.dag",
+        "r3_gate_87_cementing_regen_cost_suite",
+        &["cementing_regen_cost"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag",
+        "r3_gate_87_cementing_regen_cost_symbolic_suite",
+        &["cementing_regen_cost_symbolic"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_cost_target_realization.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost_target_realization.dag",
+        "r3_gate_87_cementing_regen_cost_target_realization_suite",
+        &["cementing_regen_cost_target_realization"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_effect_enumeration.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_effect_enumeration.dag",
+        "r3_gate_87_cementing_regen_effect_enumeration_suite",
+        &["cementing_regen_effect_enumeration"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_infer_helpers.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag",
+        "r3_gate_87_cementing_regen_infer_helpers_suite",
+        &["cementing_regen_infer_helpers"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_lower_helpers.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag",
+        "r3_gate_87_cementing_regen_lower_helpers_suite",
+        &["cementing_regen_lower_helpers"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_provenance.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_provenance.dag",
+        "r3_gate_87_cementing_regen_provenance_suite",
+        &["cementing_regen_provenance"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_structural_resolution.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_structural_resolution.dag",
+        "r3_gate_87_cementing_regen_structural_resolution_suite",
+        &["cementing_regen_structural_resolution"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_unused_parameters.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_unused_parameters.dag",
+        "r3_gate_87_cementing_regen_unused_parameters_suite",
+        &["cementing_regen_unused_parameters"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_variant_payload.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_variant_payload.dag",
+        "r3_gate_87_cementing_regen_variant_payload_suite",
+        &["cementing_regen_variant_payload"],
+    ),
+];
+
+#[test]
+fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
+    for (source, file, suite, claim_names) in R3_GATE_87_CEMENTING_REGEN_SUITES {
+        let dag = lower(source, file);
+        run_suite_all_pass_with_expected_claim_names(&dag, suite, claim_names);
+    }
+}
