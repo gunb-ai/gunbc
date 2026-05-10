@@ -1052,6 +1052,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
+    untagged_json_tuple_variants: base_info.untagged_json_tuple_variants,
     shared_types: shared,
     ownership_index: ownership.ownership_index,
     movable: empty_set(),
@@ -1170,6 +1171,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
+    untagged_json_tuple_variants: base_info.untagged_json_tuple_variants,
     shared_types: shared,
     ownership_index: base_info.ownership_index,
     movable: base_info.movable,
@@ -1452,6 +1454,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       type_summaries: emit_info.type_summaries,
       recursive_type_set: emit_info.recursive_type_set,
       fielded_variants: emit_info.fielded_variants,
+      untagged_json_tuple_variants: emit_info.untagged_json_tuple_variants,
       shared_types: emit_info.shared_types,
       ownership_index: emit_info.ownership_index,
       movable: fn_movable,
@@ -1619,22 +1622,30 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
         }
     }
     let rename_validations = variant_rename_validations_for_policy(children: item.children, env: env, serde_policy: serde_policy)
+    let untagged_validations = untagged_json_tuple_variant_shape_validations(children: item.children, env: env, serde_policy: serde_policy)
     let policy_validation = match serde_policy.error_message {
       Some { value: message } => emit_rust_compile_error_item(message: message)
       None => ""
     }
-    let validations = if policy_validation == "" {
+    let validations1 = if policy_validation == "" {
       rename_validations
     } else if rename_validations == "" {
       policy_validation
     } else {
       concat(policy_validation, "\n", rename_validations)
     }
+    let validations2 = if validations1 == "" {
+      untagged_validations
+    } else if untagged_validations == "" {
+      validations1
+    } else {
+      concat(validations1, "\n", untagged_validations)
+    }
     let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy)
-    if validations == "" {
+    if validations2 == "" {
       enum_text
     } else {
-      concat(validations, "\n", enum_text)
+      concat(validations2, "\n", enum_text)
     }
   }
 }
@@ -1951,17 +1962,51 @@ fn emit_variant_from_child(child: Node, recursive_types: Set<String>, shared_typ
     } else { ty }
     concat(rename_attr, "    ", child_text, "(", final_ty, "),")
   } else {
-    // Fielded variant -- child's children are the variant's fields
-    let field_lines = child.children |> map(f =>
-      let rt_f = resolved_type(n: f)
-      let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
-      let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
-        concat("Box<", ty, ">")
-      } else { ty }
-      concat("        ", emit_ident(name: authored_name(env: env, node: f), target: Rust), ": ", final_ty, ",")
-    )
-    let fields_str = field_lines |> join(separator: "\n")
-    concat(rename_attr, "    ", child_text, " {\n", fields_str, "\n    },")
+    match serde_policy.untagged_string_variant {
+      Some { value: sv } =>
+        let sf = match serde_policy.untagged_string_field { Some { value: x } => x, None => "" }
+        let av = match serde_policy.untagged_array_variant { Some { value: x } => x, None => "" }
+        let af = match serde_policy.untagged_array_field { Some { value: x } => x, None => "" }
+        if child_text == sv {
+          let matched = child.children |> filter(f => authored_name(env: env, node: f) == sf)
+          match matched |> first {
+            Some { value: f } =>
+              let rt_f = resolved_type(n: f)
+              let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
+              let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
+                concat("Box<", ty, ">")
+              } else { ty }
+              concat(rename_attr, "    ", child_text, "(", final_ty, "),")
+            None => concat(emit_rust_compile_error_item(message: concat("internal: UntaggedJsonStringOrArray missing field ", sf)), "\n    ", child_text, "{},")
+          }
+        } else if child_text == av {
+          let matched = child.children |> filter(f => authored_name(env: env, node: f) == af)
+          match matched |> first {
+            Some { value: f } =>
+              let rt_f = resolved_type(n: f)
+              let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
+              let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
+                concat("Box<", ty, ">")
+              } else { ty }
+              concat(rename_attr, "    ", child_text, "(", final_ty, "),")
+            None => concat(emit_rust_compile_error_item(message: concat("internal: UntaggedJsonStringOrArray missing field ", af)), "\n    ", child_text, "{},")
+          }
+        } else {
+          concat(emit_rust_compile_error_item(message: concat("internal: UntaggedJsonStringOrArray unexpected variant ", child_text)), "\n    ", child_text, "{},")
+        }
+      None =>
+        // Fielded variant -- child's children are the variant's fields
+        let field_lines = child.children |> map(f =>
+          let rt_f = resolved_type(n: f)
+          let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
+          let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
+            concat("Box<", ty, ">")
+          } else { ty }
+          concat("        ", emit_ident(name: authored_name(env: env, node: f), target: Rust), ": ", final_ty, ",")
+        )
+        let fields_str = field_lines |> join(separator: "\n")
+        concat(rename_attr, "    ", child_text, " {\n", fields_str, "\n    },")
+    }
   }
 }
 
@@ -2363,33 +2408,15 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       None => qualified
     }
   } else if field_bindings |> count == 0 {
-    // Check qualified key first, then try all enum prefixes as fallback
-    // (handles cases where scrut_type is missing for field access expressions).
     let fielded_key = match resolved_parent {
       Some { value: parent } => concat(parent, "::", name)
       None => name
     }
-    let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
-      Some { value: true } => true
-      _ =>
-        // Strict: also check display-qualified name. No suffix scanning.
-        match map_get(emit_info.fielded_variants, qualified) {
-          Some { value: true } => true
-          _ => false
-        }
-    }
-    if is_fielded { concat(qualified, " { .. }") } else { qualified }
-  } else {
-    let effective_bindings = field_bindings |> filter(fb =>
-      match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
-    )
-    if effective_bindings |> count == 0 {
-      // All bindings are wildcards — check fielded_variants (same as count == 0 branch).
-      let fielded_key2 = match resolved_parent {
-        Some { value: parent } => concat(parent, "::", name)
-        None => name
-      }
-      let is_fielded2 = match map_get(emit_info.fielded_variants, fielded_key2) {
+    let is_untagged_tuple = set_contains(emit_info.untagged_json_tuple_variants, fielded_key) || set_contains(emit_info.untagged_json_tuple_variants, qualified)
+    if is_untagged_tuple {
+      concat(qualified, "(..)")
+    } else {
+      let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
         Some { value: true } => true
         _ =>
           match map_get(emit_info.fielded_variants, qualified) {
@@ -2397,24 +2424,73 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
             _ => false
           }
       }
-      if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
+      if is_fielded { concat(qualified, " { .. }") } else { qualified }
+    }
+  } else {
+    let effective_bindings = field_bindings |> filter(fb =>
+      match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
+    )
+    if effective_bindings |> count == 0 {
+      let fielded_key2 = match resolved_parent {
+        Some { value: parent } => concat(parent, "::", name)
+        None => name
+      }
+      let is_untagged_tuple2 = set_contains(emit_info.untagged_json_tuple_variants, fielded_key2) || set_contains(emit_info.untagged_json_tuple_variants, qualified)
+      if is_untagged_tuple2 {
+        concat(qualified, "(..)")
+      } else {
+        let is_fielded2 = match map_get(emit_info.fielded_variants, fielded_key2) {
+          Some { value: true } => true
+          _ =>
+            match map_get(emit_info.fielded_variants, qualified) {
+              Some { value: true } => true
+              _ => false
+            }
+        }
+        if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
+      }
     } else {
-      let binding_strs = effective_bindings |> map(fb =>
-        let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
-        let fb_pat = field_binding_pattern(n: fb)
-        if is_string_lit_pattern(p: fb_pat) {
-          concat("ref ", emit_ident(name: fb_name, target: Rust))
-        } else {
+      let tuple_key = match resolved_parent {
+        Some { value: parent } => concat(parent, "::", name)
+        None => qualified
+      }
+      let is_untagged_tuple3 = set_contains(emit_info.untagged_json_tuple_variants, tuple_key) || set_contains(emit_info.untagged_json_tuple_variants, qualified)
+      if is_untagged_tuple3 && effective_bindings |> count == 1 {
+        match effective_bindings |> first {
+          Some { value: fb } =>
+            let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+            let fb_pat = field_binding_pattern(n: fb)
+            if is_string_lit_pattern(p: fb_pat) {
+              concat(qualified, "(ref ", emit_ident(name: fb_name, target: Rust), ")")
+            } else {
+              let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
+              if is_shorthand {
+                concat(qualified, "(", emit_ident(name: fb_name, target: Rust), ")")
+              } else {
+                let pat_str = emit_pattern(pattern: fb_pat, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+                concat(qualified, "(", pat_str, ")")
+              }
+            }
+          None => concat(qualified, " { .. }")
+        }
+      } else {
+        let binding_strs = effective_bindings |> map(fb =>
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          let fb_pat = field_binding_pattern(n: fb)
+          if is_string_lit_pattern(p: fb_pat) {
+            concat("ref ", emit_ident(name: fb_name, target: Rust))
+          } else {
             let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
             else {
               let pat_str = emit_pattern(pattern: fb_pat, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
               concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
             }
-        }
-      )
-      let bindings_str = binding_strs |> join(separator: ", ")
-      concat(qualified, " { ", bindings_str, ", .. }")
+          }
+        )
+        let bindings_str = binding_strs |> join(separator: ", ")
+        concat(qualified, " { ", bindings_str, ", .. }")
+      }
     }
   }
 }
@@ -2552,33 +2628,15 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       None => qualified
     }
   } else if field_bindings |> count == 0 {
-    // Check qualified key first, then try all enum prefixes as fallback
-    // (handles cases where scrut_type is missing for field access expressions).
     let fielded_key = match resolved_parent {
       Some { value: parent } => concat(parent, "::", name)
       None => name
     }
-    let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
-      Some { value: true } => true
-      _ =>
-        // Strict: also check display-qualified name. No suffix scanning.
-        match map_get(emit_info.fielded_variants, qualified) {
-          Some { value: true } => true
-          _ => false
-        }
-    }
-    if is_fielded { concat(qualified, " { .. }") } else { qualified }
-  } else {
-    let effective_bindings = field_bindings |> filter(fb =>
-      match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
-    )
-    if effective_bindings |> count == 0 {
-      // All bindings are wildcards — check fielded_variants (same as count == 0 branch).
-      let fielded_key2 = match resolved_parent {
-        Some { value: parent } => concat(parent, "::", name)
-        None => name
-      }
-      let is_fielded2 = match map_get(emit_info.fielded_variants, fielded_key2) {
+    let is_untagged_tuple = set_contains(emit_info.untagged_json_tuple_variants, fielded_key) || set_contains(emit_info.untagged_json_tuple_variants, qualified)
+    if is_untagged_tuple {
+      concat(qualified, "(..)")
+    } else {
+      let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
         Some { value: true } => true
         _ =>
           match map_get(emit_info.fielded_variants, qualified) {
@@ -2586,29 +2644,83 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
             _ => false
           }
       }
-      if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
+      if is_fielded { concat(qualified, " { .. }") } else { qualified }
+    }
+  } else {
+    let effective_bindings = field_bindings |> filter(fb =>
+      match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
+    )
+    if effective_bindings |> count == 0 {
+      let fielded_key2 = match resolved_parent {
+        Some { value: parent } => concat(parent, "::", name)
+        None => name
+      }
+      let is_untagged_tuple2 = set_contains(emit_info.untagged_json_tuple_variants, fielded_key2) || set_contains(emit_info.untagged_json_tuple_variants, qualified)
+      if is_untagged_tuple2 {
+        concat(qualified, "(..)")
+      } else {
+        let is_fielded2 = match map_get(emit_info.fielded_variants, fielded_key2) {
+          Some { value: true } => true
+          _ =>
+            match map_get(emit_info.fielded_variants, qualified) {
+              Some { value: true } => true
+              _ => false
+            }
+        }
+        if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
+      }
     } else {
-      let binding_strs = effective_bindings |> map(fb =>
-        let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
-        let fb_pat = field_binding_pattern(n: fb)
-        if is_string_lit_pattern(p: fb_pat) {
-          concat("ref ", emit_ident(name: fb_name, target: Rust))
-        } else {
-          if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
+      let tuple_key = match resolved_parent {
+        Some { value: parent } => concat(parent, "::", name)
+        None => qualified
+      }
+      let is_untagged_tuple3 = set_contains(emit_info.untagged_json_tuple_variants, tuple_key) || set_contains(emit_info.untagged_json_tuple_variants, qualified)
+      if is_untagged_tuple3 && effective_bindings |> count == 1 {
+        match effective_bindings |> first {
+          Some { value: fb } =>
+            let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+            let fb_pat = field_binding_pattern(n: fb)
+            if is_string_lit_pattern(p: fb_pat) {
+              concat(qualified, "(ref ", emit_ident(name: fb_name, target: Rust), ")")
+            } else {
+              if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
+                concat(qualified, "(ref ", emit_ident(name: fb_name, target: Rust), ")")
+              } else {
+                let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
+                if is_shorthand {
+                  concat(qualified, "(", emit_ident(name: fb_name, target: Rust), ")")
+                } else {
+                  let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+                  let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+                  concat(qualified, "(", pat_str, ")")
+                }
+              }
+            }
+          None => concat(qualified, " { .. }")
+        }
+      } else {
+        let binding_strs = effective_bindings |> map(fb =>
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          let fb_pat = field_binding_pattern(n: fb)
+          if is_string_lit_pattern(p: fb_pat) {
             concat("ref ", emit_ident(name: fb_name, target: Rust))
           } else {
-            let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
-            if is_shorthand { emit_ident(name: fb_name, target: Rust) }
-            else {
-              let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-              let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-              concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
+            if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
+              concat("ref ", emit_ident(name: fb_name, target: Rust))
+            } else {
+              let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
+              if is_shorthand { emit_ident(name: fb_name, target: Rust) }
+              else {
+                let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+                let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+                concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
+              }
             }
           }
-        }
-      )
-      let bindings_str = binding_strs |> join(separator: ", ")
-      concat(qualified, " { ", bindings_str, ", .. }")
+        )
+        let bindings_str = binding_strs |> join(separator: ", ")
+        concat(qualified, " { ", bindings_str, ", .. }")
+      }
     }
   }
 }
@@ -3675,6 +3787,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               type_summaries: emit_info.type_summaries,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
+              untagged_json_tuple_variants: emit_info.untagged_json_tuple_variants,
               shared_types: emit_info.shared_types,
               ownership_index: emit_info.ownership_index,
               movable: emit_info.movable,
@@ -3697,6 +3810,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               type_summaries: emit_info.type_summaries,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
+              untagged_json_tuple_variants: emit_info.untagged_json_tuple_variants,
               shared_types: emit_info.shared_types,
               ownership_index: emit_info.ownership_index,
               movable: map_insert(emit_info.movable, acc_name, true),
@@ -4434,6 +4548,21 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         // emit_typed_record_lit produces raw struct expressions.
         empty_raw
       } else {
+        if fields |> count == 1 && set_contains(emit_info.untagged_json_tuple_variants, display_tn) {
+          match fields |> first {
+            Some { value: f } =>
+              let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
+              let f_value = field_init_node_value(n: f)
+              let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+              let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: f_name)
+                && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
+              let field_val = if needs_wrap {
+                concat("Some(", val_str, ")")
+              } else { val_str }
+              concat(display_tn, "(", field_val, ")")
+            None => concat(display_tn, " {}")
+          }
+        } else {
         let field_strs = fields |> map(f =>
           let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
           let f_value = field_init_node_value(n: f)
