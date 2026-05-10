@@ -14,6 +14,12 @@
 //! `ROADMAP.md` §"Post-merge debt" row "Hand-Rust census" / T-PB-B test subset;
 //! when those rows can express this four-lens snapshot as `.dag` TestClaim data,
 //! delete this module and its `tests/integration.rs` registration.
+//!
+//! **Gate #84 / gunbc#2650:** migrating countdown symbolic-cost assertions to `.dag`
+//! `SymbolicCostExprEquals` remains blocked until user `tests/dag` modules can structurally
+//! lower `SizeVariable` with `display_name: String?` absent literals (M1(2.8); blocker token
+//! `M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA`). Report-shaped parity slices (`ComplexitySummary`,
+//! workflow parallelism, effect enumeration) track under `Gate73_ReportPredicateCarriers`.
 
 use std::sync::OnceLock;
 

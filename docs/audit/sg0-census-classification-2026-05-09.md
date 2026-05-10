@@ -86,7 +86,7 @@
 | 12 | `…tegration/bridge_lower_helpers_patch_zero_residual_test.rs` | G | Local/small bridge (default) | ✓ |
 | 13 | `…er/tests/integration/canonical_lens_bridge_ratchet_test.rs` | E | T-LensProducer-Retirement | ✓ |
 | 14 | `…gration/cementing/cementing_lens_registry_dispatch_test.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
-| 15 | `…gration/cementing/complexity_lens_behavioral_completion.rs` | G | Local/small bridge (default) | ✓ |
+| 15 | `…gration/cementing/complexity_lens_behavioral_completion.rs` | C5 | Temporary Rust cementing receipt for published `ComplexitySummary` carrier; blocked from `.dag` by M1(2.8) structural expected-value literals | ✓ |
 | 16 | `…tests/integration/cementing/memory_peak_cost_basis_demo.rs` | G | Local/small bridge (default) | ✓ |
 | 17 | `src/v3/compiler/tests/integration/common/budgeted.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
 | 18 | `src/v3/compiler/tests/integration/common/cached_compile.rs` | G | (no comment — untagged; Mgr review needed) | — UNTAGGED |
@@ -205,4 +205,3 @@
 2. For each Class A-F entry: confirm dissolution-trigger comment matches lane gate; surface drift to lane-Mgr if mismatch.
 3. For each untagged entry: add explicit dissolution-trigger comment per option-(c) discipline OR escalate as "no clear path" to Director.
 4. Classifications fold back into `docs/audit/r3-debt-sweep-2026-05-06.md` §1 Class A-G rows as per-entry sub-rows or row-aggregation.
-
