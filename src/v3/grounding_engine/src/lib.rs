@@ -980,12 +980,6 @@ mod tests {
     }
 
     #[test]
-    fn first_enumerated_pilot_row_matches_mirror_i8() {
-        validate_first_rust_pilot_row_matches_mirror()
-            .expect("lowered list rows match RUST_PILOT_PRIMITIVES");
-    }
-
-    #[test]
     fn all_enumerated_pilot_rows_match_mirror_including_floats() {
         validate_rust_pilot_rows_match_mirror()
             .expect("all lowered list rows match RUST_PILOT_PRIMITIVES, including f32/f64");
