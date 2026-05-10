@@ -101,6 +101,8 @@ const R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME: &str =
 /// memoization scaffolding. Repeated-call caching remains deferred to the purity+cost lens
 /// composition producer.
 const R3_ONE_SHOT_NO_MEMO_WITNESS_LENS_NAME: &str = "r3_auto_memoization_one_shot_no_cache_witness";
+// L5 scaffold: this duplicates the fixture marker type names until
+// `std.verification.ForAllTargets` carries a typed target/toolchain edge set.
 const L5_REQUIRED_TOOLCHAINS: &[&str] =
     &["L5RustcToolchain", "L5Python3Toolchain", "L5GoToolchain"];
 
@@ -645,6 +647,8 @@ fn l5_target_scratch(label: &str) -> Result<(std::path::PathBuf, W1RustEmitScrat
 }
 
 fn l5_rust_emit_output_int(program_dag: &Dag, claim_file: &str) -> Result<i64, String> {
+    // Match the W1 Rust emitter path: `emit_rust` can recurse deeply on generated programs, while
+    // the Python/Go text emitters are currently shallow enough to run on the caller stack.
     let rust_src = std::thread::scope(|s| -> Result<String, String> {
         let handle = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
@@ -4089,8 +4093,9 @@ impl<'a> TestRunner<'a> {
             Err(msg) => return ClaimResult::Fail(format!("ForAllTargets(L5): {msg}")),
         };
         // Dissolution trigger: replace this ExecuteCommand-shaped scaffold once
-        // `std.verification.ForAllTargets` drops the inert command triple and
-        // carries only typed target-observation edges.
+        // `std.verification.ForAllTargets` drops the inert command triple, carries only typed
+        // target-observation edges, and owns the toolchain requirement set instead of mirroring it
+        // through Rust string constants.
         if command != "true" || !args.is_empty() || expect_exit_code != 0 {
             return ClaimResult::Fail(format!(
                 "ForAllTargets(L5) expects inert scaffold payload true/[]/0; got command=`{command}`, args={args:?}, expect_exit_code={expect_exit_code}. \
