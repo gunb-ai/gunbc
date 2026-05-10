@@ -9,6 +9,11 @@
 //! `unused_parameters` and `structural_resolution` stay `Compiles` placeholders in `.dag` until
 //! strict user modules can freeze the corresponding list carriers without M1(2.8) opaque-body
 //! diagnostics; Rust receipts below cover `UnusedParametersLens` / `lens_structural_resolution::check`.
+//!
+//! **INVARIANTS P5(b) checkable receipt:** net hand-Rust here is paired with deletions on the same
+//! PR (`tmp_import_test.dag`, `r3_gate_87_effect_enum_probe.rs` + `integration.rs` wiring). Remaining
+//! work toward full §Acceptance frozen-v2 cementing is tracked in `ROADMAP.md` under the **v3 lens
+//! capability honesty pass** bullet (cementing-test discipline follow-up).
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;

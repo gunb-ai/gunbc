@@ -11,6 +11,9 @@
 //! the retired `t_pb_b_1_tests_dag_smoke_test` (runner evaluation of embedded
 //! `TestClaim.source` is orthogonal). Still
 //! **not** a `pb_*` gate and still not a Rust-deletion signal.
+//!
+//! R3 gate #87 `R3_GATE_87_CEMENTING_REGEN_SUITES` wiring: **INVARIANTS P5(b)** receipt is the
+//! paired deletion + module doc on `r3_gate_87_lens_cementing_regen_receipts_test` (same PR).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
