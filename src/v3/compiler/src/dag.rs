@@ -1316,10 +1316,12 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
 ///
 /// This is option P-c from `docs/design-substrate-carrier-port-program.md`: keep
 /// `TransformNode` minimal and derive a named side table from lowered call
-/// structure. It currently proves arithmetic evidence only for direct self-call
-/// arguments. Other callable edges are still represented, but their argument
-/// positions fail closed to [`SubValueRelation::SubValueUnknown`] until the
-/// producer can prove stronger mutual-recursive or cross-call facts.
+/// structure. The producer emits one row per live callable transform and one
+/// [`SubValueRelation`] per argument: [`SubValueRelation::ArithmeticDescent`],
+/// structural [`SubValueRelation::StrictSubValue`] for match payload /
+/// field-projection descents, [`SubValueRelation::PreservedValue`], and
+/// fail-closed unknowns for edges whose descent cannot be proven from the
+/// lowered graph.
 pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
     let mut entries = Vec::new();
 
