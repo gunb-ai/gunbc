@@ -3790,7 +3790,6 @@ pub mod lens_effect_enumeration {
 /// wrapped here inline (same host pattern as `lens_cost` / `lens_provenance`).
 pub mod lens_unused_parameters {
     use crate::dag::{NodeId, PortId};
-    use crate::diagnostics::SourceSpan;
     use crate::Dag;
 
     mod generated {
@@ -3817,7 +3816,6 @@ pub mod lens_unused_parameters {
         pub function: NodeId,
         pub parameter: PortId,
         pub parameter_index: usize,
-        pub function_span: SourceSpan,
     }
 
     pub struct UnusedParametersLens<'a> {
@@ -3837,7 +3835,6 @@ pub mod lens_unused_parameters {
                     parameter: violation.parameter,
                     parameter_index: usize::try_from(violation.parameter_index)
                         .expect("compiled lens should emit non-negative parameter indexes"),
-                    function_span: violation.function_span,
                 })
                 .collect()
         }
@@ -4955,10 +4952,10 @@ pub(crate) mod infer_helpers {
     }
 
     pub(crate) use generated::{
-        behavior_output_port, behavior_span, normalize_instantiation_arguments,
-        payload_binding_span, push_template_argument_binding, resolve_template_argument_value,
-        template_argument_value, template_arguments_match as generated_template_arguments_match,
-        NormalizedInstantiationArgs, TemplateArgumentBinding, TemplateArgumentsMatch,
+        behavior_output_port, normalize_instantiation_arguments, payload_binding_span,
+        push_template_argument_binding, resolve_template_argument_value, template_argument_value,
+        template_arguments_match as generated_template_arguments_match, NormalizedInstantiationArgs,
+        TemplateArgumentBinding, TemplateArgumentsMatch,
     };
 
     #[cfg(test)]
@@ -4970,6 +4967,8 @@ pub(crate) mod infer_helpers {
 /// Consumed from `lower.rs`; `parse_generated.rs` keeps its own `&SourceSpan` helper for
 /// parser-local span fusion without cloning.
 pub(crate) mod lower_helpers {
+    use crate::diagnostics::SourceSpan;
+
     #[allow(
         dead_code,
         unused_imports,
@@ -4979,7 +4978,7 @@ pub(crate) mod lower_helpers {
         clippy::collapsible_else_if
     )]
     mod generated {
-        use crate::diagnostics::SourceSpan;
+        use crate::diagnostics::SourceByteSpan;
         use crate::parse_surface;
         use crate::parse_surface::{SurfaceExpr, SurfaceItem, SurfacePattern};
 
@@ -4988,10 +4987,30 @@ pub(crate) mod lower_helpers {
 
     pub(crate) use generated::{expr_span, item_span, pattern_binding_names};
 
+    /// Byte extent of a surface item within its compilation unit (no `SourceSpan.file`
+    /// on the lens surface — R3 gate #31). For a full [`SourceSpan`], use
+    /// [`crate::parse::expr_span`] on the underlying expression or read the item's
+    /// own `span` fields.
+    pub(crate) fn surface_item_span(item: &parse_surface::SurfaceItem) -> &SourceSpan {
+        use crate::parse_surface::SurfaceItem;
+        match item {
+            SurfaceItem::Let(i) => crate::parse::expr_span(&i.expr),
+            SurfaceItem::Fn(i) => &i.span,
+            SurfaceItem::FnExternalBody(i) => &i.span,
+            SurfaceItem::Data(i) => &i.span,
+            SurfaceItem::Module(i) => &i.span,
+            SurfaceItem::Import(i) => &i.span,
+            SurfaceItem::TypeAtom(i) => &i.span,
+            SurfaceItem::TypeRecord(i) => &i.span,
+            SurfaceItem::TypeSum(i) => &i.span,
+            SurfaceItem::TypeAlias(i) => &i.span,
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::{expr_span, item_span, pattern_binding_names};
-        use crate::diagnostics::SourceSpan;
+        use crate::diagnostics::{SourceByteSpan, SourceSpan};
         use crate::parse_surface::{SurfaceExpr, SurfaceItem, SurfacePattern, SurfacePatternField};
 
         #[test]
@@ -5001,7 +5020,7 @@ pub(crate) mod lower_helpers {
                 value: crate::parse_surface::SurfaceLiteral::Int("1".into()),
                 span: span.clone(),
             };
-            assert_eq!(expr_span(&e), span);
+            assert_eq!(expr_span(&e), SourceByteSpan::new(10, 20));
         }
 
         #[test]
@@ -5018,7 +5037,7 @@ pub(crate) mod lower_helpers {
                         span: expr_span_value.clone(),
                     },
                 }),
-                expr_span_value
+                SourceByteSpan::new(50, 60)
             );
             assert_eq!(
                 item_span(&SurfaceItem::Fn {
@@ -5035,7 +5054,7 @@ pub(crate) mod lower_helpers {
                     },
                     span: item_span_value.clone(),
                 }),
-                item_span_value
+                SourceByteSpan::new(30, 40)
             );
         }
 
