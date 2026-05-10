@@ -16,7 +16,6 @@ fn unused_parameter_indexes_for_source(source: &str, file: &str) -> Vec<usize> {
     let mut indexes: Vec<_> = lens
         .query(&UnusedParametersConfig::default())
         .into_iter()
-        .filter(|violation| violation.function_span.file == file)
         .map(|violation| violation.parameter_index)
         .collect();
     indexes.sort_unstable();
