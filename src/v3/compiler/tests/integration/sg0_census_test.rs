@@ -319,6 +319,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
+    // R3 gate #68 (`anthropic_wire_demonstration`): hermetic typed request/response
+    // cycle over the Anthropic Messages wire surface using a deterministic mock.
+    "src/v3/compiler/tests/integration/anthropic_messages_wire_demo_test.rs",
     // T-Ground services.dag PR-β anthropic_operations Phase 1 pilot
     // (#1252). Hand-authored ratchet entry added per SG-0 census discipline.
     "src/v3/compiler/tests/integration/anthropic_operations_test.rs",
