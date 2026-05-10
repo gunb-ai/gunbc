@@ -3716,6 +3716,22 @@ impl Dag {
         WorkflowRoot::NoRoot
     }
 
+    /// Node id of the last [`Behavior::Bind`] in this DAG (same reverse scan as [`Self::workflow_root_port`]).
+    ///
+    /// [`Dag::try_register_lane2_workflow_effect`] accepts [`Behavior::Value`] and [`Behavior::Bind`]
+    /// only. The workflow root **port**'s `produced_by` may be a [`Behavior::Loop`] or
+    /// [`Behavior::Transform`] (e.g. `std.list.fold` lowering); staging `lane2_workflow` must target
+    /// this **Bind shell** so registration cannot silently no-op while the sequential indicator still
+    /// reads `0`.
+    pub fn workflow_lane2_subject(&self) -> Option<NodeId> {
+        for behavior in self.nodes.iter().rev() {
+            if let Behavior::Bind(_) = behavior {
+                return Some(behavior.id());
+            }
+        }
+        None
+    }
+
     pub fn optional_match_disj(&self, cardinality_decl_id: DeclarationId) -> Option<DeclarationId> {
         self.optional_match_disjs.get(&cardinality_decl_id).copied()
     }

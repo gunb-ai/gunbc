@@ -17,12 +17,25 @@
 
 use std::fs;
 use std::path::PathBuf;
+use v3_compiler::test_runner::{ClaimResult, TestRunner};
+use v3_compiler::{compile_to_dag, CompileError};
 
 fn test_runner_source() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("src")
         .join("test_runner.rs");
     fs::read_to_string(&path).expect("read test_runner.rs source")
+}
+
+fn compile_clean(source: &str, file: &str) -> v3_compiler::dag::Dag {
+    match compile_to_dag(source, file) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => panic!(
+            "{file} should compile cleanly, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(err) => panic!("{file} should compile cleanly, got {err:?}"),
+    }
 }
 
 /// Strip Rust comments from `src` so the bridge ratchets anchor on
@@ -353,6 +366,31 @@ fn canonical_lens_declaration_ref_name_dispatch_helpers_pinned() {
          semantic dispatch must not route by resolving a lens DeclarationRef \
          back to declaration spelling."
     );
+}
+
+#[test]
+fn bridge_retirement_demonstration() {
+    // R3 gate #69: execute one retired-bridge replacement path. The
+    // `lens_output_equals_gate` fixture carries `LensOutputEquals(
+    // named_function_count, ProgramInput {}, expected)`; the runner resolves
+    // the lens as a `DeclarationRef` in the fixture Dag and applies it through
+    // production `apply_lens_declaration`, not via canonical-lens
+    // `include_str!` bytes or `lens_decl.name` dispatch.
+    let src = strip_comments(&test_runner_source());
+    assert_eq!(count_canonical_lens_include_str_bridges(&src), 0);
+    assert_eq!(count_lens_name_eq_dispatches(&src), 0);
+    assert_eq!(count_lens_name_lookups(&src), 0);
+    assert_eq!(count_declaration_ref_name_dispatch_helpers(&src), 0);
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
+    let source = fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
+    let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
+    let results = TestRunner::new(&dag).run_suite("r1_lens_output_equals_suite");
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].claim_name, "lens_output_equals_gate");
+    assert_eq!(results[0].result, ClaimResult::Pass);
 }
 
 #[test]
