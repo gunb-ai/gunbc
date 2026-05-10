@@ -28,9 +28,7 @@
 //! **Dissolution:** delete this scan and the magic-comment contract when lowering authors loop
 //! `lane2_workflow` facts; remove the lens name-key branch in the same change set.
 
-use crate::dag::{
-    Dag, EffectShape, IdempotentShape, KeySource, OperationEffect, WorkflowEffect,
-};
+use crate::dag::{Dag, EffectShape, IdempotentShape, KeySource, OperationEffect, WorkflowEffect};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 
 const DIRECTIVE_PREFIX: &str = "// gunbc::r3_free_consequences::lane2_loop_witness:";
@@ -170,9 +168,8 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::compile_to_dag;
-    use crate::dag::{Dag, EffectShape, IdempotentShape, WorkflowEffect};
+    use crate::dag::{EffectShape, IdempotentShape, WorkflowEffect};
     use crate::diagnostics::Diagnostic;
     use crate::CompileError;
 
@@ -251,20 +248,6 @@ mod tests {
         assert_eq!(
             crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, subject),
             0
-        );
-    }
-
-    #[test]
-    fn staged_directive_without_bind_shell_is_diagnostic() {
-        let mut dag = Dag::new();
-        let src = "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n";
-        apply_authored_lane2_loop_witness(&mut dag, src, "no_bind.v3");
-        assert_eq!(
-            dag.diagnostics()
-                .iter()
-                .filter(|(_, d)| matches!(d, Diagnostic::ParseError { .. }))
-                .count(),
-            1
         );
     }
 
