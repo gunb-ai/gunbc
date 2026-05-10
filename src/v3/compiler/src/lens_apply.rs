@@ -1205,27 +1205,24 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
         let src = r#"module w
 fn lens_composition_op(a: Int, b: Int) -> Int = a + b
 "#;
-        let lens_program = compile_to_dag(src, "eval_bridge_vs_ctx.v3").expect("compiles");
-        let lens_decl_id = lens_program
-            .declaration_by_name("lens_composition_op")
-            .unwrap()
-            .id;
-        let decl = lens_program.declaration(lens_decl_id);
+        let dag = compile_to_dag(src, "eval_bridge_vs_ctx.v3").expect("compiles");
+        let lens_decl_id = dag.declaration_by_name("lens_composition_op").unwrap().id;
+        let decl = dag.declaration(lens_decl_id);
         let TypeConnective::Arrow { body, .. } = &decl.connective else {
             panic!("expected arrow lens");
         };
         let ArrowBody::UserDefined(root) = body else {
             panic!("expected user-defined arrow body");
         };
-        let root_bind = (*root).bind(&lens_program);
+        let root_bind = (*root).bind(&dag);
         let inputs = &[
             FieldValue::Literal(literal_bits_int(11)),
             FieldValue::Literal(literal_bits_int(-3)),
         ];
         let via_bridge =
-            super::try_apply_lens_via_evaluator_literals_only(lens_program, root_bind, inputs)
+            super::try_apply_lens_via_evaluator_literals_only(&dag, root_bind, inputs)
                 .expect("literal Int add must succeed on evaluator bridge");
-        let mut ctx = EvalCtx::new(lens_program);
+        let mut ctx = EvalCtx::new(&dag);
         for (port, arg) in root_bind.params.iter().zip(inputs.iter()) {
             ctx.bind_top(*port, arg.clone());
         }
@@ -1238,17 +1235,17 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
         let lens_src = r#"module w
 fn lens_composition_op(a: Int, b: Int) -> Int = a + b
 "#;
-        let lens_program = compile_to_dag(lens_src, "reflect_skip_bridge_lens.v3").expect("compiles");
+        let lens_dag = compile_to_dag(lens_src, "reflect_skip_bridge_lens.v3").expect("compiles");
         let prog_under_test =
             compile_to_dag("let x: Int = 1", "reflect_skip_bridge_prog.v3").expect("prog compiles");
-        let id = lens_program.declaration_by_name("lens_composition_op").unwrap().id;
+        let id = lens_dag.declaration_by_name("lens_composition_op").unwrap().id;
         let inputs = &[
             FieldValue::Literal(literal_bits_int(5)),
             FieldValue::Literal(literal_bits_int(7)),
         ];
-        let bare = apply_lens_declaration(lens_program, None, id, inputs).expect("bare apply");
+        let bare = apply_lens_declaration(&lens_dag, None, id, inputs).expect("bare apply");
         let with_put =
-            apply_lens_declaration(lens_program, Some(&prog_under_test), id, inputs).expect("put");
+            apply_lens_declaration(&lens_dag, Some(&prog_under_test), id, inputs).expect("put");
         assert_eq!(bare, with_put);
     }
 
