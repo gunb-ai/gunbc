@@ -162,7 +162,7 @@ PM cannot determine from current docs which is correct. This is itself a finding
 
 **T-Lens-Self-Application Mgr-ownership**: not clearly mapped to one of the 5 Mgrs in any doc surveyed. Listed in §3 as RED waiting on T-Workflow-As-Data + T-Lens-Application-Surface. Owns 3-4 gates including the #59 "recursive_flex_demonstration_landed" narrative-thesis cash-out. **Finding F2**.
 
-**Verification Mgr (wise-bear-525) state at HEAD**: not surveyed for current dispatch / open assignments. With ~28 R3 gates under their lane-set, this is a load-bearing knowledge gap. **Finding F3**.
+**Verification Mgr (wise-bear-525) state at HEAD**: ~~not surveyed; load-bearing knowledge gap~~ — **AMENDED 2026-05-10**: PM follow-up survey (operator correction) confirmed Verification Mgr active with ~12 worker children. Visible worker sessions tied to verification gates: deep-ibex-520 (#11 TC1), lively-raven-404 (#13 TC3), eager-wren-817 (#14 RustDag), still-ferret-898 (#8 SG-0 non-test), witty-swift-269 (alternate Verification Mgr session). Mgr-tier work flows through worker dispatch → worker PRs, not Mgr-direct PR authoring; PM's first-pass survey using Mgr-direct activity proxies (PR-author / comment-author) was structurally wrong. F3 **RETRACTED**.
 
 ---
 
@@ -191,15 +191,19 @@ PM cannot determine from current docs which is correct. This is itself a finding
 
 **Remediation**: confirm Mgr-owner — likely Substrate Mgr or PB Mgr. Add to §3 lane status row + r3-structure.md §"Lane structure" if missing.
 
-### F3 — Verification Mgr state unsurveyed; ~30% of R3 gates owned
+### ~~F3 — Verification Mgr state unsurveyed~~ **RETRACTED 2026-05-10**
 
-**Severity**: HIGH — Verification Mgr (wise-bear-525 / gunbc#2075) owns ~28 of 96 R3 gates including the entire T-Free-Consequences-Demonstration suite (10 gates) and the L4/L5 corpus stack.
+**Severity**: ~~HIGH~~ — **N/A**. Finding invalidated by operator correction.
 
-**Evidence**: PM survey today (2026-05-10) included subtree digest from 2026-05-09 ~23:04Z that did NOT list Verification Mgr (wise-bear-525) — only PB / Substrate / Grounding / Debt-Paydown / Director. wise-bear-525 issue exists at gunbc#2075 (open) but was not in the dashboard subtree at survey time.
+**What was claimed**: that Verification Mgr (wise-bear-525 / gunbc#2075) was dormant 2.5 days with no worker children, owning ~28 R3 gates with no dispatch surface.
 
-**Implication**: if Verification Mgr has no active worker children OR is auto-archive-eligible (similar to Evaluator Mgr fate), the entire T-Free-Consequences + L4/L5/L7 + T-CostLens consumer tail loses its dispatch surface.
+**What's true**: Verification Mgr is active with ~12 worker children. Visible verification-lane workers: deep-ibex-520 (#11 TC1), lively-raven-404 (#13 TC3), eager-wren-817 (#14 RustDag), still-ferret-898 (#8 SG-0 non-test), witty-swift-269 (alternate Verification Mgr session). Likely ~7 more not surfaced by PM's title-keyword search.
 
-**Remediation**: PM survey wise-bear-525 inbox + open assignments + worker children **today**. Surface state.
+**Why PM got it wrong**: PM survey used Mgr-direct-activity proxies (PR-author / comment-author / inbox commenter). But Mgr-tier work flows through worker dispatch — workers spawn under Mgr inbox issue references, do their work in worker PRs (which the dashboard tracks but which don't show up under "PRs by wise-bear-525"). Subtree digest from earlier was depth-3 from PM's session (deep-wolf-155); wise-bear-525 is sibling-Mgr under Director, not PM's child, so children weren't visible from PM's vantage.
+
+**Lesson recorded**: PM survey discipline — to assess Mgr-tier health, query worker children + assignment-issue references, not Mgr's direct PR/comment activity. Adjusts methodology for future audits.
+
+**Status**: F3 retracted; no remediation needed. T-Free-Consequences + L4/L5/L7 + T-CostLens have active dispatch via Verification Mgr's worker children.
 
 ### F4 — SG-0 closure-graph incomplete; ~57 entries lack named retirement event
 
@@ -245,13 +249,13 @@ PM cannot determine from current docs which is correct. This is itself a finding
 
 ### F8 — Mgr concentration risk: Substrate ~40% / Verification ~30%
 
-**Severity**: MEDIUM — single-Mgr stall risk.
+**Severity**: ~~MEDIUM~~ → **LOW** (downgraded 2026-05-10 — both top-2 Mgrs confirmed healthy with active worker children; concern is now structural-precedent rather than acute-stall risk).
 
 **Evidence**: Substrate Mgr owns ~38 of 96 gates; Verification Mgr owns ~28. Two Mgrs collectively own ~70%.
 
-**Implication**: if either stalls, ~70% of gates lose dispatch surface. The Evaluator-Mgr-auto-archive pattern (3 stranded workstreams TC2/TC3/D4) already demonstrates the failure mode.
+**Implication (revised)**: if either Mgr ever auto-archives or stalls, ~70% of gates lose dispatch surface. The Evaluator-Mgr-auto-archive pattern (3 stranded workstreams TC2/TC3/D4) demonstrates the failure mode is real — but the V-stack is currently active (per F3 retraction).
 
-**Remediation**: Director-tier — consider Mgr load-balancing OR explicit succession plan when a Mgr archives. Existing Evaluator-Mgr-stranded surface is the precedent.
+**Remediation (advisory, not urgent)**: Director-tier policy — define succession-plan for Mgr-archive events (similar to today's Evaluator Mgr stranded surface). Not load-bearing for current cycle; record as standing-policy gap for next R3 close-program retrospective.
 
 ### F9 — `r3_debt_paydown_zero_remaining` definitional clarity ✓ (no gap)
 
@@ -395,7 +399,7 @@ If any of those four don't hold, R3 likely slips past 12 weeks.
 
 3. **Is the carve-deferral pattern (#11 TC1) extensible?** If subsequent gates hit hard substrate dependencies, do we accept more carve-outs (eroding 96 count) or hold the line at 96?
 
-4. **Verification Mgr scope clarity (F3 + F1)**: is wise-bear-525 expected to own ~30% of gates as the program plan implies? Has this been ratified?
+4. **T-TestGen lane structural status (F1)**: is T-TestGen folded into T-Tests-As-Data-Completeness, closed at R2, or genuinely orphaned? Director-tier answer needed.
 
 5. **Mgr concentration risk (F8)**: at what concentration ratio does operator want to trigger load-balancing?
 
@@ -407,7 +411,7 @@ If any of those four don't hold, R3 likely slips past 12 weeks.
 
 - **Trigger**: Brian directive 2026-05-10 ~01:00Z
 - **Inputs surveyed**: docs/r3-program-plan.md (§1, §1.5, §1.7, §1.8, §3, §10.3); docs/r3-structure.md (§"Lane structure"); src/v3/compiler/tests/integration/sg0_census_test.rs (counts); ROADMAP.md §:53/§:177; recent merge log (last 30 commits); GH issue list (Mgr inboxes + open assignments); subtree digest 2026-05-09 23:04Z + 2026-05-10 ~00:00Z
-- **Audit-doc cross-refs**: docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md; r3-cluster-f-sequencing-plan-2026-05-09.md; r3-pb0-velocity-walk-2026-05-09.md; v3-comprehensive-debt-audit-2026-05-09.md; r3-cluster-analysis-2026-05-09.md; r3-novel-findings-dispatch-tracker-2026-05-09.md; branch-protection-recommendation-2026-05-09.md
+- **Audit-doc cross-refs**: `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md`; `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md`; `docs/audit/r3-pb0-velocity-walk-2026-05-09.md`; `docs/audit/v3-comprehensive-debt-audit-2026-05-09.md`; `docs/audit/r3-cluster-analysis-2026-05-09.md`; `docs/audit/r3-novel-findings-dispatch-tracker-2026-05-09.md`; `docs/admin/branch-protection-recommendation-2026-05-09.md`
 - **PM authority**: this is PM-tier observation + recommendation. Substrate-shape changes / Mgr scope amendments / new ratchet creation ALL require operator-tier or Director-tier ratification per session role doc + project memory `user_session_role_pm_under_director.md`.
 - **Drift discipline**: counts at this commit are HEAD-anchored; any stale claim at audit-merge-time is a drift candidate per `feedback_thesis_gate_state_drift`.
 
