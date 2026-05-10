@@ -1,0 +1,46 @@
+// R3 gate #87 — `LensRegistryEntry` `cost` (complexity.dag) Lane-E harness on merge-sort
+// (`r1_merge_sort_pair.v3` program text; same authority as `r1_gates.dag` `complexity_merge_sort_v3_matches_v2_oracle`).
+//
+// T-LaneE stubs: `DeclarationRef` lowering only (bodies `miss_int_lookup()` — **not** consulted).
+// `DifferentialEquals(v3_program_cost, v2_oracle_cost, …)` → `test_runner::eval_lane_e_differential_cost_lineage`:
+// host forward-fold vs emit `lens_cost::cost_of` (see `r1_gates.dag` comment block ~`v3_program_cost`).
+
+module v3.compiler.tests.t_r3.gate_87_cementing_regen_cost
+
+import std.substrate { Dag, PortId }
+import std.verification {
+  DifferentialEquals,
+  ProgramOutputBind,
+  TestClaim,
+  TestSuite
+}
+import v3.std.lookup { Lookup, miss_int_lookup }
+
+fn v3_program_cost(d: Dag, port_id: PortId) -> Lookup<Int> =
+  miss_int_lookup()
+
+fn v2_oracle_cost(d: Dag, port_id: PortId) -> Lookup<Int> =
+  miss_int_lookup()
+
+data merge_sort_out: Int = 0
+
+data gate87_merge_sort_program_input: ProgramOutputBind = {
+  output_ref: merge_sort_out
+}
+
+data gate87_merge_sort_v3_matches_v2_oracle: TestClaim = {
+  name: "cementing_regen_cost",
+  source: "import std.list { List, cons, singleton, empty }\n\nlet xs: List<Int> = cons(2, singleton(1))\n\nfn merge_sort_pair(xs: List<Int>) -> List<Int> =\n  match xs {\n    Empty => empty()\n    Cons(p0) =>\n      match p0.tail {\n        Empty => xs\n        Cons(p1) =>\n          match p1.tail {\n            Empty =>\n              if p0.head < p1.head\n              then cons(p0.head, singleton(p1.head))\n              else cons(p1.head, singleton(p0.head))\n            Cons(_) => xs\n          }\n      }\n  }\n\nlet merge_sort_out: List<Int> = merge_sort_pair(xs)\n",
+  file_name: "r3_gate_87_merge_sort_pair.v3",
+  predicate: DifferentialEquals(
+    v3_program_cost,
+    v2_oracle_cost,
+    gate87_merge_sort_program_input
+  ),
+  requires: []
+}
+
+data r3_gate_87_cementing_regen_cost_suite: TestSuite = {
+  name: "r3-gate-87/cementing/regen/cost",
+  claims: [gate87_merge_sort_v3_matches_v2_oracle]
+}

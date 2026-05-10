@@ -1,0 +1,20 @@
+// R3 gate #87 — `LensRegistryEntry` `lower_helpers` (`.dag` harness placeholder).
+// Structural receipts: `bridge_lower_helpers_patch_zero_residual_test.rs`,
+// `m2_substrate_inhabitance_test.rs`.
+
+module v3.compiler.tests.t_r3.gate_87_cementing_regen_lower_helpers
+
+import std.verification { Compiles, TestClaim, TestSuite }
+
+data cementing_regen_lower_helpers_claim: TestClaim = {
+  name: "cementing_regen_lower_helpers",
+  source: "let _: Int = 0",
+  file_name: "r3_gate_87_lower_helpers_smoke.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data r3_gate_87_cementing_regen_lower_helpers_suite: TestSuite = {
+  name: "r3-gate-87/cementing/regen/lower_helpers",
+  claims: [cementing_regen_lower_helpers_claim]
+}
