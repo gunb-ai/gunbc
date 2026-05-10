@@ -595,7 +595,7 @@ let out: Int = 0",
     );
 
     assert_eq!(
-        out.matches("make_point(&x)").count(),
+        out.matches("make_point(x)").count(),
         2,
         "non-Copy repeated call results must be re-emitted instead of moving the first bind; got: {out}"
     );
