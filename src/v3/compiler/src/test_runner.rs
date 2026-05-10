@@ -2338,6 +2338,13 @@ impl<'a> TestRunner<'a> {
             .as_ref()
             .and_then(ProgramInputRole::output_bind_name)
         {
+            if !self.lens_has_program_output_cost_signature(lens_id) {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: input_ref `{input_name}` inhabits ProgramOutputBind, \
+                     but lens `{lens_name}` does not have the structural cost signature \
+                     `fn(Dag, PortId) -> Lookup<Int>`"
+                ));
+            }
             let Some(bind) = find_bind(&program_dag, cost_bind, &claim.file_name) else {
                 return ClaimResult::Fail(format!(
                     "LensOutputEquals(cost_of): bind `{cost_bind}` not found in `{}`",
@@ -2721,6 +2728,55 @@ impl<'a> TestRunner<'a> {
                  for a DeclarationRef edge, got {other:?}"
             )),
         }
+    }
+
+    fn lens_has_program_output_cost_signature(&self, lens_id: DeclarationId) -> bool {
+        let TypeConnective::Arrow { inputs, output, .. } =
+            &self.dag.declaration(lens_id).connective
+        else {
+            return false;
+        };
+        matches!(inputs.as_slice(), [dag, port_id]
+            if self.type_ref_normalizes_to_named(*dag, "Dag")
+                && self.type_ref_normalizes_to_named(*port_id, "PortId"))
+            && self.lookup_int_type(*output)
+    }
+
+    fn type_ref_normalizes_to_named(&self, candidate: DeclarationId, expected_name: &str) -> bool {
+        let Some(expected) = self
+            .dag
+            .declaration_by_name(expected_name)
+            .map(|decl| decl.id)
+        else {
+            return false;
+        };
+        self.normalize_transparent_type(candidate) == expected
+    }
+
+    fn lookup_int_type(&self, mut current: DeclarationId) -> bool {
+        let Some(lookup_id) = self.dag.declaration_by_name("Lookup").map(|decl| decl.id) else {
+            return false;
+        };
+        for _ in 0..32 {
+            match &self.dag.declaration(current).connective {
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if *template == lookup_id => match arguments.as_slice() {
+                    [arg] => return self.type_ref_normalizes_to_named(arg.value, "Int"),
+                    _ => return false,
+                },
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if arguments.is_empty() => current = *template,
+                TypeConnective::Atom(
+                    AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+                ) => current = *next,
+                _ => return false,
+            }
+        }
+        false
     }
 
     fn program_input_role(&self, decl: &Declaration) -> Result<Option<ProgramInputRole>, String> {
