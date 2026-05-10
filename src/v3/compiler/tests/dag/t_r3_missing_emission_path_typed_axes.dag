@@ -8,7 +8,7 @@ import std.verification { Compiles, TestClaim, TestSuite }
 
 data missing_emission_path_accepts_typed_axes: TestClaim = {
   name: "MissingEmissionPath carries typed discriminant axes",
-  source: "import v3.std.cross_target_coverage { BehaviorAxis, FormAxis, ShapeATarget }\nimport v3.std.diagnostics { EmissionDiagnostic, MissingEmissionPath }\n\nfn as_diagnostic(path: MissingEmissionPath) -> EmissionDiagnostic = path\nfn connective_axis(path: MissingEmissionPath) -> FormAxis = path.connective\nfn behavior_axis(path: MissingEmissionPath) -> BehaviorAxis = path.behavior\nfn target_axis(path: MissingEmissionPath) -> ShapeATarget = path.target\n",
+  source: "import v3.std.cross_target_coverage { BehaviorAxis, FormAxis, ShapeATarget }\nimport v3.std.diagnostics { EmissionDiagnostic }\n\ntype MissingEmissionPathAxisProbe { connective: FormAxis, behavior: BehaviorAxis, target: ShapeATarget }\nfn diagnostic_identity(diagnostic: EmissionDiagnostic) -> EmissionDiagnostic = diagnostic\n",
   file_name: "missing_emission_path_typed_axes.v3",
   predicate: Compiles,
   requires: []

@@ -2136,12 +2136,7 @@ impl<'a> TestRunner<'a> {
     fn eval_compiles(&self, claim: &TestClaimValue) -> ClaimResult {
         match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(_) => ClaimResult::Pass,
-            Err(CompileError::Semantic(dag)) => {
-                eprintln!(
-                    "Compiles predicate diagnostics for {}: {:?}",
-                    claim.file_name,
-                    dag.diagnostics().iter().collect::<Vec<_>>()
-                );
+            Err(CompileError::Semantic(_)) => {
                 ClaimResult::Fail("compiled with diagnostics".to_string())
             }
             Err(err) => {
