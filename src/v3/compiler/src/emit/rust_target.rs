@@ -2888,6 +2888,13 @@ fn callable_input_disposition_for_target(
 
 pub(crate) type EmitRustMode = EmitMode;
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct RepeatedPureCallCacheWitness {
+    pub cacheable_call_binds: usize,
+    pub actual_call_binds: usize,
+    pub cached_reuse_binds: usize,
+}
+
 fn scheduling_behavior_inputs(dag: &Dag, behavior: &Behavior) -> Vec<PortId> {
     match behavior {
         Behavior::Value(_) => Vec::new(),
@@ -2995,6 +3002,45 @@ fn top_level_bind_is_cacheable_pure_call(dag: &Dag, bind: &BindNode) -> bool {
             ..
         })
     )
+}
+
+pub(crate) fn repeated_pure_call_cache_witness(
+    dag: &Dag,
+) -> Result<RepeatedPureCallCacheWitness, EmitError> {
+    let indexes = RealizationIndexes::build(dag)?;
+    let input_use_facts = InputUseFacts::build(dag, &indexes);
+    let top_level_binds = program_mode_top_level_value_binds(dag, &indexes);
+    let mut bound_names: HashMap<PortId, LocalBinding> = HashMap::new();
+    for bind in &top_level_binds {
+        bound_names.insert(bind.value, LocalBinding::Owned(bind.name.clone()));
+    }
+    let ctx = Ctx {
+        dag,
+        indexes: &indexes,
+        bound_names: &bound_names,
+        input_use_facts: &input_use_facts,
+        mode: EmitRustMode::Program,
+    };
+    let mut repeated_pure_call_cache: HashMap<String, String> = HashMap::new();
+    let mut witness = RepeatedPureCallCacheWitness {
+        cacheable_call_binds: 0,
+        actual_call_binds: 0,
+        cached_reuse_binds: 0,
+    };
+    for bind in top_level_binds {
+        if !top_level_bind_is_cacheable_pure_call(dag, bind) {
+            continue;
+        }
+        witness.cacheable_call_binds += 1;
+        let value_expr = ctx.render_top_level_value(bind.value)?;
+        if repeated_pure_call_cache.contains_key(&value_expr) {
+            witness.cached_reuse_binds += 1;
+        } else {
+            repeated_pure_call_cache.insert(value_expr, bind.name.clone());
+            witness.actual_call_binds += 1;
+        }
+    }
+    Ok(witness)
 }
 
 pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {

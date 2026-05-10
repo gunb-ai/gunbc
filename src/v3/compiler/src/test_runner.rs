@@ -2707,22 +2707,24 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        let emitted = match crate::emit_rust::emit_rust(&program_dag) {
-            Ok(s) => s,
+        let witness = match crate::emit::rust_target::repeated_pure_call_cache_witness(&program_dag)
+        {
+            Ok(witness) => witness,
             Err(err) => {
                 return ClaimResult::Fail(format!(
-                    "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): emit_rust failed for `{}`: {err:?}",
+                    "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): repeated pure-call cache witness failed for `{}`: {err:?}",
                     claim.file_name
                 ));
             }
         };
-        let actual_calls = emitted.matches(" = expensive(").count();
-        let cached_reuse = emitted.contains("let second: i64 = first;");
-        if actual_calls == 1 && cached_reuse {
+        if witness.cacheable_call_binds == 2
+            && witness.actual_call_binds == 1
+            && witness.cached_reuse_binds == 1
+        {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): expected one emitted `expensive(x)` call and `second` to reuse `first`; got {actual_calls} call(s), cached_reuse={cached_reuse}; emitted Rust: {emitted}"
+                "BinaryDimensionReportEquals({R3_AUTO_MEMOIZATION_REPEATED_PURE_CALL_CLAIM_NAME}): expected two cacheable pure-call binds, one actual emitted call bind, and one cached reuse bind; got {witness:?}"
             ))
         }
     }
