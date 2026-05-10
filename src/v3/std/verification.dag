@@ -381,9 +381,12 @@ type QuantifiedTestClaim {
   requires: List<ResourceReference>
 }
 
-// Ordered suite entries admit both existing enumerated claims and new
-// quantified family claims without splitting reporting/dependency order
-// across parallel lists.
+// Staged ordered suite-entry carrier for the post-#85 wrapper migration.
+// Today `TestSuite.claims` remains `List<TestClaim>` so existing enumerated
+// fixtures keep compiling while the quantifier substrate lands. Bounded
+// trigger: #2609 wraps existing suite entries as `Enumerated(...)` and flips
+// `TestSuite.claims` to `List<SuiteClaim>`, preserving reporting/dependency
+// order without parallel enumerated/quantified lists.
 type SuiteClaim
   = Enumerated(TestClaim)
   | Quantified(QuantifiedTestClaim)
