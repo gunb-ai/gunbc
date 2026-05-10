@@ -226,6 +226,8 @@ fn call_pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> Lookup<
   }
 ```
 
+**§3.1.1 `SameArgumentCall` vs recursive `Transform` dispatch (P3).** When `per_call_pattern_at` returns `Some(pattern)`, [`src/v3/lenses/cost.dag`](../../src/v3/lenses/cost.dag) routes every matched recursive callable through `recursive_transform_cost` / `pattern_to_iter_bound` — **not** through the operand-sum path `transform_cost_for_target`. For `SameArgumentCall`, `pattern_to_iter_bound` is **`Miss`**, so `combine_iterate` yields **`Miss`** and the transform’s result port carries **no** `Hit` symbolic-cost row from this lens slice (fail-closed). That is a deliberate narrowing versus treating same-argument self-call as operand-cost summation: here same-arg is **not** a recurrence dimension with an iterate bound (see §3.1 table and comments at `recursive_transform_cost` / `pattern_to_iter_bound` in `cost.dag`). Cementing expectations live with gate **#78** / consumer integration routes that compile real countdown fixtures; paths that only prove `SameArgumentCall` without a descent witness remain absent-cost unless elsewhere modeled.
+
 ### §3.2 Where the consumer attaches in the lens
 
 The cost lens's existing `entry_for` dispatch on `Behavior` (in [`src/v3/lenses/cost.dag`](../src/v3/lenses/cost.dag) lines 102–118) gets one new case for the recursive-call sub-case of `Transform`:
