@@ -233,6 +233,10 @@ type RustEnumWireSerde {
   rename_suffix: String?
   rename_style: String?
   error_message: String?
+  untagged_string_variant: String?
+  untagged_string_field: String?
+  untagged_array_variant: String?
+  untagged_array_field: String?
 }
 
 fn rust_serde_policy(enum_attr: String, rename_prefix: String?, rename_suffix: String?, rename_style: String?) -> RustEnumWireSerde {
@@ -241,7 +245,11 @@ fn rust_serde_policy(enum_attr: String, rename_prefix: String?, rename_suffix: S
     rename_prefix: rename_prefix,
     rename_suffix: rename_suffix,
     rename_style: rename_style,
-    error_message: none
+    error_message: none,
+    untagged_string_variant: none,
+    untagged_string_field: none,
+    untagged_array_variant: none,
+    untagged_array_field: none
   }
 }
 
@@ -251,7 +259,11 @@ fn rust_serde_policy_error(message: String) -> RustEnumWireSerde {
     rename_prefix: none,
     rename_suffix: none,
     rename_style: none,
-    error_message: Some { value: message }
+    error_message: Some { value: message },
+    untagged_string_variant: none,
+    untagged_string_field: none,
+    untagged_array_variant: none,
+    untagged_array_field: none
   }
 }
 
@@ -424,6 +436,36 @@ fn rust_internal_policy_for_encoding(encoding: Node, source_indices: Map<String,
   }
 }
 
+fn rust_untagged_json_string_or_array_policy(encoding: Node, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
+  match record_string_field(record: encoding, field_name: "string_variant", source_indices: source_indices) {
+    Some { value: sv } =>
+      match record_string_field(record: encoding, field_name: "string_field", source_indices: source_indices) {
+        Some { value: sf } =>
+          match record_string_field(record: encoding, field_name: "array_variant", source_indices: source_indices) {
+            Some { value: av } =>
+              match record_string_field(record: encoding, field_name: "array_field", source_indices: source_indices) {
+                Some { value: af } =>
+                  RustEnumWireSerde {
+                    enum_attr: "#[serde(untagged)]",
+                    rename_prefix: none,
+                    rename_suffix: none,
+                    rename_style: none,
+                    error_message: none,
+                    untagged_string_variant: Some { value: sv },
+                    untagged_string_field: Some { value: sf },
+                    untagged_array_variant: Some { value: av },
+                    untagged_array_field: Some { value: af }
+                  }
+                None => rust_serde_error_policy(message: "UntaggedJsonStringOrArray requires literal array_field")
+              }
+            None => rust_serde_error_policy(message: "UntaggedJsonStringOrArray requires literal array_variant")
+          }
+        None => rust_serde_error_policy(message: "UntaggedJsonStringOrArray requires literal string_field")
+      }
+    None => rust_serde_error_policy(message: "UntaggedJsonStringOrArray requires literal string_variant")
+  }
+}
+
 // Resolve serde enum attribute from a module-level wire_contract data item.
 // Reads WireContract.variant_encoding to determine the serde attribute:
 //   StringVariant { naming: AsAuthored } → "" (serde default: unit variants as strings)
@@ -447,6 +489,8 @@ fn resolve_wire_serde_policy_from_encoding_node(ve: Node, source_indices: Map<St
     rust_untagged_policy()
   } else if encoding_name == "TaggedVariant" {
     rust_tagged_object_policy()
+  } else if encoding_name == "UntaggedJsonStringOrArray" {
+    rust_untagged_json_string_or_array_policy(encoding: ve, source_indices: source_indices)
   } else {
     rust_serde_error_policy(message: concat("unsupported VariantEncoding: ", encoding_name))
   }
@@ -1776,53 +1820,61 @@ fn string_without_suffix(value: String, suffix: String) -> String? {
 }
 
 fn wire_variant_rename_attr_for_policy(authored: String, policy: RustEnumWireSerde) -> String {
-  match policy.rename_style {
-    Some { value: style } =>
-      if style == "StripAffixAndSnakeCase" {
-        let without_prefix = match policy.rename_prefix {
-          Some { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
-            Some { value: stripped } => stripped
-            None => return ""
+  match policy.untagged_string_variant {
+    Some { value: _ } => ""
+    None =>
+      match policy.rename_style {
+        Some { value: style } =>
+          if style == "StripAffixAndSnakeCase" {
+            let without_prefix = match policy.rename_prefix {
+              Some { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
+                Some { value: stripped } => stripped
+                None => return ""
+              }
+              None => authored
+            }
+            let without_suffix = match policy.rename_suffix {
+              Some { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
+                Some { value: stripped } => stripped
+                None => return ""
+              }
+              None => without_prefix
+            }
+            concat("    #[serde(rename = \"", to_snake(name: without_suffix), "\")]\n")
+          } else {
+            ""
           }
-          None => authored
-        }
-        let without_suffix = match policy.rename_suffix {
-          Some { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
-            Some { value: stripped } => stripped
-            None => return ""
-          }
-          None => without_prefix
-        }
-        concat("    #[serde(rename = \"", to_snake(name: without_suffix), "\")]\n")
-      } else {
-        ""
+        None => ""
       }
-    None => ""
   }
 }
 
 fn variant_rename_validation_for_policy(authored: String, policy: RustEnumWireSerde) -> String {
-  match policy.rename_style {
-    Some { value: style } =>
-      if style == "StripAffixAndSnakeCase" {
-        let without_prefix = match policy.rename_prefix {
-          Some { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
-            Some { value: stripped } => stripped
-            None => return emit_rust_compile_error_item(message: concat("variant ", authored, " does not satisfy declared wire rename prefix: ", prefix))
+  match policy.untagged_string_variant {
+    Some { value: _ } => ""
+    None =>
+      match policy.rename_style {
+        Some { value: style } =>
+          if style == "StripAffixAndSnakeCase" {
+            let without_prefix = match policy.rename_prefix {
+              Some { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
+                Some { value: stripped } => stripped
+                None => return emit_rust_compile_error_item(message: concat("variant ", authored, " does not satisfy declared wire rename prefix: ", prefix))
+              }
+              None => authored
+            }
+            match policy.rename_suffix {
+              Some { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
+                Some { value: _ } => ""
+                None => emit_rust_compile_error_item(message: concat("variant ", authored, " does not satisfy declared wire rename suffix: ", suffix))
+              }
+              None => ""
+            }
+          } else {
+            ""
           }
-          None => authored
-        }
-        match policy.rename_suffix {
-          Some { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
-            Some { value: _ } => ""
-            None => emit_rust_compile_error_item(message: concat("variant ", authored, " does not satisfy declared wire rename suffix: ", suffix))
-          }
-          None => ""
-        }
-      } else {
-        ""
+        None => ""
       }
-    None => ""
   }
 }
 
@@ -1831,6 +1883,57 @@ fn variant_rename_validations_for_policy(children: List<Node>, env: TypeEnv, ser
     |> map(child => variant_rename_validation_for_policy(authored: authored_name(env: env, node: child), policy: serde_policy))
     |> filter(text => text != "")
     |> join(separator: "\n")
+}
+
+fn untagged_json_tuple_variant_shape_validations(children: List<Node>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
+  match serde_policy.untagged_string_variant {
+    Some { value: sv } =>
+      let sf = match serde_policy.untagged_string_field { Some { value: x } => x, None => "" }
+      let av = match serde_policy.untagged_array_variant { Some { value: x } => x, None => "" }
+      let af = match serde_policy.untagged_array_field { Some { value: x } => x, None => "" }
+      if sf == "" || av == "" || af == "" {
+        emit_rust_compile_error_item(message: "UntaggedJsonStringOrArray requires string_field, array_variant, and array_field literals")
+      } else if children |> count != 2 {
+        emit_rust_compile_error_item(message: "UntaggedJsonStringOrArray coproduct must have exactly two variants")
+      } else {
+        let diags = children |> flat_map(child =>
+          let nm = authored_name(env: env, node: child)
+          if child.children |> count == 0 {
+            [emit_rust_compile_error_item(message: concat("UntaggedJsonStringOrArray requires fielded variants; got unit ", nm))]
+          } else if nm == sv {
+            let field_names = child.children |> map(f => authored_name(env: env, node: f))
+            if field_names |> count != 1 {
+              [emit_rust_compile_error_item(message: concat("UntaggedJsonStringOrArray string arm ", sv, " must declare exactly one field"))]
+            } else {
+              match field_names |> first {
+                Some { value: only } =>
+                  if only != sf {
+                    [emit_rust_compile_error_item(message: concat("UntaggedJsonStringOrArray string arm field must be named ", sf))]
+                  } else { [] }
+                None => [emit_rust_compile_error_item(message: "UntaggedJsonStringOrArray string arm field name missing")]
+              }
+            }
+          } else if nm == av {
+            let field_names = child.children |> map(f => authored_name(env: env, node: f))
+            if field_names |> count != 1 {
+              [emit_rust_compile_error_item(message: concat("UntaggedJsonStringOrArray array arm ", av, " must declare exactly one field"))]
+            } else {
+              match field_names |> first {
+                Some { value: only } =>
+                  if only != af {
+                    [emit_rust_compile_error_item(message: concat("UntaggedJsonStringOrArray array arm field must be named ", af))]
+                  } else { [] }
+                None => [emit_rust_compile_error_item(message: "UntaggedJsonStringOrArray array arm field name missing")]
+              }
+            }
+          } else {
+            [emit_rust_compile_error_item(message: concat("UntaggedJsonStringOrArray unexpected variant ", nm))]
+          }
+        )
+        diags |> filter(t => t != "") |> join(separator: "\n")
+      }
+    None => ""
+  }
 }
 
 fn emit_variant_from_child(child: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {

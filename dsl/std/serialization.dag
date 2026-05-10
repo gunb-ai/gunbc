@@ -47,11 +47,22 @@ type VariantNaming
 // UntaggedVariant: serde-style untagged alternatives. Use only when the wire
 // shape is determined by payload JSON shape rather than a discriminator field
 // (for example string-or-array provider request fields).
+// UntaggedJsonStringOrArray: JSON union where one arm is a bare string and the
+// other is a bare JSON array (Anthropic `tool_result.content`). The Rust emitter
+// lowers the two named variants to `#[serde(untagged)]` tuple payloads so the
+// string arm serializes as a scalar and the array arm as `Vec<...>` without a
+// wrapper object (`{"blocks":[...]}` is rejected on the wire).
 type VariantEncoding
   = StringVariant { naming: VariantNaming }
   | InternallyTaggedObject { tag_field: String, naming: VariantNaming }
   | UntaggedVariant
   | TaggedVariant
+  | UntaggedJsonStringOrArray {
+      string_variant: String
+      string_field: String
+      array_variant: String
+      array_field: String
+    }
 
 // Declaration-level override. Selection order is:
 //   1. CoproductWireContract for the exact coproduct declaration.

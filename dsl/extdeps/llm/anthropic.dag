@@ -8,7 +8,7 @@
 //
 module extdeps.llm.anthropic
 
-import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract, ContentBlock }
+import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract, ImageSource }
 import std.errors { AnthropicErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { CoproductWireContract, VariantEncoding }
@@ -30,6 +30,29 @@ data anthropic_user_content_block_wire_contract: CoproductWireContract = {
 data anthropic_assistant_content_block_wire_contract: CoproductWireContract = {
   coproduct: "AnthropicAssistantContentBlock",
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Assistant", suffix: "Block" } }
+}
+
+// Wire: tool_result `content` is either a scalar UTF-8 string or a JSON array of
+// typed content blocks. CoproductWireContract + `UntaggedJsonStringOrArray`
+// captures that dispatch for the v2 Rust emitter.
+data anthropic_tool_result_content_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicToolResultContent",
+  encoding: UntaggedJsonStringOrArray {
+    string_variant: "ToolResultText",
+    string_field: "text",
+    array_variant: "ToolResultBlocks",
+    array_field: "blocks"
+  }
+}
+
+// Nested blocks inside `ToolResultBlocks.blocks[]`: Anthropic-only kinds plus
+// mirrored text/image coordinates (shared `ContentBlock` stays in `llm.dag`).
+// 🟡 SCAFFOLD — trigger: Anthropic adds/removes tool-result nested block kinds
+// beyond document, search_result, tool_reference; tighten to 🟢 when the
+// Messages input block set is closed for modeled models.
+data anthropic_tool_result_block_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicToolResultBlock",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Anthropic", suffix: "Block" } }
 }
 
 data anthropic_messages_200_content_block_wire_contract: CoproductWireContract = {
@@ -60,18 +83,22 @@ data models: List<AnthropicModelSpec> = [
 // -- Anthropic content blocks (provider-specific) ---------------------
 // Extends the shared ContentBlock (llm.dag) with tool-use blocks.
 
-// 🟢 TERMINAL provider-domain coproduct for tool-result content. Anthropic
-// accepts either a scalar text result or a nested content-block list for image
-// capable tool responses. This keeps scalar text as an explicit arm and reuses
-// the shared `ContentBlock` coordinates for nested text/image blocks. Document,
-// search-result, and tool-reference nested blocks remain gap-carried below.
+// 🟢 TERMINAL provider-domain coproduct for nested tool-result blocks. Text/image
+// mirror shared wire tags; document, search_result, and tool_reference are
+// Anthropic-only arms (see `anthropic_tool_result_block_wire_contract`).
+type AnthropicToolResultBlock
+  = AnthropicTextBlock { text: String }
+  | AnthropicImageBlock { source: ImageSource }
+  | AnthropicDocumentBlock { source: Json }
+  | AnthropicSearchResultBlock { content: List<AnthropicTextBlock>, source: String, title: String }
+  | AnthropicToolReferenceBlock { tool_name: String }
+
+// 🟢 TERMINAL provider-domain coproduct for tool-result content. Scalar text vs
+// nested block-array dispatch is ratcheted by `anthropic_tool_result_content_wire_contract`
+// (`UntaggedJsonStringOrArray`); nested rows use `AnthropicToolResultBlock`.
 type AnthropicToolResultContent
   = ToolResultText { text: String }
-  | ToolResultBlocks { blocks: List<ContentBlock> }
-
-data structural_coverage_gap_anthropic_tool_result_additive_blocks: List<String> = [
-  "closure:anthropic_tool_result_additive_blocks|AnthropicToolResultContent.ToolResultBlocks|missing:document|missing:search_result|missing:tool_reference"
-]
+  | ToolResultBlocks { blocks: List<AnthropicToolResultBlock> }
 
 // 🟢 TERMINAL provider-domain coproduct for user-message content. `UserTextBlock`
 // and `UserToolResultBlock` are role-legal Anthropic Messages content rows; the
@@ -223,17 +250,12 @@ data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
 // Request wire: Messages API expects string `role` + flat `content[]` objects
 // keyed by `type` (https://docs.anthropic.com/en/api/messages). These rows are
 // now source-level `CoproductWireContract` authorities above; the v2 Rust
-// emitter consumes them directly for serde attributes. Nested tool-result
-// `content` scalar-vs-block-array wire shape remains gap-carried separately
-// below; these paid rows cover the outer request coproduct discriminators only.
+// emitter consumes them directly for serde attributes.
 data rest_request_wire_serde_alignment_receipt: List<String> = [
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|paid:role_internally_tagged_object_user_assistant",
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock|paid:type_internally_tagged_object_text_tool_result",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use"
-]
-
-data structural_coverage_gap_anthropic_tool_result_content_wire_shape: List<String> = [
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock.content|residue:tool_result_content_must_serialize_scalar_text_or_content_block_array|trigger:emitted serde for AnthropicToolResultContent serializes ToolResultText as scalar string and ToolResultBlocks as content block array"
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock.content|paid:tool_result_content_scalar_or_block_array"
 ]
 
 // -- Service: REST transport wiring ------------------------------

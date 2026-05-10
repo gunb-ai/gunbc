@@ -5929,6 +5929,65 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
   ParentModulesResult { modules: modules, diagnostics: diagnostics }
 }
 
+fn infer_literal_string_value(n: Node) -> String? {
+  match n.expr_data {
+    ExprLiteral { value: lv } => match lv {
+      LitStr { value: s } => Some { value: s }
+      _ => none
+    }
+    _ => none
+  }
+}
+
+fn infer_field_value_by_name(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match record.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field_name) |> first {
+    Some { value: fi } => Some { value: field_init_node_value(n: fi) }
+    None => none
+  }
+}
+
+fn infer_record_string_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match infer_field_value_by_name(record: record, field_name: field_name, source_indices: source_indices) {
+    Some { value: vn } => infer_literal_string_value(n: vn)
+    None => none
+  }
+}
+
+fn build_untagged_json_tuple_variants(modules: List<TypedModule>) -> Set<String> {
+  modules |> fold(init: empty_set(), f: (acc, m) =>
+    let si = m.type_env.source_indices
+    m.items |> fold(init: acc, f: (inner, item) =>
+      if item_kind(item: item) == DataItem {
+        match item.body {
+          Some { value: body } =>
+            match infer_record_string_field(record: body, field_name: "coproduct", source_indices: si) {
+              Some { value: coproduct_name } =>
+                match infer_field_value_by_name(record: body, field_name: "encoding", source_indices: si) {
+                  Some { value: enc_node } =>
+                    if authored_name_at(source_indices: si, node: enc_node) == "UntaggedJsonStringOrArray" {
+                      match infer_record_string_field(record: enc_node, field_name: "string_variant", source_indices: si) {
+                        Some { value: sv } =>
+                          match infer_record_string_field(record: enc_node, field_name: "array_variant", source_indices: si) {
+                            Some { value: av } =>
+                              let k1 = concat(coproduct_name, "::", sv)
+                              let k2 = concat(coproduct_name, "::", av)
+                              set_insert(set_insert(inner, k1), k2)
+                            None => inner
+                          }
+                        None => inner
+                      }
+                    } else { inner }
+                  None => inner
+                }
+              None => inner
+            }
+          None => inner
+        }
+      } else { inner }
+    )
+  )
+}
+
 
 fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> Set<String> {
   let result = modules |> fold(init: empty_set(), f: (acc, m) =>
@@ -5971,11 +6030,13 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     )
   )
   let fielded = build_fielded_variants(modules: modules, type_summaries: built.type_summaries)
+  let untagged_tuples = build_untagged_json_tuple_variants(modules: modules)
   let vtoe = derive_variant_to_enum(type_summaries: built.type_summaries)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
     fielded_variants: fielded,
+    untagged_json_tuple_variants: untagged_tuples,
     shared_types: empty_set(),
     ownership_index: empty_map(),
     movable: empty_set(),

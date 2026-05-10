@@ -74,6 +74,9 @@ type EmitGraphInfo {
   // Used by pattern emission to decide Variant vs Variant { .. }.
   // Keys are "EnumName::VariantName" for variants that carry fields.
   fielded_variants: Set<String>
+  // Variants emitted as single-field tuple forms for `UntaggedJsonStringOrArray`
+  // wire contracts (same `EnumName::VariantName` keys as fielded_variants).
+  untagged_json_tuple_variants: Set<String>
   // Per-type sharing decision: type names that need shared-pointer
   // wrapping (Rc in Rust). Computed from type_summaries ×
   // recursive_type_set. The Rust emitter also adds collection types.
@@ -117,6 +120,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
+    untagged_json_tuple_variants: empty_set(),
     shared_types: empty_set(),
     ownership_index: empty_map(),
     movable: empty_set(),
