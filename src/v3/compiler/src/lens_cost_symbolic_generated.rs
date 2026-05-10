@@ -91,9 +91,21 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
                 port: (t).result_port(),
                 cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
             },
-            Some(pattern) => SymbolicCostEntry {
-                port: (t).result_port(),
-                cost: recursive_transform_cost(p1, pattern, &((t).inputs)),
+            Some(pattern) => match &((t).inputs) {
+                [] => SymbolicCostEntry {
+                    port: (t).result_port(),
+                    cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
+                },
+                [__list_head, __list_tail @ ..] => match __list_tail {
+                    [] => SymbolicCostEntry {
+                        port: (t).result_port(),
+                        cost: recursive_transform_cost(p1, pattern, &((t).inputs)),
+                    },
+                    [__list_head, __list_tail @ ..] => SymbolicCostEntry {
+                        port: (t).result_port(),
+                        cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
+                    },
+                },
             },
         },
         Behavior::Branch(b) => SymbolicCostEntry {

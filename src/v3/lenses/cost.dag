@@ -203,6 +203,19 @@ fn concat_entries(
     Cons(payload) => cons(payload.head, concat_entries(payload.tail, b))
   }
 
+// Single-input call sites only for `recursive_transform_cost` / `pattern_to_iter_bound`:
+// `per_call_pattern_at` is still a unary projection over evidence (see `dag.rs:call_pattern_from_relations`).
+// Bool via `0 == 0` / `0 == 1` so rust emit stays valid `bool` (same as `complexity_enforcement_violates`).
+fn unary_call_inputs(inputs: List<PortId>) -> Bool =
+  match inputs {
+    Cons(payload) =>
+      match payload.tail {
+        Empty => 0 == 0
+        Cons(_) => 0 == 1
+      }
+    Empty => 0 == 1
+  }
+
 fn entry_for(
   d: Dag,
   acc: List<SymbolicCostEntry>,
@@ -216,7 +229,14 @@ fn entry_for(
         None =>
           { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
         Some(pattern) =>
-          { port: t.result_port, cost: recursive_transform_cost(acc, pattern, t.inputs) }
+          // Unary Callable calls only: `CallPattern` from `per_call_pattern_at` is still a
+          // unary projection over `Vec<SubValueRelation>` (see `dag.rs:call_pattern_from_relations`;
+          // multi-arg per-port descent is a separate E-P gate). Binding `pattern_to_iter_bound` to
+          // `payload.head` for 2+ inputs would fabricate which argument carries the recurrence.
+          if unary_call_inputs(t.inputs) then
+            { port: t.result_port, cost: recursive_transform_cost(acc, pattern, t.inputs) }
+          else
+            { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
       }
     Branch(b) =>
       { port: b.result_port, cost: branch_cost(acc, b.input, b.paths) }
