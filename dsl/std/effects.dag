@@ -132,12 +132,6 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
 //   meet_a ∘ append_b applied twice ≠ applied once
 //   (the append duplicates on the second application)
 
-type ComposedEffect {
-  operations: List<OperationEffect>
-  idempotent: Bool
-  breaking_operation: String?
-}
-
 // Per-operation effect entry in a workflow.
 type OperationEffect {
   operation_name: String
@@ -145,23 +139,25 @@ type OperationEffect {
   evidence: IdempotencyEvidence
 }
 
+// Workflow-level idempotency judgment — a sum, not a Bool × optional
+// label product. The old `ComposedEffect { idempotent, breaking_operation }`
+// shape admitted contradictory states (e.g. idempotent true with a named
+// breaker). R3 F5: only these two arms exist; `compose_effects` returns them.
+type CompositionVerdict
+  = IdempotentComposition
+  | BrokenBy { first_breaker: OperationEffect }
+
 // Compose a list of operation effects into a workflow-level verdict.
-fn compose_effects(effects: List<OperationEffect>) -> ComposedEffect {
+fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
   let non_idempotent = effects |> filter(e =>
     match e.evidence {
       NonIdempotent => true
       _ => false
     }
   )
-  let breaker = non_idempotent |> first
-  let breaker_name = match breaker {
-    Some { value: op } => Some { value: op.operation_name }
-    None => none
-  }
-  ComposedEffect {
-    operations: effects,
-    idempotent: non_idempotent |> count == 0,
-    breaking_operation: breaker_name
+  match non_idempotent |> first {
+    Some { value: op } => BrokenBy { first_breaker: op }
+    None => IdempotentComposition
   }
 }
 

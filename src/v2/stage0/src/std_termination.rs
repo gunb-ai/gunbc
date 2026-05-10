@@ -131,6 +131,15 @@ impl PositiveDescentAmount {
     }
 }
 
+pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*steps).clone() {
+        PositiveDescentAmount::OneStep => 1,
+        PositiveDescentAmount::AdditionalStep { previous: p, .. } => {
+            (1 + positive_descent_count(p.clone()))
+        }
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ProportionalDivisor {
