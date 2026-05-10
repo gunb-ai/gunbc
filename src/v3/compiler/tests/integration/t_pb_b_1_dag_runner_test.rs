@@ -16,6 +16,8 @@
 //! integration delta; see module doc on `r3_gate_87_lens_cementing_regen_receipts_test` (§P5(b)
 //! checkable receipt = **PR #2639 description**, not inferred deletes).
 
+use std::collections::BTreeSet;
+
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -238,6 +240,35 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
 
 // R3 gate #87 — every `LensRegistryEntry` in `src/v3/compiler/regen.dag` has a
 // `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` harness evaluated here.
+const R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX: &str =
+    "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_";
+const R3_GATE_87_CEMENTING_HARNESS_PATH_SUFFIX: &str = ".dag";
+
+/// `LensRegistryEntry.name` values implied by [`R3_GATE_87_CEMENTING_REGEN_SUITES`] file paths.
+/// **Single authority** for the gate-#87 inventory ratchet: `r3_gate_87_lens_cementing_regen_receipts_test`
+/// compares live `regen.dag` names against this set so a new registry row cannot ship without a
+/// matching runner row (path shape is enforced by [`lens_name_from_gate_87_harness_path`]).
+pub(crate) fn r3_gate_87_cementing_regen_lens_names_for_runner_table() -> BTreeSet<String> {
+    R3_GATE_87_CEMENTING_REGEN_SUITES
+        .iter()
+        .map(|(_, file, _, _)| lens_name_from_gate_87_harness_path(file))
+        .collect()
+}
+
+fn lens_name_from_gate_87_harness_path(file: &str) -> String {
+    file.strip_prefix(R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX)
+        .and_then(|rest| rest.strip_suffix(R3_GATE_87_CEMENTING_HARNESS_PATH_SUFFIX))
+        .unwrap_or_else(|| {
+            panic!(
+                "R3_GATE_87_CEMENTING_REGEN_SUITES: harness path must be \
+                 `{prefix}<lens_name>{suffix}`, got `{file}`",
+                prefix = R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX,
+                suffix = R3_GATE_87_CEMENTING_HARNESS_PATH_SUFFIX,
+            )
+        })
+        .to_string()
+}
+
 const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
     (
         include_str!("../dag/t_r3_gate_87_cementing_regen_cost.dag"),
