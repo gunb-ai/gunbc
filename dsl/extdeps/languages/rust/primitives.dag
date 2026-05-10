@@ -33,9 +33,12 @@
 // production-walker job; until then the mirror in
 // src/v3/grounding_pilot/src/lib.rs must be kept in sync by hand when
 // declarations here change. The duplication is bounded — pilot scope is
-// 10 primitives, parallel-existence, deletable as a unit when
-// T-Ground-Engine lands and removes both this file's parallel-existence
-// status and the pilot crate together.
+// 12 rows (10 IntegerPrimitive + 2 NonIntegerPrimitive `target_name`
+// entries). Multiset parity is additionally ratcheted in `v3-grounding-engine`
+// (`validate_rust_pilot_primitives_target_name_multiset_matches_mirror`).
+// Parallel-existence, deletable as a unit when T-Ground-Engine lands and
+// removes both this file's parallel-existence status and the pilot crate
+// together.
 //
 // LANES:
 //   This file is parallel-existence. Dissolution of
@@ -211,8 +214,8 @@ type RustPrimitive
 // =========================================================================
 // Pilot-set declarations.
 //
-// Ordering: signed integers (i8..i64), unsigned integers (u8..u64), bool,
-// (). No other types in pilot scope.
+// Ordering: signed machine integers (i8..i64, i128), unsigned machine integers
+// (u8..u64, u128), bool, (). No other types in pilot scope.
 // =========================================================================
 
 data rust_pilot_primitives: List<RustPrimitive> = [
@@ -236,9 +239,8 @@ data rust_pilot_primitives: List<RustPrimitive> = [
     range_min_inclusive: "-9223372036854775808", range_max_inclusive: "9223372036854775807",
     is_copy: true, overflow: TwoComplementWrap },
 
-  // T-Int128 Slice B1: signed 128-bit. Range fits host i128 by definition;
-  // the symmetric u128 row is deferred to Slice B2 (interval-representation
-  // widening required first).
+  // T-Int128 Slice B1: signed 128-bit. Symmetric u128 row follows in unsigned
+  // section (R3 Phase B-1; Phase A BigInt range storage — see header).
   IntegerPrimitive { target_name: "i128", algebra: OrderedRingAlgebra, carrier: Word128Carrier,
     range_min_inclusive: "-170141183460469231731687303715884105728",
     range_max_inclusive: "170141183460469231731687303715884105727",
