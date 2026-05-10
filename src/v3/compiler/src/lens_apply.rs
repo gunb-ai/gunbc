@@ -9,7 +9,7 @@ use num_bigint::BigInt;
 use crate::dag::{
     literal_bits_int, ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, Dag,
     Declaration, DeclarationId, FieldValue, LiteralBits, OperatorKind, PortId, ProducerLookup,
-    TransformNode, TransformTarget, TypeConnective, ValueBody, WorkflowRoot,
+    TransformNode, TransformTarget, TypeConnective, ValueBody,
 };
 use crate::infer_helpers::resolve_template_argument_value;
 
@@ -276,18 +276,14 @@ pub fn apply_lens_declaration(
     let decl = lens_program.declaration(lens_decl_id);
     if let Some(pu) = program_under_test {
         if decl.name.as_deref() == Some("auto_loop_parallelism_pending_lens") && inputs.len() == 1 {
-            let v = match pu.workflow_root_port() {
-                WorkflowRoot::SingleRoot(port) => pu
-                    .port(port)
-                    .produced_by
-                    .map(|nid| {
-                        crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(
-                            pu, nid,
-                        )
-                    })
-                    .unwrap_or(0),
-                WorkflowRoot::NoRoot | WorkflowRoot::AmbiguousRoot { .. } => 0,
-            };
+            let v = pu
+                .workflow_lane2_subject()
+                .map(|subject| {
+                    crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(
+                        pu, subject,
+                    )
+                })
+                .unwrap_or(0);
             return Ok(FieldValue::Literal(LiteralBits::Int(v.to_string())));
         }
     }

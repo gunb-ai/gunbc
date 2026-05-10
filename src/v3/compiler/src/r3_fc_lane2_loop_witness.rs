@@ -20,7 +20,7 @@
 //! **Scope — global `compile_to_dag`, not `cfg(test)`:** [`crate::compile_to_dag`] and
 //! `compile_onto_parse_surface_free_bootstrap` always call into this module after `infer`. Any
 //! `.v3` source that includes the magic directive therefore stages `lane2_workflow` on the workflow
-//! root in that compile. This is deliberate: claim programs and ordinary programs share one
+//! **Bind shell** ([`Dag::workflow_lane2_subject`]) in that compile. This is deliberate: claim programs and ordinary programs share one
 //! pipeline, and activation is **opt-in** via the `gunbc::r3_free_consequences::…` namespaced prefix
 //! (not a test-only hook). Reading that staged fact through `auto_loop_parallelism_pending_lens`
 //! still requires the test-runner / lens path to pass `program_under_test: Some(_)`.
@@ -29,8 +29,7 @@
 //! `lane2_workflow` facts; remove the lens name-key branch in the same change set.
 
 use crate::dag::{
-    Dag, EffectShape, IdempotentShape, KeySource, NodeId, OperationEffect, WorkflowEffect,
-    WorkflowRoot,
+    Dag, EffectShape, IdempotentShape, KeySource, OperationEffect, WorkflowEffect,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 
@@ -50,7 +49,10 @@ enum WitnessScan {
         kind: WitnessKind,
         directive_span: SourceSpan,
     },
-    Malformed { span: SourceSpan, message: String },
+    Malformed {
+        span: SourceSpan,
+        message: String,
+    },
 }
 
 fn scan_witness(source: &str, file: &str) -> WitnessScan {
@@ -170,6 +172,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
 mod tests {
     use super::*;
     use crate::compile_to_dag;
+    use crate::dag::{Dag, EffectShape, IdempotentShape, WorkflowEffect};
     use crate::diagnostics::Diagnostic;
     use crate::CompileError;
 
@@ -177,9 +180,9 @@ mod tests {
     fn directive_on_a_later_line_is_found_after_non_matching_comments() {
         let src = "// unrelated preamble comment\n// gunbc::r3_free_consequences::lane2_loop_witness: read_only\nlet _: Int = 0\n";
         let dag = compile_to_dag(src, "witness_after_preamble.v3").expect("compile");
-        let root = workflow_host(&dag).expect("host");
+        let subject = dag.workflow_lane2_subject().expect("lane2 subject");
         assert_eq!(
-            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, root),
+            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, subject),
             1
         );
     }
@@ -188,9 +191,25 @@ mod tests {
     fn read_only_directive_registers_loop_workflow() {
         let src = "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\nlet _: Int = 0\n";
         let dag = compile_to_dag(src, "witness_read.v3").expect("compile");
-        let root = workflow_host(&dag).expect("host");
+        let subject = dag.workflow_lane2_subject().expect("lane2 subject");
+        let wf = dag
+            .lane2_workflow_effect_at(&subject)
+            .expect("lane2_workflow staged");
+        assert!(matches!(
+            wf,
+            WorkflowEffect::LoopEffect { body }
+                if matches!(
+                    body.as_ref(),
+                    WorkflowEffect::LinearEffect { ops }
+                        if ops.len() == 1
+                            && matches!(
+                                ops[0].shape,
+                                EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+                            )
+                )
+        ));
         assert_eq!(
-            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, root),
+            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, subject),
             1
         );
     }
@@ -200,9 +219,25 @@ mod tests {
         let src =
             "// gunbc::r3_free_consequences::lane2_loop_witness: upsert_dependent\nlet _: Int = 0\n";
         let dag = compile_to_dag(src, "witness_upsert.v3").expect("compile");
-        let root = workflow_host(&dag).expect("host");
+        let subject = dag.workflow_lane2_subject().expect("lane2 subject");
+        let wf = dag
+            .lane2_workflow_effect_at(&subject)
+            .expect("lane2_workflow staged");
+        assert!(matches!(
+            wf,
+            WorkflowEffect::LoopEffect { body }
+                if matches!(
+                    body.as_ref(),
+                    WorkflowEffect::LinearEffect { ops }
+                        if ops.len() == 1
+                            && matches!(
+                                ops[0].shape,
+                                EffectShape::IsIdempotent(IdempotentShape::UpsertEffect { .. })
+                            )
+                )
+        ));
         assert_eq!(
-            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, root),
+            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, subject),
             0
         );
     }
@@ -211,10 +246,25 @@ mod tests {
     fn unproven_directive_leaves_lane2_absent() {
         let src = "// gunbc::r3_free_consequences::lane2_loop_witness: unproven\nlet _: Int = 0\n";
         let dag = compile_to_dag(src, "witness_none.v3").expect("compile");
-        let root = workflow_host(&dag).expect("host");
+        let subject = dag.workflow_lane2_subject().expect("lane2 subject");
+        assert!(dag.lane2_workflow_effect_at(&subject).is_none());
         assert_eq!(
-            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, root),
+            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, subject),
             0
+        );
+    }
+
+    #[test]
+    fn staged_directive_without_bind_shell_is_diagnostic() {
+        let mut dag = Dag::new();
+        let src = "// gunbc::r3_free_consequences::lane2_loop_witness: read_only\n";
+        apply_authored_lane2_loop_witness(&mut dag, src, "no_bind.v3");
+        assert_eq!(
+            dag.diagnostics()
+                .iter()
+                .filter(|(_, d)| matches!(d, Diagnostic::ParseError { .. }))
+                .count(),
+            1
         );
     }
 
