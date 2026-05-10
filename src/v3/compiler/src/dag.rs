@@ -1456,6 +1456,11 @@ fn declaration_id_owning_bind_root(dag: &Dag, bind_node_id: NodeId) -> Option<De
 ///
 /// **P5:** transitional host pass until dissolution — explicit ROADMAP row **“R3 gate #78 — unary-bind
 /// `SymbolicCost` iterate alias collapse post-pass”** (`ROADMAP.md`, Post-merge debt 2026-05-08).
+///
+/// **Bind resolution:** `bind_value_port` is the bind's **result** port (`entry_for` row port). The
+/// helper scans [`Dag::nodes`] for the [`BindNode`] with [`BindNode::value`] equal to that port; in
+/// the lowered substrate each port has a single producer, so at most one bind matches (same class of
+/// uniqueness as other port-keyed walks — not a name table keyed off parallel string lists).
 pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
     dag: &Dag,
     bind_value_port: PortId,
