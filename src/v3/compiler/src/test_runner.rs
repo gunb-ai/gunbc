@@ -5,10 +5,13 @@ use std::time::{Duration, Instant};
 
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
+use crate::evaluator::{
+    evaluate_body, EvalError, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
+};
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
@@ -21,7 +24,7 @@ use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use crate::types::TypeShape;
 use crate::{
     compare_stage_snapshots, compile_stage_snapshots, compile_to_dag, default_fixed_point_source,
-    CompileError,
+    CompileError, DimensionReport,
 };
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
@@ -37,6 +40,15 @@ const INFER_HELPERS_SOURCE: &str = include_str!(concat!(
 /// The runner fail-closes unless the `TestClaim` is declared in this fixture file.
 const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
     "src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag";
+
+/// R3 gate #12 strict-fire (`tc2_church_rosser_strict_fire.dag`): `BinaryDimensionReportEquals`
+/// payload must reference these **fixture-local** `DimensionReport<Dag>` role declarations (not
+/// the deferred `tc2_leftfirst_strategy_dimension_report` names) so routing is keyed off declared
+/// predicate edges per INVARIANTS P2.
+const TC2_CHURCH_ROSSER_STRICT_FIRE_LEFT_REPORT: &str =
+    "tc2_church_rosser_strict_fire_left_dimension_report";
+const TC2_CHURCH_ROSSER_STRICT_FIRE_RIGHT_REPORT: &str =
+    "tc2_church_rosser_strict_fire_right_dimension_report";
 
 /// R3 gate #43 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
 ///
@@ -1999,6 +2011,81 @@ enum DiagnosticDetailFilter {
     Contains(String),
 }
 
+fn tc2_church_rosser_strict_fire_report_role_ids(
+    dag: &Dag,
+    left_id: DeclarationId,
+    right_id: DeclarationId,
+) -> bool {
+    declaration_has_exact_name(dag, left_id, TC2_CHURCH_ROSSER_STRICT_FIRE_LEFT_REPORT)
+        && declaration_has_exact_name(dag, right_id, TC2_CHURCH_ROSSER_STRICT_FIRE_RIGHT_REPORT)
+}
+
+fn declaration_has_exact_name(dag: &Dag, id: DeclarationId, expected: &str) -> bool {
+    dag.declaration(id).name.as_deref() == Some(expected)
+}
+
+fn tc2_church_rosser_strategy_dimension_name(order: InputEvaluationOrder) -> String {
+    match order {
+        InputEvaluationOrder::LeftFirst => {
+            "tc2_church_rosser:ApplicativeOrder:LeftFirst".to_string()
+        }
+        InputEvaluationOrder::RightFirst => {
+            "tc2_church_rosser:ApplicativeOrder:RightFirst".to_string()
+        }
+    }
+}
+
+fn build_tc2_church_rosser_strategy_dimension_report(
+    program_dag: &Dag,
+    bind_id: NodeId,
+    order: InputEvaluationOrder,
+) -> Result<(DimensionReport<Dag>, Value), EvalError> {
+    let frame = EvalFrame::from_bindings(Vec::<(PortId, Value)>::new()).expect("empty root frame");
+    let mut state = EvalStateStack::with_root_frame(frame);
+    let dimension_name = tc2_church_rosser_strategy_dimension_name(order.clone());
+    let strategy = EvalStrategy::ApplicativeOrder { input_order: order };
+    let value = evaluate_body(program_dag, bind_id, &mut state, strategy)?;
+    let report = DimensionReport::DimensionOk {
+        dimension_name,
+        composed: program_dag.clone(),
+        witnesses: Vec::new(),
+    };
+    Ok((report, value))
+}
+
+/// Receipt for the TC2 Church-Rosser **host slice** (bounded runner bridge).
+///
+/// Load-bearing: identical evaluated top-level [`Value`]s under `LeftFirst` vs `RightFirst`.
+/// Envelope: both sides are [`DimensionReport::DimensionOk`] with empty witness lists (scaffold),
+/// and distinct `dimension_name` strings so the two requested strategies were exercised.
+/// `composed` is always the same lowered-program `Dag` clone by construction, so it is not used
+/// for inequality here (a future substrate producer would supply non-vacuous witnesses / carriers).
+fn tc2_church_rosser_dimension_reports_equivalent_under_binary_equals(
+    left: &DimensionReport<Dag>,
+    left_value: &Value,
+    right: &DimensionReport<Dag>,
+    right_value: &Value,
+) -> bool {
+    if left_value != right_value {
+        return false;
+    }
+    match (left, right) {
+        (
+            DimensionReport::DimensionOk {
+                witnesses: lw,
+                dimension_name: na,
+                ..
+            },
+            DimensionReport::DimensionOk {
+                witnesses: rw,
+                dimension_name: nb,
+                ..
+            },
+        ) => na != nb && lw.is_empty() && rw.is_empty(),
+        _ => false,
+    }
+}
+
 impl<'a> TestRunner<'a> {
     pub fn new(dag: &'a Dag) -> Self {
         Self { dag }
@@ -2751,7 +2838,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_binary_dimension_report_equals(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [left_fv, right_fv] = payload else {
@@ -2787,12 +2874,146 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(right_carrier, self.dag.declaration(right_carrier))
             ));
         }
+        if self.type_ref_normalizes_to_named(left_carrier, "Dag")
+            && tc2_church_rosser_strict_fire_report_role_ids(self.dag, left_id, right_id)
+        {
+            return self.eval_tc2_church_rosser_binary_dimension_report_equals_claim(
+                claim,
+                &left_name,
+                &right_name,
+            );
+        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
              production/evaluation substrate; serialized report comparison is intentionally \
              unsupported"
         ))
+    }
+
+    /// R3 gate #12 (`tc2_church_rosser_strict_fire.dag`): `BinaryDimensionReportEquals` payload
+    /// references the fixture-local `tc2_church_rosser_strict_fire_left_dimension_report` /
+    /// `tc2_church_rosser_strict_fire_right_dimension_report` `DimensionReport<Dag>` roles.
+    /// The runner materializes one [`DimensionReport::DimensionOk`] per eager applicative
+    /// [`InputEvaluationOrder`] for the claim program's top-level bind and applies the bounded
+    /// confluence receipt in [`tc2_church_rosser_dimension_reports_equivalent_under_binary_equals`].
+    ///
+    /// Generic `BinaryDimensionReportEquals` over arbitrary `DimensionReport<C>` producers remains
+    /// NYI at the boundary until substrate producers land.
+    fn eval_tc2_church_rosser_binary_dimension_report_equals_claim(
+        &self,
+        claim: &TestClaimValue,
+        left_report_label: &str,
+        right_report_label: &str,
+    ) -> ClaimResult {
+        if claim.source.trim().is_empty() {
+            return ClaimResult::NotYetImplemented(format!(
+                "BinaryDimensionReportEquals: structural shape is valid for `{left_report_label}` \
+                 and `{right_report_label}`, but executable TC2 Church-Rosser comparison requires a \
+                 non-empty `TestClaim.source` program slice"
+            ));
+        }
+
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                     claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                     claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+        if !program_dag.diagnostics().is_empty() {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                 expected empty diagnostics on `{}`, got {:?}",
+                claim.file_name,
+                program_dag.diagnostics().iter().collect::<Vec<_>>()
+            ));
+        }
+
+        let bind_name = match last_emit_rust_program_top_level_value_bind_name(&program_dag) {
+            Ok(Some(name)) => name,
+            Ok(None) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                     program has no top-level value bind (same convention as \
+                     `last_emit_rust_program_top_level_value_bind_name`)"
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                     cannot resolve top-level value bind for `{}`: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+        let Some(bind) = find_bind(&program_dag, &bind_name, &claim.file_name) else {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                 bind `{bind_name}` not found in `{}`",
+                claim.file_name
+            ));
+        };
+        if !bind.params.is_empty() {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                 bind `{bind_name}` must be a value bind with no parameters (got {} parameter port(s))",
+                bind.params.len()
+            ));
+        }
+
+        let (left_report, left_value) = match build_tc2_church_rosser_strategy_dimension_report(
+            &program_dag,
+            bind.id,
+            InputEvaluationOrder::LeftFirst,
+        ) {
+            Ok(pair) => pair,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{left_report_label}`: LeftFirst evaluation \
+                         failed while materializing `DimensionReport<Dag>`: {err:?}"
+                ));
+            }
+        };
+        let (right_report, right_value) = match build_tc2_church_rosser_strategy_dimension_report(
+            &program_dag,
+            bind.id,
+            InputEvaluationOrder::RightFirst,
+        ) {
+            Ok(pair) => pair,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "BinaryDimensionReportEquals `{right_report_label}`: RightFirst evaluation \
+                         failed while materializing `DimensionReport<Dag>`: {err:?}"
+                ));
+            }
+        };
+
+        if tc2_church_rosser_dimension_reports_equivalent_under_binary_equals(
+            &left_report,
+            &left_value,
+            &right_report,
+            &right_value,
+        ) {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals `{left_report_label}` / `{right_report_label}`: \
+                 strategy-keyed `DimensionReport<Dag>` disagree — left={left_report:?} \
+                 (value={left_value:?}) vs right={right_report:?} (value={right_value:?})"
+            ))
+        }
     }
 
     fn validate_dimension_report_ref(
