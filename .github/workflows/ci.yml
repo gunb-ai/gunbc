@@ -171,28 +171,14 @@ jobs:
   v3:
     if: github.event.pull_request.draft != true
     # Heavy compute (cargo release builds, full v3 test suite at the
-<<<<<<< HEAD
-    # 2400s budget + clippy + lens gates). 2-core ubuntu-latest blows
+    # 3300s transitional budget + clippy + lens gates). 2-core ubuntu-latest blows
     # the 60min cap reliably. Run the heavy job on the gunb-ci ephemeral
     # GCE Spot runner pool: each queued job gets one n2d-standard-8 VM,
     # the VM registers as an ephemeral GitHub runner, runs one job, then
     # self-deletes. Spot preemption is acceptable here; the companion
     # ci-spot-rerun workflow gives failed runs one automatic retry.
     runs-on: [self-hosted, linux, x64, gunbc-ci]
-    # Full suite is transitionally capped at 2400s, plus clippy + lens gates + cold compile.
-=======
-    # 3300s transitional budget + clippy + lens gates). 2-core ubuntu-latest blows
-    # the 60min cap reliably; ubicloud-standard-8 (8 vCPU, ~$0.0256/hr)
-    # finishes the workload in well under cap and is cheaper than the
-    # equivalent self-hosted-electricity bill in the operator's market
-    # (Manhattan rates make running an i9-10900K dedicated CI box
-    # ~$35/mo while ubicloud-standard-8 at this volume ≈ $25/mo). The
-    # `vars.CI_RUNNER` indirection is gone for this job because the
-    # core-count requirement is structural — no orchestrator should
-    # route this onto a 2-core runner regardless of cost-routing.
-    runs-on: ubicloud-standard-8
     # Full suite is transitionally capped at 3300s, plus clippy + lens gates + cold compile.
->>>>>>> 1c9453af3 (ci(v3): raise full-suite transitional wall budget 2400s → 3300s)
     # Revert when the OnceLock/module-cache structural fix brings warmed runs below 1200s;
     # keep job timeout above the in-step budget so Actions does not cancel final steps first.
     timeout-minutes: 60
