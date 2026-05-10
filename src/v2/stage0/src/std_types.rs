@@ -215,10 +215,6 @@ pub type LanguageId = String;
 
 pub type SecretName = String;
 
-pub type PositiveInt = i64;
-
-pub type NonNegativeInt = i64;
-
 pub type PathSegment = String;
 
 pub type GlobSegment = String;
@@ -269,6 +265,14 @@ pub type CommentId = String;
 pub type SignalKey = String;
 
 pub type ContentHash = String;
+
+pub type WorkflowProducerId = String;
+
+pub type WorkflowObserverId = String;
+
+pub type WorkflowProverId = String;
+
+pub type WorkflowRunId = String;
 
 pub type GitRef = String;
 

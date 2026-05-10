@@ -21,7 +21,8 @@ import std.effects {
   check_modifier_vs_derivation,
   generate_idempotency_obligations,
   is_idempotent_effect,
-  compose_effects, OperationEffect, ComposedEffect, IdempotencyEvidence,
+  compose_effects, OperationEffect, CompositionVerdict, IdempotentComposition, BrokenBy,
+  IdempotencyEvidence,
   LatticeEffect, IdentityEffect, NonIdempotent
 }
 

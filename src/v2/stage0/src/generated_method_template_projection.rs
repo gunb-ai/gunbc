@@ -41,7 +41,6 @@ pub fn python_method_template_emit() -> Rc<HashMap<String, String>> {
             __m.insert("flat_map".to_string(), "[y for x in {recv} for y in {arg}(x)]".to_string());
             __m.insert("join".to_string(), "{arg}.join({recv})".to_string());
             __m.insert("last".to_string(), "{recv}[-1] if {recv} else None".to_string());
-            __m.insert("map".to_string(), "[{arg}(x) for x in {recv}]".to_string());
             __m.insert("skip".to_string(), "{recv}[{arg}:]".to_string());
             __m.insert("sort_by".to_string(), "sorted({recv}, key={arg})".to_string());
             __m.insert("split".to_string(), "{recv}.split({arg})".to_string());
@@ -64,7 +63,6 @@ pub fn go_method_template_emit() -> Rc<HashMap<String, String>> {
             __m.insert("filter".to_string(), "v2rt.Filter({recv}, {arg})".to_string());
             __m.insert("flat_map".to_string(), "v2rt.FlatMap({recv}, {arg})".to_string());
             __m.insert("join".to_string(), "strings.Join({recv}, {arg})".to_string());
-            __m.insert("map".to_string(), "v2rt.Map({recv}, {arg})".to_string());
             __m.insert("skip".to_string(), "{recv}[{arg}:]".to_string());
             __m.insert("sort_by".to_string(), "v2rt.SortBy({recv}, {arg})".to_string());
             __m.insert("split".to_string(), "strings.Split({recv}, {arg})".to_string());
