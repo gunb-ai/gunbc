@@ -222,7 +222,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
-    // T-Int128 Slice B1: signed 128-bit. u128 deferred to B2.
+    // T-Int128 Slice B1: signed 128-bit. u128 follows as Slice B-1 unsigned
+    // symmetric row (same `Word128Carrier`; range facts use BigInt host repr).
     RustPrimitive::IntegerPrimitive {
         target_name: "i128",
         algebra: IntegerAlgebra::OrderedRing,
