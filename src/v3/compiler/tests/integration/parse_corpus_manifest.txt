@@ -23,7 +23,7 @@ src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5191	368627be99fb9e2e
 src/v3/compiler/tokenize.dag	30	64729	a09e8ee743b88008
 src/v3/spec/go.dag	131	1170818	f15e16b87ffb890e
 src/v3/spec/python.dag	93	602265	18b7594597312753
-src/v3/spec/rust.dag	181	1385080	ceee0da5acf6cbf2
+src/v3/spec/rust.dag	183	1390315	fd427d594fc115ad
 src/v3/spec/v3_l1.dag	8	2246	57294d687b4753f4
 src/v3/std/algebra.dag	55	445273	bddda5746a775d69
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
@@ -34,7 +34,7 @@ src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
 src/v3/std/bootstrap_authority.dag	4	75864	d9c5d8fb10e8dad0
 src/v3/std/bridge_ledger.dag	7	36072	4c795fafb7530441
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
-src/v3/std/computation.dag	19	37870	25c5a33ef4d8735a
+src/v3/std/computation.dag	20	39788	dd667b9961b6101b
 src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
 src/v3/std/coproduct_projection.dag	7	7380	afb0d131b9ff2fa4
 src/v3/std/cross_target_coverage.dag	17	377306	21d3cc29457e4aca
