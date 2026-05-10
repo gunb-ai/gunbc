@@ -1,6 +1,6 @@
 # Bridge-Retirement Audit — SourceSpan / File-Identity Family
 
-Status: **audit packet only** (no retirements). Anchors
+Status: **audit packet with leaf retirements** (row #19 retired; umbrella row remains open). Anchors
 `docs/debt/r3-debt-paydown-ledger-2026-05-02.md` row 76 (`B4 bridge-retirement
 queue`), family **A** — **SourceSpan / compilation-unit file string** semantics
 in the v3 substrate (`src/v3/compiler/src/{dag,lower,infer,emit,lens_apply,
