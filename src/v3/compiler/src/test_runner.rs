@@ -49,21 +49,19 @@ const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
 /// workflow parallelism data (`ROADMAP.md` § Active deferrals → `DB-20`; `docs/db-history/db-20.md`).
 const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_emit_witness";
 
-<<<<<<< HEAD
 /// R3 gate #44 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
 ///
 /// Compared as `Some(R3_SEQUENTIAL_EMIT_WITNESS_LENS_NAME)` — **not** `Some("…")` inline — so
 /// `canonical_lens_name_dispatch_arms_pinned` does not treat this as a new string-literal name
 /// dispatch arm on the canonical lens bridge.
 const R3_SEQUENTIAL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_sequential_emit_witness";
-=======
+
 /// R3 gate #47 (`LensOutputEquals` witness in `r3_free_consequences_second_batch.dag`).
 ///
 /// Compared by declaration-name matching like `R3_PARALLEL_EMIT_WITNESS_LENS_NAME`.
 /// **Deferral receipt:** `ROADMAP.md` § Active deferrals → `DB-20`; see repository `docs/db-history/db-20.md`.
 const R3_AUTO_LOOP_SEQUENTIAL_EMIT_WITNESS_LENS_NAME: &str =
     "r3_auto_loop_parallelism_sequential_emit_witness";
->>>>>>> origin/main
 
 /// R3 gate #45 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
 ///
