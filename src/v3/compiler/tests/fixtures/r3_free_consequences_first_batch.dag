@@ -10,6 +10,8 @@
 // DB-20 models workflow parallelism through `WorkflowParallelismReport`.
 // The auto-memoization gates still lock the `BinaryDimensionReportEquals`
 // shape for the cost-related `DimensionReport<C>` half of `Lens<Purity>·Lens<Cost>`.
+// Gate #49 remains author-now/fire-later until the generic dimension-report
+// producer/evaluator path can compare the declared observed/expected reports.
 
 module std.r3_free_consequences_first_batch
 
