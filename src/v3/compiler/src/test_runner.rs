@@ -2136,9 +2136,10 @@ impl<'a> TestRunner<'a> {
     fn eval_compiles(&self, claim: &TestClaimValue) -> ClaimResult {
         match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(_) => ClaimResult::Pass,
-            Err(CompileError::Semantic(_)) => {
-                ClaimResult::Fail("compiled with diagnostics".to_string())
-            }
+            Err(CompileError::Semantic(dag)) => ClaimResult::Fail(format!(
+                "compiled with diagnostics: {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )),
             Err(err) => {
                 ClaimResult::Fail(format!("compile failed before semantic analysis: {err:?}"))
             }
