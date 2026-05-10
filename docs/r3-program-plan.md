@@ -371,7 +371,7 @@ For each predicate not yet GREEN, what's blocking + sequence to close.
 PR-F (`BoundDeclaration` consumer + Rust `ReferenceModel<T>` axes) and the now-consumed Float migration (T-NumericConstruction-ApproximateField) were blockers for **full Rust primitive grounding** (T-Ground-Rust complete-coverage) + downstream **L5 cross-target consistency**, NOT for `v2_directory_deleted` gate.
 
 Sequence (Grounding-side):
-1. PR-F lands (Substrate Mgr; unblocks T-Ground-Rust Phase 1: `u128`, `isize`, `usize`, walker arms, pilot mirror)
+1. PR-F landed (Substrate Mgr; unblocked T-Ground-Rust Phase 1: `u128`, `isize`, `usize`, walker arms, pilot mirror)
 2. Float carrier migration landed (`Float32/Float64 = Compose<Ieee754Float, MachineWidth<Word32|Word64>>`; `Real = ApproximateField<FieldOfFractions<Int>>`) and was consumed by Grounding G2 PR #2570 squash `b96a51a2`
 3. T-Ground-Rust full-coverage primitive rows are closed post-PR-F + post-Float
 4. T-V-L5-Corpus closes once L4 corpus + Shape A grounding (Rust + Python) both ready

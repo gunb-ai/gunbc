@@ -429,8 +429,8 @@ No additional PM/Director ratification needed for G4. For G1/G3/G5, schedule alr
 
 **Scope**: Phase 1 (`u128` / `isize` / `usize` / walker arms / pilot mirror) post-PR-F; Float rows post-ApproximateField<F>. **Closed 2026-05-10** by PR #2570 squash `b96a51a2`: `dsl/extdeps/languages/rust/primitives.dag` includes `f32`/`f64` `NonIntegerPrimitive` rows over `ApproximateFieldAlgebra` and `Word32Carrier`/`Word64Carrier`, mirrored by `grounding_pilot`, and consumed by `grounding_engine` full-list row validation.
 
-**Dispatch trigger**: post-Substrate S7 (PR-F) + S8 (Float).
-**Closure predicate**: full Rust primitive grounding + L5 readiness.
+**Dispatch trigger**: satisfied — Substrate S7 (PR-F) and S8 (Float) cleared before PR #2570.
+**Closure predicate**: satisfied for G2 primitive-row full Rust grounding; downstream L5 readiness still depends on L4 corpus + Shape A multi-target grounding.
 
 ### G3 — Coercion-Fold scratch retirement (post-LanguageSpec projection)
 
