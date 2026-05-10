@@ -43,7 +43,7 @@ gate-fire moment a producer/evaluator wiring event, not a fixture-design event.
 ## Auto-Parallelism Witness Shape
 
 Applies to `auto_parallelism_independent_binds_emit_parallel`,
-`auto_parallelism_dependent_binds_emit_sequential`, and
+`auto_parallelism_dependent_binds_pending_lens_fail_closed`, and
 `auto_parallelism_branch_arms_serialize`.
 
 Runtime inputs are the same `(Dag, Behavior)` bind cluster. Three lens reads
