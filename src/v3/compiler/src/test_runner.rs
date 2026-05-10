@@ -3628,10 +3628,19 @@ impl<'a> TestRunner<'a> {
         ) {
             return ClaimResult::Fail(reason);
         }
-        let entries = match sg0_census_list_entries(&list_constant_name) {
+        let mut entries = match sg0_census_list_entries(&list_constant_name) {
             Ok(entries) => entries,
             Err(reason) => return ClaimResult::Fail(reason),
         };
+        // Gate #6: `lens_testgen.rs` retired into `lens_testgen_body.txt` (SG-0 fragment
+        // ratchet). The lens-producer census must still count that surface until `.dag`
+        // dissolution removes it (PB review #2392 — P5 progress-is-dissolution).
+        if list_constant_name == "expected_hand_authored_non_test" {
+            match sg0_census_list_entries("expected_hand_authored_fragments") {
+                Ok(fragments) => entries.extend(fragments),
+                Err(reason) => return ClaimResult::Fail(reason),
+            }
+        }
         let count = entries
             .iter()
             .filter(|path| is_lens_producer_census_path(path))
@@ -4954,7 +4963,7 @@ fn is_lens_producer_census_path(path: &str) -> bool {
     matches!(
         path,
         "src/v3/compiler/src/lens_apply.rs"
-            | "src/v3/compiler/src/lens_testgen.rs"
+            | "src/v3/compiler/src/lens_testgen_body.txt"
             | "src/v3/compiler/src/bin/regen_lens.rs"
     )
 }

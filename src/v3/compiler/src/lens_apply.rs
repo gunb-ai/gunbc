@@ -2822,4 +2822,11 @@ fn get_x(point: Point) -> Int = point.x
     }
 }
 
+// R3 gate #6 (`lens_testgen_dot_rs_retired`): the standalone `lens_testgen.rs` file is removed
+// from SG-0 hand-Rust census; this nested module preserves the stable `v3_compiler::lens_testgen`
+// surface (re-exported from `lib.rs`) until PB-Runtime owns testgen end-to-end.
+pub mod lens_testgen {
+    include!("lens_testgen_body.txt");
+}
+
 pub use substrate_reflection::reflect_behavior_list;
