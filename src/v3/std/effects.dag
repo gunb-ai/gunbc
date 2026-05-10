@@ -721,36 +721,17 @@ fn derive_effect_shape(
 
 fn derive_op_effect(
   operation_name: String,
-  method_str: String,
-  path_str: String
+  method: HttpMethod,
+  path: PathTemplate
 ) -> DeriveOpEffectResult {
-  match parse_http_method(raw: method_str) {
-    None =>
-      UnknownHttpMethodInput {
-        operation_name: operation_name,
-        method_str: method_str
-      }
-    Some(method) =>
-      match parse_path_template(raw: path_str) {
-        ParsedPathTemplate { template: path } =>
-          DerivedEffect {
-            effect: OperationEffect {
-              operation_name: operation_name,
-              shape: derive_effect_shape(
-                method: method,
-                path: path
-              )
-            }
-          }
-        MalformedPathTemplate { raw: raw_path, segment: segment, reason: reason } =>
-          MalformedPathInput {
-            operation_name: operation_name,
-            method: method,
-            raw_path: raw_path,
-            segment: segment,
-            reason: reason
-          }
-      }
+  DerivedEffect {
+    effect: OperationEffect {
+      operation_name: operation_name,
+      shape: derive_effect_shape(
+        method: method,
+        path: path
+      )
+    }
   }
 }
 
