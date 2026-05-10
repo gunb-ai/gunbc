@@ -1025,9 +1025,9 @@ data suite: TestSuite = {
 }
 
 #[test]
-fn test_runner_algebraic_law_identity_names_identity_edge_blocker() {
+fn test_runner_algebraic_law_identity_passes_bounded_int_witness_for_add() {
     let source = r#"
-module test.algebraic_law_identity_nyi
+module test.algebraic_law_identity_witness
 
 import std.verification { AlgebraicLaw, TestClaim, TestSuite }
 
@@ -1050,10 +1050,7 @@ data suite: TestSuite = {
     let results = TestRunner::new(&dag).run_suite("suite");
 
     assert_eq!(results.len(), 1);
-    assert!(matches!(
-        &results[0].result,
-        ClaimResult::NotYetImplemented(_)
-    ));
+    assert!(matches!(&results[0].result, ClaimResult::Pass));
 }
 
 #[test]
