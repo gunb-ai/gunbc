@@ -44,7 +44,7 @@ Plus implicit-but-load-bearing within the 96 gates:
 
 **Plain-language read**: ~12% green, ~16% partial, ~73% paper-only.
 
-**Lane status distribution** (from §3 lane status table — 19 lanes + 1 standing):
+**Lane status distribution** (from §3 lane status table — 19 status rows but **18 canonical lanes + 1 standing program** per `r3-structure.md` §"Summary" line 23 + `r3-program-plan.md` §1.5 line 90; §3 splits T-V-L4 + T-V-L7 as separate status rows for sub-tracking convenience, but canonical lane name is **T-V-L4-L7-Direct** treating them as one lane — see Finding F10 below):
 
 | Status | Count | Lanes |
 |---|---|---|
@@ -256,6 +256,24 @@ PM cannot determine from current docs which is correct. This is itself a finding
 **Implication (revised)**: if either Mgr ever auto-archives or stalls, ~70% of gates lose dispatch surface. The Evaluator-Mgr-auto-archive pattern (3 stranded workstreams TC2/TC3/D4) demonstrates the failure mode is real — but the V-stack is currently active (per F3 retraction).
 
 **Remediation (advisory, not urgent)**: Director-tier policy — define succession-plan for Mgr-archive events (similar to today's Evaluator Mgr stranded surface). Not load-bearing for current cycle; record as standing-policy gap for next R3 close-program retrospective.
+
+### F10 — Lane-set drift across canonical authority docs (NEW 2026-05-10 per codex BLOCKING review)
+
+**Severity**: MEDIUM — single-authority discipline (INVARIANTS P2) violation in lane representation; cascades into any audit/plan that cites a specific count.
+
+**Evidence** (per codex review on this audit, c#TBD):
+- **`r3-structure.md` line 23** (§"Summary"): "**18 lanes + 1 standing program**"
+- **`r3-program-plan.md` line 90** (§1.5 composition): "across 18 lanes + 1 standing program" with composition listing 18 lane gates
+- **`r3-program-plan.md` §3** (lane status table): **19 status rows + 1 standing** — splits T-V-L4 + T-V-L7 as separate rows for sub-status tracking (different blockers + statuses), but canonical lane name is `T-V-L4-L7-Direct` treating them as one lane
+
+**Implication**: this audit's first draft cited "19 lanes" from §3 status table without footnoting the canonical 18-lane count — codex review correctly flagged this as drift downstream of source-doc inconsistency. The deeper issue is upstream: §3 should either consolidate T-V-L4 + T-V-L7 into a single status row matching canonical, OR explicitly footnote that it splits them as a tracking-convenience subdivision.
+
+**Remediation candidates** (operator/Director-tier ratification needed since lane-set is canonical authority):
+- (a) **Consolidate §3 status table**: collapse T-V-L4 + T-V-L7 into single `T-V-L4-L7-Direct` row with sub-status notation in Notes column. Restores lane-count single-authority across all 3 docs.
+- (b) **Explicitly footnote §3 as sub-status table**: leave §3 as-is, but add header note "splits T-V-L4-L7-Direct into L4 + L7 sub-rows for blocker-tracking; canonical lane count remains 18 + 1 per `r3-structure.md`."
+- (c) **Update r3-structure.md to 19 lanes**: split T-V-L4-L7-Direct into two canonical lanes if the L4 vs L7 distinction is structurally meaningful enough to warrant separate Mgr-ownership lines. (Probably not — they have shared scope per r3-structure.md row.)
+
+**PM recommendation**: option (b) — minimal change; preserves §3's tracking utility while restoring single-authority on lane count. Author the footnote on next program-plan amendment.
 
 ### F9 — `r3_debt_paydown_zero_remaining` definitional clarity ✓ (no gap)
 
