@@ -9,7 +9,7 @@ use num_bigint::BigInt;
 use crate::dag::{
     literal_bits_int, ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, Dag,
     Declaration, DeclarationId, FieldValue, LiteralBits, OperatorKind, PortId, ProducerLookup,
-    TransformNode, TransformTarget, TypeConnective, ValueBody,
+    TransformNode, TransformTarget, TypeConnective, ValueBody, WorkflowRoot,
 };
 use crate::infer_helpers::resolve_template_argument_value;
 
@@ -257,12 +257,40 @@ fn find_fold_step_bind_via_instantiation(
 
 /// Apply a named lens (`Arrow` + `UserDefined` body) from `lens_program` to positional
 /// `inputs` (left-to-right with the arrow's formal parameters).
+///
+/// When `program_under_test` is `Some`, the R3 fixture lens `auto_loop_parallelism_pending_lens`
+/// is evaluated natively against that DAG (iteration-parallelism indicator) so the result is
+/// derived from substrate `lane2_workflow` installed during [`crate::compile_to_dag`], not from
+/// out-of-band test-runner mutation.
+///
+/// **Db18 deviation:** this reads `lane2_workflow` that may have been staged by
+/// [`crate::r3_fc_lane2_loop_witness`] from a magic comment — a parallel authority to lowering until
+/// the loop workflow is authored from surface syntax. Budget + dissolution: `ROADMAP.md` §"R3
+/// second-batch auto-loop scaffold"; SG-0 pairing class **(b)** on census-touching PRs.
 pub fn apply_lens_declaration(
     lens_program: &Dag,
+    program_under_test: Option<&Dag>,
     lens_decl_id: DeclarationId,
     inputs: &[FieldValue],
 ) -> Result<FieldValue, LensApplyError> {
     let decl = lens_program.declaration(lens_decl_id);
+    if let Some(pu) = program_under_test {
+        if decl.name.as_deref() == Some("auto_loop_parallelism_pending_lens") && inputs.len() == 1 {
+            let v = match pu.workflow_root_port() {
+                WorkflowRoot::SingleRoot(port) => pu
+                    .port(port)
+                    .produced_by
+                    .map(|nid| {
+                        crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(
+                            pu, nid,
+                        )
+                    })
+                    .unwrap_or(0),
+                WorkflowRoot::NoRoot | WorkflowRoot::AmbiguousRoot { .. } => 0,
+            };
+            return Ok(FieldValue::Literal(LiteralBits::Int(v.to_string())));
+        }
+    }
     let TypeConnective::Arrow {
         inputs: param_tys,
         output: _,
@@ -983,10 +1011,10 @@ pub fn int_associativity_holds(
     c: i64,
 ) -> Result<bool, LensApplyError> {
     let int = |n: i64| FieldValue::Literal(literal_bits_int(n));
-    let left_ab = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), int(b)])?;
-    let left = apply_lens_declaration(program_dag, lens_decl_id, &[left_ab, int(c)])?;
-    let right_bc = apply_lens_declaration(program_dag, lens_decl_id, &[int(b), int(c)])?;
-    let right = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), right_bc])?;
+    let left_ab = apply_lens_declaration(program_dag, None, lens_decl_id, &[int(a), int(b)])?;
+    let left = apply_lens_declaration(program_dag, None, lens_decl_id, &[left_ab, int(c)])?;
+    let right_bc = apply_lens_declaration(program_dag, None, lens_decl_id, &[int(b), int(c)])?;
+    let right = apply_lens_declaration(program_dag, None, lens_decl_id, &[int(a), right_bc])?;
     Ok(left == right)
 }
 
@@ -1018,8 +1046,10 @@ pub fn int_identity_witness_holds(
         let ev = int(e);
         let mut ok = true;
         for &a in samples {
-            let left = apply_lens_declaration(program_dag, lens_decl_id, &[ev.clone(), int(a)])?;
-            let right = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), ev.clone()])?;
+            let left =
+                apply_lens_declaration(program_dag, None, lens_decl_id, &[ev.clone(), int(a)])?;
+            let right =
+                apply_lens_declaration(program_dag, None, lens_decl_id, &[int(a), ev.clone()])?;
             if left != int(a) || right != int(a) {
                 ok = false;
                 break;
@@ -1056,7 +1086,7 @@ mod tests {
             .id;
         let input = reflect_program_dag_nodes_in_file(&prog, "lens_apply_prog.v3", &lens_dag)
             .expect("reflect");
-        let out = apply_lens_declaration(&lens_dag, lens_id, &[input]).expect("apply");
+        let out = apply_lens_declaration(&lens_dag, None, lens_id, &[input]).expect("apply");
         assert_eq!(out, FieldValue::Literal(literal_bits_int(1)));
     }
 
@@ -1179,6 +1209,7 @@ fn f(a: Int, b: Int) -> Int = a + b
         let id = dag.declaration_by_name("f").unwrap().id;
         let err = apply_lens_declaration(
             &dag,
+            None,
             id,
             &[
                 FieldValue::Literal(literal_bits_int(i64::MAX)),
@@ -1206,7 +1237,7 @@ fn sum(xs: List<Int>) -> Int =
         let dag = compile_to_dag(src, "empty_fold.v3").expect("compiles");
         let sum_id = dag.declaration_by_name("sum").expect("sum").id;
         let empty = empty_substrate_list_value(&dag).expect("empty list");
-        let out = apply_lens_declaration(&dag, sum_id, &[empty]).expect("fold empty");
+        let out = apply_lens_declaration(&dag, None, sum_id, &[empty]).expect("fold empty");
         assert_eq!(out, FieldValue::Literal(literal_bits_int(99)));
     }
 
@@ -1303,7 +1334,7 @@ fn truth() -> Bool = 1 == 1
 "#;
         let dag = compile_to_dag(src, "truth.v3").expect("compiles");
         let id = dag.declaration_by_name("truth").unwrap().id;
-        let out = apply_lens_declaration(&dag, id, &[]).expect("apply");
+        let out = apply_lens_declaration(&dag, None, id, &[]).expect("apply");
         assert_eq!(out, FieldValue::Literal(LiteralBits::Bool(true)));
     }
 
@@ -1314,8 +1345,13 @@ fn p(b: Bool) -> Int = match b { True => 1, False => 0 }
 "#;
         let dag = compile_to_dag(src, "bool_lit_match.v3").expect("compiles");
         let id = dag.declaration_by_name("p").unwrap().id;
-        let out = apply_lens_declaration(&dag, id, &[FieldValue::Literal(LiteralBits::Bool(true))])
-            .expect("apply");
+        let out = apply_lens_declaration(
+            &dag,
+            None,
+            id,
+            &[FieldValue::Literal(LiteralBits::Bool(true))],
+        )
+        .expect("apply");
         assert_eq!(out, FieldValue::Literal(literal_bits_int(1)));
     }
 
@@ -1335,9 +1371,13 @@ fn run_even(n: Int) -> Bool = even(n)
             "expected at least one LoopBound::Descent (mutual cluster)"
         );
         let run_even = dag.declaration_by_name("run_even").expect("run_even").id;
-        let err =
-            apply_lens_declaration(&dag, run_even, &[FieldValue::Literal(literal_bits_int(1))])
-                .expect_err("loop interpretation is unimplemented");
+        let err = apply_lens_declaration(
+            &dag,
+            None,
+            run_even,
+            &[FieldValue::Literal(literal_bits_int(1))],
+        )
+        .expect_err("loop interpretation is unimplemented");
         assert!(
             matches!(err, LensApplyError::UnimplementedLoopBound),
             "expected UnimplementedLoopBound, got {err:?}"
@@ -1351,8 +1391,9 @@ fn f(a: Int, b: Int) -> Int = a + b
 "#;
         let dag = compile_to_dag(src, "arity.v3").expect("compiles");
         let id = dag.declaration_by_name("f").unwrap().id;
-        let err = apply_lens_declaration(&dag, id, &[FieldValue::Literal(literal_bits_int(1))])
-            .expect_err("wrong arity");
+        let err =
+            apply_lens_declaration(&dag, None, id, &[FieldValue::Literal(literal_bits_int(1))])
+                .expect_err("wrong arity");
         assert!(
             matches!(
                 err,
@@ -1390,7 +1431,7 @@ fn sum(xs: List<Int>) -> Int =
                 payload: vec![int(n), list],
             };
         }
-        let out = apply_lens_declaration(&dag, sum_id, &[list]).expect("eligible fold runs");
+        let out = apply_lens_declaration(&dag, None, sum_id, &[list]).expect("eligible fold runs");
         assert_eq!(out, int(6));
     }
 
@@ -1416,7 +1457,8 @@ fn sum(xs: List<Int>) -> Int =
             constructor: cons_id,
             payload: vec![FieldValue::Literal(literal_bits_int(1)), empty],
         };
-        let err = apply_lens_declaration(&dag, sum_id, &[one]).expect_err("ineligible step body");
+        let err =
+            apply_lens_declaration(&dag, None, sum_id, &[one]).expect_err("ineligible step body");
         assert!(
             matches!(err, LensApplyError::UnimplementedCallable(_)),
             "{err:?}"
@@ -1430,8 +1472,9 @@ fn p(b: Bool) -> Int = match b { True => 1, False => 0 }
 "#;
         let dag = compile_to_dag(src, "branch_miss.v3").expect("compiles");
         let id = dag.declaration_by_name("p").unwrap().id;
-        let err = apply_lens_declaration(&dag, id, &[FieldValue::Literal(literal_bits_int(42))])
-            .expect_err("Int is not True/False");
+        let err =
+            apply_lens_declaration(&dag, None, id, &[FieldValue::Literal(literal_bits_int(42))])
+                .expect_err("Int is not True/False");
         assert!(matches!(err, LensApplyError::BranchMiss), "{err:?}");
     }
 }

@@ -1,0 +1,2 @@
+SG-0 hand-path delta: +1
+SG-0 pairing: (b) Director budget: R3 second-batch auto-loop scaffold (gates #46–#48) — budgeted db18 deviation + single dissolution trigger documented in ROADMAP.md §"Reflective integration patterns" / new bullet "R3 second-batch auto-loop scaffold". https://github.com/gunb-ai/gunbc/blob/main/ROADMAP.md
