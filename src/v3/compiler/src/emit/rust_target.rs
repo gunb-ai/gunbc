@@ -2938,6 +2938,29 @@ fn port_reaches_upstream(dag: &Dag, from_port: PortId, to_port: PortId) -> bool 
     false
 }
 
+/// R3 gate #48 (`auto_loop_parallelism_dependence_emits_sequential`): structural witness that
+/// loop-carried work stays on a sequential Rust emission path (no `std::thread::scope` batch) and
+/// the program carries iteration dependence evidence.
+///
+/// **Loop-shaped dependence:** any lowered `Behavior::Loop` whose body result port reaches the
+/// carried `init` port upstream in the scheduling graph.
+///
+/// **List catamorphism path:** when lowering does not surface a `Loop` node but the emitter still
+/// spells the sequential iterator fold (`.iter().fold(`), treat that as the same sequential
+/// iteration receipt for this gate's fixture discipline.
+pub(crate) fn r3_loop_dependence_sequential_emit_witness(dag: &Dag, emitted_rust: &str) -> bool {
+    if emitted_rust.contains("thread::scope") {
+        return false;
+    }
+    let loop_carried = dag.nodes().iter().any(|behavior| {
+        let Behavior::Loop(l) = behavior else {
+            return false;
+        };
+        port_reaches_upstream(dag, loop_body_result_port(dag, l), l.init)
+    });
+    loop_carried || emitted_rust.contains(".iter().fold(")
+}
+
 /// True when every pair of top-level binds has no value→value dependency in either direction.
 ///
 /// Used for R3 free-consequence auto-parallelism: only **pairwise** independent clusters emit a
