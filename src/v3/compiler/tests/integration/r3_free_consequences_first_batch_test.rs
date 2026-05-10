@@ -4,8 +4,9 @@
 //! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust
 //! schedule (`LensOutputEquals` + `r3_auto_parallelism_parallel_emit_witness`).
 //! Gates `#44`–`#45` use `auto_parallelism_schedule_witness` with the runner mirror
-//! `r3_auto_parallelism_schedule_witness` (dataflow + branch/loop conservatism).
-//! Auto-memoization claims lock the `BinaryDimensionReportEquals` shape.
+//! `r3_auto_parallelism_schedule_witness` (pairwise module-`let` independence and
+//! branch/loop conservatism; no fabricated `lane2_workflow` `ParallelEffect` in the
+//! witness — DB-20). Auto-memoization claims lock the `BinaryDimensionReportEquals` shape.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};

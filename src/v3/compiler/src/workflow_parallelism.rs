@@ -5,12 +5,13 @@
 //! linear branches can be scheduled concurrently without reorder hazards,
 //! projecting through [`crate::dag::CompositionVerdict`] per DB-18 / PR #529.
 //!
-//! [`register_independent_bind_parallelism`] is the R3 free-consequence hook:
-//! when every top-level `Bind` is pairwise dataflow-independent, the compiler
-//! records a `ParallelEffect` of empty `LinearEffect` branches on the workflow
-//! root (α: last `Bind`). Effect-commutativity and cost witnesses remain
-//! future lenses; this pass is intentionally conservative on side-effecting
-//! RHS (not modeled here).
+//! R3 free-consequences gate #43 uses [`r3_auto_parallelism_schedule_witness`]
+//! (test-runner host mirror) to observe **pairwise dataflow independence** among
+//! module-item `let` binds only. Installing [`WorkflowEffect::ParallelEffect`] on
+//! `lane2_workflow` remains **deferred** until `Lens<Effect-Commutativity>` and
+//! `Lens<Cost>` certify safe parallel scheduling per `docs/design-free-consequences.md`
+//! — DB-20 fail-closed: do not fabricate a parallel workflow fact without those
+//! witnesses.
 
 use std::collections::HashSet;
 
@@ -236,75 +237,43 @@ fn is_module_item_value_let_bind(b: &BindNode) -> bool {
     b.emit_participation().is_none() && b.params.is_empty() && !b.name.starts_with("<refinement:")
 }
 
-/// When there are two or more **module-item** value [`Behavior::Bind`] nodes from
-/// [`lower_item`] (`SurfaceItem::Let`) in the compile file, and every later bind's
-/// RHS is dataflow-independent of every earlier bind, installs
-/// [`WorkflowEffect::ParallelEffect`] on the workflow root (last such bind by source
-/// order).
-///
-/// Inner function bodies do not allocate additional `Bind` nodes for local `let` on
-/// today's lowering spine; this selector is aligned with module `let` items only
-/// (`emit_participation: None`, empty `params`) so function-value binds are not mixed
-/// into the independence walk.
-///
-/// Skips when any candidate bind already carries `lane2_workflow` or when the pairwise
-/// check fails. Side-effect / commutativity certification is **not** performed here —
-/// pair with future `Lens<Effect-Commutativity>` before widening beyond pure-looking
-/// programs.
-///
-/// `user_source_file` must match [`BindNode::span`].`file` for user-authored binds
-/// (the `file` argument to [`crate::compile_to_dag`]) so bootstrap/std binds are
-/// excluded.
-pub fn register_independent_bind_parallelism(dag: &mut Dag, user_source_file: &str) {
+fn module_item_value_lets_in_file<'a>(dag: &'a Dag, user_source_file: &str) -> Vec<&'a BindNode> {
     let mut binds: Vec<&BindNode> = dag
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
         .filter(|b| b.span.file == user_source_file && is_module_item_value_let_bind(b))
         .collect();
-    if binds.len() < 2 {
-        return;
-    }
     binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
-    if binds.iter().any(|b| b.lane2_workflow().is_some()) {
-        return;
+    binds
+}
+
+fn module_lets_pairwise_rhs_independent(dag: &Dag, binds: &[&BindNode]) -> bool {
+    if binds.len() < 2 {
+        return false;
     }
     for (i, bi) in binds.iter().enumerate() {
         for bj in binds.iter().skip(i + 1) {
             if bind_rhs_depends_on_prior_bind(dag, bj, bi) {
-                return;
+                return false;
             }
         }
     }
-    let last_id = binds.last().expect("len >= 2").id;
-    let branches: Vec<Box<WorkflowEffect>> = (0..binds.len())
-        .map(|_| Box::new(WorkflowEffect::LinearEffect { ops: Vec::new() }))
-        .collect();
-    let Some(ns) = NonSingletonList::from_vec(branches) else {
-        return;
-    };
-    let wf = WorkflowEffect::ParallelEffect { branches: ns };
-    dag.try_register_lane2_workflow_effect(last_id, wf);
+    true
 }
 
-/// R3 T-Free-Consequences witness: `1` when [`register_independent_bind_parallelism`] installed
-/// [`WorkflowEffect::ParallelEffect`] on the claim-file workflow root (last user `Bind` by source
-/// order). Uses the same module-`let` selector as [`register_independent_bind_parallelism`].
+/// R3 T-Free-Consequences witness: `1` when the claim file has two or more
+/// module-item value [`Behavior::Bind`] nodes ([`SurfaceItem::Let`]) and every
+/// later bind's RHS is dataflow-independent of every earlier bind (same graph
+/// walk as a future `ParallelEffect` installer would use). Does **not** read
+/// `lane2_workflow` — full parallel workflow facts stay gated on commutativity +
+/// cost per DB-20.
 pub(crate) fn r3_auto_parallelism_schedule_witness(dag: &Dag, claim_file: &str) -> i64 {
-    let mut binds: Vec<&BindNode> = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .filter(|b| b.span.file == claim_file && is_module_item_value_let_bind(b))
-        .collect();
-    if binds.is_empty() {
-        return 0;
-    }
-    binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
-    let root = binds.last().expect("non-empty").id;
-    match dag.lane2_workflow_effect_at(&root) {
-        Some(WorkflowEffect::ParallelEffect { .. }) => 1,
-        _ => 0,
+    let binds = module_item_value_lets_in_file(dag, claim_file);
+    if module_lets_pairwise_rhs_independent(dag, &binds) {
+        1
+    } else {
+        0
     }
 }
 
@@ -314,61 +283,24 @@ mod register_parallelism_tests {
     use crate::compile_to_dag;
 
     #[test]
-    fn independent_binds_register_parallel_on_last_bind() {
+    fn independent_module_lets_witness_parallel_schedule() {
         let dag = compile_to_dag("let a: Int = 1\nlet b: Int = 2", "t.v3").expect("compile");
-        let mut binds: Vec<_> = dag
-            .nodes()
-            .iter()
-            .filter_map(Behavior::as_bind)
-            .filter(|b| b.span.file == "t.v3")
-            .collect();
-        binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
-        assert_eq!(binds.len(), 2);
-        let last = binds.last().expect("two binds").id;
-        let wf = dag
-            .lane2_workflow_effect_at(&last)
-            .expect("parallelism registered");
-        assert!(matches!(wf, WorkflowEffect::ParallelEffect { .. }));
+        assert_eq!(r3_auto_parallelism_schedule_witness(&dag, "t.v3"), 1);
     }
 
     #[test]
-    fn interleaved_fn_item_does_not_mix_into_module_let_parallelism() {
+    fn interleaved_fn_item_does_not_mix_into_module_let_witness() {
         let dag = compile_to_dag(
             "let a: Int = 1\nfn f() -> Int = 1\nlet b: Int = 2\n",
             "t.v3",
         )
         .expect("compile");
-        let mut binds: Vec<_> = dag
-            .nodes()
-            .iter()
-            .filter_map(Behavior::as_bind)
-            .filter(|b| {
-                b.span.file == "t.v3"
-                    && b.emit_participation().is_none()
-                    && b.params.is_empty()
-                    && !b.name.starts_with("<refinement:")
-            })
-            .collect();
-        binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
-        assert_eq!(binds.len(), 2, "fn root bind must not count as module let");
-        let last = binds.last().expect("two binds").id;
-        let wf = dag
-            .lane2_workflow_effect_at(&last)
-            .expect("parallelism registered");
-        assert!(matches!(wf, WorkflowEffect::ParallelEffect { .. }));
+        assert_eq!(r3_auto_parallelism_schedule_witness(&dag, "t.v3"), 1);
     }
 
     #[test]
-    fn dependent_binds_do_not_register_parallel() {
+    fn dependent_module_lets_witness_sequential_schedule() {
         let dag = compile_to_dag("let a: Int = 1\nlet b: Int = a + 1", "t.v3").expect("compile");
-        let mut binds: Vec<_> = dag
-            .nodes()
-            .iter()
-            .filter_map(Behavior::as_bind)
-            .filter(|b| b.span.file == "t.v3")
-            .collect();
-        binds.sort_by_key(|b| (b.span.byte_start, b.span.byte_end));
-        let last = binds.last().expect("two binds").id;
-        assert!(dag.lane2_workflow_effect_at(&last).is_none());
+        assert_eq!(r3_auto_parallelism_schedule_witness(&dag, "t.v3"), 0);
     }
 }
