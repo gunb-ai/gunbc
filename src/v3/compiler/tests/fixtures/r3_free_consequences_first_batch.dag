@@ -39,6 +39,16 @@ fn auto_parallelism_pending_lens(_d: Dag) -> Int = 0
 
 data auto_parallelism_pending_expected: Int = 1
 
+// R3 #45 witness: runner inspects emitted Rust for the claim source and asserts
+// (a) the Bool branch lowered to an `if … else` and (b) no `thread::scope`
+// scheduling wraps the arms — branch arms are exclusive alternatives, not
+// parallel work. See test_runner dispatch on
+// `R3_BRANCH_ARMS_SERIALIZE_WITNESS_LENS_NAME`. Replace with a structural
+// `parallelism.dag` producer when it lands per docs/design-free-consequences.md.
+fn r3_auto_parallelism_branch_arms_serialize_witness(_d: Dag) -> Int = 0
+
+data r3_auto_parallelism_branch_arms_serialize_expected: Int = 1
+
 type repeated_pure_call_observed_report = DimensionReport<AutoMemoizationEvidence>
 type repeated_pure_call_expected_report = DimensionReport<AutoMemoizationEvidence>
 type one_shot_call_observed_report = DimensionReport<AutoMemoizationEvidence>
@@ -70,12 +80,12 @@ data auto_parallelism_dependent_binds_emit_sequential: TestClaim = {
 
 data auto_parallelism_branch_arms_serialize: TestClaim = {
   name: "auto_parallelism_branch_arms_serialize",
-  source: "// free-consequences fixture: branch arms are exclusive alternatives, not parallel work.\nlet _: Int = 0\n",
+  source: "// free-consequences fixture: branch arms are exclusive alternatives, not parallel work.\nlet pick: Bool = true\nlet out: Int =\n  match pick {\n    True => 1 + 2\n    False => 3 + 4\n  }\n",
   file_name: "r3_free_consequences_auto_parallelism_branch_arms.v3",
   predicate: LensOutputEquals(
-    auto_parallelism_pending_lens,
+    r3_auto_parallelism_branch_arms_serialize_witness,
     auto_parallelism_program_input,
-    auto_parallelism_pending_expected
+    r3_auto_parallelism_branch_arms_serialize_expected
   ),
   requires: []
 }
