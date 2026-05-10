@@ -1,23 +1,22 @@
 // Gate #92 witness: `complexity_of` + `EnforcedApplication` enforcement consumer.
 //
-// Today’s symbolic folder labels many user `fold` bodies as `ClassConstant`
-// (composition gap — see `lens_cost` / `transform_summary`). Recursive
-// lowering produces a nontrivial `SymbolicCost` product classified as
-// `ClassUnknown`, which still **strictly exceeds** a `ClassLog` budget under
-// the asymptotic lattice used in `enforced_lens_application`.
+// `quadratic_pair_score` performs one full traversal of `xs` for each element
+// in `xs`, so the complexity lens derives a quadratic work class. The enforced
+// application below requires `ClassLog`, forcing a fail-closed diagnostic at the
+// authored lens-application span.
 module user.t_las_complexity_contract_demo
 
 import lenses.complexity { ComplexitySummary, complexity_enforceable }
 import std.algebra { AsymptoticClass }
 import v3.std.lens_application { EnforcedApplication, DeclarationScope }
 
-fn contract_violation_witness(n: Int) -> Int =
-  if n == 0 then 0 else contract_violation_witness(n - 1)
+fn quadratic_pair_score(xs: List<Int>) -> Int =
+  fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))
 
 data witness_log_cap: EnforcedApplication<ComplexitySummary, AsymptoticClass> = {
   enforceable_lens: complexity_enforceable
-  section: DeclarationScope { declaration: contract_violation_witness }
+  section: DeclarationScope { declaration: quadratic_pair_score }
   budget: ClassLog
   diagnostic_severity: Error
-  span: { file: "t_las_complexity_contract_demo.dag", start: 0, end: 800 }
+  span: { file: "t_las_complexity_contract_demo.dag", start: 520, end: 760 }
 }

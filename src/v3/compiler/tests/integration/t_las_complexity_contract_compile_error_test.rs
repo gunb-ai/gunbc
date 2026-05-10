@@ -1,9 +1,9 @@
 //! **Layer:** integration
 //!
-//! §1.8 / gate #92 `complexity_violation_compile_error_demonstrated`: program
-//! whose `complexity_of` asymptotic class strictly exceeds a `ClassLog` budget
-//! under an `EnforcedApplication` must fail closed with a `ParseError`
-//! diagnostic containing `lens enforcement violation`.
+//! §1.8 / gate #92 `complexity_violation_compile_error_demonstrated`: a concrete
+//! O(n²) program whose `complexity_of` asymptotic class strictly exceeds a
+//! `ClassLog` budget under an `EnforcedApplication` must fail closed with an
+//! Error/`ParseError` diagnostic at the lens-application site.
 
 use std::fs;
 use std::path::PathBuf;
@@ -12,6 +12,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::CompileError;
 
 const DEMO_REL_PATH: &str = "src/v3/compiler/tests/fixtures/t_las_complexity_contract_demo.dag";
+const DEMO_FILE_NAME: &str = "t_las_complexity_contract_demo.dag";
 
 #[test]
 fn complexity_violation_compile_error_demonstrated() {
@@ -23,22 +24,28 @@ fn complexity_violation_compile_error_demonstrated() {
         .name("t-las-complexity-demo-compile".into())
         .stack_size(64 * 1024 * 1024)
         .spawn(move || {
-            let err = compile_to_dag(&source, "t_las_complexity_contract_demo.dag")
-                .expect_err("witness asymptotic class exceeds ClassLog — compile must fail");
+            let err = compile_to_dag(&source, DEMO_FILE_NAME)
+                .expect_err("O(n²) witness asymptotic class exceeds ClassLog — compile must fail");
             let CompileError::Semantic(dag) = err else {
                 panic!("expected Semantic(Dag) after violation, got {err:?}");
             };
             let receipts: Vec<_> = dag
                 .diagnostics()
                 .iter()
-                .map(|(_, d)| (d.layer1_kind_label().to_string(), d.message()))
+                .map(|(_, d)| (d.layer1_kind_label().to_string(), d.message(), d.span()))
                 .collect();
-            let ok = receipts.iter().any(|(kind, msg)| {
-                kind == "ParseError" && msg.contains("lens enforcement violation")
+            let ok = receipts.iter().any(|(kind, msg, span)| {
+                kind == "ParseError"
+                    && msg.contains("lens enforcement violation")
+                    && msg.contains("ClassLog")
+                    && msg.contains("ClassQuadratic")
+                    && span.file.ends_with(DEMO_FILE_NAME)
+                    && span.byte_start == 520
+                    && span.byte_end == 760
             });
             assert!(
                 ok,
-                "expected ParseError with `lens enforcement violation`; got {receipts:?}"
+                "expected Error/ParseError with budget/observed classes at lens span; got {receipts:?}"
             );
         })
         .expect("spawn demo compile")
