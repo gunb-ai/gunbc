@@ -109,12 +109,12 @@ fn assert_repeated_pure_call_claim_emits_cached_target_code(
         .unwrap_or_else(|err| panic!("claim source `{}` must emit Rust: {err:?}", claim.file_name));
 
     assert_eq!(
-        emitted.matches("expensive(x)").count(),
+        emitted.matches("expensive(&x)").count(),
         1,
         "gate #49 must emit the repeated pure call once, then reuse the cached bind; emitted:\n{emitted}"
     );
     assert!(
-        emitted.contains("let first: i64 = expensive(x);"),
+        emitted.contains("let first: i64 = expensive(&x);"),
         "gate #49 must materialize the first pure call bind; emitted:\n{emitted}"
     );
     assert!(
