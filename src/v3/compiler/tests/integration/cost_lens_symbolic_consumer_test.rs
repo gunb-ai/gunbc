@@ -19,6 +19,8 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
+use crate::common::assert_recursive_countdown_linear_semantics;
+
 /// Single source of truth for the gate #78 regression fixture label (`compile_to_dag` second
 /// argument and `TransformNode.span.file` filter — keep them paired).
 const E_P78_PER_CALL_PATTERN_FIXTURE_FILE: &str = "e_p78_cost_lens.v3";
@@ -111,13 +113,7 @@ fn recursive_countdown_pins_symbolic_cost_linear_and_sizevar_on_fixture() {
             "recursive countdown cost should carry a SizeVariable keyed by the parameter port \
              {parameter:?}, got cost={cost:?}"
         );
-        assert!(
-            matches!(cost, SymbolicCost::LinearCost { .. })
-                || matches!(cost, SymbolicCost::ProductCost { .. }),
-            "recursive countdown should surface per-call recurrence via `per_call_pattern_at` \
-             (R3 gate e_p_sub_value_relation_per_call_landed): iterate-bound Product or linear \
-             normalization, got {cost:?}"
-        );
+        assert_recursive_countdown_linear_semantics(&cost);
     });
 }
 
@@ -147,11 +143,6 @@ fn e_p_sub_value_relation_per_call_landed_cost_lens_routes_through_per_call_patt
              evidence present so the cost lens can branch on recurrence)"
         );
         let cost = expect_symbolic_cost(&dag, "countdown");
-        assert!(
-            matches!(cost, SymbolicCost::LinearCost { .. })
-                || matches!(cost, SymbolicCost::ProductCost { .. }),
-            "cost lens should derive non-trivial recurrence cost from the same query surface, \
-             got {cost:?}"
-        );
+        assert_recursive_countdown_linear_semantics(&cost);
     });
 }

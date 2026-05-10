@@ -26,7 +26,7 @@ use v3_compiler::lens_cost_symbolic::{
     symbolic_cost_of, transform_cost_for_target, SymbolicCostEntry, SymbolicCostLookup,
 };
 
-use crate::common::cached_compile_to_dag;
+use crate::common::{assert_recursive_countdown_linear_semantics, cached_compile_to_dag};
 
 fn find_bind_value(dag: &Dag, name: &str) -> PortId {
     dag.nodes()
@@ -383,20 +383,15 @@ budgeted_test! {
         // `node(d, body_id)` → result_port, and THAT port's cost
         // enters the iterate composition. With **per-call** recurrence wiring
         // (`per_call_pattern_at` / gate `e_p_sub_value_relation_per_call_landed`),
-        // recursive Callable transforms also compose `iterate(bound, spine)` from
-        // `SubValueRelation`→`CallPattern` facts — normalization may leave a
-        // `ProductCost` when the recurrence bound and operand spine refer to
-        // distinct `SizeVariable`s (still dominated by a linear family term).
+        // iterate normalization may keep **`ProductCost(Linear, Linear)`** when bound vs spine carry
+        // distinct ports — still linear-family; regression asserts DB-7 semantics via
+        // `crate::common::assert_recursive_countdown_linear_semantics`.
         let dag = cached_compile_to_dag(
             "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
             "loop_body_countdown.v3",
         );
         let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
-        assert!(
-            matches!(cost, SymbolicCost::LinearCost { .. }),
-            "recursive countdown must normalize to LinearCost(O(n) in the parameter), not a \
-             carrier that could admit unrelated iterate-shaped growth; got {cost:?}"
-        );
+        assert_recursive_countdown_linear_semantics(&cost);
     }
 }
 
