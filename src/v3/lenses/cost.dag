@@ -238,12 +238,14 @@ fn entry_for(
 // Recurrence iteration bound × operand spine from `inputs`, keyed by the same
 // `per_call_pattern_at` projection over `SubValueRelation` evidence.
 //
-// **Descent operand appears once (when the pattern yields an iterate bound):** on `Hit`,
-// `pattern_to_iter_bound` charges the iterate dimension on `descent_port`. Summing **every**
-// `inputs` port via `sum_costs` would double-count that operand — unary tail
-// recursion surfaced `ProductCost(Linear, Linear)` on distinct ports instead of a
-// single `LinearCost`. The body fold skips `descent_port` so non-descent arguments
-// still contribute while the bound carries the sized descent witness.
+// **`pattern_to_iter_bound(pattern, descent_port)`** supplies only the **iterate
+// dimension** (recurrence measure keyed on `descent_port`), not the sequential cost of
+// **evaluating** the argument subgraph on that wire — mirror `complexity.dag`
+// `recursive_transform_summary`: compose `lookup_cost(acc, descent_port)` inside the
+// iterate body, then fold **remaining** inputs while skipping `descent_port` so we never
+// charge `lookup_cost` twice for the same wire or stack `sum_costs` on top of the bound's
+// same-port linear factor (unary tail recursion still surfaces benign `ProductCost`
+// shells until alias-aware folding / host collapse).
 // `SameArgumentCall` has no recurrence bound → `pattern_to_iter_bound` is `Miss` (P3).
 fn recursive_transform_cost(
   acc: List<SymbolicCostEntry>,
@@ -256,7 +258,10 @@ fn recursive_transform_cost(
     Cons(_) =>
       combine_iterate(
         pattern_to_iter_bound(pattern, descent_port),
-        sum_costs_excluding_descent_operand(acc, inputs, descent_port)
+        combine_sequential(
+          lookup_cost(acc, descent_port),
+          sum_costs_excluding_descent_operand(acc, inputs, descent_port)
+        )
       )
   }
 
@@ -449,8 +454,9 @@ fn sum_costs(
   )
 
 // Sum operand-port costs for recursive Callable transforms, **excluding** the port
-// identified by `per_call_descent_operand_port` — when `pattern_to_iter_bound` is `Hit`,
-// that port's measure is already the iterate bound (see `recursive_transform_cost`).
+// identified by `per_call_descent_operand_port` — `recursive_transform_cost` composes
+// `lookup_cost(acc, descent_port)` once in the iterate body; this fold covers **other**
+// operands only (see `recursive_transform_cost` commentary).
 fn sum_costs_excluding_descent_operand(
   acc: List<SymbolicCostEntry>,
   ports: List<PortId>,
