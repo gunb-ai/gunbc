@@ -2092,7 +2092,7 @@ impl<'a> TestRunner<'a> {
                         "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                         "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
                         "BinaryDimensionReportEquals" => {
-                            self.eval_binary_dimension_report_equals_shape(claim, &payload)
+                            self.eval_binary_dimension_report_equals(claim, &payload)
                         }
                         "SymbolicCostExprEquals" => {
                             self.eval_symbolic_cost_expr_equals_shape(claim, &payload)
@@ -2844,7 +2844,7 @@ impl<'a> TestRunner<'a> {
         ))
     }
 
-    fn eval_binary_dimension_report_equals_shape(
+    fn eval_binary_dimension_report_equals(
         &self,
         _claim: &TestClaimValue,
         payload: &[FieldValue],
