@@ -931,6 +931,21 @@ fn ep_count_acc_pattern(xs: EpListP, acc: Int, limit: Int) -> Int =
     });
 }
 
+/// Two-parameter recursive self-call with independent arithmetic descent on each
+/// argument (`param_0` / `param_1`). Shared by per-arg label cementing and by R3
+/// gate #72 `e_p_producer_demonstration` so the demonstration cannot drift from the
+/// canonical producer contract.
+fn compile_ep_two_descent_two_arg_arithmetic_dag(display_path: &str) -> Dag {
+    compile_to_dag(
+        "\
+fn ep_two_descent(n: Int, m: Int) -> Int =
+  if n == 0 then m else ep_two_descent(n - 1, m - 1)
+",
+        display_path,
+    )
+    .expect("ep_two_descent two-arg arithmetic fixture compiles")
+}
+
 #[test]
 fn e_p_per_call_descent_evidence_emits_distinct_per_arg_param_labels_for_arithmetic_descent() {
     // Phase-1 broadening Slice 4 (continued): when arithmetic descent
@@ -943,14 +958,7 @@ fn e_p_per_call_descent_evidence_emits_distinct_per_arg_param_labels_for_arithme
     // (v3's existing termination prover requires the first arg to descend
     // structurally; `n - 1` on arg 0 satisfies that, while `m - 1` on arg
     // 1 lets us also exercise classification for a non-first parameter.)
-    let dag = compile_to_dag(
-        "\
-fn ep_two_descent(n: Int, m: Int) -> Int =
-  if n == 0 then m else ep_two_descent(n - 1, m - 1)
-",
-        "e_p_multi_arg_arith.v3",
-    )
-    .expect("two-param arithmetic-descent fixture compiles");
+    let dag = compile_ep_two_descent_two_arg_arithmetic_dag("e_p_multi_arg_arith.v3");
 
     let entries = per_call_descent_evidence(&dag);
     let two_descent = entries
@@ -995,19 +1003,12 @@ fn ep_two_descent(n: Int, m: Int) -> Int =
 /// iteration lowering facts.
 #[test]
 fn e_p_producer_demonstration() {
-    let dag = compile_to_dag(
-        "\
-fn ep_demo_two_arg_arith(n: Int, m: Int) -> Int =
-  if n == 0 then m else ep_demo_two_arg_arith(n - 1, m - 1)
-",
-        "e_p_producer_demonstration.v3",
-    )
-    .expect("e_p_producer_demonstration fixture compiles");
+    let dag = compile_ep_two_descent_two_arg_arithmetic_dag("e_p_producer_demonstration.v3");
 
     let entry = per_call_descent_evidence(&dag)
         .into_iter()
-        .find(|e| e.caller == "ep_demo_two_arg_arith" && e.callee == "ep_demo_two_arg_arith")
-        .expect("expected ep_demo_two_arg_arith self-call in per-call side table");
+        .find(|e| e.caller == "ep_two_descent" && e.callee == "ep_two_descent")
+        .expect("expected ep_two_descent self-call in per-call side table");
 
     assert_eq!(
         entry.evidence.len(),
