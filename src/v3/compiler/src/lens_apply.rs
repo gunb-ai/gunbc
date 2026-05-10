@@ -1,5 +1,13 @@
 //! Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
 //! over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
+//!
+//! **R3 `lens_apply_dot_rs_retired` — canonical acceptance vs edits here:** Gate closure is
+//! **deletion of this file** plus **`EXPECTED_HAND_AUTHORED_NON_TEST` shrink** in
+//! `src/v3/compiler/tests/integration/sg0_census_test.rs`, after PB-Runtime / §7.1 Row-4 readiness,
+//! per `docs/r3-program-plan.md` §1.8 (gate **#5**). **Pre-closure retirement-lane PRs may still
+//! grow or refactor this file** as migration signal; that work is **not** the acceptance receipt and
+//! does not certify the gate. Branch merge deferral (§7.1) and INVARIANTS P5(b) explicit deferral +
+//! dissolution trigger are stated on the tracking PR body.
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
@@ -263,23 +271,31 @@ fn find_fold_step_bind_via_instantiation(
 /// lowered lens graph; falls back to [`EvalCtx`] when preconditions fail or evaluation returns a
 /// non-literal `Value` this bridge cannot yet map back to [`FieldValue`].
 ///
+/// **ProducerLookup discipline:** `ProducerLookup::NoProducer` may fall through to [`EvalCtx`]
+/// (`Ok(None)`). Malformed-substrate variants (`MissingPort`, `MissingNode`, `BindCycle`) fail
+/// closed as [`LensApplyError`] — they must not collapse into the same silent fallback as legitimate
+/// absence (INVARIANTS P2/P3).
+///
+/// **Not gate closure:** This helper does **not** satisfy `lens_apply_dot_rs_retired`; canonical
+/// acceptance remains **file deletion + SG-0 shrink** after Row-4 (see module docs above).
+///
 /// **Merge:** still gated on §7.1 Row-4 green; this is early signal only — expand coverage until
 /// `lens_apply.rs` can retire entirely.
 fn try_apply_lens_via_evaluator_literals_only(
     lens_program: &Dag,
     root_bind: &BindNode,
     inputs: &[FieldValue],
-) -> Option<FieldValue> {
+) -> Result<Option<FieldValue>, LensApplyError> {
     if !inputs.iter().all(|a| matches!(a, FieldValue::Literal(_))) {
-        return None;
+        return Ok(None);
     }
-    // WIP: malformed-graph `ProducerLookup` rows fall through to legacy `EvalCtx` so literals-only
-    // experiments stay non-breaking. When this path becomes authoritative (post §7.1 / full bridge),
-    // switch MissingPort/MissingNode/BindCycle to fail-closed diagnostics instead of silent fallback.
     let producer = match lens_program.resolve_producer_lookup(&root_bind.value) {
         ProducerLookup::Found(b) => b,
-        ProducerLookup::NoProducer | ProducerLookup::MissingPort { .. } => return None,
-        ProducerLookup::MissingNode { .. } | ProducerLookup::BindCycle { .. } => return None,
+        ProducerLookup::NoProducer => return Ok(None),
+        ProducerLookup::MissingPort { .. } => return Err(LensApplyError::UnresolvedPort),
+        ProducerLookup::MissingNode { .. } | ProducerLookup::BindCycle { .. } => {
+            return Err(LensApplyError::MalformedLensRoot);
+        }
     };
     let entry = producer.id();
     let runtime_inputs: Vec<Value> = inputs
@@ -302,8 +318,8 @@ fn try_apply_lens_via_evaluator_literals_only(
     };
     let out = evaluate_body(lens_program, entry, &mut state, strategy).ok()?;
     match out {
-        Value::LiteralValue(bits) => Some(FieldValue::Literal(bits)),
-        _ => None,
+        Value::LiteralValue(bits) => Ok(Some(FieldValue::Literal(bits))),
+        _ => Ok(None),
     }
 }
 
@@ -366,10 +382,9 @@ pub fn apply_lens_declaration(
     // Reflection (`program_under_test: Some`) supplies rich `FieldValue` shapes the literals-only
     // evaluator bridge cannot encode yet — keep `EvalCtx` there until the retirement slice widens.
     if program_under_test.is_none() {
-        if let Some(out) =
-            try_apply_lens_via_evaluator_literals_only(lens_program, root_bind, inputs)
-        {
-            return Ok(out);
+        match try_apply_lens_via_evaluator_literals_only(lens_program, root_bind, inputs)? {
+            Some(out) => return Ok(out),
+            None => {}
         }
     }
     let mut ctx = EvalCtx::new(lens_program);
@@ -1220,6 +1235,7 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
             FieldValue::Literal(literal_bits_int(-3)),
         ];
         let via_bridge = super::try_apply_lens_via_evaluator_literals_only(&dag, root_bind, inputs)
+            .expect("evaluator bridge lookup")
             .expect("literal Int add must succeed on evaluator bridge");
         let mut ctx = EvalCtx::new(&dag);
         for (port, arg) in root_bind.params.iter().zip(inputs.iter()) {
