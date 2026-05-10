@@ -369,7 +369,9 @@ shape; it must name the missing carrier/substrate blocker and stay in
 **Dispatch (same PR as the claim).** Editing
 `src/v3/compiler/regen.dag` or promoting a register row to
 `COMPLETE` with v2 parity is not complete until the matching
-cementing `.dag` harness exists. Extend
+cementing receipt exists: a `.dag` harness by default, or a
+temporary Rust module only when the published carrier shape has a
+named blocker as described above. Extend
 `CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` in
 `tests/integration/cementing/cementing_lens_registry_dispatch_test.rs`
 when the register row is upgraded; the test
@@ -378,9 +380,12 @@ required registry `name` keys from `docs/v3-lens-capability-register.md`
 plus `regen.dag` and asserts the slice matches **exactly** (the slice
 is a projection, not a parallel inventory). The test
 `cementing_test_claims_exist_for_escalated_v2_complete_registry_claims`
-then requires each listed stem to resolve to an on-disk
-`tests/dag/<stem>.dag` file, so an unwired or missing TestClaim harness
-cannot satisfy the ratchet.
+then requires each listed receipt to resolve to its declared on-disk
+shape: `tests/dag/<stem>.dag` for `DagHarness`, or
+`tests/integration/cementing/<stem>.rs` plus a live `tests/integration.rs`
+`#[path = "integration/cementing/<stem>.rs"]` binding for
+`TemporaryRustModule`. An unwired or missing receipt cannot satisfy the
+ratchet.
 
 **Anti-scope.** This section is not a mandate to prove full lens
 equivalence for every `.dag` file, and it does not require new
