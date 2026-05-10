@@ -46,7 +46,7 @@ jobs:
     # Skip draft PRs. `github.event.pull_request.draft` is undefined on push
     # events, so `!= true` keeps main-branch pushes running.
     if: github.event.pull_request.draft != true
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: [self-hosted, linux, x64, gunbc-quick]
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -76,7 +76,7 @@ jobs:
   # #1559; rationale: docs/audit/bootstrap-snapshot-drift-dissolution-assessment.md.
   ci:
     if: github.event.pull_request.draft != true
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: [self-hosted, linux, x64, gunbc-ci]
     timeout-minutes: 25
     steps:
       - name: Checkout
