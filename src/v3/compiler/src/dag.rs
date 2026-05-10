@@ -1725,9 +1725,6 @@ fn match_payload_field_projection_descent_relation(
     let Behavior::Transform(transform) = dag.resolve_producer_opt(&arg)? else {
         return None;
     };
-    let TransformTarget::FieldProject { field_label, .. } = &transform.target else {
-        return None;
-    };
     if transform.inputs.len() != 1 {
         return None;
     }
@@ -1745,20 +1742,25 @@ fn match_payload_field_projection_descent_relation(
                 continue;
             }
             let facts = variant_structural_facts(dag, &path.pattern)?;
-            // Validate the projection's structural label appears in the
-            // resolved variant's Conj field set; otherwise this isn't a
-            // descent on the variant payload.
-            let payload_ty = facts
-                .payload_fields
-                .iter()
-                .find(|(label, _)| label == field_label)
-                .map(|(_, ty)| *ty)?;
+            let (field_name, payload_ty) = match &transform.target {
+                TransformTarget::UnresolvedFieldProject { field_label } => facts
+                    .payload_fields
+                    .iter()
+                    .find(|(label, _)| label == field_label)
+                    .map(|(label, ty)| (label.clone(), *ty))?,
+                TransformTarget::ResolvedFieldProject { field_label } => facts
+                    .payload_fields
+                    .iter()
+                    .find(|(label, _)| label == field_label)
+                    .map(|(label, ty)| (label.clone(), *ty))?,
+                _ => return None,
+            };
             let element_type = named_type_name(dag, payload_ty)?;
             return Some(SubValueRelation::StrictSubValue {
                 field: InductiveField {
                     type_name: facts.type_name,
                     variant_name: facts.variant_name,
-                    field_name: field_label.clone(),
+                    field_name,
                     shape: RecursionShape::DirectRecursion,
                     element_type,
                 },
@@ -1834,7 +1836,9 @@ fn field_project_input_for_port(dag: &Dag, port: PortId) -> Option<PortId> {
     let Behavior::Transform(transform) = dag.resolve_producer_opt(&port)? else {
         return None;
     };
-    let TransformTarget::FieldProject { .. } = &transform.target else {
+    let (TransformTarget::UnresolvedFieldProject { .. }
+    | TransformTarget::ResolvedFieldProject { .. }) = &transform.target
+    else {
         return None;
     };
     if transform.inputs.len() != 1 {
@@ -2123,18 +2127,18 @@ impl ValueNode {
 ///
 /// 4-pattern check on (Callable, FieldProject, Operator):
 /// - Pattern 1 (fact placement): fails. Callable dispatches via
-///   the declaration's Arrow body; FieldProject dispatches via
-///   the input port's resolved Conj + field label; Operator
+///   the declaration's Arrow body; unresolved FieldProject dispatches
+///   via the input port's resolved Conj + field label; Operator
 ///   dispatches via the operand type's algebra walk.
 /// - Pattern 2 (variant-is-data): fails. Callable carries a
-///   DeclarationId; FieldProject carries a field label plus an
-///   optional post-infer child declaration carrier;
-///   Operator carries an OperatorKind.
+///   DeclarationId; resolved FieldProject carries the projected field
+///   label resolved against the parent Conj; Operator carries an
+///   OperatorKind.
 /// - Pattern 3 (algebraic form): fails.
 /// - Pattern 4 (dimensional): fails.
 ///
-/// Verdict: mixed lifecycle. `Callable` and `FieldProject` are
-/// terminal;
+/// Verdict: mixed lifecycle. `Callable` and `ResolvedFieldProject`
+/// are terminal; `UnresolvedFieldProject` is pre-infer only.
 /// `Operator` is 🟡 scaffold with an explicit M2+ dissolution
 /// trigger (surface grammar adoption of direct algebra field
 /// access or a parse-time desugaring pass).
@@ -2143,20 +2147,14 @@ pub enum TransformTarget {
     /// A user function or resolved declaration. Inference walks the
     /// referenced declaration's `Arrow` connective via `resolve_arrow`.
     Callable(DeclarationId),
-    /// Structural projection on a Conj-typed parent value. The
-    /// input port is the single authority for the parent type;
-    /// inference walks that input through any Instantiation /
-    /// ResolvedIdentifier edges, looks up `field_label` on the
-    /// reached Conj, and resolves the output through the same
-    /// substitution context. `field_child` is the post-infer phase
-    /// carrier for the resolved projected child declaration, so
-    /// downstream consumers can read typed child identity without
-    /// repeating the label lookup. No synthesized accessor
-    /// declaration.
-    FieldProject {
-        field_label: String,
-        field_child: Option<DeclarationId>,
-    },
+    /// Pre-infer structural projection on a Conj-typed parent value.
+    /// Inference is the only authority allowed to turn this label into
+    /// a projected child declaration.
+    UnresolvedFieldProject { field_label: String },
+    /// Post-infer structural projection. The field label is the single
+    /// authority; inference and emit resolve it against the parent Conj
+    /// so duplicate-typed fields cannot collapse to the same child id.
+    ResolvedFieldProject { field_label: String },
     /// A primitive binary operator. Inference dispatches on the
     /// `OperatorKind` variant directly: arithmetic returns the operand
     /// type, comparison returns Bool, and logical is Bool-monomorphic.
