@@ -411,12 +411,12 @@ No additional PM/Director ratification needed from Evaluator for E1/E5. **E3 dis
 | Item | Status | Worker / trigger |
 |---|---|---|
 | **G1** L6 row population | HELD | Trigger = Substrate S6 `EmissionPathProjection` carrier landing |
-| **G2** T-Ground-Rust full coverage | HELD | Trigger = Substrate S7 PR-F + S8 Float migration / Real base-carrier for float rows; #1783 remains draft as dispatch-guide staging artifact |
+| **G2** T-Ground-Rust full coverage | **DONE / CONSUMER_LANDED + PASSING 2026-05-10** | Phase 1 already cleared; Phase 2 Float rows consumed by PR #2570, squash `b96a51a2` (`f32`/`f64` Rust primitive rows + pilot mirror + engine full-list validation over `ApproximateFieldAlgebra`). |
 | **G3** Coercion-Fold scratch retirement | HELD | Trigger = executable LanguageSpec projection |
 | **G4** F10 `install_hint` cleanup | **DONE / NO-OP 2026-05-06** | silent-badger-711 (#1774) verified shape already present at HEAD `cde245713f89a08e11c4242e4bb1cd98e098a881`; no diff, no PR needed; `cargo test -p v2-compiler-tests` 482 passed / 0 failed. Closure signal at [gunbc#846 #issuecomment-4387302181](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4387302181). |
 | **G5** Anthropic #1702 re-dispatch | HELD | Trigger = Substrate S5 variant-aware projection metadata carrier + Q-Anthropic-Variant-Aware closure-scope ratification |
 
-No additional PM/Director ratification needed for G4. For G1/G2/G3/G5, schedule already names sufficient upstream triggers; Grounding dispatches as soon as triggers land. Grounding lane is largely consumer of Substrate work — most items HELD on Substrate cascade.
+No additional PM/Director ratification needed for G4. For G1/G3/G5, schedule already names sufficient upstream triggers; Grounding dispatches as soon as triggers land. G2 is complete as of PR #2570 squash `b96a51a2`. Grounding lane is largely consumer of Substrate work — most remaining items are HELD on Substrate cascade.
 
 ### G1 — L6 row population (post-EmissionPathProjection)
 
@@ -425,9 +425,9 @@ No additional PM/Director ratification needed for G4. For G1/G2/G3/G5, schedule 
 **Dispatch trigger**: post-Substrate S6 (EmissionPathProjection carrier landing).
 **Closure predicate**: L6 cross-product fold gate.
 
-### G2 — T-Ground-Rust full coverage (post-PR-F + post-Float)
+### G2 — T-Ground-Rust full coverage (DONE post-PR-F + post-Float)
 
-**Scope**: Phase 1 (`u128` / `isize` / `usize` / walker arms / pilot mirror) post-PR-F; Float rows post-ApproximateField<F>.
+**Scope**: Phase 1 (`u128` / `isize` / `usize` / walker arms / pilot mirror) post-PR-F; Float rows post-ApproximateField<F>. **Closed 2026-05-10** by PR #2570 squash `b96a51a2`: `dsl/extdeps/languages/rust/primitives.dag` includes `f32`/`f64` `NonIntegerPrimitive` rows over `ApproximateFieldAlgebra` and `Word32Carrier`/`Word64Carrier`, mirrored by `grounding_pilot`, and consumed by `grounding_engine` full-list row validation.
 
 **Dispatch trigger**: post-Substrate S7 (PR-F) + S8 (Float).
 **Closure predicate**: full Rust primitive grounding + L5 readiness.
