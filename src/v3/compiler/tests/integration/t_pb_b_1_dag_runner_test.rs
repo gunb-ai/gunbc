@@ -148,6 +148,26 @@ fn t_pb_b_1_execute_command_boundary_suite_passes_through_runner() {
     run_suite_all_pass(&dag, "suite_execute_command_boundary");
 }
 
+/// R3 gate #74 — one Rust integration test ported to `.dag` `TestClaim` data and
+/// executed end-to-end through `TestRunner`.
+///
+/// Port target: `t_pb_b_brief_d_pipeline_smoke_fixture_lowers_cleanly`
+/// (`t_pb_b_brief_d_fixture_smoke_test.rs`). The original Rust test asserts the
+/// pipeline smoke fixture lowers cleanly; this carrier expresses the same
+/// surface as a `Compiles` claim over the embedded subject program.
+#[test]
+fn r3_tests_as_data_demonstration_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_r3_tests_as_data_demonstration.dag"),
+        "src/v3/compiler/tests/dag/t_r3_tests_as_data_demonstration.dag",
+    );
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "suite_tests_as_data_demonstration",
+        &["tests-as-data port of pipeline smoke fixture compiles"],
+    );
+}
+
 #[test]
 fn t_impossiblebugs_nested_optional_flatten_suite_passes_through_runner() {
     let dag = lower(
