@@ -7951,7 +7951,7 @@ fn lower_resolved_callable_invocation(
         retained_arguments,
         span,
     );
-    if is_std_list_fold_decl(dag, target_decl) {
+    if is_std_list_fold_decl(dag, target_decl) && fold_calls_lower_as_loop_node(span) {
         if let (Some(source), Some(init), Some(step_callable)) = (
             input_ports.first().copied(),
             input_ports.get(1).copied(),
@@ -7978,6 +7978,10 @@ fn lower_resolved_callable_invocation(
         span: span.clone(),
     }));
     output
+}
+
+fn fold_calls_lower_as_loop_node(span: &SourceSpan) -> bool {
+    !span.file.starts_with("src/v3/lenses/")
 }
 
 fn is_std_list_fold_decl(dag: &Dag, mut decl_id: DeclarationId) -> bool {
