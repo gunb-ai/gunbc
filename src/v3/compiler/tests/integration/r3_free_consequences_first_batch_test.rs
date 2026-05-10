@@ -1,10 +1,12 @@
 //! **Layer:** integration
 //!
 //! R3 T-Free-Consequences first-batch author-now/fire-later claims.
-//! Gate `#45` asserts a Bool branch lowers to `if … else` with no `thread::scope`
-//! scheduling on the arms (`LensOutputEquals` + runner witness). Gates `#43`–`#44`
-//! stay fail-closed on the scalar parallelism placeholder; auto-memoization
-//! claims lock the `BinaryDimensionReportEquals` shape.
+//! Gate `#43` asserts pairwise-independent top-level binds emit a parallel Rust
+//! schedule, and gate `#45` asserts a Bool branch lowers to `if … else` with no
+//! `thread::scope` scheduling on the arms (both `LensOutputEquals` + runner
+//! witnesses). Gate `#44` stays fail-closed on the scalar parallelism
+//! placeholder; auto-memoization claims lock the `BinaryDimensionReportEquals`
+//! shape.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -52,7 +54,13 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape_inner() {
 
     for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
         assert_eq!(result.claim_name, expected_name);
-        if idx == 2 {
+        if idx == 0 {
+            assert!(
+                matches!(&result.result, ClaimResult::Pass),
+                "expected {expected_name} to Pass (parallel Rust emission witness), got {:?}",
+                result.result
+            );
+        } else if idx == 2 {
             assert!(
                 matches!(&result.result, ClaimResult::Pass),
                 "expected {expected_name} to Pass (Bool branch lowers to `if … else` with no `thread::scope`), got {:?}",
