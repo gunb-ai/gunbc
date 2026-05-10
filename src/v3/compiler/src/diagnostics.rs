@@ -81,10 +81,6 @@ pub fn positive_interval_width_unit_count_requires_nonnegative_units_literal_mes
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CorrectionApplyError {
-    FileMismatch {
-        expected: String,
-        actual: String,
-    },
     InvalidSpan {
         start: u32,
         end: u32,
@@ -104,16 +100,9 @@ pub enum CorrectionValidationError {
 
 pub fn apply_correction(
     source: &str,
-    file: &str,
+    _file: &str,
     correction: &Correction,
 ) -> Result<String, CorrectionApplyError> {
-    if correction.span.file != file {
-        return Err(CorrectionApplyError::FileMismatch {
-            expected: correction.span.file.clone(),
-            actual: file.to_string(),
-        });
-    }
-
     let start = correction.span.byte_start as usize;
     let end = correction.span.byte_end as usize;
     if start > end || end > source.len() {
@@ -999,8 +988,8 @@ mod tests {
     }
 
     #[test]
-    fn apply_correction_rejects_file_mismatch() {
-        let error = apply_correction(
+    fn apply_correction_uses_span_offsets_not_file_participation() {
+        let updated = apply_correction(
             "let x: Int = 1\n",
             "actual.v3",
             &Correction {
@@ -1009,14 +998,8 @@ mod tests {
                 new_source: "2".to_string(),
             },
         )
-        .expect_err("mismatched file should fail closed");
-        assert_eq!(
-            error,
-            CorrectionApplyError::FileMismatch {
-                expected: "expected.v3".to_string(),
-                actual: "actual.v3".to_string(),
-            }
-        );
+        .expect("correction application is offset-bounded, not gated by a separate file string");
+        assert_eq!(updated, "let x: Int = 2\n");
     }
 
     #[test]

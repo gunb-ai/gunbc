@@ -95,7 +95,7 @@ shape · **(d)** sibling / blocker.
 | 16 | **`bootstrap_regen_fresh.rs` duplicate `declaration_name_preference_rank`** | `bootstrap_regen_fresh.rs` | Fresh regen symbol merge | Delete when #14/#15 delete; keep one implementation. | #14. |
 | 17 | **`lens_testgen` std duplicate pick (`std_preference_rank`, `is_bootstrapped_std_file`, `substrate.dag` skip)** | `lens_testgen.rs` (~520–535, ~777) | Lens testgen output only | Consume unified module identity / `DeclarationRef` picks; delete second rank table. | #14/#15 (same duplicate-authority story). |
 | 18 | **`lens_testgen` `verification.dag` special-case** | `lens_testgen.rs` (`decl.span.file == "src/v3/std/verification.dag"`) | 1 predicate arm | Typed “skip harness-only decl” flag or `DeclarationRef` set membership. | #17. |
-| 19 | **Diagnostics correction file consistency** | `diagnostics.rs` (`correction.span.file != file`) | Low (fix struct consumers) | Corrections carry authoritative `SourceSpan`; drop cross-file string compare if spans are always normalized to compilation unit. | Minor; independent. |
+| 19 | **Diagnostics correction file consistency** ✅ retired (this PR) | `diagnostics.rs` (`apply_correction`) | Low (fix struct consumers) | Retired: correction application is bounded by the correction span's byte offsets and UTF-8 boundaries; it no longer compares `correction.span.file` to a separate caller-provided file string as a participation gate. The caller filename remains only for the reparse/tokenize pass after applying the fix. | Minor; independent. |
 
 **Not counted as separate rows:** integration tests under
 `src/v3/compiler/tests/**` that **assert** `span.file == "<fixture>"` (they are
