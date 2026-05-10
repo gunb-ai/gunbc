@@ -57,6 +57,8 @@ pub fn walk_cross_product(dag: &Dag) -> CrossProductReport {
 }
 
 fn fallback_targets(dag: &Dag, covered: &HashSet<Cell>) -> Vec<ShapeATarget> {
+    // Defense-in-depth for malformed bootstrap metadata; steady-state target
+    // discovery stays data-driven through `language_spec_targets`.
     let mut targets = [
         dag.rust_language_spec(),
         dag.python_language_spec(),
