@@ -3796,7 +3796,7 @@ impl<'a> Ctx<'a> {
         }
         let access_expr = render_named_template(
             &self.indexes.syntax.expressions.field_access,
-            &[("object", &parent_access), ("field", &field_label)],
+            &[("object", &parent_access), ("field", field_label)],
         );
         match mode {
             RenderMode::BorrowedRead => self.render_borrowed_expr(t.output, access_expr),

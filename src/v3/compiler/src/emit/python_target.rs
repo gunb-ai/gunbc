@@ -874,9 +874,9 @@ impl<'a> Ctx<'a> {
         match &t.target {
             TransformTarget::Operator(op) => self.render_operator(t, *op, locals),
             TransformTarget::UnresolvedFieldProject { field_label } => {
-                return Err(EmitPythonError::Unsupported(format!(
+                Err(EmitPythonError::Unsupported(format!(
                     "field projection .{field_label} is unresolved; emit_python expects post-infer FieldProject targets"
-                )));
+                )))
             }
             TransformTarget::ResolvedFieldProject { field_label } => {
                 if let Some(binding) = locals

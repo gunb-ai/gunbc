@@ -1570,9 +1570,9 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         if t.inputs.len() != 1 {
-            return Err(EmitError::UnsupportedBehavior(format!(
-                "field projection expected one input"
-            )));
+            return Err(EmitError::UnsupportedBehavior(
+                "field projection expected one input".to_string(),
+            ));
         }
         if let Some(binding) = locals
             .payload_bindings
