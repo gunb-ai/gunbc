@@ -49,12 +49,15 @@ import v3.spec.v3_l1 { DeclarationRef }
 //     `test_runner.rs` (`include_str!`, name arms, and generic
 //     name-keyed lookups); full retirement waits for PB-Runtime
 //     interpreter-as-data or a typed lens-registry carrier.
-//   - `bridge_include_str_side_channels_retired` — Open. Per
-//     `r3-structure.md:82`: "Open disposition (`pipeline_authority`,
-//     PR #1171, 2026-04-29): `compile` remains `ArrowBody::Unparsed`,
-//     so compile-body stage order is not yet a structural Dag fact;
-//     full gate for this site awaits derivation / lowered compile
-//     witness."
+//   - `bridge_include_str_side_channels_retired` — Retired for the
+//     pipeline-authority slice. The active `pipeline.dag` compile-time
+//     source embed under `src/v3/compiler/` has been replaced by a
+//     structural bootstrap witness over `PipelineStageBinding`, and the
+//     integration ratchet forbids reintroducing `include_str!` of
+//     `pipeline.dag` under the compiler crate. `fn compile` still
+//     lowers as `ArrowBody::Unparsed`; the retired row therefore means
+//     no source-text side channel remains for this authority path, not
+//     that compile-body drift is structurally checkable.
 //   - `bridge_exact_string_patching_residual_retired` — Retired.
 //     The lower-helper exact-string patch class remains pinned at zero
 //     by `bridge_lower_helpers_patch_zero_residual_test.rs`, and the
@@ -147,8 +150,8 @@ data bridge_ledger: List<BridgeLedgerRow> = [
   {
     name:      "bridge_include_str_side_channels_retired",
     owner:     "pipeline_authority",
-    status:    Open,
-    authority: "PR #1171"
+    status:    Retired,
+    authority: "src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs"
   },
   {
     name:      "bridge_exact_string_patching_residual_retired",

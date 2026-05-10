@@ -564,7 +564,7 @@ static BRIDGE_LEDGER_OPEN_ROW_NAMES: OnceLock<Vec<String>> = OnceLock::new();
 /// count retire bridges, and PRs that need to increase it must update
 /// `r3-v-bridge-ratchet-test-design.md` §Per-Bridge Gate Audit and obtain
 /// Verification-Mgr acknowledgment.
-const EXPECTED_OPEN_BOUND: usize = 3;
+const EXPECTED_OPEN_BOUND: usize = 2;
 
 fn bridge_ledger_open_row_names() -> &'static [String] {
     BRIDGE_LEDGER_OPEN_ROW_NAMES.get_or_init(|| {
