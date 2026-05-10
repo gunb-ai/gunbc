@@ -96,11 +96,10 @@ mod tests {
         )
     }
 
-    /// Expected L6 coverage at HEAD from Step 1 audit of
-    /// `rust_method_template_contracts` / `python_method_template_contracts` /
-    /// `go_method_template_contracts`: each list is non-empty (Rust 13, Python 17,
-    /// Go 13 rows) and every Phase 1 row maps to the single structural bucket
-    /// **Cardinality × Transform × &lt;target&gt;** for collection method templates.
+    /// Expected L6 coverage at HEAD from the `EmissionPathProjection`
+    /// authority table: the populated Phase 1 projection rows map to the
+    /// single structural bucket **Cardinality × Transform × &lt;target&gt;**
+    /// for each Shape A target.
     const EXPECTED_PRESENT_COUNT: usize = 3;
     const EXPECTED_MISSING_COUNT: usize = 90 - EXPECTED_PRESENT_COUNT;
 
