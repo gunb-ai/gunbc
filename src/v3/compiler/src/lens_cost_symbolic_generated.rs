@@ -126,7 +126,7 @@ pub fn recursive_transform_cost(
         [] => Lookup::Miss,
         [__list_head, __list_tail @ ..] => combine_iterate(
             &(Lookup::Hit(pattern_to_iter_bound(p1, p2))),
-            &(sum_costs(p0, p3)),
+            &(sum_costs_excluding_descent_operand(p0, p3, p2)),
         ),
     }
 }
@@ -312,6 +312,22 @@ pub fn sum_costs(p0: &[SymbolicCostEntry], p1: &[PortId]) -> Lookup<SymbolicCost
     (p1).iter().fold(
         Lookup::Hit(SymbolicCost::ConstantCost { _0: 0 }),
         |__fold_acc, __fold_item| combine_sequential(&__fold_acc, &(lookup_cost(p0, __fold_item))),
+    )
+}
+pub fn sum_costs_excluding_descent_operand(
+    p0: &[SymbolicCostEntry],
+    p1: &[PortId],
+    p2: &PortId,
+) -> Lookup<SymbolicCost> {
+    (p1).iter().fold(
+        Lookup::Hit(SymbolicCost::ConstantCost { _0: 1 }),
+        |__fold_acc, __fold_item| {
+            if ((*(__fold_item)) == (*(p2))) {
+                __fold_acc
+            } else {
+                combine_sequential(&__fold_acc, &(lookup_cost(p0, __fold_item)))
+            }
+        },
     )
 }
 pub fn combine_sequential(
