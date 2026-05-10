@@ -1454,6 +1454,16 @@ fn declaration_id_owning_bind_root(dag: &Dag, bind_node_id: NodeId) -> Option<De
 /// those two `LinearCost` shells structurally, yielding a binary `ProductCost` that overstates the
 /// asymptotic carrier until alias-aware folding exists in the algebra.
 ///
+/// **Soundness scope (P2 / modeling-discipline Practice 5):** This pass does **not** read provenance
+/// bits inside [`SymbolicCost`] — it matches the **structural** coincidence `Product(Linear(param),
+/// Linear(descent))` at a unary bind **result** port (`bind_value_port == BindNode::value`) together
+/// with [`unary_bind_duplicate_iter_alias_evidence`] (joint self-call + descent operand port +
+/// param-sourced loop envelope). That aligns with the **only** lens emission path for this product
+/// shape in today’s `cost.dag` wiring for gate **#78** tail recursion (outer loop iterate × inner
+/// recurrence). A future producer that introduced an **independent** multiplicative
+/// `Linear(param) × Linear(other)` at the same port **without** that iterate-alias genesis would
+/// require narrowing this pass or dissolving it into `.dag` algebra per the ROADMAP trigger below.
+///
 /// **P5:** transitional host pass until dissolution — explicit ROADMAP row **“R3 gate #78 — unary-bind
 /// `SymbolicCost` iterate alias collapse post-pass”** (`ROADMAP.md`, Post-merge debt 2026-05-08).
 ///
