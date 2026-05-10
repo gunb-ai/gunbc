@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 
 use v3_compiler::dag::{
-    Behavior, BindNode, Dag, DeclarationId, Field, PortState, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective,
+    AtomPayload, Behavior, BindNode, Dag, DeclarationId, Field, PortState, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective,
 };
 
 pub fn find_named(dag: &Dag, name: &str) -> DeclarationId {
@@ -116,6 +116,151 @@ fn peel_zero_arg_alias(dag: &Dag, mut current: DeclarationId) -> DeclarationId {
     panic!("zero-arg alias chain exceeded receipt peel bound at {current:?}")
 }
 
+fn resolve_atom_alias(dag: &Dag, mut current: DeclarationId) -> DeclarationId {
+    for _ in 0..16 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByName(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => current = *next,
+            _ => return current,
+        }
+    }
+    panic!("atom alias chain exceeded receipt peel bound at {current:?}")
+}
+
+fn assert_single_arg_instantiation(
+    dag: &Dag,
+    alias_name: &str,
+    template_name: &str,
+    argument: DeclarationId,
+    message: &str,
+) {
+    let alias_id = resolve_atom_alias(dag, find_named(dag, alias_name));
+    let template_id = find_named(dag, template_name);
+    let connective = &dag.declaration(alias_id).connective;
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = connective
+    else {
+        panic!("{alias_name} must resolve to {template_name}<…>; got {connective:?}");
+    };
+    assert_eq!(*template, template_id, "{message}");
+    assert_eq!(
+        arguments.len(),
+        1,
+        "{template_name}<…> takes one carrier argument in this construction receipt"
+    );
+    assert_eq!(arguments[0].value, argument, "{message}");
+}
+
+fn assert_numeric_construction_chain(dag: &Dag) {
+    let magnitude_id = find_named(dag, "Magnitude");
+    assert_single_arg_instantiation(
+        dag,
+        "Nat",
+        "CommutativeSemiring",
+        magnitude_id,
+        "Nat must be CommutativeSemiring<Magnitude>",
+    );
+
+    let nat_id = find_named(dag, "Nat");
+    let group_completion_id = find_named(dag, "GroupCompletion");
+    let int_id = resolve_atom_alias(dag, find_named(dag, "Int"));
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &dag.declaration(int_id).connective
+    else {
+        panic!("Int must resolve to AbelianGroup<GroupCompletion<Nat>>");
+    };
+    assert_eq!(
+        *template,
+        find_named(dag, "AbelianGroup"),
+        "Int must be AbelianGroup<GroupCompletion<Nat>>"
+    );
+    assert_eq!(arguments.len(), 1, "AbelianGroup<T> takes one carrier");
+    match &dag.declaration(arguments[0].value).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(
+                *template, group_completion_id,
+                "Int must complete Nat via GroupCompletion"
+            );
+            assert_eq!(arguments.len(), 1, "GroupCompletion<M> takes one carrier");
+            assert_eq!(
+                arguments[0].value, nat_id,
+                "Int must use Nat as the completed carrier"
+            );
+        }
+        other => panic!("Int carrier must be GroupCompletion<Nat>; got {other:?}"),
+    }
+
+    let field_of_fractions_id = find_named(dag, "FieldOfFractions");
+    let rational_id = resolve_atom_alias(dag, find_named(dag, "Rational"));
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &dag.declaration(rational_id).connective
+    else {
+        panic!("Rational must resolve to Field<FieldOfFractions<Int>>");
+    };
+    assert_eq!(
+        *template,
+        find_named(dag, "Field"),
+        "Rational must be Field<FieldOfFractions<Int>>"
+    );
+    assert_eq!(arguments.len(), 1, "Field<F> takes one carrier");
+    match &dag.declaration(arguments[0].value).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(
+                *template, field_of_fractions_id,
+                "Rational must use FieldOfFractions as its carrier"
+            );
+            assert_eq!(arguments.len(), 1, "FieldOfFractions<R> takes one carrier");
+            assert_eq!(
+                arguments[0].value,
+                find_named(dag, "Int"),
+                "Rational must be over Int"
+            );
+        }
+        other => panic!("Rational carrier must be FieldOfFractions<Int>; got {other:?}"),
+    }
+
+    let real_id = resolve_atom_alias(dag, find_named(dag, "Real"));
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &dag.declaration(real_id).connective
+    else {
+        panic!("Real must resolve to ApproximateField<FieldOfFractions<Int>>");
+    };
+    assert_eq!(
+        resolve_atom_alias(dag, *template),
+        find_named(dag, "ApproximateField"),
+        "Real must be ApproximateField<FieldOfFractions<Int>>"
+    );
+    assert_eq!(arguments.len(), 1, "ApproximateField<F> takes one carrier");
+    match &dag.declaration(arguments[0].value).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(
+                *template, field_of_fractions_id,
+                "Real must approximate the same FieldOfFractions<Int> carrier"
+            );
+            assert_eq!(arguments.len(), 1, "FieldOfFractions<R> takes one carrier");
+            assert_eq!(arguments[0].value, find_named(dag, "Int"));
+        }
+        other => panic!("Real carrier must be FieldOfFractions<Int>; got {other:?}"),
+    }
+}
+
 fn assert_compose_with_machine_width(
     dag: &Dag,
     alias_name: &str,
@@ -196,8 +341,9 @@ pub fn assert_bootstrap_float64_aliases_real64(dag: &Dag) {
     );
 }
 
-/// Gate #67 demonstration receipt: both construction-chain endpoints are present.
+/// Gate #67 demonstration receipt: the construction chain and both width demos are present.
 pub fn assert_numeric_construction_demonstration_gate_67(dag: &Dag) {
+    assert_numeric_construction_chain(dag);
     assert_compose_with_machine_width(dag, "Int32", "Int", "Word32");
     assert_bootstrap_real64_compose_real_machine_width(dag);
 }
