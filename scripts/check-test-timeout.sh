@@ -45,7 +45,7 @@
 #   TEST_TIMEOUT_EXEMPT   Path to exemption file
 #                         (default scripts/slow-test-exemptions.txt).
 #   TEST_TIMEOUT_MAX_EXEMPTIONS
-#                         Ratchet floor for active exemption entries (default 46;
+#                         Ratchet floor for active exemption entries (default 47;
 #                         keep aligned with non-comment rows in
 #                         scripts/slow-test-exemptions.txt). Raise or lower in the same PR
 #                         as exemption rows; lower when deleting exemptions.
