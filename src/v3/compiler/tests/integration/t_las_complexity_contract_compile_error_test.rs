@@ -1,7 +1,7 @@
 //! **Layer:** integration
 //!
 //! §1.8 / gate #92 `complexity_violation_compile_error_demonstrated`: a concrete
-//! O(n^2) program whose `complexity_of` asymptotic class strictly exceeds a
+//! nested-fold program whose `complexity_of` asymptotic class strictly exceeds a
 //! `ClassLog` budget under an `EnforcedApplication` must fail closed with an
 //! Error/`ParseError` diagnostic at the lens-application site.
 
@@ -39,7 +39,7 @@ fn complexity_violation_compile_error_demonstrated() {
                 kind == "ParseError"
                     && msg.contains("lens enforcement violation")
                     && msg.contains("ClassLog")
-                    && msg.contains("ClassQuadratic")
+                    && msg.contains("ClassLinear")
                     && span.file.ends_with(DEMO_FILE_NAME)
                     && span.byte_start < span.byte_end
             });

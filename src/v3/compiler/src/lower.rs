@@ -7844,7 +7844,6 @@ fn lower_resolved_callable_invocation(
     let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
     let mut input_ports: Vec<PortId> = Vec::new();
     let mut template_arguments: Vec<TemplateArgument> = Vec::new();
-    let mut fold_step_callable: Option<DeclarationId> = None;
     if let (Some(expected_result), Some(target_output)) = (
         expected_decl,
         declaration_callable_output(dag, base_target_decl, 0),
@@ -7915,9 +7914,6 @@ fn lower_resolved_callable_invocation(
                     );
                     return port;
                 }
-                if is_std_list_fold_decl(dag, base_target_decl) {
-                    fold_step_callable = Some(actual_callable);
-                }
                 continue;
             }
         }
@@ -7950,23 +7946,6 @@ fn lower_resolved_callable_invocation(
         retained_arguments,
         span,
     );
-    if is_std_list_fold_decl(dag, target_decl) && fold_call_has_nested_fold(args) {
-        if let (Some(source), Some(init), Some(step_callable)) = (
-            input_ports.first().copied(),
-            input_ports.get(1).copied(),
-            fold_step_callable,
-        ) {
-            if let Some(body) = user_defined_arrow_body_node(dag, step_callable) {
-                return dag.push_loop(
-                    source,
-                    init,
-                    body,
-                    LoopBound::Cardinality { count: source },
-                    span.clone(),
-                );
-            }
-        }
-    }
     let node_id = dag.alloc_node_id();
     let output = dag.alloc_port(Some(node_id));
     dag.push_node(Behavior::Transform(TransformNode {
@@ -7977,77 +7956,6 @@ fn lower_resolved_callable_invocation(
         span: span.clone(),
     }));
     output
-}
-
-fn fold_call_has_nested_fold(args: &[SurfaceExpr]) -> bool {
-    args.get(2).is_some_and(surface_expr_contains_fold_call)
-}
-
-fn surface_expr_contains_fold_call(expr: &SurfaceExpr) -> bool {
-    match expr {
-        SurfaceExpr::Call { target, args, .. } => {
-            target == "fold" || args.iter().any(surface_expr_contains_fold_call)
-        }
-        SurfaceExpr::PathCall { segments, args, .. } => {
-            segments.last().is_some_and(|target| target == "fold")
-                || args.iter().any(surface_expr_contains_fold_call)
-        }
-        SurfaceExpr::Operator { args, .. } => args.iter().any(surface_expr_contains_fold_call),
-        SurfaceExpr::Lambda { body, .. } => surface_expr_contains_fold_call(body),
-        SurfaceExpr::If {
-            cond,
-            then_branch,
-            else_branch,
-            ..
-        } => {
-            surface_expr_contains_fold_call(cond)
-                || surface_expr_contains_fold_call(then_branch)
-                || surface_expr_contains_fold_call(else_branch)
-        }
-        SurfaceExpr::Match {
-            scrutinee, arms, ..
-        } => {
-            surface_expr_contains_fold_call(scrutinee)
-                || arms
-                    .iter()
-                    .any(|arm| surface_expr_contains_fold_call(&arm.body))
-        }
-        SurfaceExpr::VariantRecord { fields, .. } | SurfaceExpr::Record { fields, .. } => fields
-            .iter()
-            .any(|field| surface_expr_contains_fold_call(&field.value)),
-        SurfaceExpr::List { elements, .. } => elements.iter().any(surface_expr_contains_fold_call),
-        SurfaceExpr::Map { entries, .. } => entries
-            .iter()
-            .any(|entry| surface_expr_contains_fold_call(&entry.value)),
-        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => false,
-    }
-}
-
-fn is_std_list_fold_decl(dag: &Dag, mut decl_id: DeclarationId) -> bool {
-    for _ in 0..16 {
-        if dag.std_list_fold_decl() == Some(decl_id) {
-            return true;
-        }
-        match &dag.declaration(decl_id).connective {
-            TypeConnective::Instantiation { template, .. } => decl_id = *template,
-            _ => return false,
-        }
-    }
-    false
-}
-
-fn user_defined_arrow_body_node(dag: &Dag, mut decl_id: DeclarationId) -> Option<NodeId> {
-    for _ in 0..16 {
-        match &dag.declaration(decl_id).connective {
-            TypeConnective::Arrow {
-                body: ArrowBody::UserDefined(bind_id),
-                ..
-            } => return dag.port(bind_id.bind(dag).value).produced_by,
-            TypeConnective::Instantiation { template, .. } => decl_id = *template,
-            _ => return None,
-        }
-    }
-    None
 }
 
 fn lower_expr(
