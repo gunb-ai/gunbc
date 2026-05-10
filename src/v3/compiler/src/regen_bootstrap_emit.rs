@@ -536,9 +536,8 @@ fn render_transform_target(target: &TransformTarget) -> String {
         TransformTarget::UnresolvedFieldProject { field_label } => {
             format!("TransformTarget::UnresolvedFieldProject {{ field_label: {field_label:?}.to_string() }}")
         }
-        TransformTarget::ResolvedFieldProject { field_ref } => format!(
-            "TransformTarget::ResolvedFieldProject {{ field_ref: {} }}",
-            render_declaration_id(*field_ref),
+        TransformTarget::ResolvedFieldProject { field_label } => format!(
+            "TransformTarget::ResolvedFieldProject {{ field_label: {field_label:?}.to_string() }}"
         ),
         TransformTarget::Operator(kind) => {
             format!("TransformTarget::Operator({})", render_operator_kind(kind))

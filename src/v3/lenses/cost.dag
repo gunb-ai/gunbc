@@ -326,7 +326,7 @@ fn transform_cost_for_target(
   match target {
     Callable(_) => transform_cost(acc, inputs)
     UnresolvedFieldProject { field_label: l } => transform_cost(acc, inputs)
-    ResolvedFieldProject { field_ref: f } => transform_cost(acc, inputs)
+    ResolvedFieldProject { field_label: f } => transform_cost(acc, inputs)
     Operator(op) =>
       match op {
         Arithmetic(arith) =>

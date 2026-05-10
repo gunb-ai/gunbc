@@ -305,10 +305,7 @@ impl Dag {
         match target {
             TransformTarget::Callable(target) => self.callable_output_shape(*target),
             TransformTarget::UnresolvedFieldProject { .. } => None,
-            TransformTarget::ResolvedFieldProject { field_ref } => {
-                self.assert_declaration_exists(*field_ref, "push_transform(target.field_ref)");
-                Some(TypeShape::new(*field_ref))
-            }
+            TransformTarget::ResolvedFieldProject { .. } => None,
             TransformTarget::Operator(kind) => self.operator_output_shape(*kind, inputs),
         }
     }
@@ -1326,21 +1323,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "push_transform(target.field_ref): unknown declaration")]
-    fn push_transform_rejects_unknown_field_project_child() {
+    #[should_panic(expected = "push_transform(FieldProject) requires exactly one input port")]
+    fn push_transform_rejects_resolved_field_project_bad_arity() {
         let mut dag = Dag::new();
-        let parent = dag.alloc_port_with_shape(
-            dag.declaration_by_name("Dag")
-                .expect("bootstrap Dag declaration")
-                .id
-                .into(),
-        );
 
         let _ = dag.push_transform(
             TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(u32::MAX),
+                field_label: "nodes".to_string(),
             },
-            vec![parent],
+            vec![],
             span(),
         );
     }

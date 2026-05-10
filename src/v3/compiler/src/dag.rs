@@ -1746,10 +1746,10 @@ fn match_payload_field_projection_descent_relation(
                     .iter()
                     .find(|(label, _)| label == field_label)
                     .map(|(label, ty)| (label.clone(), *ty))?,
-                TransformTarget::ResolvedFieldProject { field_ref } => facts
+                TransformTarget::ResolvedFieldProject { field_label } => facts
                     .payload_fields
                     .iter()
-                    .find(|(_, ty)| ty == field_ref)
+                    .find(|(label, _)| label == field_label)
                     .map(|(label, ty)| (label.clone(), *ty))?,
                 _ => return None,
             };
@@ -2148,10 +2148,10 @@ pub enum TransformTarget {
     /// Inference is the only authority allowed to turn this label into
     /// a projected child declaration.
     UnresolvedFieldProject { field_label: String },
-    /// Post-infer structural projection. The projected child declaration
-    /// is the sole authority; labels used by emitters are derived from
-    /// the parent Conj children instead of stored independently.
-    ResolvedFieldProject { field_ref: DeclarationId },
+    /// Post-infer structural projection. The field label is the single
+    /// authority; inference and emit resolve it against the parent Conj
+    /// so duplicate-typed fields cannot collapse to the same child id.
+    ResolvedFieldProject { field_label: String },
     /// A primitive binary operator. Inference dispatches on the
     /// `OperatorKind` variant directly: arithmetic returns the operand
     /// type, comparison returns Bool, and logical is Bool-monomorphic.

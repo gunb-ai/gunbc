@@ -2060,11 +2060,13 @@ mod substrate_reflection {
                     field_label.clone(),
                 ))],
             ),
-            TransformTarget::ResolvedFieldProject { field_ref } => sum_variant_payload(
+            TransformTarget::ResolvedFieldProject { field_label } => sum_variant_payload(
                 dag,
                 "TransformTarget",
                 "ResolvedFieldProject",
-                vec![FieldValue::Reference(*field_ref)],
+                vec![FieldValue::Literal(LiteralBits::String(
+                    field_label.clone(),
+                ))],
             ),
             TransformTarget::Operator(op) => sum_variant_payload(
                 dag,

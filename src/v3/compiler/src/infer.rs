@@ -1132,8 +1132,8 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
         TransformTarget::UnresolvedFieldProject { field_label } => {
             return decide_field_project(dag, t, field_label);
         }
-        TransformTarget::ResolvedFieldProject { field_ref } => {
-            return decide_resolved_field_project(dag, t, *field_ref);
+        TransformTarget::ResolvedFieldProject { field_label } => {
+            return decide_field_project(dag, t, field_label);
         }
         TransformTarget::Operator(op_kind) => {
             let lhs_type = match t.inputs.first() {
@@ -1850,9 +1850,13 @@ fn refinement_targets_equal(dag: &Dag, lhs: &TransformTarget, rhs: &TransformTar
             },
         ) => a_label == b_label,
         (
-            TransformTarget::ResolvedFieldProject { field_ref: a },
-            TransformTarget::ResolvedFieldProject { field_ref: b },
-        ) => declaration_shapes_equivalent(dag, *a, *b, 0),
+            TransformTarget::ResolvedFieldProject {
+                field_label: a_label,
+            },
+            TransformTarget::ResolvedFieldProject {
+                field_label: b_label,
+            },
+        ) => a_label == b_label,
         _ => false,
     }
 }
@@ -2205,18 +2209,8 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
                     subst,
                 })
             }
-            TransformTarget::ResolvedFieldProject { field_ref } => {
-                let decl = if is_retryable_generic_decl(dag, *field_ref) {
-                    resolved_decl
-                } else {
-                    *field_ref
-                };
-                Some(PortTypeContext {
-                    decl,
-                    subst: SubstStack::new(),
-                })
-            }
-            TransformTarget::UnresolvedFieldProject { .. } => None,
+            TransformTarget::UnresolvedFieldProject { .. }
+            | TransformTarget::ResolvedFieldProject { .. } => None,
             TransformTarget::Operator(_) => Some(PortTypeContext {
                 decl: resolved_decl,
                 subst: SubstStack::new(),
@@ -3979,11 +3973,13 @@ fn transform_targets_equal_under_subst(
             },
         ) => cand_label == template_label,
         (
-            TransformTarget::ResolvedFieldProject { field_ref: cand },
             TransformTarget::ResolvedFieldProject {
-                field_ref: template,
+                field_label: cand_label,
             },
-        ) => callable_decls_equal_under_subst(dag, *cand, *template, subst),
+            TransformTarget::ResolvedFieldProject {
+                field_label: template_label,
+            },
+        ) => cand_label == template_label,
         _ => false,
     }
 }
@@ -4142,10 +4138,7 @@ fn find_equivalent_anonymous_cardinality(
 enum FieldProjectResolution {
     Retry,
     Fail(Diagnostic),
-    Resolved {
-        field_child: DeclarationId,
-        output_ty: TypeShape,
-    },
+    Resolved { output_ty: TypeShape },
 }
 
 fn resolve_field_project(
@@ -4236,10 +4229,7 @@ fn resolve_field_project(
         });
     };
 
-    FieldProjectResolution::Resolved {
-        field_child: field_decl_id,
-        output_ty,
-    }
+    FieldProjectResolution::Resolved { output_ty }
 }
 
 fn first_nominal_opaque_on_conj_walk(
@@ -4262,103 +4252,8 @@ fn decide_field_project(dag: &Dag, t: &TransformNode, field_label: &str) -> Deci
     }
 }
 
-fn decide_resolved_field_project(
-    dag: &Dag,
-    t: &TransformNode,
-    field_ref: DeclarationId,
-) -> Decision {
-    if t.inputs.len() != 1 {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::ArityMismatch {
-                function: "resolved field projection".to_string(),
-                expected: 1,
-                actual: t.inputs.len(),
-                span: t.span.clone(),
-                fixes: Vec::new(),
-            },
-        );
-    }
-
-    let input_ty = match dag.port(t.inputs[0]).state() {
-        PortState::Uninferred => return Decision::Retry,
-        PortState::Unresolved => {
-            return Decision::Fail(
-                t.output,
-                Diagnostic::ResolveError {
-                    name: "(upstream failure in resolved field projection)".to_string(),
-                    span: t.span.clone(),
-                    fixes: Vec::new(),
-                },
-            )
-        }
-        PortState::Resolved(ty) => *ty,
-    };
-
-    let mut subst = SubstStack::new();
-    if let Some(opaque_decl) = first_nominal_opaque_on_conj_walk(dag, input_ty.declaration, &subst)
-    {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::NominalOpacityViolation {
-                declaration: opaque_decl,
-                accessor: None,
-                span: t.span.clone(),
-                fixes: Vec::new(),
-            },
-        );
-    }
-    let Some(actual_conj_id) = walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
-    else {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "field declaration `{}` cannot be projected from `{}` because it does not walk to a Conj type",
-                    target_display_name(dag, field_ref),
-                    target_display_name(dag, input_ty.declaration),
-                ),
-                span: t.span.clone(),
-                fixes: Vec::new(),
-            },
-        );
-    };
-    let TypeConnective::Conj { children } = &dag.declaration(actual_conj_id).connective else {
-        unreachable!("walk_to_conj_decl returned a non-Conj declaration")
-    };
-    if !children.iter().any(|field| field.ty == field_ref) {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "resolved field declaration `{}` is not a field of `{}`",
-                    target_display_name(dag, field_ref),
-                    target_display_name(dag, input_ty.declaration),
-                ),
-                span: t.span.clone(),
-                fixes: Vec::new(),
-            },
-        );
-    }
-    let Some(output_ty) = walk_to_type_shape(dag, field_ref, &subst, 0) else {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "field declaration `{}` on `{}` does not resolve to a port type",
-                    target_display_name(dag, field_ref),
-                    target_display_name(dag, input_ty.declaration),
-                ),
-                span: t.span.clone(),
-                fixes: Vec::new(),
-            },
-        );
-    };
-    Decision::Set(t.output, output_ty)
-}
-
 fn resolve_field_project_targets(dag: &mut Dag) -> bool {
-    let mut rewrites: Vec<(usize, DeclarationId)> = Vec::new();
+    let mut rewrites: Vec<(usize, String)> = Vec::new();
     for (node_index, node) in dag.nodes().iter().enumerate() {
         let Behavior::Transform(t) = node else {
             continue;
@@ -4366,16 +4261,15 @@ fn resolve_field_project_targets(dag: &mut Dag) -> bool {
         let TransformTarget::UnresolvedFieldProject { field_label } = &t.target else {
             continue;
         };
-        let FieldProjectResolution::Resolved { field_child, .. } =
-            resolve_field_project(dag, t, field_label)
+        let FieldProjectResolution::Resolved { .. } = resolve_field_project(dag, t, field_label)
         else {
             continue;
         };
-        rewrites.push((node_index, field_child));
+        rewrites.push((node_index, field_label.clone()));
     }
 
     let mut changed = false;
-    for (node_index, field_child) in rewrites {
+    for (node_index, field_label) in rewrites {
         let Behavior::Transform(t) = &mut dag.nodes_mut()[node_index] else {
             continue;
         };
@@ -4383,9 +4277,7 @@ fn resolve_field_project_targets(dag: &mut Dag) -> bool {
         let TransformTarget::UnresolvedFieldProject { .. } = target else {
             continue;
         };
-        *target = TransformTarget::ResolvedFieldProject {
-            field_ref: field_child,
-        };
+        *target = TransformTarget::ResolvedFieldProject { field_label };
         changed = true;
     }
     changed
@@ -5121,7 +5013,7 @@ fn transform_target_display_name(dag: &Dag, target: &TransformTarget) -> String 
     match target {
         TransformTarget::Callable(id) => target_display_name(dag, *id),
         TransformTarget::UnresolvedFieldProject { field_label } => format!(".{field_label}"),
-        TransformTarget::ResolvedFieldProject { field_ref } => target_display_name(dag, *field_ref),
+        TransformTarget::ResolvedFieldProject { field_label } => format!(".{field_label}"),
         TransformTarget::Operator(op_kind) => crate::operators::symbol(*op_kind),
     }
 }

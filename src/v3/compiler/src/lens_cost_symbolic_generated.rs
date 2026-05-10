@@ -91,11 +91,11 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
             cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
         },
         Behavior::Branch(b) => SymbolicCostEntry {
-            port: (b).input,
+            port: (b).result_port(),
             cost: branch_cost(p1, &((b).input), &((b).paths)),
         },
         Behavior::Loop(l) => SymbolicCostEntry {
-            port: (l).source,
+            port: (l).result_port(),
             cost: loop_cost(p0, p1, l),
         },
         Behavior::Bind(bind) => SymbolicCostEntry {
@@ -107,7 +107,7 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
 pub fn loop_cost(p0: &Dag, p1: &[SymbolicCostEntry], p2: &LoopNode) -> Lookup<SymbolicCost> {
     combine_iterate(
         &(linear_at(&((p2).source))),
-        &(body_cost(p0, p1, &((p2).id))),
+        &(body_cost(p0, p1, &((p2).body))),
     )
 }
 pub fn body_cost(p0: &Dag, p1: &[SymbolicCostEntry], p2: &NodeId) -> Lookup<SymbolicCost> {
@@ -120,8 +120,8 @@ pub fn behavior_result_port(p0: &Behavior) -> PortId {
     match p0 {
         Behavior::Value(v) => (v).result_port(),
         Behavior::Transform(t) => (t).result_port(),
-        Behavior::Branch(br) => (br).input,
-        Behavior::Loop(lp) => (lp).source,
+        Behavior::Branch(br) => (br).result_port(),
+        Behavior::Loop(lp) => (lp).result_port(),
         Behavior::Bind(bind) => (bind).result_port(),
     }
 }
@@ -192,7 +192,7 @@ pub fn transform_cost_for_target(
     match p1 {
         TransformTarget::Callable(_) => transform_cost(p0, p2),
         TransformTarget::UnresolvedFieldProject { field_label: _ } => transform_cost(p0, p2),
-        TransformTarget::ResolvedFieldProject { field_ref: _ } => transform_cost(p0, p2),
+        TransformTarget::ResolvedFieldProject { field_label: _ } => transform_cost(p0, p2),
         TransformTarget::Operator(op) => match op {
             OperatorKind::Arithmetic(arith) => match arith {
                 ArithmeticOp::Div => match p2 {

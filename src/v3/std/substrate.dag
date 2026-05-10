@@ -357,7 +357,7 @@ type TransformTarget
       field_label: String
     }
   | ResolvedFieldProject {
-      field_ref: DeclarationId
+      field_label: String
     }
   | Operator(OperatorKind)
 

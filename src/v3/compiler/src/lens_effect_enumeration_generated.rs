@@ -99,7 +99,7 @@ pub fn transform_effect(p0: &Dag, p1: &TransformNode) -> StructuralEffectShape {
         TransformTarget::UnresolvedFieldProject { field_label: _ } => {
             StructuralEffectShape::NoEffect
         }
-        TransformTarget::ResolvedFieldProject { field_ref: _ } => StructuralEffectShape::NoEffect,
+        TransformTarget::ResolvedFieldProject { field_label: _ } => StructuralEffectShape::NoEffect,
         TransformTarget::Operator(_) => StructuralEffectShape::NoEffect,
     }
 }

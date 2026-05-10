@@ -3542,8 +3542,8 @@ impl<'a> Ctx<'a> {
                     "field projection .{field_label} is unresolved; emit_rust expects post-infer FieldProject targets"
                 )))
             }
-            TransformTarget::ResolvedFieldProject { field_ref } => {
-                self.render_field_project(t, *field_ref, locals, mode)
+            TransformTarget::ResolvedFieldProject { field_label } => {
+                self.render_field_project(t, field_label, locals, mode)
             }
             TransformTarget::Callable(target) => {
                 let expr = self.render_callable_transform(t, *target, locals)?;
@@ -3574,7 +3574,7 @@ impl<'a> Ctx<'a> {
     fn render_field_project(
         &self,
         t: &TransformNode,
-        field_ref: DeclarationId,
+        field_label: &str,
         locals: &RenderLocals,
         mode: RenderMode,
     ) -> Result<String, EmitError> {
@@ -3584,11 +3584,10 @@ impl<'a> Ctx<'a> {
                 t.inputs.len()
             )));
         }
-        let field_label = resolved_field_project_label(self.dag, t, field_ref)?;
         if let Some(binding) = locals
             .payload_bindings
             .get(&t.inputs[0])
-            .and_then(|binding| binding.field(&field_label))
+            .and_then(|binding| binding.field(field_label))
         {
             return self.render_binding(t.output, binding, mode);
         }
@@ -3602,7 +3601,7 @@ impl<'a> Ctx<'a> {
         if let Some(type_binding) = self.indexes.types.get(&parent_type_id) {
             let binding = type_binding
                 .fields
-                .get(&field_label)
+                .get(field_label)
                 .ok_or_else(|| {
                     EmitError::UnsupportedBehavior(format!(
                         "field projection .{field_label} has no FieldBinding entry on the parent TypeRealization"
@@ -5875,49 +5874,6 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
     })
 }
 
-fn walk_to_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    let mut current = start;
-    for _ in 0..32 {
-        let decl = dag.declaration(current);
-        match &decl.connective {
-            TypeConnective::Conj { .. } => return Some(current),
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return None,
-        }
-    }
-    None
-}
-
-fn resolved_field_project_label(
-    dag: &Dag,
-    t: &TransformNode,
-    field_ref: DeclarationId,
-) -> Result<String, EmitError> {
-    let parent_type_id = primitive_type_id_for_port(dag, t.inputs[0])?;
-    let Some(conj_id) = walk_to_conj(dag, parent_type_id) else {
-        return Err(EmitError::MissingTypeRealization {
-            target: parent_type_id,
-        });
-    };
-    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
-        return Err(EmitError::MissingTypeRealization {
-            target: parent_type_id,
-        });
-    };
-    children
-        .iter()
-        .find(|field| field.ty == field_ref)
-        .map(|field| field.label.clone())
-        .ok_or_else(|| {
-            EmitError::UnsupportedBehavior(format!(
-                "resolved field projection target {:?} is not a child of parent type {:?}",
-                field_ref, parent_type_id
-            ))
-        })
-}
-
 fn is_optional_match_disj(dag: &Dag, disj_id: DeclarationId) -> bool {
     dag.declarations()
         .iter()
@@ -6095,7 +6051,7 @@ not user `fn` data; must not set return-carrier / Rc on callable params (PR #676
         dag.push_node(Behavior::Transform(TransformNode {
             id: node_id,
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: dag_nodes_type,
+                field_label: "nodes".to_string(),
             },
             inputs: vec![parent_port],
             output,
@@ -6150,7 +6106,7 @@ not user `fn` data; must not set return-carrier / Rc on callable params (PR #676
             dag.push_node(Behavior::Transform(TransformNode {
                 id: node_id,
                 target: TransformTarget::ResolvedFieldProject {
-                    field_ref: dag_nodes_type,
+                    field_label: "nodes".to_string(),
                 },
                 inputs: vec![parent_port],
                 output,

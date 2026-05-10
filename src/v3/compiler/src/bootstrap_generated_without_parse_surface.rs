@@ -342,7 +342,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(37),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(702),
+                field_label: "source_port".to_string(),
             },
             inputs: vec![PortId(39)],
             output: PortId(41),
@@ -351,7 +351,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(38),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(702),
+                field_label: "source_port".to_string(),
             },
             inputs: vec![PortId(40)],
             output: PortId(42),
@@ -2963,7 +2963,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(223),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(708),
+                field_label: "first".to_string(),
             },
             inputs: vec![PortId(285)],
             output: PortId(286),
@@ -2972,7 +2972,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(224),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(708),
+                field_label: "first".to_string(),
             },
             inputs: vec![PortId(285)],
             output: PortId(287),
@@ -2981,7 +2981,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(225),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(1672),
+                field_label: "rest".to_string(),
             },
             inputs: vec![PortId(285)],
             output: PortId(288),
@@ -4656,7 +4656,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(358),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(126),
+                field_label: "any".to_string(),
             },
             inputs: vec![PortId(465)],
             output: PortId(467),
@@ -4665,7 +4665,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(359),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(828),
+                field_label: "pivot".to_string(),
             },
             inputs: vec![PortId(465)],
             output: PortId(468),
@@ -4688,7 +4688,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(362),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(828),
+                field_label: "pivot".to_string(),
             },
             inputs: vec![PortId(465)],
             output: PortId(471),
@@ -4713,7 +4713,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(365),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(126),
+                field_label: "any".to_string(),
             },
             inputs: vec![PortId(473)],
             output: PortId(474),
@@ -6086,7 +6086,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(486),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(1852),
+                field_label: "declarations".to_string(),
             },
             inputs: vec![PortId(610)],
             output: PortId(613),
@@ -6949,7 +6949,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(561),
             target: TransformTarget::ResolvedFieldProject {
-                field_ref: DeclarationId(1853),
+                field_label: "nodes".to_string(),
             },
             inputs: vec![PortId(701)],
             output: PortId(702),
@@ -61232,7 +61232,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
-                    label: "field_ref".to_string(),
+                    label: "field_label".to_string(),
                     ty: DeclarationId(703),
                 }],
             },

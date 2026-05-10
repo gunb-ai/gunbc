@@ -2289,11 +2289,9 @@ pub(crate) fn clone_predicate_body(
 /// - `Operator(_)`: no substitution. Operator kinds are intrinsic;
 ///   `resolve_operator_arrow` handles TypeParam operands through its
 ///   own substitution pipeline at inference time.
-/// - `ResolvedFieldProject { field_ref }`: route `field_ref` through
-///   `concretize_decl_with_subst`. When the parent record is generic
-///   (e.g., `Box<T>` scoped under `fn f<T>(x: Box<T> where ...)`),
-///   substitution re-roots `field_ref` to the concrete
-///   instantiation (e.g., `Box<Int>`).
+/// - `ResolvedFieldProject { field_label }`: no substitution. The parent
+///   input type remains the authority; inference resolves the label through
+///   the concrete parent after substitution.
 /// - `Callable(id)`: route `id` through `concretize_decl_with_subst`.
 ///   When `id` is an `Instantiation` whose arguments reference
 ///   substitution-bound TypeParams, the result is a fresh
@@ -2311,11 +2309,7 @@ fn substitute_transform_target(
     match target {
         TransformTarget::Operator(_) => target,
         TransformTarget::UnresolvedFieldProject { .. } => target,
-        TransformTarget::ResolvedFieldProject { field_ref } => {
-            TransformTarget::ResolvedFieldProject {
-                field_ref: concretize_decl_with_subst(dag, field_ref, subst, 0),
-            }
-        }
+        TransformTarget::ResolvedFieldProject { .. } => target,
         TransformTarget::Callable(id) => {
             TransformTarget::Callable(concretize_decl_with_subst(dag, id, subst, 0))
         }
@@ -7107,7 +7101,9 @@ fn lower_field_path_expr(
                     || TransformTarget::UnresolvedFieldProject {
                         field_label: field_label.clone(),
                     },
-                    |(field_ref, _)| TransformTarget::ResolvedFieldProject { field_ref },
+                    |(_, _)| TransformTarget::ResolvedFieldProject {
+                        field_label: field_label.clone(),
+                    },
                 ),
                 inputs: vec![current_port],
                 output,
@@ -7322,7 +7318,9 @@ fn lower_field_projection_from_port(
             || TransformTarget::UnresolvedFieldProject {
                 field_label: field_label.to_string(),
             },
-            |(field_ref, _)| TransformTarget::ResolvedFieldProject { field_ref },
+            |(_, _)| TransformTarget::ResolvedFieldProject {
+                field_label: field_label.to_string(),
+            },
         ),
         inputs: vec![input_port],
         output,
