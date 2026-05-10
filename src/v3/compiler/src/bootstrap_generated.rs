@@ -59953,7 +59953,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6104, 6166),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6314, 6376),
         });
         declarations.push(Declaration {
             id: DeclarationId(1648),
@@ -59978,7 +59978,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6168, 6236),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6378, 6446),
         });
         declarations.push(Declaration {
             id: DeclarationId(1649),
@@ -60023,7 +60023,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7810, 7952),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8020, 8162),
         });
         declarations.push(Declaration {
             id: DeclarationId(1650),
@@ -60052,7 +60052,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8669, 8735),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8879, 8945),
         });
         declarations.push(Declaration {
             id: DeclarationId(1651),
@@ -60077,7 +60077,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 9490, 10272),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 9700, 10482),
         });
         declarations.push(Declaration {
             id: DeclarationId(1652),
@@ -60348,7 +60348,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             ])),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10572, 14594),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10810, 14801),
         });
         declarations.push(Declaration {
             id: DeclarationId(1653),
@@ -77300,7 +77300,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6128, 6146),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6338, 6356),
         });
         declarations.push(Declaration {
             id: DeclarationId(2563),
@@ -77314,7 +77314,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6151, 6166),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6361, 6376),
         });
         declarations.push(Declaration {
             id: DeclarationId(2564),
@@ -77328,7 +77328,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6195, 6216),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6405, 6426),
         });
         declarations.push(Declaration {
             id: DeclarationId(2565),
@@ -77342,7 +77342,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6221, 6236),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 6431, 6446),
         });
         declarations.push(Declaration {
             id: DeclarationId(2566),
@@ -77356,7 +77356,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7833, 7843),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8043, 8053),
         });
         declarations.push(Declaration {
             id: DeclarationId(2567),
@@ -77370,7 +77370,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7848, 7859),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8058, 8069),
         });
         declarations.push(Declaration {
             id: DeclarationId(2568),
@@ -77384,7 +77384,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7864, 7877),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8074, 8087),
         });
         declarations.push(Declaration {
             id: DeclarationId(2569),
@@ -77398,7 +77398,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7882, 7895),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8092, 8105),
         });
         declarations.push(Declaration {
             id: DeclarationId(2570),
@@ -77412,7 +77412,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7900, 7913),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8110, 8123),
         });
         declarations.push(Declaration {
             id: DeclarationId(2571),
@@ -77426,7 +77426,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7918, 7932),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8128, 8142),
         });
         declarations.push(Declaration {
             id: DeclarationId(2572),
@@ -77440,7 +77440,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7937, 7952),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8147, 8162),
         });
         declarations.push(Declaration {
             id: DeclarationId(2573),
@@ -77454,7 +77454,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8694, 8711),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8904, 8921),
         });
         declarations.push(Declaration {
             id: DeclarationId(2574),
@@ -77468,7 +77468,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8716, 8726),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8926, 8936),
         });
         declarations.push(Declaration {
             id: DeclarationId(2575),
@@ -77482,7 +77482,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8731, 8735),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8941, 8945),
         });
         declarations.push(Declaration {
             id: DeclarationId(2576),
@@ -77527,7 +77527,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 9513, 10085),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 9723, 10295),
         });
         declarations.push(Declaration {
             id: DeclarationId(2577),
@@ -77560,7 +77560,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10090, 10272),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10300, 10482),
         });
         declarations.push(Declaration {
             id: DeclarationId(2578),
@@ -77580,7 +77580,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10600, 10619),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10838, 10857),
         });
         declarations
     }
