@@ -22,9 +22,8 @@
 use std::collections::BTreeMap;
 
 use v3_compiler::dag::{
-    literal_decimal_i64,
-    Dag, Declaration, DeclarationId, FieldValue, Interval, IntervalWidth, LiteralBits,
-    PositiveIntervalWidth, TypeConnective, ValueBody,
+    literal_decimal_i64, Dag, Declaration, DeclarationId, FieldValue, Interval, IntervalWidth,
+    LiteralBits, PositiveIntervalWidth, TypeConnective, ValueBody,
 };
 use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 
