@@ -38,6 +38,14 @@ const INFER_HELPERS_SOURCE: &str = include_str!(concat!(
 const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
     "src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag";
 
+/// R3 gate #43 (`LensOutputEquals` witness in `r3_free_consequences_first_batch.dag`).
+///
+/// Compared as `Some(R3_PARALLEL_EMIT_WITNESS_LENS_NAME)` — **not** `Some("…")` inline — so
+/// `canonical_lens_name_dispatch_arms_pinned` does not treat this as a new string-literal name
+/// dispatch arm on the canonical lens bridge (see disposition:
+/// `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`).
+const R3_PARALLEL_EMIT_WITNESS_LENS_NAME: &str = "r3_auto_parallelism_parallel_emit_witness";
+
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
 /// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
@@ -2330,6 +2338,46 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
+
+        // R3 gate #43 (`auto_parallelism_independent_binds_emit_parallel`): independent top-level
+        // binds must emit a parallel Rust schedule (`std::thread::scope`). Structural witness via
+        // program text — dissolution when ordinary DB-20 parallelism lens output reaches `.dag`.
+        if lens_decl.name.as_deref() == Some(R3_PARALLEL_EMIT_WITNESS_LENS_NAME) {
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(s))) => match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals(r3_auto_parallelism_parallel_emit_witness): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+                        ));
+                    }
+                },
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_parallelism_parallel_emit_witness): expected_ref `{expected_name}` must be `data …: Int = <literal>`"
+                    ));
+                }
+            };
+            let emitted = match crate::emit_rust::emit_rust(&program_dag) {
+                Ok(s) => s,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(r3_auto_parallelism_parallel_emit_witness): emit_rust failed for `{}`: {err:?}",
+                        claim.file_name
+                    ));
+                }
+            };
+            let parallel = emitted.contains("thread::scope");
+            let computed_int = i64::from(parallel);
+            return if computed_int == expected_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "LensOutputEquals(r3_auto_parallelism_parallel_emit_witness): expected `{expected_int}` (1 = parallel schedule), computed `{computed_int}` for `{}`",
+                    claim.file_name
+                ))
+            };
+        }
 
         // T-LaneE cost receipt: `ProgramOutputBind` is the structural contract for a claim
         // source output-bind cost check. Dispatch on that input role, not on lens declaration
