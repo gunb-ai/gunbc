@@ -186,8 +186,8 @@ data emission_path_projections: List<EmissionPathProjection> = [
   { row_identity: { target: go_shape_a_target, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] }
 ]
 
-// TEST CLAIM RECEIPT: `shape_a_target_language_spec_ref_invariant` is
-// enforced by `cross_target_coverage_carrier_test::shape_a_target_record_carries_language_spec_ref`
+// TEST CLAIM RECEIPT: the `ShapeATarget = LanguageSpec` alias invariant is
+// enforced by `cross_target_coverage_carrier_test::shape_a_target_aliases_language_spec`
 // and the row-bijection test over `emission_path_projections`. Do not add a
 // `std.verification.TestClaim` data row here until the duplicated v2/v3
 // `std.verification` module surface converges; importing it from v3 bootstrap
