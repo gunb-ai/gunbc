@@ -5,6 +5,13 @@
 //! `emit.rs` remains scoped to Shape A programming-language targets. This
 //! module provides the narrow Rust-side receipt used by the R3 demo until the
 //! equivalent `.dag` programs can own the artifact projections.
+//!
+//! P5 bridge bound: `project_openapi_yaml`, `project_markdown_documentation`,
+//! and `project_rust_backend_service` are one fixture-scoped R3
+//! T-Omni-Shape-B receipt over `RestEndpointBinding` rows. They are not new
+//! compiler targets and must not grow into a general backend framework.
+//! Dissolution trigger: queued brief
+//! `docs/briefs/r3-omni-openapi-backend-bridge-dissolution.md`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -250,6 +257,154 @@ pub fn project_markdown_documentation(dag: &Dag) -> Result<String, ProjectOpenAp
     Ok(out)
 }
 
+/// Emits the narrow runnable-backend side of the R3 omni OpenAPI demo.
+///
+/// This is deliberately fixture-scoped bridge code. It consumes the same
+/// canonical `RestRoute` projection as OpenAPI/Markdown to prove the full-stack
+/// same-DAG property now, then dissolves via
+/// `docs/briefs/r3-omni-openapi-backend-bridge-dissolution.md`.
+pub fn project_rust_backend_service(dag: &Dag) -> Result<String, ProjectOpenApiError> {
+    let routes = extract_rest_routes(dag)?;
+    let mut out = String::from(
+        r#"use std::io::{Read, Write};
+use std::net::TcpListener;
+
+#[derive(Clone, Copy)]
+struct Route {
+    method: &'static str,
+    path: &'static str,
+}
+
+const ROUTES: &[Route] = &[
+"#,
+    );
+    for route in &routes {
+        out.push_str("    Route { method: ");
+        out.push_str(&rust_string_literal(&route.method));
+        out.push_str(", path: ");
+        out.push_str(&rust_string_literal(&route.path));
+        out.push_str(" },\n");
+    }
+    out.push_str(
+        r#"];
+
+fn route_status(method: &str, path: &str) -> u16 {
+    if ROUTES
+        .iter()
+        .any(|route| route.method == method && path_matches(route.path, path))
+    {
+        200
+    } else {
+        404
+    }
+}
+
+fn path_matches(template: &str, path: &str) -> bool {
+    let template = strip_leading_slash(template);
+    let path = strip_leading_slash(path);
+    let template_parts: Vec<_> = template.split('/').collect();
+    let path_parts: Vec<_> = path.split('/').collect();
+    if template_parts.len() != path_parts.len() {
+        return false;
+    }
+    template_parts
+        .iter()
+        .zip(path_parts.iter())
+        .all(|(template_part, path_part)| segment_matches(template_part, path_part))
+}
+
+fn strip_leading_slash(value: &str) -> &str {
+    value.strip_prefix('/').unwrap_or(value)
+}
+
+fn segment_matches(template: &str, path: &str) -> bool {
+    let mut remainder = path;
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        let literal = &rest[..start];
+        if !remainder.starts_with(literal) {
+            return false;
+        }
+        remainder = &remainder[literal.len()..];
+        let after_open = &rest[start + 1..];
+        let Some(end) = after_open.find('}') else {
+            return false;
+        };
+        let after_param = &after_open[end + 1..];
+        if let Some(next_literal_start) = after_param.find('{') {
+            let next_literal = &after_param[..next_literal_start];
+            if next_literal.is_empty() {
+                return false;
+            }
+            let Some(boundary) = remainder.find(next_literal) else {
+                return false;
+            };
+            let param_value = &remainder[..boundary];
+            if !slash_free_non_empty(param_value) {
+                return false;
+            }
+            remainder = &remainder[boundary..];
+            rest = after_param;
+        } else {
+            if after_param.is_empty() {
+                return slash_free_non_empty(remainder);
+            }
+            let Some(value) = remainder.strip_suffix(after_param) else {
+                return false;
+            };
+            return slash_free_non_empty(value);
+        }
+    }
+    remainder == rest
+}
+
+fn slash_free_non_empty(value: &str) -> bool {
+    !value.is_empty() && !value.contains('/')
+}
+
+fn respond(request: &str) -> String {
+    let request_line = request.lines().next().unwrap_or("");
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().unwrap_or("");
+    let path = parts.next().unwrap_or("");
+    let status = route_status(method, path);
+    let reason = if status == 200 { "OK" } else { "Not Found" };
+    format!("HTTP/1.1 {status} {reason}\r\ncontent-length: 0\r\n\r\n")
+}
+
+fn serve(addr: &str) -> std::io::Result<()> {
+    let listener = TcpListener::bind(addr)?;
+    for stream in listener.incoming() {
+        let mut stream = stream?;
+        let mut request = [0_u8; 2048];
+        let bytes = stream.read(&mut request)?;
+        let response = respond(&String::from_utf8_lossy(&request[..bytes]));
+        stream.write_all(response.as_bytes())?;
+    }
+    Ok(())
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    match args.as_slice() {
+        [_, flag, method, path] if flag == "--probe" => {
+            println!("{}", route_status(method, path));
+        }
+        [_, flag, addr] if flag == "--serve" => {
+            serve(addr).expect("serve backend");
+        }
+        _ => {
+            for route in ROUTES {
+                println!("{} {}", route.method, route.path);
+            }
+        }
+    }
+}
+"#,
+    );
+    Ok(out)
+}
+
 fn append_path_parameter_yaml(out: &mut String, parameter: &str) {
     out.push_str("        - name: ");
     out.push_str(&yaml_double_quoted(parameter));
@@ -435,6 +590,25 @@ fn single_string_payload(payload: &[FieldValue]) -> Option<String> {
 
 fn yaml_quoted(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+fn rust_string_literal(value: &str) -> String {
+    let mut literal = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => literal.push_str("\\\\"),
+            '"' => literal.push_str("\\\""),
+            '\n' => literal.push_str("\\n"),
+            '\r' => literal.push_str("\\r"),
+            '\t' => literal.push_str("\\t"),
+            other if other.is_control() => {
+                write!(&mut literal, "\\u{{{:X}}}", other as u32).expect("write to String");
+            }
+            other => literal.push(other),
+        }
+    }
+    literal.push('"');
+    literal
 }
 
 fn yaml_double_quoted(value: &str) -> String {
