@@ -164,9 +164,24 @@ fn r3_gate_87_provenance_origin_rust_receipt_on_literal_bind() {
 }
 
 #[test]
-fn r3_gate_87_cost_target_realization_rust_receipt_callable() {
-    let dag = Dag::new();
-    let _ = type_realization_meta(&dag);
+fn r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row() {
+    let dag = compile_to_dag(
+        "let lit: Int = 7",
+        "r3_gate_87_cost_target_realization_receipt.v3",
+    )
+    .expect("compile");
+    let meta = type_realization_meta(&dag);
+    assert!(
+        meta.is_some(),
+        "type_realization_meta must resolve the substrate `TypeRealization` declaration \
+         (declaration_by_name contract used by cost_target_realization.dag)"
+    );
+    assert_eq!(
+        meta.unwrap().name.as_deref(),
+        Some("TypeRealization"),
+        "cost_target_realization meta lookup must return the named realization row, not \
+         another declaration"
+    );
 }
 
 #[test]
