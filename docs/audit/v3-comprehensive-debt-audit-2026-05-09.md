@@ -73,7 +73,7 @@ From PR #2358 §8 meta-finding cycle (3 sha windows: b09e0c8 / 1211e453 / cf1d52
 | # | Finding | Class candidate |
 |---|---|---|
 | 1 | `MissingEmissionPath` stringifies typed axes (`connective: String, behavior: String, target: String`) | Class C — typed-carrier regression at diagnostic boundary |
-| 2 | `ShapeATarget = Rust \| Python \| Go` closed enum vs `LanguageSpec` data extensibility | Class F — ontology duplication |
+| 2 | `ShapeATarget = Rust \| Python \| Go` closed enum vs `LanguageSpec` data extensibility | Class F — ontology duplication — resolved by issue #2466 / crisp-raven-202: `ShapeATarget` aliases `LanguageSpec`, with named Shape A target data bindings consumed by projection rows |
 | 3 | `Map<String, Bool>` as set across graph/syntax/node files (`set_has` ignores stored bool) | Class F — missed algebraic structure (Set<A> declared in std but bypassed) |
 | 4 | `PartitionResult` bypassed by anonymous return type | Class G — small duplicate-authority cleanup |
 | 5 | `ComposedEffect { idempotent, breaking_operation }` illegal product — **REMEDIATED** (`dsl/std/effects.dag` → `CompositionVerdict`; PR #2491 / #2469) | Class C — illegal-state-representable (closed) |
