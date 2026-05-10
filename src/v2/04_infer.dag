@@ -5930,8 +5930,8 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
 }
 
 
-fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> Map<String, Bool> {
-  let result = modules |> fold(init: empty_map(), f: (acc, m) =>
+fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> Set<String> {
+  let result = modules |> fold(init: empty_set(), f: (acc, m) =>
     let items = m.items
     let si = m.type_env.source_indices
     items |> fold(init: acc, f: (inner, item) =>
@@ -5947,7 +5947,7 @@ fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String
         let variants = item.children
         variants |> fold(init: inner, f: (vacc, variant) =>
           let has_fields = variant.children |> count > 0
-          if has_fields { map_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant)), true) } else { vacc }
+          if has_fields { set_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant))) } else { vacc }
         )
       } else { inner }
     )
@@ -5965,9 +5965,9 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     )
   )
   // Convert Int-keyed recursive_type_set back to String-keyed for EmitGraphInfo.
-  let all_recursive = modules |> fold(init: empty_map(), f: (acc, m) =>
+  let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
-      map_insert(inner, intern_str(table: m.type_env.intern_table, id: ident), true)
+      set_insert(inner, intern_str(table: m.type_env.intern_table, id: ident))
     )
   )
   let fielded = build_fielded_variants(modules: modules, type_summaries: built.type_summaries)
@@ -5976,13 +5976,13 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
     fielded_variants: fielded,
-    shared_types: empty_map(),
+    shared_types: empty_set(),
     ownership_index: empty_map(),
-    movable: empty_map(),
+    movable: empty_set(),
     variant_to_enum: vtoe,
-    owned_bindings: empty_map(),
+    owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
-    read_only_params: empty_map()
+    read_only_params: empty_set()
   }
 }
 
