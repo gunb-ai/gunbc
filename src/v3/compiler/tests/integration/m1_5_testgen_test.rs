@@ -1,4 +1,4 @@
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{catch_unwind, panic_any, AssertUnwindSafe};
 use std::sync::OnceLock;
 
 use v3_compiler::dag::{
@@ -368,9 +368,12 @@ fn predicate_holds(
                 Err(AlgebraicLawProgramError::UnsupportedLaw { .. }) => {
                     runner_deferred_panic("AlgebraicLaw")
                 }
-                Err(AlgebraicLawProgramError::MalformedPayload(message)) => panic!(
-                    "m1_5 testgen harness: AlgebraicLaw payload malformed — do not treat as ordinary false: {message}"
-                ),
+                Err(AlgebraicLawProgramError::MalformedPayload(message)) => {
+                    // Fail-closed: malformed AlgebraicLaw payloads must not be coerced to `false`
+                    // (ordinary “predicate does not hold”). Preserve the typed error for tests via
+                    // `panic_any` (TESTING.md: avoid substring-matching `panic!` format strings).
+                    panic_any(AlgebraicLawProgramError::MalformedPayload(message));
+                }
             }
         }
         "ExecuteCommand" => {
@@ -896,10 +899,10 @@ fn extension_predicates_reach_interpreter_boundary() {
     );
     assert_runner_deferred_panics(&dag, positive_source, file, &diff, "DifferentialEquals");
 
-    // `Identity` remains classified by `AlgebraicLawProgramError` (not panic message substrings)
-    // until the identity-element edge is present. `Commutativity` is covered by TestRunner's
-    // focused PR-B.3 tests because this bootstrap-only expectation DAG has no fixture-local lens
-    // declaration for the public helper to resolve.
+    // `AlgebraicLaw::Identity` is wired for binary `Int` lenses. `ValueBehavior` is the L1
+    // behavior marker (`type ValueBehavior {}`), not `Int × Int → Int`, so bounded witness
+    // application fails closed as `MalformedPayload` — not missing-decl `Ok(false)` (bootstrap
+    // `program_dag` always carries the marker declaration).
     let inner = match cached_compile_outcome(positive_source, file) {
         CachedCompileOutcome::Clean(program_dag) => program_dag,
         other => panic!(
@@ -910,11 +913,12 @@ fn extension_predicates_reach_interpreter_boundary() {
         sum_variant(&dag, "AlgebraicLawKind", "Identity", Vec::new()),
         declaration_ref_field(&dag, "ValueBehavior"),
     ];
-    assert_eq!(
-        eval_algebraic_law_for_claim_program(&dag, &inner, &identity_payload),
-        Err(AlgebraicLawProgramError::UnsupportedLaw {
-            law_label: "Identity".to_string(),
-        })
+    assert!(
+        matches!(
+            eval_algebraic_law_for_claim_program(&dag, &inner, &identity_payload),
+            Err(AlgebraicLawProgramError::MalformedPayload(_))
+        ),
+        "Identity witness on ValueBehavior marker should be MalformedPayload (non-applicable lens target)"
     );
     let law = sum_variant(
         &dag,
@@ -922,12 +926,20 @@ fn extension_predicates_reach_interpreter_boundary() {
         "AlgebraicLaw",
         identity_payload.clone(),
     );
+    let harness = catch_unwind(AssertUnwindSafe(|| {
+        predicate_holds(&dag, positive_source, file, &law)
+    }));
     assert!(
-        catch_unwind(AssertUnwindSafe(|| {
-            predicate_holds(&dag, positive_source, file, &law);
-        }))
-        .is_err(),
-        "M1.5 harness should panic fail-closed on runner-deferred AlgebraicLaw"
+        harness.is_err(),
+        "expected harness panic on AlgebraicLaw MalformedPayload (must not coerce to false)"
+    );
+    let payload = harness.unwrap_err();
+    assert!(
+        payload
+            .downcast_ref::<AlgebraicLawProgramError>()
+            .is_some_and(|e| matches!(e, AlgebraicLawProgramError::MalformedPayload(_))),
+        "expected AlgebraicLawProgramError::MalformedPayload via panic_any, got {:?}",
+        payload.downcast_ref::<String>()
     );
 
     let behavioral = sum_variant(
