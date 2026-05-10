@@ -2209,8 +2209,10 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
                     subst,
                 })
             }
-            TransformTarget::UnresolvedFieldProject { .. }
-            | TransformTarget::ResolvedFieldProject { .. } => None,
+            TransformTarget::UnresolvedFieldProject { field_label }
+            | TransformTarget::ResolvedFieldProject { field_label } => {
+                field_project_port_type_context(dag, t, field_label)
+            }
             TransformTarget::Operator(_) => Some(PortTypeContext {
                 decl: resolved_decl,
                 subst: SubstStack::new(),
@@ -2221,6 +2223,33 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
             subst: SubstStack::new(),
         }),
     }
+}
+
+fn field_project_port_type_context(
+    dag: &Dag,
+    t: &TransformNode,
+    field_label: &str,
+) -> Option<PortTypeContext> {
+    if t.inputs.len() != 1 {
+        return None;
+    }
+    let input_ty = match dag.port(t.inputs[0]).state() {
+        PortState::Resolved(ty) => *ty,
+        PortState::Uninferred | PortState::Unresolved => return None,
+    };
+    let mut subst = SubstStack::new();
+    let conj_id = walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    let field_decl = children
+        .iter()
+        .find(|field| field.label == field_label)
+        .map(|field| field.ty)?;
+    Some(PortTypeContext {
+        decl: field_decl,
+        subst,
+    })
 }
 
 fn resolve_binding_decl(

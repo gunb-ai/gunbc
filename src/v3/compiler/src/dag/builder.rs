@@ -305,9 +305,29 @@ impl Dag {
         match target {
             TransformTarget::Callable(target) => self.callable_output_shape(*target),
             TransformTarget::UnresolvedFieldProject { .. } => None,
-            TransformTarget::ResolvedFieldProject { .. } => None,
+            TransformTarget::ResolvedFieldProject { field_label } => {
+                self.field_project_output_shape(field_label, inputs)
+            }
             TransformTarget::Operator(kind) => self.operator_output_shape(*kind, inputs),
         }
+    }
+
+    fn field_project_output_shape(
+        &self,
+        field_label: &str,
+        inputs: &[PortId],
+    ) -> Option<TypeShape> {
+        let input_shape = self.resolved_port_shape(*inputs.first()?)?;
+        let mut subst = Vec::new();
+        let conj_id = self.walk_to_conj_decl_with_subst(input_shape.declaration, &mut subst, 0)?;
+        let TypeConnective::Conj { children } = &self.declaration(conj_id).connective else {
+            return None;
+        };
+        let field_ty = children
+            .iter()
+            .find(|field| field.label == field_label)
+            .map(|field| field.ty)?;
+        self.signature_type_shape(field_ty, &subst, 0)
     }
 
     fn callable_output_shape(&self, decl_id: DeclarationId) -> Option<TypeShape> {
@@ -440,6 +460,44 @@ impl Dag {
             TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
             | TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Conj { .. }
+            | TypeConnective::Disj { .. }
+            | TypeConnective::Cardinality(_) => None,
+        }
+    }
+
+    fn walk_to_conj_decl_with_subst(
+        &self,
+        current: DeclarationId,
+        subst: &mut Vec<Vec<TemplateArgument>>,
+        depth: usize,
+    ) -> Option<DeclarationId> {
+        if depth >= BUILDER_TYPE_WALK_DEPTH_LIMIT {
+            return None;
+        }
+        match &self.declaration(current).connective {
+            TypeConnective::Conj { .. } => Some(current),
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                let result = self.walk_to_conj_decl_with_subst(*template, subst, depth + 1);
+                if result.is_none() {
+                    subst.pop();
+                }
+                result
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.walk_to_conj_decl_with_subst(*next, subst, depth + 1)
+            }
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+                let bound = self.lookup_template_argument(current, subst)?;
+                self.walk_to_conj_decl_with_subst(bound, subst, depth + 1)
+            }
+            TypeConnective::Atom(AtomPayload::Literal(_))
+            | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+            | TypeConnective::Arrow { .. }
             | TypeConnective::Disj { .. }
             | TypeConnective::Cardinality(_) => None,
         }

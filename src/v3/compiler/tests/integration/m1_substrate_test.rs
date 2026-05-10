@@ -2292,9 +2292,8 @@ fn prereq1_field_access_lowers_to_field_project() {
     let src = "\
 type Point { x: Int y: Int }
 fn get_x(point: Point) -> Int = point.x
-";
+    ";
     let dag = cached_compile_to_dag(src, "field_access.v3");
-    let int_id = find_named(&dag, "Int");
 
     let bind = bind_named(&dag, "get_x");
     let body_node_id = dag
@@ -2369,10 +2368,8 @@ fn prereq1_field_access_on_instantiated_record_substitutes_template_args() {
     let src = "\
 type Box<T> { value: T }
 fn read(boxed: Box<Int>) -> Int = boxed.value
-";
+    ";
     let dag = cached_compile_to_dag(src, "field_access_generic.v3");
-    let box_id = find_named(&dag, "Box");
-    let box_t = dag.declaration(box_id).type_params[0];
 
     let bind = bind_named(&dag, "read");
     let projection = match dag.node(

@@ -5874,6 +5874,21 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
     })
 }
 
+fn walk_to_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => return None,
+        }
+    }
+    None
+}
+
 fn is_optional_match_disj(dag: &Dag, disj_id: DeclarationId) -> bool {
     dag.declarations()
         .iter()
