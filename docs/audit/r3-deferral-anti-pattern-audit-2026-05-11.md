@@ -34,7 +34,7 @@ Grep-verified instances. Each instance is a site where the substrate admits "I d
 | 9 | `Lookup<T>::Miss` variant in generated code | **4 sites** | Empty-list-as-Miss pattern in `lens_cost_symbolic_generated.rs` (3) + `infer_helpers_generated.rs` (1). Miss-class; ratified for R3 dissolution per operator 2026-05-11. |
 | 10 | `DescentEvidence::DescentUnknown` | substrate lattice bottom | **Authority-conflicting per `INVARIANTS.md:63-66`** — currently load-bearing as BoundedLattice fail-closed bottom. **Requires PM ratification before classification** (Miss-class vs lattice-element); see §3.2. |
 | 11 | `EvidenceUnknown / EvidenceIncomplete` in descent_execution_proof residual | substrate residual carrier | **Authority-conflicting per `docs/briefs/r3-substrate-descent-execution-proof-worker.md` Director-ratified γ-shape** — compliant as written today. See §3.3 corrected disposition. |
-| 12 | `ArrowBody::Pending` / `LensSurfacePending` | 4 enum variants | In-progress states baked into the substrate type; see §3.6 — substantial substrate-shape change, R3-load-bearing-ness needs PM ratification. |
+| 12 | `ArrowBody::Pending` | declaration-tier substrate variant | Pre-lowering transitional state on `TypeConnective::Arrow.body`; see §3.6. **Note**: `LensSurfacePending` (originally lumped here) is explicitly **terminal** per `dag/effects.rs:197` (a `ParallelismUnsupportedKind` variant — terminal unsupported-reason payload, NOT a Pending-shape in-progress state). Misleading suffix; do not classify as Miss-class deferral. |
 | 13 | `structural_coverage_gap_*` named gates | **10+** | Tracking-only ratchets — per §3.8, each promotes (R3-load-bearing) or carves (post-R3); not classified as deferral by default. |
 
 **Aggregate:** ≈1600+ instances of deferral-shape patterns in the v3 compiler's production surface. The cost-lens `Miss` work is one specific case in a much larger class.
@@ -50,7 +50,8 @@ Cases where the wrapper variant captures "I don't have an answer" and the answer
 - `Lookup<SymbolicCost>::Miss` — already committed to R3 dissolution per operator-ratified 2026-05-11. See §3.1.
 - Empty-list-as-Miss in generated code — see §3.4.
 - `ClaimResult::NotYetImplemented` — explicit deferral of gate execution. See §3.5.
-- `ArrowBody::Pending` / `LensSurfacePending` — in-progress states baked into substrate type; **substantive substrate-shape change** — see §3.6.
+- `ArrowBody::Pending` — pre-lowering transitional state on declaration-tier `TypeConnective::Arrow.body`; **substantive substrate-shape change** — see §3.6.
+- `LensSurfacePending` — **NOT auto-classified as Miss-class**. Per `dag/effects.rs:197` (🟢 TERMINAL), this is a `ParallelismUnsupportedKind` variant — terminal unsupported-reason payload, not a Pending-shape in-progress state. Misleading suffix; do not dissolve.
 - `DescentEvidence::DescentUnknown` — **NOT auto-classified as Miss-class**. Currently load-bearing as BoundedLattice fail-closed bottom per `INVARIANTS.md:63-66`. Requires PM ratification before classification; see §3.2.
 - `EvidenceUnknown / EvidenceIncomplete` in descent_execution_proof residual — **NOT auto-classified as Miss-class**. Compliant per Director-ratified γ-shape at `docs/briefs/r3-substrate-descent-execution-proof-worker.md` (ratification at gunbc#828 #issuecomment-4395060514). Any dissolution proposal requires authority-reconciliation precondition; see §3.3 corrected disposition.
 
@@ -124,7 +125,13 @@ Each `NotYetImplemented` is a gate-tier deferral. For R3 close:
 
 Per `feedback_construction_over_ratchets` — `NotYetImplemented` is a textual ratchet that should dissolve when the predicate substrate lands.
 
-### §3.6 `ArrowBody::Pending` / `LensSurfacePending` — in-progress states in substrate
+### §3.6 `ArrowBody::Pending` — pre-lowering transitional state at declaration-tier
+
+**Scope correction per inline review finding 2026-05-11**: `LensSurfacePending` (originally lumped here) is **terminal**, not in-progress. Per `src/v3/compiler/src/dag/effects.rs:197`, `LensSurfacePending` is a variant of `ParallelismUnsupportedKind` (explicitly marked 🟢 TERMINAL in code comments), representing an explicit unsupported-reason payload for the parallelism lens. The "Pending" suffix is misleading; the variant is a terminal classification ("this case is not supported, here's the named reason"), not a transitional state. It does NOT belong in this section and is removed.
+
+The remainder of this section applies to `ArrowBody::Pending` only.
+
+
 
 **Correction per inline review finding 2026-05-11**: my original framing said `ArrowBody::Pending` is on `Behavior::Transform.body`. That's **factually wrong**. Verified via grep at HEAD:
 - `ArrowBody` enum lives at `src/v3/compiler/src/dag.rs:1092`
