@@ -71,11 +71,11 @@ affected_set(Dag_before, Dag_after) =
 
 This makes the lens **strict-narrower-than-downstream** when deltas are provable AND **fail-closed-safe** when they aren't.
 
-**Strictly excluded** from affected-set (when delta proofs hold):
+**Strictly excluded from PROPAGATION** (when delta proofs hold) — these nodes may themselves be in the affected-set but the affected-set does NOT transitively expand through them:
 
-- Nodes that transitively reference a changed Node but don't read any changed dimension (e.g., function calls the changed function with value-equivalence proven AND no cost/effect read → not affected)
-- Test-only Nodes that test the changed Node directly (they're in the affected-set themselves but their existence doesn't propagate to production code)
-- Documentation / comments / non-structural metadata (no dimension flow through any edge)
+- **Transitive non-readers**: Nodes that transitively reference a changed Node but don't read any changed dimension (e.g., function calls the changed function with value-equivalence proven AND no cost/effect read → not propagated through)
+- **Test nodes**: a TestClaim that asserts properties of a changed Node IS in the affected-set itself (so the test runs in CI), but production code consumers of the test do not exist (tests have no downstream production graph), so the affected-set does not expand through them
+- **Documentation / comments / non-structural metadata**: no dimension flow through any edge; not in the affected-set at all
 
 **Critical**: the lens MUST emit a per-dimension proof receipt for each excluded consumer (similar to TestClaim fail-closed receipts per `verification.dag`). Without that receipt, the consumer falls back to the default-include (fail-closed) branch. No silent exclusions.
 
