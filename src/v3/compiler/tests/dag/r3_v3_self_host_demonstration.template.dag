@@ -1,12 +1,12 @@
 // R3 gate #71 — `v3_self_host_demonstration` (T-V2-Retirement).
 //
-// PB-Runtime: `ExecuteCommand` runs the `self_host_fixed_point` binary (DB-8 fixed-point
-// ratchet driver). `__SELF_HOST_FIXED_POINT_BIN__` is replaced at integration-test compile
-// time with `env!("CARGO_BIN_EXE_self_host_fixed_point")` (same discipline as
-// `r1c_e_emit_gates.template.dag`; see `r3_v3_self_host_demonstration_dag_test.rs`).
+// PB-Runtime: `ExecuteCommand` runs the `self_host_fixed_point` binary (DB-8 driver).
+// `__SELF_HOST_FIXED_POINT_BIN__` is replaced at integration-test compile time with
+// `env!("CARGO_BIN_EXE_self_host_fixed_point")` (same discipline as `r1c_e_emit_gates.template.dag`).
 //
-// Receipt: `compile_to_dag` → `TestRunner` → bounded host-spawn trampoline over a v3-only
-// binary (`v3_compiler` only — no v2 fallback in the driver).
+// The `.dag` claim only checks exit 0; the Rust integration test also reads
+// `target/self_host/receipt.json` and requires `compiler_dag_v3_parse` + `fixed_point_diff`
+// both `ok` so the gate proves the full emit→rustc→run→byte-identical slice (not probe-only).
 
 module v3.compiler.tests.r3.v3_self_host_demonstration
 

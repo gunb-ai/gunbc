@@ -598,8 +598,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
     // R2-Evaluator corpus comparison directly without this host-side harness.
     "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
-    // R3 gate #71 (`v3_self_host_demonstration`): `ExecuteCommand` through `TestRunner` over the
-    // `self_host_fixed_point` binary — PB-Runtime trampoline + v3-only DB-8 fixed-point driver.
+    // R3 gate #71 (`v3_self_host_demonstration`): PB-Runtime `ExecuteCommand` through
+    // `TestRunner` over `self_host_fixed_point` **plus** host assertions on
+    // `target/self_host/receipt.json` (`compiler_dag_v3_parse` == ok, `fixed_point_diff` == ok,
+    // `status` == completed) so the gate cannot pass on DB-8 probe-only / parse-failure exit 0.
+    // Explicit P5 receipt (INVARIANTS.md P5 per-PR gate): net +1 SG-0 integration path;
+    // dissolution / deferral naming — ROADMAP.md § "Nine lanes" row `T-PB-B` /
+    // `pb_rust_tests_outside_residual_zero` and `docs/r3-program-plan.md` §1.8 gate #71 /
+    // `docs/r3-structure.md` §T-V2-Retirement; harness retires when equivalent obligations run as
+    // `.dag` data without this Rust splice or T-V2-Retirement closure ends the receipt class.
     "src/v3/compiler/tests/integration/r3_v3_self_host_demonstration_dag_test.rs",
     // R3 L4/L7/L5 skeleton + L7 enum-backed algebra-law matrix: hand-Rust receipt that Lane 1
     // `DifferentialEquals` emit/eval pairing, Lane 1 `AlgebraicLaw` (`Associativity` /
