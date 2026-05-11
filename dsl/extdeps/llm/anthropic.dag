@@ -95,11 +95,16 @@ type AnthropicToolResultContent
 // generated SDK (`TextBlockParam | ImageBlockParam | DocumentBlockParam |
 // SearchResultBlockParam | ToolReferenceBlockParam`).
 //
-// Named row type for nested search-result text lines so `List<…>` element typing
-// is not an anonymous variant payload reference (`AnthropicTextBlock` remains
-// the wire discriminator arm for standalone text blocks).
+// Nested `search_result.content[]` rows per platform schema (each object carries
+// wire `type: "text"` alongside `text` — https://platform.claude.com/docs/en/build-with-claude/search-results).
 type AnthropicToolResultTextBlock {
+  type: String
   text: String
+}
+
+// Optional `citations` object on `search_result` blocks (`enabled: Bool`).
+type AnthropicSearchResultCitationsConfig {
+  enabled: Bool
 }
 
 // 🟡 SCAFFOLD — provider API extension trigger: Anthropic adds additional
@@ -109,9 +114,27 @@ type AnthropicToolResultTextBlock {
 type AnthropicToolResultBlock
   = AnthropicTextBlock { text: String }
   | AnthropicImageBlock { source: ImageSource }
+  // Plaintext `source` only — not full DocumentBlockParam (extra document sources,
+  // title/context/citations/cache_control, …). Tracked under
+  // `structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads`.
   | AnthropicDocumentBlock { source: AnthropicToolResultPlainTextDocumentSource }
-  | AnthropicSearchResultBlock { source: String, title: String, content: List<AnthropicToolResultTextBlock> }
+  | AnthropicSearchResultBlock {
+      source: String
+      title: String
+      content: List<AnthropicToolResultTextBlock>
+      citations: AnthropicSearchResultCitationsConfig?
+      cache_control: CacheControl?
+    }
   | AnthropicToolReferenceBlock { tool_name: String }
+
+// Honest residue: nested tool-result **payload** fidelity vs platform docs (citations
+// / documents). Paid rows on `rest_request_wire_serde_alignment_receipt` cover
+// coproduct discriminators + untagged tool_result.content dispatch — not full
+// OpenAPI parity for every nested block field.
+data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<String> = [
+  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicDocumentBlock|residue:plaintext_document_source_only|missing:non_text_document_sources|missing:title_context_citations_cache_control|spec:https://platform.claude.com/docs/en/build-with-claude/citations|trigger:model DocumentBlockParam document sources and citation-facing coordinates structurally",
+  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicSearchResultBlock|external_spec_watch:search_result_block_optional_fields|trigger:citations.cache_control_shape_drift_or_additional_optional_keys_from_OpenAPI"
+]
 
 // Inline plaintext document source for tool-result document blocks (`source.type`
 // must be the literal `"text"` on the wire — modeled here as a required string slot).
