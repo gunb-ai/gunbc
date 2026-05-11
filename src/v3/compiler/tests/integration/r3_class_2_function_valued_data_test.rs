@@ -58,7 +58,10 @@ fn assert_rejected_data_lambda(dag: &v3_compiler::dag::Dag, name: &str) {
         panic!("rejected data lambda `{name}` must keep a poisoned executable Arrow");
     };
     assert!(
-        matches!(bind_id.bind(dag).value.bind(dag).state(), PortState::Unresolved),
+        matches!(
+            dag.port(bind_id.bind(dag).value).state(),
+            PortState::Unresolved
+        ),
         "rejected data lambda `{name}` must poison callers through an unresolved body"
     );
 }
