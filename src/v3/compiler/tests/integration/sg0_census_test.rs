@@ -573,13 +573,17 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
-    // R3 gate #61 (`substrate_gap_function_valued_data_closed`): hand-Rust
-    // executable receipt for function-valued top-level `data` lowering through
-    // the public evaluator. P5 receipt: this is a bounded host-side test
-    // harness only; the production change removes an opaque data-body scaffold
-    // and routes through existing substrate `Arrow` / `Callable` machinery.
-    // Dissolves when this gate can be expressed as a `.dag` TestClaim over
-    // evaluator output without direct Rust DAG inspection.
+    // R3 §1.4 Class 2 / §1.8 row #61
+    // (`substrate_gap_function_valued_data_closed`): hand-Rust executable
+    // receipt for the narrowed gap-test ratified in Q-Class-2-Chain-Break
+    // option (a) and dispatched by
+    // `docs/briefs/r3-substrate-s1-gap-test-representative-worker.md`.
+    // P5 receipt: this bounded host-side harness asserts "function-valued
+    // data is first-class" through public evaluator consumption; production
+    // code removes an opaque data-body scaffold and routes through existing
+    // substrate `Arrow` / `Callable`. Dissolves when §1.8 row #61 can be
+    // expressed as a `.dag` TestClaim over evaluator output without direct
+    // Rust DAG inspection.
     "src/v3/compiler/tests/integration/r3_class_2_function_valued_data_test.rs",
     // R3 T-Free-Consequences first batch: hand-Rust driver for five
     // author-now/fire-later `BinaryDimensionReportEquals` TestClaims.
