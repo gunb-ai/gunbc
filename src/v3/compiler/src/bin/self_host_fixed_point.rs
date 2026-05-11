@@ -96,6 +96,9 @@ fn run(gate_71_demonstration: bool) -> Result<(), String> {
     // slice must exit non-zero (Invariant D-1 / DB-8 fail-closed). Parse failure alone stays
     // exit 0 — expected until v3 grammar + Lane 1e land (staged ratchet).
     let mut self_host_slice_failed: Option<String> = None;
+    // Single in-process authority for gate #71 — INVARIANTS.md C-5 (no string-sentinel probing
+    // of the serialized receipt to decide control flow).
+    let mut fixed_point_diff_ok = false;
 
     // P0 / DB-8 `receipt.json` always-emitted keys — checked before write by
     // `receipt_p0::validate_receipt_json_always_emitted_keys` / `top_level_property_needle`
@@ -148,6 +151,7 @@ fn run(gate_71_demonstration: bool) -> Result<(), String> {
                         let a = fs::read(&stage1_path).map_err(|e| e.to_string())?;
                         let b = fs::read(&stage2_path).map_err(|e| e.to_string())?;
                         if a == b {
+                            fixed_point_diff_ok = true;
                             receipt.push_str("  \"fixed_point_diff\": \"ok\",\n");
                         } else {
                             receipt.push_str("  \"fixed_point_diff\": \"mismatch\",\n");
@@ -223,9 +227,9 @@ fn run(gate_71_demonstration: bool) -> Result<(), String> {
                 receipt_path.display()
             ));
         }
-        if !receipt.contains("\"fixed_point_diff\": \"ok\"") {
+        if !fixed_point_diff_ok {
             return Err(format!(
-                "{R3_GATE_71_FLAG}: require emit→rustc→run byte-identical slice (missing fixed_point_diff ok in receipt {:?})",
+                "{R3_GATE_71_FLAG}: require emit→rustc→run byte-identical slice (fixed_point_diff did not reach ok; receipt {:?})",
                 receipt_path.display()
             ));
         }
