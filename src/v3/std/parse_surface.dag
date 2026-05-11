@@ -54,10 +54,26 @@ type VariantPayload
   = Positional(List<SurfaceType>)
   | Record(List<SurfaceField>)
 
-// R3 gate #60 — sanctioned type heads whose angle-bracket **single decimal** magnitude sugar is surfaced
-// as dedicated `SurfaceType` variants (`PhantomWidthNumericSugar` / `PhantomWidthMachineWidthSugar`),
-// never as occupants of ordinary `Parameterized.args`. That keeps phantom magnitudes paired with heads
-// structurally (`illegal states unrepresentable`, Practices 2+6 modeling-discipline; INVARIANTS P2).
+// 🟢 TERMINAL at R3 gate #60 sanctioned-algebra-**glyph** carrier scope (`PhantomWidthNumericSugar.head`).
+//
+// Mirrors the closed set `Int | UInt | Real | Nat` that `rewrite_phantom_machine_width_surface` lowers to
+// `Compose<Named algebra, MachineWidth<Word*>>` — phantom **magnitude** lives on sibling `PhantomWidthNumericSugar`;
+// this sum carries **which algebra head token** absorbed the sanctioned `<decimal>` interaction syntax edge.
+// **Structural P2 receipt:** phantom magnitudes attach only alongside these four heads (paired with literals on
+// `PhantomWidthNumericSugar`; never as occupants of ordinary `Parameterized.args`).
+//
+// Ledger (Practice 4, modeling-discipline §4 — coproduct dissolution at this substrate tier):
+// - Pattern 1 (fact placement prematurely drops span facts): **N/A** — head identity is lexical-classification-only;
+//   source spans attach on the outer `PhantomWidthNumericSugar` / magnitude fields.
+// - Pattern 2 (variant-as-data vs same payload under labels): **`Int | UInt | Real | Nat` are structurally disjoint
+//   unit discriminant atoms** encoding four parser-observed glyphs; collapsing to `String head` would widen to
+//   illegal phantom pairings enforced only by convention (violates Practices 2+6 vs structural carriers here).
+// - Pattern 3 (algebraic refactor to DSL inhabitance refs): deferred — wiring parse_surface to prelude
+//   `DeclarationId` edges belongs to SG-2b grammar-as-data ownership; dissolution trigger below.
+// - Pattern 4 (dimensional split): **N/A** — single axis (sanctioned algebra label), not shared coordinates with other sums.
+//
+// **Named dissolution trigger:** **SG-2b** — same cutover trigger as sibling `SurfaceType` / phantom sugar staging
+// (`parse_parser_body.txt` list-body emission + `.dag`-owned grammar); aligns with ROADMAP R3 §1.8 gate #60 row.
 type PhantomWidthAlgebraSugarHead
   = Int
   | UInt
