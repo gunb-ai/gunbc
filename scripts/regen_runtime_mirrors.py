@@ -872,8 +872,6 @@ def render_parse_surface_sum(name: str, variants: list[VariantDef]) -> str:
                 rust_ty = rust_type(ty)
                 if name == "SurfaceType" and label in ("inner", "output"):
                     rust_ty = f"Box<{rust_ty}>"
-                elif name == "SurfaceTypeArg" and label == "body":
-                    rust_ty = f"Box<{rust_ty}>"
                 elif name == "SurfaceExpr" and label in (
                     "body",
                     "cond",
@@ -901,7 +899,7 @@ def render_parse_surface_module(records: dict[str, RecordDef], sums: dict[str, l
         render_parse_surface_record(records["SurfaceMatchArm"]),
         render_parse_surface_record(records["SurfacePatternField"]),
         render_parse_surface_sum("VariantPayload", sums["VariantPayload"]),
-        render_parse_surface_sum("SurfaceTypeArg", sums["SurfaceTypeArg"]),
+        render_parse_surface_sum("PhantomWidthAlgebraSugarHead", sums["PhantomWidthAlgebraSugarHead"]),
         render_parse_surface_sum("SurfaceType", sums["SurfaceType"]),
         render_parse_surface_sum("SurfacePattern", sums["SurfacePattern"]),
         render_parse_surface_sum("SurfaceLiteral", sums["SurfaceLiteral"]),

@@ -62,14 +62,11 @@ pub enum VariantPayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SurfaceTypeArg {
-    Ty {
-        body: Box<SurfaceType>,
-    },
-    PhantomWidthLit {
-        bits_lit: String,
-        span: SourceSpan,
-    },
+pub enum PhantomWidthAlgebraSugarHead {
+    Int,
+    UInt,
+    Real,
+    Nat,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,7 +77,18 @@ pub enum SurfaceType {
     },
     Parameterized {
         name: String,
-        args: Vec<SurfaceTypeArg>,
+        args: Vec<SurfaceType>,
+        span: SourceSpan,
+    },
+    PhantomWidthNumericSugar {
+        head: PhantomWidthAlgebraSugarHead,
+        bits_lit: String,
+        magnitude_span: SourceSpan,
+        span: SourceSpan,
+    },
+    PhantomWidthMachineWidthSugar {
+        bits_lit: String,
+        magnitude_span: SourceSpan,
         span: SourceSpan,
     },
     Optional {

@@ -54,29 +54,15 @@ type VariantPayload
   = Positional(List<SurfaceType>)
   | Record(List<SurfaceField>)
 
-// 🟡 SCAFFOLD at generic-argument substrate scope for SG-3f (`Parameterized.args`; mirror carrier, not
-// parse-rule authority).
-//
-// **`Ty`** vs **`PhantomWidthLit`** are disjoint parse facts surfaced by `parse_generic_type_arg` /
-// `parse_generic_type_arg_list_until` (`parse_parser_body.txt` → `parse_generated.rs`): recursive
-// `SurfaceType` argument vs sanctioned decimal literals only inside sanctioned `< … >` contexts (R3 gate #60).
-//
-// Ledger (Practice 4, modeling-discipline §4): dissolution patterns — (2) variant-as-data collapse is N/A
-// (payload shapes diverge structurally — nested type graphs vs lexical magnitude + span); (4)
-// dimensional split N/A here; (1) fact placement prematurely drops the phantom-vs-type placement invariant
-// before grammar-as-data; (3) algebraic refactor would resurrect illegal standalone phantom `SurfaceType`
-// constructions. Verdict remains **🟡** until SG-2b owns the grammar boundary.
-//
-// **Named dissolution trigger:** SG-2b — recursive **list-body** parse emission unblock in `parse_parser_body.txt`
-// (same cutover staging as sibling `SurfaceType` above — SG-2b / SG-3f coordination with `lower.rs`).
-type SurfaceTypeArg
-  = Ty {
-      body: SurfaceType
-    }
-  | PhantomWidthLit {
-      bits_lit: String
-      span: SourceSpan
-    }
+// R3 gate #60 — sanctioned type heads whose angle-bracket **single decimal** magnitude sugar is surfaced
+// as dedicated `SurfaceType` variants (`PhantomWidthNumericSugar` / `PhantomWidthMachineWidthSugar`),
+// never as occupants of ordinary `Parameterized.args`. That keeps phantom magnitudes paired with heads
+// structurally (`illegal states unrepresentable`, Practices 2+6 modeling-discipline; INVARIANTS P2).
+type PhantomWidthAlgebraSugarHead
+  = Int
+  | UInt
+  | Real
+  | Nat
 
 // 🟡 SCAFFOLD at SG-2 parser-staging carrier scope (substrate mirror, not parse-rule authority).
 // **Named trigger:** `parse_parser_body.txt` header (emit algorithm from `.dag` alone) plus
@@ -85,7 +71,18 @@ type SurfaceType
   = Named { name: String, span: SourceSpan }
   | Parameterized {
       name: String
-      args: List<SurfaceTypeArg>
+      args: List<SurfaceType>
+      span: SourceSpan
+    }
+  | PhantomWidthNumericSugar {
+      head: PhantomWidthAlgebraSugarHead
+      bits_lit: String
+      magnitude_span: SourceSpan
+      span: SourceSpan
+    }
+  | PhantomWidthMachineWidthSugar {
+      bits_lit: String
+      magnitude_span: SourceSpan
       span: SourceSpan
     }
   | Optional {
