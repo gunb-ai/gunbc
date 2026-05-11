@@ -465,12 +465,13 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
 /// same typed [`MagnitudeOutOfRange`](v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange)
 /// diagnostic. **UInt64** literals above `i64::MAX` that still fit in `u64`
 /// are accepted under the decimal-string literal carrier (R3 gate #22;
-/// see `uint64_upper_half_literal_tokenizes_and_narrows`). **UInt128** /
-/// full **Int128** overflow cases that remain outside the representable
-/// surface continue to use the same magnitude / range machinery. `UInt128`
-/// is still included here for its source-representable lower-bound overflow
-/// (`-1`). Alias coverage is representative rather than exhaustive so this
-/// receipt stays under the CI per-test wall-clock ratchet.
+/// see `uint64_upper_half_literal_tokenizes_and_narrows`), while literals
+/// above the declared width fail through the same range-fact path. The 128-bit
+/// cases prove the same machinery is not tied to the host `i128` boundary:
+/// signed `Int128::MAX + 1` compares as a decimal [`BigInt`](num_bigint::BigInt)
+/// magnitude, while `UInt128` still participates through its representable
+/// lower-bound overflow (`-1`). Alias coverage is representative rather than
+/// exhaustive so this receipt stays under the CI per-test wall-clock ratchet.
 #[test]
 fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
     let cases = [
@@ -507,6 +508,22 @@ fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
             check_alias: true,
         },
         IntegerOverflowCase {
+            ty: "Int64",
+            target: "i64",
+            literal: "9223372036854775808",
+            min: "-9223372036854775808",
+            max: "9223372036854775807",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "Int128",
+            target: "i128",
+            literal: "170141183460469231731687303715884105728",
+            min: "-170141183460469231731687303715884105728",
+            max: "170141183460469231731687303715884105727",
+            check_alias: false,
+        },
+        IntegerOverflowCase {
             ty: "UInt8",
             target: "u8",
             literal: "256",
@@ -536,6 +553,14 @@ fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
             literal: "4294967296",
             min: "0",
             max: "4294967295",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "UInt64",
+            target: "u64",
+            literal: "18446744073709551616",
+            min: "0",
+            max: "18446744073709551615",
             check_alias: true,
         },
         IntegerOverflowCase {
