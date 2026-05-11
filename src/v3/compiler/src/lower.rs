@@ -55,7 +55,7 @@ use crate::types::TypeShape;
 
 type CallableScope = HashMap<String, DeclarationId>;
 const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
-/// Internal `UnresolvedIdentifier` label after authoritative [`Diagnostic::ParseError`] during lowering.
+/// Internal `UnresolvedIdentifier` label after authoritative `ParseError` during lowering.
 ///
 /// **Skips duplicate `ResolveError`:** callers attach the primary diagnostic before allocating this atom;
 /// `run_identifier_sweep` matches on this sentinel and continues without emitting `ResolveError` (P3).
@@ -66,10 +66,8 @@ const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
 /// equal to this full string literal — placeholders stay disjoint from reachable user type names (`#2697`).
 ///
 /// **Future dissolution:** a dedicated substrate `AtomPayload` variant remains the long-term narrowing.
-const PARSE_FAILED_SURFACE_TYPE_MARKER: &str = concat!(
-    "__gunbc_parse_failed_surface_type__",
-    "\u{e000}",
-);
+const PARSE_FAILED_SURFACE_TYPE_MARKER: &str =
+    concat!("__gunbc_parse_failed_surface_type__", "\u{e000}",);
 
 /// Behavioral complexity lens + T-LAS carriers (`complexity_enforceable`, …). Kept **out**
 /// of the embedded `Dag::new` snapshot so rust emit tests are not forced to realize
