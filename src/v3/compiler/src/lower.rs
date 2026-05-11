@@ -604,6 +604,16 @@ fn rejected_data_lambda_connective(
     let TypeConnective::Arrow { inputs, output, .. } = connective else {
         return connective;
     };
+    let bind_params: Vec<PortId> = inputs
+        .iter()
+        .map(|input| {
+            let port = dag.alloc_port(None);
+            if let Ok(shape) = declaration_to_port_shape(*input, dag, span) {
+                dag.set_port_type(port, shape);
+            }
+            port
+        })
+        .collect();
     let err_port = dag.alloc_port(None);
     dag.mark_unresolved(err_port, diagnostic);
     let bind_id = dag.alloc_node_id();
@@ -611,7 +621,7 @@ fn rejected_data_lambda_connective(
         id: bind_id,
         name: name.to_string(),
         value: err_port,
-        params: Vec::new(),
+        params: bind_params,
         span: span.clone(),
         lane2_workflow: None,
         emit_participation: Some(BindEmitParticipation::UserCallable),

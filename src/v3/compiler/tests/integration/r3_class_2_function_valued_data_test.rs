@@ -56,12 +56,18 @@ fn assert_rejected_data_lambda(dag: &v3_compiler::dag::Dag, name: &str) {
         "failed data lambda `{name}` must retain an Unparsed body marker"
     );
     let TypeConnective::Arrow {
+        inputs,
         body: ArrowBody::UserDefined(bind_id),
         ..
     } = &decl.connective
     else {
         panic!("rejected data lambda `{name}` must keep a poisoned executable Arrow");
     };
+    assert_eq!(
+        bind_id.bind(dag).params.len(),
+        inputs.len(),
+        "rejected data lambda `{name}` must preserve callable arity"
+    );
     assert!(
         matches!(
             dag.port(bind_id.bind(dag).value).state(),
