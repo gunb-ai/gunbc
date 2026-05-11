@@ -11,6 +11,7 @@ use serde_json::json;
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum DemoUserContent {
+    #[allow(dead_code)] // completeness vs Messages API user blocks; tests focus on tool_result
     Text {
         text: String,
     },
@@ -57,6 +58,7 @@ enum ToolResultBlockWire {
 enum ImageSourceWire {
     #[serde(rename = "base64")]
     Base64 { media_type: String, data: String },
+    #[allow(dead_code)] // parity with API; scalar demo uses base64 only
     #[serde(rename = "url")]
     Url { url: String },
 }
