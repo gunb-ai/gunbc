@@ -17,7 +17,7 @@
 //
 // HOME (post-#1187 audit lesson): this file lives under `src/v3/std/`
 // because v2's `collect_dag_sources` walks `dsl/` recursively (see
-// `src/v2/tests/src/pipeline.rs:27`) — placing this file in
+// historical pipeline integration tests) — placing this file in
 // `dsl/extdeps/...` would re-trigger the cross-tree-import
 // regression. The bootstrap-fixture authority
 // (`src/v3/std/extdeps_bootstrap_fixtures.dag`) plus

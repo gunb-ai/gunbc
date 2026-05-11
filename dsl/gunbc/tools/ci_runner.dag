@@ -13,7 +13,7 @@
 // (canonical substrate: `src/v3/std/emit_model.dag`).
 //
 // Target YAML shim (replaces 8 steps with 1):
-//   - run: cargo run -p v2-compiler --release -- run --source-root dsl --function run_ci_pipeline
+//   - run: cargo run -p v3-compiler --release -- run --source-root dsl --function run_ci_pipeline
 
 module gunbc.tools.ci_runner
 
