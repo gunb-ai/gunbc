@@ -551,6 +551,49 @@ fn pending_refined_function_refs(
         .collect()
 }
 
+fn reject_invalid_data_lambda_cycles_phase(
+    dag: &mut Dag,
+    module: &SurfaceModule,
+    symbols: &HashMap<String, DeclarationId>,
+    is_first: &[bool],
+    mutual_recursion: &MutualRecursionPlans,
+) {
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        let SurfaceItem::Data {
+            name,
+            ty,
+            body: Some(SurfaceExpr::Lambda { span, .. }),
+            body_span,
+            ..
+        } = item
+        else {
+            continue;
+        };
+        let decl_id = symbols[name];
+        let Some(invalid_cluster) = mutual_recursion.invalid_by_member.get(&decl_id) else {
+            continue;
+        };
+        dag.declaration_mut(decl_id).connective =
+            type_to_connective(ty, symbols, &HashMap::new(), dag);
+        dag.declaration_mut(decl_id).value_body =
+            Some(crate::dag::ValueBody::Unparsed(body_span.clone()));
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "function-valued data `{name}` participates in an unbounded callable cycle {{{}}}; recursive data lambdas are rejected until they participate in the bounded recursion gate",
+                    invalid_cluster.members.join(", ")
+                ),
+                span: span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    }
+}
+
 /// DB-11 (3a.3): allocate the predicate `Declaration` for a `where`
 /// refinement (parameter or type-alias RHS). `bind_name` is the sole
 /// `SurfaceExpr::Var` binding installed in the predicate scope:
@@ -9488,6 +9531,14 @@ struct FunctionSurfaceInfo<'a> {
     body: &'a SurfaceExpr,
 }
 
+#[derive(Clone)]
+struct CallableSurfaceInfo<'a> {
+    name: &'a str,
+    body: &'a SurfaceExpr,
+    shadowed_names: Vec<String>,
+    is_data_lambda: bool,
+}
+
 /// `is_first` must parallel `items` (from [`collect_symbols`]). Only
 /// first-authority surface items participate — same filter as
 /// [`lower_bodies_phase`]'s body lowering loop — so duplicate `fn`
@@ -9502,29 +9553,66 @@ fn compute_mutually_recursive(
     debug_assert_eq!(items.len(), is_first.len());
     let mut order: Vec<DeclarationId> = Vec::new();
     let mut fn_infos: HashMap<DeclarationId, FunctionSurfaceInfo<'_>> = HashMap::new();
-    let mut function_symbols: HashMap<String, DeclarationId> = HashMap::new();
+    let mut callable_infos: HashMap<DeclarationId, CallableSurfaceInfo<'_>> = HashMap::new();
+    let mut callable_symbols: HashMap<String, DeclarationId> = HashMap::new();
     for (idx, item) in items.iter().enumerate() {
         if !is_first[idx] {
             continue;
         }
-        if let SurfaceItem::Fn {
-            name, params, body, ..
-        } = item
-        {
-            let Some(&decl_id) = symbols.get(name) else {
-                continue;
-            };
-            order.push(decl_id);
-            fn_infos.insert(
-                decl_id,
-                FunctionSurfaceInfo {
-                    name,
+        match item {
+            SurfaceItem::Fn {
+                name, params, body, ..
+            } => {
+                let Some(&decl_id) = symbols.get(name) else {
+                    continue;
+                };
+                order.push(decl_id);
+                fn_infos.insert(
                     decl_id,
-                    params,
-                    body,
-                },
-            );
-            function_symbols.insert(name.clone(), decl_id);
+                    FunctionSurfaceInfo {
+                        name,
+                        decl_id,
+                        params,
+                        body,
+                    },
+                );
+                callable_infos.insert(
+                    decl_id,
+                    CallableSurfaceInfo {
+                        name,
+                        body,
+                        shadowed_names: params.iter().map(|param| param.name.clone()).collect(),
+                        is_data_lambda: false,
+                    },
+                );
+                callable_symbols.insert(name.clone(), decl_id);
+            }
+            SurfaceItem::Data {
+                name,
+                body:
+                    Some(SurfaceExpr::Lambda {
+                        params,
+                        body: lambda_body,
+                        ..
+                    }),
+                ..
+            } => {
+                let Some(&decl_id) = symbols.get(name) else {
+                    continue;
+                };
+                order.push(decl_id);
+                callable_infos.insert(
+                    decl_id,
+                    CallableSurfaceInfo {
+                        name,
+                        body: lambda_body,
+                        shadowed_names: params.clone(),
+                        is_data_lambda: true,
+                    },
+                );
+                callable_symbols.insert(name.clone(), decl_id);
+            }
+            _ => {}
         }
     }
 
@@ -9535,15 +9623,14 @@ fn compute_mutually_recursive(
         .collect();
     let mut calls: HashMap<DeclarationId, Vec<DeclarationId>> = HashMap::new();
     for decl_id in &order {
-        let Some(info) = fn_infos.get(decl_id) else {
+        let Some(info) = callable_infos.get(decl_id) else {
             continue;
         };
         let mut callees = HashSet::new();
-        let mut shadowed: HashSet<String> =
-            info.params.iter().map(|param| param.name.clone()).collect();
+        let mut shadowed: HashSet<String> = info.shadowed_names.iter().cloned().collect();
         collect_recursive_callees(
             info.body,
-            &function_symbols,
+            &callable_symbols,
             dag,
             &mut shadowed,
             &mut callees,
@@ -9558,8 +9645,21 @@ fn compute_mutually_recursive(
         .into_iter()
         .filter(|component| component.len() > 1)
     {
-        if let Some(per_member_positions) =
-            find_cluster_slot_assignment(&members, dag, &fn_infos, &function_symbols, &calls)
+        let contains_data_lambda = members
+            .iter()
+            .any(|member| callable_infos.get(member).is_some_and(|info| info.is_data_lambda));
+        if contains_data_lambda {
+            let invalid = InvalidMutualCluster {
+                members: members
+                    .iter()
+                    .filter_map(|member| callable_infos.get(member).map(|info| info.name.to_string()))
+                    .collect(),
+            };
+            for member in members {
+                plans.invalid_by_member.insert(member, invalid.clone());
+            }
+        } else if let Some(per_member_positions) =
+            find_cluster_slot_assignment(&members, dag, &fn_infos, &callable_symbols, &calls)
         {
             let member_names: Vec<String> = members
                 .iter()

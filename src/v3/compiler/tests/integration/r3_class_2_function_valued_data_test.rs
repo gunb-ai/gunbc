@@ -16,6 +16,18 @@ data countdown: fn(Int) -> Int = |n| countdown(n)
 
 fn use_countdown() -> Int = countdown(1)
 "#;
+const DATA_DATA_CYCLE_SOURCE: &str = r#"
+data evenish: fn(Int) -> Int = |n| oddish(n)
+data oddish: fn(Int) -> Int = |n| evenish(n)
+
+fn use_evenish() -> Int = evenish(1)
+"#;
+const DATA_FN_CYCLE_SOURCE: &str = r#"
+data entry: fn(Int) -> Int = |n| helper(n)
+
+fn helper(n: Int) -> Int = entry(n)
+fn use_entry() -> Int = entry(1)
+"#;
 
 fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
     let decl = dag
@@ -131,4 +143,47 @@ fn function_valued_data_recursion_fails_closed() {
         ),
         "recursive data lambda must not install an executable UserDefined Arrow"
     );
+}
+
+#[test]
+fn function_valued_data_cycles_fail_closed() {
+    for (source, file, data_name) in [
+        (
+            DATA_DATA_CYCLE_SOURCE,
+            "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_data_cycle.dag",
+            "evenish",
+        ),
+        (
+            DATA_FN_CYCLE_SOURCE,
+            "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_fn_cycle.dag",
+            "entry",
+        ),
+    ] {
+        let dag = cached_compile_any(source, file);
+        assert!(
+            dag.diagnostics()
+                .iter()
+                .any(|diag| format!("{diag:?}").contains("unbounded callable cycle")),
+            "callable cycles involving function-valued data must surface a bounded-execution diagnostic: {:?}",
+            dag.diagnostics()
+        );
+
+        let data_decl = dag
+            .declaration_by_name(data_name)
+            .unwrap_or_else(|| panic!("function-valued data declaration `{data_name}`"));
+        assert!(
+            matches!(data_decl.value_body, Some(ValueBody::Unparsed(_))),
+            "failed cyclic data lambda `{data_name}` must retain an Unparsed body marker"
+        );
+        assert!(
+            !matches!(
+                data_decl.connective,
+                TypeConnective::Arrow {
+                    body: ArrowBody::UserDefined(_),
+                    ..
+                }
+            ),
+            "cyclic data lambda `{data_name}` must not keep an executable UserDefined Arrow"
+        );
+    }
 }
