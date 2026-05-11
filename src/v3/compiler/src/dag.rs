@@ -1392,7 +1392,7 @@ fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPat
     if let Some(pattern) = relations
         .iter()
         .filter(|relation| !matches!(relation, SubValueRelation::PreservedValue))
-        .find_map(sub_value_relation_to_call_pattern)
+        .find_map(project_sub_value_relation)
     {
         return Some(pattern);
     }
@@ -1406,7 +1406,7 @@ fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPat
 
     relations
         .iter()
-        .find_map(sub_value_relation_to_call_pattern)
+        .find_map(project_sub_value_relation)
 }
 
 fn project_sub_value_relation(relation: &SubValueRelation) -> Option<CallPattern> {
@@ -1635,7 +1635,8 @@ fn classify_call_argument(
 ///
 /// **Substrate-fact discipline.** `InductiveField` is consumer-facing
 /// substrate provenance (cost / complexity lenses project this through
-/// `sub_value_relation_to_call_pattern → CallPattern::ChildAccessorCall`).
+/// `std.induction::sub_value_relation_to_call_pattern → ChildAccessorCall`;
+/// the hand-Rust mirror has dissolved per gate `tier3_induction_mirror_dissolved`).
 /// The producer therefore derives every field from authoritative DAG state:
 /// - `type_name` / `variant_name` from the parent-Disj lookup of the variant
 ///   declaration the post-infer `resolve_branch_patterns` pass installed on

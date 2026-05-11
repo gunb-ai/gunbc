@@ -5,8 +5,8 @@ use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, literal_bits_int, lower_call_pattern, map_evidence_merge_at, merge_evidence,
     optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
-    positive_amount_from_i64, promote_to_strict, size_bound_param,
-    sub_value_relation_to_call_pattern, tree_size_bound, type_iteration_dimension, AlgebraProfile,
+    positive_amount_from_i64, promote_to_strict, size_bound_param, tree_size_bound,
+    type_iteration_dimension, AlgebraProfile,
     ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue,
     Interval, IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget,
     PositiveDescentAmount, PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound,
@@ -1188,40 +1188,20 @@ fn caller(n: Int) -> Int = helper(n)
 }
 
 #[test]
-fn e_p_per_call_pattern_projects_preserved_value_to_same_argument_call() {
-    assert_eq!(
-        sub_value_relation_to_call_pattern(&SubValueRelation::PreservedValue),
-        Some(CallPattern::SameArgumentCall),
-        "gate (1) broadens CallPattern coverage by projecting preserved self-call evidence \
-         to SameArgumentCall without authoring a new lowered carrier or lens consumer"
-    );
-}
-
-#[test]
-fn e_p_per_call_pattern_preserves_induction_child_accessor_projection() {
-    let field = v3_compiler::dag::InductiveField {
-        type_name: String::from("Tree"),
-        variant_name: String::from("Node"),
-        field_name: String::from("left"),
-        shape: v3_compiler::dag::RecursionShape::DirectRecursion,
-        element_type: String::from("Tree"),
-    };
-    assert_eq!(
-        sub_value_relation_to_call_pattern(&SubValueRelation::StrictSubValue {
-            field: field.clone(),
-            factor: ShrinkFactor::UnitShrink,
-        }),
-        Some(CallPattern::ChildAccessorCall {
-            accessor: String::from("left")
-        }),
-        "StrictSubValue has an authoritative ChildAccessorCall projection in std.induction.dag"
-    );
-    assert_eq!(
-        sub_value_relation_to_call_pattern(&SubValueRelation::IteratedSubValue { field }),
-        Some(CallPattern::ChildAccessorCall {
-            accessor: String::from("left")
-        }),
-        "IteratedSubValue has the same authoritative ChildAccessorCall projection in std.induction.dag"
+fn induction_lattice_rust_mirror_dissolved() {
+    // Gate `tier3_induction_mirror_dissolved` (R3 DAG gate #3, T-Tier3-Dissolution):
+    // the public hand-Rust projection from `std.induction::SubValueRelation` to
+    // `CallPattern` no longer lives in `dag.rs`. `std/induction.dag` is the
+    // sole authority for the projection; the remaining lens-facing surface is
+    // `per_call_pattern_at`, which routes through the (private) projection
+    // helper. Sibling lattice/lookup entrypoints (`per_call_pattern_at`,
+    // `per_call_descent_evidence`, `lower_call_pattern`) are load-bearing for
+    // the cost/complexity lens consumers and remain.
+    let dag_rs = include_str!("../../src/dag.rs");
+    assert!(
+        !dag_rs.contains("pub fn sub_value_relation_to_call_pattern"),
+        "`dag.rs` must not carry a hand-Rust `sub_value_relation_to_call_pattern` \
+         mirror; `src/v3/std/induction.dag` is the authority"
     );
 }
 
