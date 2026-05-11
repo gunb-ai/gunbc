@@ -295,7 +295,17 @@ jobs:
       # Tracked headroom: ratchet this ceiling back toward 300s once cold lane2d
       # CI runs regularly complete under 300s after fixture compile amortization.
       - name: Prebuild v3 integration test binary (lane2d wall-clock denominator)
-        run: cargo test -p v3-compiler --test integration --no-run
+        run: |
+          set -euo pipefail
+          heartbeat() {
+            while sleep 60; do
+              echo "v3 prebuild heartbeat: $(date -u +%FT%TZ)"
+            done
+          }
+          heartbeat &
+          heartbeat_pid=$!
+          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
+          cargo test -p v3-compiler --test integration --no-run
 
       - name: v3 tests (Stage 2d integration module, 360s cold-compile-safe budget)
         env:
