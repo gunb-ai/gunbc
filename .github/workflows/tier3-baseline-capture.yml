@@ -4,10 +4,14 @@
 # Runs five independent bench jobs (separate VMs), aggregates per procedure §2 / R-7 via
 # ``scripts/aggregate_tier3_baseline.py``.
 #
-# Usage after merge or from a branch that contains this workflow:
-#   gh workflow run tier3-baseline-capture.yml --ref <branch>
-# Download artifact ``tier3-baseline-json``, copy ``tier3_baseline.json`` to
-# ``src/v3/compiler/benches/tier3_baseline.json``, open PR.
+# **Phase-1 gate (R-7):** the canonical baseline lives in the repo tree at
+# ``src/v3/compiler/benches/tier3_baseline.json`` (merged on ``main`` before mirror dissolution PRs).
+# This workflow does **not** replace that file: it is a **recapture / audit** path for
+# Director-approved baseline refresh or for comparing fresh Criterion output against the
+# committed baseline (diff the artifact vs the checked-in JSON; land updates only via normal PR).
+#
+# Once this YAML exists on ``main``, operators may ``gh workflow run tier3-baseline-capture.yml``,
+# then review or diff the emitted ``tier3_baseline.json`` artifact.
 
 name: Tier-3 baseline capture
 
@@ -72,6 +76,7 @@ jobs:
       - name: Aggregate into tier3_baseline.json
         run: |
           set -eux
+          # Artifact-only aggregate (compare vs src/v3/compiler/benches/tier3_baseline.json in-tree).
           # Each matrix job uploaded `staging/` with `criterion/` + rustc_version.txt
           dirs=(runs/tier3-criterion-{1..5})
           python3 scripts/aggregate_tier3_baseline.py \

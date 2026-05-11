@@ -6,9 +6,12 @@
 //! induction / effect-carrier). See that brief for thresholds (≤2× median,
 //! ≤5× p99) and Phase 1 / Phase 2 split.
 //!
-//! **Frozen baseline** (`tier3_baseline.json`, deliverable 0c): not committed by
-//! this skeleton. Capture median + p99 (ns) per group on the canonical CI
-//! machine after this bench is stable, then commit JSON per the worker brief.
+//! **Frozen baseline** (`tier3_baseline.json` alongside this bench): Phase-1
+//! committed median + p99 (ns) per budgeted `bench_function` (regen via
+//! ``scripts/aggregate_tier3_baseline.py`` + procedure at
+//! `docs/audit/c1-tier3-baseline-capture-procedure.md`). Ubicloud canonical
+//! recapture uses `.github/workflows/tier3-baseline-capture.yml` (diff against
+//! the committed JSON; baseline updates land only through PR).
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use v3_compiler::dag::{
