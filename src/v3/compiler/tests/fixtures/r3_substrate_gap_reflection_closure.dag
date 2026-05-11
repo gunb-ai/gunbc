@@ -1,0 +1,37 @@
+// std.r3_substrate_gap_reflection_closure - R3 gate #64 fixture.
+//
+// The class-level closure predicate for reflection is intentionally tied to the
+// T-LensProducer-Retirement residual set. The gate passes only when the three
+// lens-producer Rust surfaces have retired from the live SG-0 census:
+// `lens_apply.rs`, `lens_testgen_body.txt`, and `bin/regen_lens.rs`.
+
+module std.r3_substrate_gap_reflection_closure
+
+import std.verification {
+  CensusSubsetCount,
+  TestClaim,
+  TestSuite,
+  expected_hand_authored_non_test,
+  lens_producer_files_subset_predicate
+}
+
+type Sg0CensusAuthority {}
+
+data sg0_census_test_authority: Sg0CensusAuthority = {}
+
+data substrate_gap_reflection_closure_closed: TestClaim = {
+  name: "substrate_gap_reflection_closure_closed",
+  source: "// Reflection-closure predicates read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r3_substrate_gap_reflection_closure_closed.v3",
+  predicate: CensusSubsetCount {
+    authority: sg0_census_test_authority,
+    list_constant: expected_hand_authored_non_test,
+    subset_predicate: lens_producer_files_subset_predicate
+  },
+  requires: []
+}
+
+data r3_substrate_gap_reflection_closure_suite: TestSuite = {
+  name: "r3_substrate_gap_reflection_closure_suite",
+  claims: [substrate_gap_reflection_closure_closed]
+}
