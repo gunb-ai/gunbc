@@ -5789,7 +5789,7 @@ fn is_lens_producer_census_path(path: &str) -> bool {
         path,
         "src/v3/compiler/src/lens_apply.rs"
             | "src/v3/compiler/src/lens_testgen_body.txt"
-            | "src/v3/compiler/src/bin/regen_lens.rs"
+            | "src/v3/compiler/src/regen_lens.rs"
     )
 }
 

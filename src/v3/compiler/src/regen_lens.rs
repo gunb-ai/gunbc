@@ -1,26 +1,23 @@
-// Unified lens-regen driver. Narrow host shim for
-// `src/v3/compiler/regen.dag`: reads every
-// `data <name>_entry: LensRegistryEntry` record out of the bootstrap
-// Dag, compiles the referenced `.dag` lens, and writes the
-// `emit_rust_module` projection to the declared output path. Adding
-// a new lens is an edit to `regen.dag`, not to this driver.
-//
-// Usage:
-//   cargo run -p v3-compiler --bin regen_lens
-//     → regenerates every lens in the registry.
-//   cargo run -p v3-compiler --bin regen_lens -- --lens cost
-//     → regenerates only the entry whose `name` field is "cost".
+//! Unified lens-regen driver — library surface for the `regen_lens` Cargo bin.
+//!
+//! Reads every `data <name>_entry: LensRegistryEntry` record from the bootstrap
+//! `Dag`, compiles each referenced `.dag` lens, and writes the `emit_rust_module`
+//! projection to the declared output path. Registry authority:
+//! `src/v3/compiler/regen.dag`.
+//!
+//! The hand-authored flat file `src/v3/compiler/src/bin/regen_lens.rs` is
+//! retired (R3 gate #7); the bin entrypoint is `src/bin/regen_lens/main.rs`.
 
 use std::collections::HashMap;
 use std::env;
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, Stdio};
 
-use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
-use v3_compiler::emit_rust::emit_rust_module;
-use v3_compiler::generated_files::GENERATED_FILES;
-use v3_compiler::{compile_to_dag, CompileError};
+use crate::dag::{Dag, FieldValue, LiteralBits, ValueBody};
+use crate::emit_rust::emit_rust_module;
+use crate::generated_files::GENERATED_FILES;
+use crate::{compile_to_dag, CompileError};
 
 const LENS_REGISTRY_ENTRY_TYPE: &str = "LensRegistryEntry";
 
@@ -30,17 +27,8 @@ struct Entry {
     generated_file: String,
 }
 
-fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(message) => {
-            let _ = writeln!(io::stderr(), "{message}");
-            ExitCode::FAILURE
-        }
-    }
-}
-
-fn run() -> Result<(), String> {
+/// Run the full lens regen driver (CLI args from [`env::args`]).
+pub fn run() -> Result<(), String> {
     let requested_name = parse_args()?;
 
     let dag = Dag::new();
@@ -98,8 +86,6 @@ fn parse_args() -> Result<Option<String>, String> {
 }
 
 fn workspace_root() -> PathBuf {
-    // src/v3/compiler/Cargo.toml lives 3 levels below the workspace
-    // root; the registry entries record paths relative to that root.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
@@ -113,12 +99,6 @@ fn read_registry(dag: &Dag) -> Result<Vec<Entry>, String> {
         .ok_or_else(|| format!("missing `{LENS_REGISTRY_ENTRY_TYPE}` in bootstrap Dag"))?;
 
     let mut entries: Vec<Entry> = Vec::new();
-    // Dedup maps: record the FIRST binding that introduced each key,
-    // so a duplicate error names both the existing owner and the
-    // colliding binding. `--lens <name>` is a singleton key and
-    // `generated_file` is the output an entry writes to; either
-    // collision would make the registry ambiguous or let two
-    // entries race to clobber the same file.
     let mut seen_name: HashMap<String, String> = HashMap::new();
     let mut seen_generated_file: HashMap<String, String> = HashMap::new();
 
@@ -175,15 +155,6 @@ fn require_string(
 }
 
 fn regen_entry(root: &Path, entry: &Entry) -> Result<(), String> {
-    // Single-authority gate: the registry's `generated_file` path
-    // must also be registered in `REGEN_OUTPUTS` (surfaced as
-    // `v3_compiler::generated_files::GENERATED_FILES`). SG-0 treats
-    // that manifest as the sole producer-owned partition; if
-    // `regen.dag` and `REGEN_OUTPUTS` drift, the driver would
-    // silently write to a path the SG-0 census doesn't know about.
-    // Fail closed here rather than rely on the downstream census to
-    // notice — the error points the reviewer at the two authorities
-    // that must stay in lockstep.
     if !GENERATED_FILES.iter().any(|p| *p == entry.generated_file) {
         return Err(format!(
             "registry / manifest drift: `regen.dag` declares \

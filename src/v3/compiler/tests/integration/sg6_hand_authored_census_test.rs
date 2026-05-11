@@ -170,7 +170,7 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
         // / R1C-E lane row.
         "r1c_e_emit_gates.rs",
         "regen_bootstrap.rs",
-        "regen_lens.rs",
+        "regen_lens/",
         "regen_parse.rs",
         // SG-2c-1 grammar-tables prototype: `regen_parse_tables` projects
         // `src/v3/compiler/parse_tables.dag` into

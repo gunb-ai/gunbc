@@ -60,7 +60,7 @@ required-features = ["bootstrap-regen-fresh"]
 
 [[bin]]
 name = "regen_lens"
-path = "src/bin/regen_lens.rs"
+path = "src/bin/regen_lens/main.rs"
 
 [[bin]]
 name = "regen_parse"
