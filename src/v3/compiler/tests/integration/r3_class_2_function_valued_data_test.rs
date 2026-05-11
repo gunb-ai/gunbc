@@ -17,6 +17,11 @@ data countdown: fn(Int) -> Int = |n| countdown(n)
 
 fn use_countdown() -> Int = countdown(1)
 "#;
+const NESTED_RECURSIVE_SOURCE: &str = r#"
+data countdown: fn(Int) -> Int = |n| if true then countdown(n) else 0
+
+fn use_countdown() -> Int = countdown(1)
+"#;
 const DATA_DATA_CYCLE_SOURCE: &str = r#"
 data evenish: fn(Int) -> Int = |n| oddish(n)
 data oddish: fn(Int) -> Int = |n| evenish(n)
@@ -27,6 +32,14 @@ const DATA_FN_CYCLE_SOURCE: &str = r#"
 data entry: fn(Int) -> Int = |n| helper(n)
 
 fn helper(n: Int) -> Int = entry(n)
+fn use_entry() -> Int = entry(1)
+"#;
+const DATA_PATH_CYCLE_SOURCE: &str = r#"
+type Fns { next: fn(Int) -> Int }
+
+data fns: Fns = { next: entry }
+data entry: fn(Int) -> Int = |n| fns.next(n)
+
 fn use_entry() -> Int = entry(1)
 "#;
 const MALFORMED_LAMBDA_SOURCE: &str = r#"
@@ -183,6 +196,12 @@ fn function_valued_data_recursion_fails_closed() {
         "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_recursive.dag",
     );
     assert_rejected_data_lambda(&dag, "countdown");
+
+    let dag = cached_compile_any(
+        NESTED_RECURSIVE_SOURCE,
+        "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_nested_recursive.dag",
+    );
+    assert_rejected_data_lambda(&dag, "countdown");
 }
 
 #[test]
@@ -192,18 +211,24 @@ fn function_valued_data_cycles_fail_closed() {
             DATA_DATA_CYCLE_SOURCE,
             "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_data_cycle.dag",
             "evenish",
-            ["evenish", "oddish", "use_evenish"],
+            &["evenish", "oddish", "use_evenish"][..],
         ),
         (
             DATA_FN_CYCLE_SOURCE,
             "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_fn_cycle.dag",
             "entry",
-            ["entry", "helper", "use_entry"],
+            &["entry", "helper", "use_entry"][..],
+        ),
+        (
+            DATA_PATH_CYCLE_SOURCE,
+            "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_path_cycle.dag",
+            "entry",
+            &["entry", "use_entry"][..],
         ),
     ] {
         let dag = cached_compile_any(source, file);
         assert_rejected_data_lambda(&dag, data_name);
-        assert_user_callable_bind_names(&dag, file, &expected_binds);
+        assert_user_callable_bind_names(&dag, file, expected_binds);
     }
 }
 
