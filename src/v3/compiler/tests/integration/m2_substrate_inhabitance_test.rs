@@ -5,12 +5,12 @@ use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, literal_bits_int, lower_call_pattern, map_evidence_merge_at, merge_evidence,
     optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
-    positive_amount_from_i64, promote_to_strict, size_bound_param,
-    sub_value_relation_to_call_pattern, tree_size_bound, type_iteration_dimension, AlgebraProfile,
-    ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue,
-    Interval, IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget,
-    PositiveDescentAmount, PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound,
-    SubValueRelation, TypeConnective, ValueBody,
+    positive_amount_from_i64, promote_to_strict, size_bound_param, tree_size_bound,
+    type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
+    CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
+    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
+    TypeConnective, ValueBody,
 };
 use v3_compiler::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
 use v3_compiler::parse_surface;
@@ -1188,41 +1188,31 @@ fn caller(n: Int) -> Int = helper(n)
 }
 
 #[test]
-fn e_p_per_call_pattern_projects_preserved_value_to_same_argument_call() {
-    assert_eq!(
-        sub_value_relation_to_call_pattern(&SubValueRelation::PreservedValue),
-        Some(CallPattern::SameArgumentCall),
-        "gate (1) broadens CallPattern coverage by projecting preserved self-call evidence \
-         to SameArgumentCall without authoring a new lowered carrier or lens consumer"
-    );
-}
-
-#[test]
-fn e_p_per_call_pattern_preserves_induction_child_accessor_projection() {
-    let field = v3_compiler::dag::InductiveField {
-        type_name: String::from("Tree"),
-        variant_name: String::from("Node"),
-        field_name: String::from("left"),
-        shape: v3_compiler::dag::RecursionShape::DirectRecursion,
-        element_type: String::from("Tree"),
-    };
-    assert_eq!(
-        sub_value_relation_to_call_pattern(&SubValueRelation::StrictSubValue {
-            field: field.clone(),
-            factor: ShrinkFactor::UnitShrink,
-        }),
-        Some(CallPattern::ChildAccessorCall {
-            accessor: String::from("left")
-        }),
-        "StrictSubValue has an authoritative ChildAccessorCall projection in std.induction.dag"
-    );
-    assert_eq!(
-        sub_value_relation_to_call_pattern(&SubValueRelation::IteratedSubValue { field }),
-        Some(CallPattern::ChildAccessorCall {
-            accessor: String::from("left")
-        }),
-        "IteratedSubValue has the same authoritative ChildAccessorCall projection in std.induction.dag"
-    );
+fn induction_lattice_rust_mirror_dissolved() {
+    // Gate `tier3_induction_mirror_dissolved` (R3 DAG gate #3, T-Tier3-Dissolution):
+    // the named hand-Rust projection helpers from `std.induction::SubValueRelation`
+    // to `CallPattern` no longer live in `dag.rs` — both the previously public
+    // `sub_value_relation_to_call_pattern` and the privatized
+    // `project_sub_value_relation` are absent. `std.induction.dag::sub_value_to_call_pattern`
+    // is the authority; the residual projection logic survives only as an
+    // anonymous closure inlined into `call_pattern_from_relations_with_index`
+    // (tracked bridge: see the comment at that call site, dissolution gated on
+    // T-E-P-Producer-Broadening lens-emission landing). The lens-facing surface
+    // (`per_call_pattern_at`, `per_call_descent_evidence`, `lower_call_pattern`)
+    // is load-bearing for the cost/complexity lens consumers and remains.
+    let dag_rs = include_str!("../../src/dag.rs");
+    for forbidden in [
+        "pub fn sub_value_relation_to_call_pattern",
+        "fn sub_value_relation_to_call_pattern",
+        "fn project_sub_value_relation",
+    ] {
+        assert!(
+            !dag_rs.contains(forbidden),
+            "`dag.rs` must not carry a named hand-Rust `SubValueRelation -> CallPattern` \
+             projection helper (`{forbidden}`); \
+             `src/v3/std/induction.dag::sub_value_to_call_pattern` is the authority"
+        );
+    }
 }
 
 /// T-E-P-Producer-Broadening **gate (2)** — `e_p_call_pattern_lookup_authoritative`.
