@@ -15,9 +15,15 @@ Worker brief §"Discipline / baseline noise concerns" (line 108) is explicit: *"
 
 **R-3 designation (ratified):** **`ubicloud-standard-2`** — see `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md` §5.1 + worker dispatch at gunbc **#828**. **Standard case:** `cargo bench` capture for a committed baseline SHOULD run on that label (via `.github/workflows/tier3-baseline-capture.yml` once the workflow exists on `default`) so `captured_on.host_id` records `ubicloud-standard-2`.
 
-**Bootstrap sequencing exception (single authority, P2):** the *first* committed `tier3_baseline.json` may land in the **same PR** that introduces the Ubicloud `workflow_dispatch` workflow, before `gh workflow run` is available against `default`. In that narrow case the capture runs on the **actual** operator/session machine, `captured_on.host_id` is **that honest identifier** (not `ubicloud-standard-2`), and the Phase-1 PR **MUST** reconcile in its description that **forward canonical recapture** is the workflow on `ubicloud-standard-2`, not retroactive relabeling of `host_id`. **Director / PB** may still require a follow-up PR replacing the JSON from a Ubicloud artifact if policy demands full hardware alignment before mirror dissolution (capture **§2 one-shot / recapture** discipline in the worker brief).
+**Bootstrap sequencing exception (single authority, P2):** the *first* committed `tier3_baseline.json` may land in the **same PR** that introduces the Ubicloud `workflow_dispatch` workflow, before `gh workflow run` is available against `default`. In that narrow case the capture runs on the **actual** operator/session machine, `captured_on.host_id` is **that honest identifier** (not `ubicloud-standard-2`), and the Phase-1 PR MUST reconcile provenance in its description (**no retroactive `host_id` relabel**).
 
----
+This exception **does not** relax the worker brief §"Discipline" **same-machine comparison** discipline for substantive perf gates—it only unlocks early **presence** of a JSON artifact and the forwarded workflow YAML. **`R-7` authority is split:**
+- **`R‑7.presence`** (grep / sequencing / STOP triage needing a tracked `tier3_baseline.json` path): satisfied by merging any honest-schema JSON at `src/v3/compiler/benches/tier3_baseline.json`.
+- **`R‑7.canonical coherence`** (**mirror dissolution slices + Phase‑2 canonical measurement** pairing `PerfWithinBaseline`/budget claims against timings collected on **`ubicloud-standard-2`**): **NOT satisfied** solely by a non‑Ubicloud bootstrap seed—the committed JSON **MUST either** record `captured_on.host_id == ubicloud-standard-2` captured via `.github/workflows/tier3-baseline-capture.yml` (landed artifact → PR replacing baseline rows/metadata) **or** bear a **Director / PB-published waiver receipt** affirming dissolution may proceed temporarily against bootstrap numbers (fail-closed if neither).
+
+**Operational default:** after this workflow YAML reaches `default`, operators run **`workflow_dispatch`**, copy the **`tier3-baseline-json`** artifact into‑tree (**same PR stack or immediate follow‑up PR**) so `host_id` + medians authoritative for dissolution work match **Ubicloud**, unless Director waives coherence.
+
+**Director / PB** sign-off gates any waiver-class shortcut; speculative “eventually recapture” without an explicit STOP decision is insufficient for **`R‑7.canonical coherence`** clearance.
 
 ## 2. Capture command
 
@@ -161,13 +167,13 @@ These rules are spec; their enforcement is a Phase 2 capture-side concern (the P
 ## 7. Routing (authority)
 
 - **R-3 host** — ratified as **`ubicloud-standard-2`**; see `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md`.
-- **Bootstrap vs canonical pin** — PB Manager / Director decide whether a seeded non-Ubicloud `host_id` stands until mirror work, or whether a **follow-up** Phase-1 refresh PR (Ubicloud artifact → replace JSON) is required before dissolution (worker brief recapture discipline).
+- **Bootstrap seed vs dissolution coherence** — PB Manager / Director record whether **`R‑7.canonical coherence`** clears via Ubicloud refreshed JSON (**default**) versus a **narrowly scoped waiver**; absence of waiver + non‑Ubicloud `host_id` means dissolution-linked perf benches stay blocked on canonical pairing.
 
 ---
 
 ## 8. Acceptance summary
 
-- §1 designates R-3 (`ubicloud-standard-2`) + **bootstrap sequencing** exception (`host_id` honest; PR reconciles forward workflow authority).
+- §1 designates R-3 (`ubicloud-standard-2`) + **bootstrap sequencing** exception (`host_id` honest; **split `R‑7.presence` vs `R‑7.canonical coherence`** for dissolution-linked perf parity).
 - §2–§3 prescribe capture + bench-name mapping.
 - §4–§5 prescribe schema + validation (including **`host_id` honesty**).
 - §6 lists out-of-scope substrate / fabrication classes.
