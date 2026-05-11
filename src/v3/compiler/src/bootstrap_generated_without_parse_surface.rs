@@ -28735,7 +28735,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 4790, 4837),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5576, 5623),
         });
         declarations.push(Declaration {
             id: DeclarationId(900),
@@ -28760,7 +28760,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 4928, 5019),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5714, 5805),
         });
         declarations.push(Declaration {
             id: DeclarationId(901),
@@ -28797,7 +28797,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5021, 5494),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5807, 6280),
         });
         declarations.push(Declaration {
             id: DeclarationId(902),
@@ -28826,7 +28826,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5496, 5692),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6282, 6478),
         });
         declarations.push(Declaration {
             id: DeclarationId(903),
@@ -28851,7 +28851,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5938, 6132),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6724, 6918),
         });
         declarations.push(Declaration {
             id: DeclarationId(904),
@@ -28876,7 +28876,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6539, 6705),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7325, 7491),
         });
         declarations.push(Declaration {
             id: DeclarationId(905),
@@ -28921,7 +28921,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7034, 7170),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7820, 7956),
         });
         declarations.push(Declaration {
             id: DeclarationId(906),
@@ -28958,7 +28958,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7372, 8118),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8158, 8904),
         });
         declarations.push(Declaration {
             id: DeclarationId(907),
@@ -28999,7 +28999,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8655, 9183),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9441, 9969),
         });
         declarations.push(Declaration {
             id: DeclarationId(908),
@@ -29048,7 +29048,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9371, 9553),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10157, 10339),
         });
         declarations.push(Declaration {
             id: DeclarationId(909),
@@ -29085,7 +29085,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9669, 9884),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10455, 10670),
         });
         declarations.push(Declaration {
             id: DeclarationId(910),
@@ -29104,7 +29104,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10205, 10248),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10991, 11034),
         });
         declarations.push(Declaration {
             id: DeclarationId(911),
@@ -29157,7 +29157,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10595, 10926),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11381, 11712),
         });
         declarations.push(Declaration {
             id: DeclarationId(912),
@@ -68635,7 +68635,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 4830, 4837),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5616, 5623),
         });
         declarations.push(Declaration {
             id: DeclarationId(2068),
@@ -68654,7 +68654,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5055, 5090),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5841, 5876),
         });
         declarations.push(Declaration {
             id: DeclarationId(2069),
@@ -68673,7 +68673,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5095, 5138),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5881, 5924),
         });
         declarations.push(Declaration {
             id: DeclarationId(2070),
@@ -68692,7 +68692,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5143, 5220),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5929, 6006),
         });
         declarations.push(Declaration {
             id: DeclarationId(2071),
@@ -68712,7 +68712,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5310, 5344),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6096, 6130),
         });
         declarations.push(Declaration {
             id: DeclarationId(2072),
@@ -68731,7 +68731,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5362, 5399),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6148, 6185),
         });
         declarations.push(Declaration {
             id: DeclarationId(2073),
@@ -68750,7 +68750,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5421, 5434),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6207, 6220),
         });
         declarations.push(Declaration {
             id: DeclarationId(2074),
@@ -68787,7 +68787,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5225, 5440),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6011, 6226),
         });
         declarations.push(Declaration {
             id: DeclarationId(2075),
@@ -68806,7 +68806,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5445, 5494),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6231, 6280),
         });
         declarations.push(Declaration {
             id: DeclarationId(2076),
@@ -68825,7 +68825,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5973, 6009),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6759, 6795),
         });
         declarations.push(Declaration {
             id: DeclarationId(2077),
@@ -68844,7 +68844,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6077, 6104),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6863, 6890),
         });
         declarations.push(Declaration {
             id: DeclarationId(2078),
@@ -68863,7 +68863,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6121, 6126),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6907, 6912),
         });
         declarations.push(Declaration {
             id: DeclarationId(2079),
@@ -68892,7 +68892,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6014, 6132),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6800, 6918),
         });
         declarations.push(Declaration {
             id: DeclarationId(2080),
@@ -68911,7 +68911,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6579, 6617),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7365, 7403),
         });
         declarations.push(Declaration {
             id: DeclarationId(2081),
@@ -68940,7 +68940,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6622, 6705),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7408, 7491),
         });
         declarations.push(Declaration {
             id: DeclarationId(2082),
@@ -68954,7 +68954,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7063, 7070),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7849, 7856),
         });
         declarations.push(Declaration {
             id: DeclarationId(2083),
@@ -68968,7 +68968,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7075, 7084),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7861, 7870),
         });
         declarations.push(Declaration {
             id: DeclarationId(2084),
@@ -68982,7 +68982,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7089, 7101),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7875, 7887),
         });
         declarations.push(Declaration {
             id: DeclarationId(2085),
@@ -68996,7 +68996,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7106, 7113),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7892, 7899),
         });
         declarations.push(Declaration {
             id: DeclarationId(2086),
@@ -69010,7 +69010,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7118, 7127),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7904, 7913),
         });
         declarations.push(Declaration {
             id: DeclarationId(2087),
@@ -69024,7 +69024,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7132, 7139),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7918, 7925),
         });
         declarations.push(Declaration {
             id: DeclarationId(2088),
@@ -69038,7 +69038,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7144, 7170),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7930, 7956),
         });
         declarations.push(Declaration {
             id: DeclarationId(2089),
@@ -69057,7 +69057,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7482, 7489),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8268, 8275),
         });
         declarations.push(Declaration {
             id: DeclarationId(2090),
@@ -69076,7 +69076,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7500, 7507),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8286, 8293),
         });
         declarations.push(Declaration {
             id: DeclarationId(2091),
@@ -69117,7 +69117,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7410, 7553),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8196, 8339),
         });
         declarations.push(Declaration {
             id: DeclarationId(2092),
@@ -69136,7 +69136,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7630, 7637),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8416, 8423),
         });
         declarations.push(Declaration {
             id: DeclarationId(2093),
@@ -69155,7 +69155,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7648, 7655),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8434, 8441),
         });
         declarations.push(Declaration {
             id: DeclarationId(2094),
@@ -69196,7 +69196,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7558, 7703),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8344, 8489),
         });
         declarations.push(Declaration {
             id: DeclarationId(2095),
@@ -69215,7 +69215,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7788, 7795),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8574, 8581),
         });
         declarations.push(Declaration {
             id: DeclarationId(2096),
@@ -69234,7 +69234,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7806, 7813),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8592, 8599),
         });
         declarations.push(Declaration {
             id: DeclarationId(2097),
@@ -69275,7 +69275,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7708, 7861),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8494, 8647),
         });
         declarations.push(Declaration {
             id: DeclarationId(2098),
@@ -69294,7 +69294,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7944, 7951),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8730, 8737),
         });
         declarations.push(Declaration {
             id: DeclarationId(2099),
@@ -69327,7 +69327,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7866, 7966),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8652, 8752),
         });
         declarations.push(Declaration {
             id: DeclarationId(2100),
@@ -69346,7 +69346,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8037, 8044),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8823, 8830),
         });
         declarations.push(Declaration {
             id: DeclarationId(2101),
@@ -69387,7 +69387,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7971, 8118),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8757, 8904),
         });
         declarations.push(Declaration {
             id: DeclarationId(2102),
@@ -69407,7 +69407,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8742, 8776),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9528, 9562),
         });
         declarations.push(Declaration {
             id: DeclarationId(2103),
@@ -69426,7 +69426,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8742, 8777),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9528, 9563),
         });
         declarations.push(Declaration {
             id: DeclarationId(2104),
@@ -69451,7 +69451,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8697, 8779),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9483, 9565),
         });
         declarations.push(Declaration {
             id: DeclarationId(2105),
@@ -69476,7 +69476,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8784, 8845),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9570, 9631),
         });
         declarations.push(Declaration {
             id: DeclarationId(2106),
@@ -69495,7 +69495,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8850, 8905),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9636, 9691),
         });
         declarations.push(Declaration {
             id: DeclarationId(2107),
@@ -69514,7 +69514,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8980, 8985),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9766, 9771),
         });
         declarations.push(Declaration {
             id: DeclarationId(2108),
@@ -69547,7 +69547,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8910, 8987),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9696, 9773),
         });
         declarations.push(Declaration {
             id: DeclarationId(2109),
@@ -69566,7 +69566,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9085, 9090),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9871, 9876),
         });
         declarations.push(Declaration {
             id: DeclarationId(2110),
@@ -69599,7 +69599,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8992, 9092),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9778, 9878),
         });
         declarations.push(Declaration {
             id: DeclarationId(2111),
@@ -69618,7 +69618,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9176, 9181),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9962, 9967),
         });
         declarations.push(Declaration {
             id: DeclarationId(2112),
@@ -69647,7 +69647,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9097, 9183),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9883, 9969),
         });
         declarations.push(Declaration {
             id: DeclarationId(2113),
@@ -69661,7 +69661,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9404, 9413),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10190, 10199),
         });
         declarations.push(Declaration {
             id: DeclarationId(2114),
@@ -69675,7 +69675,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9418, 9426),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10204, 10212),
         });
         declarations.push(Declaration {
             id: DeclarationId(2115),
@@ -69689,7 +69689,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9431, 9444),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10217, 10230),
         });
         declarations.push(Declaration {
             id: DeclarationId(2116),
@@ -69703,7 +69703,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9449, 9466),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10235, 10252),
         });
         declarations.push(Declaration {
             id: DeclarationId(2117),
@@ -69717,7 +69717,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9471, 9494),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10257, 10280),
         });
         declarations.push(Declaration {
             id: DeclarationId(2118),
@@ -69731,7 +69731,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9499, 9518),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10285, 10304),
         });
         declarations.push(Declaration {
             id: DeclarationId(2119),
@@ -69745,7 +69745,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9523, 9541),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10309, 10327),
         });
         declarations.push(Declaration {
             id: DeclarationId(2120),
@@ -69759,7 +69759,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9546, 9553),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10332, 10339),
         });
         declarations.push(Declaration {
             id: DeclarationId(2121),
@@ -69778,7 +69778,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9803, 9807),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10589, 10593),
         });
         declarations.push(Declaration {
             id: DeclarationId(2122),
@@ -69797,7 +69797,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9839, 9843),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10625, 10629),
         });
         declarations.push(Declaration {
             id: DeclarationId(2123),
@@ -69816,7 +69816,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9875, 9882),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10661, 10668),
         });
         declarations.push(Declaration {
             id: DeclarationId(2124),
@@ -69830,7 +69830,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10239, 10248),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11025, 11034),
         });
         declarations.push(Declaration {
             id: DeclarationId(2125),
@@ -69850,7 +69850,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10734, 10772),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11520, 11558),
         });
         declarations.push(Declaration {
             id: DeclarationId(2126),
@@ -69869,7 +69869,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10851, 10858),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11637, 11644),
         });
         declarations.push(Declaration {
             id: DeclarationId(2127),
@@ -69888,7 +69888,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10919, 10924),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11705, 11710),
         });
         declarations.push(Declaration {
             id: DeclarationId(2128),
@@ -84433,7 +84433,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5362, 5399),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6148, 6185),
         });
         declarations.push(Declaration {
             id: DeclarationId(2932),
@@ -84447,7 +84447,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5362, 5399),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6148, 6185),
         });
         declarations.push(Declaration {
             id: DeclarationId(2933),
@@ -84472,7 +84472,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5362, 5399),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6148, 6185),
         });
         declarations.push(Declaration {
             id: DeclarationId(2934),
@@ -84491,7 +84491,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5421, 5434),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6207, 6220),
         });
         declarations.push(Declaration {
             id: DeclarationId(2935),
@@ -84505,7 +84505,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5421, 5434),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6207, 6220),
         });
         declarations.push(Declaration {
             id: DeclarationId(2936),
@@ -84530,7 +84530,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5421, 5434),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6207, 6220),
         });
         declarations.push(Declaration {
             id: DeclarationId(2937),
@@ -84549,7 +84549,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6077, 6104),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6863, 6890),
         });
         declarations.push(Declaration {
             id: DeclarationId(2938),
@@ -84563,7 +84563,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6077, 6104),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6863, 6890),
         });
         declarations.push(Declaration {
             id: DeclarationId(2939),
@@ -84588,7 +84588,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6077, 6104),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6863, 6890),
         });
         declarations.push(Declaration {
             id: DeclarationId(2940),
@@ -84607,7 +84607,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6121, 6126),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6907, 6912),
         });
         declarations.push(Declaration {
             id: DeclarationId(2941),
@@ -84621,7 +84621,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6121, 6126),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6907, 6912),
         });
         declarations.push(Declaration {
             id: DeclarationId(2942),
@@ -84646,7 +84646,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6121, 6126),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6907, 6912),
         });
         declarations.push(Declaration {
             id: DeclarationId(2943),
@@ -84665,7 +84665,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7482, 7489),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8268, 8275),
         });
         declarations.push(Declaration {
             id: DeclarationId(2944),
@@ -84679,7 +84679,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7482, 7489),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8268, 8275),
         });
         declarations.push(Declaration {
             id: DeclarationId(2945),
@@ -84704,7 +84704,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7482, 7489),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8268, 8275),
         });
         declarations.push(Declaration {
             id: DeclarationId(2946),
@@ -84723,7 +84723,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7500, 7507),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8286, 8293),
         });
         declarations.push(Declaration {
             id: DeclarationId(2947),
@@ -84737,7 +84737,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7500, 7507),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8286, 8293),
         });
         declarations.push(Declaration {
             id: DeclarationId(2948),
@@ -84762,7 +84762,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7500, 7507),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8286, 8293),
         });
         declarations.push(Declaration {
             id: DeclarationId(2949),
@@ -84781,7 +84781,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7630, 7637),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8416, 8423),
         });
         declarations.push(Declaration {
             id: DeclarationId(2950),
@@ -84795,7 +84795,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7630, 7637),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8416, 8423),
         });
         declarations.push(Declaration {
             id: DeclarationId(2951),
@@ -84820,7 +84820,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7630, 7637),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8416, 8423),
         });
         declarations.push(Declaration {
             id: DeclarationId(2952),
@@ -84839,7 +84839,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7648, 7655),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8434, 8441),
         });
         declarations.push(Declaration {
             id: DeclarationId(2953),
@@ -84853,7 +84853,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7648, 7655),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8434, 8441),
         });
         declarations.push(Declaration {
             id: DeclarationId(2954),
@@ -84878,7 +84878,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7648, 7655),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8434, 8441),
         });
         declarations.push(Declaration {
             id: DeclarationId(2955),
@@ -84897,7 +84897,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7788, 7795),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8574, 8581),
         });
         declarations.push(Declaration {
             id: DeclarationId(2956),
@@ -84911,7 +84911,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7788, 7795),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8574, 8581),
         });
         declarations.push(Declaration {
             id: DeclarationId(2957),
@@ -84936,7 +84936,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7788, 7795),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8574, 8581),
         });
         declarations.push(Declaration {
             id: DeclarationId(2958),
@@ -84955,7 +84955,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7806, 7813),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8592, 8599),
         });
         declarations.push(Declaration {
             id: DeclarationId(2959),
@@ -84969,7 +84969,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7806, 7813),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8592, 8599),
         });
         declarations.push(Declaration {
             id: DeclarationId(2960),
@@ -84994,7 +84994,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7806, 7813),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8592, 8599),
         });
         declarations.push(Declaration {
             id: DeclarationId(2961),
@@ -85013,7 +85013,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7944, 7951),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8730, 8737),
         });
         declarations.push(Declaration {
             id: DeclarationId(2962),
@@ -85027,7 +85027,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7944, 7951),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8730, 8737),
         });
         declarations.push(Declaration {
             id: DeclarationId(2963),
@@ -85052,7 +85052,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7944, 7951),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8730, 8737),
         });
         declarations.push(Declaration {
             id: DeclarationId(2964),
@@ -85071,7 +85071,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8037, 8044),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8823, 8830),
         });
         declarations.push(Declaration {
             id: DeclarationId(2965),
@@ -85085,7 +85085,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8037, 8044),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8823, 8830),
         });
         declarations.push(Declaration {
             id: DeclarationId(2966),
@@ -85110,7 +85110,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8037, 8044),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8823, 8830),
         });
         declarations.push(Declaration {
             id: DeclarationId(2967),
@@ -85129,7 +85129,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8742, 8777),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9528, 9563),
         });
         declarations.push(Declaration {
             id: DeclarationId(2968),
@@ -85143,7 +85143,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8742, 8777),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9528, 9563),
         });
         declarations.push(Declaration {
             id: DeclarationId(2969),
@@ -85168,7 +85168,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8742, 8777),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9528, 9563),
         });
         declarations.push(Declaration {
             id: DeclarationId(2970),
@@ -85187,7 +85187,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8980, 8985),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9766, 9771),
         });
         declarations.push(Declaration {
             id: DeclarationId(2971),
@@ -85201,7 +85201,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8980, 8985),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9766, 9771),
         });
         declarations.push(Declaration {
             id: DeclarationId(2972),
@@ -85226,7 +85226,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8980, 8985),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9766, 9771),
         });
         declarations.push(Declaration {
             id: DeclarationId(2973),
@@ -85245,7 +85245,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9085, 9090),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9871, 9876),
         });
         declarations.push(Declaration {
             id: DeclarationId(2974),
@@ -85259,7 +85259,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9085, 9090),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9871, 9876),
         });
         declarations.push(Declaration {
             id: DeclarationId(2975),
@@ -85284,7 +85284,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9085, 9090),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9871, 9876),
         });
         declarations.push(Declaration {
             id: DeclarationId(2976),
@@ -85303,7 +85303,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9176, 9181),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9962, 9967),
         });
         declarations.push(Declaration {
             id: DeclarationId(2977),
@@ -85317,7 +85317,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9176, 9181),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9962, 9967),
         });
         declarations.push(Declaration {
             id: DeclarationId(2978),
@@ -85342,7 +85342,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9176, 9181),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9962, 9967),
         });
         declarations.push(Declaration {
             id: DeclarationId(2979),
@@ -85361,7 +85361,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9803, 9807),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10589, 10593),
         });
         declarations.push(Declaration {
             id: DeclarationId(2980),
@@ -85375,7 +85375,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9803, 9807),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10589, 10593),
         });
         declarations.push(Declaration {
             id: DeclarationId(2981),
@@ -85400,7 +85400,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9803, 9807),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10589, 10593),
         });
         declarations.push(Declaration {
             id: DeclarationId(2982),
@@ -85419,7 +85419,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9839, 9843),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10625, 10629),
         });
         declarations.push(Declaration {
             id: DeclarationId(2983),
@@ -85433,7 +85433,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9839, 9843),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10625, 10629),
         });
         declarations.push(Declaration {
             id: DeclarationId(2984),
@@ -85458,7 +85458,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9839, 9843),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10625, 10629),
         });
         declarations.push(Declaration {
             id: DeclarationId(2985),
@@ -85477,7 +85477,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9875, 9882),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10661, 10668),
         });
         declarations.push(Declaration {
             id: DeclarationId(2986),
@@ -85491,7 +85491,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9875, 9882),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10661, 10668),
         });
         declarations.push(Declaration {
             id: DeclarationId(2987),
@@ -85516,7 +85516,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9875, 9882),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10661, 10668),
         });
         declarations.push(Declaration {
             id: DeclarationId(2988),
@@ -85535,7 +85535,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10851, 10858),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11637, 11644),
         });
         declarations.push(Declaration {
             id: DeclarationId(2989),
@@ -85549,7 +85549,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10851, 10858),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11637, 11644),
         });
         declarations.push(Declaration {
             id: DeclarationId(2990),
@@ -85574,7 +85574,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10851, 10858),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11637, 11644),
         });
         declarations.push(Declaration {
             id: DeclarationId(2991),
@@ -85593,7 +85593,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10919, 10924),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11705, 11710),
         });
         declarations.push(Declaration {
             id: DeclarationId(2992),
@@ -85607,7 +85607,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10919, 10924),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11705, 11710),
         });
         declarations.push(Declaration {
             id: DeclarationId(2993),
@@ -85632,7 +85632,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10919, 10924),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11705, 11710),
         });
         declarations.push(Declaration {
             id: DeclarationId(2994),

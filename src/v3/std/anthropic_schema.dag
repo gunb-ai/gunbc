@@ -85,9 +85,20 @@ type AnthropicToolResultContent
   | ToolResultBlocks(List<AnthropicToolResultBlock>)
 
 // 🟡 SCAFFOLD mirroring `AnthropicToolResultBlock` (`dsl/extdeps/llm/anthropic.dag`).
-// Dissolution trigger: Anthropic extends `tool_result.content[]` with new block kinds
-// beyond the five modeled variants — fold additive tags here or escalate if the wire
-// contract becomes non-additive.
+// Carries the same 🟡 rationale as v2: nested payload gaps on
+// `structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads`, not an
+// open-ended “API might add tags” dissolution story.
+//
+// Dissolution trigger: when v2 `dsl/extdeps/llm/anthropic.dag` promotes this coproduct
+// to 🟢 TERMINAL per the v2 comment on that declaration (residual rows closed + five-arm
+// discriminator surface terminalized there), update this mirror under
+// `anthropic_schema_lockstep_test` and re-tag 🟢; when v3 ingests v2 `anthropic.dag` with
+// full service/structural fidelity (#1246 / file-header dissolution above), this entire
+// twin file retires and this declaration deletes with it (ROADMAP.md “Provider/API mirror
+// multiplication risk” — T-Ground-Services ingestion replaces per-provider mirrors).
+//
+// Maintenance trigger (not dissolution): new top-level `tool_result.content[]` arm on
+// the wire → land the fold on v2 first, then extend this mirror lockstep.
 // Singleton wire tag — mirrors `AnthropicToolResultWireTextTag` (v2 authority).
 type AnthropicToolResultWireTextTag
   = Text {}

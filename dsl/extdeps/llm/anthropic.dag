@@ -113,10 +113,19 @@ type AnthropicSearchResultCitationsConfig {
   enabled: Bool
 }
 
-// 🟡 SCAFFOLD — provider API extension trigger: Anthropic adds additional
-// `tool_result.content[]` discriminators beyond the five modeled arms; fold new
-// wire tags here under `anthropic_tool_result_block_wire_contract` or escalate if
-// the wire contract shape changes non-additively.
+// 🟡 SCAFFOLD — nested `document` / `search_result` payloads are not full OpenAPI
+// parity vs platform docs; honest residue on
+// `structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads`.
+//
+// Dissolution trigger: promote to 🟢 TERMINAL when those residual rows are deleted or
+// rewritten to explicit terminal closure on this authority **and** the five-arm
+// `tool_result.content[]` discriminator surface is closed against the tracked public
+// API / generated SDK (no remaining extension-only gap on this coproduct).
+//
+// Maintenance trigger (not dissolution): Anthropic adds a *sixth* top-level block kind
+// beyond the five modeled arms → fold the new wire tag under
+// `anthropic_tool_result_block_wire_contract` here, or escalate if the contract becomes
+// non-additive.
 type AnthropicToolResultBlock
   = AnthropicTextBlock { text: String }
   | AnthropicImageBlock { source: ImageSource }
