@@ -123,14 +123,15 @@ fn dep_path_reaches_src_v2(manifest_path: &Path, workspace_root: &Path, spec: &V
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     let joined = lexical_normalize(&dir.join(rel));
-    let Ok(resolved) = fs::canonicalize(&joined) else {
-        return false;
-    };
-    let src_v2 = workspace_root.join("src").join("v2");
-    let Ok(src_v2_canon) = fs::canonicalize(&src_v2) else {
-        return false;
-    };
-    resolved.starts_with(&src_v2_canon)
+    let src_v2 = lexical_normalize(&workspace_root.join("src").join("v2"));
+
+    match (fs::canonicalize(&joined), fs::canonicalize(&src_v2)) {
+        (Ok(ref jc), Ok(ref sv)) => jc.starts_with(sv),
+        // Missing path components: canonicalize fails even when the author clearly aimed
+        // under `src/v2/` (exploratory fail-open called out in review). Fall back to
+        // lexical `..` resolution vs workspace `src/v2`.
+        _ => joined.starts_with(&src_v2),
+    }
 }
 
 fn dep_spec_links_v2_crate(name: &str, spec: &Value) -> bool {
@@ -354,6 +355,46 @@ fn g1_manifest_neutral_key_path_into_src_v2_detected() {
     assert!(
         viol.is_some(),
         "expected neutral dep key with path into src/v2 to register; got {viol:?}"
+    );
+}
+
+#[test]
+fn g1_manifest_neutral_key_path_lexically_under_missing_src_v2_entry_detected() {
+    let workspace_root = workspace_root();
+    let manifest_path = workspace_root
+        .join("src")
+        .join("v3")
+        .join("compiler")
+        .join("Cargo.toml");
+    assert!(
+        manifest_path.is_file(),
+        "fixture requires {}",
+        manifest_path.display(),
+    );
+
+    let missing_under_v2 = concat!("../../v2/__gate41_missing_path_probe");
+    let raw = format!(
+        concat!(
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
+            "[dependencies]\n",
+            "shim-crate = {{ path = \"{0}\" }}\n",
+        ),
+        missing_under_v2,
+    );
+    assert!(
+        !workspace_root
+            .join("src")
+            .join("v2")
+            .join("__gate41_missing_path_probe")
+            .exists(),
+        "fixture path segment must not exist on disk (canonicalize fail)",
+    );
+    let v: Value = toml::from_str(&raw).expect("fixture toml");
+    let root = v.as_table().expect("root table");
+    let viol = manifest_violation_g1_v2_edge(root, Some((&manifest_path, &workspace_root)));
+    assert!(
+        viol.is_some(),
+        "expected lexical path under src/v2 to register when target is missing; got {viol:?}"
     );
 }
 
