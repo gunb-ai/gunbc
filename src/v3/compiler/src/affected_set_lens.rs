@@ -33,11 +33,22 @@ pub struct AffectedSetReceipt {
     pub summary: String,
 }
 
+/// Typed receipt for [`DownstreamAdjacency::build`] — surfaces P3 producer-walk
+/// outcomes without collapsing malformed substrate into [`ProducerLookup::NoProducer`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DownstreamBuildReceipt {
+    pub malformed_producer_walks: Vec<String>,
+    /// Consumers conservatively treated as affected seeds when a dependency anchor
+    /// could not be resolved (INVARIANTS P3 fail-closed).
+    pub fail_closed_consumer_seeds: Vec<NodeId>,
+}
+
 /// Full prototype report emitted to integration tests / tooling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AffectedSetLensReport {
     pub structural_seed_count: usize,
     pub first_structural_difference: Option<String>,
+    pub downstream_build_receipt: DownstreamBuildReceipt,
     pub transitive_downstream: Vec<NodeId>,
     pub value: DimensionSlice,
     pub cost: DimensionSlice,
@@ -66,25 +77,45 @@ pub struct DownstreamAdjacency {
 }
 
 impl DownstreamAdjacency {
-    pub fn build(dag: &Dag) -> Self {
+    pub fn build(dag: &Dag) -> (Self, DownstreamBuildReceipt) {
         let mut outgoing: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
+        let mut malformed_producer_walks: Vec<String> = Vec::new();
+        let mut fail_closed_consumer_seeds: HashSet<NodeId> = HashSet::new();
         for consumer in dag.nodes() {
-            for producer in direct_producer_nodes(dag, consumer) {
+            let walk = resolve_behavior_upstream_producers(dag, consumer);
+            for receipt in walk.malformed_producer_walks {
+                malformed_producer_walks.push(receipt);
+            }
+            for id in walk.fail_closed_consumer_seeds {
+                fail_closed_consumer_seeds.insert(id);
+            }
+            for producer in walk.producer_ids {
                 outgoing
                     .entry(producer)
                     .or_default()
                     .insert(consumer.id());
             }
         }
+        malformed_producer_walks.sort();
+        malformed_producer_walks.dedup();
+        let mut fc: Vec<NodeId> = fail_closed_consumer_seeds.into_iter().collect();
+        fc.sort_by_key(|id| id.raw());
+        let receipt = DownstreamBuildReceipt {
+            malformed_producer_walks,
+            fail_closed_consumer_seeds: fc,
+        };
         let mut outgoing_vec: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
         for (producer, consumers) in outgoing {
             let mut list: Vec<NodeId> = consumers.into_iter().collect();
             list.sort_by_key(|id| id.raw());
             outgoing_vec.insert(producer, list);
         }
-        Self {
-            outgoing: outgoing_vec,
-        }
+        (
+            Self {
+                outgoing: outgoing_vec,
+            },
+            receipt,
+        )
     }
 
     pub fn transitive_forward(&self, seeds: &[NodeId]) -> Vec<NodeId> {
@@ -213,9 +244,20 @@ impl ShapeMapAfter {
 }
 
 pub fn compute_affected_set_lens_report(dag_before: &Dag, dag_after: &Dag) -> AffectedSetLensReport {
-    let downstream = DownstreamAdjacency::build(dag_after);
+    let (downstream, downstream_integrity) = DownstreamAdjacency::build(dag_after);
     let pairing = BehaviorPairing::pair(dag_before, dag_after);
-    let structural_seeds_after = pairing.structural_seed_ids_after(dag_before, dag_after);
+    let mut structural_seed_set: HashSet<NodeId> = pairing
+        .structural_seed_ids_after(dag_before, dag_after)
+        .into_iter()
+        .collect();
+    structural_seed_set.extend(
+        downstream_integrity
+            .fail_closed_consumer_seeds
+            .iter()
+            .copied(),
+    );
+    let mut structural_seeds_after: Vec<NodeId> = structural_seed_set.into_iter().collect();
+    structural_seeds_after.sort_by_key(|id| id.raw());
     let first_structural_difference =
         first_difference(dag_before, dag_after).map(|differ| differ.detail);
 
@@ -253,6 +295,7 @@ pub fn compute_affected_set_lens_report(dag_before: &Dag, dag_after: &Dag) -> Af
     AffectedSetLensReport {
         structural_seed_count,
         first_structural_difference,
+        downstream_build_receipt: downstream_integrity,
         transitive_downstream,
         value: value_slice,
         cost: cost_slice,
@@ -423,54 +466,6 @@ fn refinement_projection(dag: &Dag, port: PortId) -> Result<String, ()> {
     Ok(format!("{:?}", port_state.state()))
 }
 
-/// Ports whose producers `consumer` awaits before executing.
-pub fn referenced_ports_direct(behavior: &Behavior, _dag: &Dag) -> Vec<PortId> {
-    let mut ports = Vec::new();
-    match behavior {
-        Behavior::Value(_) => {}
-        Behavior::Transform(t) => {
-            ports.extend(t.inputs.iter().copied());
-        }
-        Behavior::Branch(b) => {
-            ports.push(b.input);
-            for path in &b.paths {
-                if let Some(binding) = &path.binding {
-                    ports.push(binding.payload_port);
-                }
-            }
-        }
-        Behavior::Loop(l) => {
-            ports.extend([l.source, l.init]);
-            if let crate::dag::LoopBound::Cardinality { count } = &l.bound {
-                ports.push(*count);
-            }
-        }
-        Behavior::Bind(bind) => {
-            ports.push(bind.value);
-            ports.extend(bind.params.iter().copied());
-        }
-    }
-    ports
-}
-
-pub fn direct_producer_nodes(dag: &Dag, behavior: &Behavior) -> Vec<NodeId> {
-    let mut out = Vec::new();
-    for pref in referenced_ports_direct(behavior, dag) {
-        match dag.resolve_producer_lookup(&pref) {
-            ProducerLookup::Found(producer) => {
-                out.push(producer.id());
-            }
-            ProducerLookup::NoProducer
-            | ProducerLookup::MissingPort { .. }
-            | ProducerLookup::MissingNode { .. }
-            | ProducerLookup::BindCycle { .. } => {}
-        }
-    }
-    out.sort_by_key(|id| id.raw());
-    out.dedup();
-    out
-}
-
 fn behavior_result_port(behavior: &Behavior) -> PortId {
     match behavior {
         Behavior::Value(v) => v.result_port(),
@@ -478,5 +473,124 @@ fn behavior_result_port(behavior: &Behavior) -> PortId {
         Behavior::Branch(b) => b.result_port(),
         Behavior::Loop(l) => l.result_port(),
         Behavior::Bind(bind) => bind.result_port(),
+    }
+}
+
+/// Structural dependency anchor: port-level dataflow **or** an explicit subgraph
+/// body root (`Branch` arm / `Loop` kernel) per substrate `NodeId` (P2 facts-flow).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BehaviorStructuralOperand {
+    DataPort(PortId),
+    BodySubgraphRoot(NodeId),
+}
+
+struct UpstreamProducerWalk {
+    producer_ids: Vec<NodeId>,
+    malformed_producer_walks: Vec<String>,
+    fail_closed_consumer_seeds: Vec<NodeId>,
+}
+
+fn behavior_structural_operands(behavior: &Behavior) -> Vec<BehaviorStructuralOperand> {
+    match behavior {
+        Behavior::Value(_) => vec![],
+        Behavior::Transform(t) => t
+            .inputs
+            .iter()
+            .copied()
+            .map(BehaviorStructuralOperand::DataPort)
+            .collect(),
+        Behavior::Branch(b) => {
+            let mut v = vec![BehaviorStructuralOperand::DataPort(b.input)];
+            for path in &b.paths {
+                v.push(BehaviorStructuralOperand::DataPort(path.output));
+                if let Some(binding) = &path.binding {
+                    v.push(BehaviorStructuralOperand::DataPort(binding.payload_port));
+                }
+                v.push(BehaviorStructuralOperand::BodySubgraphRoot(path.body));
+            }
+            v
+        }
+        Behavior::Loop(l) => {
+            let mut v = vec![
+                BehaviorStructuralOperand::DataPort(l.source),
+                BehaviorStructuralOperand::DataPort(l.init),
+            ];
+            if let crate::dag::LoopBound::Cardinality { count } = &l.bound {
+                v.push(BehaviorStructuralOperand::DataPort(*count));
+            }
+            v.push(BehaviorStructuralOperand::BodySubgraphRoot(l.body));
+            v
+        }
+        Behavior::Bind(bind) => {
+            let mut v = vec![BehaviorStructuralOperand::DataPort(bind.value)];
+            v.extend(
+                bind.params
+                    .iter()
+                    .copied()
+                    .map(BehaviorStructuralOperand::DataPort),
+            );
+            v
+        }
+    }
+}
+
+fn resolve_behavior_upstream_producers(dag: &Dag, consumer: &Behavior) -> UpstreamProducerWalk {
+    let mut producer_ids: Vec<NodeId> = Vec::new();
+    let mut malformed_producer_walks: Vec<String> = Vec::new();
+    let mut fail_closed_consumer_seeds: HashSet<NodeId> = HashSet::new();
+    let consumer_id = consumer.id();
+
+    for operand in behavior_structural_operands(consumer) {
+        let port = match operand {
+            BehaviorStructuralOperand::DataPort(p) => p,
+            BehaviorStructuralOperand::BodySubgraphRoot(root) => {
+                let Some(body_behavior) = dag.node_opt(&root) else {
+                    malformed_producer_walks.push(format!(
+                        "BodySubgraphRootMissingNode consumer={consumer_id:?} body_root={root:?}"
+                    ));
+                    fail_closed_consumer_seeds.insert(consumer_id);
+                    continue;
+                };
+                behavior_result_port(body_behavior)
+            }
+        };
+
+        match dag.resolve_producer_lookup(&port) {
+            ProducerLookup::Found(producer) => {
+                producer_ids.push(producer.id());
+            }
+            ProducerLookup::NoProducer => {}
+            ProducerLookup::MissingPort { port: bad } => {
+                malformed_producer_walks.push(format!(
+                    "MissingPort consumer={consumer_id:?} port={bad:?}"
+                ));
+                fail_closed_consumer_seeds.insert(consumer_id);
+            }
+            ProducerLookup::MissingNode { producer } => {
+                malformed_producer_walks.push(format!(
+                    "MissingNode consumer={consumer_id:?} producer_link={producer:?}"
+                ));
+                fail_closed_consumer_seeds.insert(consumer_id);
+            }
+            ProducerLookup::BindCycle { detected_at } => {
+                malformed_producer_walks.push(format!(
+                    "BindCycle consumer={consumer_id:?} detected_at={detected_at:?}"
+                ));
+                fail_closed_consumer_seeds.insert(consumer_id);
+            }
+        }
+    }
+
+    producer_ids.sort_by_key(|id| id.raw());
+    producer_ids.dedup();
+    malformed_producer_walks.sort();
+
+    let mut fc: Vec<NodeId> = fail_closed_consumer_seeds.into_iter().collect();
+    fc.sort_by_key(|id| id.raw());
+
+    UpstreamProducerWalk {
+        producer_ids,
+        malformed_producer_walks,
+        fail_closed_consumer_seeds: fc,
     }
 }

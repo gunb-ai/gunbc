@@ -246,6 +246,11 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/regen_tokenize.rs",
     "src/v3/compiler/src/bin/regen_v3.rs",
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
+    // gunbc#2699 / design PR #2700 (PM inbox #846): R4.B affected-set prototype host.
+    // T-PB-A / P5 receipt: intentional non-test surface expansion; dissolve when
+    // `lenses.affected_set_lens` + R4.B queries-as-data own `Lens<Dag×Dag→…>` valuation
+    // (WISHLIST §R4.B, ROADMAP R4 closeout) — no deleted-scaffold claim; this module is new.
+    "src/v3/compiler/src/affected_set_lens.rs",
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
     "src/v3/compiler/src/complexity_lattice.rs",
