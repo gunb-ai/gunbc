@@ -10,16 +10,19 @@
 
 ## §0. Substrate-vs-user-surface terminology (LOCKED — operator ratification gunbc#846 2026-05-11)
 
-**Internal substrate**: there is only **lens** as a substrate type. `apply_lens(L, section, config)` is the singular declaration mechanism. `config` chooses **one of two separate top-level carriers** — `EnforcedApplication<Output, Budget>` (compile-time obligation) **or** `IntrospectApplication<Output>` (read-only fact emission). Per `design-lens-application-surface.md` §2: these are **NOT** variants of a single sum type — the v3 `.dag` substrate cannot currently express that sum with per-variant generics. "SectionedLensApplication" names the pair of carriers taken together, not a sum-type declaration.
+**Internal substrate**: there is only **lens** as a substrate type. The user-surface / parser shorthand "`apply_lens(L, section, ...)`" produces **one of two separate top-level carriers** — `EnforcedApplication<Output, Budget>` (compile-time obligation) **or** `IntrospectApplication<Output>` (read-only fact emission). Per `design-lens-application-surface.md` §2: these are **NOT** variants of a single substrate sum type — the v3 `.dag` substrate cannot currently express that sum with per-variant generics. There is no `Config<...>` substrate carrier; the user-surface "config" choice is **parser-level disambiguation** that selects which of the two existing carriers to instantiate. "SectionedLensApplication" names the pair of carriers taken together, not a sum-type declaration.
 
-**User-facing nickname**: "query" is a user-gesture term — what a CLI / agent / IDE user calls invoking an Introspect-config lens. It maps to the **same** substrate mechanism (`apply_lens(L, section, IntrospectApplication{Output})`) — NOT a separate substrate type.
+**Lens substrate output is structural** (per `INVARIANTS.md` P1/P2): the lens output is **`Set<NodeRef>`** (or a `NodeRef`-keyed record carrying dimension + provenance), NOT user-rendering shapes like `{file, span}`. Source spans live on each `Node` already (per `SourceSpan` substrate); rendering them as `{file, span}` for CLI / IDE / agent output is an **adapter step** at the tooling-consumer boundary, not part of the lens substrate output.
 
-**No "Query" substrate type, ever** (per `feedback_coproduct_dissolution` + operator coproduct-dissolution discipline). Creating parallel `Query<Input, Output>` vs `Lens<Input, Output>` carriers would force match-arms wherever they compose. The unified frame is: every step is `apply_lens(L, S, IntrospectApplication{...})`; composition is graph topology over a single substrate.
+**User-facing nickname**: "query" is a user-gesture term — what a CLI / agent / IDE user calls invoking an Introspect-config-carrier lens through a tooling surface. It maps to the **same** substrate mechanism — NOT a separate substrate type. Rendering substrate output (`Set<NodeRef>`) into user-visible form (`{file, span}` / line ranges / symbol names) is also tooling-surface adapter work.
+
+**No "Query" substrate type, ever** (per `feedback_coproduct_dissolution` + operator coproduct-dissolution discipline). Creating parallel `Query<Input, Output>` vs `Lens<Input, Output>` carriers would force match-arms wherever they compose. The unified frame is: every step instantiates one of `EnforcedApplication` / `IntrospectApplication`; composition is graph topology over a single substrate.
 
 **This means**:
-- The affected-set is an **Introspect-config lens** with output `Set<{file, span}>` (or richer per-dimension structure)
-- Tooling-side invocations of it are called "queries" in user-facing language only (CLI: `gunbc query affected-set --since=main`)
-- R4.B "queries-as-data" is a **saturation lane for Introspect-config lens variants** + tooling-consumer adapters, NOT a new substrate type
+- The affected-set is an **`IntrospectApplication`-carrier lens** with substrate output `Set<NodeRef>` (or `NodeRef`-keyed affected record carrying dimension + provenance)
+- CLI / IDE / agent **adapters** render the substrate output to user shapes (`{file, span}`, line ranges, symbol names) — these adapters are NOT the lens; they read the lens output
+- Tooling-side invocations are called "queries" in user-facing language only (CLI: `gunbc query affected-set --since=main`)
+- R4.B "queries-as-data" is a **saturation lane for IntrospectApplication-carrier lens variants** + tooling-consumer adapters, NOT a new substrate type
 
 Throughout this doc, "the lens" / "the introspect-lens" / "the affected-set lens" refer to the same substrate concept. "Query" appears only when describing user-facing surfaces (CLI, agent, IDE).
 
@@ -376,7 +379,7 @@ The affected-set lens is **one Introspect-lens variant** of the R4.B family. Oth
 | Coverage gap (R4.B #4) | `coverage_gap(Dag, TestSet)` | `Set<NodeRef>` | Same substrate; intersects with TestClaim subgraph |
 | Effect-shape (R4.B #3) | `effect_shape(Dag, NodeRef)` | `EffectSet` | Same substrate; reads effect_enum projection |
 | Performance bottleneck (R4.B #1) | `bottleneck(Dag, Workflow)` | `Vec<NodeRef>` | Already partially exists via T-CostLens-Composition |
-| Affected-set (R4.B #5; this doc) | `affected_set(Dag_before, Dag_after, dim)` | `Set<{file, span}>` | Composes existing DescentEvidence + SubValueRelation + Cardinality lens + cross_target_coverage |
+| Affected-set (R4.B #5; this doc) | `affected_set(Dag_before, Dag_after, dim)` | `Set<NodeRef>` (substrate) | Composes existing DescentEvidence + SubValueRelation + Cardinality lens + cross_target_coverage. **CLI/IDE adapters** render NodeRef → {file, span} / symbol / line range per user surface |
 
 The affected-set lens is the **simplest** of the family (no new substrate; pure-fold over existing edges). It demonstrates the architectural claim: **Introspect-config lenses applied to the substrate yield typed outputs that tooling-consumers (IDE / LLM agent / build system) call "queries"**. The lens-vs-query distinction is *user-surface terminology*, not substrate carriers.
 
