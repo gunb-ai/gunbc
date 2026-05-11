@@ -2,7 +2,7 @@
 status: draft (wait-window; awaits R3 host restoration before dispatch; operator-bridge expected to ship to PR #1782)
 authority parent: R3 Substrate Manager (#1739)
 ratification: Director (#828) ratified slate (1) + (2) + (3a) at #issuecomment-4377776495 (2026-05-05)
-roadmap row: ROADMAP.md "LLM service flattening" (`:393`) — names `structural_coverage_gap_anthropic_tool_result_content_wire_shape` and `structural_coverage_gap_anthropic_tool_result_additive_blocks` as the live tracking rows. The previously-cited `anthropic_tool_result_full_content_surface` row is **RESOLVED 2026-05-03** (ROADMAP `:344`); this slice does NOT reopen it. Open work lives on the two named gap rows only.
+roadmap row: ROADMAP.md § **PR #901 (merged)** bullet 3 + § **LLM service flattening** — paid tool-result wire serde on `rest_request_wire_serde_alignment_receipt` in `dsl/extdeps/llm/anthropic.dag`; nested payload honesty on `structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads`. Superseded identifiers `structural_coverage_gap_anthropic_tool_result_content_wire_shape` / `structural_coverage_gap_anthropic_tool_result_additive_blocks` are not live `data` rows (historical staging only).
 sibling briefs:
   - r3-coproduct-1-openai-chat-message-full-worker.md
   - r3-coproduct-3-anthropic-messages-200-residual-worker.md
