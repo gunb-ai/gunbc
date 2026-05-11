@@ -103,7 +103,6 @@ data stage0: GeneratedCrate = {
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted shells.
     "process_exit.rs",
     "regen_parse_emit.rs",
-    "workflow_idempotency.rs",
     "workflow_parallelism.rs"
   ]
 }
