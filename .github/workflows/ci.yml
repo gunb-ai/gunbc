@@ -218,6 +218,12 @@ jobs:
 
       - name: Setup Zig C toolchain
         uses: goto-bus-stop/setup-zig@v2
+        with:
+          # Pin a stable linker toolchain instead of the action default
+          # nightly/master download path; the self-hosted runner has lost
+          # contact repeatedly while resolving the moving Zig setup target.
+          version: 0.13.0
+          cache: false
 
       - name: Configure user-space C linker
         run: |
