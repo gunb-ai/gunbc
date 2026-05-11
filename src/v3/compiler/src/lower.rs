@@ -48,12 +48,16 @@ use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use crate::parse::expr_span as surface_expr_span;
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
-    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, VariantPayload,
+    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceTypeArg, SurfaceVariant, VariantPayload,
 };
 use crate::types::TypeShape;
 
 type CallableScope = HashMap<String, DeclarationId>;
 const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
+/// Sentinel `UnresolvedIdentifier` name for placeholders after authoritative `ParseError`s during
+/// surface lowering — **not** a user-visible type (`Bool`) and exempt from strict ResolveError churn
+/// (codex `#2697`; INVARIANTS P3).
+const PARSE_FAILED_SURFACE_TYPE_MARKER: &str = "__gunbc_parse_failed_surface_type__";
 
 /// Behavioral complexity lens + T-LAS carriers (`complexity_enforceable`, …). Kept **out**
 /// of the embedded `Dag::new` snapshot so rust emit tests are not forced to realize
@@ -3490,7 +3494,7 @@ fn rewrite_phantom_machine_width_surface(
     }
 
     if matches!(name.as_str(), "Int" | "UInt" | "Real" | "Nat") && args.len() == 1 {
-        let SurfaceType::PhantomWidthLit {
+        let SurfaceTypeArg::PhantomWidthLit {
             bits_lit,
             span: lit_span,
         } = &args[0]
@@ -3504,17 +3508,23 @@ fn rewrite_phantom_machine_width_surface(
         let desugared = SurfaceType::Parameterized {
             name: "Compose".to_string(),
             args: vec![
-                SurfaceType::Named {
-                    name: name.clone(),
-                    span: lit_span.clone(),
-                },
-                SurfaceType::Parameterized {
-                    name: "MachineWidth".to_string(),
-                    args: vec![SurfaceType::Named {
-                        name: word.to_string(),
+                SurfaceTypeArg::Ty {
+                    body: Box::new(SurfaceType::Named {
+                        name: name.clone(),
                         span: lit_span.clone(),
-                    }],
-                    span: lit_span.clone(),
+                    }),
+                },
+                SurfaceTypeArg::Ty {
+                    body: Box::new(SurfaceType::Parameterized {
+                        name: "MachineWidth".to_string(),
+                        args: vec![SurfaceTypeArg::Ty {
+                            body: Box::new(SurfaceType::Named {
+                                name: word.to_string(),
+                                span: lit_span.clone(),
+                            }),
+                        }],
+                        span: lit_span.clone(),
+                    }),
                 },
             ],
             span: span.clone(),
@@ -3523,7 +3533,7 @@ fn rewrite_phantom_machine_width_surface(
     }
 
     if name == "MachineWidth" && args.len() == 1 {
-        let SurfaceType::PhantomWidthLit {
+        let SurfaceTypeArg::PhantomWidthLit {
             bits_lit,
             span: lit_span,
         } = &args[0]
@@ -3536,9 +3546,11 @@ fn rewrite_phantom_machine_width_surface(
         };
         let desugared = SurfaceType::Parameterized {
             name: "MachineWidth".to_string(),
-            args: vec![SurfaceType::Named {
-                name: word.to_string(),
-                span: lit_span.clone(),
+            args: vec![SurfaceTypeArg::Ty {
+                body: Box::new(SurfaceType::Named {
+                    name: word.to_string(),
+                    span: lit_span.clone(),
+                }),
             }],
             span: span.clone(),
         };
@@ -3565,7 +3577,7 @@ fn type_to_declaration_id(
             return type_to_declaration_id(&next, symbols, local, dag);
         }
         PhantomWidthSurfaceOutcome::Invalid => {
-            return bool_declaration_id_after_parse_error(dag, ty.span());
+            return declaration_id_after_authoritative_surface_parse_error(dag, ty.span());
         }
         PhantomWidthSurfaceOutcome::NotApplicable => {}
     }
@@ -3578,19 +3590,6 @@ fn type_to_declaration_id(
                 return *id;
             }
             alloc_identifier_stub(dag, name, ty.span())
-        }
-        SurfaceType::PhantomWidthLit { span, .. } => {
-            report_declaration_error(
-                dag,
-                Diagnostic::ParseError {
-                    message: "phantom machine-width literals are only allowed inside \
-                         `Int<N>`, `UInt<N>`, `Real<N>`, `Nat<N>`, or `MachineWidth<N>`"
-                        .to_string(),
-                    span: span.clone(),
-                    fixes: Vec::new(),
-                },
-            );
-            bool_declaration_id_after_parse_error(dag, span)
         }
         SurfaceType::Parameterized { name, args, span } => {
             let template_id = local
@@ -3681,7 +3680,7 @@ fn type_to_connective(
             return type_to_connective(&next, symbols, local, dag);
         }
         PhantomWidthSurfaceOutcome::Invalid => {
-            let template = bool_declaration_id_after_parse_error(dag, ty.span());
+            let template = declaration_id_after_authoritative_surface_parse_error(dag, ty.span());
             return TypeConnective::Instantiation {
                 template,
                 arguments: Vec::new(),
@@ -3696,23 +3695,6 @@ fn type_to_connective(
                 .or_else(|| symbols.get(name))
                 .copied()
                 .unwrap_or_else(|| alloc_identifier_stub(dag, name, ty.span()));
-            TypeConnective::Instantiation {
-                template,
-                arguments: Vec::new(),
-            }
-        }
-        SurfaceType::PhantomWidthLit { span, .. } => {
-            report_declaration_error(
-                dag,
-                Diagnostic::ParseError {
-                    message: "phantom machine-width literals are only allowed inside \
-                         `Int<N>`, `UInt<N>`, `Real<N>`, `Nat<N>`, or `MachineWidth<N>`"
-                        .to_string(),
-                    span: span.clone(),
-                    fixes: Vec::new(),
-                },
-            );
-            let template = bool_declaration_id_after_parse_error(dag, span);
             TypeConnective::Instantiation {
                 template,
                 arguments: Vec::new(),
