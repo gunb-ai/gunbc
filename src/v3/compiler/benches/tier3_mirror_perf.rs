@@ -12,17 +12,17 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use v3_compiler::dag::{
-    lower_call_pattern, merge_evidence, positive_amount_from_i64, positive_descent_count,
-    type_iteration_dimension, CallPattern, DescentEvidence,
+    lower_call_pattern, positive_amount_from_i64, positive_descent_count, type_iteration_dimension,
+    CallPattern,
 };
 use v3_compiler::dag::{EffectShape, IdempotentShape, OperationEffect, WorkflowEffect};
 use v3_compiler::lane2_workflow_idempotency_report;
+use v3_compiler::Dag;
 
 fn bench_termination_mirror(c: &mut Criterion) {
-    let a = DescentEvidence::Strict;
-    let b = DescentEvidence::NonIncreasing;
-    c.bench_function("tier3_termination_merge_evidence", |bencher| {
-        bencher.iter(|| black_box(merge_evidence(black_box(a), black_box(b))));
+    let dag = Dag::new();
+    c.bench_function("tier3_termination_std_authority_lookup", |bencher| {
+        bencher.iter(|| black_box(dag.declaration_by_name(black_box("merge_evidence"))));
     });
 }
 
