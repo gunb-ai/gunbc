@@ -91,6 +91,18 @@ fn assert_rejected_data_lambda(dag: &v3_compiler::dag::Dag, name: &str) {
     );
 }
 
+fn assert_rejected_data_lambda_in_file(dag: &v3_compiler::dag::Dag, file: &str, name: &str) {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("function-valued data declaration `{name}` in {file}"));
+    assert!(
+        matches!(decl.value_body, Some(ValueBody::Unparsed(_))),
+        "failed data lambda `{name}` in {file} must retain an Unparsed body marker; got {:?}",
+        decl.value_body
+    );
+    assert_rejected_data_lambda(dag, name);
+}
+
 fn assert_user_callable_bind_names(dag: &v3_compiler::dag::Dag, file: &str, expected: &[&str]) {
     let mut names: Vec<&str> = dag
         .nodes()
@@ -227,7 +239,7 @@ fn function_valued_data_cycles_fail_closed() {
         ),
     ] {
         let dag = cached_compile_any(source, file);
-        assert_rejected_data_lambda(&dag, data_name);
+        assert_rejected_data_lambda_in_file(&dag, file, data_name);
         assert_user_callable_bind_names(&dag, file, expected_binds);
     }
 }
