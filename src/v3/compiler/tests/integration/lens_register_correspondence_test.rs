@@ -261,7 +261,7 @@ fn r3_gate_83_current_register_blockers_are_explicit() {
         .collect();
     assert_eq!(
         blockers,
-        vec!["cost.dag: **PROXY**", "parallelism.dag: **STUB**"],
+        vec!["parallelism.dag: **STUB**"],
         "Gate #83 is not ready to strict-fire until sibling lens-completion slices \
          remove all PROXY/STUB statuses. If this changed, update the strict-fire \
          posture in `r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub`."
