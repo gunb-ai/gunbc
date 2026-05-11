@@ -24,8 +24,8 @@ Grep-verified instances. Each instance is a site where the substrate admits "I d
 | # | Anti-pattern | Sites | Notes |
 |---|---|---|---|
 | 1 | `Option<T>` returns in substrate `dag.rs` | **83** | Triage candidates — but **not** uniformly Miss-class. Per `modeling-discipline.md:41-50` + `CODING.md:95-97`, `Option<T>` is **allowed when absence is a legitimate non-error state**. Miss-class violation = `None`-on-error without a diagnostic write. The 83 sites need per-call audit: which are error-None (Miss-class, must dissolve) vs legitimate-absence (compliant). Don't bulk-convert. |
-| 2 | `panic!` calls in production src | **244** | Triage candidates — boundary tooling (regen/bootstrap entrypoints) is legitimate per `CODING.md:307-309`; interior substrate-flow panics dissolve to typed Diagnostic per C-8. Per-site classification (§2.2). |
-| 3 | `.expect(...)` calls in production src | **665** | Same boundary-vs-interior triage as #2 per `CODING.md:307-309`. |
+| 2 | `panic!` calls in production src | **244** | Triage candidates — boundary tooling (regen/bootstrap entrypoints) is legitimate per `CODING.md:311-321` ("When impurity is acceptable" — Build script / Code-generation binaries / Bootstrap roles in table); interior substrate-flow panics are contract violations per `CODING.md:307-309` and dissolve to typed Diagnostic per C-8. Per-site classification (§2.2). |
+| 3 | `.expect(...)` calls in production src | **665** | Same boundary-vs-interior triage as #2 — boundary role legitimacy from `CODING.md:311-321`; interior contract-violation rule at `CODING.md:307-309`. |
 | 4 | `.unwrap()` calls in production src | **35** | Same boundary-vs-interior triage as #2. |
 | 5 | Catch-all `_ =>` match arms | **406** | Triage — distinguishes closed-enum non-exhaustiveness (must dissolve) from deliberate default-arm on open enums or terminal "shouldn't happen" arms paired with explicit Diagnostic. Per-site review. |
 | 6 | `todo!() / unimplemented!() / unreachable!()` macros | **43** | Triage — `unreachable!()` paired with an invariant proof is legitimate; `todo!()` / `unimplemented!()` are explicit deferrals. Per-site disposition (§2.2). |
@@ -63,7 +63,7 @@ Triage candidates (per-site audit, not bulk-conversion):
 
 - 83 `Option<T>` returns in `dag.rs` — classify: error-None (must dissolve) vs legitimate-absence (compliant per `modeling-discipline.md:49-50`).
 - 244 `panic!` calls — classify: boundary-tooling (regen, bootstrap, setup; legitimate) vs interior substrate flow (must dissolve to typed Diagnostic per C-8).
-- 665 `.expect()` / 35 `.unwrap()` calls — same as panic: per `CODING.md:307-309`, panics/unwraps in library code are contract violations; the boundary subset (regen entrypoints) is acceptable.
+- 665 `.expect()` / 35 `.unwrap()` calls — same as panic: per `CODING.md:307-309`, panics/unwraps in library code are contract violations; the boundary subset (regen / build-script / bootstrap entrypoints) is acceptable per `CODING.md:311-321` ("When impurity is acceptable" table).
 - 69 opaque `Result<*, String>` / `Box<dyn Error>` — erases structural failure shape; Mgr-canvas audit per consumer.
 - 406 catch-all `_ =>` match arms — each one needs review: does it admit non-exhaustiveness, or is it deliberate fall-through (e.g., default-arm for an open enum)?
 - 43 `todo!() / unimplemented!() / unreachable!()` macros — explicit deferral; per-site disposition.
@@ -168,7 +168,7 @@ Operator notes: "this is me slacking — things like this should really be escal
 Proposal: extend the PR review checklist (per `feedback_pre_authored_brief_queue` discipline) with **anti-pattern justification callouts** — flag for JUSTIFICATION review, not for "convert by default":
 
 1. Does this PR add a new `Option<T>` return in substrate-tier code? → flag for **justification**: is absence a meaningful structural state (compliant per `modeling-discipline.md:49-50` + `CODING.md:95-97`), or is it error-None deferring a diagnostic write? Reviewer asks; author justifies; non-compliant cases convert.
-2. Does this PR add a new `panic!` / `.expect()` / `.unwrap()` in **library / substrate-flow** code (not in regen/bootstrap entrypoints)? → flag for Diagnostic-conversion review per `CODING.md:307-309`.
+2. Does this PR add a new `panic!` / `.expect()` / `.unwrap()` in **library / substrate-flow** code (not in the boundary roles listed at `CODING.md:311-321` — Build script / Code-generation binaries / Bootstrap)? → flag for Diagnostic-conversion review per `CODING.md:307-309`.
 3. Does this PR add a new enum variant whose name contains `Unknown / Pending / Missing / Incomplete / Maybe`? → flag for **construction-impossibility OR fail-closed-lattice review**: is the variant a deferral surface (must dissolve) or a load-bearing lattice element (compliant per `INVARIANTS.md` authority)?
 4. Does this PR add a `NotYetImplemented` predicate? → flag for substrate-readiness review.
 5. Does this PR add a new `_ =>` catch-all in an enum match? → flag for **exhaustiveness OR deliberate-default review**: is the enum closed (catch-all admits non-exhaustiveness) or open (catch-all is the default arm)?
