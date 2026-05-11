@@ -359,10 +359,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // nested `SymbolicCost` expected values (M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA,
     // Gate73_ReportPredicateCarriers).
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
-    // R3 gate #80 (`cost_lens_behaviorally_complete`): Band-C cementing receipt
-    // for the standalone `cost_symbolic` lens COMPLETE promotion. Temporarily
-    // stays Rust until `.dag` TestClaims can express nested `SymbolicCost` /
-    // `SizeVariable` expected values (M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA).
+    // R3 T-Lens-Behavioral-Parity gate #80 (`cost_lens_behaviorally_complete`):
+    // Band-C cementing receipt for the standalone `cost_symbolic` lens COMPLETE
+    // promotion. P5 deferral receipt: lane=T-Lens-Behavioral-Parity; concrete
+    // ROADMAP row=ROADMAP.md "R3 Cluster M / §1.8 gate #84 coordinator anchors";
+    // dissolution trigger=retire this Rust receipt when `.dag` TestClaims can
+    // express nested `SymbolicCost` / `SizeVariable` expected values, tracked by
+    // blocker token M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA. PR-level SG-0 pairing
+    // cites the queued dispatch brief `docs/briefs/r3-v-tests-as-data-v1-worker.md`.
     "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_behavioral_completion.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",

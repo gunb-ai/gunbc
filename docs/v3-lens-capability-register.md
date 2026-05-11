@@ -53,7 +53,7 @@ A lens is only "done" when **both** axes are at their strongest grade for the sc
 
 ## Common root causes
 
-The remaining “not done” rows (**complexity**, **cost**) still share **producer / analysis-porting** gaps (not missing E-I types and not missing a v3 `MethodSemantics` carrier); **parallelism** stays **STUB** until the Stage 2e `.dag` surface is wired (see table — distinct from the resolved imported-sum `match` emit lane). **idempotency** is now **COMPLETE** (see table). Fixing the shared blockers unblocks multiple lenses at once; the register exists in part so that is visible.
+The former shared complexity/cost behavioral gap is now split: **complexity** is COMPLETE via the `ComplexitySummary` cementing receipt, and **cost** is COMPLETE for the abstract `SymbolicCost` scope via the gate #80 receipt. Remaining T-CostLens target-realization composition (#37/#40/#70) is tracked outside the `cost.dag` row because it composes target-specific realization rows with the abstract-cost lens. The remaining “not done” rows are now distinct: **parallelism** stays **STUB** until the Stage 2e `.dag` surface is wired (see table — distinct from the resolved imported-sum `match` emit lane), and **effect_enumeration** stays **PARTIAL** until the Operation/resource-threading migration retires the ambient-resource gap. **idempotency** is COMPLETE (see table). Keeping this section aligned with the table is part of the register’s P2 single-authority role.
 
 ### Substrate carriers vs per-call producers (complexity, cost)
 
