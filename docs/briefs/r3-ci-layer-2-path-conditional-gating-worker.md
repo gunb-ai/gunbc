@@ -22,7 +22,7 @@ Extend PR #2718's `changes` job with per-test-group `skip_*` boolean outputs der
 
 **Not in scope**: a parallel CI gate mechanism; new path-classification source-of-truth (must reuse PR #2718's `gunbc-quick` `changes` job).
 
-**Single source of truth invariant**: all path classification flows from one `changes` job. Layer 1 produces `code: bool`; Layer 2 grows additional outputs (`skip_lens: bool`, `skip_emit: bool`, `skip_parser: bool`, ...) on the same job. No second `gunbc-quick` job. No `actions/cache`-fork. No parallel diff mechanism.
+**Single source of truth invariant**: all path classification flows from one `changes` job. Layer 1 produces `code: bool`; Layer 2 grows additional outputs (`skip_cost_lens: bool`, `skip_emit_target: bool`, `skip_parser_grammar: bool`, ...) on the same job — each output named `skip_<group_name>` matching the per-group table's `group_name` column verbatim per §1 naming convention. No second `gunbc-quick` job. No `actions/cache`-fork. No parallel diff mechanism.
 
 ## §1. Mechanism (extend PR #2718, do not parallel)
 
