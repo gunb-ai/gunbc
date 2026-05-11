@@ -36,8 +36,7 @@ fn collect_rs_files(dir: &Path, src_root: &Path, out: &mut Vec<PathBuf>) {
     if is_under_src_v2(dir, src_root) {
         return;
     }
-    let entries =
-        fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
+    let entries = fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
     for ent in entries {
         let ent = ent.unwrap_or_else(|e| panic!("read_dir entry {}: {e}", dir.display()));
         let p = ent.path();
@@ -57,8 +56,7 @@ fn collect_cargo_toml_files(dir: &Path, src_root: &Path, out: &mut Vec<PathBuf>)
     if cargo.is_file() {
         out.push(cargo);
     }
-    let entries =
-        fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
+    let entries = fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
     for ent in entries {
         let ent = ent.unwrap_or_else(|e| panic!("read_dir entry {}: {e}", dir.display()));
         let p = ent.path();
@@ -108,10 +106,7 @@ fn cargo_toml_declares_v2_compiler_path_dep(manifest: &str) -> bool {
             continue;
         }
         if line.starts_with('[') && line.ends_with(']') {
-            let header_inner = line
-                .trim_start_matches('[')
-                .trim_end_matches(']')
-                .trim();
+            let header_inner = line.trim_start_matches('[').trim_end_matches(']').trim();
             in_dep_table = header_inner == "dependencies"
                 || header_inner.ends_with(".dependencies")
                 || header_inner == "dev-dependencies"
@@ -135,19 +130,15 @@ fn cargo_toml_declares_v2_compiler_path_dep(manifest: &str) -> bool {
 fn v2_oracle_no_remaining_test_consumers_rust_sources() {
     let workspace_root = workspace_root();
     let src_root = workspace_root.join("src");
-    assert!(
-        src_root.is_dir(),
-        "expected src/ at {}",
-        src_root.display()
-    );
+    assert!(src_root.is_dir(), "expected src/ at {}", src_root.display());
 
     let mut rs_files = Vec::new();
     collect_rs_files(&src_root, &src_root, &mut rs_files);
     rs_files.sort();
 
     for path in rs_files {
-        let raw = fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let raw =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         let stripped = strip_rust_comments(&raw);
         if let Some(needle) = first_v2_compiler_crate_reference(&stripped) {
             let rel = path.strip_prefix(&workspace_root).unwrap_or(&path);
@@ -181,8 +172,8 @@ fn v2_oracle_no_remaining_test_consumers_workspace_manifests() {
     manifests.sort();
 
     for path in manifests {
-        let raw = fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let raw =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         assert!(
             !cargo_toml_declares_v2_compiler_path_dep(&raw),
             "v2_oracle_no_remaining_test_consumers: `{}` must not declare a path dependency on \
