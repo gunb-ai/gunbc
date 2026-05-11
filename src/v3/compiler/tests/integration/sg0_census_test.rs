@@ -593,6 +593,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // the live lens-producer residual count while Row-4 / Item 4 retirement
     // preconditions remain open.
     "src/v3/compiler/tests/integration/r3_lens_producer_retirement_executable_witness_test.rs",
+    // R3 gate #64 substrate-plumbing receipt: hand-Rust driver for the
+    // non-canonical `.dag` residual-census receipt until the canonical
+    // PB-Runtime reflection consumer lands. P5 test-subset deferral:
+    // ROADMAP.md § "Nine lanes" row `T-PB-B` and § "Lane acceptance — .dag
+    // gates" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; dissolves
+    // when the generic TestClaim runner can execute the receipt without this
+    // host-side harness.
+    "src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs",
     // R3 PB Row-4 corpus seeds (1)–(2): hand-Rust driver for author-now/fire-later
     // `DifferentialEquals(pb_runtime_evaluate, r2_evaluator_evaluate, …)` TestClaims.
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
