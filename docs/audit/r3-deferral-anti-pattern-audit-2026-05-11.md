@@ -8,12 +8,14 @@
 
 The cost-lens `Lookup<SymbolicCost>::Miss` discussion surfaced a broader class problem: **deferral-via-wrapper-variant**. The pattern: when a substrate function can't or won't decide an answer, it returns a wrapper variant (Miss / None / Unknown / Unparsed / Pending / NotYetImplemented / etc.) that the caller must handle. This is "better than silently passing" but is itself a deferral of the real design decision.
 
-Operator framing: deferral wrappers should not exist by default. Two acceptable outcomes:
+Operator framing: deferral wrappers should not exist by default. Two acceptable outcomes for **Miss-class deferral**:
 
 1. **Construction makes the case impossible** — the substrate shape doesn't permit constructing programs / data that would land in the deferral arm. The wrapper variant dissolves; the type narrows.
 2. **Fail-closed Diagnostic** at the boundary — if the case is reachable from user input, surface a typed Diagnostic at the input boundary (per `feedback_fail_closed_discipline`), not a silently-Maybe-typed wrapper that callers can mishandle.
 
 Anything else is **slacking on the design decision**. Operator notes this is "something I want to snuff out in R3" and "should really be escalated/caught during review."
+
+**Scope qualifier (per openai-pro review 2026-05-11)**: "Miss-class deferral" ≠ "all `Option<T>` returns." Per `modeling-discipline.md:41-50` + `CODING.md:95-97`, `Option<T>` is **explicitly allowed when absence is a legitimate non-error state**. The Miss-class violation pattern is: `None`-on-error without a diagnostic write, panics in interior substrate flow (not boundary tooling), construction-time deferral surfaces ("Unknown/Pending/Missing" variants that capture "I haven't decided this yet"). Compliant wrappers — legitimate-absence `Option<T>`, fail-closed lattice bottoms, deliberate-default catch-alls — survive. Per-site classification required; bulk conversion would itself be a discipline violation.
 
 ## §1. Anti-pattern survey — counts at HEAD `origin/main`
 
@@ -140,15 +142,17 @@ Per-file canvas authoring expected; not a single PR.
 
 Operator notes: "this is me slacking — things like this should really be escalated/caught during review." Review-tier process gap.
 
-Proposal: extend the PR review checklist (per `feedback_pre_authored_brief_queue` discipline) with **explicit anti-pattern callouts**:
+Proposal: extend the PR review checklist (per `feedback_pre_authored_brief_queue` discipline) with **anti-pattern justification callouts** — flag for JUSTIFICATION review, not for "convert by default":
 
-1. Does this PR add a new `Option<T>` return in substrate-tier code? → flag for typed-accessor / fail-closed Diagnostic review.
-2. Does this PR add a new `panic!` / `.expect()` / `.unwrap()` in production code? → flag for Diagnostic-conversion review.
-3. Does this PR add a new enum variant whose name contains `Unknown / Pending / Missing / Incomplete / Maybe`? → flag for construction-impossibility review.
+1. Does this PR add a new `Option<T>` return in substrate-tier code? → flag for **justification**: is absence a meaningful structural state (compliant per `modeling-discipline.md:49-50` + `CODING.md:95-97`), or is it error-None deferring a diagnostic write? Reviewer asks; author justifies; non-compliant cases convert.
+2. Does this PR add a new `panic!` / `.expect()` / `.unwrap()` in **library / substrate-flow** code (not in regen/bootstrap entrypoints)? → flag for Diagnostic-conversion review per `CODING.md:307-309`.
+3. Does this PR add a new enum variant whose name contains `Unknown / Pending / Missing / Incomplete / Maybe`? → flag for **construction-impossibility OR fail-closed-lattice review**: is the variant a deferral surface (must dissolve) or a load-bearing lattice element (compliant per `INVARIANTS.md` authority)?
 4. Does this PR add a `NotYetImplemented` predicate? → flag for substrate-readiness review.
-5. Does this PR add a new `_ =>` catch-all in an enum match? → flag for exhaustiveness review.
+5. Does this PR add a new `_ =>` catch-all in an enum match? → flag for **exhaustiveness OR deliberate-default review**: is the enum closed (catch-all admits non-exhaustiveness) or open (catch-all is the default arm)?
 
 These checklist items belong in `.github/PULL_REQUEST_TEMPLATE.md` (or whichever PR description ratchet is canonical). Per `feedback_construction_over_ratchets`: prefer structural enforcement (lint rule) over textual checklist, but checklist is a transitional state until lints land.
+
+**The discipline shift**: from "deferral wrappers must die" to "deferral wrappers require explicit justification at construction." Compliant wrappers (legitimate-absence Option, fail-closed-lattice bottoms, deliberate-default catch-alls) survive; deferral-wrapper-as-design-laziness gets caught at review.
 
 ## §5. Sequencing recommendation
 
