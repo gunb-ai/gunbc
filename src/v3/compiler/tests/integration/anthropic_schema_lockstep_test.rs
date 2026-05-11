@@ -684,10 +684,7 @@ fn anthropic_tool_result_plain_text_document_source_lockstep() {
             *label = "document_data".to_string();
         }
     }
-    assert_record_lockstep_with_v2_fields(
-        "AnthropicToolResultPlainTextDocumentSource",
-        v2_fields,
-    );
+    assert_record_lockstep_with_v2_fields("AnthropicToolResultPlainTextDocumentSource", v2_fields);
 }
 
 #[test]

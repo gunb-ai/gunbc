@@ -12,9 +12,7 @@ use serde_json::json;
 #[serde(tag = "type", rename_all = "snake_case")]
 enum DemoUserContent {
     #[allow(dead_code)] // completeness vs Messages API user blocks; tests focus on tool_result
-    Text {
-        text: String,
-    },
+    Text { text: String },
     ToolResult {
         tool_use_id: String,
         #[serde(skip_serializing_if = "Option::is_none")]
