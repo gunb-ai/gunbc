@@ -85,7 +85,7 @@ fn assert_user_callable_bind_names(dag: &v3_compiler::dag::Dag, file: &str, expe
         .filter_map(|node| match node {
             Behavior::Bind(bind)
                 if bind.span.file == file
-                    && bind.emit_participation == Some(BindEmitParticipation::UserCallable) =>
+                    && bind.emit_participation() == Some(BindEmitParticipation::UserCallable) =>
             {
                 Some(bind.name.as_str())
             }
@@ -187,21 +187,23 @@ fn function_valued_data_recursion_fails_closed() {
 
 #[test]
 fn function_valued_data_cycles_fail_closed() {
-    for (source, file, data_name) in [
+    for (source, file, data_name, expected_binds) in [
         (
             DATA_DATA_CYCLE_SOURCE,
             "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_data_cycle.dag",
             "evenish",
+            ["evenish", "oddish", "use_evenish"],
         ),
         (
             DATA_FN_CYCLE_SOURCE,
             "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_fn_cycle.dag",
             "entry",
+            ["entry", "helper", "use_entry"],
         ),
     ] {
         let dag = cached_compile_any(source, file);
         assert_rejected_data_lambda(&dag, data_name);
-        assert_user_callable_bind_names(&dag, file, &[data_name, "helper", "use_entry"]);
+        assert_user_callable_bind_names(&dag, file, &expected_binds);
     }
 }
 

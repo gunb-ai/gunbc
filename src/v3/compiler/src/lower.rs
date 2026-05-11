@@ -331,9 +331,7 @@ pub(crate) fn lower_bodies_phase(
                 dag,
                 symbols,
                 &pending_refined_function_refs,
-                mutual_recursion
-                    .invalid_by_member
-                    .get(&symbols[name]),
+                mutual_recursion.invalid_by_member.get(&symbols[name]),
             );
         }
     }
