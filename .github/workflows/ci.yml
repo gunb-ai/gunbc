@@ -102,7 +102,12 @@ jobs:
           body="${PR_BODY}"
           append_file="scripts/ci-merge/sg0-pr-body-append.${{ github.event.pull_request.number }}.txt"
           if [ -f "${append_file}" ]; then
-            body="${body}"$'\n\n'"$(cat "${append_file}")"
+            # Prepend so `check-pr-sg0-net-shrink-discipline.sh` (grep head-1 on
+            # `SG-0 hand-path delta:`) reads the machine-authored append **first**. PR
+            # descriptions often keep template scaffolding or mistaken `+0` paste lines
+            # above the fold — appending only left those as the first match and tripped
+            # declared-vs-computed mismatch (false fail).
+            body="$(cat "${append_file}")"$'\n\n'"${body}"
           fi
           PR_BODY="${body}" bash scripts/check-pr-sg0-net-shrink-discipline.sh
 
