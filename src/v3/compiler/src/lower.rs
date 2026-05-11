@@ -310,8 +310,6 @@ pub(crate) fn lower_bodies_phase(
             );
         }
     }
-    let invalid_data_lambda_cycles =
-        compute_invalid_data_lambda_cycles(&module.items, symbols, is_first);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
             continue;
@@ -324,6 +322,9 @@ pub(crate) fn lower_bodies_phase(
             ..
         } = item
         {
+            if matches!(body, Some(SurfaceExpr::Lambda { .. })) {
+                continue;
+            }
             lower_data_item(
                 name,
                 ty,
@@ -332,7 +333,32 @@ pub(crate) fn lower_bodies_phase(
                 dag,
                 symbols,
                 &pending_refined_function_refs,
-                invalid_data_lambda_cycles.get(&symbols[name]),
+                None,
+            );
+        }
+    }
+    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        if let SurfaceItem::Data {
+            name,
+            ty,
+            body: Some(body @ SurfaceExpr::Lambda { .. }),
+            body_span,
+            ..
+        } = item
+        {
+            lower_data_item(
+                name,
+                ty,
+                Some(body),
+                body_span,
+                dag,
+                symbols,
+                &pending_refined_function_refs,
+                mutual_recursion.invalid_by_member.get(&symbols[name]),
             );
         }
     }
@@ -344,7 +370,6 @@ pub(crate) fn lower_bodies_phase(
     lower_parameter_refinements_phase(dag, module, symbols, is_first);
     lower_type_alias_refinements_phase(dag, module, symbols, is_first);
     validate_scalar_data_refinements_phase(dag, module, symbols, is_first);
-    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
@@ -9862,10 +9887,14 @@ fn compute_mutually_recursive(
     }
 
     let mut plans = MutualRecursionPlans::default();
-    for members in strongly_connected_components(&order, &calls)
-        .into_iter()
-        .filter(|component| component.len() > 1)
-    {
+    for members in strongly_connected_components(&order, &calls) {
+        let is_self_loop = members.len() == 1
+            && calls
+                .get(&members[0])
+                .is_some_and(|callees| callees.contains(&members[0]));
+        if members.len() == 1 && !is_self_loop {
+            continue;
+        }
         let contains_data_lambda = members.iter().any(|member| {
             callable_infos
                 .get(member)
