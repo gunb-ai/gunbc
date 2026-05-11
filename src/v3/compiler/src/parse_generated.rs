@@ -1406,9 +1406,7 @@ impl<'a> Parser<'a> {
         }
 
         let ty = self.parse_type_expr()?;
-        Ok(SurfaceTypeArg::Ty {
-            body: Box::new(ty),
-        })
+        Ok(SurfaceTypeArg::Ty { body: Box::new(ty) })
     }
 
     fn parse_generic_type_arg_list_until(
