@@ -328,8 +328,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration.rs",
     // gunbc#2699 prototype (PR #2701). T-PB-B / P5 receipt: host `#[test]` harness only;
     // row-level retirement: `WISHLIST.md` §"R4.B — Queries-as-data", stress-test #2
-    // "Refactoring impact" — migrate assertions to `.dag` `TestClaim` when that query harness
-    // lands (ROADMAP R4); not an SG-0 shrink claim.
+    // "Refactoring impact" — migrate assertions to `.dag` `TestClaim` when the R4.B
+    // queries-as-data / introspect-lens application harness lands (ROADMAP R4); not an SG-0 shrink claim.
     "src/v3/compiler/tests/integration/affected_set_lens_prototype_test.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
     // R3 gate #68 (`anthropic_wire_demonstration`): hermetic typed request/response
