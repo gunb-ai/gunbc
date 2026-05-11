@@ -4,9 +4,9 @@
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{LogicalOp, OperatorKind};
 pub use crate::parse_surface::{
-    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceMapEntry, SurfaceMatchArm,
-    SurfaceModule, SurfaceParam, SurfacePattern, SurfacePatternField, SurfaceRecordField,
-    SurfaceType, SurfaceTypeArg, SurfaceVariant, VariantPayload,
+    PhantomWidthAlgebraSugarHead, SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceMapEntry,
+    SurfaceMatchArm, SurfaceModule, SurfaceParam, SurfacePattern, SurfacePatternField, SurfaceRecordField,
+    SurfaceType, SurfaceVariant, VariantPayload,
 };
 use crate::parse_tables::{
     binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, primary_atom_class,
@@ -16,20 +16,13 @@ use crate::parse_tables::{
 use crate::tokenize::{Token, TokenKind};
 use std::collections::HashSet;
 
-impl SurfaceTypeArg {
-    pub fn span(&self) -> &SourceSpan {
-        match self {
-            SurfaceTypeArg::Ty { body } => body.span(),
-            SurfaceTypeArg::PhantomWidthLit { span, .. } => span,
-        }
-    }
-}
-
 impl SurfaceType {
     pub fn span(&self) -> &SourceSpan {
         match self {
             SurfaceType::Named { span, .. }
             | SurfaceType::Parameterized { span, .. }
+            | SurfaceType::PhantomWidthNumericSugar { span, .. }
+            | SurfaceType::PhantomWidthMachineWidthSugar { span, .. }
             | SurfaceType::Optional { span, .. }
             | SurfaceType::Arrow { span, .. } => span,
         }
@@ -199,6 +192,19 @@ impl<'a> Parser<'a> {
                 fixes: Vec::new(),
             })
         }
+    }
+
+    fn peek_token_at(&self, offset: usize) -> Option<&Token> {
+        self.tokens.get(self.pos + offset)
+    }
+
+    /// True iff the bracket list opens with `<decimal>` closing immediately (`>`, no comma).
+    fn angle_list_opens_with_solitary_decimal_then_gt(&self) -> bool {
+        matches!(self.peek().kind, TokenKind::IntLit(_))
+            && matches!(
+                self.peek_token_at(1).map(|t| &t.kind),
+                Some(TokenKind::Gt)
+            )
     }
 
     /// Parse the next top-level item. Every surface form emits a real
@@ -1324,8 +1330,9 @@ impl<'a> Parser<'a> {
         }
 
         // Bare decimal atoms at ordinary type-expression positions are rejected here (fall through).
-        // R3 gate #60: phantom magnitudes are **only** valid through `SurfaceTypeArg` inside generic
-        // angle-bracket lists (`parse_generic_type_arg`), never as standalone `SurfaceType`.
+        // R3 gate #60: lone decimal magnitude `N` inside `Head<N>` attaches only via dedicated
+        // `PhantomWidth*` `SurfaceType` variants for sanctioned heads; other type constructors parse
+        // `Parameterized.args` as ordinary `SurfaceType` only (illegal states stay unrepresentable).
 
         let token = self.bump().clone();
         let name = match token.kind {
@@ -1341,13 +1348,73 @@ impl<'a> Parser<'a> {
 
         if matches!(self.peek().kind, TokenKind::Lt) && self.looks_like_type_args() {
             self.bump();
-            let args = self.parse_generic_type_arg_list_until(TokenKind::Gt)?;
-            let close = self.expect_kind(TokenKind::Gt)?;
-            Ok(SurfaceType::Parameterized {
-                name,
-                args,
-                span: SourceSpan::new(self.file, token.span.byte_start, close.span.byte_end),
-            })
+            let out = if self.angle_list_opens_with_solitary_decimal_then_gt() {
+                let lit_tok = self.bump().clone();
+                let (bits_lit, mag_span) = if let TokenKind::IntLit(bits_lit) = lit_tok.kind {
+                    (bits_lit, lit_tok.span.clone())
+                } else {
+                    return Err(Diagnostic::ParseError {
+                        message: format!(
+                            "internal parser inconsistency: expected integer literal atom, got {:?}",
+                            lit_tok.kind,
+                        ),
+                        span: lit_tok.span.clone(),
+                        fixes: Vec::new(),
+                    });
+                };
+                let close = self.expect_kind(TokenKind::Gt)?;
+                let full_span =
+                    SourceSpan::new(self.file, token.span.byte_start, close.span.byte_end);
+                match name.as_str() {
+                    "Int" => SurfaceType::PhantomWidthNumericSugar {
+                        head: PhantomWidthAlgebraSugarHead::Int,
+                        bits_lit,
+                        magnitude_span: mag_span.clone(),
+                        span: full_span,
+                    },
+                    "UInt" => SurfaceType::PhantomWidthNumericSugar {
+                        head: PhantomWidthAlgebraSugarHead::UInt,
+                        bits_lit,
+                        magnitude_span: mag_span.clone(),
+                        span: full_span,
+                    },
+                    "Real" => SurfaceType::PhantomWidthNumericSugar {
+                        head: PhantomWidthAlgebraSugarHead::Real,
+                        bits_lit,
+                        magnitude_span: mag_span.clone(),
+                        span: full_span,
+                    },
+                    "Nat" => SurfaceType::PhantomWidthNumericSugar {
+                        head: PhantomWidthAlgebraSugarHead::Nat,
+                        bits_lit,
+                        magnitude_span: mag_span.clone(),
+                        span: full_span,
+                    },
+                    "MachineWidth" => SurfaceType::PhantomWidthMachineWidthSugar {
+                        bits_lit,
+                        magnitude_span: mag_span.clone(),
+                        span: full_span,
+                    },
+                    _ => {
+                        return Err(Diagnostic::ParseError {
+                            message: "phantom machine-width magnitude literals (`N` in `Type<N>`) \
+                                      are only valid for Int, UInt, Real, Nat, or MachineWidth"
+                                .to_string(),
+                            span: mag_span,
+                            fixes: Vec::new(),
+                        });
+                    }
+                }
+            } else {
+                let args = self.parse_generic_type_arg_list_until(TokenKind::Gt)?;
+                let close = self.expect_kind(TokenKind::Gt)?;
+                SurfaceType::Parameterized {
+                    name,
+                    args,
+                    span: SourceSpan::new(self.file, token.span.byte_start, close.span.byte_end),
+                }
+            };
+            Ok(out)
         } else {
             Ok(SurfaceType::Named {
                 name,
@@ -1384,35 +1451,14 @@ impl<'a> Parser<'a> {
         Ok(types)
     }
 
-    fn parse_generic_type_arg(&mut self) -> Result<SurfaceTypeArg, Diagnostic> {
-        if matches!(&self.peek().kind, TokenKind::IntLit(_)) {
-            let lit_tok = self.bump().clone();
-            let bits_lit = if let TokenKind::IntLit(bits_lit) = lit_tok.kind {
-                bits_lit
-            } else {
-                return Err(Diagnostic::ParseError {
-                    message: format!(
-                        "internal parser inconsistency: expected integer literal atom, got {:?}",
-                        lit_tok.kind,
-                    ),
-                    span: lit_tok.span.clone(),
-                    fixes: Vec::new(),
-                });
-            };
-            return Ok(SurfaceTypeArg::PhantomWidthLit {
-                bits_lit,
-                span: lit_tok.span,
-            });
-        }
-
-        let ty = self.parse_type_expr()?;
-        Ok(SurfaceTypeArg::Ty { body: Box::new(ty) })
+    fn parse_generic_type_arg(&mut self) -> Result<SurfaceType, Diagnostic> {
+        self.parse_type_expr()
     }
 
     fn parse_generic_type_arg_list_until(
         &mut self,
         end: TokenKind,
-    ) -> Result<Vec<SurfaceTypeArg>, Diagnostic> {
+    ) -> Result<Vec<SurfaceType>, Diagnostic> {
         let mut args = Vec::new();
         if self.peek().kind == end {
             return Ok(args);
