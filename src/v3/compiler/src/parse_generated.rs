@@ -1341,8 +1341,17 @@ impl<'a> Parser<'a> {
         // **only inside** `Name<…>` generic-arg lists (`AtomTypePolicy::AllowPhantomWidthLit`).
         if matches!(&self.peek().kind, TokenKind::IntLit(_)) {
             let lit_tok = self.bump().clone();
-            let TokenKind::IntLit(bits_lit) = lit_tok.kind else {
-                unreachable!("matches IntLit above");
+            let bits_lit = if let TokenKind::IntLit(bits_lit) = lit_tok.kind {
+                bits_lit
+            } else {
+                return Err(Diagnostic::ParseError {
+                    message: format!(
+                        "internal parser inconsistency: expected integer literal atom, got {:?}",
+                        lit_tok.kind,
+                    ),
+                    span: lit_tok.span.clone(),
+                    fixes: Vec::new(),
+                });
             };
             return match atom_policy {
                 AtomTypePolicy::AllowPhantomWidthLit => Ok(SurfaceType::PhantomWidthLit {
