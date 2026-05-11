@@ -37,16 +37,22 @@ TIER3_BENCH_ORDER: list[str] = [
 
 
 def criterion_version_from_lock(repo: Path) -> str:
-    """Return major.minor for the workspace `criterion` crate (default 0.5)."""
+    """Return major.minor for the workspace ``criterion`` crate from ``Cargo.lock`` (fail-closed)."""
     cargo_lock = repo / "Cargo.lock"
+    if not cargo_lock.is_file():
+        raise SystemExit(f"Cargo.lock missing (cannot record criterion_version): {cargo_lock}")
     text = cargo_lock.read_text()
+    # Lockfile uses full semver (e.g. 0.5.1); JSON stores major.minor per procedure §4.
     m = re.search(
-        r'\[\[package\]\]\nname = "criterion"\nversion = "([0-9]+)\.([0-9]+)',
+        r'\[\[package\]\]\nname = "criterion"\nversion = "([0-9]+)\.([0-9]+)(?:\.[0-9]+)?"',
         text,
     )
-    if m:
-        return f"{m.group(1)}.{m.group(2)}"
-    return "0.5"
+    if not m:
+        raise SystemExit(
+            'Cargo.lock parse: no [[package]] name = "criterion" version = "…" block found '
+            "(refuse fabricated criterion_version per INVARIANTS P3)"
+        )
+    return f"{m.group(1)}.{m.group(2)}"
 
 
 def read_consistent_rustc_version(run_bundles: list[Path]) -> str:
