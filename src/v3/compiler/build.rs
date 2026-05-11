@@ -480,6 +480,7 @@ fn main() {
         "src/v3/compiler/src/bootstrap_generated.rs",
         "src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs",
         "src/v3/compiler/src/bootstrap_std_generated.rs",
+        "src/v3/compiler/src/bin/regen_lens.rs",
         // SG-5 substrate / runtime-mirror projections, generated from
         // `src/v3/std/substrate.dag` + `src/v3/std/parse_surface.dag`
         // and consumed by hand-authored Rust via `include!(...)`.

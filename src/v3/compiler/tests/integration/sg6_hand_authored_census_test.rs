@@ -63,6 +63,7 @@ use crate::common::integration_rs_cementing_path_attr_binds_mod_stem;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::emit_rust::emit_rust_module;
+use v3_compiler::generated_files::GENERATED_FILES;
 
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -112,11 +113,18 @@ fn rustfmt_stdout(source: &str, context: &str) -> String {
 /// can land as `src/bin/foo/main.rs` without tripping the census.
 fn bin_basenames() -> BTreeSet<String> {
     let mut out = BTreeSet::new();
+    let generated: BTreeSet<PathBuf> = GENERATED_FILES
+        .iter()
+        .map(|rel| workspace_root().join(rel))
+        .collect();
     for entry in std::fs::read_dir(bin_dir())
         .expect("read src/v3/compiler/src/bin")
         .filter_map(|entry| entry.ok())
     {
         let path = entry.path();
+        if generated.contains(&path) {
+            continue;
+        }
         let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
@@ -170,7 +178,6 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
         // / R1C-E lane row.
         "r1c_e_emit_gates.rs",
         "regen_bootstrap.rs",
-        "regen_lens.rs",
         "regen_parse.rs",
         // SG-2c-1 grammar-tables prototype: `regen_parse_tables` projects
         // `src/v3/compiler/parse_tables.dag` into
