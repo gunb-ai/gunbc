@@ -83,7 +83,7 @@ echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test fragments=$fra
 Configure PM standing duty / dashboard:
 - **Alarm 1**: 7-day net delta is `≥ +10` → trajectory-divergence flag (**2026-05-11 EOD**: Σ-count Δ vs true-7d baseline `4b156d839` (pre-**2026-05-05** UTC) = **`+31` ; tripped**)
 - **Standing velocity tripwire (Mgr)**: rolling **7 calendar UTC days** **path introductions : path dissolutions** in `EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}` **`≥ 3:1` ⇒ RED** (**2026-05-11 EOD**: **`37 : 6` ⇒ 6.17:1; tripped** — procedure: sort-unique `"src/v3/..."` lines inside each const slice; `comm` add/remove vs baseline SHA **`4b156d839`**, snapshot head **`eed86ffc9`**; baseline encodes **start of UTC day May 5** vs **snapshot EOD May 11** inclusive).
-- **Alarm 2**: 14-day net delta is `≥ 0` → bulk-dissolution-events-not-firing flag (current state: +30 over 9 days; alarm tripped on extrapolation)
+- **Alarm 2**: 14-day net Σ-count delta is `≥ 0` → bulk-dissolution-events-not-firing flag (**rolling fourteen UTC-calendar-day window** ending snapshot **`D`**, analogous to Alarm 1 — baseline = last `origin/main` strictly before **`D−13` 00:00:00 UTC**; **explicit Σ Δ deferred** until the next tracker row pairs that baseline with **`D`**. The retired shorthand “**+30 / 9 days**” referred only to **§3 mid-day 2026-05-09 extrapolation receipts**, **not** a live **2026-05-11** Alarm 1-compatible reading.)
 - **Alarm 3**: 30-day net delta is `< -50` → progress-on-track flag (current state: not applicable; insufficient data)
 
 When Alarm 1, Alarm 2, or the standing velocity tripwire fires, surface to Director cycle absorption + `r3-program-plan` §10 RED.
