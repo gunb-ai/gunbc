@@ -5111,7 +5111,7 @@ pub(crate) mod lower_helpers {
 /// bridge collapsed to a single re-export. Keep the module name as an API alias
 /// until callers move to the crate-root `analyze_workflow` export.
 pub mod lens_idempotency {
-    pub use crate::workflow_idempotency::analyze_workflow;
+    pub use crate::dag::analyze_workflow;
 }
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
@@ -5160,7 +5160,6 @@ pub(crate) mod variant_payload {
     };
 }
 mod r3_fc_lane2_loop_witness;
-pub(crate) mod workflow_idempotency;
 pub(crate) mod workflow_parallelism;
 
 pub use cost_basis_declaration::{
@@ -5178,10 +5177,8 @@ pub use emit_rust::EmitError;
 /// `operation_to_breaker` are **not** re-exported: naming and algebra authority
 /// live in `src/v3/std/effects.dag`, and the Rust bridge must not become a
 /// parallel public implementation surface beyond these std.effects mirrors.
-pub use workflow_idempotency::analyze_workflow;
-pub use workflow_idempotency::{
-    lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
-};
+pub use dag::analyze_workflow;
+pub use dag::{lane2_workflow_idempotency_report, report_unsupported_workflow_variant};
 /// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
 pub use workflow_parallelism::{analyze_parallelism, loop_iteration_parallel_emission_indicator};
 

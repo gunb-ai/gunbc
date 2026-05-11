@@ -7,8 +7,10 @@
 // (reflected on `ValueNode` / `BindNode` in `v3.std.substrate`) and dispatches
 // to `std.effects::lane2_workflow_idempotency_report`, whose `match` on
 // `WorkflowEffect` is authored in `src/v3/std/effects.dag`. The crate entry
-// `v3_compiler::analyze_workflow` remains a native-`Dag` convenience mirror over
-// the same projection (`workflow_idempotency.rs`).
+// `v3_compiler::analyze_workflow` is the native-`Dag` convenience over the same
+// projection, implemented in `src/v3/compiler/src/dag/effects.rs` (R3 gate #4
+// `tier3_effect_carrier_mirror_dissolved` — former `workflow_idempotency.rs`
+// retired).
 //
 // CI exercises lens emission in `m2_lens_idempotency_emit_test` (Rust/Go/Python
 // emit smoke) and rustc round-trip in `m2_lens_idempotency_migration_test`.

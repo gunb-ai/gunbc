@@ -225,15 +225,15 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // `tier3_mirror_dissolution_perf_within_budget` per
     // `docs/briefs/r3-pb-tier3-perf-budget-worker.md` deliverable 0b
     // (parent brief #1331; readiness matrix #1358; this PR #1362).
-    // Intentionally hand-authored: it measures live public mirror
+    // Intentionally hand-authored: it measures live public substrate
     // entrypoints (`merge_evidence`, `positive_descent_count`,
     // `lower_call_pattern`, `type_iteration_dimension`,
-    // `lane2_workflow_idempotency_report`) before T-Tier3-Dissolution
-    // retires them — generated output cannot exist yet because the
-    // measurement target is the not-yet-dissolved Rust code.
-    // Dissolution trigger: deletes alongside the mirror-dissolution PRs
-    // per parent brief §"Phase 1 deliverables" — the bench harness has
-    // no role post-Phase-1; only the frozen `tier3_baseline.json` data
+    // `lane2_workflow_idempotency_report`). R3 gate #4 retired the duplicate
+    // `workflow_idempotency.rs` file; behavior lives in `dag/effects.rs` as the
+    // native co-location with `std.effects` carriers while these benches still
+    // target hot Rust call paths (Criterion). Broader Tier3 bench retirement
+    // deletes this harness per parent brief §"Phase 1 deliverables" once the
+    // remaining mirrors dissolve; only the frozen `tier3_baseline.json` data
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
@@ -313,7 +313,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_tokenize.rs",
     "src/v3/compiler/src/self_host_receipt_p0.rs",
     "src/v3/compiler/src/test_runner.rs",
-    "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
 ];
 
