@@ -6,7 +6,7 @@
 
 module std.computation
 
-import v3.std.substrate { Dag, NodeId }
+import v3.std.substrate { Dag, NodeId, PortId }
 import std.termination {
   DescentEvidence, DescentUnknown, Strict, NonIncreasing,
   PositiveDescentAmount, OneStep, AdditionalStep,
@@ -60,6 +60,11 @@ type CallPattern
 // accessor rather than walking producer storage directly.
 fn per_call_pattern_at(d: Dag, call_site: NodeId) -> CallPattern? {
   host per_call_pattern_at
+}
+
+// Operand port aligned with `per_call_pattern_at`; reads `Transform.inputs` at `call_site` from `d`.
+fn per_call_descent_operand_port(d: Dag, call_site: NodeId) -> PortId? {
+  host per_call_descent_operand_port
 }
 
 // 🟢 TERMINAL coproduct — shrink-rate witnesses aligned with `std.termination`. Dissolution: none

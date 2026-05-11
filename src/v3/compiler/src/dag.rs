@@ -1382,19 +1382,152 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
 /// preserved here; multi-argument composition and lowered/lens consumers
 /// remain separate E-P gates.
 pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> {
+    per_call_pattern_and_descent_operand_index(dag, call_site).map(|(p, _)| p)
+}
+
+/// Same projection as [`per_call_pattern_at`], plus the evidence index (crate-internal).
+///
+/// Only [`per_call_descent_operand_port`] may publish substrate coupling to callers:
+/// it maps this index through [`TransformNode::inputs`] on the `Dag`. Keeping the
+/// index off the public API avoids consumers re-aligning evidence rows against a
+/// stale parallel port list (P2).
+fn per_call_pattern_and_descent_operand_index(
+    dag: &Dag,
+    call_site: NodeId,
+) -> Option<(CallPattern, usize)> {
     let entry = per_call_descent_evidence(dag)
         .into_iter()
         .find(|entry| entry.call == call_site)?;
-    call_pattern_from_relations(&entry.evidence)
+    call_pattern_from_relations_with_index(&entry.evidence)
 }
 
-fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPattern> {
-    if let Some(pattern) = relations
+/// [`PortId`] for the [`TransformNode::inputs`] slot that carried the [`SubValueRelation`]
+/// selected by [`per_call_pattern_at`].
+///
+/// `call_site` must identify a [`Behavior::Transform`] in `dag`; input ports are read from that
+/// transform only (P2: no parallel list from the consumer that could desync from substrate).
+///
+/// **`SameArgumentCall`:** returns [`None`]. Preserved-value rows classify as same-argument for the
+/// [`CallPattern`] projection, but there is **no** arithmetic-descent witness — publishing an input
+/// index would fabricate a descent operand (P3).
+pub fn per_call_descent_operand_port(dag: &Dag, call_site: NodeId) -> Option<PortId> {
+    let (pattern, idx) = per_call_pattern_and_descent_operand_index(dag, call_site)?;
+    if matches!(pattern, CallPattern::SameArgumentCall) {
+        return None;
+    }
+    let transform = dag.node_opt(&call_site).and_then(Behavior::as_transform)?;
+    transform.inputs.get(idx).copied()
+}
+
+fn declaration_id_owning_bind_root(dag: &Dag, bind_node_id: NodeId) -> Option<DeclarationId> {
+    for decl in dag.declarations() {
+        let TypeConnective::Arrow {
+            body: ArrowBody::UserDefined(bind_id),
+            ..
+        } = &decl.connective
+        else {
+            continue;
+        };
+        if bind_id.node_id() == bind_node_id {
+            return Some(decl.id);
+        }
+    }
+    None
+}
+
+/// Collapses an accidental `ProductCost(Linear, Linear)` on **unary-parameter** binds when one
+/// factor keys off the formal parameter port and the other keys off the **descent operand port**
+/// for a **self-call** in this bind’s body — the same duplicate-induction artifact described in
+/// gate **#78** (`iterate` multiplies loop-bound `Linear(param)` with `pattern_to_iter_bound` on the
+/// descent wire; distinct `PortId`s, same chain).
+///
+/// **Does not** collapse `Linear(param) × Linear(other)` from descent-port coincidence alone:
+/// [`unary_bind_duplicate_iter_alias_evidence`] requires the same joint witness as `cost.dag`
+/// (`Loop.source` iteration carrier × per-call `combine_iterate`) — a **param-sourced** [`LoopNode`]
+/// whose **body** contains the self-call, and `other` is that call’s [`per_call_descent_operand_port`].
+///
+/// **Residual flow (why this exists):** `recursive_transform_cost` / `sum_costs_excluding_descent_operand`
+/// already prevent double-counting **within** the recursive call’s operand list. They do **not**
+/// merge the **outer** `LoopNode` bound (`linear_at(loop.source)`, usually the parameter port) with
+/// the **inner** `pattern_to_iter_bound` keyed on `per_call_descent_operand_port` (the call’s input
+/// port — a different `PortId` than the formal parameter). `iterate` in `algebra.dag` multiplies
+/// those two `LinearCost` shells structurally, yielding a binary `ProductCost` that overstates the
+/// asymptotic carrier until alias-aware folding exists in the algebra.
+///
+/// **Soundness scope (P2 / modeling-discipline Practice 5):** This pass does **not** read provenance
+/// bits inside [`SymbolicCost`] — it matches the **structural** coincidence `Product(Linear(param),
+/// Linear(descent))` at a unary bind **result** port (`bind_value_port == BindNode::value`) together
+/// with [`unary_bind_duplicate_iter_alias_evidence`] (joint self-call + descent operand port +
+/// param-sourced loop envelope). That aligns with the **only** lens emission path for this product
+/// shape in today’s `cost.dag` wiring for gate **#78** tail recursion (outer loop iterate × inner
+/// recurrence). A future producer that introduced an **independent** multiplicative
+/// `Linear(param) × Linear(other)` at the same port **without** that iterate-alias genesis would
+/// require narrowing this pass or dissolving it into `.dag` algebra per the ROADMAP trigger below.
+///
+/// **P5:** transitional host pass until dissolution — explicit ROADMAP row **“R3 gate #78 — unary-bind
+/// `SymbolicCost` iterate alias collapse post-pass”** (`ROADMAP.md`, Post-merge debt 2026-05-08).
+///
+/// **Bind resolution:** `bind_value_port` is the bind's **result** port (`entry_for` row port). The
+/// helper scans [`Dag::nodes`] for the [`BindNode`] with [`BindNode::value`] equal to that port; in
+/// the lowered substrate each port has a single producer, so at most one bind matches (same class of
+/// uniqueness as other port-keyed walks — not a name table keyed off parallel string lists).
+pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+    dag: &Dag,
+    bind_value_port: PortId,
+    cost: SymbolicCost,
+) -> SymbolicCost {
+    let Some(bind) = dag
+        .nodes()
         .iter()
-        .filter(|relation| !matches!(relation, SubValueRelation::PreservedValue))
-        .find_map(project_sub_value_relation)
-    {
-        return Some(pattern);
+        .find_map(|node| Behavior::as_bind(node).filter(|bind| bind.value == bind_value_port))
+    else {
+        return cost;
+    };
+    if bind.params.len() != 1 {
+        return cost;
+    }
+    let param = bind.params[0];
+
+    let SymbolicCost::ProductCost { _0: terms } = &cost else {
+        return cost;
+    };
+    if !terms.rest.is_empty() {
+        return cost;
+    }
+
+    match (terms.first.as_ref(), terms.second.as_ref()) {
+        (SymbolicCost::LinearCost { _0: va }, SymbolicCost::LinearCost { _0: vb }) => {
+            let non_param_port = if va.source_port == param && vb.source_port != param {
+                vb.source_port
+            } else if vb.source_port == param && va.source_port != param {
+                va.source_port
+            } else {
+                return cost;
+            };
+            if !unary_bind_duplicate_iter_alias_evidence(dag, bind, param, non_param_port) {
+                return cost;
+            }
+            SymbolicCost::LinearCost {
+                _0: SizeVariable {
+                    source_port: param,
+                    display_name: None,
+                },
+            }
+        }
+        _ => cost,
+    }
+}
+
+fn call_pattern_from_relations_with_index(
+    relations: &[SubValueRelation],
+) -> Option<(CallPattern, usize)> {
+    for (i, relation) in relations.iter().enumerate() {
+        if matches!(relation, SubValueRelation::PreservedValue) {
+            continue;
+        }
+        if let Some(pattern) = project_sub_value_relation(relation) {
+            return Some((pattern, i));
+        }
     }
 
     if relations
@@ -1404,7 +1537,13 @@ fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPat
         return None;
     }
 
-    relations.iter().find_map(project_sub_value_relation)
+    for (i, relation) in relations.iter().enumerate() {
+        if let Some(pattern) = project_sub_value_relation(relation) {
+            return Some((pattern, i));
+        }
+    }
+
+    None
 }
 
 fn project_sub_value_relation(relation: &SubValueRelation) -> Option<CallPattern> {
@@ -1456,9 +1595,109 @@ fn bind_body_transform_ids(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
         bind.value,
         &mut visited_ports,
         &mut visited_nodes,
+        true,
         &mut transforms,
     );
     transforms
+}
+
+fn bind_body_reachable_nodes(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
+    let mut transforms = HashSet::new();
+    let mut visited_ports = HashSet::new();
+    let mut visited_nodes = HashSet::new();
+    collect_body_port(
+        dag,
+        bind.value,
+        &mut visited_ports,
+        &mut visited_nodes,
+        false,
+        &mut transforms,
+    );
+    visited_nodes
+}
+
+/// True when `call_site` lies in the subgraph rooted at [`LoopNode::body`] for some [`LoopNode`]
+/// in `bind`'s body whose [`LoopNode::source`] is the unary formal `param`.
+///
+/// This is the spatial half of the gate **#78** duplicate-induction witness: `cost.dag` composes
+/// `loop_cost` (`Linear(loop.source)`) with `combine_iterate` only along this lowered shape — so we
+/// must not collapse param×descent products arising from unrelated linear work outside that loop
+/// envelope.
+fn self_call_under_param_bound_loop(
+    dag: &Dag,
+    bind: &BindNode,
+    param: PortId,
+    call_site: NodeId,
+) -> bool {
+    for node_id in bind_body_reachable_nodes(dag, bind) {
+        let Some(Behavior::Loop(loop_node)) = dag.node_opt(&node_id) else {
+            continue;
+        };
+        if loop_node.source != param {
+            continue;
+        }
+        let mut transforms = HashSet::new();
+        let mut visited_ports = HashSet::new();
+        let mut visited_nodes = HashSet::new();
+        collect_body_node(
+            dag,
+            loop_node.body,
+            &mut visited_ports,
+            &mut visited_nodes,
+            false,
+            &mut transforms,
+        );
+        if visited_nodes.contains(&call_site) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Joint structural witness for gate **#78** iterate-alias collapse: same owning declaration
+/// self-call as [`per_call_descent_evidence`], `other_port` as [`per_call_descent_operand_port`], and
+/// that call appears under a param-sourced loop body (links [`LoopNode::source`] with per-call
+/// recurrence wiring — not descent-port coincidence alone). This is **not** "any self-call
+/// anywhere": [`bind_body_transform_ids`] limits candidates to transforms in the bind body, and
+/// [`self_call_under_param_bound_loop`] requires the call site to sit under a `Loop` whose
+/// `source` is the unary `param`, matching the `loop_cost` × `combine_iterate` join that produced
+/// the spurious `ProductCost` in the first place.
+fn unary_bind_duplicate_iter_alias_evidence(
+    dag: &Dag,
+    bind: &BindNode,
+    param: PortId,
+    other_port: PortId,
+) -> bool {
+    let Some(owning_decl) = declaration_id_owning_bind_root(dag, bind.id) else {
+        return false;
+    };
+    let caller_template = callable_target_template_for_provenance(dag, owning_decl);
+    let CallableProvenance::Resolved(caller_tpl) = caller_template else {
+        return false;
+    };
+
+    for call_site in bind_body_transform_ids(dag, bind) {
+        let Some(transform) = dag.node_opt(&call_site).and_then(Behavior::as_transform) else {
+            continue;
+        };
+        let TransformTarget::Callable(target_decl) = transform.target else {
+            continue;
+        };
+        let callee_template = callable_target_template_for_provenance(dag, target_decl);
+        let CallableProvenance::Resolved(callee_tpl) = callee_template else {
+            continue;
+        };
+        if caller_tpl != callee_tpl {
+            continue;
+        }
+        if per_call_descent_operand_port(dag, call_site) != Some(other_port) {
+            continue;
+        }
+        if self_call_under_param_bound_loop(dag, bind, param, call_site) {
+            return true;
+        }
+    }
+    false
 }
 
 fn collect_body_port(
@@ -1466,7 +1705,8 @@ fn collect_body_port(
     port: PortId,
     visited_ports: &mut HashSet<PortId>,
     visited_nodes: &mut HashSet<NodeId>,
-    transforms: &mut HashSet<NodeId>,
+    record_transform_ids: bool,
+    transform_ids: &mut HashSet<NodeId>,
 ) {
     if !visited_ports.insert(port) {
         return;
@@ -1474,7 +1714,14 @@ fn collect_body_port(
     let Some(producer) = dag.port_opt(&port).and_then(|p| p.produced_by) else {
         return;
     };
-    collect_body_node(dag, producer, visited_ports, visited_nodes, transforms);
+    collect_body_node(
+        dag,
+        producer,
+        visited_ports,
+        visited_nodes,
+        record_transform_ids,
+        transform_ids,
+    );
 }
 
 fn collect_body_node(
@@ -1482,7 +1729,8 @@ fn collect_body_node(
     node: NodeId,
     visited_ports: &mut HashSet<PortId>,
     visited_nodes: &mut HashSet<NodeId>,
-    transforms: &mut HashSet<NodeId>,
+    record_transform_ids: bool,
+    transform_ids: &mut HashSet<NodeId>,
 ) {
     if !visited_nodes.insert(node) {
         return;
@@ -1493,16 +1741,46 @@ fn collect_body_node(
     match behavior {
         Behavior::Value(_) => {}
         Behavior::Transform(transform) => {
-            transforms.insert(transform.id);
+            if record_transform_ids {
+                transform_ids.insert(transform.id);
+            }
             for input in &transform.inputs {
-                collect_body_port(dag, *input, visited_ports, visited_nodes, transforms);
+                collect_body_port(
+                    dag,
+                    *input,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
         }
         Behavior::Branch(branch) => {
-            collect_body_port(dag, branch.input, visited_ports, visited_nodes, transforms);
+            collect_body_port(
+                dag,
+                branch.input,
+                visited_ports,
+                visited_nodes,
+                record_transform_ids,
+                transform_ids,
+            );
             for path in &branch.paths {
-                collect_body_node(dag, path.body, visited_ports, visited_nodes, transforms);
-                collect_body_port(dag, path.output, visited_ports, visited_nodes, transforms);
+                collect_body_node(
+                    dag,
+                    path.body,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
+                collect_body_port(
+                    dag,
+                    path.output,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
         }
         Behavior::Loop(loop_node) => {
@@ -1511,24 +1789,34 @@ fn collect_body_node(
                 loop_node.source,
                 visited_ports,
                 visited_nodes,
-                transforms,
+                record_transform_ids,
+                transform_ids,
             );
             collect_body_port(
                 dag,
                 loop_node.init,
                 visited_ports,
                 visited_nodes,
-                transforms,
+                record_transform_ids,
+                transform_ids,
             );
             if let Some(count) = loop_node.bound.count_port() {
-                collect_body_port(dag, count, visited_ports, visited_nodes, transforms);
+                collect_body_port(
+                    dag,
+                    count,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
             collect_body_node(
                 dag,
                 loop_node.body,
                 visited_ports,
                 visited_nodes,
-                transforms,
+                record_transform_ids,
+                transform_ids,
             );
         }
         Behavior::Bind(inner) => {
@@ -1536,7 +1824,14 @@ fn collect_body_node(
             // own a separate `ArrowBody::UserDefined` body and are scanned through
             // their declaration, not through an enclosing span/body walk.
             if inner.params.is_empty() {
-                collect_body_port(dag, inner.value, visited_ports, visited_nodes, transforms);
+                collect_body_port(
+                    dag,
+                    inner.value,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
         }
     }
@@ -4861,12 +5156,99 @@ mod tests {
     #[test]
     fn call_pattern_from_relations_fails_closed_for_mixed_unknown_and_preserved_evidence() {
         assert_eq!(
-            call_pattern_from_relations(&[
+            call_pattern_from_relations_with_index(&[
                 SubValueRelation::PreservedValue,
                 SubValueRelation::SubValueUnknown
             ]),
             None,
             "mixed unknown + preserved evidence must not fabricate SameArgumentCall"
+        );
+    }
+
+    #[test]
+    fn call_pattern_from_relations_skips_leading_preserved_rows_for_descent_bound_index() {
+        let relations = [
+            SubValueRelation::PreservedValue,
+            SubValueRelation::ArithmeticDescent {
+                param: "param_1".to_string(),
+                factor: ShrinkFactor::ConstantShrink {
+                    steps: PositiveDescentAmount::OneStep,
+                },
+            },
+        ];
+        let (pattern, idx) = call_pattern_from_relations_with_index(&relations)
+            .expect("expected pattern from the first non-preserved, mapped row");
+        assert_eq!(
+            idx, 1,
+            "lenses must key `per_call_descent_operand_port` off the evidence index that produced the \
+             CallPattern, not `0` / first input heuristics"
+        );
+        assert!(
+            matches!(pattern, CallPattern::ArithmeticSubtractCall { .. }),
+            "expected arithmetic descent pattern, got {pattern:?}"
+        );
+    }
+
+    #[test]
+    fn collapse_unary_bind_product_requires_joint_iter_alias_witness() {
+        let dag = crate::compile_to_dag(
+            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
+            "collapse_evidence_unit.v3",
+        )
+        .expect("compile countdown fixture");
+
+        let bind = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .find(|b| b.name == "countdown")
+            .expect("countdown bind");
+        let param = bind.params[0];
+
+        let descent_port = per_call_descent_evidence(&dag)
+            .into_iter()
+            .filter(|e| e.caller == bind.name)
+            .find_map(|e| per_call_descent_operand_port(&dag, e.call))
+            .expect("self-call descent operand port");
+
+        let mk_product = |other: PortId| SymbolicCost::ProductCost {
+            _0: NonSingletonList::from_vec(vec![
+                Box::new(SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: param,
+                        display_name: None,
+                    },
+                }),
+                Box::new(SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: other,
+                        display_name: None,
+                    },
+                }),
+            ])
+            .expect("two linear factors"),
+        };
+
+        let collapsed = collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+            &dag,
+            bind.value,
+            mk_product(descent_port),
+        );
+        assert!(
+            matches!(collapsed, SymbolicCost::LinearCost { .. }),
+            "gate #78 duplicate iterate-alias (param loop × descent operand, call under loop body) \
+             should collapse: {collapsed:?}"
+        );
+
+        let bogus = PortId::test_raw(999_999);
+        let unchanged = collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+            &dag,
+            bind.value,
+            mk_product(bogus),
+        );
+        assert!(
+            matches!(unchanged, SymbolicCost::ProductCost { .. }),
+            "bogus second factor must not collapse without joint witness: {unchanged:?}"
         );
     }
 
