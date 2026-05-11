@@ -329,7 +329,7 @@ fn assert_compose_with_machine_width(
     );
 }
 
-/// Receipt: `Int64` is a width refinement `Compose<Int, MachineWidth<Word64>>` (R3 gate #19),
+/// Receipt: `Int64` is a width refinement `Compose<Int, MachineWidth<Word64>>` (R3 gate #18),
 /// not parallel `OrderedRing<Word64>` substrate. Abstract `Int` is
 /// `AbelianGroup<GroupCompletion<Nat>>` (Slice 3); fixed-width names compose it with
 /// the machine-width axis.
@@ -343,7 +343,7 @@ pub fn assert_bootstrap_int32_compose_int_machine_width(dag: &Dag) {
 }
 
 /// Receipt: all fixed-width signed/unsigned aliases are width refinements of
-/// abstract `Int` / `UInt`, not parallel algebra substrate (R3 gate #19).
+/// abstract `Int` / `UInt`, not parallel algebra substrate (R3 gate #18).
 pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
     for (alias, algebra, width) in [
         ("Int8", "Int", "Byte"),
@@ -358,6 +358,26 @@ pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
         ("UInt128", "UInt", "Word128"),
     ] {
         assert_compose_with_machine_width(dag, alias, algebra, width);
+    }
+}
+
+/// Receipt: legacy `IntW*` / `UIntW*` names remain aliases of the canonical
+/// fixed-width refinement entries named by R3 gate #18.
+pub fn assert_bootstrap_legacy_width_names_alias_canonical_refinements(dag: &Dag) {
+    for (legacy, canonical) in [
+        ("IntW32", "Int32"),
+        ("IntW64", "Int64"),
+        ("IntW128", "Int128"),
+        ("UIntW32", "UInt32"),
+        ("UIntW64", "UInt64"),
+        ("UIntW128", "UInt128"),
+    ] {
+        let legacy_id = peel_zero_arg_alias(dag, find_named(dag, legacy));
+        let canonical_id = peel_zero_arg_alias(dag, find_named(dag, canonical));
+        assert_eq!(
+            legacy_id, canonical_id,
+            "{legacy} must alias canonical width refinement {canonical}"
+        );
     }
 }
 

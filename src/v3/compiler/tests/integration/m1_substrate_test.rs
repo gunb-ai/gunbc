@@ -11,6 +11,7 @@ use crate::common::substrate_receipts::{
     assert_bootstrap_int64_compose_int_machine_width,
     assert_bootstrap_int_is_group_completion_of_nat,
     assert_bootstrap_integer_aliases_align_to_refinements,
+    assert_bootstrap_legacy_width_names_alias_canonical_refinements,
     assert_bootstrap_nat_is_commutative_semiring_magnitude,
     assert_bootstrap_rational_is_field_of_fractions_int,
     assert_bootstrap_real64_compose_real_machine_width,
@@ -47,15 +48,20 @@ fn operator_helpers_round_trip_from_dag_authority() {
 }
 
 #[test]
-fn bootstrap_int64_compose_int_machine_width_per_gate_19() {
-    // R3 gate #19: fixed-width integers refine abstract `Int` via Compose × MachineWidth,
+fn bootstrap_int64_compose_int_machine_width_per_gate_18() {
+    // R3 gate #18: fixed-width integers refine abstract `Int` via Compose × MachineWidth,
     // not parallel OrderedRing<Word*> substrate.
     assert_bootstrap_int64_compose_int_machine_width(&Dag::new());
 }
 
 #[test]
-fn bootstrap_integer_aliases_align_to_refinements_per_gate_19() {
+fn bootstrap_integer_aliases_align_to_refinements_per_gate_18() {
     assert_bootstrap_integer_aliases_align_to_refinements(&Dag::new());
+}
+
+#[test]
+fn bootstrap_legacy_width_names_alias_canonical_refinements_per_gate_18() {
+    assert_bootstrap_legacy_width_names_alias_canonical_refinements(&Dag::new());
 }
 
 #[test]

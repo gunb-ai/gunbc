@@ -25,8 +25,8 @@
 //
 // Fixed-width rows (`Int8`..`Int128`, `UInt8`..`UInt128`) are **width
 // refinements** of the abstract carriers `Int` / `UInt` via
-// `Compose<Algebra, MachineWidth<Word*>>` (R3 §1.8 gate #19
-// `numeric_aliases_align_to_refinements` — not parallel `OrderedRing<Word*>`
+// `Compose<Algebra, MachineWidth<Word*>>` (R3 §1.8 gate #18
+// `numeric_width_refinements_landed` — not parallel `OrderedRing<Word*>`
 // / `Semiring<Word*>` substrate). Grounding still maps each pair to the same
 // Rust `i*` / `u*` primitives as before.
 //
@@ -60,7 +60,7 @@ type UInt128 = Compose<UInt, MachineWidth<Word128>>
 // #issuecomment-4385530115 (NOT AlgebraMachineProduct table rows).
 //
 // Historical `IntW*` / `UIntW*` spellings — aliases of the canonical fixed-width
-// rows above (same Compose shapes; gate #19 aligned names are `Int32` / …).
+// rows above (same Compose shapes; gate #18 canonical names are `Int32` / …).
 //
 // Slot-1 spelling = fully-applied algebraic-concept name (`Int` =
 // `AbelianGroup<GroupCompletion<Nat>>` per #1466 Q6 audit; `UInt` = `Nat`
