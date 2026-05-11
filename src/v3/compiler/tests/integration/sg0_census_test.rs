@@ -332,13 +332,16 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration.rs",
     // gunbc#2699 prototype (PR #2701): host `#[test]` harness only (`TESTING.md` hermetic fixtures).
     //
-    // P5 / T-PB-B deferral (lane + concrete ROADMAP row): `ROADMAP.md` → `## Release R1 Program`
-    // → `### Nine lanes` table row **T-PB-B** (tests-as-data); same section →
-    // `### Lane acceptance — `.dag` gates` bullet **T-PB-B.** (`pb_test_file_generated_from_dag`, `pb_rust_tests_outside_residual_zero`, …).
+    // Checkable **INVARIANTS.md P5** receipt for this SG-0 net add (CLASS = **ROADMAP T-PB-B deferral**; **not**
+    // deleted-scaffold retirement and **not** net SG-0 test shrink vs `EXPECTED_HAND_AUTHORED_TEST`).
     //
-    // Companion context: `WISHLIST.md` §"R4.B — Queries-as-data", stress-test #2 "Refactoring impact"
-    // — migrate to `.dag` `TestClaim` once that introspect / queries-as-data harness wires CI;
-    // not an SG-0 shrink claim.
+    // **Concrete ROADMAP row cites** (`ROADMAP.md`, `Release R1 Program`): Nine-lanes **`T-PB-B` table row**
+    // (approximately **line 54** at PR time); **Lane acceptance — `.dag` gates** **`T-PB-B.`** bullet naming
+    // `pb_test_file_generated_from_dag` · `pb_rust_tests_outside_residual_zero` (approximately **lines 87–88**
+    // at PR time).
+    //
+    // Product stress deferral companion: migrate into `.dag` `TestClaim` under `gunbc#2699` once R4.B
+    // introspect-lens/query harness satisfies `WISHLIST.md` §"R4.B — Queries-as-data" stress-test #2.
     "src/v3/compiler/tests/integration/affected_set_lens_prototype_test.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
     // R3 gate #68 (`anthropic_wire_demonstration`): hermetic typed request/response
