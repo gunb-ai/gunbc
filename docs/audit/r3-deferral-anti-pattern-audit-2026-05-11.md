@@ -33,7 +33,7 @@ Grep-verified instances. Each instance is a site where the substrate admits "I d
 | 8 | `ClaimResult::NotYetImplemented` | **21** (9 src + 12 tests) | Explicit gate-deferral — per-gate disposition (§3.5): substrate-land OR R3-carve. |
 | 9 | `Lookup<T>::Miss` variant in generated code | **4 sites** | Empty-list-as-Miss pattern in `lens_cost_symbolic_generated.rs` (3) + `infer_helpers_generated.rs` (1). Miss-class; ratified for R3 dissolution per operator 2026-05-11. |
 | 10 | `DescentEvidence::DescentUnknown` | substrate lattice bottom | **Authority-conflicting per `INVARIANTS.md:63-66`** — currently load-bearing as BoundedLattice fail-closed bottom. **Requires PM ratification before classification** (Miss-class vs lattice-element); see §3.2. |
-| 11 | `EvidenceUnknown / EvidenceIncomplete` in descent_execution_proof residual | substrate residual carrier | Miss-shape candidate; see §3.3. |
+| 11 | `EvidenceUnknown / EvidenceIncomplete` in descent_execution_proof residual | substrate residual carrier | **Authority-conflicting per `docs/briefs/r3-substrate-descent-execution-proof-worker.md` Director-ratified γ-shape** — compliant as written today. See §3.3 corrected disposition. |
 | 12 | `ArrowBody::Pending` / `LensSurfacePending` | 4 enum variants | In-progress states baked into the substrate type; see §3.6 — substantial substrate-shape change, R3-load-bearing-ness needs PM ratification. |
 | 13 | `structural_coverage_gap_*` named gates | **10+** | Tracking-only ratchets — per §3.8, each promotes (R3-load-bearing) or carves (post-R3); not classified as deferral by default. |
 
@@ -48,11 +48,11 @@ Not every instance is equally bad. The taxonomy:
 Cases where the wrapper variant captures "I don't have an answer" and the answer is required for correctness:
 
 - `Lookup<SymbolicCost>::Miss` — already committed to R3 dissolution per operator-ratified 2026-05-11. See §3.1.
-- `EvidenceUnknown / EvidenceIncomplete` in descent residual — Miss-shape candidate; see §3.3.
 - Empty-list-as-Miss in generated code — see §3.4.
 - `ClaimResult::NotYetImplemented` — explicit deferral of gate execution. See §3.5.
 - `ArrowBody::Pending` / `LensSurfacePending` — in-progress states baked into substrate type; **substantive substrate-shape change** — see §3.6.
 - `DescentEvidence::DescentUnknown` — **NOT auto-classified as Miss-class**. Currently load-bearing as BoundedLattice fail-closed bottom per `INVARIANTS.md:63-66`. Requires PM ratification before classification; see §3.2.
+- `EvidenceUnknown / EvidenceIncomplete` in descent_execution_proof residual — **NOT auto-classified as Miss-class**. Compliant per Director-ratified γ-shape at `docs/briefs/r3-substrate-descent-execution-proof-worker.md` (ratification at gunbc#828 #issuecomment-4395060514). Any dissolution proposal requires authority-reconciliation precondition; see §3.3 corrected disposition.
 
 ### §2.2 Boundary tools used in interior — **triage candidates, NOT uniform "abuse"**
 
@@ -96,11 +96,20 @@ The Mgr-canvas audit (§3.7) should be a **per-file production-flow inventory** 
 
 Consumer impact (either path): `merge_evidence`, `join_evidence`, `evidence_rank`, etc. in `dag.rs` (the older versions were already retired in earlier Cluster K work) — surviving consumers need to align with whichever path PM ratifies.
 
-### §3.3 Descent-execution-proof residual `EvidenceUnknown / EvidenceIncomplete` — proposed dissolution
+### §3.3 Descent-execution-proof residual `EvidenceUnknown / EvidenceIncomplete` — requires authority-reconciliation precondition (NOT direct dissolution)
 
-Currently: `DescentResidual = EvidenceUnknown(NonStrictEvidence) | EvidenceIncomplete`. The work to narrow from 4 to 2 was good, but the residual itself is still a Miss-shape.
+**Correction per inline review finding 2026-05-11**: my original framing called the residual "Miss-shape" and proposed replacing the carrier without reconciling against the **Director-ratified residual shape** at `docs/briefs/r3-substrate-descent-execution-proof-worker.md:20-27` (per `r3-program-plan.md` Q-EVAL-Descent-Termination-Contract ratification at gunbc#828 #issuecomment-4395060514). That violates P1 modeling-faithfulness + locked-decision discipline.
 
-Proposal: if descent execution can't complete, that's a typed compile-time Diagnostic at the producer's surface. Replace the residual carrier with `Result<DescentExecutionProof, DescentExecutionDiagnostic>` where `DescentExecutionDiagnostic` is a concrete error type (not a Maybe-coverage Maybe-incomplete wrapper).
+Currently: `DescentResidual = EvidenceUnknown(NonStrictEvidence) | EvidenceIncomplete`, where the prior 4→2-variant narrowing was specifically the **Director-ratified illegal-states-unrepresentable rationale** (making `EvidenceUnknown(Strict)` unconstructible via the typed `NonStrictEvidence` subset). The residual is not a Miss-class deferral — it's a typed witness of "descent execution attempted, here's why we don't have a per-path Strict witness." The "Miss-shape" framing in my original audit conflated the analyzer's runtime-failure surface with a design-laziness deferral.
+
+**Pre-dispatch requirement**: any further dissolution proposal on this carrier MUST start from a grep-verified read of:
+- `dsl/std/termination.dag` (substrate carrier authority)
+- `docs/briefs/r3-substrate-descent-execution-proof-worker.md` (Director-ratified γ-shape rationale)
+- `r3-program-plan.md` Q-EVAL-Descent-Termination-Contract (ratification commit)
+
+And produce: (i) a concrete reason why the existing typed-residual shape is insufficient (i.e., what dispatch-level harm follows from keeping it); (ii) which authority doc would need amendment (if any); (iii) PM ratification before any worker dispatch.
+
+**As written today**, the residual is compliant per existing Director ratification. The audit was wrong to label it Miss-class.
 
 ### §3.4 Empty-list `[] => Lookup::Miss` in generated code (4 sites)
 
@@ -160,7 +169,7 @@ R3-close commitment scope (per operator-directive 2026-05-11). **Dispatch order 
 
 1. **§3.1 (cost-lens Miss)** — RATIFIED, dispatched to Substrate Mgr 2026-05-11.
 2. **§3.2 (DescentUnknown)** — **BLOCKED on PM ratification of path (a) vs (b)** per §3.2. No dispatch until PM decides whether substrate keeps 3-variant lattice + construction-side narrowing, or authority update precedes 2-variant collapse. Same-batch with §3.1 only valid under path (a); path (b) requires `INVARIANTS.md:63-66` edit landing first.
-3. **§3.3 (descent-execution-proof residual)** — propose same-batch dispatch with §3.1 once §3.2 path is ratified (the residual carrier sits downstream of `DescentEvidence` shape).
+3. **§3.3 (descent-execution-proof residual)** — **BLOCKED on authority-reconciliation** per §3.3 corrected disposition. The carrier is compliant per Director-ratified γ-shape at `docs/briefs/r3-substrate-descent-execution-proof-worker.md`. Any dissolution requires reading the existing authority + producing a grep-verified reason the typed-residual shape is insufficient, then PM ratification. No same-batch dispatch with §3.1.
 4. **§3.4 (empty-list-as-Miss)** — generated-code regen needed; folds into §3.1 + §3.5 dispatch.
 5. **§3.5 (NotYetImplemented audit)** — per-gate Mgr-tier dispatch; recommend Verification Mgr re-spawn (currently archived per overnight cascade) authors the audit.
 6. **§3.6 (ArrowBody::Pending)** — larger substrate-shape work; **R3-load-bearing-ness needs PM ratification before dispatch** (may need post-R3 carve).
@@ -168,7 +177,7 @@ R3-close commitment scope (per operator-directive 2026-05-11). **Dispatch order 
 8. **§3.8 (structural_coverage_gap)** — promote/carve audit; PM-coordinated.
 9. **§4 (review-process)** — PM authors the PR-template ratchet update; cross-Mgr coordination.
 
-**Authority-gate summary**: items 2 (DescentUnknown) and 6 (ArrowBody::Pending) are explicitly PM-blocked until authority disposition. Items 1/3/4/5/7/8/9 may dispatch on the standing Mgr-canvas authority once R3-scope-ratified.
+**Authority-gate summary**: items 2 (DescentUnknown), 3 (descent-execution-proof residual), and 6 (ArrowBody::Pending) are explicitly authority-blocked until reconciliation. Items 1/4/5/7/8/9 may dispatch on the standing Mgr-canvas authority once R3-scope-ratified.
 
 ## §6. Open questions for PM ratification
 
