@@ -1,5 +1,5 @@
-// std.r1_pb_census_gates - R1C-D `.dag` TestClaim fixtures for the six
-// PB census gates (T-PB-A ×4 + T-PB-B ×2). The Rust ratchets in
+// std.r1_pb_census_gates - R1C-D `.dag` TestClaim fixtures for the seven
+// PB census gates (T-PB-A ×5 + T-PB-B ×2). The Rust ratchets in
 // `src/v3/compiler/tests/integration/sg0_census_test.rs` remain the
 // drift-detection authority on the underlying lists; this file wires the
 // release-gate `.dag` layer that R1 close evaluates, per the strict
@@ -14,11 +14,16 @@
 // **Today's evaluation state** (R1C-D acceptance: gate evaluates `Pass`
 // or `Fail` against the live census, never `NotYetImplemented`):
 //
-//   D.1 / D.6 — `CensusBoundCheck` against `EXPECTED_HAND_AUTHORED_*`
+//   D.1 / D.6 — `CensusBoundCheck` against `EXPECTED_HAND_AUTHORED_{NON_TEST,TEST}`
 //               at `bound = 0` is RED until cascade-promotion 0-floor
 //               (`docs/design-pure-bootstrap-zero.md`, LIVE 2026-04-25)
 //               retires the residual lists. Pacing owned by Pure
 //               Bootstrap to Zero program; surfaced cross-manager.
+//   D.1b — `CensusBoundCheck` against `EXPECTED_HAND_AUTHORED_FRAGMENTS` at
+//          `bound = 0` is the crate-root **fragment** conjunct for the same
+//          0-floor program (R3 §1.8 gate `sg0_non_test_zero` per
+//          `docs/r3-structure.md`; PR #2569). RED until scaffold fragments
+//          dissolve into producer-owned paths.
 //   D.2 — `CensusSubsetCount` lens-producer subset over the non-test
 //         census; same dissolution-pacing dependency as D.1.
 //   D.3 — `FixedPointConverges` runs DB-8 twice and compares snapshots.
@@ -44,6 +49,7 @@ import std.verification {
   TestClaim,
   TestSuite,
   compiler_std_positive_set_ratchet,
+  expected_hand_authored_fragments,
   expected_hand_authored_non_test,
   expected_hand_authored_test,
   lens_producer_files_subset_predicate
@@ -73,6 +79,18 @@ data pb_hand_rust_at_shim_floor_gate: TestClaim = {
   predicate: CensusBoundCheck {
     authority: sg0_census_test_authority,
     list_constant: expected_hand_authored_non_test,
+    bound: 0
+  },
+  requires: []
+}
+
+data sg0_non_test_zero_fragments_gate: TestClaim = {
+  name: "sg0_non_test_zero_fragments",
+  source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r1_sg0_non_test_zero_fragments.v3",
+  predicate: CensusBoundCheck {
+    authority: sg0_census_test_authority,
+    list_constant: expected_hand_authored_fragments,
     bound: 0
   },
   requires: []
@@ -148,6 +166,7 @@ data r1_pb_census_gates_suite: TestSuite = {
   name: "r1_pb_census_gates_suite",
   claims: [
     pb_hand_rust_at_shim_floor_gate,
+    sg0_non_test_zero_fragments_gate,
     lens_producer_files_remaining_gate,
     pb_self_compile_fixed_point_gate,
     pb_compiler_std_ratchet_zero_gate,

@@ -34,6 +34,7 @@ type SnapshotRef = NonEmptyStr
 type CensusListConstant {}
 
 data expected_hand_authored_non_test: CensusListConstant = {}
+data expected_hand_authored_fragments: CensusListConstant = {}
 data expected_hand_authored_test: CensusListConstant = {}
 
 // Closed PB subset predicates are declared values, not string labels, so
