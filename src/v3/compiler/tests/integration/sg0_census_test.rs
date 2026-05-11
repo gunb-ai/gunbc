@@ -242,7 +242,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     //
     // P5 / T-PB-A deferral (lane + concrete ROADMAP row): `ROADMAP.md` → `## Release R1 Program`
     // → `### Nine lanes` table row **T-PB-A** (XL; non-test SG-0 census → 0-floor); same section
-    // → `### Lane acceptance — .dag gates` bullet **T-PB-A.** (`pb_hand_rust_at_shim_floor`, …).
+    // → `### Lane acceptance — `.dag` gates` bullet **T-PB-A.** (`pb_hand_rust_at_shim_floor`, …).
     //
     // Product stress context (not a ROADMAP lane row): `WISHLIST.md` §"R4.B — Queries-as-data",
     // stress-test #2 "Refactoring impact". Dissolve toward structural `lenses.affected_set`
@@ -333,8 +333,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // gunbc#2699 prototype (PR #2701): host `#[test]` harness only (`TESTING.md` hermetic fixtures).
     //
     // P5 / T-PB-B deferral (lane + concrete ROADMAP row): `ROADMAP.md` → `## Release R1 Program`
-    // → `### Nine lanes` table row **T-PB-B** (tests-as-data); same section → `### Lane acceptance`
-    // bullet **T-PB-B.** (`pb_test_file_generated_from_dag`, `pb_rust_tests_outside_residual_zero`, …).
+    // → `### Nine lanes` table row **T-PB-B** (tests-as-data); same section →
+    // `### Lane acceptance — `.dag` gates` bullet **T-PB-B.** (`pb_test_file_generated_from_dag`, `pb_rust_tests_outside_residual_zero`, …).
     //
     // Companion context: `WISHLIST.md` §"R4.B — Queries-as-data", stress-test #2 "Refactoring impact"
     // — migrate to `.dag` `TestClaim` once that introspect / queries-as-data harness wires CI;
