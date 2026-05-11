@@ -478,33 +478,48 @@ jobs:
   # DB-8 — fixed-point ratchet infrastructure (Lane 3 Stage 3c prep). Staged until
   # Lane 1 Stage 1e closes: do not block merges on this job yet.
   self_host_ratchet:
-    # Run on main pushes only while staged. A cancelled `continue-on-error`
-    # PR job still reports as a failed check, which makes this advisory ratchet
-    # merge-blocking before Lane 1e graduation.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Always schedule this job name on PRs so branch-protection "required checks" get a
+    # definitive **success** after `v3` (skipped jobs / workflow-wide cancels were surfacing
+    # as merge-blocking reds on #2681). The heavy DB-8 matrix still runs **only** on
+    # `push` to `main`; PRs execute a cheap stub on `gunbc-quick` instead of competing
+    # for `gunbc-ci` with `v3`.
+    if: github.event.pull_request.draft != true
     # Same sizing rationale as `v3` above: DB-8 release builds + determinism_test (5× matrix) +
     # `self_host_fixed_point` run on the same ephemeral GCE Spot runner pool as `v3`;
     # small/default runners saw mid-compile shutdown on #1794. **60m** wall so cold-cache
     # / full release `cargo` is unlikely to cancel mid-job; ratchet remains non-blocking.
     # (Runner label is orthogonal to P2:
     # `rust-toolchain.toml` + no workflow `toolchain:` input.)
-    runs-on: [self-hosted, linux, x64, gunbc-ci]
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'gunbc-ci' || 'gunbc-quick' }}
     timeout-minutes: 60
     needs: [v3]
     continue-on-error: true
     steps:
       - name: Checkout
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
+      - name: DB-8 stub (PR / non-main — full matrix is main-push only)
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        run: |
+          echo "::notice::self_host_ratchet DB-8 release matrix runs only on pushes to main (Lane 1e staged)."
+          exit 0
+
       - name: Setup Rust
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
           cache: false
           rustflags: ""
 
       - name: Cache Cargo (self_host_ratchet)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache@v4
         with:
           path: |
@@ -522,14 +537,17 @@ jobs:
       # Step-level continue-on-error: one ratchet can fail without aborting the other
       # (job-level continue-on-error keeps the workflow green until Lane 1e graduates).
       - name: DB-8 determinism_test (5× emit matrix)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         run: cargo test -p v3-compiler --release --test determinism_test
 
       - name: DB-8 self_host_fixed_point (staged)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         run: cargo run -p v3-compiler --release --bin self_host_fixed_point
 
       - name: DB-8 emit.rs HashMap iteration policy (informational)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           if grep -nE "(HashMap|HashSet)::" src/v3/compiler/src/emit.rs; then
             echo "::notice::DB-8: emit.rs still uses HashMap/HashSet:: iteration — target is BTree* / sorted keys (determinism_test + ROADMAP Lane 3 Stage 3c prep)"
