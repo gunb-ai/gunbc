@@ -2,10 +2,14 @@
 //!
 //! Authority: `dsl/std/computation.dag` ↔ `src/v3/std/computation.dag`. These Rust
 //! spellings stay in structural parity with the `.dag` carriers while std block
-//! bodies remain `ArrowBody::Unparsed` at bootstrap (`T-Tier3-Dissolution`
-//! / R3 gate `tier3_computation_mirror_dissolved` isolation receipt: the
-//! computation host surface is not interleaved with the E-P induction producer in
-//! `dag.rs`).
+//! bodies remain `ArrowBody::Unparsed` at bootstrap.
+//!
+//! **Scope:** structural isolation only — the same host projections previously
+//! lived in `dag.rs`; this file splits them out so the E-P induction producer stays
+//! in the monolith without interleaving. This is **not** R3 gate
+//! `tier3_computation_mirror_dissolved` closure (no mirror deletion, no evaluator
+//! substitution for those bodies); full dissolution remains T-Tier3-Dissolution
+//! lane work.
 
 use super::{positive_descent_count, DescentEvidence, PositiveDescentAmount, ProportionalDivisor};
 
