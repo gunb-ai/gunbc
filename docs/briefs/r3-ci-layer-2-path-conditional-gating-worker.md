@@ -45,17 +45,19 @@ changes:
 changes:
   outputs:
     code: ${{ steps.diff.outputs.code }}
-    skip_lens: ${{ steps.classify.outputs.skip_lens }}
-    skip_emit: ${{ steps.classify.outputs.skip_emit }}
-    skip_parser: ${{ steps.classify.outputs.skip_parser }}
-    skip_cost: ${{ steps.classify.outputs.skip_cost }}
+    skip_cost_lens: ${{ steps.classify.outputs.skip_cost_lens }}
+    skip_emit_target: ${{ steps.classify.outputs.skip_emit_target }}
+    skip_parser_grammar: ${{ steps.classify.outputs.skip_parser_grammar }}
+    skip_complexity_lens: ${{ steps.classify.outputs.skip_complexity_lens }}
     # ... per-group entries per Mgr-fill inventory
+    # naming convention: skip_<group_name> where <group_name> matches the
+    # per-group table's group_name column verbatim (no abbreviation).
   steps:
     - <existing diff step>
     - id: classify
       run: |
         # for each group in per-group-required-paths-table:
-        #   skip_<group> = "true" if (changed files ∩ required_paths) is empty else "false"
+        #   skip_<group_name> = "true" if (changed files ∩ required_paths) is empty else "false"
         # push events short-circuit all skip_* to "false"
 ```
 
@@ -70,7 +72,7 @@ v3:
       if: ${{ needs.changes.outputs.skip_cost_lens != 'true' }}
       run: cargo test -p v3-compiler --test integration cost_lens_*
     - name: emit-target integration
-      if: ${{ needs.changes.outputs.skip_emit != 'true' }}
+      if: ${{ needs.changes.outputs.skip_emit_target != 'true' }}
       run: cargo test -p v3-compiler --test integration *_emit_*
     # ... per-group test invocations
 ```
