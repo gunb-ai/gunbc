@@ -41,7 +41,10 @@ fn r3_gate_64_reflection_residual_census_receipt_executes() {
         .unwrap_or_else(|| panic!("missing `{CLAIM_NAME}` in `{SUITE_NAME}` results: {results:?}"));
 
     match &result.result {
-        ClaimResult::Pass => {}
+        ClaimResult::Pass => assert_eq!(
+            CURRENT_REFLECTION_RESIDUAL_COUNT, 0,
+            "`{CLAIM_NAME}` passed before the frozen live reflection residual count reached zero"
+        ),
         ClaimResult::Fail(reason) => {
             assert!(
                 reason.contains(&format!(
