@@ -12,7 +12,6 @@
 //! recursive `SymbolicCost` expected values with `SizeVariable` identity
 //! assertions (`M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA`).
 
-use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     classify_symbolic_cost, dominates, iterate, max_path, ArithmeticOp, AsymptoticClass, Behavior,
     DegreeAtLeastTwo, Lookup, NonSingletonList, OperatorKind, PortId, SizeVariable, SymbolicCost,
@@ -21,7 +20,7 @@ use v3_compiler::dag::{
 use v3_compiler::lens_cost_symbolic::{transform_cost_for_target, SymbolicCostEntry};
 use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport, Witness};
 
-use crate::common::assert_recursive_countdown_linear_semantics;
+use crate::common::{assert_recursive_countdown_linear_semantics, cached_compile_to_dag};
 
 fn find_bind(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::BindNode {
     dag.nodes()
@@ -131,9 +130,8 @@ fn run_with_cost_cementing_stack(f: impl FnOnce() + Send + 'static) {
 #[test]
 fn literal_bind_cements_dimension_symbolic_cost_constant() {
     run_with_cost_cementing_stack(|| {
-        let dag = compile_to_dag("let lit: Int = 7", "cement_cost_symbolic_lit.v3")
-            .expect("literal fixture compiles");
-        let (composed, witnesses) = expect_symbolic_cost_dimension(&dag, "lit");
+        let dag = cached_compile_to_dag("let x = 1", "test.v3");
+        let (composed, witnesses) = expect_symbolic_cost_dimension(&dag, "x");
 
         assert!(
             matches!(composed, SymbolicCost::ConstantCost { _0: 0 }),
@@ -149,11 +147,10 @@ fn literal_bind_cements_dimension_symbolic_cost_constant() {
 #[test]
 fn recursive_countdown_cements_dimension_symbolic_cost_linear_sizevar() {
     run_with_cost_cementing_stack(|| {
-        let dag = compile_to_dag(
+        let dag = cached_compile_to_dag(
             "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
-            "cement_cost_symbolic_countdown.v3",
-        )
-        .expect("recursive countdown fixture compiles");
+            "countdown.v3",
+        );
         let countdown = find_bind(&dag, "countdown");
         let parameter = countdown
             .params
@@ -179,11 +176,10 @@ fn recursive_countdown_cements_dimension_symbolic_cost_linear_sizevar() {
 #[test]
 fn recursive_countdown_with_body_work_cements_linear_sizevar() {
     run_with_cost_cementing_stack(|| {
-        let dag = compile_to_dag(
+        let dag = cached_compile_to_dag(
             "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1) + 1",
-            "cement_cost_symbolic_countdown_body_work.v3",
-        )
-        .expect("recursive countdown with body work fixture compiles");
+            "loop_body_countdown.v3",
+        );
         let countdown = find_bind(&dag, "countdown");
         let parameter = countdown
             .params

@@ -55,8 +55,6 @@ mod canonical_lens_bridge_ratchet_test;
 mod cementing_lens_registry_dispatch_test;
 #[path = "integration/cementing/complexity_lens_behavioral_completion.rs"]
 mod complexity_lens_behavioral_completion;
-#[path = "integration/cementing/cost_lens_symbolic_behavioral_completion.rs"]
-mod cost_lens_symbolic_behavioral_completion;
 #[path = "integration/cost_lens_symbolic_consumer_test.rs"]
 mod cost_lens_symbolic_consumer_test;
 #[path = "integration/cross_target_coverage_carrier_test.rs"]
@@ -247,6 +245,8 @@ mod v2_oracle_no_remaining_test_consumers_test;
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/workflow_root_port_test.rs"]
 mod workflow_root_port_test;
+#[path = "integration/cementing/cost_lens_symbolic_behavioral_completion.rs"]
+mod z_cost_lens_symbolic_behavioral_completion;
 
 mod t_demo_fixture_test {
     //! **Layer:** integration
