@@ -372,7 +372,7 @@ fn g1_manifest_neutral_key_path_lexically_under_missing_src_v2_entry_detected() 
         manifest_path.display(),
     );
 
-    let missing_under_v2 = concat!("../../v2/__gate41_missing_path_probe");
+    let missing_under_v2 = "../../v2/__gate41_missing_path_probe";
     let raw = format!(
         concat!(
             "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
