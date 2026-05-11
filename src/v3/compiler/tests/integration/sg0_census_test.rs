@@ -254,6 +254,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/dag/builder.rs",
     // Closed Cardinality payload + idempotent target shim (API closure).
     "src/v3/compiler/src/dag/cardinality_payload.rs",
+    "src/v3/compiler/src/dag/computation.rs",
     "src/v3/compiler/src/dag/effects.rs",
     "src/v3/compiler/src/dag/ports.rs",
     "src/v3/compiler/src/diagnostics.rs",

@@ -2,14 +2,12 @@
 //!
 //! Authority: `dsl/std/computation.dag` ↔ `src/v3/std/computation.dag`. These Rust
 //! spellings stay in structural parity with the `.dag` carriers while std block
-//! bodies remain [`super::ArrowBody::Unparsed`] at bootstrap (`T-Tier3-Dissolution`
+//! bodies remain `ArrowBody::Unparsed` at bootstrap (`T-Tier3-Dissolution`
 //! / R3 gate `tier3_computation_mirror_dissolved` isolation receipt: the
 //! computation host surface is not interleaved with the E-P induction producer in
 //! `dag.rs`).
 
-use super::{
-    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, positive_descent_count,
-};
+use super::{positive_descent_count, DescentEvidence, PositiveDescentAmount, ProportionalDivisor};
 
 /// 🟡 SCAFFOLD — `SizeBound` coproduct (`docs/modeling-discipline.md` §4).
 ///

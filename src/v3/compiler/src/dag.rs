@@ -87,8 +87,9 @@ mod ports;
 
 pub use computation::{
     algebra_profile_to_dimension, constant_bound_value, forever_iteration_bound, is_constant_bound,
-    lower_call_pattern, size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile,
-    CallPattern, IterationDimension, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
+    lower_call_pattern, size_bound_param, tree_size_bound, type_iteration_dimension,
+    AlgebraProfile, CallPattern, IterationDimension, IterationPrimitive, LoweringTarget,
+    ShrinkFactor, SizeBound,
 };
 
 pub use effects::{
@@ -2141,96 +2142,6 @@ fn ordinal_param_label(idx: usize) -> String {
     format!("param_{idx}")
 }
 
-pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
-    match bound {
-        SizeBound::TreeSize { param } => Some(param.as_str()),
-        SizeBound::CollectionSize { param } => Some(param.as_str()),
-        SizeBound::ParserStreamSize { witness } => Some(witness.as_str()),
-        SizeBound::WorklistDrainSize { element } => Some(element.as_str()),
-        SizeBound::ArithmeticParam { param } => Some(param.as_str()),
-        SizeBound::ExplicitCountZero
-        | SizeBound::ExplicitCountPositive { .. }
-        | SizeBound::Forever => None,
-    }
-}
-
-pub fn is_constant_bound(bound: &SizeBound) -> bool {
-    matches!(
-        bound,
-        SizeBound::ExplicitCountZero | SizeBound::ExplicitCountPositive { .. } | SizeBound::Forever
-    )
-}
-
-/// Signed `Int` top iterate count (`i64::MAX`) for [`SizeBound::Forever`] / `repeat(max_int)`.
-pub fn forever_iteration_bound() -> i64 {
-    i64::MAX
-}
-
-/// `None` when `bound` is not constant (`ExplicitCount*` / `Forever` only).
-pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
-    match bound {
-        SizeBound::ExplicitCountZero => Some(0),
-        SizeBound::ExplicitCountPositive { steps } => Some(positive_descent_count(steps)),
-        SizeBound::Forever => Some(forever_iteration_bound()),
-        _ => None,
-    }
-}
-
-/// 🟢 TERMINAL — `IterationDimension` coproduct (`docs/modeling-discipline.md` §4).
-///
-/// Three-way projection from kernel algebra profiles onto iteration regimes. Authority:
-/// `src/v3/std/computation.dag`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IterationDimension {
-    TreeDescent,
-    CollectionFold,
-    ArithmeticRepeat,
-}
-
-/// 🟢 TERMINAL — `AlgebraProfile` coproduct (`docs/modeling-discipline.md` §4).
-///
-/// Closed seven-variant mirror of `dsl/std/algebra.dag` `AlgebraProfile`.
-/// The profile table itself is read from the lowered `kernel_algebra_profile`
-/// `ValueBody::Map`, not from a hand-maintained Rust lookup table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AlgebraProfile {
-    OrderedRingProfile,
-    ApproximateFieldProfile,
-    BooleanAlgebraProfile,
-    BooleanAlgebraCollectionProfile,
-    FreeMonoidScalarProfile,
-    FreeMonoidCollectionProfile,
-    PartialFunctionProfile,
-}
-
-pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<IterationDimension> {
-    match profile {
-        AlgebraProfile::FreeMonoidCollectionProfile
-        | AlgebraProfile::FreeMonoidScalarProfile
-        | AlgebraProfile::BooleanAlgebraCollectionProfile
-        | AlgebraProfile::PartialFunctionProfile => Some(IterationDimension::CollectionFold),
-        AlgebraProfile::OrderedRingProfile | AlgebraProfile::ApproximateFieldProfile => {
-            Some(IterationDimension::ArithmeticRepeat)
-        }
-        AlgebraProfile::BooleanAlgebraProfile => None,
-    }
-}
-
-pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
-    if type_name == "Node" {
-        return Some(IterationDimension::TreeDescent);
-    }
-
-    kernel_algebra_profile(type_name).and_then(algebra_profile_to_dimension)
-}
-
-/// Kernel type name → iteration algebra profile (`Int`, `List`, …).
-///
-/// Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`).
-/// Runtime v3 reads the lowered [`ValueBody::Map`] from the bootstrapped DAG.
-pub fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
-    BOOTSTRAPPED_DAG.kernel_algebra_profile(type_name)
-}
 #[derive(Debug, Clone)]
 pub struct ValueNode {
     pub id: NodeId,
