@@ -322,6 +322,13 @@ jobs:
       # behavior). Running `lib`+`bins`, `determinism_test`, `doc`, and `integration` as
       # separate steps preserves streamed logs per phase and the same combined
       # `/tmp/v3-test-timings.log` for `scripts/check-test-timeout.sh`.
+      #
+      # **Target-discovery guard:** every `tests/*.rs` integration binary must appear in
+      # a split step with `--report-time` (codex review on #2681); otherwise clippy
+      # `--all-targets` could compile a new harness without the full suite ever running it.
+      - name: v3 full-suite split guard (integration test targets)
+        run: scripts/check-v3-full-suite-split-test-targets.sh
+
       - name: v3 tests (full suite lib+bins, timings part 1/4)
         env:
           CARGO_TERM_COLOR: never
