@@ -54,17 +54,27 @@ type VariantPayload
   = Positional(List<SurfaceType>)
   | Record(List<SurfaceField>)
 
+// Generic / angle-bracket **argument** payload for `SurfaceType::Parameterized` only.
+// Phantom machine-width magnitudes (`Int<64>`, `MachineWidth<128>`, …) exist **only** here — not as
+// top-level `SurfaceType` variants — so illegal states stay unrepresentable at the parse-surface
+// substrate boundary (R3 gate #60 / INVARIANTS P2; codex review on #2697).
+type SurfaceTypeArg
+  = Ty {
+      body: SurfaceType
+    }
+  | PhantomWidthLit {
+      bits_lit: String
+      span: SourceSpan
+    }
+
 // 🟡 SCAFFOLD at SG-2 parser-staging carrier scope (substrate mirror, not parse-rule authority).
 // **Named trigger:** `parse_parser_body.txt` header (emit algorithm from `.dag` alone) plus
 // SG-2b / SG-3f parse-rule cutover aligned with `lower.rs`.
 type SurfaceType
   = Named { name: String, span: SourceSpan }
-  // Phantom machine-width magnitude in **type-argument position** (`Int<64>`, `MachineWidth<128>`).
-  // R3 T-Numeric-Construction S3 Phase-2 (#2156 interaction syntax); lowering maps to Word* Byte/Word*.
-  | PhantomWidthLit { bits_lit: String, span: SourceSpan }
   | Parameterized {
       name: String
-      args: List<SurfaceType>
+      args: List<SurfaceTypeArg>
       span: SourceSpan
     }
   | Optional {

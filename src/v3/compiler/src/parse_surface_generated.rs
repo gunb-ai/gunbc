@@ -62,18 +62,25 @@ pub enum VariantPayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SurfaceType {
-    Named {
-        name: String,
-        span: SourceSpan,
+pub enum SurfaceTypeArg {
+    Ty {
+        body: Box<SurfaceType>,
     },
     PhantomWidthLit {
         bits_lit: String,
         span: SourceSpan,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SurfaceType {
+    Named {
+        name: String,
+        span: SourceSpan,
+    },
     Parameterized {
         name: String,
-        args: Vec<SurfaceType>,
+        args: Vec<SurfaceTypeArg>,
         span: SourceSpan,
     },
     Optional {

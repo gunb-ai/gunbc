@@ -84,7 +84,7 @@ fn emit_parse_module(parser_body: &str) -> String {
     out.push_str(
         "pub use crate::parse_surface::{SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, \
          SurfaceMapEntry, SurfaceMatchArm, SurfaceModule, SurfaceParam, SurfacePattern, \
-         SurfacePatternField, SurfaceRecordField, SurfaceType, SurfaceVariant, VariantPayload};\n",
+         SurfacePatternField, SurfaceRecordField, SurfaceType, SurfaceTypeArg, SurfaceVariant, VariantPayload};\n",
     );
     out.push_str(
         "use crate::parse_tables::{binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, \
@@ -96,11 +96,19 @@ fn emit_parse_module(parser_body: &str) -> String {
     out.push_str("use crate::operators::{LogicalOp, OperatorKind};\n");
     out.push_str("use std::collections::HashSet;\n\n");
     out.push_str(
-        r#"impl SurfaceType {
+        r#"impl SurfaceTypeArg {
+    pub fn span(&self) -> &SourceSpan {
+        match self {
+            SurfaceTypeArg::Ty { body } => body.span(),
+            SurfaceTypeArg::PhantomWidthLit { span, .. } => span,
+        }
+    }
+}
+
+impl SurfaceType {
     pub fn span(&self) -> &SourceSpan {
         match self {
             SurfaceType::Named { span, .. }
-            | SurfaceType::PhantomWidthLit { span, .. }
             | SurfaceType::Parameterized { span, .. }
             | SurfaceType::Optional { span, .. }
             | SurfaceType::Arrow { span, .. } => span,
