@@ -3987,6 +3987,33 @@ fn lower_data_item(
     //   - Anything else   → ValueBody::Unparsed fallback.
     let mut suppress_unparsed_scaffold = false;
     let value_body = match body {
+        Some(SurfaceExpr::Lambda { params, body, span }) => {
+            let empty_scope = HashMap::new();
+            let empty_callable_scope = CallableScope::new();
+            let mut lambda_ctx = LambdaLoweringContext {
+                dag,
+                scope: &empty_scope,
+                callable_scope: &empty_callable_scope,
+                symbols,
+            };
+            match lower_lambda_expr(params, body, span, ty_decl_id, &mut lambda_ctx) {
+                Ok(lambda_decl_id) => {
+                    let lowered = lambda_ctx
+                        .dag
+                        .declaration(lambda_decl_id)
+                        .connective
+                        .clone();
+                    lambda_ctx.dag.declaration_mut(decl_id).connective = lowered;
+                    suppress_unparsed_scaffold = true;
+                    None
+                }
+                Err(diag) => {
+                    suppress_unparsed_scaffold = true;
+                    report_declaration_error(lambda_ctx.dag, diag);
+                    None
+                }
+            }
+        }
         Some(SurfaceExpr::Record { fields, .. }) => lower_record_to_structural(
             name,
             fields,
