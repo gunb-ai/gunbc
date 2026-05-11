@@ -54,10 +54,21 @@ type VariantPayload
   = Positional(List<SurfaceType>)
   | Record(List<SurfaceField>)
 
-// Generic / angle-bracket **argument** payload for `SurfaceType::Parameterized` only.
-// Phantom machine-width magnitudes (`Int<64>`, `MachineWidth<128>`, …) exist **only** here — not as
-// top-level `SurfaceType` variants — so illegal states stay unrepresentable at the parse-surface
-// substrate boundary (R3 gate #60 / INVARIANTS P2; codex review on #2697).
+// 🟡 SCAFFOLD at generic-argument substrate scope for SG-3f (`Parameterized.args`; mirror carrier, not
+// parse-rule authority).
+//
+// **`Ty`** vs **`PhantomWidthLit`** are disjoint parse facts surfaced by `parse_generic_type_arg` /
+// `parse_generic_type_arg_list_until` (`parse_parser_body.txt` → `parse_generated.rs`): recursive
+// `SurfaceType` argument vs sanctioned decimal literals only inside sanctioned `< … >` contexts (R3 gate #60).
+//
+// Ledger (Practice 4, modeling-discipline §4): dissolution patterns — (2) variant-as-data collapse is N/A
+// (payload shapes diverge structurally — nested type graphs vs lexical magnitude + span); (4)
+// dimensional split N/A here; (1) fact placement prematurely drops the phantom-vs-type placement invariant
+// before grammar-as-data; (3) algebraic refactor would resurrect illegal standalone phantom `SurfaceType`
+// constructions. Verdict remains **🟡** until SG-2b owns the grammar boundary.
+//
+// **Named dissolution trigger:** SG-2b — recursive **list-body** parse emission unblock in `parse_parser_body.txt`
+// (same cutover staging as sibling `SurfaceType` above — SG-2b / SG-3f coordination with `lower.rs`).
 type SurfaceTypeArg
   = Ty {
       body: SurfaceType

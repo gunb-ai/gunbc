@@ -55,10 +55,21 @@ use crate::types::TypeShape;
 
 type CallableScope = HashMap<String, DeclarationId>;
 const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
-/// Sentinel `UnresolvedIdentifier` name for placeholders after authoritative `ParseError`s during
-/// surface lowering — **not** a user-visible type (`Bool`) and exempt from strict ResolveError churn
-/// (codex `#2697`; INVARIANTS P3).
-const PARSE_FAILED_SURFACE_TYPE_MARKER: &str = "__gunbc_parse_failed_surface_type__";
+/// Internal `UnresolvedIdentifier` label after authoritative [`Diagnostic::ParseError`] during lowering.
+///
+/// **Skips duplicate `ResolveError`:** callers attach the primary diagnostic before allocating this atom;
+/// `run_identifier_sweep` matches on this sentinel and continues without emitting `ResolveError` (P3).
+///
+/// **User-namespace collision avoidance:** appended `U+E000` (Unicode private-use) is appended via `concat!`.
+/// v3 lexical `Ident` tokens are ASCII-only (`ScannerCharClass` in `tokenize_generated.rs`: start
+/// `[A-Za-z_]`, continue `[A-Za-z0-9_]`). User source therefore cannot lex a **single identifier token**
+/// equal to this full string literal — placeholders stay disjoint from reachable user type names (`#2697`).
+///
+/// **Future dissolution:** a dedicated substrate `AtomPayload` variant remains the long-term narrowing.
+const PARSE_FAILED_SURFACE_TYPE_MARKER: &str = concat!(
+    "__gunbc_parse_failed_surface_type__",
+    "\u{e000}",
+);
 
 /// Behavioral complexity lens + T-LAS carriers (`complexity_enforceable`, …). Kept **out**
 /// of the embedded `Dag::new` snapshot so rust emit tests are not forced to realize
