@@ -567,7 +567,16 @@ jobs:
     # required-check name doesn't block merges. The `always() && ... != 'failure'`
     # pattern lets this job run when `v3` either succeeded OR was skipped, but not
     # when `v3` actually failed.
-    if: ${{ always() && github.event.pull_request.draft != true && needs.v3.result != 'failure' && needs.v3.result != 'cancelled' }}
+    #
+    # **Fail-closed under filter failure** (openai-pro REQUEST_CHANGES on PR #2718):
+    # a `v3` skip is only legitimate when `changes` SUCCEEDED with `code=false`
+    # (proven docs-only). If `changes` itself fails or is cancelled, `v3` skips
+    # via the `needs:` graph but the skip is NOT proof of docs-only — it's
+    # absence of evidence. Adding `changes` to `needs:` + requiring
+    # `needs.changes.result == 'success'` in the `if:` makes the gate fail-closed:
+    # filter failure → self_host_ratchet skipped → branch-protection-visible
+    # incomplete signal rather than a phantom green.
+    if: ${{ always() && github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.v3.result != 'failure' && needs.v3.result != 'cancelled' }}
     # Same sizing rationale as `v3` above: DB-8 release builds + determinism_test (5× matrix) +
     # `self_host_fixed_point` run on the same ephemeral GCE Spot runner pool as `v3`;
     # small/default runners saw mid-compile shutdown on #1794. **60m** wall so cold-cache
@@ -580,7 +589,11 @@ jobs:
       - x64
       - ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'gunbc-ci' || 'gunbc-quick' }}
     timeout-minutes: 60
-    needs: [v3]
+    # `changes` added to `needs:` so the fail-closed `if:` clause above can
+    # reference `needs.changes.result` (openai-pro REQUEST_CHANGES fix). Without
+    # the `needs:` declaration the `result` accessor is unavailable and the
+    # gate degenerates to fail-open under filter failure.
+    needs: [v3, changes]
     continue-on-error: true
     steps:
       - name: Checkout
