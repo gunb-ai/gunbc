@@ -28,6 +28,11 @@ data entry: fn(Int) -> Int = |n| helper(n)
 fn helper(n: Int) -> Int = entry(n)
 fn use_entry() -> Int = entry(1)
 "#;
+const MALFORMED_LAMBDA_SOURCE: &str = r#"
+data wrong_arity: fn(Int) -> Int = |x, y| x
+
+fn use_wrong_arity() -> Int = wrong_arity(1)
+"#;
 
 fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
     let decl = dag
@@ -167,4 +172,13 @@ fn function_valued_data_cycles_fail_closed() {
         let dag = cached_compile_any(source, file);
         assert_rejected_data_lambda(&dag, data_name);
     }
+}
+
+#[test]
+fn function_valued_data_lambda_errors_poison_callable() {
+    let dag = cached_compile_any(
+        MALFORMED_LAMBDA_SOURCE,
+        "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_malformed_lambda.dag",
+    );
+    assert_rejected_data_lambda(&dag, "wrong_arity");
 }

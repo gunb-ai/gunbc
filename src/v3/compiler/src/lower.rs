@@ -4100,8 +4100,14 @@ fn lower_data_item(
                         None
                     }
                     Err(diag) => {
-                        // Keep the annotated connective, report the lambda error, and let the
-                        // Unparsed body marker preserve the data-vs-type-alias distinction.
+                        let rejected = rejected_data_lambda_connective(
+                            name,
+                            lambda_ctx.dag.declaration(decl_id).connective.clone(),
+                            diag.clone(),
+                            span,
+                            lambda_ctx.dag,
+                        );
+                        lambda_ctx.dag.declaration_mut(decl_id).connective = rejected;
                         report_declaration_error(lambda_ctx.dag, diag);
                         None
                     }
