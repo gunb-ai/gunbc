@@ -50,7 +50,7 @@ cargo bench --bench tier3_mirror_perf -p v3-compiler
 - `median_ns` in `tier3_baseline.json` = **median of the N per-run medians** (median-of-medians).
 - `p99_ns` = **max p99 across the N runs** (conservative pin; absorbs run-to-run tail variance).
 - Per-run medians and p99s are computed via the path-(a) extraction helper at §2.1 from each run's `target/criterion/<bench>/new/sample.json`.
-- The capture PR commits the extraction helper + per-run intermediate JSONs (or a single combined file recording the N samples) alongside the final `tier3_baseline.json` so the multi-run aggregation is reproducible / auditable.
+- The capture landing commits **`scripts/aggregate_tier3_baseline.py`** (bundle aggregation + stamping) + the final **`tier3_baseline.json`**. Bundled per-run **`criterion/`** subtrees SHOULD live either **in-repo** alongside the merge (**bootstrap / audited local sequencing**) **or** as **retained Actions artifacts** when capture runs via **`.github/workflows/tier3-baseline-capture.yml`** (preferred once dispatchable on `default`); do not silently drop reproducibility anchors for the **`N`** runs that fed the median-of-medians / max-p99 policy.
 
 ### 2.1 p99 source — explicit
 
