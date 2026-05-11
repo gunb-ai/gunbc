@@ -45,7 +45,11 @@
 #   TEST_TIMEOUT_EXEMPT   Path to exemption file
 #                         (default scripts/slow-test-exemptions.txt).
 #   TEST_TIMEOUT_MAX_EXEMPTIONS
+<<<<<<< HEAD
 #                         Ratchet floor for active exemption entries (default 81;
+=======
+#                         Ratchet floor for active exemption entries (default 78;
+>>>>>>> origin/main
 #                         keep aligned with non-comment rows in
 #                         scripts/slow-test-exemptions.txt). Raise or lower in the same PR
 #                         as exemption rows; lower when deleting exemptions.
@@ -56,7 +60,11 @@ log_file_arg=${1:-}
 budget_ms=${2:-${TEST_TIMEOUT_MS:-2000}}
 pkg=${TEST_TIMEOUT_PACKAGE:-v3-compiler}
 exempt_file=${TEST_TIMEOUT_EXEMPT:-scripts/slow-test-exemptions.txt}
+<<<<<<< HEAD
 max_exemptions=${TEST_TIMEOUT_MAX_EXEMPTIONS:-81}
+=======
+max_exemptions=${TEST_TIMEOUT_MAX_EXEMPTIONS:-78}
+>>>>>>> origin/main
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$script_dir/.." && pwd)

@@ -79,7 +79,7 @@ FOR CODE: apply the six principles from docs/modeling-discipline.md as active ch
      STAGNANT|ACCUMULATING_DEBT|reason.
 Also check INVARIANTS.md.
 FOR .DAG: fidelity to external spec, composition from std/ primitives, layering (L0-L5), M9 grounding, coproduct dissolution.
-FOR DESIGN/DOCS: challenge the design against the thesis. What's missing? Where are the load-bearing assumptions? Does it reinvent something in std/ or src/v2?
+FOR DESIGN/DOCS: challenge the design against the thesis. What's missing? Where are the load-bearing assumptions? Does it reinvent something in std/ or v3 sources?
 
 CONSTRAINTS:
 - SCOPE: stay within the PR's scope.

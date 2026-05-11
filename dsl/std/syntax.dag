@@ -75,8 +75,8 @@ type ItemForm {
 // -- Algebra field kind -----------------------------------------------
 // Which algebra field an operator dispatches through on the operand type.
 // Variants correspond to algebraic field names used by downstream
-// consumers. AlgQuotient/AlgRemainder are a v2-only compatibility bridge for
-// src/v2/00_core.dag + src/v2/04_types.dag Div/Mod dispatch; they are not v3
+// consumers. AlgQuotient/AlgRemainder are a legacy-only compatibility bridge for
+// historical core + types Div/Mod dispatch; they are not v3
 // algebra authority because v3 OrderedRing no longer declares quotient or
 // remainder fields in std/algebra.dag. Dissolution trigger: delete these two
 // variants and rows when the v2 Div/Mod algebra-field dispatch is retired or

@@ -67,7 +67,7 @@ jobs:
   # Policy + bootstrap snapshot verify (T-V2 G-2-prereq-ci): shell policy checks
   # plus `regen_bootstrap --verify` so stale `bootstrap_generated*.rs` cannot merge
   # when only this job is green (#1543). Legacy CI previously built and ran the
-  # DAG-language compiler from `src/v2/` in this job; that release transport is
+  # DAG-language compiler from the retired legacy tree in this job; that release transport is
   # removed to cut wall time. Full compiler + test surface stays in the `v3`
   # job. Local reproduction of the old pipeline: `dsl/gunbc/tools/ci_runner.dag`
   # `run_ci_pipeline`.

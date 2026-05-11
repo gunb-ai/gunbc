@@ -40,7 +40,7 @@ data python_item_forms: List<ItemForm> = [
 // Python operator precedence (emission-relevant subset).
 // Python uses word operators for boolean (and, or) and // for integer div.
 // The // binding is retained only for the v2 AlgQuotient compatibility bridge
-// consumed by src/v2 language emission tests. It is not v3 algebra authority;
+// consumed by legacy language emission tests. It is not v3 algebra authority;
 // delete it with AlgQuotient when v2 Div dispatch is retired or moved behind a
 // v2-local syntax authority.
 // Ref: Python Reference §6.17 "Operator precedence"
