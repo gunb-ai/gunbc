@@ -1,0 +1,26 @@
+// R3 gate #71 — `v3_self_host_demonstration` (T-V2-Retirement).
+//
+// PB-Runtime: `ExecuteCommand` runs the `self_host_fixed_point` binary (DB-8 fixed-point
+// ratchet driver). `__SELF_HOST_FIXED_POINT_BIN__` is replaced at integration-test compile
+// time with `env!("CARGO_BIN_EXE_self_host_fixed_point")` (same discipline as
+// `r1c_e_emit_gates.template.dag`; see `r3_v3_self_host_demonstration_dag_test.rs`).
+//
+// Receipt: `compile_to_dag` → `TestRunner` → bounded host-spawn trampoline over a v3-only
+// binary (`v3_compiler` only — no v2 fallback in the driver).
+
+module v3.compiler.tests.r3.v3_self_host_demonstration
+
+import std.verification { TestClaim, TestSuite }
+
+data v3_self_host_demonstration_claim: TestClaim = {
+  name: "v3_self_host_demonstration",
+  source: "let marker: Int = 1",
+  file_name: "r3_v3_self_host_demonstration_smoke.v3",
+  predicate: ExecuteCommand("__SELF_HOST_FIXED_POINT_BIN__", [], 0),
+  requires: []
+}
+
+data suite_v3_self_host_demonstration: TestSuite = {
+  name: "r3/v3-self-host-demonstration",
+  claims: [v3_self_host_demonstration_claim]
+}

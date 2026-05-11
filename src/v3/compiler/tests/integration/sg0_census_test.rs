@@ -598,6 +598,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
     // R2-Evaluator corpus comparison directly without this host-side harness.
     "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
+    // R3 gate #71 (`v3_self_host_demonstration`): `ExecuteCommand` through `TestRunner` over the
+    // `self_host_fixed_point` binary — PB-Runtime trampoline + v3-only DB-8 fixed-point driver.
+    "src/v3/compiler/tests/integration/r3_v3_self_host_demonstration_dag_test.rs",
     // R3 L4/L7/L5 skeleton + L7 enum-backed algebra-law matrix: hand-Rust receipt that Lane 1
     // `DifferentialEquals` emit/eval pairing, Lane 1 `AlgebraicLaw` (`Associativity` /
     // `Commutativity` / `Identity`) operational witnesses, and the T-V-L5-Corpus seed
