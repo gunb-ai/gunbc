@@ -165,6 +165,15 @@ struct Parser<'a> {
     bare_rhs_alias_reference_idents: Option<HashSet<String>>,
 }
 
+/// Whether decimal integer literals may lower as phantom machine-width magnitudes (`Int<64>`, …).
+/// Kept illegal at the parse boundary for ordinary type atoms (`type Bad = 64`) so illegal states are
+/// not representable under `SurfaceType` (cf. gate #60 / R3 modeling discipline).
+#[derive(Clone, Copy)]
+enum AtomTypePolicy {
+    DisallowPhantomWidthLit,
+    AllowPhantomWidthLit,
+}
+
 impl<'a> Parser<'a> {
     fn peek(&self) -> &Token {
         &self.tokens[self.pos]
@@ -1219,7 +1228,10 @@ impl<'a> Parser<'a> {
         match &self.peek().kind {
             TokenKind::LParen => {
                 self.bump();
-                let payload = self.parse_type_expr_list_until(TokenKind::RParen)?;
+                let payload = self.parse_type_expr_list_until(
+                    TokenKind::RParen,
+                    AtomTypePolicy::DisallowPhantomWidthLit,
+                )?;
                 let close = self.expect_kind(TokenKind::RParen)?;
                 Ok(SurfaceVariant {
                     name,
@@ -1287,7 +1299,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type_expr(&mut self) -> Result<SurfaceType, Diagnostic> {
-        let mut ty = self.parse_atom_type()?;
+        self.parse_type_expr_with_atom_policy(AtomTypePolicy::DisallowPhantomWidthLit)
+    }
+
+    fn parse_type_expr_with_atom_policy(
+        &mut self,
+        atom_policy: AtomTypePolicy,
+    ) -> Result<SurfaceType, Diagnostic> {
+        let mut ty = self.parse_atom_type(atom_policy)?;
         while matches!(self.peek().kind, TokenKind::Question) {
             let q = self.bump().clone();
             let start = ty.span().byte_start;
@@ -1299,11 +1318,14 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    fn parse_atom_type(&mut self) -> Result<SurfaceType, Diagnostic> {
+    fn parse_atom_type(&mut self, atom_policy: AtomTypePolicy) -> Result<SurfaceType, Diagnostic> {
         if matches!(self.peek().kind, TokenKind::KwFn) {
             let fn_tok = self.bump().clone();
             self.expect_kind(TokenKind::LParen)?;
-            let inputs = self.parse_type_expr_list_until(TokenKind::RParen)?;
+            let inputs = self.parse_type_expr_list_until(
+                TokenKind::RParen,
+                AtomTypePolicy::DisallowPhantomWidthLit,
+            )?;
             self.expect_kind(TokenKind::RParen)?;
             self.expect_kind(TokenKind::Arrow)?;
             let output = self.parse_type_expr()?;
@@ -1315,17 +1337,26 @@ impl<'a> Parser<'a> {
             });
         }
 
-        // R3 §1.8 gate #60 / S3 Phase-2: `Int<64>`, `Real<32>`, `MachineWidth<128>`, …
-        // — decimal literal as phantom machine-width magnitude in type-argument position.
+        // R3 §1.8 gate #60 / S3 Phase-2: `Int<64>`, … — decimal literals as magnitudes appear
+        // **only inside** `Name<…>` generic-arg lists (`AtomTypePolicy::AllowPhantomWidthLit`).
         if matches!(&self.peek().kind, TokenKind::IntLit(_)) {
             let lit_tok = self.bump().clone();
             let TokenKind::IntLit(bits_lit) = lit_tok.kind else {
                 unreachable!("matches IntLit above");
             };
-            return Ok(SurfaceType::PhantomWidthLit {
-                bits_lit,
-                span: lit_tok.span,
-            });
+            return match atom_policy {
+                AtomTypePolicy::AllowPhantomWidthLit => Ok(SurfaceType::PhantomWidthLit {
+                    bits_lit,
+                    span: lit_tok.span,
+                }),
+                AtomTypePolicy::DisallowPhantomWidthLit => Err(Diagnostic::ParseError {
+                    message: "phantom machine-width literals are only allowed inside \
+                         `Int<N>`, `UInt<N>`, `Real<N>`, `Nat<N>`, or `MachineWidth<N>`"
+                        .to_string(),
+                    span: lit_tok.span,
+                    fixes: Vec::new(),
+                }),
+            };
         }
 
         let token = self.bump().clone();
@@ -1342,7 +1373,8 @@ impl<'a> Parser<'a> {
 
         if matches!(self.peek().kind, TokenKind::Lt) && self.looks_like_type_args() {
             self.bump();
-            let args = self.parse_type_expr_list_until(TokenKind::Gt)?;
+            let args = self
+                .parse_type_expr_list_until(TokenKind::Gt, AtomTypePolicy::AllowPhantomWidthLit)?;
             let close = self.expect_kind(TokenKind::Gt)?;
             Ok(SurfaceType::Parameterized {
                 name,
@@ -1369,13 +1401,14 @@ impl<'a> Parser<'a> {
     fn parse_type_expr_list_until(
         &mut self,
         end: TokenKind,
+        element_atom_policy: AtomTypePolicy,
     ) -> Result<Vec<SurfaceType>, Diagnostic> {
         let mut types = Vec::new();
         if self.peek().kind == end {
             return Ok(types);
         }
         loop {
-            types.push(self.parse_type_expr()?);
+            types.push(self.parse_type_expr_with_atom_policy(element_atom_policy)?);
             if matches!(self.peek().kind, TokenKind::Comma) {
                 self.bump();
                 continue;
