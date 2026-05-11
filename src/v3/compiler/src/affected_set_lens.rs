@@ -21,6 +21,16 @@
 //! Narrowing demos for gunbc#2699 lean on **`cost` / `effect` / `refinement`**
 //! deltas plus commentary in `.dag` worked examples.
 //!
+//! ## Prototype debt (Debug snapshots / module footprint)
+//!
+//! Cost, refinement, effect-shape, and paired-behavior deltas still lean on **`Debug` text**
+//! comparisons in places — acceptable for exercised examples (gunbc#2699) but brittle if rustfmt
+//! or `Debug` impl layout shifts without semantic substrate drift; dissolution is explicit in
+//! ROADMAP **T-PB-A/T-PB-B** alongside other host-query mirrors.
+//!
+//! This file overshoots `CODING.md`'s heuristic (~500 LOC for **new** modules); split pairing vs
+//! downstream closure vs dimension seed wiring on the next substantive change, not for line-count alone.
+//!
 //! ## Cross-`Dag` pairing (P1 / P2)
 //!
 //! `BehaviorPairing` keys behaviors only by compiler `SourceSpan` identity (`file` + `byte_start`)
