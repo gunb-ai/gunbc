@@ -37,23 +37,24 @@ pub struct EffectEnumerationReport {
     pub transaction: TransactionalPattern,
 }
 pub fn enumerate_effects(p0: &Dag) -> EffectEnumerationReport {
-    let facts = compute_effect_facts(p0);
+    enumerate_effects_with_facts(p0, compute_effect_facts(p0))
+}
+pub fn enumerate_effects_with_facts(p0: &Dag, p1: Vec<EffectFact>) -> EffectEnumerationReport {
     EffectEnumerationReport {
-        coverage_gaps: compute_coverage_gaps_from_facts((p0).nodes(), p0, &facts),
-        facts,
+        facts: (p1).clone(),
+        coverage_gaps: compute_coverage_gaps_from_facts((p0).nodes(), p0, &p1),
         redundant_reads: Vec::new(),
         transaction: transaction_pattern(p0),
     }
 }
 pub fn compute_effect_facts(p0: &Dag) -> Vec<EffectFact> {
-    // In-place prepend stack (`insert(0, …)`) avoids cloning `Vec`s on each step of the DAG walk.
-    // Regen note: folding that clones `(acc).clone()` accidentally squares work on large substrates.
-    let mut facts = Vec::new();
-    for __fold_item in (p0).nodes() {
-        let next = effect_fact_for(p0, &facts, __fold_item);
-        facts.insert(0, next);
-    }
-    facts
+    ((p0).nodes())
+        .iter()
+        .fold(Vec::new(), |__fold_acc, __fold_item| {
+            let mut __list = (__fold_acc).clone();
+            __list.insert(0, effect_fact_for(p0, &__fold_acc, __fold_item));
+            __list
+        })
 }
 pub fn effect_fact_for(p0: &Dag, p1: &[EffectFact], p2: &Behavior) -> EffectFact {
     match p2 {

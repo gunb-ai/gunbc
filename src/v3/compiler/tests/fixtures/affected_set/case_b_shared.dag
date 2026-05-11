@@ -1,0 +1,3 @@
+// Attribution spine for integration tests: substantive bodies live in case_b_before.dag / case_b_after.dag.
+
+module user.affected_set_case_b_fixture_attrib
