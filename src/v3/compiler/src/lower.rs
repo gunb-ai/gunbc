@@ -310,7 +310,8 @@ pub(crate) fn lower_bodies_phase(
             );
         }
     }
-    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
+    let invalid_data_lambda_cycles =
+        compute_invalid_data_lambda_cycles(&module.items, symbols, is_first);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
             continue;
@@ -331,7 +332,7 @@ pub(crate) fn lower_bodies_phase(
                 dag,
                 symbols,
                 &pending_refined_function_refs,
-                mutual_recursion.invalid_by_member.get(&symbols[name]),
+                invalid_data_lambda_cycles.get(&symbols[name]),
             );
         }
     }
@@ -343,6 +344,7 @@ pub(crate) fn lower_bodies_phase(
     lower_parameter_refinements_phase(dag, module, symbols, is_first);
     lower_type_alias_refinements_phase(dag, module, symbols, is_first);
     validate_scalar_data_refinements_phase(dag, module, symbols, is_first);
+    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
@@ -9569,6 +9571,193 @@ struct CallableSurfaceInfo<'a> {
     body: &'a SurfaceExpr,
     shadowed_names: Vec<String>,
     is_data_lambda: bool,
+}
+
+fn compute_invalid_data_lambda_cycles(
+    items: &[SurfaceItem],
+    symbols: &HashMap<String, DeclarationId>,
+    is_first: &[bool],
+) -> HashMap<DeclarationId, InvalidMutualCluster> {
+    debug_assert_eq!(items.len(), is_first.len());
+    let mut order: Vec<DeclarationId> = Vec::new();
+    let mut callable_infos: HashMap<DeclarationId, CallableSurfaceInfo<'_>> = HashMap::new();
+    let mut callable_symbols: HashMap<String, DeclarationId> = HashMap::new();
+    for (idx, item) in items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        match item {
+            SurfaceItem::Fn {
+                name, params, body, ..
+            } => {
+                let Some(&decl_id) = symbols.get(name) else {
+                    continue;
+                };
+                order.push(decl_id);
+                callable_infos.insert(
+                    decl_id,
+                    CallableSurfaceInfo {
+                        name,
+                        body,
+                        shadowed_names: params.iter().map(|param| param.name.clone()).collect(),
+                        is_data_lambda: false,
+                    },
+                );
+                callable_symbols.insert(name.clone(), decl_id);
+            }
+            SurfaceItem::Data {
+                name,
+                body:
+                    Some(SurfaceExpr::Lambda {
+                        params,
+                        body: lambda_body,
+                        ..
+                    }),
+                ..
+            } => {
+                let Some(&decl_id) = symbols.get(name) else {
+                    continue;
+                };
+                order.push(decl_id);
+                callable_infos.insert(
+                    decl_id,
+                    CallableSurfaceInfo {
+                        name,
+                        body: lambda_body,
+                        shadowed_names: params.clone(),
+                        is_data_lambda: true,
+                    },
+                );
+                callable_symbols.insert(name.clone(), decl_id);
+            }
+            _ => {}
+        }
+    }
+
+    let order_index: HashMap<DeclarationId, usize> = order
+        .iter()
+        .enumerate()
+        .map(|(idx, decl_id)| (*decl_id, idx))
+        .collect();
+    let mut calls: HashMap<DeclarationId, Vec<DeclarationId>> = HashMap::new();
+    for decl_id in &order {
+        let Some(info) = callable_infos.get(decl_id) else {
+            continue;
+        };
+        let mut callees = HashSet::new();
+        let mut shadowed: HashSet<String> = info.shadowed_names.iter().cloned().collect();
+        collect_direct_callable_callees(info.body, &callable_symbols, &mut shadowed, &mut callees);
+        let mut sorted_callees: Vec<DeclarationId> = callees.into_iter().collect();
+        sorted_callees.sort_by_key(|callee| order_index.get(callee).copied().unwrap_or(usize::MAX));
+        calls.insert(*decl_id, sorted_callees);
+    }
+
+    let mut invalid_by_member = HashMap::new();
+    for members in strongly_connected_components(&order, &calls)
+        .into_iter()
+        .filter(|component| component.len() > 1)
+    {
+        if !members.iter().any(|member| {
+            callable_infos
+                .get(member)
+                .is_some_and(|info| info.is_data_lambda)
+        }) {
+            continue;
+        }
+        let invalid = InvalidMutualCluster {
+            members: members
+                .iter()
+                .filter_map(|member| callable_infos.get(member).map(|info| info.name.to_string()))
+                .collect(),
+        };
+        for member in members {
+            invalid_by_member.insert(member, invalid.clone());
+        }
+    }
+    invalid_by_member
+}
+
+fn collect_direct_callable_callees(
+    expr: &SurfaceExpr,
+    callable_symbols: &HashMap<String, DeclarationId>,
+    shadowed: &mut HashSet<String>,
+    out: &mut HashSet<DeclarationId>,
+) {
+    match expr {
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => {}
+        SurfaceExpr::Call { target, args, .. } => {
+            if !shadowed.contains(target) {
+                if let Some(&callee_decl) = callable_symbols.get(target) {
+                    out.insert(callee_decl);
+                }
+            }
+            for arg in args {
+                collect_direct_callable_callees(arg, callable_symbols, shadowed, out);
+            }
+        }
+        SurfaceExpr::VariantRecord { fields, .. } => {
+            for field in fields {
+                collect_direct_callable_callees(&field.value, callable_symbols, shadowed, out);
+            }
+        }
+        SurfaceExpr::Operator { args, .. } => {
+            for arg in args {
+                collect_direct_callable_callees(arg, callable_symbols, shadowed, out);
+            }
+        }
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_direct_callable_callees(cond, callable_symbols, shadowed, out);
+            collect_direct_callable_callees(then_branch, callable_symbols, shadowed, out);
+            collect_direct_callable_callees(else_branch, callable_symbols, shadowed, out);
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            collect_direct_callable_callees(scrutinee, callable_symbols, shadowed, out);
+            for arm in arms {
+                let mut arm_shadowed = shadowed.clone();
+                for binding in pattern_binding_names(&arm.pattern) {
+                    arm_shadowed.insert(binding.to_string());
+                }
+                collect_direct_callable_callees(
+                    &arm.body,
+                    callable_symbols,
+                    &mut arm_shadowed,
+                    out,
+                );
+            }
+        }
+        SurfaceExpr::Lambda { params, body, .. } => {
+            let mut lambda_shadowed = shadowed.clone();
+            lambda_shadowed.extend(params.iter().cloned());
+            collect_direct_callable_callees(body, callable_symbols, &mut lambda_shadowed, out)
+        }
+        SurfaceExpr::Record { fields, .. } => {
+            for field in fields {
+                collect_direct_callable_callees(&field.value, callable_symbols, shadowed, out);
+            }
+        }
+        SurfaceExpr::List { elements, .. } => {
+            for element in elements {
+                collect_direct_callable_callees(element, callable_symbols, shadowed, out);
+            }
+        }
+        SurfaceExpr::Map { entries, .. } => {
+            for entry in entries {
+                collect_direct_callable_callees(&entry.value, callable_symbols, shadowed, out);
+            }
+        }
+        SurfaceExpr::PathCall { args, .. } => {
+            for arg in args {
+                collect_direct_callable_callees(arg, callable_symbols, shadowed, out);
+            }
+        }
+    }
 }
 
 /// `is_first` must parallel `items` (from [`collect_symbols`]). Only
