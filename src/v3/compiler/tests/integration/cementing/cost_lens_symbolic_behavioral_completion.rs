@@ -293,7 +293,7 @@ fn symbolic_cost_surface_cements_unknown_classification() {
 }
 
 #[test]
-fn symbolic_cost_surface_cements_div_log_and_fail_closed_miss() {
+fn symbolic_cost_surface_cements_div_log_cost() {
     let (dividend, divisor) = bootstrap_ports();
 
     let cheap_inputs = vec![
@@ -317,7 +317,10 @@ fn symbolic_cost_surface_cements_div_log_and_fail_closed_miss() {
         contains_log_for_port(&div_cost, dividend),
         "Div should retain LogCost keyed by dividend {dividend:?}, got {div_cost:?}"
     );
+}
 
+#[test]
+fn symbolic_cost_surface_cements_div_fail_closed_miss() {
     let missing_inputs = transform_cost_for_target(
         &[],
         &TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
