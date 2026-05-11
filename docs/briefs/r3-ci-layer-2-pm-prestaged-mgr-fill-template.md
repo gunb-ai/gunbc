@@ -4,7 +4,7 @@
 
 **Authority**: PM authoring; Director-cited; Mgr-fill destination. Pre-staged 2026-05-11 EOD per Director greenlight at msg_4623068b.
 
-**Purpose**: provide the Verification Mgr with a starting grouping (slow tests by file-area) plus a `(test_pattern, dimension, required_paths_regex)` skeleton aligned to the affected-set lens per-dimension output shape (`docs/design-affected-set-lens.md` §2). Mgr finalizes inventory + path-mapping; PM only provides the template + structural alignment.
+**Purpose**: provide the Verification Mgr with a starting grouping (slow tests by file-area) plus a `(test_pattern, dimensions, required_paths_regex)` skeleton aligned to the affected-set lens per-dimension output shape (`docs/design-affected-set-lens.md` §2). Mgr finalizes inventory + path-mapping; PM only provides the template + structural alignment.
 
 **Hard constraint** (per `feedback_parallel_representation_debt` + locked design): every entry below carries a `dimensions:` **field** (Set<Dimension>) matching the affected-set lens `Dimension` enum. **Multi-dimension carriage is REQUIRED, not optional**: a consumer that reads both Cost AND Complexity must carry `dimensions: [Cost, Complexity]` — narrowing to a single "primary" dimension is a semantic-contract violation against `docs/design-affected-set-lens.md` §2 (full affected-set = union across every dimension the consumer reads). Post-dissolution `skip_*` flags compute structurally as `(affected_dimensions ∩ group.dimensions) ≠ ∅` (non-empty intersection means run), NOT `affected_dimensions.contains(single_primary)`.
 
@@ -42,20 +42,20 @@ A test/consumer is "affected" (must run) when **any** dimension it reads has a p
 
 Source: `scripts/slow-test-exemptions.txt` (78 active entries as of 2026-05-11 EOD at sha e9c8f9896). Grouped by module prefix; counts in parens.
 
-### Cluster A — Emission / determinism (~10)
+### Cluster A — Emission / determinism (15)
 
 | Module | Tests | Notes |
 |---|---|---|
 | `db8_*` | 1 (`db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix`) | DB-8 / ROADMAP Lane 3 Stage 3c |
-| `emit_matrix_*` | 6 (`emit_matrix_module_{go,python,rust}_is_deterministic` + `emit_matrix_program_*`) | 5× emit matrix sweep |
+| `emit_matrix_*` | 6 (`emit_matrix_module_{go,python,rust}_is_deterministic` + `emit_matrix_program_*`) | 6× emit matrix sweep (3 module + 3 program) |
 | `four_fixture_*` | 2 (`four_fixture_disk_sources_emit_deterministically` + `four_fixture_regression_test::four_fixture_suite_shares_one_reachability_shape`) | 4-fixture corpus |
 | `m1_3_emit_rust_test::*` | 6 | M1.3 Rust roundtrip rustc harness |
 
-### Cluster B — Lane 2 Stage 2d cost migration (~6)
+### Cluster B — Lane 2 Stage 2d cost migration (7)
 
 | Module | Tests |
 |---|---|
-| `lane2_stage_2d_symbolic_cost_test::*` | 6 (`branch_reports_constant_when_both_arms_constant`, `cost_dag_compiles_cleanly`, `cost_generated_module_matches_checked_in_snapshot`, `recursive_fn_body_contributes_to_loop_cost`, `recursive_fn_reports_linear_via_loop_lowering`, `transform_single_op_reports_constant`, `value_reports_constant`) |
+| `lane2_stage_2d_symbolic_cost_test::*` | 7 (`branch_reports_constant_when_both_arms_constant`, `cost_dag_compiles_cleanly`, `cost_generated_module_matches_checked_in_snapshot`, `recursive_fn_body_contributes_to_loop_cost`, `recursive_fn_reports_linear_via_loop_lowering`, `transform_single_op_reports_constant`, `value_reports_constant`) |
 
 ### Cluster C — M2 lens migration (~7)
 
@@ -66,7 +66,7 @@ Source: `scripts/slow-test-exemptions.txt` (78 active entries as of 2026-05-11 E
 | `m2_lens_provenance_migration_test::*` | 1 (`lens_provenance_dag_runs_end_to_end_via_rustc_harness`) |
 | `m2_lens_unused_parameters_migration_test::*` | 2 (`unused_parameters_dag_runs_end_to_end_via_rustc_harness`, `unused_parameters_dag_self_analysis_reports_zero_findings`) |
 
-### Cluster D — T-Lens-Behavioral-Parity / gate #73 / cost lens consumer (~5)
+### Cluster D — T-Lens-Behavioral-Parity / gate #73 / cost lens consumer (9)
 
 | Module | Tests |
 |---|---|
@@ -190,7 +190,7 @@ Each row: `(test_pattern, dimensions, required_paths_regex, confidence, dissolut
      run: cargo test -p v3-compiler --test integration <module_filter>
    ```
 
-5. **Pilot cluster selection**: which cluster does Mgr prototype first? PM recommendation: **Cluster B (Lane 2 Stage 2d symbolic cost)** — high confidence in path-regex, contained module, ~6 tests, **single-dimension set `[Cost]`** (no multi-dim union complexity for the pilot). Lowest risk, highest learning per LOC.
+5. **Pilot cluster selection**: which cluster does Mgr prototype first? PM recommendation: **Cluster B (Lane 2 Stage 2d symbolic cost)** — high confidence in path-regex, contained module, 7 tests, **single-dimension set `[Cost]`** (no multi-dim union complexity for the pilot). Lowest risk, highest learning per LOC.
 
 ---
 
