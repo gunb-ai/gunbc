@@ -79,14 +79,24 @@ type Gate60_MachineWidth128_Lit = MachineWidth<128>\n";
 
 #[test]
 fn r3_gate60_phantom_width_unsupported_magnitude_emits_diagnostic() {
-    let outcome = cached_compile_outcome("type Bad = Int<99>\n", "r3_gate60_bad_phantom_width.v3");
+    let src = "type Bad = Int<99>\n";
+    let outcome =
+        cached_compile_outcome(src, "r3_gate60_bad_phantom_width.v3");
     let dag = outcome.dag();
     assert!(
         dag.diagnostics().iter().any(|(_, d)| {
-            d.message()
-                .contains("unsupported phantom machine-width `99`")
+            matches!(
+                d,
+                Diagnostic::ParseError {
+                    fixes,
+                    span,
+                    ..
+                } if fixes.is_empty()
+                    && src.get(span.byte_start..span.byte_end) == Some("99")
+            )
         }),
-        "expected unsupported-width diagnostic, got {:?}",
+        "expected Diagnostic::ParseError whose span selects the offending literal \
+         `99` (typed carrier, datum pinned — not prose), got {:?}",
         dag.diagnostics()
     );
     let resolve_errors: Vec<&str> = dag
@@ -105,13 +115,25 @@ fn r3_gate60_phantom_width_unsupported_magnitude_emits_diagnostic() {
 
 #[test]
 fn r3_gate60_bare_phantom_width_literal_emits_diagnostic() {
-    match compile_to_dag("type BarePhantom = 64\n", "r3_gate60_bare_phantom_lit.v3") {
-        Err(CompileError::Parse(diag)) => {
+    let src = "type BarePhantom = 64\n";
+    match compile_to_dag(src, "r3_gate60_bare_phantom_lit.v3") {
+        Err(CompileError::Parse(ref diag)) => {
+            let Diagnostic::ParseError {
+                fixes,
+                span,
+                ..
+            } = diag else {
+                panic!("expected CompileError::Parse(ParseError {{ .. }}); got CompileError::Parse({diag:?})");
+            };
             assert!(
-                diag.message()
-                    .contains("phantom machine-width literals are only allowed inside"),
-                "expected bare-literal diagnostic, got {}",
-                diag.message()
+                fixes.is_empty(),
+                "ParseError.fixes unexpected for phantom-width gate assertion"
+            );
+            assert_eq!(
+                src.get(span.byte_start..span.byte_end),
+                Some("64"),
+                "typed ParseError must highlight the offending decimal magnitude token \
+                 — not asserted on full prose (TESTING.md)"
             );
         }
         Err(other) => {
