@@ -1,14 +1,21 @@
 //! R3 Class 2 gap representative: top-level function-valued `data`
 //! executes through the public evaluator as a callable declaration.
 
-use crate::common::cached_compile_to_dag;
-use v3_compiler::dag::{literal_bits_int, ArrowBody, Behavior, TransformTarget, TypeConnective};
+use crate::common::{cached_compile_any, cached_compile_to_dag};
+use v3_compiler::dag::{
+    literal_bits_int, ArrowBody, Behavior, TransformTarget, TypeConnective, ValueBody,
+};
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
 };
 
 const SOURCE: &str = include_str!("../fixtures/r3_class_2_function_valued_data.dag");
 const FILE: &str = "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data.dag";
+const RECURSIVE_SOURCE: &str = r#"
+data countdown: fn(Int) -> Int = |n| countdown(n)
+
+fn use_countdown() -> Int = countdown(1)
+"#;
 
 fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
     let decl = dag
@@ -91,4 +98,37 @@ fn substrate_gap_function_valued_data_executes_through_evaluator() {
         .expect("function-valued data should execute through evaluator");
 
     assert_eq!(value, Value::LiteralValue(literal_bits_int(42)));
+}
+
+#[test]
+fn function_valued_data_recursion_fails_closed() {
+    let dag = cached_compile_any(
+        RECURSIVE_SOURCE,
+        "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_recursive.dag",
+    );
+    assert!(
+        dag.diagnostics()
+            .iter()
+            .any(|diag| format!("{diag:?}").contains("recursive data lambdas are rejected")),
+        "recursive function-valued data must surface a bounded-execution diagnostic: {:?}",
+        dag.diagnostics()
+    );
+
+    let countdown = dag
+        .declaration_by_name("countdown")
+        .expect("recursive function-valued data declaration");
+    assert!(
+        matches!(countdown.value_body, Some(ValueBody::Unparsed(_))),
+        "failed recursive data lambda must retain an Unparsed body marker"
+    );
+    assert!(
+        !matches!(
+            countdown.connective,
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(_),
+                ..
+            }
+        ),
+        "recursive data lambda must not install an executable UserDefined Arrow"
+    );
 }

@@ -3989,26 +3989,40 @@ fn lower_data_item(
     let mut suppress_unparsed_scaffold = false;
     let value_body = match body {
         Some(SurfaceExpr::Lambda { params, body, span }) => {
-            let empty_scope = HashMap::new();
-            let empty_callable_scope = CallableScope::new();
-            let mut lambda_ctx = LambdaLoweringContext {
-                dag,
-                scope: &empty_scope,
-                callable_scope: &empty_callable_scope,
-                symbols,
-            };
-            match lower_lambda_expr_to_arrow(params, body, span, ty_decl_id, &mut lambda_ctx) {
-                Ok(connective) => {
-                    lambda_ctx.dag.declaration_mut(decl_id).connective = connective;
-                    suppress_unparsed_scaffold = true;
-                    None
-                }
-                Err(diag) => {
-                    // Keep the annotated connective and report the lambda error instead of
-                    // manufacturing an opaque data-body scaffold for a failed callable.
-                    suppress_unparsed_scaffold = true;
-                    report_declaration_error(lambda_ctx.dag, diag);
-                    None
+            if is_recursive(body, name, dag, symbols) {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "function-valued data `{name}` is recursive; recursive data lambdas \
+                             are rejected until they participate in the bounded recursion gate"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+                None
+            } else {
+                let empty_scope = HashMap::new();
+                let empty_callable_scope = CallableScope::new();
+                let mut lambda_ctx = LambdaLoweringContext {
+                    dag,
+                    scope: &empty_scope,
+                    callable_scope: &empty_callable_scope,
+                    symbols,
+                };
+                match lower_lambda_expr_to_arrow(params, body, span, ty_decl_id, &mut lambda_ctx) {
+                    Ok(connective) => {
+                        lambda_ctx.dag.declaration_mut(decl_id).connective = connective;
+                        suppress_unparsed_scaffold = true;
+                        None
+                    }
+                    Err(diag) => {
+                        // Keep the annotated connective, report the lambda error, and let the
+                        // Unparsed body marker preserve the data-vs-type-alias distinction.
+                        report_declaration_error(lambda_ctx.dag, diag);
+                        None
+                    }
                 }
             }
         }
