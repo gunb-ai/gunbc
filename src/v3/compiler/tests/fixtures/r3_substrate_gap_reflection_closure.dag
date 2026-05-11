@@ -1,9 +1,10 @@
-// std.r3_substrate_gap_reflection_closure - R3 gate #64 fixture.
+// std.r3_substrate_gap_reflection_closure - R3 gate #64 substrate-plumbing receipt.
 //
-// The class-level closure predicate for reflection is intentionally tied to the
-// T-LensProducer-Retirement residual set. The gate passes only when the three
-// lens-producer Rust surfaces have retired from the live SG-0 census:
-// `lens_apply.rs`, `lens_testgen_body.txt`, and `bin/regen_lens.rs`.
+// This is NOT the canonical `substrate_gap_reflection_closure_closed` gate
+// predicate. The class-level gate remains conjunctive per r3-structure.md:
+// representative reflection execution via PB-Runtime plus zero residual
+// class bridges. This fixture covers only the second half's current
+// lens-producer residual census.
 
 module std.r3_substrate_gap_reflection_closure
 
@@ -19,10 +20,10 @@ type Sg0CensusAuthority {}
 
 data sg0_census_test_authority: Sg0CensusAuthority = {}
 
-data substrate_gap_reflection_closure_closed: TestClaim = {
-  name: "substrate_gap_reflection_closure_closed",
-  source: "// Reflection-closure predicates read external census state, not this source.\nlet _: Int = 0\n",
-  file_name: "r3_substrate_gap_reflection_closure_closed.v3",
+data substrate_gap_reflection_residual_census_receipt: TestClaim = {
+  name: "substrate_gap_reflection_residual_census_receipt",
+  source: "// Reflection residual-census receipts read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r3_substrate_gap_reflection_residual_census_receipt.v3",
   predicate: CensusSubsetCount {
     authority: sg0_census_test_authority,
     list_constant: expected_hand_authored_non_test,
@@ -33,5 +34,5 @@ data substrate_gap_reflection_closure_closed: TestClaim = {
 
 data r3_substrate_gap_reflection_closure_suite: TestSuite = {
   name: "r3_substrate_gap_reflection_closure_suite",
-  claims: [substrate_gap_reflection_closure_closed]
+  claims: [substrate_gap_reflection_residual_census_receipt]
 }

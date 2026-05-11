@@ -1,11 +1,10 @@
 //! **Layer:** integration
 //!
-//! R3 gate #64 — `substrate_gap_reflection_closure_closed`.
+//! R3 gate #64 — reflection-closure substrate-plumbing receipt.
 //!
-//! This executable receipt binds the class-level reflection-closure gate to the
-//! same live T-LensProducer-Retirement residual census that will make the gate
-//! pass: `lens_apply.rs`, the retained `lens_testgen` fragment, and
-//! `bin/regen_lens.rs` must all retire.
+//! This is not the canonical `substrate_gap_reflection_closure_closed` consumer.
+//! It proves the live T-LensProducer-Retirement residual census is executable
+//! as plumbing for the bridge-count half of the class-level closure condition.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -14,11 +13,11 @@ use v3_compiler::CompileError;
 const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_substrate_gap_reflection_closure.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_substrate_gap_reflection_closure.dag";
 const SUITE_NAME: &str = "r3_substrate_gap_reflection_closure_suite";
-const CLAIM_NAME: &str = "substrate_gap_reflection_closure_closed";
+const CLAIM_NAME: &str = "substrate_gap_reflection_residual_census_receipt";
 const CURRENT_REFLECTION_RESIDUAL_COUNT: i64 = 3;
 
 #[test]
-fn r3_gate_64_reflection_closure_claim_executes_against_live_lens_producer_census() {
+fn r3_gate_64_reflection_residual_census_receipt_executes() {
     let dag = match compile_to_dag(FIXTURE_SOURCE, FIXTURE_PATH) {
         Ok(dag) => {
             assert!(
@@ -52,7 +51,7 @@ fn r3_gate_64_reflection_closure_claim_executes_against_live_lens_producer_censu
             );
         }
         ClaimResult::NotYetImplemented(reason) => {
-            panic!("`{CLAIM_NAME}` must be executable for R3 gate #64, got NYI: {reason}")
+            panic!("`{CLAIM_NAME}` receipt must be executable for R3 gate #64 plumbing, got NYI: {reason}")
         }
     }
 }
