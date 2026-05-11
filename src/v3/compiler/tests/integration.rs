@@ -37,6 +37,8 @@
 #[path = "integration/common/mod.rs"]
 mod common;
 
+#[path = "integration/affected_set_lens_prototype_test.rs"]
+mod affected_set_lens_prototype_test;
 #[path = "integration/anthropic_messages_callable_test.rs"]
 mod anthropic_messages_callable_test;
 #[path = "integration/anthropic_messages_wire_demo_test.rs"]

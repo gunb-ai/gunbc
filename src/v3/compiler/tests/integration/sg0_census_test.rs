@@ -320,6 +320,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
+    "src/v3/compiler/tests/integration/affected_set_lens_prototype_test.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
     // R3 gate #68 (`anthropic_wire_demonstration`): hermetic typed request/response
     // cycle over the Anthropic Messages wire surface using a deterministic mock.

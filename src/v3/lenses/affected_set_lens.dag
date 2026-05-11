@@ -1,0 +1,20 @@
+// lenses.affected_set — charter prototype surface (gunbc#2699, design PR #2700 §3).
+//
+// Executable two-`Dag` folding stays on the Rust host (`v3_compiler::affected_set_lens`)
+// until R4.B queries-as-data can carry `Lens<Dag × Dag → …>` valuations.
+//
+// Substrate folds referenced by the design compose without new substrate types:
+//   - `DescentEvidence` (`src/v3/std/termination.dag`)
+//   - `SubValueRelation` (`src/v3/std/induction.dag`)
+//   - complexity / cardinality-style lenses (`src/v3/lenses/`)
+//   - `cross_target_coverage` (`src/v3/std/cross_target_coverage.dag`)
+//
+// Consumers should call `compute_affected_set_lens_report` for per-dimension sets + receipts.
+
+module lenses.affected_set
+
+import v3.std.substrate { Dag }
+
+// Placeholder type hook so the module parses as v3-standard library text; behavioral
+// implementation is intentionally host-side during this prototype.
+type AffectedSetPrototypeHook {}

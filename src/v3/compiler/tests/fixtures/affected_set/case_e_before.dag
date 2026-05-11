@@ -1,0 +1,17 @@
+// §4.E refinement tightening surrogate (fixture-level) — callers that already match the tightened port survive.
+//
+// BEFORE: `narrow_port` binds two ints directly.
+//
+// AFTER: `narrow_port` takes a third synthesized parameter counting prior refinements — only `compatible_caller`
+// remains well-typed; `late_caller` must change.
+
+module user.affected_set_case_refinement
+
+fn narrow_port(x: Int, y: Int) -> Int =
+  x + y
+
+fn compatible_caller() -> Int =
+  narrow_port(1, 2)
+
+fn late_caller() -> Int =
+  narrow_port(3, 4)

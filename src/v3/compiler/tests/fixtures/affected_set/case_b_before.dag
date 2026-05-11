@@ -1,0 +1,17 @@
+// §4.B — arity/signature widening of `add` forces every binder to reconcile.
+//
+// SNIPPET BEFORE: `fn add(x: Int, y: Int) -> Int = x + y`
+//
+// SNIPPET AFTER:
+// `fn add(x: Int, y: Int, z: Int) -> Int = x + y + z`
+//
+// LENS OUTPUT (conceptual): { add, caller_alpha } — direct callee edges; naive transitive downstream
+// is a strict superset once extra glue nodes exist in larger graphs.
+
+module user.affected_set_case_b_signature
+
+fn add(x: Int, y: Int) -> Int =
+  x + y
+
+fn caller_alpha() -> Int =
+  add(1, 2)

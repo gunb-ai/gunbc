@@ -1,0 +1,11 @@
+// §4.D — AFTER state adds an isolated sentinel function (semantic stand-in for a new `.dag TestClaim`).
+//
+// LENS OUTPUT (conceptual): {new_property_surrogate}; production_entry stays untouched because there is no edge linking them.
+
+module user.affected_set_case_tests_only
+
+fn production_entry() -> Int =
+  40
+
+fn new_property_surrogate() -> Int =
+  41

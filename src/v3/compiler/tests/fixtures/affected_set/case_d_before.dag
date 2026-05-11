@@ -1,0 +1,6 @@
+// §4.D — surrogate for “tests-only churn”: productive module without the extra sentinel.
+
+module user.affected_set_case_tests_only
+
+fn production_entry() -> Int =
+  40

@@ -1,0 +1,13 @@
+// §4.C — algebra carrier illustrative surrogate until full AbelianGroup story is surfaced in fixtures.
+//
+// BEFORE carrier: solitary export `carrier_level = 7`
+//
+// AFTER carrier: literal constant changes (models “carrier authority moved” affecting every node walking the surface).
+
+module user.affected_set_case_algebra
+
+fn carrier_level() -> Int =
+  7
+
+fn walker_alpha() -> Int =
+  carrier_level()

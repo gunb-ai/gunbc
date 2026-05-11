@@ -1,0 +1,9 @@
+// §4.B — AFTER state (paired with case_b_before.dag via shared attribution label).
+
+module user.affected_set_case_b_signature
+
+fn add(x: Int, y: Int, z: Int) -> Int =
+  x + y + z
+
+fn caller_alpha() -> Int =
+  add(1, 2, 3)

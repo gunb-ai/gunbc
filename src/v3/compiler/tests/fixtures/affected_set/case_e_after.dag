@@ -1,0 +1,12 @@
+// §4.E — AFTER state adjusts `narrow_port` arity — both previous callers reshaped; future work would prune the compatible path once refinement proofs exist.
+
+module user.affected_set_case_refinement
+
+fn narrow_port(x: Int, y: Int, z: Int) -> Int =
+  x + y + z
+
+fn compatible_caller() -> Int =
+  narrow_port(1, 2, 0)
+
+fn late_caller() -> Int =
+  narrow_port(3, 4, 0)

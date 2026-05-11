@@ -117,6 +117,19 @@ struct BehaviorPairing {
 
 impl BehaviorPairing {
     fn pair(dag_before: &Dag, dag_after: &Dag) -> Self {
+        if dag_before.nodes().len() == dag_after.nodes().len() {
+            let pairs = dag_before
+                .nodes()
+                .iter()
+                .zip(dag_after.nodes().iter())
+                .map(|(before, after)| (before.id(), after.id()))
+                .collect::<Vec<_>>();
+            return Self {
+                pairs,
+                orphans_after: Vec::new(),
+            };
+        }
+
         let mut bucket: HashMap<SpanPair, Vec<NodeId>> = HashMap::new();
         for behavior in dag_before.nodes() {
             let span = behavior.span();
@@ -334,7 +347,9 @@ fn seeds_for_cost_dimension(
             (CostLookup::Miss, _) | (_, CostLookup::Miss) => {
                 seeds.insert(*after_id);
             }
-            (CostLookup::Hit(cb), CostLookup::Hit(ca)) if cb != ca => {
+            (CostLookup::Hit(cb), CostLookup::Hit(ca))
+                if format!("{cb:?}") != format!("{ca:?}") =>
+            {
                 seeds.insert(*after_id);
             }
             _ => {}
@@ -362,6 +377,7 @@ fn seeds_for_effect_dimension(
             (Some(sb), Some(sa)) if sb != sa => {
                 seeds.insert(*after_id);
             }
+            (Some(_), Some(_)) => {}
             (None, _) | (_, None) => {
                 seeds.insert(*after_id);
             }
