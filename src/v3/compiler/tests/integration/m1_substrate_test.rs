@@ -147,6 +147,32 @@ fn r3_gate60_bare_phantom_width_literal_emits_diagnostic() {
 }
 
 #[test]
+fn r3_gate60_phantom_decimal_rejected_for_nonsanctioned_type_constructor() {
+    // Structural parse authority: lone `<decimal>` magnitude is only admitted for sanctioned heads;
+    // `Vec<64>` must fail at parse time (illegal state unrepresentable in `Parameterized.args`).
+    let src = "type Bad = Vec<64>\n";
+    match compile_to_dag(src, "r3_gate60_vec_phantom.v3") {
+        Err(CompileError::Parse(diag)) => match &diag {
+            Diagnostic::ParseError { fixes, span, .. } => {
+                assert!(
+                    fixes.is_empty(),
+                    "ParseError.fixes unexpected for phantom-width gate assertion"
+                );
+                assert_eq!(span.file.as_str(), "r3_gate60_vec_phantom.v3");
+                assert_eq!(
+                    src.get(span.byte_start as usize..span.byte_end as usize),
+                    Some("64"),
+                    "diagnostic span should cover the offending magnitude literal",
+                );
+            }
+            other => panic!("expected Diagnostic::ParseError for illegal phantom magnitude; got {other:?}"),
+        },
+        Err(other) => panic!("expected CompileError::Parse; got {other:?}"),
+        Ok(_) => panic!("nonsanctioned phantom-width sugar must not compile cleanly"),
+    }
+}
+
+#[test]
 fn bootstrap_integer_aliases_align_to_refinements_per_gate_19() {
     assert_bootstrap_integer_aliases_align_to_refinements(&Dag::new());
 }
