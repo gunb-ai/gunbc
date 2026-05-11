@@ -17,7 +17,8 @@ use crate::common::substrate_receipts::{
     assert_bootstrap_rational_is_field_of_fractions_int,
     assert_bootstrap_real_aliases_align_to_refinements,
     assert_bootstrap_real_is_approximate_field_of_fractions_int,
-    assert_bootstrap_string_is_free_monoid_char, assert_compose_with_machine_width, bind_named,
+    assert_bootstrap_string_is_free_monoid_char, assert_compose_with_machine_width,
+    assert_phantom_machine_width_lit_lowers_to_word, bind_named,
     bind_value_type_decl, callable_instantiation_arguments, field, find_named,
     transforms_in_source_file,
 };
@@ -58,12 +59,13 @@ fn bootstrap_int64_compose_int_machine_width_per_gate_19() {
 
 #[test]
 fn r3_gate60_phantom_width_interaction_syntax_matches_compose_substrate() {
-    // §1.8 gate #60 minimum existence-proof spellings: `Int<64>`, `Real<64>`, `Nat<8>` parse and
-    // lower to the same Compose × MachineWidth substrate as canonical std width refinements.
+    // Gate #60: `Int<64>`, `Real<64>`, `Nat<8>` lower to canonical Compose × MachineWidth;
+    // `MachineWidth<N>` exercises the separate rewrite branch in lowering.
     let src = "\
 type Gate60_Int64_Lit = Int<64>\n\
 type Gate60_Real64_Lit = Real<64>\n\
-type Gate60_Nat8_Lit = Nat<8>\n";
+type Gate60_Nat8_Lit = Nat<8>\n\
+type Gate60_MachineWidth128_Lit = MachineWidth<128>\n";
     let dag = compile_any(src, "r3_gate60_phantom_width.v3");
     assert!(
         dag.diagnostics().is_empty(),
@@ -73,6 +75,7 @@ type Gate60_Nat8_Lit = Nat<8>\n";
     assert_compose_with_machine_width(&dag, "Gate60_Int64_Lit", "Int", "Word64");
     assert_compose_with_machine_width(&dag, "Gate60_Real64_Lit", "Real", "Word64");
     assert_compose_with_machine_width(&dag, "Gate60_Nat8_Lit", "Nat", "Byte");
+    assert_phantom_machine_width_lit_lowers_to_word(&dag, "Gate60_MachineWidth128_Lit", "Word128");
 }
 
 #[test]
