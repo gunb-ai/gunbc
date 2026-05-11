@@ -1,17 +1,20 @@
-// R3 gate #87 — `LensRegistryEntry` `lower_helpers`.
-// Runner-evaluated bind-resolution witness on a minimal program (paired with Rust
-// `assert_lens_dag_compiles` for `src/v3/lenses/lower_helpers.dag`). Zero-residual / bridge
-// receipts stay in `bridge_lower_helpers_patch_zero_residual_test.rs`.
+// R3 gate #87 — `LensRegistryEntry` `lower_helpers` (`.dag` harness placeholder).
+// Structural receipts: `bridge_lower_helpers_patch_zero_residual_test.rs`,
+// `m2_substrate_inhabitance_test.rs`; lens source compile:
+// `r3_gate_87_lower_helpers_lens_source_compiles`.
+//
+// **Discipline:** `Compiles` here is wiring-only for the regen harness slot — not lower-helpers
+// lens behavior. Unrelated predicates must not stand in for that contract.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_lower_helpers
 
-import std.verification { TestClaim, TestSuite }
+import std.verification { Compiles, TestClaim, TestSuite }
 
 data cementing_regen_lower_helpers_claim: TestClaim = {
   name: "cementing_regen_lower_helpers",
-  source: "let lit: Int = 7",
+  source: "let _: Int = 0",
   file_name: "r3_gate_87_lower_helpers_smoke.v3",
-  predicate: PortHasState("lit", Resolved),
+  predicate: Compiles,
   requires: []
 }
 

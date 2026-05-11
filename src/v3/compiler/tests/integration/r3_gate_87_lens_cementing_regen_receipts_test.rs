@@ -2,15 +2,15 @@
 //!
 //! R3 gate #87 (`lens_cementing_test_discipline_complete`) — paired **Rust** receipts for
 //! `src/v3/compiler/regen.dag` registry lenses whose `tests/dag/t_r3_gate_87_cementing_regen_*.dag`
-//! harnesses use runner-evaluated predicates on a minimal program (`let lit: Int = 7` — e.g.
-//! `PortHasState` for eight regen rows; **Lane-E** `DifferentialEquals` + **symbolic-cost**
-//! `SymbolicCostExprEquals` on other rows). Rust receipts below remain where a frozen
-//! `LensOutputEquals` / richer oracle witness is not yet authored as strict `.dag` data.
+//! harnesses are still `Compiles` placeholders (bootstrap-scale / multi-arg lenses where a frozen
+//! `LensOutputEquals` / `DifferentialEquals` witness is not yet authored as `.dag` data).
+//! Placeholder claims intentionally prove **harness wiring** only; they must not use unrelated
+//! runner predicates that read as lens behavior without applying the named lens (`TESTING.md`).
 //!
 //! **Lane-E + symbolic-cost** `.dag` receipts are exercised by `t_pb_b_1_dag_runner_test`.
-//! `unused_parameters` / `structural_resolution` / `provenance` / `effect_enumeration` /
-//! `cost_target_realization` / helper rows use `.dag` `PortHasState` plus these Rust receipts for
-//! lens-specific APIs until M1(2.8) carrier literals can freeze full parity in `.dag` alone.
+//! `unused_parameters` and `structural_resolution` stay `Compiles` placeholders in `.dag` until
+//! strict user modules can freeze the corresponding list carriers without M1(2.8) opaque-body
+//! diagnostics; Rust receipts below cover `UnusedParametersLens` / `lens_structural_resolution::check`.
 //!
 //! **INVARIANTS P5(b):** Against `origin/main...HEAD`, gate-#87 work is **merge-visible** as this
 //! module (two new `mod` lines in `tests/integration.rs`), `t_pb_b_1_dag_runner_test`’s
