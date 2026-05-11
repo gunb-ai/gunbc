@@ -188,7 +188,7 @@ fn register_row_has_real_v2_counterpart_matches_testing_md_band_c() {
     assert!(!register_row_has_real_v2_counterpart("N/A"));
     assert!(!register_row_has_real_v2_counterpart("  `N/A`  "));
     assert!(register_row_has_real_v2_counterpart(
-        "src/v2/complexity.dag (5488L)"
+        "src/v3/lenses/complexity.dag (586L)"
     ));
 }
 
