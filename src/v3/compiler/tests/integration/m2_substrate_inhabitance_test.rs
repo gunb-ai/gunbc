@@ -1190,19 +1190,29 @@ fn caller(n: Int) -> Int = helper(n)
 #[test]
 fn induction_lattice_rust_mirror_dissolved() {
     // Gate `tier3_induction_mirror_dissolved` (R3 DAG gate #3, T-Tier3-Dissolution):
-    // the public hand-Rust projection from `std.induction::SubValueRelation` to
-    // `CallPattern` no longer lives in `dag.rs`. `std/induction.dag` is the
-    // sole authority for the projection; the remaining lens-facing surface is
-    // `per_call_pattern_at`, which routes through the (private) projection
-    // helper. Sibling lattice/lookup entrypoints (`per_call_pattern_at`,
-    // `per_call_descent_evidence`, `lower_call_pattern`) are load-bearing for
-    // the cost/complexity lens consumers and remain.
+    // the named hand-Rust projection helpers from `std.induction::SubValueRelation`
+    // to `CallPattern` no longer live in `dag.rs` — both the previously public
+    // `sub_value_relation_to_call_pattern` and the privatized
+    // `project_sub_value_relation` are absent. `std.induction.dag::sub_value_to_call_pattern`
+    // is the authority; the residual projection logic survives only as an
+    // anonymous closure inlined into `call_pattern_from_relations_with_index`
+    // (tracked bridge: see the comment at that call site, dissolution gated on
+    // T-E-P-Producer-Broadening lens-emission landing). The lens-facing surface
+    // (`per_call_pattern_at`, `per_call_descent_evidence`, `lower_call_pattern`)
+    // is load-bearing for the cost/complexity lens consumers and remains.
     let dag_rs = include_str!("../../src/dag.rs");
-    assert!(
-        !dag_rs.contains("pub fn sub_value_relation_to_call_pattern"),
-        "`dag.rs` must not carry a hand-Rust `sub_value_relation_to_call_pattern` \
-         mirror; `src/v3/std/induction.dag` is the authority"
-    );
+    for forbidden in [
+        "pub fn sub_value_relation_to_call_pattern",
+        "fn sub_value_relation_to_call_pattern",
+        "fn project_sub_value_relation",
+    ] {
+        assert!(
+            !dag_rs.contains(forbidden),
+            "`dag.rs` must not carry a named hand-Rust `SubValueRelation -> CallPattern` \
+             projection helper (`{forbidden}`); \
+             `src/v3/std/induction.dag::sub_value_to_call_pattern` is the authority"
+        );
+    }
 }
 
 /// T-E-P-Producer-Broadening **gate (2)** — `e_p_call_pattern_lookup_authoritative`.
