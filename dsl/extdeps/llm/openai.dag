@@ -102,7 +102,7 @@ type ToolCall {
 //
 // Request wire for this row (`messages[].role` as
 // system/developer/user/assistant/tool/function) is ratcheted by pipeline tests
-// in `src/v2/tests/src/pipeline.rs`:
+// in historical pipeline integration tests:
 // `openai_chat_message_role_wire_matches_llm_snake_contract` (emitted serde attrs)
 // and `openai_chat_message_row_json_matches_chat_completions_wire_tags` (golden JSON).
 type OpenAiChatMessageRole = System | Developer | User | Assistant | Tool | Function

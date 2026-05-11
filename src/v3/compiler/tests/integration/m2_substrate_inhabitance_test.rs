@@ -842,8 +842,8 @@ fn ep_beta(ys: EpListM) -> Int =
 fn e_p_per_call_descent_evidence_emits_per_arg_relation_for_multi_arg_self_call() {
     // Phase-1 broadening Slice 4: multi-arg composition. The per-call
     // producer's contract is one `SubValueRelation` PER argument port —
-    // the evidence vector matches v2's `ExprCall.descent_evidence:
-    // List<SubValueRelation>?` shape (`src/v2/00_core.dag:199`). Slices
+    // the evidence vector matches the historical v2 `ExprCall.descent_evidence:
+    // List<SubValueRelation>?` shape. Slices
     // 1-3 only exercised single-arg recursion; this slice cements the
     // multi-arg contract so future producer broadening preserves
     // per-arg classification.
