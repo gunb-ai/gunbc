@@ -359,6 +359,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // nested `SymbolicCost` expected values (M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA,
     // Gate73_ReportPredicateCarriers).
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
+    // R3 gate #80 (`cost_lens_behaviorally_complete`): Band-C cementing receipt
+    // for the standalone `cost_symbolic` lens COMPLETE promotion. Temporarily
+    // stays Rust until `.dag` TestClaims can express nested `SymbolicCost` /
+    // `SizeVariable` expected values (M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA).
+    "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_behavioral_completion.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
