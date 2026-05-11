@@ -65,9 +65,11 @@ R3 ships when the 96 R3-load-bearing §1.8 gates are GREEN + `r3_debt_paydown_ze
 - Scope: all 3 emission targets (Rust/Python/Go), or one as proof-of-concept first? Different first-target choices have different costs (Rust = hardest test of architecture; Python = biggest user-experience win).
 - Information loss: ingest may not be lossless (Python's dynamic dispatch ≠ Rust's static dispatch); what's the contract for "we ingested your code well enough"?
 
-### R4.B — Queries-as-data (LLM-agent integration substrate)
+### R4.B — Introspect-lens saturation + tooling-consumer adapters (user-facing: "queries-as-data")
 
-**Wish**: the `.dag` substrate is mechanically queryable — given a program graph, ask arbitrary structural questions and get answers. Same lens infrastructure that powers Verification, but with different consumer disposition: IDE / LLM agent / refactoring tool reads lens output as a query answer, not a verification verdict.
+**LOCKED 2026-05-11 — no `Query` substrate carrier**: the lens vs query distinction is **user-surface terminology**, not substrate. There is only **lens** as a substrate type, with `EnforcedApplication` (compile-time obligation) and `IntrospectApplication` (read-only fact) config variants. "Query" is the user gesture for invoking an Introspect-config lens through a tooling surface (CLI / agent / IDE). R4.B is therefore a saturation lane for Introspect-config lens variants + tooling-consumer adapters — NOT a new substrate type. Avoids the coproduct trap of nicknaming similar concepts (per `feedback_coproduct_dissolution`). Authority: operator ratification at gunbc#846 (2026-05-11); design rationale at [`docs/design-affected-set-lens.md`](docs/design-affected-set-lens.md) §0.
+
+**Wish**: the `.dag` substrate is mechanically queryable — given a program graph, ask arbitrary structural questions and get answers. The lens infrastructure that powers Verification (Enforce config) ALSO powers querying (Introspect config) — same substrate, different config + consumer. IDE / LLM agent / refactoring tool / build system reads Introspect lens output as a query answer.
 
 **Why it matters**:
 - LLM agents today spend disproportionate effort understanding program structure (dependency-tracking, refactoring impact, type relationships) — that's CPU work the LLM is doing on GPU. gunbc as the first language designed-from-the-start for LLM-tractable queries.
@@ -81,7 +83,7 @@ R3 ships when the 96 R3-load-bearing §1.8 gates are GREEN + `r3_debt_paydown_ze
 4. **Coverage gap** — "what code paths aren't covered by tests." Tests test-as-data + path-traversal substrate.
 5. **Affected-set lens (fine-grained build system)** — query "I changed X; what Y is *actually* affected?" with structural strict-narrower-than-transitive-downstream semantics. Buck2/bazel-style fine-grained dep management falls out of pure-substrate for free. Pre-R3-close working prototype dispatched at [gunbc#2699](https://github.com/gunb-ai/gunbc/issues/2699); design doc + 5 worked examples at [`docs/design-affected-set-lens.md`](docs/design-affected-set-lens.md). Operator framing 2026-05-11: "I changed this code, so I should change Y code — i.e. not just downstream, but actually affected at an atomic level — since everything is pure, changing upstream usually doesn't matter too much; it usually changes interfaces or certain edge cases."
 
-**Sequencing** (operator framing 2026-05-10): R4.A and R4.B both land in R4. Stress-test the use cases first; design follows requirements. Core query concept may be expressible as `lens` with a different consumer disposition (rather than a new substrate type) — confirm via stress test before deciding.
+**Sequencing** (operator framing 2026-05-10; RESOLVED 2026-05-11): R4.A and R4.B both land in R4. Stress-test the use cases first; design follows requirements. ~~Core query concept may be expressible as `lens` with a different consumer disposition (rather than a new substrate type) — confirm via stress test before deciding.~~ **RESOLVED via affected-set stress test (2026-05-11)**: query IS lens (Introspect config); no new substrate carrier. See top-of-section LOCKED note + `docs/design-affected-set-lens.md` §0.
 
 **Connection to R3**: a lot of substrate is being built under R3 lane names that turns out to be R4.B foundation (T-E-P descent evidence, T-Lens-Self-Application, T-CostLens-Composition reading realization cost). R4.B is partly a *lens over R3 work* asking "did we accidentally build the right substrate, or do we have gaps?"
 

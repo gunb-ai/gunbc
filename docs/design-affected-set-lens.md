@@ -1,10 +1,27 @@
-# Affected-Set Lens — Design + Worked Examples
+# Affected-Set Introspect-Lens — Design + Worked Examples
 
-**Status**: R4 wishlist (R4.B queries-as-data lane); pre-R3-close working prototype dispatched at [gunbc#2699](https://github.com/gunb-ai/gunbc/issues/2699).
+**Status**: R4 wishlist (R4.B Introspect-lens saturation lane); pre-R3-close working prototype dispatched at [gunbc#2699](https://github.com/gunb-ai/gunbc/issues/2699).
 
 **Authority**: PM-authored design doc per operator directive at gunbc#846 (2026-05-11) — "buck2/bazel-style fine-grained build system for `.dag`."
 
-**Scope**: design framing + 5 worked examples. **Not** a substrate-shape ratification; not a §1.8 gate addition. Prototype lens lives under [gunbc#2699](https://github.com/gunb-ai/gunbc/issues/2699) worker scope.
+**Scope**: design framing + 5 worked examples. **Not** a substrate-shape ratification; not a §1.8 gate addition. Prototype lives under [gunbc#2699](https://github.com/gunb-ai/gunbc/issues/2699) worker scope.
+
+---
+
+## §0. Substrate-vs-user-surface terminology (LOCKED — operator ratification gunbc#846 2026-05-11)
+
+**Internal substrate**: there is only **lens** as a substrate type. `apply_lens(L, section, config)` is the singular declaration mechanism. `config` is the disjoint sum `EnforcedApplication<Output, Budget>` (compile-time obligation) ∪ `IntrospectApplication<Output>` (read-only fact emission). Per design-lens-application-surface.md §2.
+
+**User-facing nickname**: "query" is a user-gesture term — what a CLI / agent / IDE user calls invoking an Introspect-config lens. It maps to the **same** substrate mechanism (`apply_lens(L, section, IntrospectApplication{Output})`) — NOT a separate substrate type.
+
+**No "Query" substrate type, ever** (per `feedback_coproduct_dissolution` + operator coproduct-dissolution discipline). Creating parallel `Query<Input, Output>` vs `Lens<Input, Output>` carriers would force match-arms wherever they compose. The unified frame is: every step is `apply_lens(L, S, IntrospectApplication{...})`; composition is graph topology over a single substrate.
+
+**This means**:
+- The affected-set is an **Introspect-config lens** with output `Set<{file, span}>` (or richer per-dimension structure)
+- Tooling-side invocations of it are called "queries" in user-facing language only (CLI: `gunbc query affected-set --since=main`)
+- R4.B "queries-as-data" is a **saturation lane for Introspect-config lens variants** + tooling-consumer adapters, NOT a new substrate type
+
+Throughout this doc, "the lens" / "the introspect-lens" / "the affected-set lens" refer to the same substrate concept. "Query" appears only when describing user-facing surfaces (CLI, agent, IDE).
 
 ---
 
@@ -347,18 +364,21 @@ The current CI runs ~all tests; with this lens, typical PR runtimes would shrink
 
 ---
 
-## §6. Coupling to R4.B queries-as-data
+## §6. Coupling to R4.B (Introspect-lens saturation; user-facing "queries-as-data")
 
-This lens is **one consumer** of the queries-as-data infrastructure per [`WISHLIST.md`](../WISHLIST.md) §R4.B. Other consumers using the same lens substrate:
+Per §0 locked terminology: R4.B is a **saturation lane for Introspect-config lens variants** plus tooling-consumer adapters. "Queries-as-data" is the user-facing name; the substrate mechanism is `apply_lens(L, S, IntrospectApplication{Output})`. No new substrate carrier.
 
-| R4.B use case | Lens shape | Reuses |
-|---|---|---|
-| Refactoring impact (R4.B #2) | `refactor_impact(Dag, Refactor) → Set<NodeRef>` | Same substrate; different traversal predicate |
-| Coverage gap (R4.B #4) | `coverage_gap(Dag, TestSet) → Set<NodeRef>` | Same substrate; intersects with TestClaim subgraph |
-| Effect-shape (R4.B #3) | `effect_shape(Dag, NodeRef) → EffectSet` | Same substrate; reads effect_enum projection |
-| Performance bottleneck (R4.B #1) | `bottleneck(Dag, Workflow) → Vec<NodeRef>` | Already partially exists via T-CostLens-Composition |
+The affected-set lens is **one Introspect-lens variant** of the R4.B family. Other family members using the same substrate (all `IntrospectApplication`-config):
 
-The affected-set lens is the **simplest** of the R4.B family (no new substrate; pure-fold over existing edges) and demonstrates the architectural claim: **lenses applied to the substrate yield queries the LLM/IDE can consume**.
+| R4.B family member | Introspect-lens shape | Output | Reuses |
+|---|---|---|---|
+| Refactoring impact (R4.B #2) | `refactor_impact(Dag, Refactor)` | `Set<NodeRef>` | Same substrate; different traversal predicate over edges |
+| Coverage gap (R4.B #4) | `coverage_gap(Dag, TestSet)` | `Set<NodeRef>` | Same substrate; intersects with TestClaim subgraph |
+| Effect-shape (R4.B #3) | `effect_shape(Dag, NodeRef)` | `EffectSet` | Same substrate; reads effect_enum projection |
+| Performance bottleneck (R4.B #1) | `bottleneck(Dag, Workflow)` | `Vec<NodeRef>` | Already partially exists via T-CostLens-Composition |
+| Affected-set (R4.B #5; this doc) | `affected_set(Dag_before, Dag_after, dim)` | `Set<{file, span}>` | Composes existing DescentEvidence + SubValueRelation + Cardinality lens + cross_target_coverage |
+
+The affected-set lens is the **simplest** of the family (no new substrate; pure-fold over existing edges). It demonstrates the architectural claim: **Introspect-config lenses applied to the substrate yield typed outputs that tooling-consumers (IDE / LLM agent / build system) call "queries"**. The lens-vs-query distinction is *user-surface terminology*, not substrate carriers.
 
 ---
 
