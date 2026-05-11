@@ -6,7 +6,7 @@
 
 **Purpose**: provide the Verification Mgr with a starting grouping (slow tests by file-area) plus a `(test_pattern, dimension, required_paths_regex)` skeleton aligned to the affected-set lens per-dimension output shape (`docs/design-affected-set-lens.md` §2). Mgr finalizes inventory + path-mapping; PM only provides the template + structural alignment.
 
-**Hard constraint** (per `feedback_parallel_representation_debt`): every entry below carries a `dimension:` field matching the affected-set lens `Dimension` enum. The mechanism today is path-regex; the semantic carrier matches the future lens output so post-dissolution `skip_*` flags compute structurally as `affected_dimensions.contains(group.dimension)`.
+**Hard constraint** (per `feedback_parallel_representation_debt` + locked design): every entry below carries a `dimensions:` **field** (Set<Dimension>) matching the affected-set lens `Dimension` enum. **Multi-dimension carriage is REQUIRED, not optional**: a consumer that reads both Cost AND Complexity must carry `dimensions: [Cost, Complexity]` — narrowing to a single "primary" dimension is a semantic-contract violation against `docs/design-affected-set-lens.md` §2 (full affected-set = union across every dimension the consumer reads). Post-dissolution `skip_*` flags compute structurally as `(affected_dimensions ∩ group.dimensions) ≠ ∅` (non-empty intersection means run), NOT `affected_dimensions.contains(single_primary)`.
 
 **Dissolution trigger**: gate `ci_uses_provable_minimal_affected_set_selection` (R3 close-blocking; `docs/design-affected-set-lens.md` §5). When the lens lands, this template + the worker output are deleted.
 
@@ -26,7 +26,15 @@ enum Dimension {
 }
 ```
 
-Every test-group entry below carries exactly one primary `dimension:` (multi-dim tests pick the closest match; if a test genuinely spans dimensions, it falls into the "run-always" conservative bucket).
+Every test-group entry below carries a `dimensions:` field that is a **Set<Dimension>** — the full set of dimensions the test/consumer reads, NOT a single "primary." Per `docs/design-affected-set-lens.md` §2:
+
+```
+affected_set(Dag_before, Dag_after) =
+  ⋃ over dim in {Value, Cost, Complexity, Effect, Refinement}
+    affected_set(Dag_before, Dag_after, dim)
+```
+
+A test/consumer is "affected" (must run) when **any** dimension it reads has a proven delta — set intersection, not single-value match. Narrowing multi-dim consumers to a single primary dimension would silently skip tests when only the non-primary dimension changes (semantic-contract violation; codex REQUEST_CHANGES on PR #2721 caught this in an earlier revision of this template).
 
 ---
 
@@ -119,71 +127,70 @@ Source: `scripts/slow-test-exemptions.txt` (78 active entries as of 2026-05-11 E
 
 ## §3. Path-mapping skeleton (Mgr-fill table)
 
-Each row: `(test_pattern, dimension, required_paths_regex, confidence, dissolution_note)`.
+Each row: `(test_pattern, dimensions, required_paths_regex, confidence, dissolution_note)`.
 
-PM partial-fills `dimension` where high confidence; Mgr finalizes `required_paths_regex`. Where PM marks `[Mgr-fill]`, the path-mapping requires deeper consumer-tracing than PM has bandwidth for (Mgr owns the lens canvas + Phase 3 brief, has the context).
+`dimensions` is a **Set<Dimension>** — the full set of dimensions the test/consumer reads. Per the lens design §2, post-dissolution skip computation is `(affected_dimensions ∩ group.dimensions) ≠ ∅`. Where PM marks dimensions for a row, the set is the **complete read-set as best derived from the test name + comments**, not a primary; Mgr should expand the set if consumer tracing reveals more dimensions read.
 
-**Conservative fail-closed default**: any group where Mgr is unsure of paths → mark `required_paths_regex: .*` (always-run). Dissolution is structural via the lens; bridge-debt period favors over-running over miss-running.
+**Conservative fail-closed default**: any group where Mgr is unsure of paths → mark `required_paths_regex: .*` (always-run). Similarly, when in doubt about dimensions, **add more dimensions to the set, never narrow** — over-running is cheap during the bridge-debt period; miss-running violates the locked-design contract.
 
-| Cluster | test_pattern | dimension | required_paths_regex | confidence | dissolution_note |
+| Cluster | test_pattern | dimensions | required_paths_regex | confidence | dissolution_note |
 |---|---|---|---|---|---|
-| A | `db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix` | Value | `^(dsl/extdeps/rust.*\.dag|src/v3/compiler/src/emit.*\.rs|src/v3/compiler/tests/integration/db8_.*\.rs)$` | high | gate ci_uses_provable_minimal_affected_set_selection lands → lens.affected_dimensions.contains(Value) |
-| A | `emit_matrix_(module|program)_(go|python|rust)_is_deterministic` | Value | `^(dsl/extdeps/.*\.dag|src/v3/compiler/src/emit.*\.rs|src/v3/compiler/src/lens_.*\.rs|src/v3/compiler/tests/integration/emit_matrix.*\.rs)$` | high | same |
-| A | `four_fixture_.*` | Value | `^(dsl/extdeps/.*\.dag|src/v3/compiler/src/emit.*\.rs|src/v3/compiler/tests/integration/four_fixture.*\.rs|tests/.*/four_fixture.*\.dag)$` | medium | same |
-| A | `m1_3_emit_rust_test::rustc_roundtrip_.*` | Value | `^(dsl/extdeps/rust.*\.dag|src/v3/compiler/src/emit.*\.rs|src/v3/compiler/tests/integration/m1_3_emit_rust_test\.rs)$` | high | same |
-| B | `lane2_stage_2d_symbolic_cost_test::.*` | Cost | `^(dsl/std/lens_cost.*\.dag|src/v3/compiler/src/lens_cost.*\.rs|dsl/std/cost.*\.dag|src/v3/compiler/tests/integration/lane2_stage_2d.*\.rs)$` | high | gate lands → lens.affected_dimensions.contains(Cost) |
-| C | `m2_lens_cost_migration_test::complexity_.*` | Cost | `[Mgr-fill]` (likely: complexity.dag + lens_complexity*.rs + lens migration substrate) | medium | gate lands → Cost ∪ Complexity (note multi-dim) |
-| C | `m2_lens_idempotency_migration_test::.*` | Effect | `^(dsl/std/lens_idempotency.*\.dag|src/v3/compiler/src/lens_idempotency.*\.rs|src/v3/compiler/tests/integration/m2_lens_idempotency.*\.rs)$` | high | same |
-| C | `m2_lens_provenance_migration_test::.*` | Value | `^(dsl/std/lens_provenance.*\.dag|src/v3/compiler/src/lens_provenance.*\.rs|src/v3/compiler/tests/integration/m2_lens_provenance.*\.rs)$` | high | same |
-| C | `m2_lens_unused_parameters_migration_test::.*` | Value | `^(dsl/std/lens_unused_parameters.*\.dag|src/v3/compiler/src/lens_unused_parameters.*\.rs|src/v3/compiler/tests/integration/m2_lens_unused_parameters.*\.rs)$` | high | same |
-| D | `complexity_lens_behavioral_completion::.*` | Complexity | `[Mgr-fill]` (likely: lens_complexity + lens_cost + cementing substrate) | medium | gate lands → Complexity |
-| D | `cost_lens_symbolic_consumer_test::.*` | Cost | `[Mgr-fill]` (likely: cost.dag + lens_cost*.rs + E-P substrate) | medium | gate lands → Cost |
-| D | `lens_behavioral_parity_demonstration_test::r3_gate_73_.*` | Complexity | `[Mgr-fill]` (gate #73 LBP — needs cementing-test substrate dep) | medium | gate lands → Complexity ∪ Cost |
-| D | `lens_cost_target_realization_test::.*` | Cost | `[Mgr-fill]` (cost-target-realization + rustc harness) | medium | gate lands → Cost ∪ Value |
-| E | `dimension::analyze_complexity_tests::.*` | Complexity | `^(dsl/std/(complexity|cost|symbolic_cost).*\.dag|src/v3/compiler/src/(analyze_complexity|dimension).*\.rs|src/v3/compiler/tests/integration/dimension.*\.rs)$` | high | gate lands → Complexity |
-| E | `dimension::fail_closed_tests::.*` | Complexity | `^(dsl/std/(complexity|cost).*\.dag|src/v3/compiler/src/(analyze_complexity|dimension).*\.rs)$` | medium | same |
-| E | `e7_analyze_complexity_integration::.*` | Complexity | `^(dsl/std/(complexity|cost).*\.dag|src/v3/compiler/src/(analyze_complexity|dimension|public_api).*\.rs)$` | high | same |
-| E | `lane2_stage_2f_dimension_test::.*` | Complexity | `^(dsl/std/(complexity|cost).*\.dag|src/v3/compiler/src/(lens_complexity|dimension).*\.rs)$` | high | same |
-| F | `m0_acceptance::.*` | Value | `.*` (conservative — compile-boundary is broad) | low | run-always; gate lands → lens picks structural affected-set |
-| F | `m1_substrate_test::.*` | Value | `^(dsl/std/.*\.dag|src/v3/compiler/src/(parse|substrate).*\.rs|src/v3/compiler/tests/integration/m1_substrate.*\.rs)$` | medium | gate lands → Value |
-| F | `tc1_substrate_lens_eta_equivalence_strict_fire_test::.*` | Value | `[Mgr-fill]` (substrate eta-equivalence — needs substrate-lens dep map) | medium | gate #11 lands; consider TC1 closure path |
-| F | `t_pb_b_1_dag_runner_test::r3_gate_87_.*` | Cost | `[Mgr-fill]` (cementing-test substrate + regen harness) | medium | gate #87 Cluster M Phase 2 lands → dissolves naturally |
-| F | `bootstrap::tests::kernel_bool_path_a_.*` | Value | `^(src/v3/compiler/src/bootstrap.*\.rs|dsl/std/types\.dag|dsl/std/boolean_algebra.*\.dag)$` | high | dissolves with Lane 1e-2b Path A close |
-| G | `t_las_complexity_contract_compile_error_test::.*` | Complexity | `^(dsl/std/complexity.*\.dag|src/v3/compiler/src/(las|t_las).*\.rs|src/v3/compiler/tests/integration/t_las.*\.rs)$` | medium | gate #92 lands |
-| G | `t_las_crdt_cost_basis_demo_test::.*` | Cost | `^(dsl/std/(cost|las|crdt).*\.dag|src/v3/compiler/src/(las|t_las|crdt).*\.rs|src/v3/compiler/tests/integration/t_las.*\.rs)$` | medium | T-LAS CRDT closure |
-| G | `r3_free_consequences_second_batch_test::.*` | Cost | `[Mgr-fill]` (free-consequences second batch — cross-target optimization + symbolic-cost) | medium | gates #43-#52 (free-consequences) land |
-| H | `sg2_parse_authority_test::.*` | Value | `^(dsl/std/parse.*\.dag|src/v3/compiler/src/parse.*\.rs|src/v3/compiler/tests/integration/sg2_.*\.rs)$` | high | SG-2 parser-staging close |
-| H | `sg2c1_parse_tables_authority_test::.*` | Value | `^(dsl/std/parse_tables.*\.dag|dsl/std/tokenize.*\.dag|src/v3/compiler/src/parse.*\.rs)$` | high | SG-2c-1 close |
-| H | `sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_.*` | Value | `^(scripts/regen.*|src/v3/compiler/src/(regen|cli).*\.rs|dsl/std/.*\.dag)$` | medium | SG-6 close |
-| H | `r1c_e_emit_gates_dag_test::.*` | Value | `[Mgr-fill]` (R1C-E `.dag` wrapper) | low | R1C-E closure |
-| H | `r3_verification_l4_l7_l5_skeleton_test::r3_verification_l4_.*` | Value | `[Mgr-fill]` (R3-V L4 direct consumer) | medium | gates #43+ L4-L7 lane |
-| H | `r3_verification_l4_l7_l5_skeleton_test::r3_verification_l7_.*` | Value | `[Mgr-fill]` (gate #10 algebraic-law matrix) | medium | gate #10 close |
-| H | `t_ci_workflow_as_data_demo_test::.*` | Value | `^(dsl/std/workflow.*\.dag|src/v3/compiler/src/(workflow|evaluator).*\.rs|src/v3/compiler/tests/integration/t_ci_workflow.*\.rs)$` | medium | T-Workflow-As-Data close |
-| I | `t_demo_fixture_test::.*` | Value | `^(tests/.*/t_demo.*\.dag|src/v3/compiler/src/(test_runner|runner).*\.rs|src/v3/compiler/tests/integration/t_demo.*\.rs)$` | medium | T-Demo lane close |
-| I | `thesis_validation_test::kf_1_.*` | Value | `.*` (conservative — thesis-level validation is broad) | low | run-always; gate lands → lens picks |
-| I | `common::cached_compile::tests::.*` | Value | `^(src/v3/compiler/src/cached_compile.*\.rs|src/v3/compiler/tests/common/cached_compile.*\.rs)$` | high | TESTING.md paydown |
-| I | `int_literal_cardinality_test::int_refinement_overflow_is_proven_.*` | Refinement | `^(dsl/std/int.*\.dag|src/v3/compiler/src/(refinement|int_literal).*\.rs|src/v3/compiler/tests/integration/int_literal.*\.rs)$` | high | gate #21 close |
-| I | `m1_5_verification_test::symbolic_cost_expr_equals_smoke_.*` | Value | `[Mgr-fill]` (M1.5 verification smoke — needs symbolic-cost equality harness dep map) | medium | M1.5 close |
+| A | `db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix` | `[Value]` | `^(dsl/extdeps/rust.*\.dag|src/v3/compiler/src/emit.*\.rs|src/v3/compiler/tests/integration/db8_.*\.rs)$` | high | gate ci_uses_provable_minimal_affected_set_selection lands → lens emits per-Node delta; consumer reads only Value |
+| A | `emit_matrix_(module|program)_(go|python|rust)_is_deterministic` | `[Value]` | `^(dsl/extdeps/.*\.dag|src/v3/compiler/src/emit.*\.rs|src/v3/compiler/src/lens_.*\.rs|src/v3/compiler/tests/integration/emit_matrix.*\.rs)$` | high | same |
+| A | `four_fixture_.*` | `[Value]` | `^(dsl/extdeps/.*\.dag|src/v3/compiler/src/emit.*\.rs|src/v3/compiler/tests/integration/four_fixture.*\.rs|tests/.*/four_fixture.*\.dag)$` | medium | same |
+| A | `m1_3_emit_rust_test::rustc_roundtrip_.*` | `[Value]` | `^(dsl/extdeps/rust.*\.dag|src/v3/compiler/src/emit.*\.rs|src/v3/compiler/tests/integration/m1_3_emit_rust_test\.rs)$` | high | same |
+| B | `lane2_stage_2d_symbolic_cost_test::.*` | `[Cost]` | `^(dsl/std/lens_cost.*\.dag|src/v3/compiler/src/lens_cost.*\.rs|dsl/std/cost.*\.dag|src/v3/compiler/tests/integration/lane2_stage_2d.*\.rs)$` | high | gate lands → lens emits delta; consumer reads only Cost |
+| C | `m2_lens_cost_migration_test::complexity_.*` | `[Cost, Complexity]` | `[Mgr-fill]` (likely: complexity.dag + lens_complexity*.rs + lens migration substrate) | medium | gate lands → set intersection trigger if either dim has delta |
+| C | `m2_lens_idempotency_migration_test::.*` | `[Effect]` | `^(dsl/std/lens_idempotency.*\.dag|src/v3/compiler/src/lens_idempotency.*\.rs|src/v3/compiler/tests/integration/m2_lens_idempotency.*\.rs)$` | high | same |
+| C | `m2_lens_provenance_migration_test::.*` | `[Value]` | `^(dsl/std/lens_provenance.*\.dag|src/v3/compiler/src/lens_provenance.*\.rs|src/v3/compiler/tests/integration/m2_lens_provenance.*\.rs)$` | high | same |
+| C | `m2_lens_unused_parameters_migration_test::.*` | `[Value]` | `^(dsl/std/lens_unused_parameters.*\.dag|src/v3/compiler/src/lens_unused_parameters.*\.rs|src/v3/compiler/tests/integration/m2_lens_unused_parameters.*\.rs)$` | high | same |
+| D | `complexity_lens_behavioral_completion::.*` | `[Complexity, Cost]` | `[Mgr-fill]` (likely: lens_complexity + lens_cost + cementing substrate) | medium | reads cementing summary for both Complexity and Cost dims |
+| D | `cost_lens_symbolic_consumer_test::.*` | `[Cost]` | `[Mgr-fill]` (likely: cost.dag + lens_cost*.rs + E-P substrate) | medium | gate lands → Cost |
+| D | `lens_behavioral_parity_demonstration_test::r3_gate_73_.*` | `[Complexity, Cost]` | `[Mgr-fill]` (gate #73 LBP — needs cementing-test substrate dep) | medium | LBP demonstration reads both certainty (Complexity) + symbolic-cost (Cost) |
+| D | `lens_cost_target_realization_test::.*` | `[Cost, Value]` | `[Mgr-fill]` (cost-target-realization + rustc harness) | medium | realization composes Cost projection with Value emission |
+| E | `dimension::analyze_complexity_tests::.*` | `[Complexity]` | `^(dsl/std/(complexity|cost|symbolic_cost).*\.dag|src/v3/compiler/src/(analyze_complexity|dimension).*\.rs|src/v3/compiler/tests/integration/dimension.*\.rs)$` | high | gate lands → Complexity |
+| E | `dimension::fail_closed_tests::.*` | `[Complexity]` | `^(dsl/std/(complexity|cost).*\.dag|src/v3/compiler/src/(analyze_complexity|dimension).*\.rs)$` | medium | same |
+| E | `e7_analyze_complexity_integration::.*` | `[Complexity]` | `^(dsl/std/(complexity|cost).*\.dag|src/v3/compiler/src/(analyze_complexity|dimension|public_api).*\.rs)$` | high | same |
+| E | `lane2_stage_2f_dimension_test::.*` | `[Complexity, Cost]` | `^(dsl/std/(complexity|cost).*\.dag|src/v3/compiler/src/(lens_complexity|dimension).*\.rs)$` | high | "composed matches lens" reads BOTH analyze_symbolic_cost (Cost) and Complexity composition |
+| F | `m0_acceptance::.*` | `[Value, Cost, Complexity, Effect, Refinement]` | `.*` (conservative — compile-boundary is broad) | low | compile-boundary touches every dim; run-always until lens lands |
+| F | `m1_substrate_test::.*` | `[Value]` | `^(dsl/std/.*\.dag|src/v3/compiler/src/(parse|substrate).*\.rs|src/v3/compiler/tests/integration/m1_substrate.*\.rs)$` | medium | substrate reflects parse Value shape |
+| F | `tc1_substrate_lens_eta_equivalence_strict_fire_test::.*` | `[Value]` | `[Mgr-fill]` (substrate eta-equivalence — needs substrate-lens dep map) | medium | gate #11 lands; eta-equivalence is a Value-relation |
+| F | `t_pb_b_1_dag_runner_test::r3_gate_87_.*` | `[Cost]` | `[Mgr-fill]` (cementing-test substrate + regen harness) | medium | cementing oracle frozen-Cost lens output; gate #87 Cluster M Phase 2 lands → dissolves |
+| F | `bootstrap::tests::kernel_bool_path_a_.*` | `[Value]` | `^(src/v3/compiler/src/bootstrap.*\.rs|dsl/std/types\.dag|dsl/std/boolean_algebra.*\.dag)$` | high | dissolves with Lane 1e-2b Path A close |
+| G | `t_las_complexity_contract_compile_error_test::.*` | `[Complexity]` | `^(dsl/std/complexity.*\.dag|src/v3/compiler/src/(las|t_las).*\.rs|src/v3/compiler/tests/integration/t_las.*\.rs)$` | medium | gate #92 lands; compile-error on Complexity contract violation |
+| G | `t_las_crdt_cost_basis_demo_test::.*` | `[Cost, Effect, Value]` | `^(dsl/std/(cost|las|crdt).*\.dag|src/v3/compiler/src/(las|t_las|crdt).*\.rs|src/v3/compiler/tests/integration/t_las.*\.rs)$` | medium | CRDT cost-basis reads Cost (log budget) + Effect (replica merge) + Value (replica state shape) |
+| G | `r3_free_consequences_second_batch_test::.*` | `[Cost, Value]` | `[Mgr-fill]` (free-consequences second batch — cross-target optimization + symbolic-cost) | medium | cross-target optimization reads BOTH Cost (symbolic_cost_witness) and Value (constant_fold consistency); gates #43-#52 (free-consequences) land |
+| H | `sg2_parse_authority_test::.*` | `[Value]` | `^(dsl/std/parse.*\.dag|src/v3/compiler/src/parse.*\.rs|src/v3/compiler/tests/integration/sg2_.*\.rs)$` | high | SG-2 parser-staging close |
+| H | `sg2c1_parse_tables_authority_test::.*` | `[Value]` | `^(dsl/std/parse_tables.*\.dag|dsl/std/tokenize.*\.dag|src/v3/compiler/src/parse.*\.rs)$` | high | SG-2c-1 close |
+| H | `sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_.*` | `[Value]` | `^(scripts/regen.*|src/v3/compiler/src/(regen|cli).*\.rs|dsl/std/.*\.dag)$` | medium | SG-6 close |
+| H | `r1c_e_emit_gates_dag_test::.*` | `[Value]` | `[Mgr-fill]` (R1C-E `.dag` wrapper) | low | R1C-E closure |
+| H | `r3_verification_l4_l7_l5_skeleton_test::r3_verification_l4_.*` | `[Value]` | `[Mgr-fill]` (R3-V L4 direct consumer) | medium | gates #43+ L4-L7 lane |
+| H | `r3_verification_l4_l7_l5_skeleton_test::r3_verification_l7_.*` | `[Value]` | `[Mgr-fill]` (gate #10 algebraic-law matrix) | medium | gate #10 close |
+| H | `t_ci_workflow_as_data_demo_test::.*` | `[Value, Cost]` | `^(dsl/std/workflow.*\.dag|src/v3/compiler/src/(workflow|evaluator).*\.rs|src/v3/compiler/tests/integration/t_ci_workflow.*\.rs)$` | medium | workflow-as-data demo reads both Value (workflow shape) + Cost (DimensionReport timing dim evaluates) |
+| I | `t_demo_fixture_test::.*` | `[Value]` | `^(tests/.*/t_demo.*\.dag|src/v3/compiler/src/(test_runner|runner).*\.rs|src/v3/compiler/tests/integration/t_demo.*\.rs)$` | medium | T-Demo lane close |
+| I | `thesis_validation_test::kf_1_.*` | `[Value, Cost, Complexity, Effect, Refinement]` | `.*` (conservative — thesis-level validation is broad) | low | thesis-level validation reads every dim |
+| I | `common::cached_compile::tests::.*` | `[Value]` | `^(src/v3/compiler/src/cached_compile.*\.rs|src/v3/compiler/tests/common/cached_compile.*\.rs)$` | high | TESTING.md paydown |
+| I | `int_literal_cardinality_test::int_refinement_overflow_is_proven_.*` | `[Refinement]` | `^(dsl/std/int.*\.dag|src/v3/compiler/src/(refinement|int_literal).*\.rs|src/v3/compiler/tests/integration/int_literal.*\.rs)$` | high | gate #21 close |
+| I | `m1_5_verification_test::symbolic_cost_expr_equals_smoke_.*` | `[Cost]` | `[Mgr-fill]` (M1.5 verification smoke — needs symbolic-cost equality harness dep map) | medium | M1.5 close |
 
 ---
 
 ## §4. Open questions for Mgr-fill
 
-1. **Multi-dimension tests**: rows marked Cost-or-Complexity (e.g., D-cluster LBP, G-cluster free-consequences) — does Mgr split into separate rows per dimension, or accept "primary dimension + conservative regex covers both"? Recommendation: primary dimension is sufficient because the path-regex naturally pulls in both axes' source files.
+1. **Multi-dimension rows (D, G, F-`m0_acceptance`, I-`thesis_validation_test`)**: these carry sets like `[Cost, Complexity]` or the full 5-dim set. Mgr should NOT narrow these sets — per the locked design, a test that reads N dimensions is in the affected-set when ANY of those N dimensions has a delta (union semantics). The earlier draft of this template ("primary dimension is sufficient") was a semantic-contract violation caught by codex REQUEST_CHANGES on PR #2721 and is fixed in this revision. **When in doubt about a dim, ADD it to the set, never narrow.**
 
-2. **Conservative-run-always candidates**: `m0_acceptance::*` and `thesis_validation_test::*` are marked `.*` (always-run). Mgr decides if these justify the cost (~3-5s each cold) or warrant a tighter regex. PM read: keep `.*` until the lens lands; the safety margin is cheap.
+2. **Conservative-run-always candidates**: `m0_acceptance::*` and `thesis_validation_test::*` carry the full 5-dim set + `.*` regex (always-run). Mgr decides if these justify the cost (~3-5s each cold) or warrant tighter scoping. PM read: keep `.*` until the lens lands; the safety margin is cheap.
 
 3. **`[Mgr-fill]` rows count**: 12 rows out of ~36 need Mgr to derive `required_paths_regex` from consumer tracing. PM left these blank where derivation requires deeper substrate knowledge (substrate-lens deps, R3-V L4/L7 direct-consumer maps, R1C-E `.dag` wrapper internals, free-consequences cross-target topology).
 
-4. **Mechanism — single regex per row vs `paths-ignore`-style**: this template uses a single positive regex per row (required_paths_regex). GitHub Actions doesn't natively support per-step path filtering, so the CI consumer is a shell snippet in `ci.yml`:
+4. **Mechanism — single regex per row + dimension-set per row**: each row contributes to `skip_<cluster>` computation as: `skip_<cluster> = "true" iff (changed files ∩ required_paths_regex matches is empty)`. Dimension-set is the **structural carrier for post-dissolution lens substitution**: when the lens lands, `skip_<cluster>` becomes `(affected_dimensions ∩ row.dimensions) ≠ ∅`. The CI consumer is a shell snippet in `ci.yml`:
    ```yaml
    - name: <Cluster X test step>
      if: needs.changes.outputs.skip_<cluster> != 'true'
      run: cargo test -p v3-compiler --test integration <module_filter>
    ```
-   The `changes` job computes each `skip_<cluster>` boolean by checking if any changed file matches the cluster's `required_paths_regex`.
 
-5. **Pilot cluster selection**: which cluster does Mgr prototype first? PM recommendation: **Cluster B (Lane 2 Stage 2d symbolic cost)** — high confidence in path-regex, contained module, ~6 tests, single dimension (Cost). Lowest risk, highest learning per LOC.
+5. **Pilot cluster selection**: which cluster does Mgr prototype first? PM recommendation: **Cluster B (Lane 2 Stage 2d symbolic cost)** — high confidence in path-regex, contained module, ~6 tests, **single-dimension set `[Cost]`** (no multi-dim union complexity for the pilot). Lowest risk, highest learning per LOC.
 
 ---
 
@@ -195,14 +202,16 @@ Mgr-fill complete when:
 - [ ] Each cluster has a pilot-PR worker brief authored (or batched into the Director-authored Layer 2 brief).
 - [ ] `changes` job in `ci.yml` extended with per-cluster `skip_<cluster>` boolean outputs.
 - [ ] At least one cluster (pilot) has its `if: needs.changes.outputs.skip_<cluster> != 'true'` gate landed and CI-validated against a representative test case (docs-only PR skips; in-cluster code change runs).
-- [ ] All path-mapping entries have `dimension:` field aligned to the affected-set lens `Dimension` enum.
+- [ ] All path-mapping entries have a `dimensions:` field that is a Set<Dimension> with every member of the set in `{Value, Cost, Complexity, Effect, Refinement}`. **Single-element sets are valid (e.g., `[Cost]`); narrowing a known-multi-dim consumer to a single-element set is not.**
+- [ ] Post-dissolution mapping verified: each row's `skip_<cluster>` formula reads `(affected_dimensions ∩ row.dimensions) ≠ ∅` (union semantics), NOT `affected_dimensions.contains(single_primary)`.
 
 ---
 
 ## §6. STOP triggers (Mgr aborts and surfaces to Director)
 
 - Any cluster needs a *new* substrate carrier to express path-dependency → STOP. Surface to Director: this is the lens substrate, not a bridge.
-- Any path-mapping entry has `dimension:` outside `{Value, Cost, Complexity, Effect, Refinement}` → STOP. Surface to Director: this is a coproduct-dissolution candidate.
+- Any path-mapping entry has a `dimensions:` element outside `{Value, Cost, Complexity, Effect, Refinement}` → STOP. Surface to Director: this is a coproduct-dissolution candidate.
+- Any row tempted to use a single-dimension `dimensions:` set when consumer tracing reveals multi-dim reads → STOP and EXPAND the set. Narrowing is a semantic-contract violation (codex REQUEST_CHANGES on PR #2721 caught one such instance; do not regress).
 - Any cluster's `required_paths_regex` requires depending on test-output (not just changed files) → STOP. That's the lens, not the bridge.
 
 ---
