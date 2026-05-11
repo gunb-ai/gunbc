@@ -618,13 +618,17 @@ fn rejected_data_lambda_connective(
         lane2_workflow: None,
         emit_participation: Some(BindEmitParticipation::UserCallable),
     }));
+    let Some(body_id) = BindNodeId::from_bind_node(dag, bind_id) else {
+        return TypeConnective::Arrow {
+            inputs,
+            output,
+            body: ArrowBody::NoBody,
+        };
+    };
     TypeConnective::Arrow {
         inputs,
         output,
-        body: ArrowBody::UserDefined(
-            BindNodeId::from_bind_node(dag, bind_id)
-                .expect("UserDefined Arrow body bind id must point at a Bind"),
-        ),
+        body: ArrowBody::UserDefined(body_id),
     }
 }
 
@@ -4063,25 +4067,6 @@ fn lower_data_item(
                     name: format!(
                         "function-valued data `{name}` participates in an unbounded callable cycle {{{}}}; recursive data lambdas are rejected until they participate in the bounded recursion gate",
                         invalid_cluster.members.join(", ")
-                    ),
-                    span: span.clone(),
-                    fixes: Vec::new(),
-                };
-                let rejected = rejected_data_lambda_connective(
-                    name,
-                    ctx.dag.declaration(decl_id).connective.clone(),
-                    diagnostic.clone(),
-                    span,
-                    ctx.dag,
-                );
-                ctx.dag.declaration_mut(decl_id).connective = rejected;
-                report_declaration_error(ctx.dag, diagnostic);
-                None
-            } else if is_recursive(body, name, ctx.dag, ctx.symbols) {
-                let diagnostic = Diagnostic::ResolveError {
-                    name: format!(
-                        "function-valued data `{name}` is recursive; recursive data lambdas \
-                         are rejected until they participate in the bounded recursion gate"
                     ),
                     span: span.clone(),
                     fixes: Vec::new(),

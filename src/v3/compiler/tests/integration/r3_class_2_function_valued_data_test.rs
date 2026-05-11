@@ -47,6 +47,12 @@ data wrong_arity: fn(Int) -> Int = |x, y| x
 
 fn use_wrong_arity() -> Int = wrong_arity(1)
 "#;
+const SHADOWED_DATA_NAME_SOURCE: &str = r#"
+data apply_one: fn(fn(Int) -> Int) -> Int = |apply_one| apply_one(1)
+
+fn inc(n: Int) -> Int = n + 1
+fn use_apply_one() -> Int = apply_one(inc)
+"#;
 
 fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
     let decl = dag
@@ -251,4 +257,39 @@ fn function_valued_data_lambda_errors_poison_callable() {
         "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_malformed_lambda.dag",
     );
     assert_rejected_data_lambda(&dag, "wrong_arity");
+}
+
+#[test]
+fn function_valued_data_lambda_parameter_shadowing_is_not_recursive() {
+    let dag = cached_compile_any(
+        SHADOWED_DATA_NAME_SOURCE,
+        "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_shadowed_name.dag",
+    );
+    assert!(
+        dag.diagnostics().is_empty(),
+        "shadowed data name must resolve as the lambda parameter, not recursive data: {:?}",
+        dag.diagnostics()
+    );
+    let apply_one = dag
+        .declaration_by_name("apply_one")
+        .expect("function-valued data declaration");
+    assert!(
+        apply_one.value_body.is_none(),
+        "shadowed parameter call must not poison the data lambda"
+    );
+    assert!(
+        matches!(
+            &apply_one.connective,
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(_),
+                ..
+            }
+        ),
+        "shadowed parameter call must keep the data lambda executable"
+    );
+
+    assert!(
+        dag.declaration_by_name("use_apply_one").is_some(),
+        "caller should compile after shadow-aware data-lambda lowering"
+    );
 }
