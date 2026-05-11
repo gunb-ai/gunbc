@@ -46,6 +46,8 @@ libc = { version = "0.2", default-features = false }
 criterion = "0.5"
 serde = { workspace = true }
 serde_json = { workspace = true }
+# T-V2 G-1 manifest ratchet: structured Cargo.toml walk (`toml` value parse).
+toml = { workspace = true }
 
 [[bench]]
 name = "tier3_mirror_perf"
