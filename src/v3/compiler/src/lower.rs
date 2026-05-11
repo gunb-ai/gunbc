@@ -3755,13 +3755,40 @@ fn type_to_connective(
 /// deleted per QW4 — `TemplateArgument.parameter` is no longer
 /// representable as a non-TypeParam reference at construction
 /// time.
+///
+/// Generic arguments are [`SurfaceTypeArg`] so phantom width literals are substrate-nested only
+/// under sanctioned `Name<…>` lists (R3 gate #60).
+fn surface_type_arg_to_declaration_id(
+    arg: &SurfaceTypeArg,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> DeclarationId {
+    match arg {
+        SurfaceTypeArg::Ty { body } => type_to_declaration_id(body, symbols, local, dag),
+        SurfaceTypeArg::PhantomWidthLit { span, .. } => {
+            report_declaration_error(
+                dag,
+                Diagnostic::ParseError {
+                    message: "phantom machine-width literals are only allowed inside \
+                         `Int<N>`, `UInt<N>`, `Real<N>`, `Nat<N>`, or `MachineWidth<N>`"
+                        .to_string(),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            declaration_id_after_authoritative_surface_parse_error(dag, span)
+        }
+    }
+}
+
 fn build_template_arguments(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
     local: &HashMap<String, DeclarationId>,
     template: DeclarationId,
     template_name: &str,
-    args: &[SurfaceType],
+    args: &[SurfaceTypeArg],
     span: &SourceSpan,
 ) -> Vec<TemplateArgument> {
     let template_decl = dag.declaration(template);
@@ -3778,7 +3805,7 @@ fn build_template_arguments(
         // instantiation, and a TemplateArgument whose parameter
         // wasn't a TypeParam would violate the field contract.
         for arg in args {
-            let _ = type_to_declaration_id(arg, symbols, local, dag);
+            let _ = surface_type_arg_to_declaration_id(arg, symbols, local, dag);
         }
         return Vec::new();
     }
@@ -3786,7 +3813,7 @@ fn build_template_arguments(
         resolve_template_for_type_parameters(dag, template, template_name, span)
     else {
         for arg in args {
-            let _ = type_to_declaration_id(arg, symbols, local, dag);
+            let _ = surface_type_arg_to_declaration_id(arg, symbols, local, dag);
         }
         return Vec::new();
     };
@@ -3808,14 +3835,14 @@ fn build_template_arguments(
         // inventing parameter references that don't exist, which
         // would violate the field contract.
         for arg in args {
-            let _ = type_to_declaration_id(arg, symbols, local, dag);
+            let _ = surface_type_arg_to_declaration_id(arg, symbols, local, dag);
         }
         return Vec::new();
     }
     args.iter()
         .enumerate()
         .map(|(idx, arg)| {
-            let value = type_to_declaration_id(arg, symbols, local, dag);
+            let value = surface_type_arg_to_declaration_id(arg, symbols, local, dag);
             let parameter = template_param_id(dag, template_for_params, idx).expect(
                 "template_param_count equality was checked immediately above — \
                  param lookup at idx < count must succeed",
@@ -3851,14 +3878,33 @@ fn alloc_identifier_stub(dag: &mut Dag, name: &str, span: &SourceSpan) -> Declar
     id
 }
 
-/// After attaching an authoritative `Diagnostic::ParseError`, lowering still needs a well-formed
-/// `DeclarationId`. Reuse the prelude `Bool` template (or allocate an ordinary `Bool` unresolved
-/// stub as last resort). Internal `__…` identifier stubs must not survive here — strict
-/// `run_identifier_sweep` would attach a duplicate `ResolveError` (INVARIANTS P3).
-fn bool_declaration_id_after_parse_error(dag: &mut Dag, span: &SourceSpan) -> DeclarationId {
-    dag.declaration_by_name("Bool")
-        .map(|decl| decl.id)
-        .unwrap_or_else(|| alloc_identifier_stub(dag, "Bool", span))
+/// After attaching an authoritative fail-closed diagnostic, lowering still needs a well-formed
+/// `DeclarationId`. Allocate a sentinel `UnresolvedIdentifier` atom (**not** a plausible user type like
+/// `Bool`) so strict `resolve_pending_identifiers_strict` skips duplicate `ResolveError` attachment
+/// while downstream passes keep a stable graph spine (codex `#2697` review; INVARIANTS P3).
+fn declaration_id_after_authoritative_surface_parse_error(
+    dag: &mut Dag,
+    span: &SourceSpan,
+) -> DeclarationId {
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id,
+        name: None,
+        connective: TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(
+            PARSE_FAILED_SURFACE_TYPE_MARKER.to_string(),
+        )),
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span: span.clone(),
+    });
+    id
 }
 
 /// Emit a declaration-level diagnostic via `Dag::attach_diagnostic`.
@@ -3978,6 +4024,11 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
         .collect();
 
     for (decl_id, name, span) in snapshot {
+        // Parse-failure placeholders are diagnostic-owned — never resolve via the symbol table
+        // or emit ResolveError duplication (authority is the earlier ParseError / ArityMismatch).
+        if name == PARSE_FAILED_SURFACE_TYPE_MARKER {
+            continue;
+        }
         // Operator identifiers (`+`, `-`, ...) no longer flow through
         // this sweep — they are committed to
         // `TransformTarget::Operator(OperatorKind)` at parse time and
