@@ -61,8 +61,8 @@ enum ToolResultBlockWire {
     },
 }
 
-/// Nested `search_result.content[]` rows: DAG carrier is `AnthropicToolResultTextBlock`
-/// (`text` block only), not the full `AnthropicToolResultBlock` sum.
+/// Nested `search_result.content[]` rows: DAG `AnthropicToolResultTextBlock` carries wire
+/// `type` + `text` (same JSON shape as this internally-tagged enum).
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ToolResultSearchNestedTextWire {
