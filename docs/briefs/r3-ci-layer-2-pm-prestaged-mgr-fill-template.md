@@ -6,7 +6,17 @@
 
 **Purpose**: provide the Verification Mgr with a starting grouping (slow tests by file-area) plus a `(test_pattern, dimensions, required_paths_regex)` skeleton aligned to the affected-set lens per-dimension output shape (`docs/design-affected-set-lens.md` §2). Mgr finalizes inventory + path-mapping; PM only provides the template + structural alignment.
 
-**Hard constraint** (per `feedback_parallel_representation_debt` + locked design): every entry below carries a `dimensions:` **field** (Set<Dimension>) matching the affected-set lens `Dimension` enum. **Multi-dimension carriage is REQUIRED, not optional**: a consumer that reads both Cost AND Complexity must carry `dimensions: [Cost, Complexity]` — narrowing to a single "primary" dimension is a semantic-contract violation against `docs/design-affected-set-lens.md` §2 (full affected-set = union across every dimension the consumer reads). Post-dissolution `skip_*` flags compute structurally as `(affected_dimensions ∩ group.dimensions) ≠ ∅` (non-empty intersection means run), NOT `affected_dimensions.contains(single_primary)`.
+**Hard constraint** (per `feedback_parallel_representation_debt` + locked design): every entry below carries a `dimensions:` **field** (Set<Dimension>) matching the affected-set lens `Dimension` enum. **Multi-dimension carriage is REQUIRED, not optional**: a consumer that reads both Cost AND Complexity must carry `dimensions: [Cost, Complexity]` — narrowing to a single "primary" dimension is a semantic-contract violation against `docs/design-affected-set-lens.md` §2 (full affected-set = union across every dimension the consumer reads).
+
+**Boolean polarity (load-bearing)**: `skip_<cluster> = true` means "no relevant change for this cluster — safe to skip its tests." `skip_<cluster> = false` means "relevant change detected — must run." The CI consumer wires `if: needs.changes.outputs.skip_<cluster> != 'true'` (run when skip is NOT true). Post-dissolution mapping under the affected-set lens:
+
+```
+skip_<cluster> = (affected_dimensions ∩ row.dimensions) = ∅
+              ⇔ no affected dim that this cluster reads
+              ⇔ safe to skip
+```
+
+Equivalently: `run_<cluster> = (affected_dimensions ∩ row.dimensions) ≠ ∅`. The boolean polarity must match the CI gate semantics; setting `skip=true` on non-empty intersection would silently skip affected tests (TESTING.md violation, openai-pro REQUEST_CHANGES caught an earlier inversion).
 
 **Dissolution trigger**: gate `ci_uses_provable_minimal_affected_set_selection` (R3 close-blocking; `docs/design-affected-set-lens.md` §5). When the lens lands, this template + the worker output are deleted.
 
@@ -129,7 +139,7 @@ Source: `scripts/slow-test-exemptions.txt` (78 active entries as of 2026-05-11 E
 
 Each row: `(test_pattern, dimensions, required_paths_regex, confidence, dissolution_note)`.
 
-`dimensions` is a **Set<Dimension>** — the full set of dimensions the test/consumer reads. Per the lens design §2, post-dissolution skip computation is `(affected_dimensions ∩ group.dimensions) ≠ ∅`. Where PM marks dimensions for a row, the set is the **complete read-set as best derived from the test name + comments**, not a primary; Mgr should expand the set if consumer tracing reveals more dimensions read.
+`dimensions` is a **Set<Dimension>** — the full set of dimensions the test/consumer reads. Per the lens design §2, post-dissolution skip computation is `skip_<cluster> = (affected_dimensions ∩ group.dimensions) = ∅` (skip when intersection IS empty / no affected dim that this cluster reads). Equivalently: `run = (intersection ≠ ∅)`. Where PM marks dimensions for a row, the set is the **complete read-set as best derived from the test name + comments**, not a primary; Mgr should expand the set if consumer tracing reveals more dimensions read.
 
 **Conservative fail-closed default**: any group where Mgr is unsure of paths → mark `required_paths_regex: .*` (always-run). Similarly, when in doubt about dimensions, **add more dimensions to the set, never narrow** — over-running is cheap during the bridge-debt period; miss-running violates the locked-design contract.
 
@@ -183,7 +193,7 @@ Each row: `(test_pattern, dimensions, required_paths_regex, confidence, dissolut
 
 3. **`[Mgr-fill]` rows count**: 12 rows out of ~36 need Mgr to derive `required_paths_regex` from consumer tracing. PM left these blank where derivation requires deeper substrate knowledge (substrate-lens deps, R3-V L4/L7 direct-consumer maps, R1C-E `.dag` wrapper internals, free-consequences cross-target topology).
 
-4. **Mechanism — single regex per row + dimension-set per row**: each row contributes to `skip_<cluster>` computation as: `skip_<cluster> = "true" iff (changed files ∩ required_paths_regex matches is empty)`. Dimension-set is the **structural carrier for post-dissolution lens substitution**: when the lens lands, `skip_<cluster>` becomes `(affected_dimensions ∩ row.dimensions) ≠ ∅`. The CI consumer is a shell snippet in `ci.yml`:
+4. **Mechanism — single regex per row + dimension-set per row**: each row contributes to `skip_<cluster>` computation as: `skip_<cluster> = "true" iff (changed files ∩ required_paths_regex matches is empty)` — i.e., skip when no relevant file changed. Dimension-set is the **structural carrier for post-dissolution lens substitution**: when the lens lands, `skip_<cluster>` becomes `(affected_dimensions ∩ row.dimensions) = ∅` — same polarity: skip when no affected dim that this cluster reads (intersection is empty). The CI consumer is a shell snippet in `ci.yml`:
    ```yaml
    - name: <Cluster X test step>
      if: needs.changes.outputs.skip_<cluster> != 'true'
@@ -203,7 +213,7 @@ Mgr-fill complete when:
 - [ ] `changes` job in `ci.yml` extended with per-cluster `skip_<cluster>` boolean outputs.
 - [ ] At least one cluster (pilot) has its `if: needs.changes.outputs.skip_<cluster> != 'true'` gate landed and CI-validated against a representative test case (docs-only PR skips; in-cluster code change runs).
 - [ ] All path-mapping entries have a `dimensions:` field that is a Set<Dimension> with every member of the set in `{Value, Cost, Complexity, Effect, Refinement}`. **Single-element sets are valid (e.g., `[Cost]`); narrowing a known-multi-dim consumer to a single-element set is not.**
-- [ ] Post-dissolution mapping verified: each row's `skip_<cluster>` formula reads `(affected_dimensions ∩ row.dimensions) ≠ ∅` (union semantics), NOT `affected_dimensions.contains(single_primary)`.
+- [ ] Post-dissolution mapping verified: each row's `skip_<cluster>` formula reads `(affected_dimensions ∩ row.dimensions) = ∅` (skip when intersection IS empty / nothing affected), NOT `≠ ∅`. The CI gate is `if: skip_<cluster> != 'true'` (run when skip is false); inverting the polarity silently skips affected tests.
 
 ---
 
