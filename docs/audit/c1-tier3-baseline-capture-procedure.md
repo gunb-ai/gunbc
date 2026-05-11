@@ -15,7 +15,7 @@ Worker brief §"Discipline / baseline noise concerns" (line 108) is explicit: *"
 
 **R-3 designation (ratified):** **`ubicloud-standard-2`** — see `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md` §5.1 + worker dispatch at gunbc **#828**. **Standard case:** `cargo bench` capture for a committed baseline SHOULD run on that label (via `.github/workflows/tier3-baseline-capture.yml` once the workflow exists on `default`) so `captured_on.host_id` records `ubicloud-standard-2`.
 
-**Bootstrap sequencing exception (single authority, P2):** the *first* committed `tier3_baseline.json` may land in the **same PR** that introduces the Ubicloud `workflow_dispatch` workflow, before `gh workflow run` is available against `default`. In that narrow case the capture runs on the **actual** operator/session machine, `captured_on.host_id` is **that honest identifier** (not `ubicloud-standard-2`), and the Phase-1 PR **MUST** reconcile in its description that **forward canonical recapture** is the workflow on `ubicloud-standard-2` (procedure §5.1), not retroactive relabeling of `host_id`. **Director / PB** may still require a follow-up PR replacing the JSON from a Ubicloud artifact if policy demands full hardware alignment before mirror dissolution.
+**Bootstrap sequencing exception (single authority, P2):** the *first* committed `tier3_baseline.json` may land in the **same PR** that introduces the Ubicloud `workflow_dispatch` workflow, before `gh workflow run` is available against `default`. In that narrow case the capture runs on the **actual** operator/session machine, `captured_on.host_id` is **that honest identifier** (not `ubicloud-standard-2`), and the Phase-1 PR **MUST** reconcile in its description that **forward canonical recapture** is the workflow on `ubicloud-standard-2`, not retroactive relabeling of `host_id`. **Director / PB** may still require a follow-up PR replacing the JSON from a Ubicloud artifact if policy demands full hardware alignment before mirror dissolution (capture **§2 one-shot / recapture** discipline in the worker brief).
 
 ---
 
@@ -125,7 +125,7 @@ The committed baseline file lives at `src/v3/compiler/benches/tier3_baseline.jso
 - `median_ns` and `p99_ns` are **strictly positive integers** in nanoseconds (> 0; matches §5 rule 4). `median_ns` is the `point_estimate` for the median field of `target/criterion/<bench>/new/estimates.json`, rounded to the nearest nanosecond. `p99_ns` is **derived per §2.1** from `target/criterion/<bench>/new/sample.json` raw per-iteration timings (Criterion 0.5's `estimates.json` has no p99 field); use path (a) extraction helper or path (b) Gaussian approximation as documented there. Do not commit decimal/float timings — round both fields to integer nanoseconds before writing the JSON to avoid floating-point platform variance.
 - **`host_id` (P2 honesty):** required; MUST identify the machine that executed the benches—**never** spoof `ubicloud-standard-2` unless those runs actually occurred on that label.
   - **Standard commits:** SHOULD use **`ubicloud-standard-2`** (captured via `.github/workflows/tier3-baseline-capture.yml` once dispatchable).
-  - **Bootstrap seed landing** (workflow YAML introduced in the same Phase-1 PR—`workflow_dispatch` not yet on `default`): **`host_id` MUST remain the truthful non-Ubicloud identifier**, with PR-body reconciliation naming **forward canonical authority** (`ubicloud-standard-2`) per §1. Replacing that seed via Ubicloud artifact is §5.1 Director/PB discipline if policy requires it—**not** by silently rewriting `host_id`.
+  - **Bootstrap seed landing** (workflow YAML introduced in the same Phase-1 PR—`workflow_dispatch` not yet on `default`): **`host_id` MUST remain the truthful non-Ubicloud identifier**, with PR-body reconciliation naming **forward canonical authority** (`ubicloud-standard-2`) per §1. Replacing that seed via Ubicloud artifact follows **Director / PB-approved recapture** (worker brief) — **not** by silently rewriting `host_id`.
 - `git_sha` is the full 40-char SHA, not abbreviated.
 - `mirror_groups` keys MUST be exactly the four strings `termination`, `computation`, `induction`, `effect_carrier` — no others, no aliases. The Phase 2 gate uses these as join keys.
 - `benches[].name` MUST exactly match a `bench_function` argument in `tier3_mirror_perf.rs` at the captured `git_sha`. CI validation rejects mismatches.
@@ -161,7 +161,7 @@ These rules are spec; their enforcement is a Phase 2 capture-side concern (the P
 ## 7. Routing (authority)
 
 - **R-3 host** — ratified as **`ubicloud-standard-2`**; see `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md`.
-- **Bootstrap vs canonical pin** — PB Manager / Director decide whether a seeded non-Ubicloud `host_id` stands until mirror work, or whether a **follow-up** Phase-1 refresh PR (Ubicloud artifact → replace JSON) is required before dissolution (§5.1).
+- **Bootstrap vs canonical pin** — PB Manager / Director decide whether a seeded non-Ubicloud `host_id` stands until mirror work, or whether a **follow-up** Phase-1 refresh PR (Ubicloud artifact → replace JSON) is required before dissolution (worker brief recapture discipline).
 
 ---
 
