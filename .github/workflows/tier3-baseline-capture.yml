@@ -71,7 +71,8 @@ jobs:
       - name: Aggregate into tier3_baseline.json
         run: |
           set -eux
-          dirs=(runs/tier3-criterion-{1..5}/criterion)
+          # Each matrix job uploaded `staging/criterion` (Criterion output root).
+          dirs=(runs/tier3-criterion-{1..5})
           python3 scripts/aggregate_tier3_baseline.py \
             --host-id ubicloud-standard-2 \
             --git-sha "${GITHUB_SHA}" \
