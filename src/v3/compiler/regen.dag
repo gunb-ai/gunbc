@@ -3,7 +3,7 @@ module v3.compiler.regen
 import std.types { FilePath, NonEmptyStr }
 
 // Lens regen registry. Each `data <name>_entry: LensRegistryEntry`
-// record below is picked up structurally by the `regen_lens` binary
+// record below is picked up structurally by `regen_v3 lens`
 // (`dag.declarations().filter(meta_tag == LensRegistryEntry)`), which
 // then reads `lens_file`, emits the Rust projection via
 // `emit_rust_module`, and writes to `generated_file`. Mirrors the
@@ -12,7 +12,7 @@ import std.types { FilePath, NonEmptyStr }
 // Adding a new generated lens is a pure `.dag` edit: drop the lens
 // source in `src/v3/lenses/`, add a `data ..._entry: LensRegistryEntry`
 // record here with the three paths filled in, and
-// `cargo run -p v3-compiler --bin regen_lens` picks it up. No
+// `cargo run -p v3-compiler --bin regen_v3 -- lens` picks it up. No
 // per-lens Rust driver is added or edited.
 //
 // `name` composes from `std.types::NonEmptyStr` (= `String where

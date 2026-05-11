@@ -40,6 +40,7 @@ use v3_compiler::generated_files::GENERATED_FILES;
 // informally named in `dsl/gunbc/compiler.dag`.
 const CENSUS_ROOT: &str = "src/v3/compiler";
 const RETIRED_LENS_TESTGEN_RS: &str = "src/v3/compiler/src/lens_testgen.rs";
+const RETIRED_REGEN_LENS_RS: &str = "src/v3/compiler/src/bin/regen_lens.rs";
 
 #[test]
 fn r3_gate_6_lens_testgen_rs_stays_retired() {
@@ -51,6 +52,19 @@ fn r3_gate_6_lens_testgen_rs_stays_retired() {
          `{RETIRED_LENS_TESTGEN_RS}` to stay retired. Keep the stable \
          `v3_compiler::lens_testgen` API routed through `lens_apply.rs` \
          until PB-Runtime owns testgen end-to-end."
+    );
+}
+
+#[test]
+fn r3_gate_7_regen_lens_rs_stays_retired() {
+    let retired_path = workspace_root().join(RETIRED_REGEN_LENS_RS);
+
+    assert!(
+        !retired_path.exists(),
+        "R3 gate #7 (`regen_lens_dot_rs_retired`) requires \
+         `{RETIRED_REGEN_LENS_RS}` to stay retired. Keep lens registry \
+         regeneration routed through `regen_v3 lens` until the full \
+         BinShim cascade retires the remaining host shims."
     );
 }
 
@@ -240,7 +254,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
-    "src/v3/compiler/src/bin/regen_lens.rs",
     "src/v3/compiler/src/bin/regen_parse.rs",
     "src/v3/compiler/src/bin/regen_parse_tables.rs",
     "src/v3/compiler/src/bin/regen_tokenize.rs",

@@ -3,10 +3,10 @@
 //
 //   - `src/v3/compiler/src/bin/` — regen drivers and the self-host
 //     CI binary. The 4 per-lens regen bins collapsed to a single
-//     `regen_lens` shim that reads `src/v3/compiler/regen.dag`.
+//     `regen_v3 lens` path that reads `src/v3/compiler/regen.dag`.
 //   - `src/v3/compiler/regen.dag` — lens registry. Every entry in
 //     the registry is tagged with `LensRegistryEntry`, so the
-//     `regen_lens` driver enumerates them structurally rather than
+//     `regen_v3 lens` driver enumerates them structurally rather than
 //     hard-coding per-lens paths.
 //
 // The tests below pin the post-cutover census. Any new
@@ -144,14 +144,14 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     // `src/v3/compiler/tokenize.dag` as lexical authority and
     // `regen_tokenize.rs` as the host driver that projects it into
     // `src/v3/compiler/src/tokenize_generated.rs`. The driver does not
-    // fit the lens-registry shape that `regen_lens` enumerates (its
+    // fit the lens-registry shape that `regen_v3 lens` enumerates (its
     // input is tokenizer spec rows — keyword / punctuation / escape
     // tables — not `LensRegistryEntry`-tagged lens declarations), so
     // for SG-1 it lands as a parallel shim rather than a registry entry.
     //
     // Dissolution trigger (SG-2+): unify `regen_tokenize` with the
     // registry-driven pattern — either extend `regen.dag` to carry a
-    // tokenizer-registry shape that `regen_lens` can dispatch on, or
+    // tokenizer-registry shape that `regen_v3 lens` can dispatch on, or
     // introduce a generalized "producer registry" that both lenses and
     // the tokenizer share. Either path retires `regen_tokenize.rs` and
     // shrinks the parallel shim set.
@@ -170,7 +170,6 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
         // / R1C-E lane row.
         "r1c_e_emit_gates.rs",
         "regen_bootstrap.rs",
-        "regen_lens.rs",
         "regen_parse.rs",
         // SG-2c-1 grammar-tables prototype: `regen_parse_tables` projects
         // `src/v3/compiler/parse_tables.dag` into
@@ -194,8 +193,7 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
         actual, expected,
         "SG-6 hand-authored bin census changed. The census is \
          `r1c_e_emit_gates` (R1C-E T-Emit `.dag` wrapper logical child; \
-         issue #973), `regen_lens` (reads `src/v3/compiler/regen.dag`), \
-         `regen_parse` (reads `src/v3/std/parse_surface.dag` for Surface \
+         issue #973), `regen_parse` (reads `src/v3/std/parse_surface.dag` for Surface \
          carriers), `regen_tokenize` (reads `src/v3/compiler/tokenize.dag`), \
          `regen_v3`, and `self_host_fixed_point`. Adding a new bin re-introduces a \
          per-lens (or per-target) Rust driver — the SG-6 lane requires that \
@@ -406,7 +404,7 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
     );
 }
 
-// `--lens <name>` is the selection key in `regen_lens`'s CLI surface.
+// `--lens <name>` is the selection key in `regen_v3 lens`'s CLI surface.
 // If two registry entries carry the same `name`, the driver cannot
 // distinguish them and the first-match-wins iteration order becomes
 // a hidden contract. The driver itself fails closed on this case in
@@ -420,7 +418,7 @@ fn sg6_lens_registry_names_are_unique() {
         if let Some(prior_binding) = seen.get(&row.name) {
             panic!(
                 "lens registry has duplicate `name` `{name}`: first declared by `{prior}`, re-declared by `{current}`. \
-                 `regen_lens --lens {name}` would resolve ambiguously. Rename one entry in `src/v3/compiler/regen.dag`.",
+                 `regen_v3 lens --lens {name}` would resolve ambiguously. Rename one entry in `src/v3/compiler/regen.dag`.",
                 name = row.name,
                 prior = prior_binding,
                 current = row.binding,
@@ -431,7 +429,7 @@ fn sg6_lens_registry_names_are_unique() {
 }
 
 // Two entries pointing at the same `generated_file` would let each
-// overwrite the other when `regen_lens` runs with no `--lens` filter
+// overwrite the other when `regen_v3 lens` runs with no `--lens` filter
 // (full-registry pass). The driver fails closed on duplicates; this
 // test mirrors that invariant at the registry source.
 #[test]
@@ -442,7 +440,7 @@ fn sg6_lens_registry_generated_files_are_unique() {
         if let Some(prior_binding) = seen.get(&row.generated_file) {
             panic!(
                 "lens registry has duplicate `generated_file` `{path}`: first declared by `{prior}`, re-declared by `{current}`. \
-                 Running `regen_lens` with no filter would have each entry clobber the other.",
+                 Running `regen_v3 lens` with no filter would have each entry clobber the other.",
                 path = row.generated_file,
                 prior = prior_binding,
                 current = row.binding,
@@ -503,7 +501,7 @@ fn sg6_infer_helpers_generated_module_matches_checked_in_snapshot() {
     assert_eq!(
         fresh.trim(),
         checked_in_generated_module(row).trim(),
-        "checked-in generated module is stale; regenerate {} from {} via `cargo run -p v3-compiler --bin regen_lens -- --lens {}`",
+                "checked-in generated module is stale; regenerate {} from {} via `cargo run -p v3-compiler --bin regen_v3 -- lens --lens {}`",
         row.generated_file,
         row.lens_file,
         row.name,
@@ -530,7 +528,7 @@ fn sg6_lower_helpers_generated_module_matches_checked_in_snapshot() {
     assert_eq!(
         fresh.trim(),
         checked_in_generated_module(row).trim(),
-        "checked-in generated module is stale; regenerate {} from {} via `cargo run -p v3-compiler --bin regen_lens -- --lens {}`",
+        "checked-in generated module is stale; regenerate {} from {} via `cargo run -p v3-compiler --bin regen_v3 -- lens --lens {}`",
         row.generated_file,
         row.lens_file,
         row.name,
@@ -551,7 +549,7 @@ fn sg6_emit_lower_helpers_snapshot() {
 
 // Director/Codex follow-up on #560: prove the real CLI path works, not
 // just the structural registry ratchets. This smoke test runs the
-// built `regen_lens` binary against a single concrete registry entry
+// built `regen_v3` binary against a single concrete registry entry
 // and asserts three things:
 //   1. `--lens <name>` exits successfully,
 //   2. stdout reports the expected generated target path, and
@@ -561,7 +559,7 @@ fn sg6_emit_lower_helpers_snapshot() {
 // failing so a local red test does not leave the worktree dirty.
 budgeted_test! {
     15_000,
-    sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift,
+    sg6_regen_v3_lens_cli_smoke_regenerates_named_entry_without_drift,
     {
         let (_dag, rows) = load_registry();
         let row = registry_row(&rows, "cost");
@@ -569,26 +567,27 @@ budgeted_test! {
         let out_path = workspace_root().join(&row.generated_file);
         let before = std::fs::read(&out_path).expect("read checked-in generated file");
 
-        let output = Command::new(env!("CARGO_BIN_EXE_regen_lens"))
+        let output = Command::new(env!("CARGO_BIN_EXE_regen_v3"))
             .current_dir(manifest_dir())
+            .arg("lens")
             .arg("--lens")
             .arg(&row.name)
             .output()
-            .expect("run regen_lens binary");
+            .expect("run regen_v3 binary");
 
         assert!(
             output.status.success(),
-            "regen_lens --lens {} failed:\nstdout:\n{}\nstderr:\n{}",
+            "regen_v3 lens --lens {} failed:\nstdout:\n{}\nstderr:\n{}",
             row.name,
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr),
         );
 
-        let stdout = String::from_utf8(output.stdout).expect("regen_lens stdout should be utf-8");
+        let stdout = String::from_utf8(output.stdout).expect("regen_v3 stdout should be utf-8");
         assert_eq!(
             stdout.trim(),
             format!("wrote {}", out_path.display()),
-            "`regen_lens --lens {}` should report the single generated target it rewrote",
+            "`regen_v3 lens --lens {}` should report the single generated target it rewrote",
             row.name,
         );
 
@@ -599,7 +598,7 @@ budgeted_test! {
         }
         assert_eq!(
             after, before,
-            "`regen_lens --lens {}` changed `{}`. The smoke test expects the CLI path to be clean against the checked-in snapshot; if this fails, regenerate in the same PR that updates the snapshot.",
+            "`regen_v3 lens --lens {}` changed `{}`. The smoke test expects the CLI path to be clean against the checked-in snapshot; if this fails, regenerate in the same PR that updates the snapshot.",
             row.name,
             row.generated_file,
         );

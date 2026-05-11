@@ -59,10 +59,6 @@ path = "src/bin/regen_bootstrap.rs"
 required-features = ["bootstrap-regen-fresh"]
 
 [[bin]]
-name = "regen_lens"
-path = "src/bin/regen_lens.rs"
-
-[[bin]]
 name = "regen_parse"
 path = "src/bin/regen_parse.rs"
 
