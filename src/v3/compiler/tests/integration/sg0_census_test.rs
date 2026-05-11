@@ -579,12 +579,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // receipt for the narrowed gap-test ratified in Q-Class-2-Chain-Break
     // option (a) and dispatched by
     // `docs/briefs/r3-substrate-s1-gap-test-representative-worker.md`.
-    // P5 receipt: this bounded host-side harness asserts "function-valued
-    // data is first-class" through public evaluator consumption; production
-    // code removes an opaque data-body scaffold and routes through existing
-    // substrate `Arrow` / `Callable`. Dissolves when §1.8 row #61 can be
-    // expressed as a `.dag` TestClaim over evaluator output without direct
-    // Rust DAG inspection.
+    // P5 receipt: explicit deferral cites ROADMAP.md post-merge debt F8
+    // (`SymbolicCost` first-class `Semiring<SymbolicCost>` witness; function-
+    // valued data prerequisite) plus docs/r3-program-plan.md §1.8 row #61.
+    // This bounded host-side harness asserts "function-valued data is first-
+    // class" through public evaluator consumption; production code removes an
+    // opaque data-body scaffold and routes through existing substrate `Arrow`
+    // / `Callable`. Dissolves when §1.8 row #61 can be expressed as a `.dag`
+    // TestClaim over evaluator output without direct Rust DAG inspection.
     "src/v3/compiler/tests/integration/r3_class_2_function_valued_data_test.rs",
     // R3 T-Free-Consequences first batch: hand-Rust driver for five
     // author-now/fire-later `BinaryDimensionReportEquals` TestClaims.

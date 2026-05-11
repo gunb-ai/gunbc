@@ -317,6 +317,20 @@ pub(crate) fn lower_bodies_phase(
         if let SurfaceItem::Data {
             name,
             ty,
+            body: Some(SurfaceExpr::Lambda { .. }),
+            ..
+        } = item
+        {
+            initialize_data_declaration_type(name, ty, dag, symbols);
+        }
+    }
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        if let SurfaceItem::Data {
+            name,
+            ty,
             body,
             body_span,
             ..
@@ -4031,20 +4045,7 @@ fn lower_data_item(
     invalid_data_lambda_cluster: Option<&InvalidMutualCluster>,
 ) {
     let decl_id = symbols[name];
-    let local: HashMap<String, DeclarationId> = HashMap::new();
-    // Compute the declaration id of the type annotation (e.g.
-    // Realization's DeclarationId for `data rust_int: Realization`)
-    // — the walk starts here.
-    let ty_decl_id = type_to_declaration_id(ty, symbols, &local, dag);
-    let connective = type_to_connective(ty, symbols, &local, dag);
-    // meta_tag edge from the data item to its type annotation. This
-    // is what makes a data declaration structurally distinct from a
-    // type alias (R9/R10 + PR-B): the type is readable from the
-    // same field shape as Realization instances in rust.dag, and
-    // downstream consumers (emit_rust) can filter by meta_tag to
-    // find all declarations of a given meta-type.
-    dag.declaration_mut(decl_id).meta_tag = Some(ty_decl_id);
-    dag.declaration_mut(decl_id).connective = connective;
+    let ty_decl_id = initialize_data_declaration_type(name, ty, dag, symbols);
     // Attempt structural inhabitance checking if the body parsed
     // as a record literal. Falls back to Unparsed on any failure
     // (walk doesn't terminate at a Conj, missing field, extra
@@ -4191,6 +4192,30 @@ fn lower_data_item(
         None if suppress_unparsed_scaffold => None,
         None => Some(crate::dag::ValueBody::Unparsed(body_span.clone())),
     };
+}
+
+fn initialize_data_declaration_type(
+    name: &str,
+    ty: &SurfaceType,
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> DeclarationId {
+    let decl_id = symbols[name];
+    let local: HashMap<String, DeclarationId> = HashMap::new();
+    // Compute the declaration id of the type annotation (e.g.
+    // Realization's DeclarationId for `data rust_int: Realization`)
+    // — the walk starts here.
+    let ty_decl_id = type_to_declaration_id(ty, symbols, &local, dag);
+    let connective = type_to_connective(ty, symbols, &local, dag);
+    // meta_tag edge from the data item to its type annotation. This
+    // is what makes a data declaration structurally distinct from a
+    // type alias (R9/R10 + PR-B): the type is readable from the
+    // same field shape as Realization instances in rust.dag, and
+    // downstream consumers (emit_rust) can filter by meta_tag to
+    // find all declarations of a given meta-type.
+    dag.declaration_mut(decl_id).meta_tag = Some(ty_decl_id);
+    dag.declaration_mut(decl_id).connective = connective;
+    ty_decl_id
 }
 
 /// Substrate fact for the R1C-B `repeat_string` data-body fold: only the declaration
