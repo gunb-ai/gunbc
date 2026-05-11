@@ -3,8 +3,8 @@
 use v3_compiler::analyze_workflow;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, Behavior, BreakingShape, CompositionVerdict, CreateCause, EffectShape, IdempotentShape,
-    KeySource, NonSingletonList, OperationEffect, TypeConnective, WorkflowEffect,
+    ArrowBody, Behavior, BreakingShape, CompositionVerdict, CreateCause, EffectShape,
+    IdempotentShape, KeySource, NonSingletonList, OperationEffect, TypeConnective, WorkflowEffect,
     WorkflowIdempotencyReport,
 };
 use v3_compiler::diagnostics::{Diagnostic, SourceSpan};
