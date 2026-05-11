@@ -1409,7 +1409,7 @@ fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPat
         .find_map(sub_value_relation_to_call_pattern)
 }
 
-pub fn sub_value_relation_to_call_pattern(relation: &SubValueRelation) -> Option<CallPattern> {
+fn project_sub_value_relation(relation: &SubValueRelation) -> Option<CallPattern> {
     match relation {
         SubValueRelation::ArithmeticDescent { param, factor } => match factor {
             ShrinkFactor::ConstantShrink { steps } => Some(CallPattern::ArithmeticSubtractCall {
