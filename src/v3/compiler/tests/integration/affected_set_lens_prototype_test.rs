@@ -1,7 +1,8 @@
 //! **Layer:** integration
 //!
 //! R4.B prototype smoke for [`v3_compiler::affected_set_lens`] (tracking issue `#2699`, design companion PR `#2700`).
-//! Assertions use only `include_str!` fixtures under `tests/fixtures/affected_set/` (hermetic per `TESTING.md`).
+//! Assertions load `case_*_{before,after}.dag` via `include_str!` and use **`case_*_shared.dag`** files
+//! as attribution paths (sparse module stubs beside each pair; hermetic `TESTING.md`).
 
 use v3_compiler::affected_set_lens::compute_affected_set_lens_report;
 use v3_compiler::compile_to_dag;

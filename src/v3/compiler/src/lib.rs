@@ -3779,10 +3779,46 @@ pub mod lens_effect_enumeration {
         include!("lens_effect_enumeration_generated.rs");
     }
 
+    use std::collections::VecDeque;
+
     pub use generated::{
-        enumerate_effects, CoverageGap, EffectEnumerationReport, EffectFact, RedundantReadError,
+        CoverageGap, EffectEnumerationReport, EffectFact, RedundantReadError,
         StructuralEffectShape, TransactionalPattern,
     };
+
+    /// Runs the effect-enumeration lens from `src/v3/lenses/effect_enumeration.dag`.
+    ///
+    /// Semantics match the checked-in `emit_rust_module` projection, but the fact stack is
+    /// built with a `VecDeque` front stack instead of cloning the full accumulator on every
+    /// `List` fold step the emitter lowers for `compute_effect_facts` — large bootstrap `Dag`s
+    /// otherwise spend Θ(n²) time in `affected_set_lens` and integration tests.
+    ///
+    /// Single authority: the `.dag` + regenerated `lens_effect_enumeration_generated.rs`;
+    /// this function is a host-only performance shim (INVARIANTS P2).
+    pub fn enumerate_effects(p0: &crate::Dag) -> EffectEnumerationReport {
+        let facts = compute_effect_facts_host(p0);
+        EffectEnumerationReport {
+            coverage_gaps: generated::compute_coverage_gaps_from_facts(
+                (p0).nodes(),
+                p0,
+                &facts,
+            ),
+            facts,
+            redundant_reads: Vec::new(),
+            transaction: generated::transaction_pattern(p0),
+        }
+    }
+
+    fn compute_effect_facts_host(p0: &crate::Dag) -> Vec<EffectFact> {
+        let mut deque: VecDeque<EffectFact> = VecDeque::with_capacity(p0.nodes().len());
+        for behavior in (p0).nodes() {
+            let len = deque.len();
+            let acc = deque.make_contiguous();
+            let next = generated::effect_fact_for(p0, &acc[..len], behavior);
+            deque.push_front(next);
+        }
+        deque.into_iter().collect()
+    }
 }
 
 /// Unused-parameters lens. Authority lives in `src/v3/lenses/unused_parameters.dag`;
