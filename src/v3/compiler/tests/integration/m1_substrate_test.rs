@@ -55,6 +55,9 @@ fn bootstrap_int64_compose_int_machine_width_per_gate_19() {
 
 #[test]
 fn bootstrap_integer_aliases_align_to_refinements_per_gate_19() {
+    // R3 gate #19 covers the public numeric compatibility aliases: fixed-width
+    // Int/UInt names refine the abstract integer carriers, and Float32/64 route
+    // through Real32/64 to refine abstract Real.
     assert_bootstrap_integer_aliases_align_to_refinements(&Dag::new());
 }
 

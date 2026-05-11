@@ -342,8 +342,9 @@ pub fn assert_bootstrap_int32_compose_int_machine_width(dag: &Dag) {
     assert_compose_with_machine_width(dag, "Int32", "Int", "Word32");
 }
 
-/// Receipt: all fixed-width signed/unsigned aliases are width refinements of
-/// abstract `Int` / `UInt`, not parallel algebra substrate (R3 gate #19).
+/// Receipt: all fixed-width numeric compatibility aliases are width
+/// refinements of the abstract `Int` / `UInt` / `Real` carriers, not parallel
+/// substrate (R3 gate #19).
 pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
     for (alias, algebra, width) in [
         ("Int8", "Int", "Byte"),
@@ -356,6 +357,8 @@ pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
         ("UInt32", "UInt", "Word32"),
         ("UInt64", "UInt", "Word64"),
         ("UInt128", "UInt", "Word128"),
+        ("Float32", "Real", "Word32"),
+        ("Float64", "Real", "Word64"),
     ] {
         assert_compose_with_machine_width(dag, alias, algebra, width);
     }
