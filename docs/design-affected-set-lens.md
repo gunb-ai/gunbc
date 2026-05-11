@@ -21,9 +21,17 @@ Both systems still answer **"what is downstream of X?"** with a transitive-edge 
 
 **gunbc's structural leverage**: the substrate itself IS the dependency graph. Every `Node` declares its outgoing edges typed-and-structured (per [`docs/architecture.md`](architecture.md) and `feedback_compiler_is_dag_processor`). There's no separate analysis phase to parallelize because the analysis IS the substrate.
 
-**More importantly**: because `.dag` programs are pure (`feedback_no_textual_enforcement_bridges` + thesis Tier 1 / Tier 2), **upstream change usually doesn't propagate beyond interface/edge cases**. A function whose internal cost changes but whose I/O behavior is unchanged has **no consumers in the affected set** — only the function itself.
+**More importantly**: because `.dag` programs are pure (`feedback_no_textual_enforcement_bridges` + thesis Tier 1 / Tier 2), **upstream change usually doesn't propagate beyond interface/edge cases**. The affected-set is **strictly smaller** than transitive-downstream — but **only relative to the structural dimensions whose values actually changed**.
 
-The affected-set is **strictly smaller** than transitive-downstream.
+**Dimension-aware affected-set discipline** (per `THESIS.md:87-89` + `modeling-discipline.md:69-75`): gunbc treats complexity/cost/effect as structural correctness dimensions, not just runtime annotations. A function whose **I/O return-value behavior** is unchanged but whose **cost/complexity/effect shape changed** still affects consumers carrying structural claims on those dimensions:
+
+- Cost/complexity claim consumers: callers with `apply_lens(complexity, fn, Enforce{...})` or memoization decisions tied to the changed function's cost
+- Effect-shape consumers: callers whose effect_enum projection composes through the changed function
+- Bottleneck-lens consumers: callers whose T-CostLens-Composition rollups read the changed function's cost contribution
+
+Affectedness is therefore not "did the function's return value behavior change?" but rather "did **any structural dimension** the consumer reads change?" — value-equivalence is one projection of the affected-set predicate; cost/complexity/effect/etc. are others, each yielding a (possibly different) affected-set. The full affected-set is the **union** across all dimensions the consumer set reads.
+
+This matters because gunbc's thesis (`THESIS.md:374-376`) names suboptimal-complexity contract violations as compile-time obligations — a build system that silently skips downstream tests when only cost changed would dilute that structural-correctness promise.
 
 ---
 
@@ -86,7 +94,20 @@ affected_set: Lens<Dag × Dag → Set<NodeRef>> where
        )
 ```
 
-`structural_dependency(M, N)` is the load-bearing predicate. Per substrate-shape thesis, it's a **fold over the edge types** — Conj / Disj / Cardinality / Bit (the only types the compiler knows per `feedback_compiler_is_dag_processor`).
+`structural_dependency(M, N)` is the load-bearing predicate. Per `THESIS.md:198-201`, the substrate shape is **two parallel surfaces**:
+
+- **Type substrate**: `Atom | Conj | Disj | Arrow | Cardinality | Instantiation` (6 type connectives)
+- **Computation substrate**: `Value | Transform | Branch | Loop | Bind` (5 L1 behaviors; `Transform` refers to `Arrow.body`)
+
+`structural_dependency` is a **fold over both surfaces** + the dimension lens(es) the consumer reads. Each edge type encodes a specific kind of dependency:
+
+- **Arrow → Bind (call site)**: consumer is affected if the callable's signature OR any read dimension changed
+- **Cardinality → Branch (refinement)**: consumer is affected if the refinement boundary changed AND the consumer flows through it
+- **Conj/Disj (structural composition)**: consumer is affected if the composed sub-pieces changed in dimensions the consumer projects
+- **Loop (iteration)**: consumer is affected if the iteration bound/termination predicate semantics changed in a dimension the consumer reads
+- **Instantiation (algebra surface)**: consumer is affected if it walks the algebra structure that changed (not just references the name)
+
+**Distinct from the PB-runtime bounded kernel** (per `docs/design-pure-bootstrap-zero.md:118-119`: `Node` + `Conj` + `Disj` + `Cardinality` + `Bit` — recursive form only). The PB kernel is what stage-0 runs through; the substrate-level query surface for affected-set is the full 6+5 thesis shape. Conflating the two would under-model call/signature/refinement/algebra-walk dependencies that require Arrow/Instantiation/Branch.
 
 ---
 
@@ -112,17 +133,37 @@ function multiply_then_add(x: Int, y: Int, z: Int) -> Int {
 }
 ```
 
-**Lens output**:
+**Lens output** (per consumer dimension):
 
 ```
-affected_set = { multiply_then_add }
+// Value-equivalence dimension: I/O return is identical
+affected_set_value = { multiply_then_add }
+
+// Cost/complexity dimension: depends on whether the rewrite
+// preserves cost shape
+affected_set_cost =
+  if cost_shape(before) == cost_shape(after):
+    { multiply_then_add }
+  else:
+    { multiply_then_add } ∪ { consumers with cost claims that read this fn }
+
+// Effect-shape dimension: pure→pure rewrite, no effect change
+affected_set_effect = { multiply_then_add }
+
+// Aggregate affected-set is the UNION across consumer dimensions
+affected_set = affected_set_value ∪ affected_set_cost ∪ affected_set_effect
 ```
 
-**Commentary**: the function's body changed (internal Node tree differs), but its **I/O behavior is identical** for every input. Consumers that call `multiply_then_add(x, y, z)` observe the same return value before and after. Per substrate purity, downstream is **not affected**.
+**Commentary**: the function's body changed (internal Node tree differs), but its **I/O return-value behavior is identical** for every input. The value-projection narrows to `{multiply_then_add}` only. **However**, the cost shape may differ (one extra `+ 0` instruction; trivial here, but consider a non-trivial body rewrite): if a consumer carries an `apply_lens(complexity, ..., Enforce)` contract on this function, that consumer IS in the affected-set even though I/O is unchanged.
 
-Compare to transitive-downstream which would include every call site — typically 10-100× larger.
+Compare to transitive-downstream which would include every call site regardless of dimension — typically 10-100× larger. The structural lens narrows per dimension but **does not collapse to value-only**.
 
-**Test selection**: the function's own TestClaim runs; downstream tests skip.
+**Test selection**:
+- Tests checking I/O behavior: only the function's own TestClaim runs
+- Tests checking cost/complexity contracts on consumers: run if the cost shape changed and a consumer reads it
+- Tests checking effect-shape: run if effect_enum projection changed
+
+Per `TESTING.md:37-48`, tests are behavior contracts spanning all dimensions; the CI selection composes per-dimension affected-sets, not just the value projection.
 
 ### §4.2 Case B — Signature change (port added/removed)
 
@@ -262,11 +303,13 @@ affected_set = {
 
 A production build-system integration would compose:
 
-1. **PR pre-step**: compute `Dag_before` (main HEAD) and `Dag_after` (PR HEAD); run `affected_set` lens
-2. **Test selection**: intersect affected-set with TestClaim references; produce the minimum test set to run
+1. **PR pre-step**: compute `Dag_before` (main HEAD) and `Dag_after` (PR HEAD); run `affected_set` lens **per dimension** (value / cost / complexity / effect / refinement); union the per-dimension sets
+2. **Test selection**: intersect aggregate affected-set with TestClaim references — each TestClaim declares which dimensions it asserts about; selection keeps TestClaims whose asserted-dimensions intersect with changed-dimensions
 3. **CI runtime**: execute only the minimum set; on green, allow merge
 
-The current CI runs ~all tests; with this lens, typical PR runtimes would shrink by 10-100× depending on PR shape. Substrate-shape PRs (Case C) would run more; function-body PRs (Case A) would run a single TestClaim.
+The current CI runs ~all tests; with this lens, typical PR runtimes would shrink by 10-100× depending on PR shape. Substrate-shape PRs (Case C) would run more (algebra walks → many dimension consumers); function-body PRs (Case A) would run only the dimensions actually changed (value-only rewrite → few tests; cost-shape rewrite → cost-contract tests on consumers also run).
+
+**Critical**: the CI selection must NOT default to "value-equivalence only" — that would skip cost/effect/complexity-contract tests on downstream consumers, diluting the structural-correctness promise per `THESIS.md:374-376` (suboptimal-complexity contract violations are compile-time obligations). Selection is **dimension-aware**: per-dimension affected-set × per-TestClaim asserted-dimensions.
 
 **Out of scope here**: implementation of the CI integration. The prototype demonstrates the lens output; the CI integration is R4 full-delivery work.
 
