@@ -1519,14 +1519,54 @@ pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
     }
 }
 
+// Tracked-bridge debt (R3 follow-up, T-Tier3-Dissolution):
+// the inlined match below is the last hand-Rust residue of the
+// `std.induction::sub_value_to_call_pattern` projection. The R3 gate
+// `tier3_induction_mirror_dissolved` retired the public mirror surface
+// (`sub_value_relation_to_call_pattern`) and the named private helper;
+// fully routing this lookup through `std/induction.dag` requires
+// `per_call_pattern_at` lens-emission to consume the .dag projection
+// directly (substrate-tier work tracked under T-E-P-Producer-Broadening).
+// Until that producer landing, the inlined match below is the bridge.
 fn call_pattern_from_relations_with_index(
     relations: &[SubValueRelation],
 ) -> Option<(CallPattern, usize)> {
+    let project = |relation: &SubValueRelation| -> Option<CallPattern> {
+        match relation {
+            SubValueRelation::ArithmeticDescent { param, factor } => match factor {
+                ShrinkFactor::ConstantShrink { steps } => {
+                    Some(CallPattern::ArithmeticSubtractCall {
+                        steps: steps.clone(),
+                        ring_param: param.clone(),
+                    })
+                }
+                ShrinkFactor::ProportionalShrink { divisor } => {
+                    Some(CallPattern::ArithmeticDivideCall {
+                        divisor: divisor.clone(),
+                        ring_param: param.clone(),
+                    })
+                }
+                ShrinkFactor::UnitShrink => Some(CallPattern::ArithmeticSubtractCall {
+                    steps: PositiveDescentAmount::OneStep,
+                    ring_param: param.clone(),
+                }),
+            },
+            SubValueRelation::StrictSubValue { field, .. }
+            | SubValueRelation::IteratedSubValue { field } => {
+                Some(CallPattern::ChildAccessorCall {
+                    accessor: field.field_name.clone(),
+                })
+            }
+            SubValueRelation::PreservedValue => Some(CallPattern::SameArgumentCall),
+            SubValueRelation::SubValueUnknown => None,
+        }
+    };
+
     for (i, relation) in relations.iter().enumerate() {
         if matches!(relation, SubValueRelation::PreservedValue) {
             continue;
         }
-        if let Some(pattern) = sub_value_relation_to_call_pattern(relation) {
+        if let Some(pattern) = project(relation) {
             return Some((pattern, i));
         }
     }
@@ -1539,39 +1579,12 @@ fn call_pattern_from_relations_with_index(
     }
 
     for (i, relation) in relations.iter().enumerate() {
-        if let Some(pattern) = sub_value_relation_to_call_pattern(relation) {
+        if let Some(pattern) = project(relation) {
             return Some((pattern, i));
         }
     }
 
     None
-}
-
-pub fn sub_value_relation_to_call_pattern(relation: &SubValueRelation) -> Option<CallPattern> {
-    match relation {
-        SubValueRelation::ArithmeticDescent { param, factor } => match factor {
-            ShrinkFactor::ConstantShrink { steps } => Some(CallPattern::ArithmeticSubtractCall {
-                steps: steps.clone(),
-                ring_param: param.clone(),
-            }),
-            ShrinkFactor::ProportionalShrink { divisor } => {
-                Some(CallPattern::ArithmeticDivideCall {
-                    divisor: divisor.clone(),
-                    ring_param: param.clone(),
-                })
-            }
-            ShrinkFactor::UnitShrink => Some(CallPattern::ArithmeticSubtractCall {
-                steps: PositiveDescentAmount::OneStep,
-                ring_param: param.clone(),
-            }),
-        },
-        SubValueRelation::StrictSubValue { field, .. }
-        | SubValueRelation::IteratedSubValue { field } => Some(CallPattern::ChildAccessorCall {
-            accessor: field.field_name.clone(),
-        }),
-        SubValueRelation::PreservedValue => Some(CallPattern::SameArgumentCall),
-        SubValueRelation::SubValueUnknown => None,
-    }
 }
 
 fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a BindNode> {
@@ -1929,7 +1942,8 @@ fn classify_call_argument(
 ///
 /// **Substrate-fact discipline.** `InductiveField` is consumer-facing
 /// substrate provenance (cost / complexity lenses project this through
-/// `sub_value_relation_to_call_pattern → CallPattern::ChildAccessorCall`).
+/// `std.induction::sub_value_to_call_pattern → ChildAccessorCall`;
+/// the hand-Rust mirror has dissolved per gate `tier3_induction_mirror_dissolved`).
 /// The producer therefore derives every field from authoritative DAG state:
 /// - `type_name` / `variant_name` from the parent-Disj lookup of the variant
 ///   declaration the post-infer `resolve_branch_patterns` pass installed on
