@@ -56,17 +56,30 @@ type ImageSource
     }
   | UrlImage { url: String }
 
-type ContentBlock
-  = TextContent { text: String }
-  | ImageContent { source: ImageSource }
-
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicToolResultContent`
-// (`dsl/extdeps/llm/anthropic.dag`). Scalar text and nested content blocks are
-// alternatives in Anthropic's tool-result content slot, not optional sibling
-// fields on the tool-result row.
+// (`dsl/extdeps/llm/anthropic.dag`). Tuple carriers mirror v2 exactly so serde
+// untagged emission can map the JSON string vs JSON array alternatives without
+// inventing parallel record shapes on the v3 mirror.
 type AnthropicToolResultContent
-  = ToolResultText { text: String }
-  | ToolResultBlocks { blocks: List<ContentBlock> }
+  = ToolResultText(String)
+  | ToolResultBlocks(List<AnthropicToolResultBlock>)
+
+// 🟡 SCAFFOLD mirroring `AnthropicToolResultBlock` (`dsl/extdeps/llm/anthropic.dag`).
+// Dissolution trigger: Anthropic extends `tool_result.content[]` with new block kinds
+// beyond the five modeled variants — fold additive tags here or escalate if the wire
+// contract becomes non-additive.
+type AnthropicToolResultBlock
+  = AnthropicTextBlock { text: String }
+  | AnthropicImageBlock { source: ImageSource }
+  | AnthropicDocumentBlock { source: AnthropicToolResultPlainTextDocumentSource }
+  | AnthropicSearchResultBlock { source: String, title: String, content: List<AnthropicTextBlock> }
+  | AnthropicToolReferenceBlock { tool_name: String }
+
+type AnthropicToolResultPlainTextDocumentSource {
+  type: String
+  media_type: String
+  data: String
+}
 
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicUserContentBlock`
 // (`dsl/extdeps/llm/anthropic.dag`). Tool-result content is optional on the
