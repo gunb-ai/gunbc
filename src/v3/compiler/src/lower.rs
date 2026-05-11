@@ -3435,6 +3435,17 @@ fn lower_type_alias(
     }
 }
 
+// 🟢 TERMINAL — implementation-layer coproduct over `rewrite_phantom_machine_width_surface`
+// outcomes for gate #60 interaction syntax: no matching sanctioned pattern (`NotApplicable`),
+// legal rewrite toward existing `Compose` / `MachineWidth<Word*>` surface (`Rewritten`), or
+// user-visible failure after diagnostic (`Invalid`). Not substrate-carried; variants anchor in
+// lowering dispatch over parsed `SurfaceType`, analogous to [`PredicateValidation`].
+//
+// Ledger (Practice 4, docs/modeling-discipline.md §4): dissolution patterns — (1) fact placement:
+// scattering would lose the shared rewrite prelude for `type_to_declaration_id` /
+// `type_to_connective` without benefit; (2) variant-is-data: payloads differ structurally;
+// (3) algebraic refactor: would invent a phantom intermediate DAG concept; (4) dimensional:
+// n/a. Verdict: terminal at this lowering boundary unless parse surface merges the outcomes.
 #[derive(Debug)]
 enum PhantomWidthSurfaceOutcome {
     NotApplicable,
