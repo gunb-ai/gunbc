@@ -1633,7 +1633,7 @@ fn classify_call_argument(
 ///
 /// **Substrate-fact discipline.** `InductiveField` is consumer-facing
 /// substrate provenance (cost / complexity lenses project this through
-/// `std.induction::sub_value_relation_to_call_pattern → ChildAccessorCall`;
+/// `std.induction::sub_value_to_call_pattern → ChildAccessorCall`;
 /// the hand-Rust mirror has dissolved per gate `tier3_induction_mirror_dissolved`).
 /// The producer therefore derives every field from authoritative DAG state:
 /// - `type_name` / `variant_name` from the parent-Disj lookup of the variant
