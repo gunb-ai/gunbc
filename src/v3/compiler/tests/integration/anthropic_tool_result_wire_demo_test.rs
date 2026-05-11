@@ -302,6 +302,24 @@ fn tool_result_wire_demo_projection_is_locked_to_modeled_dag_surface() {
         !content_optional,
         "search nested content list is required on the wire row"
     );
+    let (_, citations_ty, citations_optional) = search_payload
+        .iter()
+        .find(|(l, _, _)| l == "citations")
+        .expect("search_result.citations field");
+    assert_eq!(citations_ty, "AnthropicSearchResultCitationsConfig");
+    assert!(
+        citations_optional,
+        "citations is optional on AnthropicSearchResultBlock per v2 authority"
+    );
+    let (_, cache_ty, cache_optional) = search_payload
+        .iter()
+        .find(|(l, _, _)| l == "cache_control")
+        .expect("search_result.cache_control field");
+    assert_eq!(cache_ty, "CacheControl");
+    assert!(
+        cache_optional,
+        "cache_control is optional on AnthropicSearchResultBlock per v2 authority"
+    );
 }
 
 #[test]

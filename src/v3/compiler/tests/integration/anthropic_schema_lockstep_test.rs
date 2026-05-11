@@ -674,6 +674,16 @@ fn anthropic_tool_result_text_block_row_lockstep() {
 }
 
 #[test]
+fn anthropic_search_result_citations_config_lockstep() {
+    assert_record_lockstep("AnthropicSearchResultCitationsConfig");
+}
+
+#[test]
+fn anthropic_cache_control_row_lockstep() {
+    assert_record_lockstep("CacheControl");
+}
+
+#[test]
 fn anthropic_tool_result_plain_text_document_source_lockstep() {
     // v3 reserves `data` as a keyword; the mirror uses `document_data` while the
     // v2 authority keeps wire-faithful `data` (same escape pattern as

@@ -18,8 +18,10 @@ module v3.std.anthropic_schema
 // input + output signature (`dsl/extdeps/llm/anthropic.dag:180-203`).
 // Types not in that reach (`AnthropicModel`, `AnthropicModelSpec`,
 // `AnthropicToolDefinition`, `AnthropicApiVersion`, `SystemPrompt`,
-// `CacheControl`, `ThinkingMode`, `ThinkingConfig`, `AnthropicErrorShape`)
-// are deliberately omitted. `AnthropicErrorShape` covers the 4xx/5xx
+// `ThinkingMode`, `ThinkingConfig`, `AnthropicErrorShape`)
+// are deliberately omitted. `CacheControl` and `AnthropicSearchResultCitationsConfig`
+// are mirrored because nested tool-result `AnthropicSearchResultBlock` references them
+// in `dsl/extdeps/llm/anthropic.dag`. `AnthropicErrorShape` covers the 4xx/5xx
 // response slots only; the callable's typed return is `AnthropicMessages200Body`,
 // so the error carrier is not on the signature reach today and lands with
 // the operation-row response/wire lockstep lane (per PR-β scope) rather
@@ -63,6 +65,17 @@ type ContentBlock
   = TextContent { text: String }
   | ImageContent { source: ImageSource }
 
+// 🟢 TERMINAL — same row as `dsl/extdeps/llm/anthropic.dag` (`CacheControl`);
+// referenced from nested tool-result `AnthropicSearchResultBlock.cache_control`.
+type CacheControl {
+  type: String
+}
+
+// 🟢 TERMINAL — `dsl/extdeps/llm/anthropic.dag` (`AnthropicSearchResultCitationsConfig`).
+type AnthropicSearchResultCitationsConfig {
+  enabled: Bool
+}
+
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicToolResultContent`
 // (`dsl/extdeps/llm/anthropic.dag`). Tuple carriers mirror v2 exactly so serde
 // untagged emission can map the JSON string vs JSON array alternatives without
@@ -75,7 +88,9 @@ type AnthropicToolResultContent
 // Dissolution trigger: Anthropic extends `tool_result.content[]` with new block kinds
 // beyond the five modeled variants — fold additive tags here or escalate if the wire
 // contract becomes non-additive.
+// Nested `search_result.content[]` rows — wire carries `type` + `text` per platform schema.
 type AnthropicToolResultTextBlock {
+  type: String
   text: String
 }
 
@@ -83,7 +98,13 @@ type AnthropicToolResultBlock
   = AnthropicTextBlock { text: String }
   | AnthropicImageBlock { source: ImageSource }
   | AnthropicDocumentBlock { source: AnthropicToolResultPlainTextDocumentSource }
-  | AnthropicSearchResultBlock { source: String, title: String, content: List<AnthropicToolResultTextBlock> }
+  | AnthropicSearchResultBlock {
+      source: String
+      title: String
+      content: List<AnthropicToolResultTextBlock>
+      citations: AnthropicSearchResultCitationsConfig?
+      cache_control: CacheControl?
+    }
   | AnthropicToolReferenceBlock { tool_name: String }
 
 type AnthropicToolResultPlainTextDocumentSource {
