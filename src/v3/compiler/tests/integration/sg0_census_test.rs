@@ -593,6 +593,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // the live lens-producer residual count while Row-4 / Item 4 retirement
     // preconditions remain open.
     "src/v3/compiler/tests/integration/r3_lens_producer_retirement_executable_witness_test.rs",
+    // R3 PB Row-4 corpus seeds (1)–(2): hand-Rust driver for author-now/fire-later
+    // `DifferentialEquals(pb_runtime_evaluate, r2_evaluator_evaluate, …)` TestClaims.
+    // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
+    // R2-Evaluator corpus comparison directly without this host-side harness.
+    "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
     // R3 gate #64 substrate-plumbing receipt: hand-Rust driver for the
     // non-canonical `.dag` residual-census receipt until the canonical
     // PB-Runtime reflection consumer lands. P5 test-subset deferral:
@@ -601,11 +606,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // when the generic TestClaim runner can execute the receipt without this
     // host-side harness.
     "src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs",
-    // R3 PB Row-4 corpus seeds (1)–(2): hand-Rust driver for author-now/fire-later
-    // `DifferentialEquals(pb_runtime_evaluate, r2_evaluator_evaluate, …)` TestClaims.
-    // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
-    // R2-Evaluator corpus comparison directly without this host-side harness.
-    "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
     // R3 gate #71 (`v3_self_host_demonstration`): `.dag` + `CARGO_BIN_EXE` splice for
     // `ExecuteCommand(self_host_fixed_point, [--r3-gate-71-demonstration], 0)` — strict DB-8 slice
     // (non-zero unless `compiler.dag` parses + `fixed_point_diff` ok). Unignored compile-only smoke
