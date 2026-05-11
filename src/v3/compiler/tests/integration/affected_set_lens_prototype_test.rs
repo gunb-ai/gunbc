@@ -5,7 +5,6 @@
 //! as attribution paths (sparse module stubs beside each pair; hermetic `TESTING.md`).
 
 use v3_compiler::affected_set_lens::compute_affected_set_lens_report;
-use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
 use v3_compiler::CompileError;
 
