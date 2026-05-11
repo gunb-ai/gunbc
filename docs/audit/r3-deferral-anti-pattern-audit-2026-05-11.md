@@ -21,7 +21,7 @@ Grep-verified instances. Each instance is a site where the substrate admits "I d
 
 | # | Anti-pattern | Sites | Notes |
 |---|---|---|---|
-| 1 | `Option<T>` returns in substrate `dag.rs` | **83** | Pure deferral surface — every caller must handle None. |
+| 1 | `Option<T>` returns in substrate `dag.rs` | **83** | Triage candidates — but **not** uniformly Miss-class. Per `modeling-discipline.md:41-50` + `CODING.md:95-97`, `Option<T>` is **allowed when absence is a legitimate non-error state**. Miss-class violation = `None`-on-error without a diagnostic write. The 83 sites need per-call audit: which are error-None (Miss-class, must dissolve) vs legitimate-absence (compliant). Don't bulk-convert. |
 | 2 | `panic!` calls in production src | **244** | Should be typed Diagnostics, not runtime panics. |
 | 3 | `.expect(...)` calls in production src | **665** | Assumes success; same fail-shape as panic. |
 | 4 | `.unwrap()` calls in production src | **35** | Same shape as expect; less explicit. |
@@ -52,19 +52,20 @@ Cases where the wrapper variant captures "I don't have an answer" and the answer
 - `ClaimResult::NotYetImplemented` — explicit deferral of gate execution. See §3.5.
 - `ArrowBody::Pending` / `LensSurfacePending` — in-progress baked into the substrate, meaning the substrate type allows "I'm half-built" as a valid state. See §3.6.
 
-### §2.2 Boundary tools used in interior (must convert to typed)
+### §2.2 Boundary tools used in interior — **triage candidates, NOT uniform "abuse"**
 
-Cases where Rust's standard "this might fail" tools (`Option`, `Result`, `panic!`, `.expect()`) are used INSIDE the substrate rather than only at the user-input boundary:
+**Correction per openai-pro review**: the original framing called all 1100+ sites "Rust idiom abuse." That overgeneralized. Per `modeling-discipline.md:41-50` and `CODING.md:95-97`, `Option<T>` / `Result<T, E>` are explicitly **allowed** when absence/failure is a meaningful structural state. The violation pattern is `None`-on-error without a diagnostic write, and runtime panics in production substrate flow (vs. legitimate panics in regen binaries / bootstrap / boundary tooling).
 
-- 83 `Option<T>` returns in `dag.rs`
-- 244 `panic!` calls
-- 665 `.expect()` calls
-- 35 `.unwrap()` calls
-- 69 opaque `Result<*, String>` / `Box<dyn Error>`
-- 406 catch-all `_ =>` match arms
-- 43 `todo!() / unimplemented!() / unreachable!()` macros
+Triage candidates (per-site audit, not bulk-conversion):
 
-These are "Rust idiom" abuse: the language offers these tools because real software has boundaries, but using them inside the substrate (vs. at the boundary) treats every internal function as if it were the boundary. Per `feedback_fail_closed_discipline` (C-8: every detectable problem is a Diagnostic), the substrate's internal flows should be total (typed-impossible to fail) or surface a typed Diagnostic at the boundary, not paper-over via runtime panic.
+- 83 `Option<T>` returns in `dag.rs` — classify: error-None (must dissolve) vs legitimate-absence (compliant per `modeling-discipline.md:49-50`).
+- 244 `panic!` calls — classify: boundary-tooling (regen, bootstrap, setup; legitimate) vs interior substrate flow (must dissolve to typed Diagnostic per C-8).
+- 665 `.expect()` / 35 `.unwrap()` calls — same as panic: per `CODING.md:307-309`, panics/unwraps in library code are contract violations; the boundary subset (regen entrypoints) is acceptable.
+- 69 opaque `Result<*, String>` / `Box<dyn Error>` — erases structural failure shape; Mgr-canvas audit per consumer.
+- 406 catch-all `_ =>` match arms — each one needs review: does it admit non-exhaustiveness, or is it deliberate fall-through (e.g., default-arm for an open enum)?
+- 43 `todo!() / unimplemented!() / unreachable!()` macros — explicit deferral; per-site disposition.
+
+The Mgr-canvas audit (§3.7) should be a **per-file production-flow inventory** with each candidate classified by "boundary tooling vs interior substrate flow" before any conversion work. Counts are scope-signals for canvas authoring, not ratchet targets.
 
 ### §2.3 Tracking-only artifacts (must promote or carve)
 
@@ -76,13 +77,22 @@ These are "Rust idiom" abuse: the language offers these tools because real softw
 
 5 sub-cases; see Director ratification message to Substrate Mgr at warm-wolf-698. Net: `Lookup<SymbolicCost>` type collapses to `SymbolicCost`.
 
-### §3.2 `DescentEvidence::DescentUnknown` — proposed dissolution
+### §3.2 `DescentEvidence::DescentUnknown` — requires authority-update precondition (NOT direct dissolution)
 
-Currently: lattice bottom for "we can't prove descent." Same shape as `SameArgumentCall` Miss.
+**Correction per openai-pro review**: my original framing ("same shape as Miss; remove the variant") conflated a Miss-class deferral with a fail-closed lattice bottom. They're different. `INVARIANTS.md:63-66` currently establishes:
 
-Proposal: remove `DescentUnknown` variant from `DescentEvidence` enum. Construction of recursive Transform that can't be proven `Strict` or `NonIncreasing` becomes a compile-time Diagnostic. Lattice collapses from 3 variants to 2 (`Strict | NonIncreasing`).
+> `DescentEvidence` = `Strict | NonIncreasing | DescentUnknown`, with `BoundedLattice` top = `Strict`, bottom = `DescentUnknown` (fail-closed), meet = conservative branch merge, join = optimistic branch merge.
 
-Consumer impact: `merge_evidence`, `join_evidence`, `evidence_rank`, etc. in `dag.rs` (already retired in earlier work) — surviving consumers must drop the `DescentUnknown` arms.
+`DescentUnknown` as fail-closed bottom is a load-bearing lattice element, not a Miss surface. Per `feedback_construction_over_ratchets`: the dissolution question is whether the design intent still wants a 3-variant lattice (with `DescentUnknown` as conservative bottom for branch-merge semantics) or a 2-variant lattice (with construction-time rejection of programs that can't prove `Strict` or `NonIncreasing`).
+
+**Revised proposal**: dispatch the design question to PM + Substrate Mgr for ratification BEFORE substrate change:
+
+1. **(a) Keep 3-variant lattice; redirect Miss-shape concerns**: `DescentUnknown` stays as the fail-closed merge bottom (per current INVARIANTS authority). What dissolves is **construction**: programs that lower to `DescentEvidence::DescentUnknown` at a callsite become compile-time Diagnostic at the producer side — the lattice element survives, but reaching it during well-typed program execution is impossible. Producer-side path-narrowing, not lattice-shape change.
+2. **(b) Collapse to 2-variant lattice**: requires explicit `INVARIANTS.md` authority update first. PM-tier ratification: is `DescentUnknown` truly redundant once construction-time rejection lands, or is the conservative-branch-merge bottom still needed for sound lattice composition (joins of partial program fragments)?
+
+**Pre-dispatch requirement**: PM ratification on (a) vs (b). Until ratified, no worker dispatch on this dissolution. This is the discipline gap operator called out — review-tier should catch "audit doc proposes substrate-shape change before authority-doc update" before it lands.
+
+Consumer impact (either path): `merge_evidence`, `join_evidence`, `evidence_rank`, etc. in `dag.rs` (the older versions were already retired in earlier Cluster K work) — surviving consumers need to align with whichever path PM ratifies.
 
 ### §3.3 Descent-execution-proof residual `EvidenceUnknown / EvidenceIncomplete` — proposed dissolution
 
