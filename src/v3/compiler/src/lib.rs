@@ -21,7 +21,6 @@ pub mod diagnostics;
 mod enforced_lens_application;
 pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
-pub mod pb_method_template_projection_dag_emit;
 mod regen_bootstrap_emit;
 pub mod regen_tokenize;
 

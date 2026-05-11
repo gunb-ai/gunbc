@@ -178,7 +178,7 @@ type CoproductProjection {
 // values and ident-reference values produced
 // `expected field label, got StringLit("UserMessage")` parse errors at the
 // Map-literal `"key": value` position. Existing precedent for top-level Map
-// literals lives in `src/v2/*` and `dsl/std/*` files only (`single_punct`,
+// literals lives in retired legacy-tree sources and `dsl/std/*` files only (`single_punct`,
 // `kernel_type_set`, `container_type_arity`, `expr_child_roles`); none of
 // these have Record-typed values, and no `Map<K, Record>` literal exists
 // anywhere in `src/v3/std/`. The parser surface in v3.std appears to lack
