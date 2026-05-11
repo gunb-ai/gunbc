@@ -80,12 +80,10 @@ fn collect_cargo_toml_files(dir: &Path, src_root: &Path, out: &mut Vec<PathBuf>)
 }
 
 fn rust_source_first_g1_match(stripped: &str) -> Option<&'static str> {
-    for needle in G1_V2_CRATE_SUBSTRINGS {
-        if stripped.contains(needle) {
-            return Some(needle);
-        }
-    }
-    None
+    G1_V2_CRATE_SUBSTRINGS
+        .iter()
+        .find(|&&needle| stripped.contains(needle))
+        .copied()
 }
 
 fn is_g1_v2_manifest_name(name: &str) -> bool {
