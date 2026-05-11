@@ -54,7 +54,8 @@ import std.computation {
   ParserAdvanceCall,
   WorklistDrainCall,
   SameArgumentCall,
-  per_call_pattern_at
+  per_call_pattern_at,
+  per_call_descent_operand_port
 }
 import v3.std.lookup { Lookup }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
@@ -174,7 +175,36 @@ fn transform_summary(
   match per_call_pattern_at(d, call_site) {
     None => compose_many_inputs(acc, inputs)
     Some(pattern) =>
-      recursive_transform_summary(acc, pattern, inputs)
+      match per_call_descent_operand_port(d, call_site) {
+        None =>
+          complexity_when_descent_unknown(pattern)
+        Some(descent_port) =>
+          recursive_transform_summary(acc, pattern, descent_port, inputs)
+      }
+  }
+
+// No-descent recursion (`per_call_descent_operand_port` → `None`): align with
+// `cost.dag` `pattern_to_iter_bound(SameArgumentCall)` → **Miss** — same-argument
+// self-call is not a recurrence dimension here; **do not** surface `UnknownCost`
+// as a successful summary (P3 / INVARIANTS.md; mirrors §3.1.1 cost-lens note).
+fn complexity_when_descent_unknown(pattern: CallPattern) -> Lookup<ComplexitySummary> =
+  match pattern {
+    SameArgumentCall =>
+      miss_complexity_summary_lookup()
+    ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
+      miss_complexity_summary_lookup()
+    ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
+      miss_complexity_summary_lookup()
+    ChildAccessorCall { accessor: accessor } =>
+      miss_complexity_summary_lookup()
+    CollectionShrinkCall { amount: amount, collection: collection } =>
+      miss_complexity_summary_lookup()
+    FoldBodyCall { outer_collection: outer_collection } =>
+      miss_complexity_summary_lookup()
+    ParserAdvanceCall { witness: witness } =>
+      miss_complexity_summary_lookup()
+    WorklistDrainCall { element: element } =>
+      miss_complexity_summary_lookup()
   }
 
 fn compose_many_inputs(
@@ -185,17 +215,40 @@ fn compose_many_inputs(
     combine_sequential(running, lookup_summary(acc, port_id))
   )
 
+fn compose_many_inputs_excluding_descent_operand(
+  acc: List<ComplexityEntry>,
+  ports: List<PortId>,
+  descent_port: PortId
+) -> Lookup<ComplexitySummary> =
+  fold(ports, hit_complexity_summary_lookup(unit_summary()), |running, port_id|
+    if port_id == descent_port then
+      running
+    else
+      combine_sequential(running, lookup_summary(acc, port_id))
+  )
+
+// Descent operand appears once on the **iterate bound** (same story as
+// `cost.dag` `recursive_transform_cost` / `sum_costs_excluding_descent_operand`):
+// `pattern_to_iter_bound(pattern, descent_port)` supplies only the recurrence
+// dimension keyed on `descent_port`, not the sequential cost of **evaluating**
+// the argument expression on that wire. Facts flow forward: compose
+// `lookup_summary(acc, descent_port)` inside the iterate body, then fold the
+// remaining inputs while skipping `descent_port` so we never double that lookup.
 fn recursive_transform_summary(
   acc: List<ComplexityEntry>,
   pattern: CallPattern,
+  descent_port: PortId,
   inputs: List<PortId>
 ) -> Lookup<ComplexitySummary> =
   match inputs {
     Empty => miss_complexity_summary_lookup()
-    Cons(payload) =>
+    Cons(_) =>
       combine_iterate(
-        summary_from_iter_bound(pattern_to_iter_bound(pattern, payload.head)),
-        compose_many_inputs(acc, inputs)
+        summary_from_iter_bound(pattern_to_iter_bound(pattern, descent_port)),
+        combine_sequential(
+          lookup_summary(acc, descent_port),
+          compose_many_inputs_excluding_descent_operand(acc, inputs, descent_port)
+        )
       )
   }
 
