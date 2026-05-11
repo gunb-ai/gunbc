@@ -3,6 +3,9 @@
 # (`tests/*.rs`) that is not wired into the split full-suite timings in
 # `.github/workflows/ci.yml` (each such target must run with `--report-time`
 # so `scripts/check-test-timeout.sh` sees per-test lines).
+#
+# Uses Python's stdlib JSON parser only (no `jq`); the v3 CI job sets up
+# Python before this step.
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -11,6 +14,11 @@ cd "${repo_root}"
 workflow=.github/workflows/ci.yml
 if [[ ! -f "${workflow}" ]]; then
   echo "::error::missing ${workflow}"
+  exit 1
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "::error::check-v3-full-suite-split-test-targets.sh requires python3 (stdlib json only)"
   exit 1
 fi
 
@@ -24,8 +32,19 @@ while IFS= read -r name; do
   fi
 done < <(
   cargo metadata --no-deps --format-version 1 |
-    jq -r '.packages[] | select(.name == "v3-compiler") | .targets[] | select(.kind == ["test"]) | .name' |
-    sort -u
+    python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+names = []
+for pkg in data.get("packages", []):
+    if pkg.get("name") != "v3-compiler":
+        continue
+    for target in pkg.get("targets", []):
+        if target.get("kind") == ["test"]:
+            names.append(target["name"])
+for name in sorted(set(names)):
+    print(name)
+'
 )
 
 if [[ "${fail}" == true ]]; then
