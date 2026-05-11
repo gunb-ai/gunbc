@@ -539,21 +539,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolution trigger: R3 closes the named T-LensProducer-Retirement /
     // T-PB-B bulk-migration lanes and this R1-only acceptance wrapper retires.
     "src/v3/compiler/tests/integration/r1_release_acceptance_test.rs",
-    // R1C-D (PB census `.dag` `TestClaim` wrappers): runner-side receipt
-    // for the six PB census gates in `tests/fixtures/r1_pb_census_gates.dag`.
-    // Asserts `TestRunner` dispatches each PB census predicate to a wired
-    // `eval_*_shape` slice (no `NotYetImplemented`) and that results are
-    // structural `Pass`/`Fail` against the live SG-0 census authority.
-    // Same residual class as the R1C-E driver below — paired hand-Rust
-    // shim until R1 close dissolves the wrappers (D.5 / cascade-promotion
-    // 0-floor work in the Pure Bootstrap to Zero program).
-    "src/v3/compiler/tests/integration/r1c_d_pb_census_gates_test.rs",
-    // R1C-E (T-Emit `.dag` `TestClaim` wrappers): integration-test driver
-    // that splices `env!("CARGO_BIN_EXE_r1c_e_emit_gates")` into the
-    // `tests/dag/r1c_e_emit_gates.template.dag` source and runs the suite
-    // through `TestRunner`. Scaffold until R1 close dissolves the wrappers.
-    "src/v3/compiler/tests/integration/r1c_e_emit_gates_dag_test.rs",
-    "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
+    // R3 Cluster M #84 pilot: R1C-D + R1C-E runner receipts live in
+    // `t_pb_b_1_dag_runner_test.rs` (co-located with gate #74 / #87 harnesses);
+    // census-authority `.dag` is `tests/dag/t_r1c_d_pb_census_gates.dag`.
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
     // R3 §1.4 Class 2 / §1.8 row #61

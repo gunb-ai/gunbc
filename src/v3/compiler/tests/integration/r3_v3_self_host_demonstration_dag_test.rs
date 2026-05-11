@@ -10,7 +10,7 @@
 //!
 //! The `.dag` template carries `__SELF_HOST_FIXED_POINT_BIN__`; substitution uses
 //! `env!("CARGO_BIN_EXE_self_host_fixed_point")` at integration-test compile time (R1
-//! Closure `#973` discipline, parallel to `r1c_e_emit_gates_dag_test` / `r1c_e_emit_gates.template.dag`).
+//! Closure `#973` discipline, parallel to `t_pb_b_1_dag_runner_test` / `r1c_e_emit_gates.template.dag`).
 //!
 //! **Staging:** while `compiler.dag` still fails v3 parse, this end-to-end test stays `#[ignore]`.
 //! **Toolchain:** full Rust + `rustc` when the parse + emit slice runs.

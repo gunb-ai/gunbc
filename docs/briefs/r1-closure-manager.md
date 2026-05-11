@@ -73,6 +73,6 @@ remaining work.
 
 - Parent authority: [`ROADMAP.md §"Release R1 Program"`](../../ROADMAP.md).
 - R1C-B T-P0 receipts: [`r1_gates.dag`](../../src/v3/compiler/tests/fixtures/r1_gates.dag), [`scripts/r1_p0_no_fabrication_sentinel.sh`](../../scripts/r1_p0_no_fabrication_sentinel.sh), [`scripts/r1_p0_rest_ops_aligned.py`](../../scripts/r1_p0_rest_ops_aligned.py).
-- R1C-D live census fixture: [`r1_pb_census_gates.dag`](../../src/v3/compiler/tests/fixtures/r1_pb_census_gates.dag).
+- R1C-D live census fixture: [`t_r1c_d_pb_census_gates.dag`](../../src/v3/compiler/tests/dag/t_r1c_d_pb_census_gates.dag) (runner receipt in `t_pb_b_1_dag_runner_test.rs`; Cluster M #84 pilot).
 - R1 release-acceptance fixture: [`r1_release_acceptance.dag`](../../src/v3/compiler/tests/fixtures/r1_release_acceptance.dag).
 - Census authority: `src/v3/compiler/tests/integration/sg0_census_test.rs`.
