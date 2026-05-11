@@ -19,6 +19,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EXTRACT = REPO_ROOT / "src/v3/compiler/benches/tier3_extract_perf_stats.py"
+# Written by each capture job next to ``criterion/`` (same runner as the bench binary).
+RUSTC_VERSION_FILE = "rustc_version.txt"
 
 TIER3_BENCH_ORDER: list[str] = [
     "tier3_termination_merge_evidence",
@@ -42,8 +44,30 @@ def criterion_version_from_lock(repo: Path) -> str:
     return "0.5"
 
 
-def rustc_version() -> str:
-    return subprocess.check_output(["rustc", "--version"], text=True).strip()
+def read_consistent_rustc_version(run_bundles: list[Path]) -> str:
+    """Return the single ``rustc --version`` line recorded by every capture bundle.
+
+    Provenance must come from the benchmark-producing jobs (P2: no fresh ``rustc`` read
+    in the aggregate environment, which may differ from the matrix runners).
+    """
+    versions: list[str] = []
+    for bundle in run_bundles:
+        path = bundle / RUSTC_VERSION_FILE
+        if not path.is_file():
+            raise SystemExit(
+                f"missing {RUSTC_VERSION_FILE} next to criterion/ in {bundle} "
+                "(capture job must record rustc --version alongside Criterion output)"
+            )
+        text = path.read_text().strip()
+        if not text:
+            raise SystemExit(f"empty {RUSTC_VERSION_FILE} in {bundle}")
+        versions.append(text)
+    distinct = sorted(set(versions))
+    if len(distinct) != 1:
+        raise SystemExit(
+            f"{RUSTC_VERSION_FILE} mismatch across capture bundles: {distinct!r}"
+        )
+    return versions[0]
 
 
 def extract_row(extract_tool: Path, sample: Path, bench: str) -> dict:
@@ -118,11 +142,11 @@ def main() -> int:
         help="output path",
     )
     ap.add_argument(
-        "run_criterion_dirs",
+        "run_bundle_dirs",
         nargs="+",
         type=Path,
-        help="one directory per independent run, each containing "
-        "<bench_name>/new/sample.json (Criterion `target/criterion` layout)",
+        help="one capture bundle per independent run: must contain subdirectory "
+        "`criterion/` (Criterion tree) and `rustc_version.txt` from that run's host",
     )
     args = ap.parse_args()
 
@@ -133,10 +157,17 @@ def main() -> int:
     if not EXTRACT.is_file():
         raise SystemExit(f"missing extraction helper: {EXTRACT}")
 
-    run_dirs = [p.resolve() for p in args.run_criterion_dirs]
-    if len(run_dirs) < 3:
+    run_bundles = [p.resolve() for p in args.run_bundle_dirs]
+    if len(run_bundles) < 3:
         raise SystemExit("need at least 3 run directories (procedure N≥3)")
-    mg = mirror_groups_from_runs(run_dirs)
+    rustc_line = read_consistent_rustc_version(run_bundles)
+    criterion_roots = []
+    for bundle in run_bundles:
+        root = bundle / "criterion"
+        if not root.is_dir():
+            raise SystemExit(f"missing criterion/ under capture bundle {bundle}")
+        criterion_roots.append(root)
+    mg = mirror_groups_from_runs(criterion_roots)
 
     doc = {
         "$schema": "C1 Phase 1 baseline format v1",
@@ -144,7 +175,7 @@ def main() -> int:
             "host_id": args.host_id,
             "git_sha": sha.lower(),
             "criterion_version": criterion_version_from_lock(REPO_ROOT),
-            "rustc_version": rustc_version(),
+            "rustc_version": rustc_line,
             "captured_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
         "mirror_groups": mg,

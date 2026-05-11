@@ -42,16 +42,17 @@ jobs:
       - name: Run tier3 mirror benchmarks
         run: cargo bench --bench tier3_mirror_perf -p v3-compiler
 
-      - name: Stage criterion output
+      - name: Stage capture bundle (criterion + rustc provenance)
         run: |
           mkdir -p staging
           cp -a target/criterion staging/criterion
+          rustc --version | tee staging/rustc_version.txt
 
-      - name: Upload criterion tree
+      - name: Upload capture bundle
         uses: actions/upload-artifact@v4
         with:
           name: tier3-criterion-${{ matrix.run_number }}
-          path: staging/criterion
+          path: staging
 
   aggregate:
     needs: capture-run
@@ -71,7 +72,7 @@ jobs:
       - name: Aggregate into tier3_baseline.json
         run: |
           set -eux
-          # Each matrix job uploaded `staging/criterion` (Criterion output root).
+          # Each matrix job uploaded `staging/` with `criterion/` + rustc_version.txt
           dirs=(runs/tier3-criterion-{1..5})
           python3 scripts/aggregate_tier3_baseline.py \
             --host-id ubicloud-standard-2 \
