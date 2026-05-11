@@ -19,14 +19,20 @@ permissions:
   # the check fails with "Resource not accessible by integration".
   pull-requests: read
 
-# Cancel in-flight runs on new pushes to the same PR. Keyed on the PR
-# number (not `head_ref`) so two fork PRs that happen to share a branch
-# name — e.g. `patch-1` — don't land in the same group and cancel each
-# other. On pushes to `main`, `pull_request.number` is empty, so the
-# fallback `run_id` gives each main push a unique group and nothing is
-# cancelled.
+# Cancel duplicate in-flight runs for the same PR **tip** only.
+#
+# PR-number-only groups caused `cancel-in-progress` to target every in-flight
+# job for that PR: a stuck `v3` run on an older `head.sha` could abort a newer
+# SHA's workflow mid-step (spurious red on the latest push; gunbc#2681).
+# Appending `head.sha` scopes cancellation to same-commit reruns (double
+# `synchronize`, label churn). Different SHAs no longer cancel each other.
+#
+# Keyed on PR number (not `head_ref`) so two fork PRs sharing a branch name do
+# not share a group. On `push` to `main`, `pull_request` is absent — fall back
+# to `github.sha` so each push stays distinct; `run_id` remains for uniqueness
+# where needed.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 # Rust: each `setup-rust-toolchain` step omits `toolchain:` so the action reads
@@ -181,7 +187,7 @@ jobs:
     # GCE Spot runner pool: each queued job gets one n2d-standard-8 VM,
     # the VM registers as an ephemeral GitHub runner, runs one job, then
     # self-deletes. Spot preemption is acceptable here; the companion
-    # ci-spot-rerun workflow gives failed runs one automatic retry.
+    # ci-spot-rerun workflow retries failed jobs while `run_attempt < 4` (four attempts).
     runs-on: [self-hosted, linux, x64, gunbc-ci]
     # Full suite is transitionally capped at 4000s (~67m), plus lane2d gate, prebuild,
     # two clippy passes, regen-fresh compile check, and L-7/L-8 shell gates. A 60m job cap
@@ -189,6 +195,13 @@ jobs:
     # of 1h0m0s"). Keep headroom above the in-step 4000s budget + downstream steps.
     # Revert toward 60–90m when OnceLock/module-cache brings warmed full-suite wall back down.
     timeout-minutes: 120
+    env:
+      # Self-hosted `gunbc-ci` runs the Actions agent alongside `cargo` link jobs.
+      # Default `.cargo/config.toml` uses `build.jobs = 2`; on cold integration builds
+      # that has correlated with "runner lost communication" disconnect annotations
+      # (oversubscribed VM + linker RSS). Force single-job compiles for this workflow
+      # job only — wall time may rise slightly; stability beats flaky red merges.
+      CARGO_BUILD_JOBS: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -308,38 +321,80 @@ jobs:
       # time. `--report-time` is still unstable on 1.93 (rust-lang/rust#64888); the
       # `RUSTC_BOOTSTRAP=1` prefix is the documented narrow unlock for libtest flags
       # and does not enable unstable language features.
-      - name: v3 tests (full suite, 4000s transitional budget)
+      #
+      # **Split across YAML steps (gunbc#2681):** a single long `cargo test | tee`
+      # step on self-hosted runners sometimes completed with `failure` while the
+      # Actions log contained no `cargo test` output (mid-step runner loss / flush
+      # behavior). Running `lib`+`bins`, `determinism_test`, `doc`, and `integration` as
+      # separate steps preserves streamed logs per phase and the same combined
+      # `/tmp/v3-test-timings.log` for `scripts/check-test-timeout.sh`.
+      #
+      # **Target-discovery guard:** every `tests/*.rs` integration binary must appear in
+      # a split step with `--report-time` (codex review on #2681); otherwise clippy
+      # `--all-targets` could compile a new harness without the full suite ever running it.
+      # **Bridge debt:** script is a tracked hand-CI shim until Workflow-as-Data owns this
+      # gate (see header in `scripts/check-v3-full-suite-split-test-targets.sh`; openai-pro
+      # APPROVE_WITH_COMMENTS on #2681).
+      - name: v3 full-suite split guard (integration test targets)
+        run: scripts/check-v3-full-suite-split-test-targets.sh
+
+      - name: v3 tests (full suite lib+bins, timings part 1/4)
         env:
-          # Keep libtest lines plain for `scripts/check-test-timeout.sh` (Phase-0
-          # ratchet); workflow-level `CARGO_TERM_COLOR=always` would otherwise
-          # inject ANSI into cargo's stream.
           CARGO_TERM_COLOR: never
-          # See lane2d step above — bootstrap snapshot fn is at the 8MB stack
-          # cliff; bump to 16MB so future bootstrap growth doesn't gate merges.
           RUST_MIN_STACK: 16777216
         run: |
-          start=$(date +%s)
-          (
-            while true; do
-              sleep 60
-              elapsed=$(( $(date +%s) - start ))
-              echo "v3 full-suite still running after ${elapsed}s"
-            done
-          ) &
-          heartbeat_pid=$!
-          cleanup_heartbeat() {
-            kill "$heartbeat_pid" 2>/dev/null || true
-            wait "$heartbeat_pid" 2>/dev/null || true
-          }
-          trap cleanup_heartbeat EXIT
-          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
+          set -euo pipefail
+          echo "V3_SUITE_START_TS=$(date +%s)" >> "${GITHUB_ENV}"
+          : > /tmp/v3-test-timings.log
+          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --lib --bins -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
           status=${PIPESTATUS[0]}
-          cleanup_heartbeat
-          trap - EXIT
-          elapsed=$(( $(date +%s) - start ))
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo test (lib+bins) failed (exit=$status)"
+            exit "$status"
+          fi
+
+      - name: v3 tests (full suite determinism harness, timings part 2/4)
+        env:
+          CARGO_TERM_COLOR: never
+          RUST_MIN_STACK: 16777216
+        run: |
+          set -euo pipefail
+          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test determinism_test -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo test (determinism_test) failed (exit=$status)"
+            exit "$status"
+          fi
+
+      - name: v3 tests (full suite doc tests, timings part 3/4)
+        env:
+          CARGO_TERM_COLOR: never
+          RUST_MIN_STACK: 16777216
+        run: |
+          set -euo pipefail
+          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --doc -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo test (--doc) failed (exit=$status)"
+            exit "$status"
+          fi
+
+      - name: v3 tests (full suite integration harness, timings part 4/4 + 4000s budget)
+        env:
+          CARGO_TERM_COLOR: never
+          RUST_MIN_STACK: 16777216
+        run: |
+          set -euo pipefail
+          if [ -z "${V3_SUITE_START_TS:-}" ]; then
+            echo "::error::missing V3_SUITE_START_TS (full suite part 1 must run first)"
+            exit 1
+          fi
+          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
+          status=${PIPESTATUS[0]}
+          elapsed=$(( $(date +%s) - V3_SUITE_START_TS ))
           echo "v3 full-suite wall time: ${elapsed}s"
           if [ "$status" -ne 0 ]; then
-            echo "::error::cargo test failed (exit=$status)"
+            echo "::error::cargo test (integration) failed (exit=$status)"
             exit "$status"
           fi
           if [ "$elapsed" -gt 4000 ]; then
@@ -348,7 +403,7 @@ jobs:
           fi
 
       # Per-test 2s wall-clock ratchet — binding Phase 0 gate.
-      # Parses the timing log captured by the full-suite step above; does not
+      # Parses the timing log captured by the full-suite steps above; does not
       # re-run `cargo test`. Tests listed in
       # `scripts/slow-test-exemptions.txt` remain visible as warnings; any
       # non-exempt test above the threshold fails this step. See
@@ -363,7 +418,7 @@ jobs:
         if: always()
         run: |
           if [ ! -s /tmp/v3-test-timings.log ]; then
-            echo "::notice::no timing log captured or log is empty (full-suite step did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet"
+            echo "::notice::no timing log captured or log is empty (full-suite steps did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet"
             exit 0
           fi
           scripts/check-test-timeout.sh /tmp/v3-test-timings.log
@@ -432,33 +487,48 @@ jobs:
   # DB-8 — fixed-point ratchet infrastructure (Lane 3 Stage 3c prep). Staged until
   # Lane 1 Stage 1e closes: do not block merges on this job yet.
   self_host_ratchet:
-    # Run on main pushes only while staged. A cancelled `continue-on-error`
-    # PR job still reports as a failed check, which makes this advisory ratchet
-    # merge-blocking before Lane 1e graduation.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Always schedule this job name on PRs so branch-protection "required checks" get a
+    # definitive **success** after `v3` (skipped jobs / workflow-wide cancels were surfacing
+    # as merge-blocking reds on #2681). The heavy DB-8 matrix still runs **only** on
+    # `push` to `main`; PRs execute a cheap stub on `gunbc-quick` instead of competing
+    # for `gunbc-ci` with `v3`.
+    if: github.event.pull_request.draft != true
     # Same sizing rationale as `v3` above: DB-8 release builds + determinism_test (5× matrix) +
     # `self_host_fixed_point` run on the same ephemeral GCE Spot runner pool as `v3`;
     # small/default runners saw mid-compile shutdown on #1794. **60m** wall so cold-cache
     # / full release `cargo` is unlikely to cancel mid-job; ratchet remains non-blocking.
     # (Runner label is orthogonal to P2:
     # `rust-toolchain.toml` + no workflow `toolchain:` input.)
-    runs-on: [self-hosted, linux, x64, gunbc-ci]
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'gunbc-ci' || 'gunbc-quick' }}
     timeout-minutes: 60
     needs: [v3]
     continue-on-error: true
     steps:
       - name: Checkout
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
+      - name: DB-8 stub (PR / non-main — full matrix is main-push only)
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        run: |
+          echo "::notice::self_host_ratchet DB-8 release matrix runs only on pushes to main (Lane 1e staged)."
+          exit 0
+
       - name: Setup Rust
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
           cache: false
           rustflags: ""
 
       - name: Cache Cargo (self_host_ratchet)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache@v4
         with:
           path: |
@@ -476,14 +546,17 @@ jobs:
       # Step-level continue-on-error: one ratchet can fail without aborting the other
       # (job-level continue-on-error keeps the workflow green until Lane 1e graduates).
       - name: DB-8 determinism_test (5× emit matrix)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         run: cargo test -p v3-compiler --release --test determinism_test
 
       - name: DB-8 self_host_fixed_point (staged)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         run: cargo run -p v3-compiler --release --bin self_host_fixed_point
 
       - name: DB-8 emit.rs HashMap iteration policy (informational)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           if grep -nE "(HashMap|HashSet)::" src/v3/compiler/src/emit.rs; then
             echo "::notice::DB-8: emit.rs still uses HashMap/HashSet:: iteration — target is BTree* / sorted keys (determinism_test + ROADMAP Lane 3 Stage 3c prep)"
