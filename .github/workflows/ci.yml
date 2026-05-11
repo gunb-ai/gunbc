@@ -19,14 +19,20 @@ permissions:
   # the check fails with "Resource not accessible by integration".
   pull-requests: read
 
-# Cancel in-flight runs on new pushes to the same PR. Keyed on the PR
-# number (not `head_ref`) so two fork PRs that happen to share a branch
-# name — e.g. `patch-1` — don't land in the same group and cancel each
-# other. On pushes to `main`, `pull_request.number` is empty, so the
-# fallback `run_id` gives each main push a unique group and nothing is
-# cancelled.
+# Cancel duplicate in-flight runs for the same PR **tip** only.
+#
+# PR-number-only groups caused `cancel-in-progress` to target every in-flight
+# job for that PR: a stuck `v3` run on an older `head.sha` could abort a newer
+# SHA's workflow mid-step (spurious red on the latest push; gunbc#2681).
+# Appending `head.sha` scopes cancellation to same-commit reruns (double
+# `synchronize`, label churn). Different SHAs no longer cancel each other.
+#
+# Keyed on PR number (not `head_ref`) so two fork PRs sharing a branch name do
+# not share a group. On `push` to `main`, `pull_request` is absent — fall back
+# to `github.sha` so each push stays distinct; `run_id` remains for uniqueness
+# where needed.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 # Rust: each `setup-rust-toolchain` step omits `toolchain:` so the action reads
