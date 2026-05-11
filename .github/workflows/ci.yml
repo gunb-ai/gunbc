@@ -102,7 +102,12 @@ jobs:
           body="${PR_BODY}"
           append_file="scripts/ci-merge/sg0-pr-body-append.${{ github.event.pull_request.number }}.txt"
           if [ -f "${append_file}" ]; then
-            body="${body}"$'\n\n'"$(cat "${append_file}")"
+            # Prepend so `check-pr-sg0-net-shrink-discipline.sh` (grep head-1 on
+            # `SG-0 hand-path delta:`) reads the machine-authored append **first**. PR
+            # descriptions often keep template scaffolding or mistaken `+0` paste lines
+            # above the fold — appending only left those as the first match and tripped
+            # declared-vs-computed mismatch (false fail).
+            body="$(cat "${append_file}")"$'\n\n'"${body}"
           fi
           PR_BODY="${body}" bash scripts/check-pr-sg0-net-shrink-discipline.sh
 
@@ -171,17 +176,17 @@ jobs:
   v3:
     if: github.event.pull_request.draft != true
     # Heavy compute (cargo release builds, full v3 test suite at the
-    # 3300s transitional budget + clippy + lens gates). 2-core ubuntu-latest blows
+    # 4000s transitional budget + clippy + lens gates). 2-core ubuntu-latest blows
     # the 60min cap reliably. Run the heavy job on the gunb-ci ephemeral
     # GCE Spot runner pool: each queued job gets one n2d-standard-8 VM,
     # the VM registers as an ephemeral GitHub runner, runs one job, then
     # self-deletes. Spot preemption is acceptable here; the companion
     # ci-spot-rerun workflow gives failed runs one automatic retry.
     runs-on: [self-hosted, linux, x64, gunbc-ci]
-    # Full suite is transitionally capped at 3300s (~55m), plus lane2d gate, prebuild,
+    # Full suite is transitionally capped at 4000s (~67m), plus lane2d gate, prebuild,
     # two clippy passes, regen-fresh compile check, and L-7/L-8 shell gates. A 60m job cap
     # cancels mid-suite on cold/cache-miss runners (observed: Actions "maximum execution time
-    # of 1h0m0s"). Keep headroom above the in-step 3300s budget + downstream steps.
+    # of 1h0m0s"). Keep headroom above the in-step 4000s budget + downstream steps.
     # Revert toward 60–90m when OnceLock/module-cache brings warmed full-suite wall back down.
     timeout-minutes: 120
     steps:
@@ -248,9 +253,10 @@ jobs:
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
-      # Full-suite wall-clock ratchet below is transitionally 3300s (raised from 2400s after
-      # observed ~2873s cold ubicloud-standard-8 runs on gate #78-era slices — revert toward 2400s
-      # once integration amortization/OnceLock warming restores headroom). Mainline timing on ubuntu-24.04
+      # Full-suite wall-clock ratchet below is transitionally 4000s (raised from 3300s after
+      # observed ~3681s cold gunbc-ci full-suite wall on PR #2696). Earlier history: 3300s from
+      # ~2873s cold ubicloud-standard-8 runs (gate #78 era); 2400s before that. Revert toward lower
+      # caps once integration amortization / OnceLock warming restores headroom. Mainline timing on ubuntu-24.04
       # reached ~951–953s after #548 (earlier green ~719s); warm local runs are often
       # ~520–560s for `cargo test -p v3-compiler`. Cold runners, cache misses, m1_5_testgen,
       # and the DB-8 determinism matrix can push higher — observed ~1082s motivated cap >1050s.
@@ -302,7 +308,7 @@ jobs:
       # time. `--report-time` is still unstable on 1.93 (rust-lang/rust#64888); the
       # `RUSTC_BOOTSTRAP=1` prefix is the documented narrow unlock for libtest flags
       # and does not enable unstable language features.
-      - name: v3 tests (full suite, 3300s transitional budget)
+      - name: v3 tests (full suite, 4000s transitional budget)
         env:
           # Keep libtest lines plain for `scripts/check-test-timeout.sh` (Phase-0
           # ratchet); workflow-level `CARGO_TERM_COLOR=always` would otherwise
@@ -321,8 +327,8 @@ jobs:
             echo "::error::cargo test failed (exit=$status)"
             exit "$status"
           fi
-          if [ "$elapsed" -gt 3300 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 3300s transitional). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work. Revert this transitional budget once the OnceLock/module-cache fix restores warmed runs below 1200s."
+          if [ "$elapsed" -gt 4000 ]; then
+            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 4000s transitional). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work. Revert this transitional budget once the OnceLock/module-cache fix restores warmed runs below 1200s."
             exit 1
           fi
 
@@ -335,7 +341,7 @@ jobs:
       # `feedback_test_timeout_2s`).
       #
       # **`if: always()`** — the ratchet report is still useful on red runs
-      # (full-suite failure, 3300s transitional-budget overflow). The log is captured via
+      # (full-suite failure, 4000s transitional-budget overflow). The log is captured via
       # `tee` before the enforcement check, so partial timing data survives
       # failure and the ratchet can still emit actionable slow-test output.
       - name: v3 tests (per-test 2s ratchet)

@@ -17,6 +17,11 @@
 //! runs, any failure on that slice returns **`Err`** from [`run`] so the process exits **non-zero**
 //! after writing `receipt.json`. Workflow policy (“do not block merges yet”) is enforced by
 //! `continue-on-error` on the CI job/step — not by treating a failed slice as `Ok`.
+//!
+//! **R3 gate #71 (`--r3-gate-71-demonstration`):** after writing `receipt.json`, fail the process
+//! unless `compiler.dag` parsed under v3 and the receipt records `fixed_point_diff` → `ok`. DB-8’s
+//! default (no flag) stays staged-friendly: parse failure alone still exits 0 once the receipt is
+//! written.
 
 use std::fs;
 use std::io::{self, Write};
@@ -45,8 +50,11 @@ fn write_receipt(path: &Path, json: &str) {
     let _ = fs::write(path, json);
 }
 
+const R3_GATE_71_FLAG: &str = "--r3-gate-71-demonstration";
+
 fn main() -> ExitCode {
-    match run() {
+    let gate_71 = std::env::args().any(|a| a == R3_GATE_71_FLAG);
+    match run(gate_71) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             let _ = writeln!(io::stderr(), "{e}");
@@ -55,7 +63,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run() -> Result<(), String> {
+fn run(gate_71_demonstration: bool) -> Result<(), String> {
     let root = workspace_root();
     let out_dir = root.join("target").join("self_host");
     fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
@@ -82,11 +90,15 @@ fn run() -> Result<(), String> {
         )),
         Err(e) => Err(format!("compiler.dag: {e:?}")),
     };
+    let compiler_dag_parsed = compiler_parse.is_ok();
 
     // When `compiler.dag` parses and we exercise emit→rustc→run→diff, any failure on that
     // slice must exit non-zero (Invariant D-1 / DB-8 fail-closed). Parse failure alone stays
     // exit 0 — expected until v3 grammar + Lane 1e land (staged ratchet).
     let mut self_host_slice_failed: Option<String> = None;
+    // Single in-process authority for gate #71 — INVARIANTS.md C-5 (no string-sentinel probing
+    // of the serialized receipt to decide control flow).
+    let mut fixed_point_diff_ok = false;
 
     // P0 / DB-8 `receipt.json` always-emitted keys — checked before write by
     // `receipt_p0::validate_receipt_json_always_emitted_keys` / `top_level_property_needle`
@@ -139,6 +151,7 @@ fn run() -> Result<(), String> {
                         let a = fs::read(&stage1_path).map_err(|e| e.to_string())?;
                         let b = fs::read(&stage2_path).map_err(|e| e.to_string())?;
                         if a == b {
+                            fixed_point_diff_ok = true;
                             receipt.push_str("  \"fixed_point_diff\": \"ok\",\n");
                         } else {
                             receipt.push_str("  \"fixed_point_diff\": \"mismatch\",\n");
@@ -206,6 +219,22 @@ fn run() -> Result<(), String> {
         let _ = writeln!(io::stderr(), "{detail}");
         return Err(detail);
     }
+
+    if gate_71_demonstration {
+        if !compiler_dag_parsed {
+            return Err(format!(
+                "{R3_GATE_71_FLAG}: require v3 parse of dsl/gunbc/compiler.dag (see receipt {:?})",
+                receipt_path.display()
+            ));
+        }
+        if !fixed_point_diff_ok {
+            return Err(format!(
+                "{R3_GATE_71_FLAG}: require emit→rustc→run byte-identical slice (fixed_point_diff did not reach ok; receipt {:?})",
+                receipt_path.display()
+            ));
+        }
+    }
+
     Ok(())
 }
 
