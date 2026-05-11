@@ -3,7 +3,7 @@
 
 use crate::common::{cached_compile_any, cached_compile_to_dag};
 use v3_compiler::dag::{
-    literal_bits_int, ArrowBody, Behavior, TransformTarget, TypeConnective, ValueBody,
+    literal_bits_int, ArrowBody, Behavior, PortState, TransformTarget, TypeConnective, ValueBody,
 };
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
@@ -40,6 +40,27 @@ fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::
         panic!("`{name}` must have an executable UserDefined body, got {body:?}");
     };
     bind_id.node_id()
+}
+
+fn assert_rejected_data_lambda(dag: &v3_compiler::dag::Dag, name: &str) {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("function-valued data declaration `{name}`"));
+    assert!(
+        matches!(decl.value_body, Some(ValueBody::Unparsed(_))),
+        "failed data lambda `{name}` must retain an Unparsed body marker"
+    );
+    let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_id),
+        ..
+    } = &decl.connective
+    else {
+        panic!("rejected data lambda `{name}` must keep a poisoned executable Arrow");
+    };
+    assert!(
+        matches!(bind_id.bind(dag).value.bind(dag).state(), PortState::Unresolved),
+        "rejected data lambda `{name}` must poison callers through an unresolved body"
+    );
 }
 
 #[test]
@@ -123,23 +144,7 @@ fn function_valued_data_recursion_fails_closed() {
         RECURSIVE_SOURCE,
         "src/v3/compiler/tests/fixtures/r3_class_2_function_valued_data_recursive.dag",
     );
-    let countdown = dag
-        .declaration_by_name("countdown")
-        .expect("recursive function-valued data declaration");
-    assert!(
-        matches!(countdown.value_body, Some(ValueBody::Unparsed(_))),
-        "failed recursive data lambda must retain an Unparsed body marker"
-    );
-    assert!(
-        !matches!(
-            countdown.connective,
-            TypeConnective::Arrow {
-                body: ArrowBody::UserDefined(_),
-                ..
-            }
-        ),
-        "recursive data lambda must not install an executable UserDefined Arrow"
-    );
+    assert_rejected_data_lambda(&dag, "countdown");
 }
 
 #[test]
@@ -157,22 +162,6 @@ fn function_valued_data_cycles_fail_closed() {
         ),
     ] {
         let dag = cached_compile_any(source, file);
-        let data_decl = dag
-            .declaration_by_name(data_name)
-            .unwrap_or_else(|| panic!("function-valued data declaration `{data_name}`"));
-        assert!(
-            matches!(data_decl.value_body, Some(ValueBody::Unparsed(_))),
-            "failed cyclic data lambda `{data_name}` must retain an Unparsed body marker"
-        );
-        assert!(
-            !matches!(
-                data_decl.connective,
-                TypeConnective::Arrow {
-                    body: ArrowBody::UserDefined(_),
-                    ..
-                }
-            ),
-            "cyclic data lambda `{data_name}` must not keep an executable UserDefined Arrow"
-        );
+        assert_rejected_data_lambda(&dag, data_name);
     }
 }

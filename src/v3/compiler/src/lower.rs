@@ -576,21 +576,53 @@ fn reject_invalid_data_lambda_cycles_phase(
         let Some(invalid_cluster) = mutual_recursion.invalid_by_member.get(&decl_id) else {
             continue;
         };
-        dag.declaration_mut(decl_id).connective =
-            type_to_connective(ty, symbols, &HashMap::new(), dag);
+        let connective = type_to_connective(ty, symbols, &HashMap::new(), dag);
+        let diagnostic = Diagnostic::ResolveError {
+            name: format!(
+                "function-valued data `{name}` participates in an unbounded callable cycle {{{}}}; recursive data lambdas are rejected until they participate in the bounded recursion gate",
+                invalid_cluster.members.join(", ")
+            ),
+            span: span.clone(),
+            fixes: Vec::new(),
+        };
+        let connective =
+            rejected_data_lambda_connective(name, connective, diagnostic.clone(), span, dag);
+        dag.declaration_mut(decl_id).connective = connective;
         dag.declaration_mut(decl_id).value_body =
             Some(crate::dag::ValueBody::Unparsed(body_span.clone()));
-        report_declaration_error(
-            dag,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "function-valued data `{name}` participates in an unbounded callable cycle {{{}}}; recursive data lambdas are rejected until they participate in the bounded recursion gate",
-                    invalid_cluster.members.join(", ")
-                ),
-                span: span.clone(),
-                fixes: Vec::new(),
-            },
-        );
+        report_declaration_error(dag, diagnostic);
+    }
+}
+
+fn rejected_data_lambda_connective(
+    name: &str,
+    connective: TypeConnective,
+    diagnostic: Diagnostic,
+    span: &SourceSpan,
+    dag: &mut Dag,
+) -> TypeConnective {
+    let TypeConnective::Arrow { inputs, output, .. } = connective else {
+        return connective;
+    };
+    let err_port = dag.alloc_port(None);
+    dag.mark_unresolved(err_port, diagnostic);
+    let bind_id = dag.alloc_node_id();
+    dag.push_node(Behavior::Bind(BindNode {
+        id: bind_id,
+        name: name.to_string(),
+        value: err_port,
+        params: Vec::new(),
+        span: span.clone(),
+        lane2_workflow: None,
+        emit_participation: Some(BindEmitParticipation::UserCallable),
+    }));
+    TypeConnective::Arrow {
+        inputs,
+        output,
+        body: ArrowBody::UserDefined(
+            BindNodeId::from_bind_node(dag, bind_id)
+                .expect("UserDefined Arrow body bind id must point at a Bind"),
+        ),
     }
 }
 
@@ -4034,17 +4066,23 @@ fn lower_data_item(
     let value_body = match body {
         Some(SurfaceExpr::Lambda { params, body, span }) => {
             if is_recursive(body, name, dag, symbols) {
-                report_declaration_error(
+                let diagnostic = Diagnostic::ResolveError {
+                    name: format!(
+                        "function-valued data `{name}` is recursive; recursive data lambdas \
+                         are rejected until they participate in the bounded recursion gate"
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                };
+                let rejected = rejected_data_lambda_connective(
+                    name,
+                    dag.declaration(decl_id).connective.clone(),
+                    diagnostic.clone(),
+                    span,
                     dag,
-                    Diagnostic::ResolveError {
-                        name: format!(
-                            "function-valued data `{name}` is recursive; recursive data lambdas \
-                             are rejected until they participate in the bounded recursion gate"
-                        ),
-                        span: span.clone(),
-                        fixes: Vec::new(),
-                    },
                 );
+                dag.declaration_mut(decl_id).connective = rejected;
+                report_declaration_error(dag, diagnostic);
                 None
             } else {
                 let empty_scope = HashMap::new();
