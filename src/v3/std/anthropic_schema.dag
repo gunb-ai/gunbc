@@ -88,9 +88,13 @@ type AnthropicToolResultContent
 // Dissolution trigger: Anthropic extends `tool_result.content[]` with new block kinds
 // beyond the five modeled variants — fold additive tags here or escalate if the wire
 // contract becomes non-additive.
-// Nested `search_result.content[]` rows — wire carries `type` + `text` per platform schema.
+// Singleton wire tag — mirrors `AnthropicToolResultWireTextTag` (v2 authority).
+type AnthropicToolResultWireTextTag
+  = Text {}
+
+// Nested `search_result.content[]` rows — wire carries fixed `type: "text"` + `text`.
 type AnthropicToolResultTextBlock {
-  type: String
+  type: AnthropicToolResultWireTextTag
   text: String
 }
 
@@ -108,7 +112,7 @@ type AnthropicToolResultBlock
   | AnthropicToolReferenceBlock { tool_name: String }
 
 type AnthropicToolResultPlainTextDocumentSource {
-  type: String
+  type: AnthropicToolResultWireTextTag
   media_type: String
   document_data: String // v2 wire label `data`; renamed — `data` is a v3 keyword.
 }

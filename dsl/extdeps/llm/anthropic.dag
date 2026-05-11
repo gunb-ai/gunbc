@@ -95,10 +95,16 @@ type AnthropicToolResultContent
 // generated SDK (`TextBlockParam | ImageBlockParam | DocumentBlockParam |
 // SearchResultBlockParam | ToolReferenceBlockParam`).
 //
+// Singleton wire tag: nested `search_result.content[]` rows and plaintext document
+// `source.type` both require the JSON string `"text"` (Practice 2 — illegal states
+// unrepresentable at the substrate boundary).
+type AnthropicToolResultWireTextTag
+  = Text {}
+
 // Nested `search_result.content[]` rows per platform schema (each object carries
 // wire `type: "text"` alongside `text` — https://platform.claude.com/docs/en/build-with-claude/search-results).
 type AnthropicToolResultTextBlock {
-  type: String
+  type: AnthropicToolResultWireTextTag
   text: String
 }
 
@@ -137,9 +143,9 @@ data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: L
 ]
 
 // Inline plaintext document source for tool-result document blocks (`source.type`
-// must be the literal `"text"` on the wire — modeled here as a required string slot).
+// is the fixed `"text"` wire slot — same singleton as nested search-result text rows).
 type AnthropicToolResultPlainTextDocumentSource {
-  type: String
+  type: AnthropicToolResultWireTextTag
   media_type: String
   data: String
 }

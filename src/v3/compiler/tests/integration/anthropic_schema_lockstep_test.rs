@@ -669,6 +669,11 @@ fn anthropic_tool_result_block_lockstep() {
 }
 
 #[test]
+fn anthropic_tool_result_wire_text_tag_lockstep() {
+    assert_disj_lockstep("AnthropicToolResultWireTextTag");
+}
+
+#[test]
 fn anthropic_tool_result_text_block_row_lockstep() {
     assert_record_lockstep("AnthropicToolResultTextBlock");
 }
