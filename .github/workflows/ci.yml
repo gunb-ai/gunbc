@@ -317,6 +317,11 @@ jobs:
           # See lane2d step above — bootstrap snapshot fn is at the 8MB stack
           # cliff; bump to 16MB so future bootstrap growth doesn't gate merges.
           RUST_MIN_STACK: 16777216
+          # `gunbc-ci` Spot VMs: default libtest + rustc parallelism can spike RSS
+          # enough to OOM or lose the Actions heartbeat ("runner lost communication").
+          # Cap jobs inside the transitional 3300s wall budget.
+          CARGO_BUILD_JOBS: 4
+          RUST_TEST_THREADS: 4
         run: |
           start=$(date +%s)
           RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
