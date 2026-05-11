@@ -714,6 +714,10 @@ enum TestsAsDataMigrationClass {
 
 const EXPECTED_TESTS_AS_DATA_MIGRATION_AUDIT_COUNT: usize = 116;
 
+// Transitional gate #84 audit only. As each class migrates to `.dag`
+// `TestClaim` data, remove that class's path matcher branch with the
+// retired Rust paths; when `EXPECTED_HAND_AUTHORED_TEST` reaches zero,
+// this classifier should disappear with it.
 fn tests_as_data_migration_class(path: &str) -> Option<TestsAsDataMigrationClass> {
     use TestsAsDataMigrationClass::*;
 
