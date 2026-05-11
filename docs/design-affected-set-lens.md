@@ -102,24 +102,36 @@ The affected-set lens composes existing R3 substrate (no new substrate required)
 | TestClaim DB-15 | `src/v3/std/verification.dag` | Every test is data; can intersect affected-set with TestClaim references |
 | `apply_lens` framework | `src/v3/lenses/` | Lens-as-data declaration; this design fits the existing surface |
 
-The structural shape:
+The structural shape (per-dimension, aligned with §2 dimension-parameterized affected-set):
 
 ```
-affected_set: Lens<Dag × Dag → Set<NodeRef>> where
-  body(dag_before, dag_after) =
-    let changed = nodes_with_different_identity(dag_before, dag_after)
+affected_set: Lens<Dag × Dag × Dimension → Set<NodeRef>> where
+  body(dag_before, dag_after, dim) =
+    // SEED: nodes with PROVEN delta in dimension `dim` (NOT identity-based).
+    // Identity change without proven dim-delta does NOT seed propagation.
+    // Identity change with UNKNOWN dim-delta defaults to seeded (fail-closed
+    // per §2 / INVARIANTS P1/P3).
+    let seed = nodes_with_proven_delta_in_dimension(dag_before, dag_after, dim)
+            ∪ nodes_with_unknown_delta_in_dimension(dag_before, dag_after, dim)
     in transitive_closure(
-         changed,
-         next_step: λ M. {N : edge(M → N) ∧ structural_dependency(M, N)}
+         seed,
+         next_step: λ M. {N : edge(M → N) ∧ dimension_flows(M, dim, N)
+                           ∧ dim_delta_propagates_through_edge(M, dim, edge, N)}
        )
+
+// Aggregate across dimensions:
+affected_set_total: Lens<Dag × Dag → Set<NodeRef>> where
+  body(before, after) =
+    ⋃ over dim in {value, cost, complexity, effect, refinement, ...}
+      affected_set(before, after, dim)
 ```
 
-`structural_dependency(M, N)` is the load-bearing predicate. Per `THESIS.md:198-201`, the substrate shape is **two parallel surfaces**:
+`dim_delta_propagates_through_edge(M, dim, edge, N)` is the load-bearing predicate. Per `THESIS.md:198-201`, the substrate shape is **two parallel surfaces**:
 
 - **Type substrate**: `Atom | Conj | Disj | Arrow | Cardinality | Instantiation` (6 type connectives)
 - **Computation substrate**: `Value | Transform | Branch | Loop | Bind` (5 L1 behaviors; `Transform` refers to `Arrow.body`)
 
-`structural_dependency` is a **fold over both surfaces** + the dimension lens(es) the consumer reads. Each edge type encodes a specific kind of dependency:
+`dim_delta_propagates_through_edge` is a **fold over both surfaces** + the dimension lens(es) the consumer reads. Each edge type encodes a specific kind of dependency:
 
 - **Arrow → Bind (call site)**: consumer is affected if the callable's signature OR any read dimension changed
 - **Cardinality → Branch (refinement)**: consumer is affected if the refinement boundary changed AND the consumer flows through it
