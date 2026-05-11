@@ -310,6 +310,7 @@ pub(crate) fn lower_bodies_phase(
             );
         }
     }
+    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
             continue;
@@ -330,6 +331,9 @@ pub(crate) fn lower_bodies_phase(
                 dag,
                 symbols,
                 &pending_refined_function_refs,
+                mutual_recursion
+                    .invalid_by_member
+                    .get(&symbols[name]),
             );
         }
     }
@@ -341,8 +345,6 @@ pub(crate) fn lower_bodies_phase(
     lower_parameter_refinements_phase(dag, module, symbols, is_first);
     lower_type_alias_refinements_phase(dag, module, symbols, is_first);
     validate_scalar_data_refinements_phase(dag, module, symbols, is_first);
-    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
-    reject_invalid_data_lambda_cycles_phase(dag, module, symbols, is_first, &mutual_recursion);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
@@ -549,49 +551,6 @@ fn pending_refined_function_refs(
             _ => None,
         })
         .collect()
-}
-
-fn reject_invalid_data_lambda_cycles_phase(
-    dag: &mut Dag,
-    module: &SurfaceModule,
-    symbols: &HashMap<String, DeclarationId>,
-    is_first: &[bool],
-    mutual_recursion: &MutualRecursionPlans,
-) {
-    for (idx, item) in module.items.iter().enumerate() {
-        if !is_first[idx] {
-            continue;
-        }
-        let SurfaceItem::Data {
-            name,
-            ty,
-            body: Some(SurfaceExpr::Lambda { span, .. }),
-            body_span,
-            ..
-        } = item
-        else {
-            continue;
-        };
-        let decl_id = symbols[name];
-        let Some(invalid_cluster) = mutual_recursion.invalid_by_member.get(&decl_id) else {
-            continue;
-        };
-        let connective = type_to_connective(ty, symbols, &HashMap::new(), dag);
-        let diagnostic = Diagnostic::ResolveError {
-            name: format!(
-                "function-valued data `{name}` participates in an unbounded callable cycle {{{}}}; recursive data lambdas are rejected until they participate in the bounded recursion gate",
-                invalid_cluster.members.join(", ")
-            ),
-            span: span.clone(),
-            fixes: Vec::new(),
-        };
-        let connective =
-            rejected_data_lambda_connective(name, connective, diagnostic.clone(), span, dag);
-        dag.declaration_mut(decl_id).connective = connective;
-        dag.declaration_mut(decl_id).value_body =
-            Some(crate::dag::ValueBody::Unparsed(body_span.clone()));
-        report_declaration_error(dag, diagnostic);
-    }
 }
 
 fn rejected_data_lambda_connective(
@@ -3180,6 +3139,7 @@ fn lower_item(
                 dag,
                 symbols,
                 &HashSet::new(),
+                None,
             );
             scope
         }
@@ -4043,6 +4003,7 @@ fn lower_data_item(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
     pending_refined_function_refs: &HashSet<DeclarationId>,
+    invalid_data_lambda_cluster: Option<&InvalidMutualCluster>,
 ) {
     let decl_id = symbols[name];
     let local: HashMap<String, DeclarationId> = HashMap::new();
@@ -4075,7 +4036,26 @@ fn lower_data_item(
     let mut suppress_unparsed_scaffold = false;
     let value_body = match body {
         Some(SurfaceExpr::Lambda { params, body, span }) => {
-            if is_recursive(body, name, dag, symbols) {
+            if let Some(invalid_cluster) = invalid_data_lambda_cluster {
+                let diagnostic = Diagnostic::ResolveError {
+                    name: format!(
+                        "function-valued data `{name}` participates in an unbounded callable cycle {{{}}}; recursive data lambdas are rejected until they participate in the bounded recursion gate",
+                        invalid_cluster.members.join(", ")
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                };
+                let rejected = rejected_data_lambda_connective(
+                    name,
+                    dag.declaration(decl_id).connective.clone(),
+                    diagnostic.clone(),
+                    span,
+                    dag,
+                );
+                dag.declaration_mut(decl_id).connective = rejected;
+                report_declaration_error(dag, diagnostic);
+                None
+            } else if is_recursive(body, name, dag, symbols) {
                 let diagnostic = Diagnostic::ResolveError {
                     name: format!(
                         "function-valued data `{name}` is recursive; recursive data lambdas \

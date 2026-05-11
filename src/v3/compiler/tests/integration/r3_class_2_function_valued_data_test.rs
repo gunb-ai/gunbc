@@ -3,7 +3,8 @@
 
 use crate::common::{cached_compile_any, cached_compile_to_dag};
 use v3_compiler::dag::{
-    literal_bits_int, ArrowBody, Behavior, PortState, TransformTarget, TypeConnective, ValueBody,
+    literal_bits_int, ArrowBody, Behavior, BindEmitParticipation, PortState, TransformTarget,
+    TypeConnective, ValueBody,
 };
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
@@ -74,6 +75,29 @@ fn assert_rejected_data_lambda(dag: &v3_compiler::dag::Dag, name: &str) {
             PortState::Unresolved
         ),
         "rejected data lambda `{name}` must poison callers through an unresolved body"
+    );
+}
+
+fn assert_user_callable_bind_names(dag: &v3_compiler::dag::Dag, file: &str, expected: &[&str]) {
+    let mut names: Vec<&str> = dag
+        .nodes()
+        .iter()
+        .filter_map(|node| match node {
+            Behavior::Bind(bind)
+                if bind.span.file == file
+                    && bind.emit_participation == Some(BindEmitParticipation::UserCallable) =>
+            {
+                Some(bind.name.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    names.sort_unstable();
+    let mut expected_names = expected.to_vec();
+    expected_names.sort_unstable();
+    assert_eq!(
+        names, expected_names,
+        "rejected data-lambda cycles must not leave pre-rejection lambda binds"
     );
 }
 
@@ -177,6 +201,7 @@ fn function_valued_data_cycles_fail_closed() {
     ] {
         let dag = cached_compile_any(source, file);
         assert_rejected_data_lambda(&dag, data_name);
+        assert_user_callable_bind_names(&dag, file, &[data_name, "helper", "use_entry"]);
     }
 }
 
