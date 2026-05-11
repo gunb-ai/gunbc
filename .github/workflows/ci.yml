@@ -178,10 +178,12 @@ jobs:
     # self-deletes. Spot preemption is acceptable here; the companion
     # ci-spot-rerun workflow gives failed runs one automatic retry.
     runs-on: [self-hosted, linux, x64, gunbc-ci]
-    # Full suite is transitionally capped at 3300s, plus clippy + lens gates + cold compile.
-    # Revert when the OnceLock/module-cache structural fix brings warmed runs below 1200s;
-    # keep job timeout above the in-step budget so Actions does not cancel final steps first.
-    timeout-minutes: 60
+    # Full suite is transitionally capped at 3300s (~55m), plus lane2d gate, prebuild,
+    # two clippy passes, regen-fresh compile check, and L-7/L-8 shell gates. A 60m job cap
+    # cancels mid-suite on cold/cache-miss runners (observed: Actions "maximum execution time
+    # of 1h0m0s"). Keep headroom above the in-step 3300s budget + downstream steps.
+    # Revert toward 60–90m when OnceLock/module-cache brings warmed full-suite wall back down.
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
