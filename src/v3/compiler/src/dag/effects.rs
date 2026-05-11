@@ -227,8 +227,9 @@ pub enum WorkflowParallelismReport {
 // `Declaration` for that name). Until that body lowers and a host bridge calls
 // through `evaluate_body` (or emitted Rust is `include!`d as the sole
 // implementation), the compiler keeps one **native** projection here,
-// co-located with the structural carriers — P2 progress vs the **retired
-// parallel module** `workflow_idempotency.rs`, not a claim of full
+// co-located with the structural carriers — **P5** dissolution receipt for the
+// **retired parallel module** `workflow_idempotency.rs` (single **P2**
+// co-located realization vs a second hand-authored module), not a claim of full
 // evaluator-backed dissolution.
 
 pub(crate) fn compose_operation_effects(effects: &[OperationEffect]) -> CompositionVerdict {
