@@ -4,9 +4,9 @@
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{LogicalOp, OperatorKind};
 pub use crate::parse_surface::{
-    PhantomWidthAlgebraSugarHead, SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceMapEntry,
-    SurfaceMatchArm, SurfaceModule, SurfaceParam, SurfacePattern, SurfacePatternField, SurfaceRecordField,
-    SurfaceType, SurfaceVariant, VariantPayload,
+    PhantomWidthAlgebraSugarHead, SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral,
+    SurfaceMapEntry, SurfaceMatchArm, SurfaceModule, SurfaceParam, SurfacePattern,
+    SurfacePatternField, SurfaceRecordField, SurfaceType, SurfaceVariant, VariantPayload,
 };
 use crate::parse_tables::{
     binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, primary_atom_class,
@@ -201,10 +201,7 @@ impl<'a> Parser<'a> {
     /// True iff the bracket list opens with `<decimal>` closing immediately (`>`, no comma).
     fn angle_list_opens_with_solitary_decimal_then_gt(&self) -> bool {
         matches!(self.peek().kind, TokenKind::IntLit(_))
-            && matches!(
-                self.peek_token_at(1).map(|t| &t.kind),
-                Some(TokenKind::Gt)
-            )
+            && matches!(self.peek_token_at(1).map(|t| &t.kind), Some(TokenKind::Gt))
     }
 
     /// Parse the next top-level item. Every surface form emits a real
