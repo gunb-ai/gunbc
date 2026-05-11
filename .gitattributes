@@ -1,6 +1,3 @@
 **/*.dag linguist-language=Rust
 
-# Stage0 .rs files are derived artifacts (regenerated from .dag source).
-# Line-level merge is meaningless — the only correct resolution is regen.
-# Accept either side on conflict, then run regenerate-stage0.sh.
-src/v2/stage0/src/*.rs -merge
+# Historical: v2 stage0 merge driver (retired with `src/v2/` deletion).

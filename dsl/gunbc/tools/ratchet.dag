@@ -61,11 +61,11 @@ fn classify_grep_exit(exit_code: Int, stderr: String) -> GrepOutcome {
 // no-match.
 
 fn has_pattern_command(grep: String, pattern: String, dir: String) -> String {
-  concat(grep, " -rqE '", pattern, "' ", dir, "/*.dag")
+  concat(grep, " -rqE --include='*.dag' '", pattern, "' ", dir)
 }
 
 fn find_violations_command(grep: String, pattern: String, dir: String) -> String {
-  concat(grep, " -rnE '", pattern, "' ", dir, "/*.dag")
+  concat(grep, " -rnE --include='*.dag' '", pattern, "' ", dir)
 }
 
 // ── Ratchet workflow ────────────────────────────────────────────────

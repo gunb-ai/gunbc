@@ -154,7 +154,7 @@ func run_purity_check() -> ProcessExit {
   match result {
     PurityChecked { report: r } => {
       let _ = shell.Exec.Run(
-        script: concat("echo 'Purity Lens Report (src/v2/*.dag):\n",
+        script: concat("echo 'Purity Lens Report (.dag under cwd):\n",
                         "  Pure functions (fn):     ", to_string(r.pure_count), "\n",
                         "  Effectful functions (func): ", to_string(r.impure_count), "\n",
                         "  Total:                   ", to_string(r.total), "\n",
