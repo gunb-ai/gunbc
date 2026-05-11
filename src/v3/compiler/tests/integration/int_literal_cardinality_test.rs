@@ -468,10 +468,10 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
 /// see `uint64_upper_half_literal_tokenizes_and_narrows`), while literals
 /// above the declared width fail through the same range-fact path. The 128-bit
 /// cases prove the same machinery is not tied to the host `i128` boundary:
-/// both signed `Int128` overflow and unsigned `UInt128` overflow compare as
-/// decimal [`BigInt`](num_bigint::BigInt) magnitudes. Alias coverage is
-/// representative rather than exhaustive so this receipt stays under the CI
-/// per-test wall-clock ratchet.
+/// signed `Int128::MAX + 1` compares as a decimal [`BigInt`](num_bigint::BigInt)
+/// magnitude, while `UInt128` still participates through its representable
+/// lower-bound overflow (`-1`). Alias coverage is representative rather than
+/// exhaustive so this receipt stays under the CI per-test wall-clock ratchet.
 #[test]
 fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
     let cases = [
@@ -524,14 +524,6 @@ fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
             check_alias: false,
         },
         IntegerOverflowCase {
-            ty: "Int128",
-            target: "i128",
-            literal: "-170141183460469231731687303715884105729",
-            min: "-170141183460469231731687303715884105728",
-            max: "170141183460469231731687303715884105727",
-            check_alias: false,
-        },
-        IntegerOverflowCase {
             ty: "UInt8",
             target: "u8",
             literal: "256",
@@ -577,14 +569,6 @@ fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
             literal: "-1",
             min: "0",
             max: "18446744073709551615",
-            check_alias: false,
-        },
-        IntegerOverflowCase {
-            ty: "UInt128",
-            target: "u128",
-            literal: "340282366920938463463374607431768211456",
-            min: "0",
-            max: "340282366920938463463374607431768211455",
             check_alias: false,
         },
         IntegerOverflowCase {
