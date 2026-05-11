@@ -40,7 +40,7 @@ The implementation must cite and consume these substrate pieces:
 
 | Piece | Authority | Required role |
 | --- | --- | --- |
-| `IntrospectApplication<Set<NodeRef>>` | `src/v3/std/lens_application.dag` | User-surface introspect mode; no enforcement budget axis. |
+| `IntrospectApplication` output carrier | `src/v3/std/lens_application.dag` | User-surface introspect mode; no enforcement budget axis. Output must preserve the design's allowed substrate shape: `Set<NodeRef>` or a `NodeRef`-keyed record carrying dimension/provenance. |
 | `Dag` graph edges | v3 substrate / `Dag` shape | Reverse-edge traversal over the compiled graph. |
 | `DescentEvidence` | `src/v3/std/termination.dag` | Call-site descent lattice; narrows propagation when evidence is known. |
 | `SubValueRelation` | `src/v3/std/induction.dag` | Tracks which sub-piece flows through a call/refinement edge. |
@@ -76,7 +76,7 @@ Unknowns must not silently disappear. If the lens cannot prove `delta(dim) == em
 The implementation PR is acceptable when all are true:
 
 - `src/v3/lenses/affected_set_lens.dag` exists and is the only affected-set lens authority.
-- The lens is modeled as an `IntrospectApplication<Set<NodeRef>>`-compatible substrate lens per `docs/design-affected-set-lens.md` §0.
+- The lens is modeled as an `IntrospectApplication`-compatible substrate lens per `docs/design-affected-set-lens.md` §0, with output as either `Set<NodeRef>` or a `NodeRef`-keyed record carrying dimension/provenance.
 - The `.dag` tests-as-data fixtures cover:
   - dimension-specific outputs for value, cost, complexity, effect, refinement
   - fail-closed unknown-delta behavior
