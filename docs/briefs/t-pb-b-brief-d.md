@@ -4,7 +4,7 @@
 
 **Authority:** Post-R2 residuals in `TESTING.md` (compiler-internal `#[cfg(test)]` under `src/v3/compiler/src/`; boundary tests invoking external toolchains). **Schema:** `src/v3/std/verification.dag` (`TestClaim`, `TestPredicate`, `requires: List<ResourceReference>`).
 
-**Gates (unchanged):** Do not remove or replace existing Rust integration tests as the source of truth. Do not assert `pb_test_file_generated_from_dag` or `pb_rust_tests_outside_residual_zero` until Testgen signals. Draft `.v3` / `.dag` modules here are **fixtures** for eventual runner wiring.
+**Gates (updated after runner-backed coverage):** Do not assert `pb_test_file_generated_from_dag` or `pb_rust_tests_outside_residual_zero` from this brief alone. The former Brief D compile-smoke shim is retired because the matching `.dag` modules are already runner-backed; the remaining draft `.v3` modules are historical fixtures until their named Testgen dissolution trigger fires.
 
 **Fixtures on disk:** `src/v3/compiler/tests/fixtures/t_pb_b_brief_d/*.v3` — each file is a self-contained v3 module declaring `TestSuite` / `TestClaim` values. **Compile smoke retired:** the former `t_pb_b_brief_d_fixture_smoke_test` host shim dissolved into the runner-backed `.dag` suites in `src/v3/compiler/tests/dag/t_pb_b_1_*.dag` plus `t_pb_b_1_dag_runner_test`.
 
