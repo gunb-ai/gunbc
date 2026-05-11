@@ -17,6 +17,11 @@
 //! runs, any failure on that slice returns **`Err`** from [`run`] so the process exits **non-zero**
 //! after writing `receipt.json`. Workflow policy (“do not block merges yet”) is enforced by
 //! `continue-on-error` on the CI job/step — not by treating a failed slice as `Ok`.
+//!
+//! **R3 gate #71 (`--r3-gate-71-demonstration`):** after writing `receipt.json`, fail the process
+//! unless `compiler.dag` parsed under v3 and the receipt records `fixed_point_diff` → `ok`. DB-8’s
+//! default (no flag) stays staged-friendly: parse failure alone still exits 0 once the receipt is
+//! written.
 
 use std::fs;
 use std::io::{self, Write};
@@ -45,8 +50,11 @@ fn write_receipt(path: &Path, json: &str) {
     let _ = fs::write(path, json);
 }
 
+const R3_GATE_71_FLAG: &str = "--r3-gate-71-demonstration";
+
 fn main() -> ExitCode {
-    match run() {
+    let gate_71 = std::env::args().any(|a| a == R3_GATE_71_FLAG);
+    match run(gate_71) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             let _ = writeln!(io::stderr(), "{e}");
@@ -55,7 +63,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run() -> Result<(), String> {
+fn run(gate_71_demonstration: bool) -> Result<(), String> {
     let root = workspace_root();
     let out_dir = root.join("target").join("self_host");
     fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
@@ -82,6 +90,7 @@ fn run() -> Result<(), String> {
         )),
         Err(e) => Err(format!("compiler.dag: {e:?}")),
     };
+    let compiler_dag_parsed = compiler_parse.is_ok();
 
     // When `compiler.dag` parses and we exercise emit→rustc→run→diff, any failure on that
     // slice must exit non-zero (Invariant D-1 / DB-8 fail-closed). Parse failure alone stays
@@ -206,6 +215,22 @@ fn run() -> Result<(), String> {
         let _ = writeln!(io::stderr(), "{detail}");
         return Err(detail);
     }
+
+    if gate_71_demonstration {
+        if !compiler_dag_parsed {
+            return Err(format!(
+                "{R3_GATE_71_FLAG}: require v3 parse of dsl/gunbc/compiler.dag (see receipt {:?})",
+                receipt_path.display()
+            ));
+        }
+        if !receipt.contains("\"fixed_point_diff\": \"ok\"") {
+            return Err(format!(
+                "{R3_GATE_71_FLAG}: require emit→rustc→run byte-identical slice (missing fixed_point_diff ok in receipt {:?})",
+                receipt_path.display()
+            ));
+        }
+    }
+
     Ok(())
 }
 

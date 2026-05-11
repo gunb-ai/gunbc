@@ -4,9 +4,9 @@
 // `__SELF_HOST_FIXED_POINT_BIN__` is replaced at integration-test compile time with
 // `env!("CARGO_BIN_EXE_self_host_fixed_point")` (same discipline as `r1c_e_emit_gates.template.dag`).
 //
-// The `.dag` claim only checks exit 0; the Rust integration test also reads
-// `target/self_host/receipt.json` and requires `compiler_dag_v3_parse` + `fixed_point_diff`
-// both `ok` so the gate proves the full emit→rustc→run→byte-identical slice (not probe-only).
+// The `.dag` claim runs `ExecuteCommand(bin, [--r3-gate-71-demonstration], 0)` so exit status
+// cannot be the DB-8 probe-only path (that exits 0 while parse still fails). See
+// `self_host_fixed_point` module docs for the flag.
 
 module v3.compiler.tests.r3.v3_self_host_demonstration
 
@@ -16,7 +16,7 @@ data v3_self_host_demonstration_claim: TestClaim = {
   name: "v3_self_host_demonstration",
   source: "let marker: Int = 1",
   file_name: "r3_v3_self_host_demonstration_smoke.v3",
-  predicate: ExecuteCommand("__SELF_HOST_FIXED_POINT_BIN__", [], 0),
+  predicate: ExecuteCommand("__SELF_HOST_FIXED_POINT_BIN__", ["--r3-gate-71-demonstration"], 0),
   requires: []
 }
 
