@@ -55,6 +55,12 @@ enum ToolResultBlockWire {
         /// Matches bootstrap `List<AnthropicToolResultTextBlock>` — only `text`
         /// rows are schema-valid nested entries for this arm.
         content: Vec<ToolResultSearchNestedTextWire>,
+        /// Mirrors `AnthropicSearchResultBlock.citations?` (`AnthropicSearchResultCitationsConfig`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        citations: Option<SearchResultCitationsWire>,
+        /// Mirrors `AnthropicSearchResultBlock.cache_control?` (`CacheControl` on v2 authority).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControlWire>,
     },
     ToolReference {
         tool_name: String,
@@ -67,6 +73,19 @@ enum ToolResultBlockWire {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ToolResultSearchNestedTextWire {
     Text { text: String },
+}
+
+/// Mirrors `AnthropicSearchResultCitationsConfig` on the modeled `search_result` row.
+#[derive(Debug, Clone, Serialize)]
+struct SearchResultCitationsWire {
+    enabled: bool,
+}
+
+/// Mirrors `CacheControl` (`dsl/extdeps/llm/anthropic.dag`) — wire `type` key (e.g. `"ephemeral"`).
+#[derive(Debug, Clone, Serialize)]
+struct CacheControlWire {
+    #[serde(rename = "type")]
+    wire_type: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -377,6 +396,10 @@ fn tool_result_content_serializes_nested_block_array_without_outer_wrapper_objec
                     source: "web".to_string(),
                     title: "Example".to_string(),
                     content: vec![nested_text],
+                    citations: Some(SearchResultCitationsWire { enabled: true }),
+                    cache_control: Some(CacheControlWire {
+                        wire_type: "ephemeral".to_string(),
+                    }),
                 },
                 ToolResultBlockWire::ToolReference {
                     tool_name: "my_tool".to_string(),
@@ -405,7 +428,9 @@ fn tool_result_content_serializes_nested_block_array_without_outer_wrapper_objec
                         "data": "doc bytes"
                     }},
                     {"type": "search_result", "source": "web", "title": "Example",
-                     "content": [{"type": "text", "text": "nested line"}]},
+                     "content": [{"type": "text", "text": "nested line"}],
+                     "citations": {"enabled": true},
+                     "cache_control": {"type": "ephemeral"}},
                     {"type": "tool_reference", "tool_name": "my_tool"}
                 ],
                 "is_error": false
