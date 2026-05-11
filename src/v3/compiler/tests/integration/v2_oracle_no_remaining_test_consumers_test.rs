@@ -103,15 +103,9 @@ fn dep_spec_links_v2_crate(name: &str, spec: &Value) -> bool {
     }
     match spec {
         Value::String(_) => name_hit,
-        Value::Table(t) => {
-            if t.contains_key("path")
-                || t.get("workspace").and_then(Value::as_bool) == Some(true)
-                || t.contains_key("git")
-            {
-                return true;
-            }
-            false
-        }
+        // Inline tables: key or `package =` already names the crate; count registry `version`, git
+        // subtables, etc., not only `path` / `workspace` / `git` top-level keys.
+        Value::Table(_) => true,
         _ => false,
     }
 }
@@ -238,6 +232,45 @@ fn g1_manifest_package_rename_path_detected() {
     assert!(
         viol.is_some(),
         "expected package-rename path dep to register; got {viol:?}"
+    );
+}
+
+#[test]
+fn g1_manifest_registry_version_inline_table_detected() {
+    let v2_pkg = concat!("v2-", "compiler");
+    let raw = format!(
+        concat!(
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
+            "[dependencies]\n{0} = {{ version = \"0.0.1\" }}\n",
+        ),
+        v2_pkg,
+    );
+    let v: Value = toml::from_str(&raw).expect("fixture toml");
+    let root = v.as_table().expect("root table");
+    let viol = manifest_violation_g1_v2_edge(root);
+    assert!(
+        viol.is_some(),
+        "expected registry version inline-table dep to register; got {viol:?}"
+    );
+}
+
+#[test]
+fn g1_manifest_package_rename_version_inline_table_detected() {
+    let v2_pkg = concat!("v2-", "compiler");
+    let raw = format!(
+        concat!(
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
+            "[dependencies]\n",
+            "st-shim = {{ package = \"{0}\", version = \"0.0.1\" }}\n",
+        ),
+        v2_pkg,
+    );
+    let v: Value = toml::from_str(&raw).expect("fixture toml");
+    let root = v.as_table().expect("root table");
+    let viol = manifest_violation_g1_v2_edge(root);
+    assert!(
+        viol.is_some(),
+        "expected package-rename registry dep to register; got {viol:?}"
     );
 }
 
