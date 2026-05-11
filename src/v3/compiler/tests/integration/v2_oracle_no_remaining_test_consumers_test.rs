@@ -7,7 +7,8 @@
 //! Mechanical receipt aligned to G-1 in
 //! [`docs/audit/t-v2-g2-deletion-plan-and-guardrails.md`](../../../../../../docs/audit/t-v2-g2-deletion-plan-and-guardrails.md):
 //! `grep -rEn 'v2[_-]compiler(_tests|-tests)?' src/` excluding `src/v2/` → zero matches on
-//! comment-stripped Rust sources; Cargo **dependency** tables parsed as TOML (not line regex)
+//! comment-stripped Rust sources; Cargo **dependency** tables (including `workspace.dependencies`)
+//! parsed as TOML (not line regex)
 //! must not link the legacy v2 crates from manifests outside `src/v2/`.
 
 use crate::common::strip_rust_comments;
@@ -140,6 +141,14 @@ fn manifest_violation_g1_v2_edge(root: &toml::map::Map<String, Value>) -> Option
         }
     }
 
+    if let Some(Value::Table(ws)) = root.get("workspace") {
+        if let Some(sect) = ws.get("dependencies") {
+            if let Some(msg) = scan_dependencies_value(sect) {
+                return Some(format!("workspace.dependencies: {msg}"));
+            }
+        }
+    }
+
     if let Some(Value::Table(targets)) = root.get("target") {
         for (triple, tv) in targets {
             let Some(t) = tv.as_table() else {
@@ -156,6 +165,26 @@ fn manifest_violation_g1_v2_edge(root: &toml::map::Map<String, Value>) -> Option
     }
 
     None
+}
+
+#[test]
+fn g1_manifest_workspace_dependencies_detected() {
+    let v2_pkg = concat!("v2-", "compiler");
+    let raw = format!(
+        concat!(
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
+            "[workspace]\nmembers = [\".\"]\n\n",
+            "[workspace.dependencies]\n{0} = {{ path = \"src/v2/stage0\" }}\n",
+        ),
+        v2_pkg,
+    );
+    let v: Value = toml::from_str(&raw).expect("fixture toml");
+    let root = v.as_table().expect("root table");
+    let viol = manifest_violation_g1_v2_edge(root);
+    assert!(
+        viol.is_some(),
+        "expected workspace.dependencies v2 path dep to register; got {viol:?}"
+    );
 }
 
 #[test]
