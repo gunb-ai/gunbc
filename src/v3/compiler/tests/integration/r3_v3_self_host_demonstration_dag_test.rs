@@ -8,7 +8,7 @@
 //!
 //! The `.dag` template carries `__SELF_HOST_FIXED_POINT_BIN__`; substitution uses
 //! `env!("CARGO_BIN_EXE_self_host_fixed_point")` at integration-test compile time (R1
-//! Closure `#973` discipline, parallel to [`r1c_e_emit_gates_dag_test`]).
+//! Closure `#973` discipline, parallel to `r1c_e_emit_gates_dag_test` / `r1c_e_emit_gates.template.dag`).
 //!
 //! **Toolchain:** the logical child runs DB-8’s staged ratchet and may invoke `rustc` when
 //! `dsl/gunbc/compiler.dag` parses under v3 — requires a full Rust toolchain on the runner.
@@ -53,10 +53,10 @@ fn r3_v3_self_host_demonstration_suite_passes_through_runner() {
         Err(other) => panic!("unexpected compile error for {TEMPLATE_PATH}: {other:?}"),
     };
 
-    let results = TestRunner::new(&dag).run_suite("r3/v3-self-host-demonstration");
+    let results = TestRunner::new(&dag).run_suite("suite_v3_self_host_demonstration");
     assert!(
         !results.is_empty(),
-        "suite `r3/v3-self-host-demonstration` should contain at least one claim"
+        "suite `suite_v3_self_host_demonstration` should contain at least one claim"
     );
     let failures: Vec<_> = results
         .iter()
@@ -64,7 +64,7 @@ fn r3_v3_self_host_demonstration_suite_passes_through_runner() {
         .collect();
     assert!(
         failures.is_empty(),
-        "r3/v3-self-host-demonstration: {} claim(s) did not Pass:\n{:#?}",
+        "suite_v3_self_host_demonstration: {} claim(s) did not Pass:\n{:#?}",
         failures.len(),
         failures
     );
