@@ -3486,10 +3486,6 @@ fn rewrite_phantom_machine_width_surface(
     ty: &SurfaceType,
     dag: &mut Dag,
 ) -> PhantomWidthSurfaceOutcome {
-    let SurfaceType::Parameterized { name, args, span } = ty else {
-        return PhantomWidthSurfaceOutcome::NotApplicable;
-    };
-
     fn bad_literal(dag: &mut Dag, ctx: &str, bits_lit: &str, lit_span: &SourceSpan) {
         report_declaration_error(
             dag,
@@ -3503,71 +3499,64 @@ fn rewrite_phantom_machine_width_surface(
         );
     }
 
-    if matches!(name.as_str(), "Int" | "UInt" | "Real" | "Nat") && args.len() == 1 {
-        let SurfaceTypeArg::PhantomWidthLit {
+    match ty {
+        SurfaceType::PhantomWidthNumericSugar {
+            head,
             bits_lit,
-            span: lit_span,
-        } = &args[0]
-        else {
-            return PhantomWidthSurfaceOutcome::NotApplicable;
-        };
-        let Some(word) = phantom_bits_to_word_name(bits_lit) else {
-            bad_literal(dag, &format!("{name}<…>"), bits_lit.as_str(), lit_span);
-            return PhantomWidthSurfaceOutcome::Invalid;
-        };
-        let desugared = SurfaceType::Parameterized {
-            name: "Compose".to_string(),
-            args: vec![
-                SurfaceTypeArg::Ty {
-                    body: Box::new(SurfaceType::Named {
-                        name: name.clone(),
+            magnitude_span: lit_span,
+            span,
+        } => {
+            let algebra = match head {
+                PhantomWidthAlgebraSugarHead::Int => "Int",
+                PhantomWidthAlgebraSugarHead::UInt => "UInt",
+                PhantomWidthAlgebraSugarHead::Real => "Real",
+                PhantomWidthAlgebraSugarHead::Nat => "Nat",
+            };
+            let Some(word) = phantom_bits_to_word_name(bits_lit) else {
+                bad_literal(dag, &format!("{algebra}<…>"), bits_lit.as_str(), lit_span);
+                return PhantomWidthSurfaceOutcome::Invalid;
+            };
+            let desugared = SurfaceType::Parameterized {
+                name: "Compose".to_string(),
+                args: vec![
+                    SurfaceType::Named {
+                        name: algebra.to_string(),
                         span: lit_span.clone(),
-                    }),
-                },
-                SurfaceTypeArg::Ty {
-                    body: Box::new(SurfaceType::Parameterized {
+                    },
+                    SurfaceType::Parameterized {
                         name: "MachineWidth".to_string(),
-                        args: vec![SurfaceTypeArg::Ty {
-                            body: Box::new(SurfaceType::Named {
-                                name: word.to_string(),
-                                span: lit_span.clone(),
-                            }),
+                        args: vec![SurfaceType::Named {
+                            name: word.to_string(),
+                            span: lit_span.clone(),
                         }],
                         span: lit_span.clone(),
-                    }),
-                },
-            ],
-            span: span.clone(),
-        };
-        return PhantomWidthSurfaceOutcome::Rewritten(desugared);
-    }
-
-    if name == "MachineWidth" && args.len() == 1 {
-        let SurfaceTypeArg::PhantomWidthLit {
+                    },
+                ],
+                span: span.clone(),
+            };
+            PhantomWidthSurfaceOutcome::Rewritten(desugared)
+        }
+        SurfaceType::PhantomWidthMachineWidthSugar {
             bits_lit,
-            span: lit_span,
-        } = &args[0]
-        else {
-            return PhantomWidthSurfaceOutcome::NotApplicable;
-        };
-        let Some(word) = phantom_bits_to_word_name(bits_lit) else {
-            bad_literal(dag, "MachineWidth<…>", bits_lit.as_str(), lit_span);
-            return PhantomWidthSurfaceOutcome::Invalid;
-        };
-        let desugared = SurfaceType::Parameterized {
-            name: "MachineWidth".to_string(),
-            args: vec![SurfaceTypeArg::Ty {
-                body: Box::new(SurfaceType::Named {
+            magnitude_span: lit_span,
+            span,
+        } => {
+            let Some(word) = phantom_bits_to_word_name(bits_lit) else {
+                bad_literal(dag, "MachineWidth<…>", bits_lit.as_str(), lit_span);
+                return PhantomWidthSurfaceOutcome::Invalid;
+            };
+            let desugared = SurfaceType::Parameterized {
+                name: "MachineWidth".to_string(),
+                args: vec![SurfaceType::Named {
                     name: word.to_string(),
                     span: lit_span.clone(),
-                }),
-            }],
-            span: span.clone(),
-        };
-        return PhantomWidthSurfaceOutcome::Rewritten(desugared);
+                }],
+                span: span.clone(),
+            };
+            PhantomWidthSurfaceOutcome::Rewritten(desugared)
+        }
+        _ => PhantomWidthSurfaceOutcome::NotApplicable,
     }
-
-    PhantomWidthSurfaceOutcome::NotApplicable
 }
 
 /// Lower a `SurfaceType` to a fresh DeclarationId. Used for field types,
