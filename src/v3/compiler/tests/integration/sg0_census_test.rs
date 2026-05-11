@@ -238,6 +238,11 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
+    // gunbc#2699 / design PR #2700 (PM inbox #846): R4.B affected-set prototype host.
+    // T-PB-A / P5 receipt: intentional non-test surface expansion; dissolve when
+    // `lenses.affected_set_lens` + R4.B queries-as-data own `Lens<Dag×Dag→…>` valuation
+    // (WISHLIST §R4.B, ROADMAP R4 closeout) — no deleted-scaffold claim; this module is new.
+    "src/v3/compiler/src/affected_set_lens.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
@@ -246,11 +251,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/regen_tokenize.rs",
     "src/v3/compiler/src/bin/regen_v3.rs",
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
-    // gunbc#2699 / design PR #2700 (PM inbox #846): R4.B affected-set prototype host.
-    // T-PB-A / P5 receipt: intentional non-test surface expansion; dissolve when
-    // `lenses.affected_set_lens` + R4.B queries-as-data own `Lens<Dag×Dag→…>` valuation
-    // (WISHLIST §R4.B, ROADMAP R4 closeout) — no deleted-scaffold claim; this module is new.
-    "src/v3/compiler/src/affected_set_lens.rs",
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
     "src/v3/compiler/src/complexity_lattice.rs",
@@ -325,6 +325,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
+    // gunbc#2699 prototype (PR #2701). T-PB-B / P5 receipt: host `#[test]` harness only;
+    // defer migration to `.dag` `TestClaim` / tests-as-data when R4.B lens application + CI
+    // selection land (ROADMAP R4 / WISHLIST §R4.B) — not an SG-0 shrink; explicit deferral row.
     "src/v3/compiler/tests/integration/affected_set_lens_prototype_test.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
     // R3 gate #68 (`anthropic_wire_demonstration`): hermetic typed request/response

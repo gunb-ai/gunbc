@@ -90,10 +90,7 @@ impl DownstreamAdjacency {
                 fail_closed_consumer_seeds.insert(id);
             }
             for producer in walk.producer_ids {
-                outgoing
-                    .entry(producer)
-                    .or_default()
-                    .insert(consumer.id());
+                outgoing.entry(producer).or_default().insert(consumer.id());
             }
         }
         malformed_producer_walks.sort();
@@ -243,7 +240,10 @@ impl ShapeMapAfter {
     }
 }
 
-pub fn compute_affected_set_lens_report(dag_before: &Dag, dag_after: &Dag) -> AffectedSetLensReport {
+pub fn compute_affected_set_lens_report(
+    dag_before: &Dag,
+    dag_after: &Dag,
+) -> AffectedSetLensReport {
     let (downstream, downstream_integrity) = DownstreamAdjacency::build(dag_after);
     let pairing = BehaviorPairing::pair(dag_before, dag_after);
     let mut structural_seed_set: HashSet<NodeId> = pairing
@@ -261,36 +261,22 @@ pub fn compute_affected_set_lens_report(dag_before: &Dag, dag_after: &Dag) -> Af
     let first_structural_difference =
         first_difference(dag_before, dag_after).map(|differ| differ.detail);
 
-    let value_slice = propagate_slice_value(
-        &downstream,
-        structural_seeds_after.clone(),
-    );
+    let value_slice = propagate_slice_value(&downstream, structural_seeds_after.clone());
 
-    let cost_seeds =
-        seeds_for_cost_dimension(dag_before, dag_after, &pairing);
+    let cost_seeds = seeds_for_cost_dimension(dag_before, dag_after, &pairing);
     let cost_slice = propagate_slice_with_seeds_only("cost", &downstream, cost_seeds);
 
-    let effect_seeds =
-        seeds_for_effect_dimension(dag_before, dag_after, &pairing);
-    let effect_slice =
-        propagate_slice_with_seeds_only("effect", &downstream, effect_seeds);
+    let effect_seeds = seeds_for_effect_dimension(dag_before, dag_after, &pairing);
+    let effect_slice = propagate_slice_with_seeds_only("effect", &downstream, effect_seeds);
 
-    let refinement_seeds =
-        seeds_for_refinement_dimension(dag_before, dag_after, &pairing);
-    let refinement_slice = propagate_slice_with_seeds_only(
-        "refinement",
-        &downstream,
-        refinement_seeds,
-    );
+    let refinement_seeds = seeds_for_refinement_dimension(dag_before, dag_after, &pairing);
+    let refinement_slice =
+        propagate_slice_with_seeds_only("refinement", &downstream, refinement_seeds);
 
     let structural_seed_count = structural_seeds_after.len();
     let transitive_downstream = downstream.transitive_forward(&structural_seeds_after);
-    let aggregate_union = aggregate_union_sorted(&[
-        &value_slice,
-        &cost_slice,
-        &effect_slice,
-        &refinement_slice,
-    ]);
+    let aggregate_union =
+        aggregate_union_sorted(&[&value_slice, &cost_slice, &effect_slice, &refinement_slice]);
 
     AffectedSetLensReport {
         structural_seed_count,
@@ -460,9 +446,7 @@ fn seeds_for_refinement_dimension(
 }
 
 fn refinement_projection(dag: &Dag, port: PortId) -> Result<String, ()> {
-    let port_state = dag
-        .port_opt(&port)
-        .ok_or(())?;
+    let port_state = dag.port_opt(&port).ok_or(())?;
     Ok(format!("{:?}", port_state.state()))
 }
 
@@ -561,9 +545,8 @@ fn resolve_behavior_upstream_producers(dag: &Dag, consumer: &Behavior) -> Upstre
             }
             ProducerLookup::NoProducer => {}
             ProducerLookup::MissingPort { port: bad } => {
-                malformed_producer_walks.push(format!(
-                    "MissingPort consumer={consumer_id:?} port={bad:?}"
-                ));
+                malformed_producer_walks
+                    .push(format!("MissingPort consumer={consumer_id:?} port={bad:?}"));
                 fail_closed_consumer_seeds.insert(consumer_id);
             }
             ProducerLookup::MissingNode { producer } => {

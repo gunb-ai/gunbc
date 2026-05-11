@@ -15,9 +15,9 @@
 //   on CompileError — type errors live on the Dag, not in the Err
 //   payload.
 
+pub mod affected_set_lens;
 pub mod complexity_lattice;
 pub mod dag;
-pub mod affected_set_lens;
 pub mod diagnostics;
 mod enforced_lens_application;
 pub mod lens_t_las_carrier;

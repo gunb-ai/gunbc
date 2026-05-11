@@ -58,14 +58,15 @@ fn probe_merge_revision(
         .filter(|out| out.status.success())?;
     let before_src = String::from_utf8(before_bytes.stdout).ok()?;
     let after_src = String::from_utf8(after_bytes.stdout).ok()?;
-    let attrib =
-        format!("src/v3/compiler/tests/fixtures/affected_set/{attribution_stub}");
+    let attrib = format!("src/v3/compiler/tests/fixtures/affected_set/{attribution_stub}");
     let before = compile_to_dag(&before_src, &attrib).ok()?;
     let after = compile_to_dag(&after_src, &attrib).ok()?;
     Some((before, after))
 }
 
-fn assert_each_slice_within_transitive(report: &v3_compiler::affected_set_lens::AffectedSetLensReport) {
+fn assert_each_slice_within_transitive(
+    report: &v3_compiler::affected_set_lens::AffectedSetLensReport,
+) {
     let bound = report.transitive_downstream.len();
     assert!(
         report.value.affected_ids.len() <= bound,
