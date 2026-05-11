@@ -83,6 +83,10 @@ pub struct AffectedSetLensReport {
     pub effect: DimensionSlice,
     pub refinement: DimensionSlice,
     pub aggregate_union: Vec<NodeId>,
+    /// Count of paired `(dag_before,dag_after)` behaviors under `(file, byte_start)` keys.
+    pub span_key_behavior_pair_count: usize,
+    /// `dag_after` behaviors with no counterpart key in `dag_before` (fail-closed as seeds).
+    pub span_key_behavior_orphan_after_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -302,6 +306,8 @@ pub fn compute_affected_set_lens_report(
         propagate_slice_with_seeds_only("refinement", &downstream, refinement_seeds);
 
     let structural_seed_count = structural_seeds_after.len();
+    let span_key_behavior_pair_count = pairing.pairs.len();
+    let span_key_behavior_orphan_after_count = pairing.orphans_after.len();
     let aggregate_union = aggregate_union_sorted(&[
         &structural_slice,
         &value_slice,
@@ -321,6 +327,8 @@ pub fn compute_affected_set_lens_report(
         effect: effect_slice,
         refinement: refinement_slice,
         aggregate_union,
+        span_key_behavior_pair_count,
+        span_key_behavior_orphan_after_count,
     }
 }
 
@@ -523,9 +531,10 @@ fn behavior_result_port(behavior: &Behavior) -> PortId {
 /// body root (`Branch` arm / `Loop` kernel / `Transform` callee `Arrow` bind) per
 /// substrate `NodeId` (P2 facts-flow).
 ///
-/// Classification: 🟢 terminal coproduct (`DataPort` | `BodySubgraphRoot`) — partitions
+/// Classification: 🟡 scaffold coproduct (`DataPort` | `BodySubgraphRoot`) — mirrors
 /// substrate carriers already present on `Behavior` / `BranchPath` / `LoopNode` without
-/// inventing a parallel taxonomy (`docs/modeling-discipline.md` Practice 4).
+/// inventing an independent taxonomy (`docs/modeling-discipline.md` Practice 4), but remains
+/// a host-side mirror rather than authoritative substrate enumeration.
 ///
 /// Dissolution ledger: retire when `v3.std.substrate` exposes an authoritative
 /// “dependency operand” row set so lenses enumerate these edges from data alone

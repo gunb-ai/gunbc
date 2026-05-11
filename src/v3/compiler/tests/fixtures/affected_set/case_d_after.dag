@@ -1,6 +1,4 @@
-// §4.D — AFTER state adds an isolated sentinel function (semantic stand-in for a new `.dag TestClaim`).
-//
-// LENS OUTPUT (conceptual): {new_property_surrogate}; production_entry stays untouched because there is no edge linking them.
+// §4.D — surrogate for “tests-only churn”: productive module without the extra sentinel.
 
 module user.affected_set_case_tests_only
 

@@ -1,4 +1,19 @@
-// §4.A — body rewrite AFTER state (paired with case_a_before.dag using the same attribution path).
+// §4.A — body rewrite preserving signature (multiply_then_add: `… + z` vs `… + z + 0`).
+//
+// Canonical per-dimension narration lives in docs/design-affected-set-lens.md §4.1:
+// aggregate affected-set unions {value,cost,effect,…}; value-only narrowing needs a semantic
+// proof substrate not landed here (Rust lens docstring).
+//
+// SNIPPET BEFORE (multiply_then_add):
+//   fn multiply_then_add(...) -> Int = x * y + z
+//
+// SNIPPET AFTER:
+//   fn multiply_then_add(...) -> Int = x * y + z + 0
+//
+// LENS OUTPUT (conceptual Set<NodeRef>):
+// value (fail-closed structural): multiply_then_add, consumer surrogate
+// cost: often {multiply_then_add} only — complexity summaries may coincide with `+ z + 0`
+// aggregate: UNION of dimensional slices below
 
 module user.affected_set_case_before
 

@@ -89,6 +89,14 @@ fn case_a_cost_or_effect_narrows_vs_transitive() {
         CASE_A_ATTRIB,
     );
     let report = compute_affected_set_lens_report(&before, &after);
+    assert_eq!(
+        report.span_key_behavior_orphan_after_count, 0,
+        "case_a before/after fixtures must share byte-aligned preambles so SourceSpan pairing exercises real peer rows, not orphan fail-closed ({report:?})"
+    );
+    assert!(
+        report.span_key_behavior_pair_count >= 2,
+        "case_a should span-pair multiply_then_add + consumer_lane behaviors ({report:?})"
+    );
     assert!(
         !report.transitive_downstream.is_empty(),
         "fixture should include downstream consumers of multiply_then_add"

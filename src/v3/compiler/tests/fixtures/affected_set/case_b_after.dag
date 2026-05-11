@@ -1,4 +1,14 @@
-// §4.B — AFTER state (paired with case_b_before.dag via shared attribution label).
+// §4.B — arity/signature widening of `add` forces every binder to reconcile.
+//
+// Order: caller first, edited `fn` last (span-stable pairing under signature edits).
+//
+// SNIPPET BEFORE: `fn add(x: Int, y: Int) -> Int = x + y`
+//
+// SNIPPET AFTER:
+// `fn add(x: Int, y: Int, z: Int) -> Int = x + y + z`
+//
+// LENS OUTPUT (conceptual): { add, caller_alpha } — direct callee edges; naive transitive downstream
+// is a strict superset once extra glue nodes exist in larger graphs.
 
 module user.affected_set_case_b_signature
 

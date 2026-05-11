@@ -1,4 +1,11 @@
-// §4.E — AFTER state adjusts `narrow_port` arity — both previous callers reshaped; future work would prune the compatible path once refinement proofs exist.
+// §4.E refinement tightening surrogate (fixture-level) — callers that already match the tightened port survive.
+//
+// Order: callers first, tightened `narrow_port` last so arity edits do not remap caller spans.
+//
+// BEFORE: `narrow_port` binds two ints directly.
+//
+// AFTER: `narrow_port` takes a third synthesized parameter counting prior refinements — only `compatible_caller`
+// remains well-typed; `late_caller` must change.
 
 module user.affected_set_case_refinement
 
