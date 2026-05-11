@@ -469,9 +469,12 @@ fn v3_variant_payload_fields(
 // ── Lockstep assertions ───────────────────────────────────────────────
 
 fn assert_record_lockstep(type_name: &str) {
+    assert_record_lockstep_with_v2_fields(type_name, v2_record_fields(type_name));
+}
+
+fn assert_record_lockstep_with_v2_fields(type_name: &str, v2_fields: Vec<V2Field>) {
     let dag = generated_full_bootstrap_dag();
     let v3_labels: BTreeSet<String> = conj_field_labels(&dag, type_name).into_iter().collect();
-    let v2_fields = v2_record_fields(type_name);
     let v2_labels: BTreeSet<String> = v2_fields.iter().map(|(l, _, _)| l.clone()).collect();
     assert_eq!(
         v3_labels,
@@ -667,7 +670,19 @@ fn anthropic_tool_result_block_lockstep() {
 
 #[test]
 fn anthropic_tool_result_plain_text_document_source_lockstep() {
-    assert_record_lockstep("AnthropicToolResultPlainTextDocumentSource");
+    // v3 reserves `data` as a keyword; the mirror uses `document_data` while the
+    // v2 authority keeps wire-faithful `data` (same escape pattern as
+    // `ImageSource.Base64Image` → `base64` and redacted-thinking → `redacted_data`).
+    let mut v2_fields = v2_record_fields("AnthropicToolResultPlainTextDocumentSource");
+    for (label, _, _) in &mut v2_fields {
+        if label == "data" {
+            *label = "document_data".to_string();
+        }
+    }
+    assert_record_lockstep_with_v2_fields(
+        "AnthropicToolResultPlainTextDocumentSource",
+        v2_fields,
+    );
 }
 
 #[test]

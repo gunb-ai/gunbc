@@ -78,7 +78,7 @@ type AnthropicToolResultBlock
 type AnthropicToolResultPlainTextDocumentSource {
   type: String
   media_type: String
-  data: String
+  document_data: String // v2 wire label `data`; renamed — `data` is a v3 keyword.
 }
 
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicUserContentBlock`
