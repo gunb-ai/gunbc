@@ -456,6 +456,14 @@ fn behavior_result_port(behavior: &Behavior) -> PortId {
 
 /// Structural dependency anchor: port-level dataflow **or** an explicit subgraph
 /// body root (`Branch` arm / `Loop` kernel) per substrate `NodeId` (P2 facts-flow).
+///
+/// Classification: 🟢 terminal coproduct (`DataPort` | `BodySubgraphRoot`) — partitions
+/// substrate carriers already present on `Behavior` / `BranchPath` / `LoopNode` without
+/// inventing a parallel taxonomy (`docs/modeling-discipline.md` Practice 4).
+///
+/// Dissolution ledger: retire when `v3.std.substrate` exposes an authoritative
+/// “dependency operand” row set so lenses enumerate these edges from data alone
+/// (`ROADMAP.md` T-PB-A / consolidation thesis), not a Rust-side mirror enum.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BehaviorStructuralOperand {
     DataPort(PortId),

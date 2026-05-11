@@ -238,11 +238,15 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
-    // gunbc#2699 / design PR #2700 (PM inbox #846): R4.B affected-set prototype host.
-    // T-PB-A / P5 receipt (row-level deferral): `WISHLIST.md` §"R4.B — Queries-as-data",
-    // stress-test #2 "Refactoring impact" — dissolve this host toward structural
-    // `lenses.affected_set` lens application once that row satisfies dep-graph traversal
-    // semantics (gunbc#2699 / ROADMAP R4 closeout); no deleted-scaffold claim.
+    // gunbc#2699 / design PR #2700 (PM inbox #846): affected-set introspect-lens Rust host.
+    //
+    // P5 / T-PB-A deferral (lane + concrete ROADMAP row): `ROADMAP.md` → `## Release R1 Program`
+    // → `### Nine lanes` table row **T-PB-A** (XL; non-test SG-0 census → 0-floor); same section
+    // → `### Lane acceptance — .dag gates` bullet **T-PB-A.** (`pb_hand_rust_at_shim_floor`, …).
+    //
+    // Product stress context (not a ROADMAP lane row): `WISHLIST.md` §"R4.B — Queries-as-data",
+    // stress-test #2 "Refactoring impact". Dissolve toward structural `lenses.affected_set`
+    // introspect-lens application (`gunbc#2699`); no deleted-scaffold claim.
     "src/v3/compiler/src/affected_set_lens.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
@@ -326,10 +330,15 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
-    // gunbc#2699 prototype (PR #2701). T-PB-B / P5 receipt: host `#[test]` harness only;
-    // row-level retirement: `WISHLIST.md` §"R4.B — Queries-as-data", stress-test #2
-    // "Refactoring impact" — migrate assertions to `.dag` `TestClaim` when the R4.B
-    // queries-as-data / introspect-lens application harness lands (ROADMAP R4); not an SG-0 shrink claim.
+    // gunbc#2699 prototype (PR #2701): host `#[test]` harness only (`TESTING.md` hermetic fixtures).
+    //
+    // P5 / T-PB-B deferral (lane + concrete ROADMAP row): `ROADMAP.md` → `## Release R1 Program`
+    // → `### Nine lanes` table row **T-PB-B** (tests-as-data); same section → `### Lane acceptance`
+    // bullet **T-PB-B.** (`pb_test_file_generated_from_dag`, `pb_rust_tests_outside_residual_zero`, …).
+    //
+    // Companion context: `WISHLIST.md` §"R4.B — Queries-as-data", stress-test #2 "Refactoring impact"
+    // — migrate to `.dag` `TestClaim` once that introspect / queries-as-data harness wires CI;
+    // not an SG-0 shrink claim.
     "src/v3/compiler/tests/integration/affected_set_lens_prototype_test.rs",
     "src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs",
     // R3 gate #68 (`anthropic_wire_demonstration`): hermetic typed request/response

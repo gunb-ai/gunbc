@@ -92,9 +92,15 @@ type EffectEnumerationReport {
 }
 
 fn enumerate_effects(d: Dag) -> EffectEnumerationReport =
+  enumerate_effects_with_facts(d, compute_effect_facts(d))
+
+fn enumerate_effects_with_facts(
+  d: Dag,
+  facts: List<EffectFact>
+) -> EffectEnumerationReport =
   {
-    facts: compute_effect_facts(d),
-    coverage_gaps: compute_coverage_gaps(d),
+    facts: facts,
+    coverage_gaps: compute_coverage_gaps_from_facts(d.nodes, d, facts),
     redundant_reads: empty(),
     transaction: transaction_pattern(d)
   }
