@@ -201,7 +201,7 @@ Recommended split (subject to Mgr judgment + PM pre-staged Cluster B recommendat
 
 Escalate via dashboard-message to Verification Mgr (`clever-tern-670`) if:
 
-- A test group can't be cleanly assigned a single `Dimension` (substrate-shape question, not a Layer 2 design choice)
+- A test group can't be cleanly assigned a non-empty `Set<Dimension>` from the locked-design §2 enum (substrate-shape question, not a Layer 2 design choice). **Do NOT default to a singleton `{primary}` to bypass this** — that's the fail-open multi-dim collapse pattern §3 Polarity invariant + §4 hard constraint #5 explicitly forbid. If the group genuinely reads multiple dimensions and you can't enumerate them confidently, escalate.
 - The `changes` job exceeds 3-minute cap once Layer 2 classification logic added (mechanism-shape question)
 - Required-paths regex authoring produces false-negatives (test skipped that should have run) in self-test — escalate to widen regex, NOT to disable group classification
 - `self_host_ratchet` `if:` widening breaks when interacting with per-step `if:` — coordinate with PR #2718 author for the predicate composition
