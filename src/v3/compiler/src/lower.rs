@@ -339,16 +339,13 @@ pub(crate) fn lower_bodies_phase(
             if matches!(body, Some(SurfaceExpr::Lambda { .. })) {
                 continue;
             }
-            lower_data_item(
-                name,
-                ty,
-                body.as_ref(),
-                body_span,
+            let mut data_ctx = DataLoweringContext {
                 dag,
                 symbols,
-                &pending_refined_function_refs,
-                None,
-            );
+                pending_refined_function_refs: &pending_refined_function_refs,
+                invalid_data_lambda_cluster: None,
+            };
+            lower_data_item(name, ty, body.as_ref(), body_span, &mut data_ctx);
         }
     }
     let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
@@ -364,16 +361,13 @@ pub(crate) fn lower_bodies_phase(
             ..
         } = item
         {
-            lower_data_item(
-                name,
-                ty,
-                Some(body),
-                body_span,
+            let mut data_ctx = DataLoweringContext {
                 dag,
                 symbols,
-                &pending_refined_function_refs,
-                mutual_recursion.invalid_by_member.get(&symbols[name]),
-            );
+                pending_refined_function_refs: &pending_refined_function_refs,
+                invalid_data_lambda_cluster: mutual_recursion.invalid_by_member.get(&symbols[name]),
+            };
+            lower_data_item(name, ty, Some(body), body_span, &mut data_ctx);
         }
     }
     // DB-11 (3a.3) phase-ordered refinement lowering. Runs AFTER the
@@ -3170,16 +3164,14 @@ fn lower_item(
             body_span,
             span: _,
         } => {
-            lower_data_item(
-                name,
-                ty,
-                body.as_ref(),
-                body_span,
+            let pending_refined_function_refs = HashSet::new();
+            let mut data_ctx = DataLoweringContext {
                 dag,
                 symbols,
-                &HashSet::new(),
-                None,
-            );
+                pending_refined_function_refs: &pending_refined_function_refs,
+                invalid_data_lambda_cluster: None,
+            };
+            lower_data_item(name, ty, body.as_ref(), body_span, &mut data_ctx);
             scope
         }
         SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => {
@@ -4034,18 +4026,22 @@ fn resolve_template_for_type_parameters(
 /// (M2+ record/map/list literal parser extension), and the
 /// declaration carries both the declared type and the body span
 /// for future parser passes to consume.
+struct DataLoweringContext<'a> {
+    dag: &'a mut Dag,
+    symbols: &'a HashMap<String, DeclarationId>,
+    pending_refined_function_refs: &'a HashSet<DeclarationId>,
+    invalid_data_lambda_cluster: Option<&'a InvalidMutualCluster>,
+}
+
 fn lower_data_item(
     name: &str,
     ty: &SurfaceType,
     body: Option<&SurfaceExpr>,
     body_span: &SourceSpan,
-    dag: &mut Dag,
-    symbols: &HashMap<String, DeclarationId>,
-    pending_refined_function_refs: &HashSet<DeclarationId>,
-    invalid_data_lambda_cluster: Option<&InvalidMutualCluster>,
+    ctx: &mut DataLoweringContext<'_>,
 ) {
-    let decl_id = symbols[name];
-    let ty_decl_id = initialize_data_declaration_type(name, ty, dag, symbols);
+    let decl_id = ctx.symbols[name];
+    let ty_decl_id = initialize_data_declaration_type(name, ty, ctx.dag, ctx.symbols);
     // Attempt structural inhabitance checking if the body parsed
     // as a record literal. Falls back to Unparsed on any failure
     // (walk doesn't terminate at a Conj, missing field, extra
@@ -4062,7 +4058,7 @@ fn lower_data_item(
     let mut suppress_unparsed_scaffold = false;
     let value_body = match body {
         Some(SurfaceExpr::Lambda { params, body, span }) => {
-            if let Some(invalid_cluster) = invalid_data_lambda_cluster {
+            if let Some(invalid_cluster) = ctx.invalid_data_lambda_cluster {
                 let diagnostic = Diagnostic::ResolveError {
                     name: format!(
                         "function-valued data `{name}` participates in an unbounded callable cycle {{{}}}; recursive data lambdas are rejected until they participate in the bounded recursion gate",
@@ -4073,15 +4069,15 @@ fn lower_data_item(
                 };
                 let rejected = rejected_data_lambda_connective(
                     name,
-                    dag.declaration(decl_id).connective.clone(),
+                    ctx.dag.declaration(decl_id).connective.clone(),
                     diagnostic.clone(),
                     span,
-                    dag,
+                    ctx.dag,
                 );
-                dag.declaration_mut(decl_id).connective = rejected;
-                report_declaration_error(dag, diagnostic);
+                ctx.dag.declaration_mut(decl_id).connective = rejected;
+                report_declaration_error(ctx.dag, diagnostic);
                 None
-            } else if is_recursive(body, name, dag, symbols) {
+            } else if is_recursive(body, name, ctx.dag, ctx.symbols) {
                 let diagnostic = Diagnostic::ResolveError {
                     name: format!(
                         "function-valued data `{name}` is recursive; recursive data lambdas \
@@ -4092,22 +4088,22 @@ fn lower_data_item(
                 };
                 let rejected = rejected_data_lambda_connective(
                     name,
-                    dag.declaration(decl_id).connective.clone(),
+                    ctx.dag.declaration(decl_id).connective.clone(),
                     diagnostic.clone(),
                     span,
-                    dag,
+                    ctx.dag,
                 );
-                dag.declaration_mut(decl_id).connective = rejected;
-                report_declaration_error(dag, diagnostic);
+                ctx.dag.declaration_mut(decl_id).connective = rejected;
+                report_declaration_error(ctx.dag, diagnostic);
                 None
             } else {
                 let empty_scope = HashMap::new();
                 let empty_callable_scope = CallableScope::new();
                 let mut lambda_ctx = LambdaLoweringContext {
-                    dag,
+                    dag: ctx.dag,
                     scope: &empty_scope,
                     callable_scope: &empty_callable_scope,
-                    symbols,
+                    symbols: ctx.symbols,
                 };
                 match lower_lambda_expr_to_arrow(params, body, span, ty_decl_id, &mut lambda_ctx) {
                     Ok(connective) => {
@@ -4135,27 +4131,27 @@ fn lower_data_item(
             fields,
             ty_decl_id,
             body_span,
-            symbols,
-            dag,
-            pending_refined_function_refs,
+            ctx.symbols,
+            ctx.dag,
+            ctx.pending_refined_function_refs,
         ),
         Some(list_expr @ SurfaceExpr::List { .. }) => lower_list_to_structural(
             name,
             list_expr,
             ty_decl_id,
-            symbols,
-            dag,
-            pending_refined_function_refs,
+            ctx.symbols,
+            ctx.dag,
+            ctx.pending_refined_function_refs,
         ),
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
-            match lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag) {
+            match lower_scalar_literal_for_type(lit_expr, ty_decl_id, ctx.dag) {
                 LowerScalarLiteralOutcome::Literal(bits) => {
                     Some(crate::dag::ValueBody::Scalar(bits))
                 }
                 LowerScalarLiteralOutcome::NotApplicable => None,
                 LowerScalarLiteralOutcome::Reject(diag) => {
                     suppress_unparsed_scaffold = true;
-                    report_declaration_error(dag, diag);
+                    report_declaration_error(ctx.dag, diag);
                     None
                 }
             }
@@ -4164,30 +4160,30 @@ fn lower_data_item(
             name,
             map_expr,
             ty_decl_id,
-            symbols,
-            dag,
-            pending_refined_function_refs,
+            ctx.symbols,
+            ctx.dag,
+            ctx.pending_refined_function_refs,
         ),
         Some(SurfaceExpr::Call { target, args, .. }) => {
             match (
-                dsl_std_render_repeat_string_decl_id(dag),
-                symbols.get(target),
+                dsl_std_render_repeat_string_decl_id(ctx.dag),
+                ctx.symbols.get(target),
             ) {
                 (Some(canonical), Some(&callee)) if callee == canonical => {
-                    try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, dag)
+                    try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, ctx.dag)
                 }
                 _ => try_lower_symbolic_cost_constant_cost_data(
                     target,
                     args.as_slice(),
                     ty_decl_id,
-                    dag,
-                    symbols.get(target).copied(),
+                    ctx.dag,
+                    ctx.symbols.get(target).copied(),
                 ),
             }
         }
         _ => None,
     };
-    dag.declaration_mut(decl_id).value_body = match value_body {
+    ctx.dag.declaration_mut(decl_id).value_body = match value_body {
         Some(body) => Some(body),
         None if suppress_unparsed_scaffold => None,
         None => Some(crate::dag::ValueBody::Unparsed(body_span.clone())),
