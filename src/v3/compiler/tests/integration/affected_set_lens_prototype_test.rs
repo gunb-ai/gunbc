@@ -9,7 +9,11 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
 use v3_compiler::CompileError;
 
-const CASE_ATTRIB_PREFIX: &str = "src/v3/compiler/tests/fixtures/affected_set/";
+const CASE_A_ATTRIB: &str = "src/v3/compiler/tests/fixtures/affected_set/case_a_shared.dag";
+const CASE_B_ATTRIB: &str = "src/v3/compiler/tests/fixtures/affected_set/case_b_shared.dag";
+const CASE_C_ATTRIB: &str = "src/v3/compiler/tests/fixtures/affected_set/case_c_shared.dag";
+const CASE_D_ATTRIB: &str = "src/v3/compiler/tests/fixtures/affected_set/case_d_shared.dag";
+const CASE_E_ATTRIB: &str = "src/v3/compiler/tests/fixtures/affected_set/case_e_shared.dag";
 
 fn compile_fixture(source: &str, attribution: &str) -> Dag {
     match compile_to_dag(source, attribution) {
@@ -84,17 +88,11 @@ fn assert_each_slice_within_transitive(report: &v3_compiler::affected_set_lens::
 fn case_a_cost_or_effect_narrows_vs_transitive() {
     let before = compile_fixture(
         include_str!("../fixtures/affected_set/case_a_before.dag"),
-        concat!(
-            CASE_ATTRIB_PREFIX,
-            "case_a_shared.dag"
-        ),
+        CASE_A_ATTRIB,
     );
     let after = compile_fixture(
         include_str!("../fixtures/affected_set/case_a_after.dag"),
-        concat!(
-            CASE_ATTRIB_PREFIX,
-            "case_a_shared.dag"
-        ),
+        CASE_A_ATTRIB,
     );
     let report = compute_affected_set_lens_report(&before, &after);
     assert!(
@@ -115,17 +113,11 @@ fn case_a_cost_or_effect_narrows_vs_transitive() {
 fn case_b_signature_change_surfaces_wide_structural_seed() {
     let before = compile_fixture(
         include_str!("../fixtures/affected_set/case_b_before.dag"),
-        concat!(
-            CASE_ATTRIB_PREFIX,
-            "case_b_shared.dag"
-        ),
+        CASE_B_ATTRIB,
     );
     let after = compile_fixture(
         include_str!("../fixtures/affected_set/case_b_after.dag"),
-        concat!(
-            CASE_ATTRIB_PREFIX,
-            "case_b_shared.dag"
-        ),
+        CASE_B_ATTRIB,
     );
     let report = compute_affected_set_lens_report(&before, &after);
     assert!(report.structural_seed_count >= 2, "{report:?}");
@@ -136,17 +128,11 @@ fn case_b_signature_change_surfaces_wide_structural_seed() {
 fn case_c_algebra_carrier_surrogate_changes_walker_dependency() {
     let before = compile_fixture(
         include_str!("../fixtures/affected_set/case_c_before.dag"),
-        concat!(
-            CASE_ATTRIB_PREFIX,
-            "case_c_shared.dag"
-        ),
+        CASE_C_ATTRIB,
     );
     let after = compile_fixture(
         include_str!("../fixtures/affected_set/case_c_after.dag"),
-        concat!(
-            CASE_ATTRIB_PREFIX,
-            "case_c_shared.dag"
-        ),
+        CASE_C_ATTRIB,
     );
     let report = compute_affected_set_lens_report(&before, &after);
     assert!(!report.transitive_downstream.is_empty());
@@ -157,17 +143,11 @@ fn case_c_algebra_carrier_surrogate_changes_walker_dependency() {
 fn case_d_test_only_surrogate_isolates_unreachable_node() {
     let before = compile_fixture(
         include_str!("../fixtures/affected_set/case_d_before.dag"),
-        concat!(
-            CASE_ATTRIB_PREFIX,
-            "case_d_shared.dag"
-        ),
+        CASE_D_ATTRIB,
     );
     let after = compile_fixture(
         include_str!("../fixtures/affected_set/case_d_after.dag"),
-        concat!(
-            CASE_ATTRIB_PREFIX,
-            "case_d_shared.dag"
-        ),
+        CASE_D_ATTRIB,
     );
     let report = compute_affected_set_lens_report(&before, &after);
     assert_each_slice_within_transitive(&report);
@@ -182,17 +162,11 @@ fn case_d_test_only_surrogate_isolates_unreachable_node() {
 fn case_e_port_tightening_surrogate_touches_every_call_site() {
     let before = compile_fixture(
         include_str!("../fixtures/affected_set/case_e_before.dag"),
-        concat!(
-            CASE_ATTRIB_PREFIX,
-            "case_e_shared.dag"
-        ),
+        CASE_E_ATTRIB,
     );
     let after = compile_fixture(
         include_str!("../fixtures/affected_set/case_e_after.dag"),
-        concat!(
-            CASE_ATTRIB_PREFIX,
-            "case_e_shared.dag"
-        ),
+        CASE_E_ATTRIB,
     );
     let report = compute_affected_set_lens_report(&before, &after);
     assert!(report.structural_seed_count >= 2, "{report:?}");
