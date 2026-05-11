@@ -109,12 +109,13 @@ The PM template provides:
 - **Pilot recommendation: Cluster B** (Lane 2 Stage 2d symbolic cost — high confidence, single-element set `{cost}`, ~6 tests). Note: my §6 recommendation was `cost_lens` first — these converge; Cluster B IS the cost-lens family with singleton `{cost}` dimensions.
 - **12 `[Mgr-fill]` placeholders** marking where consumer-tracing exceeded PM bandwidth (substrate-lens deps, R3-V L4/L7, R1C-E `.dag` wrapper, free-consequences cross-target). These are the Mgr-tier sub-classification decisions.
 
-Inline sketch (illustrative — defer to the PM template for the actual starting inventory):
+Inline sketch (illustrative — defer to the PM template for the actual starting inventory). Note `dimensions` column is `Set<Dimension>`; singletons shown as `{cost}`, multi-dim consumers as `{complexity, cost}`:
 ```
-cost_lens          | cost       | ^(src/v3/lenses/cost\.dag|src/v3/std/algebra\.dag|src/v3/compiler/src/lens_cost_.*\.rs)$       | cost_lens_*
-complexity_lens    | complexity | ^(src/v3/lenses/complexity\.dag|src/v3/compiler/src/lens_complexity_.*\.rs)$                    | complexity_lens_*
-emit_target        | effect     | ^(src/v3/extdeps/.*|src/v3/compiler/src/emit/.*|src/v3/compiler/src/omni_shape_.*\.rs)$          | emit_target_*
-parser_grammar     | refinement | ^(src/v3/parser/.*|src/v3/compiler/src/parser.*\.rs|src/v3/compiler/src/lower.*\.rs)$            | parser_grammar_*
+cost_lens          | {cost}              | ^(src/v3/lenses/cost\.dag|src/v3/std/algebra\.dag|src/v3/compiler/src/lens_cost_.*\.rs)$       | cost_lens_*
+complexity_lens    | {complexity}        | ^(src/v3/lenses/complexity\.dag|src/v3/compiler/src/lens_complexity_.*\.rs)$                    | complexity_lens_*
+lbp_demonstration  | {complexity, cost}  | ^(src/v3/lenses/(cost|complexity)\.dag|src/v3/compiler/src/.*lbp.*\.rs)$                       | lbp_*  # multi-dim
+emit_target        | {effect}            | ^(src/v3/extdeps/.*|src/v3/compiler/src/emit/.*|src/v3/compiler/src/omni_shape_.*\.rs)$          | emit_target_*
+parser_grammar     | {refinement}        | ^(src/v3/parser/.*|src/v3/compiler/src/parser.*\.rs|src/v3/compiler/src/lower.*\.rs)$            | parser_grammar_*
 # ... etc per Mgr-fill
 ```
 
@@ -150,11 +151,13 @@ changes:
         done
 ```
 
-**The `(group_name, dimension)` mapping survives the dissolution** — only the `required_paths_regex` column gets retired (replaced by lens-provided per-dimension affected-set). For this to work, **every Layer 2 path-mapping entry MUST have a `dimension:` field matching the lens enum exactly**.
+**The `(group_name, dimensions)` mapping survives the dissolution** — only the `required_paths_regex` column gets retired (replaced by lens-provided per-dimension affected-set). For this to work, **every Layer 2 path-mapping entry MUST have a `dimensions:` field of type `Set<Dimension>` with members from the lens enum exactly**.
 
 This is the parallel-representation-debt prevention. If Layer 2's group-classification diverges from the lens's dimension axis (e.g., Layer 2 groups by file-area but lens groups by dimension), dissolution becomes a schema-migration rather than a column-retirement.
 
-**Hard constraint**: no group entry without a `dimension:` field matching the lens enum. If a group doesn't fit one of the 5 dimensions cleanly, escalate to Coordinator — that's a substrate-shape question, not a Layer 2 design choice.
+**Why `Set<Dimension>` not `Dimension`** (per PM caught semantic violation 2026-05-11 via codex RC on template PR #2721, fixed at `dedcf69a4`): `docs/design-affected-set-lens.md` §2 defines `affected_set` as a **union** over `Set<Dimension>`, not single-match. A multi-dim consumer (e.g., LBP demonstration reading both `complexity` + `cost`) declared with singular `dimension: cost` would be silently skipped when only `complexity` changes — a fail-open violation against P3. The set type makes the union semantics structurally faithful.
+
+**Hard constraint**: no group entry without a `dimensions:` field of type `Set<Dimension>` with members from the lens enum. Single-element sets like `{cost}` are valid for single-dim groups. Empty set is invalid. If a group doesn't fit any of the 5 dimensions cleanly, escalate to Coordinator — that's a substrate-shape question, not a Layer 2 design choice.
 
 ## §4. Hard constraints
 
@@ -162,7 +165,7 @@ This is the parallel-representation-debt prevention. If Layer 2's group-classifi
 2. **STEP-level `if:` on `v3`, not separate jobs** — keeps `v3`'s `needs:` graph and required-check name stable. `self_host_ratchet` `if:` widening from PR #2718 remains unchanged.
 3. **No new `actions/cache` keys or workflow-tier infrastructure** — Layer 2 is path-regex + boolean output; nothing more.
 4. **Bridge-debt acknowledgment in every PR**: each PR landing a Layer 2 group must include in body: "Bridge-debt; dissolves when `ci_uses_provable_minimal_affected_set_selection` gate lands and lens output replaces `required_paths_regex` column."
-5. **Dimension field on every group entry** — no group without `dimension: <Dimension>` field. Substrate-shape questions on dimension assignment escalate.
+5. **`dimensions: Set<Dimension>` field on every group entry** — non-empty subset of the lens enum per locked-design §2 union semantics. Single-element sets valid for single-dim groups; multi-dim consumers MUST list all dimensions they read. Substrate-shape questions on dimension assignment escalate.
 6. **No closure-allowed carve-outs**: Layer 2's lifetime is bounded by the affected-set lens dissolution. If a group can't be path-classified accurately, it stays in the `code=true` full-run bucket (no special carve).
 7. **Push events short-circuit to full-run** — `github.event_name == 'push'` bypasses ALL skip_* flags (run everything on main). Matches Layer 1.
 8. **Hand-Rust budget: zero**. Layer 2 lives entirely in `.github/workflows/ci.yml` + an optional path-mapping data file (e.g., `scripts/ci-path-classification.yaml` or inline in the workflow).
@@ -174,7 +177,7 @@ The Layer 2 PR-set is acceptable when:
 - `changes` job grows per-group `skip_*` outputs (no parallel job created)
 - `v3` step-level `if:` predicates wired for each group
 - Per-group path-mapping table cites all 3 inventory sources (a)(b)(c)
-- Every group entry has `dimension: <Dimension>` field matching `docs/design-affected-set-lens.md` §2 enum
+- Every group entry has `dimensions: Set<Dimension>` field (non-empty subset of `docs/design-affected-set-lens.md` §2 enum); set semantics preserve multi-dim consumer fidelity per locked-design union
 - Self-test: a docs-only PR still triggers Layer 1 (entire `v3` skip — `code=false`); a code PR touching only `src/v3/lenses/cost.dag` triggers ONLY the cost-related test groups; a `push` to main runs everything
 - PR body explicitly states bridge-debt + dissolution trigger
 - `self_host_ratchet` required-check name remains green via existing PR #2718 `if:` widening
@@ -185,8 +188,8 @@ The Layer 2 PR-set is acceptable when:
 
 Recommended split (subject to Mgr judgment + PM pre-staged Cluster B recommendation):
 
-- **Pilot wave** (1 cluster; ~2 hours): **Cluster B (Lane 2 Stage 2d symbolic cost)** per PM template recommendation — high confidence, single `cost` dimension, ~6 tests. Converges with my prior `cost_lens`-first recommendation; Cluster B IS the cost-lens family in the PM grouping. Validates per-group `skip_*` output + STEP-level `if:` mechanism on `v3` + dimension-mapping invariant against locked-design §2 enum.
-- **Class wave** (5-8 clusters; ~1 day): parallel-dispatch per remaining PM Clusters A/C-I from empirical timings. Each cluster's PR is bounded; reviewer can verify required-paths regex against test deps + dimension assignment against lens enum.
+- **Pilot wave** (1 cluster; ~2 hours): **Cluster B (Lane 2 Stage 2d symbolic cost)** per PM template recommendation — high confidence, singleton `dimensions: {cost}`, ~6 tests. Converges with my prior `cost_lens`-first recommendation; Cluster B IS the cost-lens family in the PM grouping. Validates per-group `skip_*` output + STEP-level `if:` mechanism on `v3` + set-typed `dimensions` invariant against locked-design §2.
+- **Class wave** (5-8 clusters; ~1 day): parallel-dispatch per remaining PM Clusters A/C-I from empirical timings. Each cluster's PR is bounded; reviewer can verify required-paths regex against test deps + `dimensions:` set assignment against lens enum (must include ALL dimensions the consumer reads, not just primary).
 - **`[Mgr-fill]` placeholder resolution** (12 entries per PM template): per-entry escalation as consumer-tracing surfaces substrate-lens deps / R3-V L4/L7 / R1C-E `.dag` wrapper / free-consequences cross-target shapes. These may bundle with the corresponding cluster waves or stand alone.
 - **Long-tail wave** (remaining groups + edge-case path-regex tuning): per-group escalation if path-classification accuracy issues surface.
 
@@ -198,7 +201,8 @@ Escalate via dashboard-message to Verification Mgr (`clever-tern-670`) if:
 - The `changes` job exceeds 3-minute cap once Layer 2 classification logic added (mechanism-shape question)
 - Required-paths regex authoring produces false-negatives (test skipped that should have run) in self-test — escalate to widen regex, NOT to disable group classification
 - `self_host_ratchet` `if:` widening breaks when interacting with per-step `if:` — coordinate with PR #2718 author for the predicate composition
-- Layer 2 dissolution shape (when affected-set lens lands) doesn't match the `(group_name, dimension)` schema — substrate-shape question, escalate to Substrate Mgr coordinator
+- Layer 2 dissolution shape (when affected-set lens lands) doesn't match the `(group_name, dimensions)` schema — substrate-shape question, escalate to Substrate Mgr coordinator
+- A group consumer reads multi-dim but it's unclear which dimensions are load-bearing — escalate to Coordinator for dimension-set assignment (do NOT default to singleton `{primary}`; that's the fail-open shape PM caught in template review)
 
 Do not push a workaround PR for any of these.
 
@@ -208,7 +212,7 @@ Do not push a workaround PR for any of these.
 
 - **Bridge**: per-group `required_paths_regex` table (hand-authored, file-path-substring-based)
 - **Dissolution trigger**: gate `ci_uses_provable_minimal_affected_set_selection` lands ⇒ affected-set Introspect-lens output replaces `required_paths_regex` column
-- **Surviving artifact post-dissolution**: `(group_name, dimension)` mapping — the dimension column remains as the lens consumer; only path-regex column retires
+- **Surviving artifact post-dissolution**: `(group_name, dimensions)` mapping — the `dimensions: Set<Dimension>` column remains as the lens consumer; only path-regex column retires
 
 Cite the dissolution path in every Layer 2 PR body. When the gate lands, a single follow-up PR retires the bridge and the brief is done.
 
@@ -217,7 +221,7 @@ Cite the dissolution path in every Layer 2 PR body. When the gate lands, a singl
 **Mgr-finalization checklist** (before flipping to PRE-AUTH DISPATCH-READY):
 
 - [ ] Complete per-group inventory (sources (a)+(b); table column (c)) — recommend PM pre-staged skeleton if/when available
-- [ ] Per-group `dimension:` assignments validated against `docs/design-affected-set-lens.md` §2 enum
+- [ ] Per-group `dimensions: Set<Dimension>` assignments validated against `docs/design-affected-set-lens.md` §2 union semantics — multi-dim consumers MUST list all dimensions they read (no silent-skip on non-primary dim changes)
 - [ ] Per-group `required_paths_regex` tested against 3-5 representative recent PRs for false-positive/false-negative rate
 - [ ] Pilot wave selection (recommend `cost_lens` first per §6)
 - [ ] Coordination ack from PR #2718 author on `self_host_ratchet` `if:` interaction shape
