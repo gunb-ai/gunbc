@@ -37,6 +37,35 @@ fn contains_linear_for_port(cost: &SymbolicCost, port: PortId) -> bool {
     }
 }
 
+fn contains_log_for_port(cost: &SymbolicCost, port: PortId) -> bool {
+    match cost {
+        SymbolicCost::LogCost { _0: var } => var.source_port == port,
+        SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => terms
+            .iter()
+            .any(|term| contains_log_for_port(term.as_ref(), port)),
+        _ => false,
+    }
+}
+
+fn expect_symbolic_cost_dimension(
+    dag: &v3_compiler::dag::Dag,
+    bind_name: &str,
+) -> (SymbolicCost, Vec<Witness<SymbolicCost>>) {
+    let bind = find_bind(dag, bind_name);
+    let report = analyze_symbolic_cost_dimension(dag, bind.id);
+    let DimensionReport::DimensionOk {
+        dimension_name,
+        composed,
+        witnesses,
+    } = report
+    else {
+        panic!("expected DimensionOk for `{bind_name}` symbolic cost, got {report:?}");
+    };
+
+    assert_eq!(dimension_name, "symbolic_cost");
+    (composed, witnesses)
+}
+
 fn run_with_cost_cementing_stack(f: impl FnOnce() + Send + 'static) {
     std::thread::Builder::new()
         .name("cost-lens-symbolic-cementing".to_string())
@@ -52,19 +81,8 @@ fn literal_bind_cements_dimension_symbolic_cost_constant() {
     run_with_cost_cementing_stack(|| {
         let dag = compile_to_dag("let lit: Int = 7", "cement_cost_symbolic_lit.v3")
             .expect("literal fixture compiles");
-        let lit = find_bind(&dag, "lit");
+        let (composed, witnesses) = expect_symbolic_cost_dimension(&dag, "lit");
 
-        let report = analyze_symbolic_cost_dimension(&dag, lit.id);
-        let DimensionReport::DimensionOk {
-            dimension_name,
-            composed,
-            witnesses,
-        } = report
-        else {
-            panic!("expected DimensionOk for literal symbolic cost, got {report:?}");
-        };
-
-        assert_eq!(dimension_name, "symbolic_cost");
         assert!(
             matches!(composed, SymbolicCost::ConstantCost { _0: 0 }),
             "literal frozen cost projection should stay constant zero, got {composed:?}"
@@ -91,17 +109,8 @@ fn recursive_countdown_cements_dimension_symbolic_cost_linear_sizevar() {
             .copied()
             .expect("countdown should expose one size-bearing parameter");
 
-        let report = analyze_symbolic_cost_dimension(&dag, countdown.id);
-        let DimensionReport::DimensionOk {
-            dimension_name,
-            composed,
-            witnesses,
-        } = report
-        else {
-            panic!("expected DimensionOk for recursive countdown symbolic cost, got {report:?}");
-        };
+        let (composed, witnesses) = expect_symbolic_cost_dimension(&dag, "countdown");
 
-        assert_eq!(dimension_name, "symbolic_cost");
         assert_recursive_countdown_linear_semantics(&composed);
         assert!(
             contains_linear_for_port(&composed, parameter),
@@ -111,6 +120,36 @@ fn recursive_countdown_cements_dimension_symbolic_cost_linear_sizevar() {
         assert!(
             witnesses.iter().all(|w| matches!(w, Witness::Inhabits(_))),
             "countdown cost dimension should have only Inhabits witnesses, got {witnesses:?}"
+        );
+    });
+}
+
+#[test]
+fn division_cements_log_cost_on_dividend_sizevar() {
+    run_with_cost_cementing_stack(|| {
+        let dag = compile_to_dag(
+            "import std.error_primitives { DivError, Result }\n\
+             fn half(n: Int) -> Int =\n  match n / 2 { Ok(q) => q, Err(e) => 0 }",
+            "cement_cost_symbolic_division.v3",
+        )
+        .expect("division fixture compiles");
+        let half = find_bind(&dag, "half");
+        let dividend = half
+            .params
+            .first()
+            .copied()
+            .expect("half should expose one dividend parameter");
+
+        let (composed, witnesses) = expect_symbolic_cost_dimension(&dag, "half");
+
+        assert!(
+            contains_log_for_port(&composed, dividend),
+            "division frozen cost projection should carry a LogCost keyed by dividend \
+             {dividend:?}, got {composed:?}"
+        );
+        assert!(
+            witnesses.iter().all(|w| matches!(w, Witness::Inhabits(_))),
+            "division cost dimension should have only Inhabits witnesses, got {witnesses:?}"
         );
     });
 }
