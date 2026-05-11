@@ -92,7 +92,8 @@ fn r3_gate60_phantom_width_unsupported_magnitude_emits_diagnostic() {
                     span,
                     ..
                 } if fixes.is_empty()
-                    && src.get(span.byte_start..span.byte_end) == Some("99")
+                    && span.file == "r3_gate60_bad_phantom_width.v3"
+                    && src.get(span.byte_start as usize..span.byte_end as usize) == Some("99")
             )
         }),
         "expected Diagnostic::ParseError whose span selects the offending literal \
@@ -117,24 +118,33 @@ fn r3_gate60_phantom_width_unsupported_magnitude_emits_diagnostic() {
 fn r3_gate60_bare_phantom_width_literal_emits_diagnostic() {
     let src = "type BarePhantom = 64\n";
     match compile_to_dag(src, "r3_gate60_bare_phantom_lit.v3") {
-        Err(CompileError::Parse(ref diag)) => {
-            let Diagnostic::ParseError {
-                fixes,
-                span,
-                ..
-            } = diag else {
-                panic!("expected CompileError::Parse(ParseError {{ .. }}); got CompileError::Parse({diag:?})");
-            };
-            assert!(
-                fixes.is_empty(),
-                "ParseError.fixes unexpected for phantom-width gate assertion"
-            );
-            assert_eq!(
-                src.get(span.byte_start..span.byte_end),
-                Some("64"),
-                "typed ParseError must highlight the offending decimal magnitude token \
-                 — not asserted on full prose (TESTING.md)"
-            );
+        Err(CompileError::Parse(diag)) => {
+            match &diag {
+                Diagnostic::ParseError {
+                    fixes,
+                    span,
+                    ..
+                } => {
+                    assert!(
+                        fixes.is_empty(),
+                        "ParseError.fixes unexpected for phantom-width gate assertion"
+                    );
+                    assert_eq!(
+                        span.file.as_str(),
+                        "r3_gate60_bare_phantom_lit.v3",
+                        "unexpected diagnostic file binding"
+                    );
+                    assert_eq!(
+                        src.get(span.byte_start as usize..span.byte_end as usize),
+                        Some("64"),
+                        "typed ParseError must highlight the offending decimal magnitude token \
+                         — not asserted on full prose (TESTING.md)"
+                    );
+                }
+                other => panic!(
+                    "expected Diagnostic::ParseError for illegal bare phantom magnitude; got {other:?}"
+                ),
+            }
         }
         Err(other) => {
             panic!("expected CompileError::Parse at token `64`; got {other:?}");
