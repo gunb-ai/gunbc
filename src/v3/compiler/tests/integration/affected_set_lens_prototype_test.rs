@@ -3,6 +3,13 @@
 //! R4.B prototype smoke for [`v3_compiler::affected_set_lens`] (tracking issue `#2699`, design companion PR `#2700`).
 //! Assertions load `case_*_{before,after}.dag` via `include_str!` and use **`case_*_shared.dag`** files
 //! as attribution paths (sparse module stubs beside each pair; hermetic `TESTING.md`).
+//!
+//! **Charter bookkeeping (`#2699` § upstream PR probes)** — human/tooling anchors only (**not**
+//! exercised as `#[test]` per `TESTING.md` § hermetic behavior claims). Downstream tooling may
+//! compare Dag snapshots keyed to these merges (REST `mergeCommit.oid` snapshots, authored 2026-05-11):
+//! - `#2647` → `a091e1a2671efdfe50ee49bb4a2f7b5908e85f53`
+//! - `#2679` → `6897445b874f1831468f27c871c00f5b23d7ded2`
+//! - `#2693` → `39ba757288246f95bea187f81593ed75729507e0`
 
 use v3_compiler::affected_set_lens::compute_affected_set_lens_report;
 use v3_compiler::dag::Dag;
@@ -111,22 +118,6 @@ fn case_b_signature_change_surfaces_wide_structural_seed() {
     assert_each_slice_within_transitive(&report);
 }
 
-/// #2699 charter §3 bookkeeping: merge-commit OID pins (REST `mergeCommit.oid` snapshots, 2026-05-11).
-#[test]
-fn charter_issue2699_upstream_pr_merge_oid_pins_may2026() {
-    const ROWS: &[(&str, &str)] = &[
-        ("2647", "a091e1a2671efdfe50ee49bb4a2f7b5908e85f53"),
-        ("2679", "6897445b874f1831468f27c871c00f5b23d7ded2"),
-        ("2693", "39ba757288246f95bea187f81593ed75729507e0"),
-    ];
-    for (label, oid) in ROWS {
-        assert_eq!(oid.len(), 40, "{label}: merge OID width");
-        assert!(
-            oid.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')),
-            "{label}: non-hex in merge OID",
-        );
-    }
-}
 #[test]
 fn case_c_algebra_carrier_surrogate_changes_walker_dependency() {
     let before = compile_fixture(
