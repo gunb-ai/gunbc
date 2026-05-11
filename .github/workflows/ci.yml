@@ -343,23 +343,6 @@ jobs:
           CARGO_TERM_COLOR: never
           RUST_MIN_STACK: 16777216
         run: |
-<<<<<<< HEAD
-          start=$(date +%s)
-          (
-            while true; do
-              sleep 60
-              now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-              echo "::notice::v3 full-suite still running at ${now}" >&2
-            done
-          ) &
-          heartbeat_pid=$!
-          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
-          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
-          status=${PIPESTATUS[0]}
-          kill "$heartbeat_pid" 2>/dev/null || true
-          trap - EXIT
-          elapsed=$(( $(date +%s) - start ))
-=======
           set -euo pipefail
           echo "V3_SUITE_START_TS=$(date +%s)" >> "${GITHUB_ENV}"
           : > /tmp/v3-test-timings.log
@@ -409,7 +392,6 @@ jobs:
           RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
           status=${PIPESTATUS[0]}
           elapsed=$(( $(date +%s) - V3_SUITE_START_TS ))
->>>>>>> origin/main
           echo "v3 full-suite wall time: ${elapsed}s"
           if [ "$status" -ne 0 ]; then
             echo "::error::cargo test (integration) failed (exit=$status)"
