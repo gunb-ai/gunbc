@@ -1,0 +1,21 @@
+// BinShim instance witness for the `regen_lens` Cargo binary (R3 gate #7 /
+// `regen_lens_dot_rs_retired`). Structural entry body is a witness until the
+// PB-Runtime fold owns the full pipeline; the shipped binary dispatches through
+// `v3_compiler::runtime::bin_shims::regen_lens::regen_lens_main`.
+
+module std.runtime.bin_shims.regen_lens
+
+import std.process { ProcessExit, ExitSuccess }
+import std.types { NonEmptyStr }
+import v3.std.bin_shim { BinShim }
+import v3.spec.v3_l1 { DeclarationRef }
+
+fn regen_lens_main() -> ProcessExit {
+  ExitSuccess
+}
+
+data regen_lens_shim: BinShim = {
+  entrypoint_name: "regen_lens",
+  description: "Unified lens-regen driver; registry-driven emit_rust_module refresh.",
+  entry: regen_lens_main
+}
