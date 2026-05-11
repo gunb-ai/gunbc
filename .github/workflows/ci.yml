@@ -181,7 +181,7 @@ jobs:
     # GCE Spot runner pool: each queued job gets one n2d-standard-8 VM,
     # the VM registers as an ephemeral GitHub runner, runs one job, then
     # self-deletes. Spot preemption is acceptable here; the companion
-    # ci-spot-rerun workflow gives failed runs one automatic retry.
+    # ci-spot-rerun workflow retries failed jobs while `run_attempt < 4` (four attempts).
     runs-on: [self-hosted, linux, x64, gunbc-ci]
     # Full suite is transitionally capped at 4000s (~67m), plus lane2d gate, prebuild,
     # two clippy passes, regen-fresh compile check, and L-7/L-8 shell gates. A 60m job cap
@@ -189,6 +189,13 @@ jobs:
     # of 1h0m0s"). Keep headroom above the in-step 4000s budget + downstream steps.
     # Revert toward 60–90m when OnceLock/module-cache brings warmed full-suite wall back down.
     timeout-minutes: 120
+    env:
+      # Self-hosted `gunbc-ci` runs the Actions agent alongside `cargo` link jobs.
+      # Default `.cargo/config.toml` uses `build.jobs = 2`; on cold integration builds
+      # that has correlated with "runner lost communication" disconnect annotations
+      # (oversubscribed VM + linker RSS). Force single-job compiles for this workflow
+      # job only — wall time may rise slightly; stability beats flaky red merges.
+      CARGO_BUILD_JOBS: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -308,23 +315,70 @@ jobs:
       # time. `--report-time` is still unstable on 1.93 (rust-lang/rust#64888); the
       # `RUSTC_BOOTSTRAP=1` prefix is the documented narrow unlock for libtest flags
       # and does not enable unstable language features.
-      - name: v3 tests (full suite, 4000s transitional budget)
+      #
+      # **Split across YAML steps (gunbc#2681):** a single long `cargo test | tee`
+      # step on self-hosted runners sometimes completed with `failure` while the
+      # Actions log contained no `cargo test` output (mid-step runner loss / flush
+      # behavior). Running `lib`+`bins`, `determinism_test`, `doc`, and `integration` as
+      # separate steps preserves streamed logs per phase and the same combined
+      # `/tmp/v3-test-timings.log` for `scripts/check-test-timeout.sh`.
+      - name: v3 tests (full suite lib+bins, timings part 1/4)
         env:
-          # Keep libtest lines plain for `scripts/check-test-timeout.sh` (Phase-0
-          # ratchet); workflow-level `CARGO_TERM_COLOR=always` would otherwise
-          # inject ANSI into cargo's stream.
           CARGO_TERM_COLOR: never
-          # See lane2d step above — bootstrap snapshot fn is at the 8MB stack
-          # cliff; bump to 16MB so future bootstrap growth doesn't gate merges.
           RUST_MIN_STACK: 16777216
         run: |
-          start=$(date +%s)
-          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
+          set -euo pipefail
+          echo "V3_SUITE_START_TS=$(date +%s)" >> "${GITHUB_ENV}"
+          : > /tmp/v3-test-timings.log
+          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --lib --bins -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
           status=${PIPESTATUS[0]}
-          elapsed=$(( $(date +%s) - start ))
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo test (lib+bins) failed (exit=$status)"
+            exit "$status"
+          fi
+
+      - name: v3 tests (full suite determinism harness, timings part 2/4)
+        env:
+          CARGO_TERM_COLOR: never
+          RUST_MIN_STACK: 16777216
+        run: |
+          set -euo pipefail
+          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test determinism_test -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo test (determinism_test) failed (exit=$status)"
+            exit "$status"
+          fi
+
+      - name: v3 tests (full suite doc tests, timings part 3/4)
+        env:
+          CARGO_TERM_COLOR: never
+          RUST_MIN_STACK: 16777216
+        run: |
+          set -euo pipefail
+          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --doc -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo test (--doc) failed (exit=$status)"
+            exit "$status"
+          fi
+
+      - name: v3 tests (full suite integration harness, timings part 4/4 + 4000s budget)
+        env:
+          CARGO_TERM_COLOR: never
+          RUST_MIN_STACK: 16777216
+        run: |
+          set -euo pipefail
+          if [ -z "${V3_SUITE_START_TS:-}" ]; then
+            echo "::error::missing V3_SUITE_START_TS (full suite part 1 must run first)"
+            exit 1
+          fi
+          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
+          status=${PIPESTATUS[0]}
+          elapsed=$(( $(date +%s) - V3_SUITE_START_TS ))
           echo "v3 full-suite wall time: ${elapsed}s"
           if [ "$status" -ne 0 ]; then
-            echo "::error::cargo test failed (exit=$status)"
+            echo "::error::cargo test (integration) failed (exit=$status)"
             exit "$status"
           fi
           if [ "$elapsed" -gt 4000 ]; then
@@ -333,7 +387,7 @@ jobs:
           fi
 
       # Per-test 2s wall-clock ratchet — binding Phase 0 gate.
-      # Parses the timing log captured by the full-suite step above; does not
+      # Parses the timing log captured by the full-suite steps above; does not
       # re-run `cargo test`. Tests listed in
       # `scripts/slow-test-exemptions.txt` remain visible as warnings; any
       # non-exempt test above the threshold fails this step. See
@@ -348,7 +402,7 @@ jobs:
         if: always()
         run: |
           if [ ! -s /tmp/v3-test-timings.log ]; then
-            echo "::notice::no timing log captured or log is empty (full-suite step did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet"
+            echo "::notice::no timing log captured or log is empty (full-suite steps did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet"
             exit 0
           fi
           scripts/check-test-timeout.sh /tmp/v3-test-timings.log
