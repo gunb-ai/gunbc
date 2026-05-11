@@ -49,7 +49,7 @@
 // CURRENT REPRESENTATION:
 //
 //   type Connective = Conj | Disj | NoConnective
-//   (defined in src/v2/00_core.dag as a compiler-internal enum)
+//   (defined historically as a compiler-internal enum in the legacy core DAG)
 //
 //   This enum IS the Layer -1 vocabulary. The dissolution path:
 //   when the compiler reads Product/Coproduct from std declarations,
