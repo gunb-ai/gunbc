@@ -16,7 +16,7 @@ const CASE_D_ATTRIB: &str = "src/v3/compiler/tests/fixtures/affected_set/case_d_
 const CASE_E_ATTRIB: &str = "src/v3/compiler/tests/fixtures/affected_set/case_e_shared.dag";
 
 fn compile_fixture(source: &str, attribution: &str) -> Dag {
-    match compile_to_dag(source, attribution) {
+    match v3_compiler::compile_parse_surface_std_authority_dag(source, attribution) {
         Ok(dag) => dag,
         Err(CompileError::Semantic(dag)) => panic!(
             "fixture `{attribution}` emitted diagnostics: {:?}",
