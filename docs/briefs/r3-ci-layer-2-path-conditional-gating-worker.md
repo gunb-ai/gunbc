@@ -7,7 +7,7 @@
 **Authority (cite-and-execute):**
 - **Operator escalation**: Brian's CI-up-to-1-hour framing at gunbc#846 2026-05-11 ("their CI is up to 1 hour ... not happening" — re v3 ratchet attempt context)
 - **Layer 1 prior art**: PR #2718 `ci(layer1): skip v3 job on docs-only PRs via changes-filter` — the `changes` job mechanism this brief EXTENDS (not parallels)
-- **Bridge-debt → dissolution trigger**: `docs/design-affected-set-lens.md` §5 (affected-set Introspect-lens R3 close-blocking gate) — when `ci_uses_provable_minimal_affected_set_selection` gate lands, Layer 2's hand-authored path-mapping table dissolves and per-group `skip_*` flags become `(affected_dimensions ∩ group.dimensions) ≠ ∅` (set-intersection-non-empty, per locked-design §2 union semantics — NOT singular `.contains()` membership)
+- **Bridge-debt → dissolution trigger**: `docs/design-affected-set-lens.md` §5 (affected-set Introspect-lens R3 close-blocking gate) — when `ci_uses_provable_minimal_affected_set_selection` gate lands, Layer 2's hand-authored path-mapping table dissolves and per-group `skip_*` flags become `skip_<group> = (affected_dimensions ∩ group.dimensions) = ∅` (skip when **intersection is EMPTY** = group's dimensions unaffected; equivalently `run = (intersection ≠ ∅)`). **Polarity check**: carrier name is `skip_*`; CI consumer wires `if: skip_<group> != 'true'` (run when skip=false). Skip-form is canonical: empty-intersection ⇒ unaffected ⇒ skip; non-empty intersection ⇒ affected ⇒ run. Set-intersection semantics per locked-design §2 union — NOT singular `.contains()` membership.
 - **Per-dimension structural target**: `docs/design-affected-set-lens.md` §2 (affected_set defined as union over `Set<Dimension>`) — every Layer 2 path-mapping entry MUST carry a `dimensions:` field of type `Set<Dimension>` (members drawn from `value | cost | complexity | effect | refinement`). Single-element sets like `{cost}` are valid for single-dimension groups; multi-dim consumers (e.g., LBP demonstration reading both `complexity` + `cost`) get expanded sets. Prevents schema divergence from future lens output AND silent-skip on multi-dim consumers when only the non-primary dim changes.
 - **Slow-test inventory sources** (per PM pre-stage at #828 c4425726922):
   - (a) `scripts/slow-test-exemptions.txt` — 78 active entries (curated >2s ratchet exemption list)
@@ -159,6 +159,8 @@ This is the parallel-representation-debt prevention. If Layer 2's group-classifi
 
 **Hard constraint**: no group entry without a `dimensions:` field of type `Set<Dimension>` with members from the lens enum. Single-element sets like `{cost}` are valid for single-dim groups. Empty set is invalid. If a group doesn't fit any of the 5 dimensions cleanly, escalate to Coordinator — that's a substrate-shape question, not a Layer 2 design choice.
 
+**Polarity invariant** (per PM caught inversion 2026-05-11 via openai-pro RC #9721 on template PR #2721, fixed at `262f42d7d`): the carrier name is `skip_<group>`. CI consumer wires `if: skip_<group> != 'true'` (i.e., RUN when `skip` is false). The dissolution formula MUST therefore be `skip = (affected ∩ group.dimensions) = ∅` (skip when intersection is **empty** = group's dimensions unaffected). The inverted form `skip = (∩ ≠ ∅)` is a fail-open boolean-polarity bug: it would silently skip AFFECTED groups when the intersection is non-empty. Skip-form is canonical (matches carrier name); run-form `run = (∩ ≠ ∅)` is the equivalent run-carrier statement. Any acceptance-criterion / YAML example / formula citation in this brief or its Mgr-fill output MUST use the canonical skip-form (empty intersection) or the equivalent run-form (non-empty intersection) — never invert.
+
 ## §4. Hard constraints
 
 1. **Single source of truth for path classification** — the `changes` job (one job, one diff, one classifier). NO parallel `gunbc-quick` job; NO duplicate `git diff` invocation; NO per-group diff fork.
@@ -166,6 +168,7 @@ This is the parallel-representation-debt prevention. If Layer 2's group-classifi
 3. **No new `actions/cache` keys or workflow-tier infrastructure** — Layer 2 is path-regex + boolean output; nothing more.
 4. **Bridge-debt acknowledgment in every PR**: each PR landing a Layer 2 group must include in body: "Bridge-debt; dissolves when `ci_uses_provable_minimal_affected_set_selection` gate lands and lens output replaces `required_paths_regex` column."
 5. **`dimensions: Set<Dimension>` field on every group entry** — non-empty subset of the lens enum per locked-design §2 union semantics. Single-element sets valid for single-dim groups; multi-dim consumers MUST list all dimensions they read. Substrate-shape questions on dimension assignment escalate.
+   **Polarity invariant**: `skip_<group> = (affected ∩ group.dimensions) = ∅` (skip when intersection EMPTY = unaffected). Run-equivalent: `run = (intersection ≠ ∅)`. Never invert — `skip = (∩ ≠ ∅)` is the canonical fail-open boolean-polarity bug pattern (silently skips affected groups). Carrier name matches contract: `skip_*` flag is true when group is unaffected.
 6. **No closure-allowed carve-outs**: Layer 2's lifetime is bounded by the affected-set lens dissolution. If a group can't be path-classified accurately, it stays in the `code=true` full-run bucket (no special carve).
 7. **Push events short-circuit to full-run** — `github.event_name == 'push'` bypasses ALL skip_* flags (run everything on main). Matches Layer 1.
 8. **Hand-Rust budget: zero**. Layer 2 lives entirely in `.github/workflows/ci.yml` + an optional path-mapping data file (e.g., `scripts/ci-path-classification.yaml` or inline in the workflow).
@@ -178,7 +181,8 @@ The Layer 2 PR-set is acceptable when:
 - `v3` step-level `if:` predicates wired for each group
 - Per-group path-mapping table cites all 3 inventory sources (a)(b)(c)
 - Every group entry has `dimensions: Set<Dimension>` field (non-empty subset of `docs/design-affected-set-lens.md` §2 enum); set semantics preserve multi-dim consumer fidelity per locked-design union
-- Self-test: a docs-only PR still triggers Layer 1 (entire `v3` skip — `code=false`); a code PR touching only `src/v3/lenses/cost.dag` triggers ONLY the cost-related test groups; a `push` to main runs everything
+- **Polarity check passes**: every YAML / formula / acceptance-text reference to the dissolution formula uses canonical skip-form `skip = (∩ = ∅)` or equivalent run-form `run = (∩ ≠ ∅)`. Inverted form `skip = (∩ ≠ ∅)` is the fail-open bug pattern; reject in review.
+- Self-test: a docs-only PR still triggers Layer 1 (entire `v3` skip — `code=false`); a code PR touching only `src/v3/lenses/cost.dag` triggers ONLY the cost-related test groups (cost-dimension groups run; other-dimension groups skip); a `push` to main runs everything
 - PR body explicitly states bridge-debt + dissolution trigger
 - `self_host_ratchet` required-check name remains green via existing PR #2718 `if:` widening
 - No new hand-Rust files; no SG-0 census changes
