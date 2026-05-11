@@ -4201,6 +4201,9 @@ fn initialize_data_declaration_type(
     symbols: &HashMap<String, DeclarationId>,
 ) -> DeclarationId {
     let decl_id = symbols[name];
+    if let Some(ty_decl_id) = dag.declaration(decl_id).meta_tag {
+        return ty_decl_id;
+    }
     let local: HashMap<String, DeclarationId> = HashMap::new();
     // Compute the declaration id of the type annotation (e.g.
     // Realization's DeclarationId for `data rust_int: Realization`)
