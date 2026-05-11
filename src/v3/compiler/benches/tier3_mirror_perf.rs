@@ -17,14 +17,6 @@ use v3_compiler::dag::{
 };
 use v3_compiler::dag::{EffectShape, IdempotentShape, OperationEffect, WorkflowEffect};
 use v3_compiler::lane2_workflow_idempotency_report;
-use v3_compiler::Dag;
-
-fn bench_termination_mirror(c: &mut Criterion) {
-    let dag = Dag::new();
-    c.bench_function("tier3_termination_std_authority_lookup", |bencher| {
-        bencher.iter(|| black_box(dag.declaration_by_name(black_box("merge_evidence"))));
-    });
-}
 
 fn bench_computation_mirror(c: &mut Criterion) {
     let steps = positive_amount_from_i64(32).expect("fixture Peano depth");
@@ -70,7 +62,6 @@ fn bench_effect_carrier_mirror(c: &mut Criterion) {
 
 criterion_group!(
     tier3_mirror_phase1,
-    bench_termination_mirror,
     bench_computation_mirror,
     bench_induction_mirror,
     bench_effect_carrier_mirror
