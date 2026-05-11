@@ -173,6 +173,8 @@ mod r1c_e_emit_gates_dag_test;
 mod r1c_e_emit_gates_omni_dag_test;
 #[path = "integration/r2_b5_loop_construction_closure_test.rs"]
 mod r2_b5_loop_construction_closure_test;
+#[path = "integration/r3_class_2_function_valued_data_test.rs"]
+mod r3_class_2_function_valued_data_test;
 #[path = "integration/r3_free_consequences_first_batch_test.rs"]
 mod r3_free_consequences_first_batch_test;
 #[path = "integration/r3_free_consequences_second_batch_test.rs"]

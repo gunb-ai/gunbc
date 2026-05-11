@@ -1,0 +1,5 @@
+// R3 Class 2 gap representative: function-valued data is first-class.
+
+data add_one: fn(Int) -> Int = |x| x + 1
+
+fn test_function_valued_data() -> Int = add_one(41)
