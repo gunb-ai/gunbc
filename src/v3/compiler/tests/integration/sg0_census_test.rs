@@ -371,6 +371,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
+    // R3 gate #78 / E-P: shared countdown `SymbolicCost` oracle helper for cost-lens consumer
+    // tests (`cost_lens_symbolic_consumer_test`, lane2 `lane2_stage_2d_symbolic_cost_test`).
+    "src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs",
     // v3-side consumer wiring for generated `symbolic_cost_of` (cost.dag). Not
     // under `cementing/`: Band-C (`TESTING.md`) requires v2-oracle parity only for
     // explicit subsumption / COMPLETE+v2-counterpart register promotions.
