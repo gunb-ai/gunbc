@@ -24,18 +24,18 @@ Grep-verified instances. Each instance is a site where the substrate admits "I d
 | # | Anti-pattern | Sites | Notes |
 |---|---|---|---|
 | 1 | `Option<T>` returns in substrate `dag.rs` | **83** | Triage candidates — but **not** uniformly Miss-class. Per `modeling-discipline.md:41-50` + `CODING.md:95-97`, `Option<T>` is **allowed when absence is a legitimate non-error state**. Miss-class violation = `None`-on-error without a diagnostic write. The 83 sites need per-call audit: which are error-None (Miss-class, must dissolve) vs legitimate-absence (compliant). Don't bulk-convert. |
-| 2 | `panic!` calls in production src | **244** | Should be typed Diagnostics, not runtime panics. |
-| 3 | `.expect(...)` calls in production src | **665** | Assumes success; same fail-shape as panic. |
-| 4 | `.unwrap()` calls in production src | **35** | Same shape as expect; less explicit. |
-| 5 | Catch-all `_ =>` match arms | **406** | Each one admits non-exhaustiveness of the matched enum. |
-| 6 | `todo!() / unimplemented!() / unreachable!()` macros | **43** | Explicit "I haven't decided this." |
-| 7 | Opaque error types (`Result<*, String>`, `Box<dyn Error>`) | **69** | Erases the structural shape of failure. |
-| 8 | `ClaimResult::NotYetImplemented` | **21** (9 src + 12 tests) | Explicit "gate exists, substrate doesn't." |
-| 9 | `Lookup<T>::Miss` variant in generated code | **4 sites** | Empty-list-as-Miss pattern in `lens_cost_symbolic_generated.rs` (3) + `infer_helpers_generated.rs` (1). |
-| 10 | `DescentEvidence::DescentUnknown` | substrate lattice bottom | "We don't know if this descends" — same shape as `SameArgumentCall` Miss. |
-| 11 | `EvidenceUnknown / EvidenceIncomplete` in descent_execution_proof residual | substrate residual carrier | "Proof construction failed but maybe just incomplete" — Miss-shape. |
-| 12 | `ArrowBody::Pending` / `LensSurfacePending` | 4 enum variants | In-progress states baked into the substrate type. |
-| 13 | `structural_coverage_gap_*` named gates | **10+** | Tracking-only ratchets — admits "we know this isn't covered yet" without enforcing dissolution. |
+| 2 | `panic!` calls in production src | **244** | Triage candidates — boundary tooling (regen/bootstrap entrypoints) is legitimate per `CODING.md:307-309`; interior substrate-flow panics dissolve to typed Diagnostic per C-8. Per-site classification (§2.2). |
+| 3 | `.expect(...)` calls in production src | **665** | Same boundary-vs-interior triage as #2 per `CODING.md:307-309`. |
+| 4 | `.unwrap()` calls in production src | **35** | Same boundary-vs-interior triage as #2. |
+| 5 | Catch-all `_ =>` match arms | **406** | Triage — distinguishes closed-enum non-exhaustiveness (must dissolve) from deliberate default-arm on open enums or terminal "shouldn't happen" arms paired with explicit Diagnostic. Per-site review. |
+| 6 | `todo!() / unimplemented!() / unreachable!()` macros | **43** | Triage — `unreachable!()` paired with an invariant proof is legitimate; `todo!()` / `unimplemented!()` are explicit deferrals. Per-site disposition (§2.2). |
+| 7 | Opaque error types (`Result<*, String>`, `Box<dyn Error>`) | **69** | Triage candidate — erases structural failure shape at the type level; Mgr-canvas audit per consumer to determine which warrant typed-Diagnostic conversion. |
+| 8 | `ClaimResult::NotYetImplemented` | **21** (9 src + 12 tests) | Explicit gate-deferral — per-gate disposition (§3.5): substrate-land OR R3-carve. |
+| 9 | `Lookup<T>::Miss` variant in generated code | **4 sites** | Empty-list-as-Miss pattern in `lens_cost_symbolic_generated.rs` (3) + `infer_helpers_generated.rs` (1). Miss-class; ratified for R3 dissolution per operator 2026-05-11. |
+| 10 | `DescentEvidence::DescentUnknown` | substrate lattice bottom | **Authority-conflicting per `INVARIANTS.md:63-66`** — currently load-bearing as BoundedLattice fail-closed bottom. **Requires PM ratification before classification** (Miss-class vs lattice-element); see §3.2. |
+| 11 | `EvidenceUnknown / EvidenceIncomplete` in descent_execution_proof residual | substrate residual carrier | Miss-shape candidate; see §3.3. |
+| 12 | `ArrowBody::Pending` / `LensSurfacePending` | 4 enum variants | In-progress states baked into the substrate type; see §3.6 — substantial substrate-shape change, R3-load-bearing-ness needs PM ratification. |
+| 13 | `structural_coverage_gap_*` named gates | **10+** | Tracking-only ratchets — per §3.8, each promotes (R3-load-bearing) or carves (post-R3); not classified as deferral by default. |
 
 **Aggregate:** ≈1600+ instances of deferral-shape patterns in the v3 compiler's production surface. The cost-lens `Miss` work is one specific case in a much larger class.
 
@@ -43,16 +43,16 @@ Grep-verified instances. Each instance is a site where the substrate admits "I d
 
 Not every instance is equally bad. The taxonomy:
 
-### §2.1 Pure deferral (must dissolve)
+### §2.1 Miss-class deferral
 
 Cases where the wrapper variant captures "I don't have an answer" and the answer is required for correctness:
 
 - `Lookup<SymbolicCost>::Miss` — already committed to R3 dissolution per operator-ratified 2026-05-11. See §3.1.
-- `DescentEvidence::DescentUnknown` — same shape; should also dissolve. See §3.2.
-- `EvidenceUnknown / EvidenceIncomplete` in descent residual — same shape; see §3.3.
+- `EvidenceUnknown / EvidenceIncomplete` in descent residual — Miss-shape candidate; see §3.3.
 - Empty-list-as-Miss in generated code — see §3.4.
 - `ClaimResult::NotYetImplemented` — explicit deferral of gate execution. See §3.5.
-- `ArrowBody::Pending` / `LensSurfacePending` — in-progress baked into the substrate, meaning the substrate type allows "I'm half-built" as a valid state. See §3.6.
+- `ArrowBody::Pending` / `LensSurfacePending` — in-progress states baked into substrate type; **substantive substrate-shape change** — see §3.6.
+- `DescentEvidence::DescentUnknown` — **NOT auto-classified as Miss-class**. Currently load-bearing as BoundedLattice fail-closed bottom per `INVARIANTS.md:63-66`. Requires PM ratification before classification; see §3.2.
 
 ### §2.2 Boundary tools used in interior — **triage candidates, NOT uniform "abuse"**
 
@@ -156,17 +156,19 @@ These checklist items belong in `.github/PULL_REQUEST_TEMPLATE.md` (or whichever
 
 ## §5. Sequencing recommendation
 
-R3-close commitment scope (per operator-directive 2026-05-11):
+R3-close commitment scope (per operator-directive 2026-05-11). **Dispatch order respects authority gates established in §3 — items requiring PM-tier authority update are explicitly blocked until that update lands.**
 
 1. **§3.1 (cost-lens Miss)** — RATIFIED, dispatched to Substrate Mgr 2026-05-11.
-2. **§3.2 (DescentUnknown)** — propose same-batch dispatch with §3.1 (same Substrate-tier work).
-3. **§3.3 (descent-execution-proof residual)** — propose same-batch dispatch.
+2. **§3.2 (DescentUnknown)** — **BLOCKED on PM ratification of path (a) vs (b)** per §3.2. No dispatch until PM decides whether substrate keeps 3-variant lattice + construction-side narrowing, or authority update precedes 2-variant collapse. Same-batch with §3.1 only valid under path (a); path (b) requires `INVARIANTS.md:63-66` edit landing first.
+3. **§3.3 (descent-execution-proof residual)** — propose same-batch dispatch with §3.1 once §3.2 path is ratified (the residual carrier sits downstream of `DescentEvidence` shape).
 4. **§3.4 (empty-list-as-Miss)** — generated-code regen needed; folds into §3.1 + §3.5 dispatch.
 5. **§3.5 (NotYetImplemented audit)** — per-gate Mgr-tier dispatch; recommend Verification Mgr re-spawn (currently archived per overnight cascade) authors the audit.
-6. **§3.6 (ArrowBody::Pending)** — larger substrate-shape work; PB Mgr or Substrate Mgr canvas decides.
-7. **§3.7 (boundary-tool-in-interior)** — per-file Mgr-canvas authoring; spread across Mgrs.
+6. **§3.6 (ArrowBody::Pending)** — larger substrate-shape work; **R3-load-bearing-ness needs PM ratification before dispatch** (may need post-R3 carve).
+7. **§3.7 (boundary-tool-in-interior)** — per-file Mgr-canvas authoring; spread across Mgrs. Each canvas owns its per-site classification (boundary tooling vs interior substrate flow) before any conversion work.
 8. **§3.8 (structural_coverage_gap)** — promote/carve audit; PM-coordinated.
 9. **§4 (review-process)** — PM authors the PR-template ratchet update; cross-Mgr coordination.
+
+**Authority-gate summary**: items 2 (DescentUnknown) and 6 (ArrowBody::Pending) are explicitly PM-blocked until authority disposition. Items 1/3/4/5/7/8/9 may dispatch on the standing Mgr-canvas authority once R3-scope-ratified.
 
 ## §6. Open questions for PM ratification
 
