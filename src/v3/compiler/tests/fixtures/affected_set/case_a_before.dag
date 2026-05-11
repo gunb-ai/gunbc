@@ -4,6 +4,8 @@
 // aggregate affected-set unions {value,cost,effect,…}; value-only narrowing needs a semantic
 // proof substrate not landed here (Rust lens docstring).
 //
+// Order: stable caller first, edited `fn` last so `byte_start` spans stay pairing-stable across edits.
+//
 // SNIPPET BEFORE (multiply_then_add):
 //   fn multiply_then_add(...) -> Int = x * y + z
 //
@@ -17,8 +19,8 @@
 
 module user.affected_set_case_before
 
-fn multiply_then_add(x: Int, y: Int, z: Int) -> Int =
-  x * y + z
-
 fn consumer_lane() -> Int =
   multiply_then_add(1, 2, 3)
+
+fn multiply_then_add(x: Int, y: Int, z: Int) -> Int =
+  x * y + z

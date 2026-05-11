@@ -2,8 +2,8 @@
 
 module user.affected_set_case_b_signature
 
-fn add(x: Int, y: Int, z: Int) -> Int =
-  x + y + z
-
 fn caller_alpha() -> Int =
   add(1, 2, 3)
+
+fn add(x: Int, y: Int, z: Int) -> Int =
+  x + y + z

@@ -16,6 +16,13 @@
 //!
 //! Narrowing demos for gunbc#2699 lean on **`cost` / `effect` / `refinement`**
 //! deltas plus commentary in `.dag` worked examples.
+//!
+//! ## Cross-`Dag` pairing (P1 / P2)
+//!
+//! `BehaviorPairing` keys behaviors only by compiler `SourceSpan` identity (`file` + `byte_start`)
+//! carried on every `Behavior` — not by `NodeId` ordinal. Positional `zip` by enumeration order
+//! is intentionally absent: equal node counts do not imply semantic alignment. Unmatched
+//! after-nodes are fail-closed seeds; collision buckets use deterministic per-key `NodeId` order.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
@@ -145,19 +152,6 @@ struct BehaviorPairing {
 
 impl BehaviorPairing {
     fn pair(dag_before: &Dag, dag_after: &Dag) -> Self {
-        if dag_before.nodes().len() == dag_after.nodes().len() {
-            let pairs = dag_before
-                .nodes()
-                .iter()
-                .zip(dag_after.nodes().iter())
-                .map(|(before, after)| (before.id(), after.id()))
-                .collect::<Vec<_>>();
-            return Self {
-                pairs,
-                orphans_after: Vec::new(),
-            };
-        }
-
         let mut bucket: HashMap<SpanPair, Vec<NodeId>> = HashMap::new();
         for behavior in dag_before.nodes() {
             let span = behavior.span();

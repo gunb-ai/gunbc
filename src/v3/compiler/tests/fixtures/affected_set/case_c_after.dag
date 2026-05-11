@@ -2,8 +2,8 @@
 
 module user.affected_set_case_algebra
 
-fn carrier_level() -> Int =
-  8
-
 fn walker_alpha() -> Int =
   carrier_level()
+
+fn carrier_level() -> Int =
+  8

@@ -2,8 +2,8 @@
 
 module user.affected_set_case_before
 
-fn multiply_then_add(x: Int, y: Int, z: Int) -> Int =
-  x * y + z + 0
-
 fn consumer_lane() -> Int =
   multiply_then_add(1, 2, 3)
+
+fn multiply_then_add(x: Int, y: Int, z: Int) -> Int =
+  x * y + z + 0
