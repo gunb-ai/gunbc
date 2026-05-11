@@ -10,7 +10,7 @@
 
 ## §0. Substrate-vs-user-surface terminology (LOCKED — operator ratification gunbc#846 2026-05-11)
 
-**Internal substrate**: there is only **lens** as a substrate type. `apply_lens(L, section, config)` is the singular declaration mechanism. `config` is the disjoint sum `EnforcedApplication<Output, Budget>` (compile-time obligation) ∪ `IntrospectApplication<Output>` (read-only fact emission). Per design-lens-application-surface.md §2.
+**Internal substrate**: there is only **lens** as a substrate type. `apply_lens(L, section, config)` is the singular declaration mechanism. `config` chooses **one of two separate top-level carriers** — `EnforcedApplication<Output, Budget>` (compile-time obligation) **or** `IntrospectApplication<Output>` (read-only fact emission). Per `design-lens-application-surface.md` §2: these are **NOT** variants of a single sum type — the v3 `.dag` substrate cannot currently express that sum with per-variant generics. "SectionedLensApplication" names the pair of carriers taken together, not a sum-type declaration.
 
 **User-facing nickname**: "query" is a user-gesture term — what a CLI / agent / IDE user calls invoking an Introspect-config lens. It maps to the **same** substrate mechanism (`apply_lens(L, section, IntrospectApplication{Output})`) — NOT a separate substrate type.
 
