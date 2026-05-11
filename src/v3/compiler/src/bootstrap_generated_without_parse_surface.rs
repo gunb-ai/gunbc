@@ -38843,7 +38843,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/services.dag", 3686, 3704),
+            span: SourceSpan::new("src/v3/std/services.dag", 3670, 3688),
         });
         declarations.push(Declaration {
             id: DeclarationId(1169),
@@ -38868,7 +38868,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/services.dag", 4616, 4688),
+            span: SourceSpan::new("src/v3/std/services.dag", 4600, 4672),
         });
         declarations.push(Declaration {
             id: DeclarationId(1170),
@@ -38887,7 +38887,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/services.dag", 5496, 5539),
+            span: SourceSpan::new("src/v3/std/services.dag", 5480, 5523),
         });
         declarations.push(Declaration {
             id: DeclarationId(1171),
@@ -38916,7 +38916,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/services.dag", 6748, 6858),
+            span: SourceSpan::new("src/v3/std/services.dag", 6732, 6842),
         });
         declarations.push(Declaration {
             id: DeclarationId(1172),
@@ -74251,7 +74251,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/services.dag", 6801, 6824),
+            span: SourceSpan::new("src/v3/std/services.dag", 6785, 6808),
         });
         declarations.push(Declaration {
             id: DeclarationId(2381),
