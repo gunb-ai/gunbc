@@ -181,13 +181,14 @@ jobs:
 
   v3:
     if: github.event.pull_request.draft != true
-    # Heavy compute (cargo release builds, full v3 test suite at the
-    # 4000s transitional budget + clippy + lens gates). 2-core ubuntu-latest blows
-    # the 60min cap reliably. Run the heavy job on the gunb-ci ephemeral
-    # GCE Spot runner pool: each queued job gets one n2d-standard-8 VM,
-    # the VM registers as an ephemeral GitHub runner, runs one job, then
-    # self-deletes. Spot preemption is acceptable here; the companion
-    # ci-spot-rerun workflow retries failed jobs while `run_attempt < 4` (four attempts).
+    # PR runs are the quick merge gate: lib/bin unit tests, lib/bin clippy, and
+    # cheap policy ratchets. Heavy integration/demo/doc/full-target coverage runs
+    # after merge on `push` to `main`, where cost-offender timings are collected.
+    #
+    # Main pushes still use the gunb-ci ephemeral GCE Spot runner pool because the
+    # full v3 suite + all-target clippy can exceed small runner limits. Spot
+    # preemption is acceptable; ci-spot-rerun retries failed jobs while
+    # `run_attempt < 4` (four attempts).
     runs-on: [self-hosted, linux, x64, gunbc-ci]
     # Full suite is transitionally capped at 4000s (~67m), plus lane2d gate, prebuild,
     # two clippy passes, regen-fresh compile check, and L-7/L-8 shell gates. A 60m job cap
@@ -217,9 +218,11 @@ jobs:
           rustflags: ""
 
       - name: Setup Zig C toolchain
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: goto-bus-stop/setup-zig@v2
 
       - name: Configure user-space C linker
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           mkdir -p "${RUNNER_TEMP}/gunbc-bin"
           cat > "${RUNNER_TEMP}/gunbc-bin/zig-cc" <<'EOF'
@@ -231,11 +234,13 @@ jobs:
           echo "RUSTFLAGS=-D warnings -C linker=${RUNNER_TEMP}/gunbc-bin/zig-cc" >> "${GITHUB_ENV}"
 
       - name: Setup Python
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/setup-python@v6
         with:
           python-version: "3.x"
 
       - name: Setup Go
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/setup-go@v6
         with:
           go-version: "stable"
@@ -262,7 +267,22 @@ jobs:
       # explicitly here. `test_runner.rs::locate_unshare_bootstrap_helper` walks from
       # `current_exe()` to find the resulting `target/debug/gunbc_execute_command_bootstrap`.
       - name: Build ExecuteCommand unshare helper
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: cargo build -p execute-command-bootstrap
+
+      - name: v3 tests (PR quick lib+bins, 600s budget)
+        if: github.event_name == 'pull_request'
+        env:
+          RUST_MIN_STACK: 16777216
+        run: |
+          start=$(date +%s)
+          cargo test -p v3-compiler --lib --bins
+          elapsed=$(( $(date +%s) - start ))
+          echo "v3 PR quick test wall time: ${elapsed}s"
+          if [ "$elapsed" -gt 600 ]; then
+            echo "::error::v3 PR quick tests took ${elapsed}s (budget: 600s). PR CI should stay on fast lib/bin coverage; move heavier receipts to main-push full suite."
+            exit 1
+          fi
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
@@ -289,9 +309,11 @@ jobs:
       # Tracked headroom: ratchet this ceiling back toward 300s once cold lane2d
       # CI runs regularly complete under 300s after fixture compile amortization.
       - name: Prebuild v3 integration test binary (lane2d wall-clock denominator)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: cargo test -p v3-compiler --test integration --no-run
 
       - name: v3 tests (Stage 2d integration module, 360s cold-compile-safe budget)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           # Bootstrap snapshot fn `bootstrapped_fixture_dag_declarations` in
           # `bootstrap_generated.rs` is ~66K lines of stack-allocated `Declaration{...}`
@@ -336,9 +358,11 @@ jobs:
       # gate (see header in `scripts/check-v3-full-suite-split-test-targets.sh`; openai-pro
       # APPROVE_WITH_COMMENTS on #2681).
       - name: v3 full-suite split guard (integration test targets)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: scripts/check-v3-full-suite-split-test-targets.sh
 
       - name: v3 tests (full suite lib+bins, timings part 1/4)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           CARGO_TERM_COLOR: never
           RUST_MIN_STACK: 16777216
@@ -354,6 +378,7 @@ jobs:
           fi
 
       - name: v3 tests (full suite determinism harness, timings part 2/4)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           CARGO_TERM_COLOR: never
           RUST_MIN_STACK: 16777216
@@ -367,6 +392,7 @@ jobs:
           fi
 
       - name: v3 tests (full suite doc tests, timings part 3/4)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           CARGO_TERM_COLOR: never
           RUST_MIN_STACK: 16777216
@@ -380,6 +406,7 @@ jobs:
           fi
 
       - name: v3 tests (full suite integration harness, timings part 4/4 + 4000s budget)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           CARGO_TERM_COLOR: never
           RUST_MIN_STACK: 16777216
@@ -415,7 +442,7 @@ jobs:
       # `tee` before the enforcement check, so partial timing data survives
       # failure and the ratchet can still emit actionable slow-test output.
       - name: v3 tests (per-test 2s ratchet)
-        if: always()
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           if [ ! -s /tmp/v3-test-timings.log ]; then
             echo "::notice::no timing log captured or log is empty (full-suite steps did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet"
@@ -425,15 +452,22 @@ jobs:
 
       # Default graph (no regen feature): locks in `cfg_attr(dead_code)` hygiene and
       # ensures production targets stay clean without relying on the feature build alone.
-      - name: v3 Compiler Clippy (default features)
+      - name: v3 Compiler Clippy (PR quick lib+bins)
+        if: github.event_name == 'pull_request'
+        run: cargo clippy -p v3-compiler --lib --bins -- -D warnings
+
+      - name: v3 Compiler Clippy (default features, main full targets)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings
 
-      - name: v3 Compiler Clippy (bootstrap-regen-fresh)
+      - name: v3 Compiler Clippy (bootstrap-regen-fresh, main full targets)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: cargo clippy -p v3-compiler --all-targets --features bootstrap-regen-fresh -- -D warnings
 
       # Type-check lib + default integration harness with the regen feature on
       # (clippy already checks targets; this ensures `cargo test` linkage too).
       - name: v3 test targets compile with bootstrap-regen-fresh
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: cargo test -p v3-compiler --no-run --features bootstrap-regen-fresh
 
       # `regen_bootstrap --verify` runs in the required `ci` job (pre-merge

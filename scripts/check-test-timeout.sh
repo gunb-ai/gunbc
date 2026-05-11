@@ -145,7 +145,7 @@ awk_output=$(awk_input | awk -v budget_ms="$budget_ms" '
 ')
 
 parsed_count=$(printf '%s\n' "$awk_output" | awk -F= '/^__PARSED_COUNT=/ {print $2}')
-violations=$(printf '%s\n' "$awk_output" | awk '!/^__PARSED_COUNT=/ {print}' | awk 'NF')
+violations=$(printf '%s\n' "$awk_output" | awk '!/^__PARSED_COUNT=/ {print}' | awk 'NF' | sort -t "$(printf '\t')" -k2,2nr)
 
 if [ -z "$parsed_count" ] || [ "$parsed_count" -eq 0 ]; then
   echo "::error::zero test-result lines parsed from $log_file — libtest --report-time format may have drifted (tracking rust-lang/rust#64888). Failing closed rather than emit a silent green ratchet."
@@ -200,12 +200,12 @@ if [ -n "$violations" ]; then
 fi
 
 if [ -n "$warned" ]; then
-  echo "::warning::${budget_ms}ms ratchet: exempt tests exceeded budget (paydown backlog in $exempt_file):"
+  echo "::warning::${budget_ms}ms ratchet: exempt tests exceeded budget, sorted by elapsed time descending (paydown backlog in $exempt_file):"
   printf '%s' "$warned" | awk -F'\t' 'NF==2 {printf "  %s — %sms\n", $1, $2}'
 fi
 
 if [ -n "$unexpected" ]; then
-  echo "::error::${budget_ms}ms ratchet: tests exceeded budget (not in exemption list):"
+  echo "::error::${budget_ms}ms ratchet: tests exceeded budget, sorted by elapsed time descending (not in exemption list):"
   printf '%s' "$unexpected" | awk -F'\t' 'NF==2 {printf "  %s — %sms\n", $1, $2}'
   echo ""
   echo "Options:"
