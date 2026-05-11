@@ -7,8 +7,9 @@
 //! Mechanical receipt aligned to G-1 in
 //! [`docs/audit/t-v2-g2-deletion-plan-and-guardrails.md`](../../../../../../docs/audit/t-v2-g2-deletion-plan-and-guardrails.md):
 //! `grep -rEn 'v2[_-]compiler(_tests|-tests)?' src/` excluding `src/v2/` → zero matches on
-//! comment-stripped Rust sources; Cargo **dependency** tables (including `workspace.dependencies`)
-//! parsed as TOML (not line regex)
+//! comment-stripped Rust sources; Cargo **dependency** tables in the **repo-root workspace
+//! manifest** and in each **`[workspace].members`** package manifest (excluding `src/v2/`
+//! members) — parsed as TOML (not line regex)
 //! must not link the legacy v2 crates from manifests outside `src/v2/` (including path deps whose
 //! resolved tree lies under `src/v2/` even when the dep key / `package` spelling does not).
 
@@ -18,10 +19,14 @@ use std::path::{Path, PathBuf};
 use toml::Value;
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("..")
+    // Normalize `..` so `is_under_src_v2` / `strip_prefix(workspace_root.join("src"))` agree with
+    // lexically-normalized member paths from `workspace_member_manifest_paths`.
+    lexical_normalize(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join(".."),
+    )
 }
 
 /// Spellings for `v2[_-]compiler(_tests|-tests)?` (G-1 grep). Longer keys first so diagnostics
@@ -63,22 +68,59 @@ fn collect_rs_files(dir: &Path, src_root: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn collect_cargo_toml_files(dir: &Path, src_root: &Path, out: &mut Vec<PathBuf>) {
-    if is_under_src_v2(dir, src_root) {
-        return;
-    }
-    let cargo = dir.join("Cargo.toml");
-    if cargo.is_file() {
-        out.push(cargo);
-    }
-    let entries = fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
-    for ent in entries {
-        let ent = ent.unwrap_or_else(|e| panic!("read_dir entry {}: {e}", dir.display()));
-        let p = ent.path();
-        if p.is_dir() {
-            collect_cargo_toml_files(&p, src_root, out);
+/// Repo-root `Cargo.toml` plus one manifest per `[workspace].members` entry (Cargo's authoritative
+/// crate list), skipping members under `src/v2/`. Glob members are rejected: expand them in the
+/// root manifest before relying on this ratchet, or extend the walker with explicit glob support.
+fn workspace_member_manifest_paths(workspace_root: &Path) -> Vec<PathBuf> {
+    let root_toml_path = workspace_root.join("Cargo.toml");
+    let raw = fs::read_to_string(&root_toml_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", root_toml_path.display()));
+    let parsed: Value = toml::from_str(&raw)
+        .expect("repo-root Cargo.toml must parse as TOML for workspace authority");
+    let root_tbl = parsed
+        .as_table()
+        .expect("repo-root Cargo.toml must be a TOML table");
+    let Some(ws) = root_tbl.get("workspace").and_then(Value::as_table) else {
+        panic!(
+            "{}: expected [workspace] for gate-41 manifest authority",
+            root_toml_path.display()
+        );
+    };
+    let members_val = ws
+        .get("members")
+        .expect("[workspace].members missing — cannot close G-1 on workspace manifests");
+    let members = members_val
+        .as_array()
+        .expect("[workspace].members must be a TOML array");
+    let src_root = workspace_root.join("src");
+    let mut out = Vec::with_capacity(members.len().saturating_add(1));
+    out.push(root_toml_path.clone());
+
+    for m in members {
+        let rel = m
+            .as_str()
+            .expect("[workspace].members entries must be strings");
+        assert!(
+            !rel.contains('*') && !rel.contains('?') && !rel.contains('['),
+            "gate-41: glob workspace.members entry `{rel}` not supported; use literal paths or extend this ratchet"
+        );
+        let member_dir = lexical_normalize(&workspace_root.join(rel));
+        if is_under_src_v2(&member_dir, &src_root) {
+            continue;
+        }
+        let member_cargo = member_dir.join("Cargo.toml");
+        assert!(
+            member_cargo.is_file(),
+            "gate-41: workspace member `{rel}` missing {}",
+            member_cargo.display()
+        );
+        if member_cargo != root_toml_path {
+            out.push(member_cargo);
         }
     }
+    out.sort();
+    out.dedup();
+    out
 }
 
 fn rust_source_first_g1_match(stripped: &str) -> Option<&'static str> {
@@ -427,21 +469,12 @@ fn v2_oracle_no_remaining_test_consumers_rust_sources() {
 #[test]
 fn v2_oracle_no_remaining_test_consumers_workspace_manifests() {
     let workspace_root = workspace_root();
-    let src_root = workspace_root.join("src");
-
-    let mut manifests = Vec::with_capacity(16);
-    let root_toml = workspace_root.join("Cargo.toml");
+    let manifests = workspace_member_manifest_paths(&workspace_root);
     assert!(
-        root_toml.is_file(),
-        "expected workspace Cargo.toml at {}",
-        root_toml.display()
+        manifests.len() >= 2,
+        "expected root workspace + at least one non-v2 member; got {}",
+        manifests.len()
     );
-    manifests.push(root_toml);
-
-    if src_root.is_dir() {
-        collect_cargo_toml_files(&src_root, &src_root, &mut manifests);
-    }
-    manifests.sort();
 
     for path in manifests {
         let raw =
