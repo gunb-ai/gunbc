@@ -63,7 +63,7 @@ The Phase 1 0c capture PR MUST cite which path it took in its description and (f
 
 ---
 
-## 3. Mirror-group → bench-name mapping (verified at HEAD `f66334729`)
+## 3. Mirror-group → bench-name mapping (authoritative names; reconcile `tier3_mirror_perf.rs` at the artifact's `captured_on.git_sha`)
 
 The four perf-budget claims in `tier3_mirror_dissolution_perf_within_budget` map to bench names from `src/v3/compiler/benches/tier3_mirror_perf.rs`:
 
@@ -143,7 +143,7 @@ The committed baseline file lives at `src/v3/compiler/benches/tier3_baseline.jso
 Before the Phase 1 0c PR opens, the operator MUST run the following checks against the produced JSON:
 
 1. **Schema completeness:** every key in §4 is present; no extras; types match.
-2. **Bench-name exact match (fail-closed):** the set of bench-names listed in `mirror_groups[*].benches[].name` MUST equal exactly the budgeted bench-name set defined in §3 — no missing names (every budgeted bench measured), no extra names (no out-of-budget bench in the JSON). Concretely at HEAD `f66334729` the required set is exactly `{tier3_termination_merge_evidence, tier3_computation_positive_descent_count, tier3_computation_lower_same_argument_call, tier3_induction_type_iteration_dimension_miss, tier3_effects_lane2_linear_read_chain}` (5 names). If a future bench is intentionally added to `tier3_mirror_perf.rs` but excluded from the budget, that exclusion MUST be a separate explicit allowlist row in §3 of this procedure document (with a receipt) and the JSON's bench-name set continues to equal the §3-budgeted set, not all bench-names registered in the bench file. Supersets are NOT permitted; subsets are NOT permitted.
+2. **Bench-name exact match (fail-closed):** the distinct names listed in `mirror_groups[*].benches[].name` MUST equal exactly the §3 budgeted set — no missing names (every budgeted bench measured), no extra names (no out-of-budget bench in the JSON). That budgeted five-name set is `{tier3_termination_merge_evidence, tier3_computation_positive_descent_count, tier3_computation_lower_same_argument_call, tier3_induction_type_iteration_dimension_miss, tier3_effects_lane2_linear_read_chain}` (each appearing once across `mirror_groups`, matching `tier3_mirror_perf.rs` at this JSON file's own `captured_on.git_sha`). If a future bench is intentionally added to `tier3_mirror_perf.rs` but excluded from the budget, that exclusion MUST be a separate explicit allowlist row in §3 of this procedure document (with a receipt) and the JSON's bench-name set continues to equal the §3-budgeted set, not all bench-names registered in the bench file. Supersets are NOT permitted; subsets are NOT permitted.
 3. **Sanity bands:** for each bench, `p99_ns >= median_ns` (criterion guarantees this; reject the JSON if violated as it indicates capture corruption).
 4. **Non-zero:** every `median_ns` and `p99_ns` is `> 0`. A zero indicates measurement failure (criterion below floor), not a real timing.
 5. **`host_id` coherence:** Either **`host_id == ubicloud-standard-2`** (standard captures) **or** the **`host_id` matches the bootstrap exception** (§1 / §4) with the Phase-1 PR documenting reconciliation—reject fabricated `ubicloud-standard-2` labels absent Ubicloud-backed runs / dishonest relabeling.
