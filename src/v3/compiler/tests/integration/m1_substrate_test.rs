@@ -165,7 +165,9 @@ fn r3_gate60_phantom_decimal_rejected_for_nonsanctioned_type_constructor() {
                     "diagnostic span should cover the offending magnitude literal",
                 );
             }
-            other => panic!("expected Diagnostic::ParseError for illegal phantom magnitude; got {other:?}"),
+            other => panic!(
+                "expected Diagnostic::ParseError for illegal phantom magnitude; got {other:?}"
+            ),
         },
         Err(other) => panic!("expected CompileError::Parse; got {other:?}"),
         Ok(_) => panic!("nonsanctioned phantom-width sugar must not compile cleanly"),
