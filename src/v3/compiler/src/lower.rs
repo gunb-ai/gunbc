@@ -3435,6 +3435,108 @@ fn lower_type_alias(
     }
 }
 
+#[derive(Debug)]
+enum PhantomWidthSurfaceOutcome {
+    NotApplicable,
+    Rewritten(SurfaceType),
+    /// Diagnostic already emitted; caller should allocate a stub and stop.
+    Invalid,
+}
+
+/// R3 gate #60 / S3 Phase-2 interaction syntax (`Int<64>`, …) — phantom decimal literals under
+/// `MachineWidth`-axis spellings elaborate to landed `Compose<Algebra, MachineWidth<Word*>>`
+/// substrate (maps onto `dsl/std/bit.dag` Byte / Word16 / … carriers).
+fn phantom_bits_to_word_name(bits_lit: &str) -> Option<&'static str> {
+    match bits_lit {
+        "8" => Some("Byte"),
+        "16" => Some("Word16"),
+        "32" => Some("Word32"),
+        "64" => Some("Word64"),
+        "128" => Some("Word128"),
+        _ => None,
+    }
+}
+
+fn rewrite_phantom_machine_width_surface(
+    ty: &SurfaceType,
+    dag: &mut Dag,
+) -> PhantomWidthSurfaceOutcome {
+    let SurfaceType::Parameterized { name, args, span } = ty else {
+        return PhantomWidthSurfaceOutcome::NotApplicable;
+    };
+
+    fn bad_literal(dag: &mut Dag, ctx: &str, bits_lit: &str, lit_span: &SourceSpan) {
+        report_declaration_error(
+            dag,
+            Diagnostic::ParseError {
+                message: format!(
+                    "unsupported phantom machine-width `{bits_lit}` inside `{ctx}` — use 8, 16, 32, 64, or 128"
+                ),
+                span: lit_span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    }
+
+    if matches!(name.as_str(), "Int" | "UInt" | "Real" | "Nat") && args.len() == 1 {
+        let SurfaceType::PhantomWidthLit {
+            bits_lit,
+            span: lit_span,
+        } = &args[0]
+        else {
+            return PhantomWidthSurfaceOutcome::NotApplicable;
+        };
+        let Some(word) = phantom_bits_to_word_name(bits_lit) else {
+            bad_literal(dag, &format!("{name}<…>"), bits_lit.as_str(), lit_span);
+            return PhantomWidthSurfaceOutcome::Invalid;
+        };
+        let desugared = SurfaceType::Parameterized {
+            name: "Compose".to_string(),
+            args: vec![
+                SurfaceType::Named {
+                    name: name.clone(),
+                    span: lit_span.clone(),
+                },
+                SurfaceType::Parameterized {
+                    name: "MachineWidth".to_string(),
+                    args: vec![SurfaceType::Named {
+                        name: word.to_string(),
+                        span: lit_span.clone(),
+                    }],
+                    span: lit_span.clone(),
+                },
+            ],
+            span: span.clone(),
+        };
+        return PhantomWidthSurfaceOutcome::Rewritten(desugared);
+    }
+
+    if name == "MachineWidth" && args.len() == 1 {
+        let SurfaceType::PhantomWidthLit {
+            bits_lit,
+            span: lit_span,
+        } = &args[0]
+        else {
+            return PhantomWidthSurfaceOutcome::NotApplicable;
+        };
+        let Some(word) = phantom_bits_to_word_name(bits_lit) else {
+            bad_literal(dag, "MachineWidth<…>", bits_lit.as_str(), lit_span);
+            return PhantomWidthSurfaceOutcome::Invalid;
+        };
+        let desugared = SurfaceType::Parameterized {
+            name: "MachineWidth".to_string(),
+            args: vec![SurfaceType::Named {
+                name: word.to_string(),
+                span: lit_span.clone(),
+            }],
+            span: span.clone(),
+        };
+        return PhantomWidthSurfaceOutcome::Rewritten(desugared);
+    }
+
+    PhantomWidthSurfaceOutcome::NotApplicable
+}
+
 /// Lower a `SurfaceType` to a fresh DeclarationId. Used for field types,
 /// Arrow parameters, and template arguments. Allocates anonymous (unnamed)
 /// declarations for composite shapes; looks up named references against
@@ -3447,6 +3549,15 @@ fn type_to_declaration_id(
     local: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
 ) -> DeclarationId {
+    match rewrite_phantom_machine_width_surface(ty, dag) {
+        PhantomWidthSurfaceOutcome::Rewritten(next) => {
+            return type_to_declaration_id(&next, symbols, local, dag);
+        }
+        PhantomWidthSurfaceOutcome::Invalid => {
+            return alloc_identifier_stub(dag, "__phantom_width_bad_literal", ty.span());
+        }
+        PhantomWidthSurfaceOutcome::NotApplicable => {}
+    }
     match ty {
         SurfaceType::Named { name, .. } => {
             if let Some(id) = local.get(name) {
@@ -3456,6 +3567,19 @@ fn type_to_declaration_id(
                 return *id;
             }
             alloc_identifier_stub(dag, name, ty.span())
+        }
+        SurfaceType::PhantomWidthLit { span, .. } => {
+            report_declaration_error(
+                dag,
+                Diagnostic::ParseError {
+                    message: "phantom machine-width literals are only allowed inside \
+                         `Int<N>`, `UInt<N>`, `Real<N>`, `Nat<N>`, or `MachineWidth<N>`"
+                        .to_string(),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            alloc_identifier_stub(dag, "__bare_phantom_width", span)
         }
         SurfaceType::Parameterized { name, args, span } => {
             let template_id = local
@@ -3487,7 +3611,7 @@ fn type_to_declaration_id(
             id
         }
         SurfaceType::Optional { inner, span } => {
-            let element = type_to_declaration_id(inner, symbols, local, dag);
+            let element = type_to_declaration_id(inner.as_ref(), symbols, local, dag);
             dag.alloc_cardinality_decl(element, CardinalityBound::AtMostOne, span.clone())
         }
         SurfaceType::Arrow {
@@ -3499,7 +3623,7 @@ fn type_to_declaration_id(
                 .iter()
                 .map(|i| type_to_declaration_id(i, symbols, local, dag))
                 .collect();
-            let output_id = type_to_declaration_id(output, symbols, local, dag);
+            let output_id = type_to_declaration_id(output.as_ref(), symbols, local, dag);
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
@@ -3541,6 +3665,19 @@ fn type_to_connective(
     local: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
 ) -> TypeConnective {
+    match rewrite_phantom_machine_width_surface(ty, dag) {
+        PhantomWidthSurfaceOutcome::Rewritten(next) => {
+            return type_to_connective(&next, symbols, local, dag);
+        }
+        PhantomWidthSurfaceOutcome::Invalid => {
+            let stub = alloc_identifier_stub(dag, "__phantom_width_bad_literal", ty.span());
+            return TypeConnective::Instantiation {
+                template: stub,
+                arguments: Vec::new(),
+            };
+        }
+        PhantomWidthSurfaceOutcome::NotApplicable => {}
+    }
     match ty {
         SurfaceType::Named { name, .. } => {
             let template = local
@@ -3550,6 +3687,23 @@ fn type_to_connective(
                 .unwrap_or_else(|| alloc_identifier_stub(dag, name, ty.span()));
             TypeConnective::Instantiation {
                 template,
+                arguments: Vec::new(),
+            }
+        }
+        SurfaceType::PhantomWidthLit { span, .. } => {
+            report_declaration_error(
+                dag,
+                Diagnostic::ParseError {
+                    message: "phantom machine-width literals are only allowed inside \
+                         `Int<N>`, `UInt<N>`, `Real<N>`, `Nat<N>`, or `MachineWidth<N>`"
+                        .to_string(),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            let stub = alloc_identifier_stub(dag, "__bare_phantom_width", span);
+            TypeConnective::Instantiation {
+                template: stub,
                 arguments: Vec::new(),
             }
         }
@@ -3567,7 +3721,7 @@ fn type_to_connective(
             }
         }
         SurfaceType::Optional { inner, .. } => {
-            let element = type_to_declaration_id(inner, symbols, local, dag);
+            let element = type_to_declaration_id(inner.as_ref(), symbols, local, dag);
             type_connective_cardinality(dag, element, CardinalityBound::AtMostOne)
         }
         SurfaceType::Arrow { inputs, output, .. } => TypeConnective::Arrow {
@@ -3575,7 +3729,7 @@ fn type_to_connective(
                 .iter()
                 .map(|i| type_to_declaration_id(i, symbols, local, dag))
                 .collect(),
-            output: type_to_declaration_id(output, symbols, local, dag),
+            output: type_to_declaration_id(output.as_ref(), symbols, local, dag),
             // `type_to_connective` is invoked from two callers:
             // `lower_type_alias` (`type Callback = fn(Int) -> Int`) and
             // `lower_data_item` (`data x: fn(Int) -> Int = ...`). In

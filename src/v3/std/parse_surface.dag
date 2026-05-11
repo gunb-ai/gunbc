@@ -59,6 +59,9 @@ type VariantPayload
 // SG-2b / SG-3f parse-rule cutover aligned with `lower.rs`.
 type SurfaceType
   = Named { name: String, span: SourceSpan }
+  // Phantom machine-width magnitude in **type-argument position** (`Int<64>`, `MachineWidth<128>`).
+  // R3 T-Numeric-Construction S3 Phase-2 (#2156 interaction syntax); lowering maps to Word* Byte/Word*.
+  | PhantomWidthLit { bits_lit: String, span: SourceSpan }
   | Parameterized {
       name: String
       args: List<SurfaceType>

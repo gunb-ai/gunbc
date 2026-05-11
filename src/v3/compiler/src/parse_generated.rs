@@ -20,6 +20,7 @@ impl SurfaceType {
     pub fn span(&self) -> &SourceSpan {
         match self {
             SurfaceType::Named { span, .. }
+            | SurfaceType::PhantomWidthLit { span, .. }
             | SurfaceType::Parameterized { span, .. }
             | SurfaceType::Optional { span, .. }
             | SurfaceType::Arrow { span, .. } => span,
@@ -1311,6 +1312,19 @@ impl<'a> Parser<'a> {
                 inputs,
                 output: Box::new(output),
                 span: SourceSpan::new(self.file, fn_tok.span.byte_start, end),
+            });
+        }
+
+        // R3 §1.8 gate #60 / S3 Phase-2: `Int<64>`, `Real<32>`, `MachineWidth<128>`, …
+        // — decimal literal as phantom machine-width magnitude in type-argument position.
+        if matches!(&self.peek().kind, TokenKind::IntLit(_)) {
+            let lit_tok = self.bump().clone();
+            let TokenKind::IntLit(bits_lit) = lit_tok.kind else {
+                unreachable!("matches IntLit above");
+            };
+            return Ok(SurfaceType::PhantomWidthLit {
+                bits_lit,
+                span: lit_tok.span,
             });
         }
 

@@ -52,7 +52,7 @@ src/v3/std/lens_application.dag	10	15962	5aa2ac2fadfba5bc
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	133fcf2d6a90d4bc
 src/v3/std/methods.dag	3	1388	b61693641c32d74b
-src/v3/std/parse_surface.dag	18	103880	4a4cc6ff47624172
+src/v3/std/parse_surface.dag	18	105403	90e532ea1a5d89ec
 src/v3/std/python_method_template_contracts.dag	14	165563	ced39dd0f40136ab
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/runtime.dag	15	19230	3e1bda4bee413db0

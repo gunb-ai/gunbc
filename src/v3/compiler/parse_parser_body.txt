@@ -1272,6 +1272,19 @@ impl<'a> Parser<'a> {
             });
         }
 
+        // R3 §1.8 gate #60 / S3 Phase-2: `Int<64>`, `Real<32>`, `MachineWidth<128>`, …
+        // — decimal literal as phantom machine-width magnitude in type-argument position.
+        if matches!(&self.peek().kind, TokenKind::IntLit(_)) {
+            let lit_tok = self.bump().clone();
+            let TokenKind::IntLit(bits_lit) = lit_tok.kind else {
+                unreachable!("matches IntLit above");
+            };
+            return Ok(SurfaceType::PhantomWidthLit {
+                bits_lit,
+                span: lit_tok.span,
+            });
+        }
+
         let token = self.bump().clone();
         let name = match token.kind {
             TokenKind::Ident(n) => n,

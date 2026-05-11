@@ -67,6 +67,10 @@ pub enum SurfaceType {
         name: String,
         span: SourceSpan,
     },
+    PhantomWidthLit {
+        bits_lit: String,
+        span: SourceSpan,
+    },
     Parameterized {
         name: String,
         args: Vec<SurfaceType>,

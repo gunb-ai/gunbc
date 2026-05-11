@@ -329,6 +329,17 @@ fn assert_compose_with_machine_width(
     );
 }
 
+/// Gate #60 (`substrate_gap_parser_grammar_closed`): user surface `Algebra<N>` lowers to the same
+/// `Compose<Algebra, MachineWidth<Word*>>` shape as canonical `Int64` / `Real64` / … std aliases.
+pub fn assert_phantom_width_syntax_alias_matches_compose_refinement(
+    dag: &Dag,
+    alias_name: &str,
+    algebra_name: &str,
+    width_name: &str,
+) {
+    assert_compose_with_machine_width(dag, alias_name, algebra_name, width_name);
+}
+
 /// Receipt: `Int64` is a width refinement `Compose<Int, MachineWidth<Word64>>` (R3 gate #19),
 /// not parallel `OrderedRing<Word64>` substrate. Abstract `Int` is
 /// `AbelianGroup<GroupCompletion<Nat>>` (Slice 3); fixed-width names compose it with

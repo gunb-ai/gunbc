@@ -100,6 +100,7 @@ fn emit_parse_module(parser_body: &str) -> String {
     pub fn span(&self) -> &SourceSpan {
         match self {
             SurfaceType::Named { span, .. }
+            | SurfaceType::PhantomWidthLit { span, .. }
             | SurfaceType::Parameterized { span, .. }
             | SurfaceType::Optional { span, .. }
             | SurfaceType::Arrow { span, .. } => span,
