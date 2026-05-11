@@ -101,7 +101,15 @@ Where:
 
 (c) **NEW per-group required-paths mapping** — for each group, hand-author the required-paths regex by examining which `src/v3/*` files the group's tests transitively depend on. This is the bridge-debt artifact; dissolves when the affected-set lens lands.
 
-**Starting template** (PM pre-staged skeleton to be attached if/when available):
+**Starting template — PM pre-staged Mgr-fill reference doc**: [`docs/briefs/r3-ci-layer-2-pm-prestaged-mgr-fill-template.md`](r3-ci-layer-2-pm-prestaged-mgr-fill-template.md) (landed via PR #2721; 220 lines).
+
+The PM template provides:
+- **All 78 `scripts/slow-test-exemptions.txt` entries** grouped into 9 clusters (A–I) by module prefix
+- **`(test_pattern, dimension, required_paths_regex)` skeleton table** with every row carrying a `dimension:` field matching the lens enum verbatim
+- **Pilot recommendation: Cluster B** (Lane 2 Stage 2d symbolic cost — high confidence, single `cost` dimension, ~6 tests). Note: my §6 recommendation was `cost_lens` first — these converge; Cluster B IS the cost-lens family.
+- **12 `[Mgr-fill]` placeholders** marking where consumer-tracing exceeded PM bandwidth (substrate-lens deps, R3-V L4/L7, R1C-E `.dag` wrapper, free-consequences cross-target). These are the Mgr-tier sub-classification decisions.
+
+Inline sketch (illustrative — defer to the PM template for the actual starting inventory):
 ```
 cost_lens          | cost       | ^(src/v3/lenses/cost\.dag|src/v3/std/algebra\.dag|src/v3/compiler/src/lens_cost_.*\.rs)$       | cost_lens_*
 complexity_lens    | complexity | ^(src/v3/lenses/complexity\.dag|src/v3/compiler/src/lens_complexity_.*\.rs)$                    | complexity_lens_*
@@ -171,13 +179,12 @@ The Layer 2 PR-set is acceptable when:
 
 ## §6. Decomposition (Mgr-fill)
 
-Recommended split (subject to Mgr judgment + PM pre-staged skeleton availability):
+Recommended split (subject to Mgr judgment + PM pre-staged Cluster B recommendation):
 
-- **Pilot wave** (1-2 groups; ~2 hours): pick the highest-signal pair (e.g., `cost_lens` + `parser_grammar` — large slow-test surface, well-bounded path-dependencies). Validates the per-group `skip_*` output + STEP-level `if:` mechanism on `v3`.
-- **Class wave** (5-8 groups; ~1 day): parallel-dispatch per top-K groups from empirical timings. Each group's PR is bounded; reviewer can verify required-paths regex against test deps.
+- **Pilot wave** (1 cluster; ~2 hours): **Cluster B (Lane 2 Stage 2d symbolic cost)** per PM template recommendation — high confidence, single `cost` dimension, ~6 tests. Converges with my prior `cost_lens`-first recommendation; Cluster B IS the cost-lens family in the PM grouping. Validates per-group `skip_*` output + STEP-level `if:` mechanism on `v3` + dimension-mapping invariant against locked-design §2 enum.
+- **Class wave** (5-8 clusters; ~1 day): parallel-dispatch per remaining PM Clusters A/C-I from empirical timings. Each cluster's PR is bounded; reviewer can verify required-paths regex against test deps + dimension assignment against lens enum.
+- **`[Mgr-fill]` placeholder resolution** (12 entries per PM template): per-entry escalation as consumer-tracing surfaces substrate-lens deps / R3-V L4/L7 / R1C-E `.dag` wrapper / free-consequences cross-target shapes. These may bundle with the corresponding cluster waves or stand alone.
 - **Long-tail wave** (remaining groups + edge-case path-regex tuning): per-group escalation if path-classification accuracy issues surface.
-
-**Pilot ordering recommendation**: start with `cost_lens` because the affected-set lens canvas (PR #2713) is also `cost_lens`-aware; validates the dimension-mapping invariant against locked-design §2 enum directly.
 
 ## §7. STOP and escalate
 
