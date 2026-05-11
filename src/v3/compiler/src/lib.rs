@@ -5165,10 +5165,6 @@ pub(crate) mod workflow_parallelism;
 pub use cost_basis_declaration::{
     try_build_per_write_log_cost_basis_declaration, CostBasisDeclarationBuildError,
 };
-pub use dag::{Dag, NodeId};
-pub use diagnostics::{Diagnostic, SourceSpan, LAYER1_DIAGNOSTIC_KIND_LABELS};
-pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
-pub use emit_rust::EmitError;
 /// Lane 2 Stage 2b — supported public surface: [`analyze_workflow`] is the
 /// primary entry; [`report_unsupported_workflow_variant`] and
 /// [`lane2_workflow_idempotency_report`] are additionally exported so
@@ -5179,6 +5175,10 @@ pub use emit_rust::EmitError;
 /// parallel public implementation surface beyond these std.effects mirrors.
 pub use dag::analyze_workflow;
 pub use dag::{lane2_workflow_idempotency_report, report_unsupported_workflow_variant};
+pub use dag::{Dag, NodeId};
+pub use diagnostics::{Diagnostic, SourceSpan, LAYER1_DIAGNOSTIC_KIND_LABELS};
+pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
+pub use emit_rust::EmitError;
 /// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
 pub use workflow_parallelism::{analyze_parallelism, loop_iteration_parallel_emission_indicator};
 
