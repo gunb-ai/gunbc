@@ -20,8 +20,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 
-use crate::dag::{Behavior, Dag, NodeId, PortId, ProducerLookup};
-use crate::lens_cost::{complexity_of, Lookup as CostLookup};
+use crate::dag::{Behavior, Dag, Lookup as CostLookup, NodeId, PortId, ProducerLookup};
+use crate::lens_cost::complexity_of;
 use crate::lens_effect_enumeration::StructuralEffectShape;
 use crate::serialize::first_difference;
 
@@ -183,18 +183,19 @@ struct ShapeMapAfter {
 
 impl ShapeMapAfter {
     fn effects(dag: &Dag) -> Self {
-        let mut acc: Vec<crate::lens_effect_enumeration::EffectFact> = Vec::new();
+        let report = crate::lens_effect_enumeration::enumerate_effects(dag);
         let mut map = HashMap::new();
         for behavior in dag.nodes() {
-            let fact = crate::lens_effect_enumeration::effect_fact_for(dag, &acc, behavior);
-            map.insert(behavior.id(), fact.shape.clone());
-            acc.insert(0, fact);
+            let rp = behavior_result_port(behavior);
+            if let Some(fact) = report.facts.iter().find(|f| f.port == rp) {
+                map.insert(behavior.id(), fact.shape.clone());
+            }
         }
         Self { map }
     }
 
-    fn shape_of(&self, id: NodeId) -> Option<StructuralEffectShape> {
-        self.map.get(&id).cloned()
+    fn shape_debug_of(&self, id: NodeId) -> Option<String> {
+        self.map.get(&id).map(|shape| format!("{shape:?}"))
     }
 }
 
@@ -253,7 +254,7 @@ fn propagate_slice_value(
     structural_seeds_after: Vec<NodeId>,
 ) -> DimensionSlice {
     let mut seed_ids_sorted = structural_seeds_after;
-    seed_ids_sorted.sort_by_key(|id| id.index());
+    seed_ids_sorted.sort_by_key(|id| id.raw());
     let affected = downstream.transitive_forward(&seed_ids_sorted);
     let receipts = vec![AffectedSetReceipt {
         dimension: "value",
@@ -277,7 +278,7 @@ fn propagate_slice_with_seeds_only(
     seeds: HashSet<NodeId>,
 ) -> DimensionSlice {
     let mut seed_ids_sorted: Vec<NodeId> = seeds.into_iter().collect();
-    seed_ids_sorted.sort_by_key(|id| id.index());
+    seed_ids_sorted.sort_by_key(|id| id.raw());
     let affected = downstream.transitive_forward(&seed_ids_sorted);
     let mut receipts = Vec::new();
     if !seed_ids_sorted.is_empty() {
@@ -355,8 +356,8 @@ fn seeds_for_effect_dimension(
     let mut seeds = HashSet::new();
     for (before_id, after_id) in &pairing.pairs {
         match (
-            shapes_before.shape_of(*before_id),
-            shapes_after.shape_of(*after_id),
+            shapes_before.shape_debug_of(*before_id),
+            shapes_after.shape_debug_of(*after_id),
         ) {
             (Some(sb), Some(sa)) if sb != sa => {
                 seeds.insert(*after_id);
