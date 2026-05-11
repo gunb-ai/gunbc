@@ -583,6 +583,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
     // R2-Evaluator corpus comparison directly without this host-side harness.
     "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
+    // R3 gate #64 substrate-plumbing receipt: hand-Rust driver for the
+    // non-canonical `.dag` residual-census receipt until the canonical
+    // PB-Runtime reflection consumer lands. P5 test-subset deferral:
+    // ROADMAP.md § "Nine lanes" row `T-PB-B` and § "Lane acceptance — .dag
+    // gates" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; dissolves
+    // when the generic TestClaim runner can execute the receipt without this
+    // host-side harness.
+    "src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs",
     // R3 gate #71 (`v3_self_host_demonstration`): `.dag` + `CARGO_BIN_EXE` splice for
     // `ExecuteCommand(self_host_fixed_point, [--r3-gate-71-demonstration], 0)` — strict DB-8 slice
     // (non-zero unless `compiler.dag` parses + `fixed_point_diff` ok). Unignored compile-only smoke
