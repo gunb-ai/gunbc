@@ -4,15 +4,16 @@
 //! ([`docs/r3-structure.md`](../../../../../../docs/r3-structure.md) §T-V2-Retirement;
 //! program plan #41).
 //!
-//! Mechanical receipt: after comment-aware stripping, no Rust source under `src/` outside
-//! `src/v2/` references the legacy `v2-compiler` / `v2-compiler-tests` crates, and no workspace
-//! `Cargo.toml` under `src/` (plus the repo root manifest) declares a path dependency on
-//! `v2-compiler`. Matches the G-1 guard in
-//! [`docs/audit/t-v2-g2-deletion-plan-and-guardrails.md`](../../../../../../docs/audit/t-v2-g2-deletion-plan-and-guardrails.md).
+//! Mechanical receipt aligned to G-1 in
+//! [`docs/audit/t-v2-g2-deletion-plan-and-guardrails.md`](../../../../../../docs/audit/t-v2-g2-deletion-plan-and-guardrails.md):
+//! `grep -rEn 'v2[_-]compiler(_tests|-tests)?' src/` excluding `src/v2/` → zero matches on
+//! comment-stripped Rust sources; Cargo **dependency** tables parsed as TOML (not line regex)
+//! must not link the legacy v2 crates from manifests outside `src/v2/`.
 
 use crate::common::strip_rust_comments;
 use std::fs;
 use std::path::{Path, PathBuf};
+use toml::Value;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -20,6 +21,18 @@ fn workspace_root() -> PathBuf {
         .join("..")
         .join("..")
 }
+
+/// Spellings for `v2[_-]compiler(_tests|-tests)?` (G-1 grep). Longer keys first so diagnostics
+/// prefer the specific crate name; all are substring-scanned on comment-stripped Rust (same as
+/// `grep -E` on source text, including string literals — covers `v2-compiler`, `v2_compiler ::`, …).
+const G1_V2_CRATE_SUBSTRINGS: &[&str] = &[
+    concat!("v2-", "compiler-", "tests"),
+    concat!("v2-", "compiler_", "tests"),
+    concat!("v2_", "compiler-", "tests"),
+    concat!("v2_", "compiler_", "tests"),
+    concat!("v2-", "compiler"),
+    concat!("v2_", "compiler"),
+];
 
 /// `path` is under `src_root` (the workspace `src/` directory). True when the relative path's
 /// first component is `v2`.
@@ -66,30 +79,8 @@ fn collect_cargo_toml_files(dir: &Path, src_root: &Path, out: &mut Vec<PathBuf>)
     }
 }
 
-fn first_v2_compiler_crate_reference(stripped: &str) -> Option<&'static str> {
-    /// Built with `concat!` so this ratchet file does not embed a contiguous
-    /// `v2_` + `compiler` + `::` source span that would trip its own scan.
-    const NEEDLES: &[&str] = &[
-        concat!("v2_", "compiler", "::"),
-        concat!("extern ", "crate ", "v2_", "compiler"),
-        concat!("v2_", "compiler", "_", "tests", "::"),
-        concat!("extern ", "crate ", "v2_", "compiler", "_", "tests"),
-    ];
-    for needle in NEEDLES {
-        if stripped.contains(needle) {
-            return Some(needle);
-        }
-    }
-    for needle in [
-        concat!("use ", "v2_", "compiler", ";"),
-        concat!("use ", "v2_", "compiler", "::"),
-        concat!("use ", "v2_", "compiler", "::", "{"),
-        concat!("use ", "v2_", "compiler", " as "),
-        concat!("use ", "v2_", "compiler", "_", "tests", ";"),
-        concat!("use ", "v2_", "compiler", "_", "tests", "::"),
-        concat!("use ", "v2_", "compiler", "_", "tests", "::", "{"),
-        concat!("use ", "v2_", "compiler", "_", "tests", " as "),
-    ] {
+fn rust_source_first_g1_match(stripped: &str) -> Option<&'static str> {
+    for needle in G1_V2_CRATE_SUBSTRINGS {
         if stripped.contains(needle) {
             return Some(needle);
         }
@@ -97,33 +88,130 @@ fn first_v2_compiler_crate_reference(stripped: &str) -> Option<&'static str> {
     None
 }
 
-/// True when a non-table, non-comment line declares a path dependency on `v2-compiler`.
-fn cargo_toml_declares_v2_compiler_path_dep(manifest: &str) -> bool {
-    let mut in_dep_table = false;
-    for raw in manifest.lines() {
-        let line = raw.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
+fn is_g1_v2_manifest_name(name: &str) -> bool {
+    G1_V2_CRATE_SUBSTRINGS.contains(&name)
+}
+
+fn dep_spec_links_v2_crate(name: &str, spec: &Value) -> bool {
+    let name_hit = is_g1_v2_manifest_name(name);
+    let pkg_hit = spec
+        .as_table()
+        .and_then(|t| t.get("package"))
+        .and_then(Value::as_str)
+        .is_some_and(is_g1_v2_manifest_name);
+    if !(name_hit || pkg_hit) {
+        return false;
+    }
+    match spec {
+        Value::String(_) => name_hit,
+        Value::Table(t) => {
+            if t.contains_key("path")
+                || t.get("workspace").and_then(Value::as_bool) == Some(true)
+                || t.contains_key("git")
+            {
+                return true;
+            }
+            false
         }
-        if line.starts_with('[') && line.ends_with(']') {
-            let header_inner = line.trim_start_matches('[').trim_end_matches(']').trim();
-            in_dep_table = header_inner == "dependencies"
-                || header_inner.ends_with(".dependencies")
-                || header_inner == "dev-dependencies"
-                || header_inner.ends_with(".dev-dependencies")
-                || header_inner == "build-dependencies"
-                || header_inner.ends_with(".build-dependencies");
-            continue;
-        }
-        if !in_dep_table {
-            continue;
-        }
-        let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
-        if compact.starts_with("v2-compiler=") && compact.contains("path=") {
-            return true;
+        _ => false,
+    }
+}
+
+fn scan_dep_table(table: &toml::map::Map<String, Value>) -> Option<String> {
+    for (dep_key, dep_spec) in table {
+        if dep_spec_links_v2_crate(dep_key, dep_spec) {
+            return Some(format!(
+                "dependency key or `package =` rename targets legacy v2 crate ({dep_key})",
+            ));
         }
     }
-    false
+    None
+}
+
+fn scan_dependencies_value(sect: &Value) -> Option<String> {
+    let table = sect.as_table()?;
+    scan_dep_table(table)
+}
+
+fn manifest_violation_g1_v2_edge(root: &toml::map::Map<String, Value>) -> Option<String> {
+    for key in ["dependencies", "build-dependencies", "dev-dependencies"] {
+        if let Some(sect) = root.get(key) {
+            if let Some(msg) = scan_dependencies_value(sect) {
+                return Some(format!("{key}: {msg}"));
+            }
+        }
+    }
+
+    if let Some(Value::Table(targets)) = root.get("target") {
+        for (triple, tv) in targets {
+            let Some(t) = tv.as_table() else {
+                continue;
+            };
+            for key in ["dependencies", "build-dependencies", "dev-dependencies"] {
+                if let Some(sect) = t.get(key) {
+                    if let Some(msg) = scan_dependencies_value(sect) {
+                        return Some(format!("target.{triple} {key}: {msg}"));
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[test]
+fn g1_rust_substrings_match_whitespace_path_and_hyphen_forms() {
+    let v2_cc = concat!("v2_", "compiler");
+    let v2_hy = concat!("v2-", "compiler");
+    let src_path = format!("fn f() {{ let _ = {v2_cc} :: foo::bar(); }}\n");
+    assert_eq!(
+        rust_source_first_g1_match(&strip_rust_comments(&src_path)),
+        Some(v2_cc),
+    );
+    let src_lit = format!("const S: &str = \"{v2_hy}\";\n");
+    assert_eq!(
+        rust_source_first_g1_match(&strip_rust_comments(&src_lit)),
+        Some(v2_hy),
+    );
+}
+
+#[test]
+fn g1_manifest_dotted_dev_deps_table_detected() {
+    let raw = concat!(
+        "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
+        "[dev-dependencies.",
+        "v2-",
+        "compiler]\n",
+        "path = \"../stage0\"\n",
+    );
+    let v: Value = toml::from_str(raw).expect("fixture toml");
+    let root = v.as_table().expect("root table");
+    let viol = manifest_violation_g1_v2_edge(root);
+    assert!(
+        viol.is_some(),
+        "expected dotted dev-dependencies table to register as v2 edge; got {viol:?}"
+    );
+}
+
+#[test]
+fn g1_manifest_package_rename_path_detected() {
+    let raw = format!(
+        concat!(
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
+            "[dependencies]\n",
+            "st-{0} = {{ package = \"{1}\", path = \"../stage0\" }}\n",
+        ),
+        "shim",
+        concat!("v2-", "compiler"),
+    );
+    let v: Value = toml::from_str(&raw).expect("fixture toml");
+    let root = v.as_table().expect("root table");
+    let viol = manifest_violation_g1_v2_edge(root);
+    assert!(
+        viol.is_some(),
+        "expected package-rename path dep to register; got {viol:?}"
+    );
 }
 
 #[test]
@@ -140,11 +228,11 @@ fn v2_oracle_no_remaining_test_consumers_rust_sources() {
         let raw =
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         let stripped = strip_rust_comments(&raw);
-        if let Some(needle) = first_v2_compiler_crate_reference(&stripped) {
+        if let Some(needle) = rust_source_first_g1_match(&stripped) {
             let rel = path.strip_prefix(&workspace_root).unwrap_or(&path);
             panic!(
-                "v2_oracle_no_remaining_test_consumers: `{}` references the legacy v2 compiler \
-                 crate ({needle:?} in live syntax after comment strip). Remove the dependency \
+                "v2_oracle_no_remaining_test_consumers / G-1: `{}` matches `v2[_-]compiler(_tests|-tests)?` \
+                 audit surface ({needle:?} after comment strip). Remove the legacy v2 crate reference \
                  or relocate under `src/v2/`.",
                 rel.display(),
             );
@@ -174,13 +262,19 @@ fn v2_oracle_no_remaining_test_consumers_workspace_manifests() {
     for path in manifests {
         let raw =
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        assert!(
-            !cargo_toml_declares_v2_compiler_path_dep(&raw),
-            "v2_oracle_no_remaining_test_consumers: `{}` must not declare a path dependency on \
-             crate `v2-compiler` outside the legacy v2 subtree.",
-            path.strip_prefix(&workspace_root)
-                .unwrap_or(&path)
-                .display(),
-        );
+        let root: toml::map::Map<String, Value> =
+            match toml::from_str::<Value>(&raw).expect("Cargo.toml must parse as TOML") {
+                Value::Table(t) => t,
+                _ => panic!("expected Cargo.toml root table at {}", path.display()),
+            };
+        if let Some(detail) = manifest_violation_g1_v2_edge(&root) {
+            panic!(
+                "v2_oracle_no_remaining_test_consumers / G-1: `{}` links legacy v2 crate in a \
+                 dependency table: {detail}",
+                path.strip_prefix(&workspace_root)
+                    .unwrap_or(&path)
+                    .display(),
+            );
+        }
     }
 }
