@@ -39326,7 +39326,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/services.dag", 3686, 3704),
+            span: SourceSpan::new("src/v3/std/services.dag", 3670, 3688),
         });
         declarations.push(Declaration {
             id: DeclarationId(1184),
@@ -39351,7 +39351,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/services.dag", 4616, 4688),
+            span: SourceSpan::new("src/v3/std/services.dag", 4600, 4672),
         });
         declarations.push(Declaration {
             id: DeclarationId(1185),
@@ -39370,7 +39370,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/services.dag", 5496, 5539),
+            span: SourceSpan::new("src/v3/std/services.dag", 5480, 5523),
         });
         declarations.push(Declaration {
             id: DeclarationId(1186),
@@ -39399,7 +39399,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/services.dag", 6748, 6858),
+            span: SourceSpan::new("src/v3/std/services.dag", 6732, 6842),
         });
         declarations.push(Declaration {
             id: DeclarationId(1187),
@@ -78686,7 +78686,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/services.dag", 6801, 6824),
+            span: SourceSpan::new("src/v3/std/services.dag", 6785, 6808),
         });
         declarations.push(Declaration {
             id: DeclarationId(2468),

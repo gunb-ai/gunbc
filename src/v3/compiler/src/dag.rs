@@ -85,6 +85,7 @@ mod effects;
 mod ports;
 
 pub use effects::{
+    analyze_workflow, lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
     BranchArm, BreakingShape, CompositionVerdict, CreateCause, EffectShape, HttpMethodScalar,
     IdempotencyUnsupportedDetail, IdempotentShape, KeySource, OperationEffect,
     ParallelismUnsupportedDetail, ParallelismUnsupportedKind, WorkflowEffect,
@@ -2375,7 +2376,7 @@ pub struct ValueNode {
     /// [`Dag::lane2_workflow_effect_at`] are read-only projections of the same
     /// storage. The sole mutating constructor for tests/staging is
     /// [`Dag::try_register_lane2_workflow_effect`]; lowering fills this field when
-    /// it exists. [`crate::workflow_idempotency::analyze_workflow`] reads through
+    /// it exists. [`crate::dag::analyze_workflow`] reads through
     /// [`Dag::lane2_workflow_effect_at`].
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
