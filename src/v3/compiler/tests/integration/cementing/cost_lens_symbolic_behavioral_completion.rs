@@ -70,9 +70,7 @@ fn literal_bind_cements_dimension_symbolic_cost_constant() {
             "literal frozen cost projection should stay constant zero, got {composed:?}"
         );
         assert!(
-            witnesses
-                .iter()
-                .all(|w| matches!(w, Witness::Inhabits(_))),
+            witnesses.iter().all(|w| matches!(w, Witness::Inhabits(_))),
             "literal cost dimension should have only Inhabits witnesses, got {witnesses:?}"
         );
     });
@@ -111,9 +109,7 @@ fn recursive_countdown_cements_dimension_symbolic_cost_linear_sizevar() {
              {parameter:?}, got {composed:?}"
         );
         assert!(
-            witnesses
-                .iter()
-                .all(|w| matches!(w, Witness::Inhabits(_))),
+            witnesses.iter().all(|w| matches!(w, Witness::Inhabits(_))),
             "countdown cost dimension should have only Inhabits witnesses, got {witnesses:?}"
         );
     });
