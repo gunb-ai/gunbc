@@ -1,17 +1,17 @@
-// R3 gate #87 — `LensRegistryEntry` `structural_resolution` (`.dag` harness placeholder).
-// `LensOutputEquals` over `List<UnresolvedArrowBody>` literals is not yet structurally
-// authorable in strict user modules (M1(2.8) opaque-body gate on imported lens row types).
-// Executable receipt: `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_structural_resolution_rust_receipt`.
+// R3 gate #87 — `LensRegistryEntry` `structural_resolution`.
+// Runner `PortHasState` on the minimal literal program paired with
+// `r3_gate_87_structural_resolution_rust_receipt_on_literal_program`. `LensOutputEquals` over
+// `List<UnresolvedArrowBody>` literals remains blocked on M1(2.8) strict-module shapes.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_structural_resolution
 
-import std.verification { Compiles, TestClaim, TestSuite }
+import std.verification { TestClaim, TestSuite }
 
 data cementing_regen_structural_resolution_claim: TestClaim = {
   name: "cementing_regen_structural_resolution",
-  source: "let _: Int = 0",
+  source: "let lit: Int = 7",
   file_name: "r3_gate_87_structural_resolution_smoke.v3",
-  predicate: Compiles,
+  predicate: PortHasState("lit", Resolved),
   requires: []
 }
 

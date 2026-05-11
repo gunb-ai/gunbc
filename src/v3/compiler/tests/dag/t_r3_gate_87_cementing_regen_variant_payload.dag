@@ -1,15 +1,17 @@
-// R3 gate #87 — `LensRegistryEntry` `variant_payload` (`.dag` harness placeholder).
-// Emit / migration receipts: `m2_lens_variant_payload_migration_test.rs`.
+// R3 gate #87 — `LensRegistryEntry` `variant_payload`.
+// Runner `PortHasState` witness on a minimal program (paired with Rust
+// `assert_lens_dag_compiles` for `src/v3/lenses/variant_payload.dag`). Migration harnesses stay
+// in `m2_lens_variant_payload_migration_test.rs` until `LensOutputEquals` can freeze payloads.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_variant_payload
 
-import std.verification { Compiles, TestClaim, TestSuite }
+import std.verification { TestClaim, TestSuite }
 
 data cementing_regen_variant_payload_claim: TestClaim = {
   name: "cementing_regen_variant_payload",
-  source: "let _: Int = 0",
+  source: "let lit: Int = 7",
   file_name: "r3_gate_87_variant_payload_smoke.v3",
-  predicate: Compiles,
+  predicate: PortHasState("lit", Resolved),
   requires: []
 }
 
