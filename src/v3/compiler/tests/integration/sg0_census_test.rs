@@ -598,10 +598,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
     // R2-Evaluator corpus comparison directly without this host-side harness.
     "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
-    // R3 gate #71 (`v3_self_host_demonstration`): PB-Runtime `ExecuteCommand` through
-    // `TestRunner` over `self_host_fixed_point` **plus** host assertions on
-    // `target/self_host/receipt.json` (`compiler_dag_v3_parse` == ok, `fixed_point_diff` == ok,
-    // `status` == completed) so the gate cannot pass on DB-8 probe-only / parse-failure exit 0.
+    // R3 gate #71 (`v3_self_host_demonstration`): `.dag` + `CARGO_BIN_EXE` splice for
+    // `ExecuteCommand(self_host_fixed_point, [--r3-gate-71-demonstration], 0)` — strict DB-8 slice
+    // (non-zero unless `compiler.dag` parses + `fixed_point_diff` ok). Unignored compile-only smoke
+    // + ignored end-to-end until v3 parses `compiler.dag` (T-FixedPoint promotion).
     // Explicit P5 receipt (INVARIANTS.md P5 per-PR gate): net +1 SG-0 integration path;
     // dissolution / deferral naming — ROADMAP.md § "Nine lanes" row `T-PB-B` /
     // `pb_rust_tests_outside_residual_zero` and `docs/r3-program-plan.md` §1.8 gate #71 /

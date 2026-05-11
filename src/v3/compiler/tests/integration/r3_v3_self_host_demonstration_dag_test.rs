@@ -27,7 +27,7 @@ fn substituted_dag_source() -> String {
     let bin_path = env!("CARGO_BIN_EXE_self_host_fixed_point");
     assert!(
         TEMPLATE.contains(BIN_PLACEHOLDER),
-        "template must contain `{BIN_PLACEHOLDER}` placeholderfor bin substitution \
+        "template must contain `{BIN_PLACEHOLDER}` placeholder for bin substitution \
          (see `r1c_e_emit_gates.template.dag` discipline): {TEMPLATE_PATH}"
     );
     TEMPLATE.replace(BIN_PLACEHOLDER, bin_path)
