@@ -208,7 +208,7 @@ fn recursive_countdown_with_body_work_cements_linear_sizevar() {
 }
 
 #[test]
-fn symbolic_cost_surface_cements_composite_and_classification_shapes() {
+fn symbolic_cost_surface_cements_product_shape() {
     let (p0, p1) = bootstrap_ports();
 
     let product = iterate(linear(p0), log_cost(p1));
@@ -225,6 +225,11 @@ fn symbolic_cost_surface_cements_composite_and_classification_shapes() {
         contains_linear_for_port(&product, p0) && contains_log_for_port(&product, p1),
         "ProductCost receipt should preserve Linear({p0:?}) and Log({p1:?}), got {product:?}"
     );
+}
+
+#[test]
+fn symbolic_cost_surface_cements_polynomial_classification() {
+    let (p0, _) = bootstrap_ports();
 
     let polynomial = SymbolicCost::PolynomialCost {
         var: size_var(p0),
@@ -239,6 +244,11 @@ fn symbolic_cost_surface_cements_composite_and_classification_shapes() {
         classify_symbolic_cost(SymbolicCost::PolynomialCost { var, degree }),
         AsymptoticClass::ClassQuadratic
     );
+}
+
+#[test]
+fn symbolic_cost_surface_cements_sum_shape() {
+    let (p0, p1) = bootstrap_ports();
 
     let sum = max_path(&[linear(p0), linear(p1)]);
     assert!(
@@ -250,6 +260,11 @@ fn symbolic_cost_surface_cements_composite_and_classification_shapes() {
         contains_linear_for_port(&sum, p0) && contains_linear_for_port(&sum, p1),
         "SumCost receipt should preserve both incomparable linear terms, got {sum:?}"
     );
+}
+
+#[test]
+fn symbolic_cost_surface_cements_dominance_over_sum_children() {
+    let (p0, p1) = bootstrap_ports();
 
     let explicit_sum = SymbolicCost::SumCost {
         _0: NonSingletonList::from_vec(vec![
@@ -265,6 +280,10 @@ fn symbolic_cost_surface_cements_composite_and_classification_shapes() {
         dominates(&explicit_sum, &log_cost(p0)),
         "dominance should scan SumCost children, got {explicit_sum:?}"
     );
+}
+
+#[test]
+fn symbolic_cost_surface_cements_unknown_classification() {
     assert_eq!(
         classify_symbolic_cost(SymbolicCost::UnknownCost {
             _0: "cementing fallback".to_string()
