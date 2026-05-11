@@ -319,8 +319,23 @@ jobs:
           RUST_MIN_STACK: 16777216
         run: |
           start=$(date +%s)
+          (
+            while true; do
+              sleep 60
+              elapsed=$(( $(date +%s) - start ))
+              echo "v3 full-suite still running after ${elapsed}s"
+            done
+          ) &
+          heartbeat_pid=$!
+          cleanup_heartbeat() {
+            kill "$heartbeat_pid" 2>/dev/null || true
+            wait "$heartbeat_pid" 2>/dev/null || true
+          }
+          trap cleanup_heartbeat EXIT
           RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
           status=${PIPESTATUS[0]}
+          cleanup_heartbeat
+          trap - EXIT
           elapsed=$(( $(date +%s) - start ))
           echo "v3 full-suite wall time: ${elapsed}s"
           if [ "$status" -ne 0 ]; then
