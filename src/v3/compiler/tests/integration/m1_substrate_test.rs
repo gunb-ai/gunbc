@@ -16,9 +16,9 @@ use crate::common::substrate_receipts::{
     assert_bootstrap_rational_is_field_of_fractions_int,
     assert_bootstrap_real_aliases_align_to_refinements,
     assert_bootstrap_real_is_approximate_field_of_fractions_int,
-    assert_bootstrap_string_is_free_monoid_char,
-    assert_phantom_width_syntax_alias_matches_compose_refinement, bind_named, bind_value_type_decl,
-    callable_instantiation_arguments, field, find_named, transforms_in_source_file,
+    assert_bootstrap_string_is_free_monoid_char, assert_compose_with_machine_width, bind_named,
+    bind_value_type_decl, callable_instantiation_arguments, field, find_named,
+    transforms_in_source_file,
 };
 use crate::common::{cached_compile_any, cached_compile_outcome, cached_compile_to_dag};
 
@@ -69,24 +69,9 @@ type Gate60_Nat8_Lit = Nat<8>\n";
         "expected clean compile for phantom-width interaction syntax, got {:?}",
         dag.diagnostics()
     );
-    assert_phantom_width_syntax_alias_matches_compose_refinement(
-        &dag,
-        "Gate60_Int64_Lit",
-        "Int",
-        "Word64",
-    );
-    assert_phantom_width_syntax_alias_matches_compose_refinement(
-        &dag,
-        "Gate60_Real64_Lit",
-        "Real",
-        "Word64",
-    );
-    assert_phantom_width_syntax_alias_matches_compose_refinement(
-        &dag,
-        "Gate60_Nat8_Lit",
-        "Nat",
-        "Byte",
-    );
+    assert_compose_with_machine_width(&dag, "Gate60_Int64_Lit", "Int", "Word64");
+    assert_compose_with_machine_width(&dag, "Gate60_Real64_Lit", "Real", "Word64");
+    assert_compose_with_machine_width(&dag, "Gate60_Nat8_Lit", "Nat", "Byte");
 }
 
 #[test]
@@ -117,7 +102,7 @@ fn r3_gate60_phantom_width_unsupported_magnitude_emits_diagnostic() {
 
 #[test]
 fn r3_gate60_bare_phantom_width_literal_emits_diagnostic() {
-    // `64` parses as `PhantomWidthLit` but only inside sanctioned `Algebra<N>` / `MachineWidth<N>`.
+    // Bare decimal at type-atom position is rejected in the parser (`AtomTypePolicy`).
     let outcome =
         cached_compile_outcome("type BarePhantom = 64\n", "r3_gate60_bare_phantom_lit.v3");
     let dag = outcome.dag();
