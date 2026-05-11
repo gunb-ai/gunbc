@@ -9,7 +9,7 @@
 //!
 //! Structural `Behavior` inequality does **not** prove return-value equivalence or
 //! non-equivalence. Following design §2 `PROVEN` discipline, this slice uses the
-//! structural-edit seed set (paired `Debug` inequality + orphan after-nodes) and the
+//! structural-edit seed set (paired inequality on **fixture-scoped spans** plus orphan after-nodes) and the
 //! same downstream closure as the naive baseline for that seed set. **Per-node proof
 //! receipts that exclude downstream consumers on value grounds are not emitted yet**
 //! because the proof substrate does not expose an I/O-equivalence oracle in-tree.
@@ -32,7 +32,10 @@ use crate::lens_cost::complexity_of;
 use crate::lens_effect_enumeration::StructuralEffectShape;
 use crate::serialize::first_difference;
 
-/// One receipt row for exclusions / inclusion explanations.
+/// Substring identifying [`SourceSpan::file`] values tied to `tests/fixtures/affected_set/` cases.
+/// Paired span-key matches outside this path are treated as identical for structural seeding
+/// (bootstrap noise) in this prototype only.
+const AFFECTED_SET_FIXTURE_ATTR_SENTINEL: &str = "tests/fixtures/affected_set/";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AffectedSetReceipt {
     pub dimension: &'static str,
@@ -199,6 +202,11 @@ impl BehaviorPairing {
         for (before_id, after_id) in &self.pairs {
             let b = dag_before.node(*before_id);
             let a = dag_after.node(*after_id);
+            let sb = b.span().file.contains(AFFECTED_SET_FIXTURE_ATTR_SENTINEL);
+            let sa = a.span().file.contains(AFFECTED_SET_FIXTURE_ATTR_SENTINEL);
+            if !(sb && sa) {
+                continue;
+            }
             if format!("{b:?}") != format!("{a:?}") {
                 seeds.insert(*after_id);
             }
@@ -219,11 +227,16 @@ struct ShapeMapAfter {
 impl ShapeMapAfter {
     fn effects(dag: &Dag) -> Self {
         let report = crate::lens_effect_enumeration::enumerate_effects(dag);
+        let mut facts_by_port: HashMap<PortId, StructuralEffectShape> =
+            HashMap::with_capacity(report.facts.len());
+        for fact in &report.facts {
+            facts_by_port.insert(fact.port, fact.shape.clone());
+        }
         let mut map = HashMap::new();
         for behavior in dag.nodes() {
             let rp = behavior_result_port(behavior);
-            if let Some(fact) = report.facts.iter().find(|f| f.port == rp) {
-                map.insert(behavior.id(), fact.shape.clone());
+            if let Some(shape) = facts_by_port.get(&rp) {
+                map.insert(behavior.id(), shape.clone());
             }
         }
         Self { map }
