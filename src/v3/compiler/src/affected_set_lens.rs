@@ -610,6 +610,39 @@ fn behavior_structural_operands(dag: &Dag, behavior: &Behavior) -> Vec<BehaviorS
     }
 }
 
+fn ingest_port_producers(
+    dag: &Dag,
+    consumer_id: NodeId,
+    port: PortId,
+    producer_ids: &mut Vec<NodeId>,
+    malformed_producer_walks: &mut Vec<String>,
+    fail_closed_consumer_seeds: &mut HashSet<NodeId>,
+) {
+    match dag.resolve_producer_lookup(&port) {
+        ProducerLookup::Found(producer) => {
+            producer_ids.push(producer.id());
+        }
+        ProducerLookup::NoProducer => {}
+        ProducerLookup::MissingPort { port: bad } => {
+            malformed_producer_walks
+                .push(format!("MissingPort consumer={consumer_id:?} port={bad:?}"));
+            fail_closed_consumer_seeds.insert(consumer_id);
+        }
+        ProducerLookup::MissingNode { producer } => {
+            malformed_producer_walks.push(format!(
+                "MissingNode consumer={consumer_id:?} producer_link={producer:?}"
+            ));
+            fail_closed_consumer_seeds.insert(consumer_id);
+        }
+        ProducerLookup::BindCycle { detected_at } => {
+            malformed_producer_walks.push(format!(
+                "BindCycle consumer={consumer_id:?} detected_at={detected_at:?}"
+            ));
+            fail_closed_consumer_seeds.insert(consumer_id);
+        }
+    }
+}
+
 fn resolve_behavior_upstream_producers(dag: &Dag, consumer: &Behavior) -> UpstreamProducerWalk {
     let mut producer_ids: Vec<NodeId> = Vec::new();
     let mut malformed_producer_walks: Vec<String> = Vec::new();
@@ -617,8 +650,15 @@ fn resolve_behavior_upstream_producers(dag: &Dag, consumer: &Behavior) -> Upstre
     let consumer_id = consumer.id();
 
     for operand in behavior_structural_operands(dag, consumer) {
-        let port = match operand {
-            BehaviorStructuralOperand::DataPort(p) => p,
+        match operand {
+            BehaviorStructuralOperand::DataPort(port) => ingest_port_producers(
+                dag,
+                consumer_id,
+                port,
+                &mut producer_ids,
+                &mut malformed_producer_walks,
+                &mut fail_closed_consumer_seeds,
+            ),
             BehaviorStructuralOperand::BodySubgraphRoot(root) => {
                 let Some(body_behavior) = dag.node_opt(&root) else {
                     malformed_producer_walks.push(format!(
@@ -627,31 +667,19 @@ fn resolve_behavior_upstream_producers(dag: &Dag, consumer: &Behavior) -> Upstre
                     fail_closed_consumer_seeds.insert(consumer_id);
                     continue;
                 };
-                behavior_result_port(body_behavior)
-            }
-        };
-
-        match dag.resolve_producer_lookup(&port) {
-            ProducerLookup::Found(producer) => {
-                producer_ids.push(producer.id());
-            }
-            ProducerLookup::NoProducer => {}
-            ProducerLookup::MissingPort { port: bad } => {
-                malformed_producer_walks
-                    .push(format!("MissingPort consumer={consumer_id:?} port={bad:?}"));
-                fail_closed_consumer_seeds.insert(consumer_id);
-            }
-            ProducerLookup::MissingNode { producer } => {
-                malformed_producer_walks.push(format!(
-                    "MissingNode consumer={consumer_id:?} producer_link={producer:?}"
-                ));
-                fail_closed_consumer_seeds.insert(consumer_id);
-            }
-            ProducerLookup::BindCycle { detected_at } => {
-                malformed_producer_walks.push(format!(
-                    "BindCycle consumer={consumer_id:?} detected_at={detected_at:?}"
-                ));
-                fail_closed_consumer_seeds.insert(consumer_id);
+                // P2 facts-flow: the subgraph root is a structural operand on its own. If the
+                // body's result port resolves to [`ProducerLookup::NoProducer`] (e.g.
+                // unproduced-parameter style bodies), callers must still consume the callee
+                // root — do not collapse the operand to port-only walkers.
+                producer_ids.push(root);
+                ingest_port_producers(
+                    dag,
+                    consumer_id,
+                    behavior_result_port(body_behavior),
+                    &mut producer_ids,
+                    &mut malformed_producer_walks,
+                    &mut fail_closed_consumer_seeds,
+                );
             }
         }
     }
