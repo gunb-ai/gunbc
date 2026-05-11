@@ -23,7 +23,7 @@ use std::fmt::Write as _;
 use crate::dag::{Behavior, Dag, NodeId, PortId, ProducerLookup};
 use crate::lens_cost::{complexity_of, Lookup as CostLookup};
 use crate::lens_effect_enumeration::StructuralEffectShape;
-use crate::serialize_generated::{first_difference};
+use crate::serialize::first_difference;
 
 /// One receipt row for exclusions / inclusion explanations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,7 +79,7 @@ impl DownstreamAdjacency {
         let mut outgoing_vec: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
         for (producer, consumers) in outgoing {
             let mut list: Vec<NodeId> = consumers.into_iter().collect();
-            list.sort_by_key(|id| id.index());
+            list.sort_by_key(|id| id.raw());
             outgoing_vec.insert(producer, list);
         }
         Self {
@@ -105,7 +105,7 @@ impl DownstreamAdjacency {
             }
         }
         let mut ordered: Vec<NodeId> = seen.into_iter().collect();
-        ordered.sort_by_key(|id| id.index());
+        ordered.sort_by_key(|id| id.raw());
         ordered
     }
 }
@@ -127,7 +127,7 @@ impl BehaviorPairing {
             bucket.entry(key).or_default().push(behavior.id());
         }
         for lists in bucket.values_mut() {
-            lists.sort_by_key(|id| id.index());
+            lists.sort_by_key(|id| id.raw());
         }
         let mut pairs = Vec::new();
         let mut orphans_after = Vec::new();
@@ -151,8 +151,8 @@ impl BehaviorPairing {
             }
         }
 
-        pairs.sort_by_key(|(_, after_id)| after_id.index());
-        orphans_after.sort_by_key(|id| id.index());
+        pairs.sort_by_key(|(_, after_id)| after_id.raw());
+        orphans_after.sort_by_key(|id| id.raw());
         Self {
             pairs,
             orphans_after,
@@ -172,7 +172,7 @@ impl BehaviorPairing {
             seeds.insert(*orphan);
         }
         let mut seeds: Vec<NodeId> = seeds.into_iter().collect();
-        seeds.sort_by_key(|id| id.index());
+        seeds.sort_by_key(|id| id.raw());
         seeds
     }
 }
@@ -187,8 +187,8 @@ impl ShapeMapAfter {
         let mut map = HashMap::new();
         for behavior in dag.nodes() {
             let fact = crate::lens_effect_enumeration::effect_fact_for(dag, &acc, behavior);
-            acc.insert(0, fact.clone());
-            map.insert(behavior.id(), fact.shape);
+            map.insert(behavior.id(), fact.shape.clone());
+            acc.insert(0, fact);
         }
         Self { map }
     }
@@ -212,19 +212,19 @@ pub fn compute_affected_set_lens_report(dag_before: &Dag, dag_after: &Dag) -> Af
 
     let cost_seeds =
         seeds_for_cost_dimension(dag_before, dag_after, &pairing);
-    let cost_slice = propagate_slice_with_seeds_only("cost", &downstream, cost_seeds.clone());
+    let cost_slice = propagate_slice_with_seeds_only("cost", &downstream, cost_seeds);
 
     let effect_seeds =
         seeds_for_effect_dimension(dag_before, dag_after, &pairing);
     let effect_slice =
-        propagate_slice_with_seeds_only("effect", &downstream, effect_seeds.clone());
+        propagate_slice_with_seeds_only("effect", &downstream, effect_seeds);
 
     let refinement_seeds =
         seeds_for_refinement_dimension(dag_before, dag_after, &pairing);
     let refinement_slice = propagate_slice_with_seeds_only(
         "refinement",
         &downstream,
-        refinement_seeds.clone(),
+        refinement_seeds,
     );
 
     let structural_seed_count = structural_seeds_after.len();
@@ -311,7 +311,7 @@ fn aggregate_union_sorted(slices: &[&DimensionSlice]) -> Vec<NodeId> {
         }
     }
     let mut out: Vec<NodeId> = set.into_iter().collect();
-    out.sort_by_key(|id| id.index());
+    out.sort_by_key(|id| id.raw());
     out
 }
 
@@ -449,7 +449,7 @@ pub fn direct_producer_nodes(dag: &Dag, behavior: &Behavior) -> Vec<NodeId> {
             | ProducerLookup::BindCycle { .. } => {}
         }
     }
-    out.sort();
+    out.sort_by_key(|id| id.raw());
     out.dedup();
     out
 }
