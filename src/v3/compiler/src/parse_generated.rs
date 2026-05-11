@@ -173,15 +173,6 @@ struct Parser<'a> {
     bare_rhs_alias_reference_idents: Option<HashSet<String>>,
 }
 
-/// Whether decimal integer literals may lower as phantom machine-width magnitudes (`Int<64>`, …).
-/// Kept illegal at the parse boundary for ordinary type atoms (`type Bad = 64`) so illegal states are
-/// not representable under `SurfaceType` (cf. gate #60 / R3 modeling discipline).
-#[derive(Clone, Copy)]
-enum AtomTypePolicy {
-    DisallowPhantomWidthLit,
-    AllowPhantomWidthLit,
-}
-
 impl<'a> Parser<'a> {
     fn peek(&self) -> &Token {
         &self.tokens[self.pos]
@@ -1236,10 +1227,7 @@ impl<'a> Parser<'a> {
         match &self.peek().kind {
             TokenKind::LParen => {
                 self.bump();
-                let payload = self.parse_type_expr_list_until(
-                    TokenKind::RParen,
-                    AtomTypePolicy::DisallowPhantomWidthLit,
-                )?;
+                let payload = self.parse_type_expr_list_until(TokenKind::RParen)?;
                 let close = self.expect_kind(TokenKind::RParen)?;
                 Ok(SurfaceVariant {
                     name,
