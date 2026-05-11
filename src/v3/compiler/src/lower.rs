@@ -9738,6 +9738,9 @@ fn compute_mutually_recursive(
                 .get(member)
                 .is_some_and(|info| info.is_data_lambda)
         });
+        if members.len() == 1 && !contains_data_lambda {
+            continue;
+        }
         if contains_data_lambda {
             let invalid = InvalidMutualCluster {
                 members: members
