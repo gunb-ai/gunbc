@@ -1,10 +1,10 @@
 use v3_compiler::compile_to_dag;
-use v3_compiler::CompileError;
 use v3_compiler::dag::{
     ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, PortState,
     TransformTarget, TypeConnective,
 };
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
+use v3_compiler::CompileError;
 use v3_compiler::Diagnostic;
 
 use crate::common::substrate_receipts::{
@@ -18,9 +18,8 @@ use crate::common::substrate_receipts::{
     assert_bootstrap_real_aliases_align_to_refinements,
     assert_bootstrap_real_is_approximate_field_of_fractions_int,
     assert_bootstrap_string_is_free_monoid_char, assert_compose_with_machine_width,
-    assert_phantom_machine_width_lit_lowers_to_word, bind_named,
-    bind_value_type_decl, callable_instantiation_arguments, field, find_named,
-    transforms_in_source_file,
+    assert_phantom_machine_width_lit_lowers_to_word, bind_named, bind_value_type_decl,
+    callable_instantiation_arguments, field, find_named, transforms_in_source_file,
 };
 use crate::common::{cached_compile_any, cached_compile_outcome, cached_compile_to_dag};
 
@@ -109,7 +108,8 @@ fn r3_gate60_bare_phantom_width_literal_emits_diagnostic() {
     match compile_to_dag("type BarePhantom = 64\n", "r3_gate60_bare_phantom_lit.v3") {
         Err(CompileError::Parse(diag)) => {
             assert!(
-                diag.message().contains("phantom machine-width literals are only allowed inside"),
+                diag.message()
+                    .contains("phantom machine-width literals are only allowed inside"),
                 "expected bare-literal diagnostic, got {}",
                 diag.message()
             );

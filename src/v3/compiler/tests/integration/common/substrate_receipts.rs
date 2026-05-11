@@ -333,12 +333,20 @@ pub fn assert_compose_with_machine_width(
 
 /// R3 gate **#60**: user `MachineWidth<N>` interaction syntax is a distinct lowering branch from
 /// `Algebra<N>`; landed shape is **`MachineWidth<Word*>`** (not nested under `Compose`).
-pub fn assert_phantom_machine_width_lit_lowers_to_word(dag: &Dag, alias_name: &str, width_word: &str) {
+pub fn assert_phantom_machine_width_lit_lowers_to_word(
+    dag: &Dag,
+    alias_name: &str,
+    width_word: &str,
+) {
     let alias_id = peel_zero_arg_alias(dag, find_named(dag, alias_name));
     let mw_id = find_named(dag, "MachineWidth");
     let width_id = find_named(dag, width_word);
     let connective = &dag.declaration(alias_id).connective;
-    let TypeConnective::Instantiation { template, arguments } = connective else {
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = connective
+    else {
         panic!("{alias_name} must resolve to MachineWidth<_>; got {connective:?}");
     };
     assert_eq!(*template, mw_id);
