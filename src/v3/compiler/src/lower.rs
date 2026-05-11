@@ -4004,6 +4004,8 @@ fn lower_data_item(
                     None
                 }
                 Err(diag) => {
+                    // Keep the annotated connective and report the lambda error instead of
+                    // manufacturing an opaque data-body scaffold for a failed callable.
                     suppress_unparsed_scaffold = true;
                     report_declaration_error(lambda_ctx.dag, diag);
                     None
