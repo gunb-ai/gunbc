@@ -30,7 +30,6 @@ use std::fmt::Write as _;
 use crate::dag::{Behavior, Dag, Lookup as CostLookup, NodeId, PortId, ProducerLookup};
 use crate::lens_cost::complexity_of;
 use crate::lens_effect_enumeration::StructuralEffectShape;
-use crate::serialize::first_difference;
 
 /// Substring identifying [`SourceSpan::file`] values tied to `tests/fixtures/affected_set/` cases.
 /// Paired span-key matches outside this path are treated as identical for structural seeding
@@ -57,6 +56,9 @@ pub struct DownstreamBuildReceipt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AffectedSetLensReport {
     pub structural_seed_count: usize,
+    /// Best-effort coarse diff string. Omitted in the gunbc#2699 prototype: running
+    /// `serialize::first_difference` stringify-walks declarations, behaviors, clusters, and
+    /// ports on the full bootstrapped substrate and does not meet integration-test wall time.
     pub first_structural_difference: Option<String>,
     pub downstream_build_receipt: DownstreamBuildReceipt,
     pub transitive_downstream: Vec<NodeId>,
@@ -265,8 +267,7 @@ pub fn compute_affected_set_lens_report(
     );
     let mut structural_seeds_after: Vec<NodeId> = structural_seed_set.into_iter().collect();
     structural_seeds_after.sort_by_key(|id| id.raw());
-    let first_structural_difference =
-        first_difference(dag_before, dag_after).map(|differ| differ.detail);
+    let first_structural_difference = None;
 
     let value_slice = propagate_slice_value(&downstream, structural_seeds_after.clone());
 
