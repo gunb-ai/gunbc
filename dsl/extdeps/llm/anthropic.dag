@@ -95,6 +95,13 @@ type AnthropicToolResultContent
 // generated SDK (`TextBlockParam | ImageBlockParam | DocumentBlockParam |
 // SearchResultBlockParam | ToolReferenceBlockParam`).
 //
+// Named row type for nested search-result text lines so `List<…>` element typing
+// is not an anonymous variant payload reference (`AnthropicTextBlock` remains
+// the wire discriminator arm for standalone text blocks).
+type AnthropicToolResultTextBlock {
+  text: String
+}
+
 // 🟡 SCAFFOLD — provider API extension trigger: Anthropic adds additional
 // `tool_result.content[]` discriminators beyond the five modeled arms; fold new
 // wire tags here under `anthropic_tool_result_block_wire_contract` or escalate if
@@ -103,7 +110,7 @@ type AnthropicToolResultBlock
   = AnthropicTextBlock { text: String }
   | AnthropicImageBlock { source: ImageSource }
   | AnthropicDocumentBlock { source: AnthropicToolResultPlainTextDocumentSource }
-  | AnthropicSearchResultBlock { source: String, title: String, content: List<AnthropicTextBlock> }
+  | AnthropicSearchResultBlock { source: String, title: String, content: List<AnthropicToolResultTextBlock> }
   | AnthropicToolReferenceBlock { tool_name: String }
 
 // Inline plaintext document source for tool-result document blocks (`source.type`

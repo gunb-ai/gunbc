@@ -56,6 +56,13 @@ type ImageSource
     }
   | UrlImage { url: String }
 
+// Cross-provider message-body coordinate mirrored from `dsl/extdeps/llm/llm.dag`.
+// The v3 bootstrap loads `anthropic_schema.dag` without importing `llm.dag`;
+// keep this twin so `shared_content_block_lockstep` pins the shared surface.
+type ContentBlock
+  = TextContent { text: String }
+  | ImageContent { source: ImageSource }
+
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicToolResultContent`
 // (`dsl/extdeps/llm/anthropic.dag`). Tuple carriers mirror v2 exactly so serde
 // untagged emission can map the JSON string vs JSON array alternatives without
@@ -68,11 +75,15 @@ type AnthropicToolResultContent
 // Dissolution trigger: Anthropic extends `tool_result.content[]` with new block kinds
 // beyond the five modeled variants — fold additive tags here or escalate if the wire
 // contract becomes non-additive.
+type AnthropicToolResultTextBlock {
+  text: String
+}
+
 type AnthropicToolResultBlock
   = AnthropicTextBlock { text: String }
   | AnthropicImageBlock { source: ImageSource }
   | AnthropicDocumentBlock { source: AnthropicToolResultPlainTextDocumentSource }
-  | AnthropicSearchResultBlock { source: String, title: String, content: List<AnthropicTextBlock> }
+  | AnthropicSearchResultBlock { source: String, title: String, content: List<AnthropicToolResultTextBlock> }
   | AnthropicToolReferenceBlock { tool_name: String }
 
 type AnthropicToolResultPlainTextDocumentSource {
