@@ -345,7 +345,7 @@ pub fn assert_bootstrap_int32_compose_int_machine_width(dag: &Dag) {
 /// Receipt: all fixed-width numeric compatibility aliases are width
 /// refinements of the abstract `Int` / `UInt` / `Real` carriers, not parallel
 /// substrate (R3 gate #19).
-pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
+pub fn assert_bootstrap_numeric_aliases_align_to_refinements(dag: &Dag) {
     for (alias, algebra, width) in [
         ("Int8", "Int", "Byte"),
         ("Int16", "Int", "Word16"),

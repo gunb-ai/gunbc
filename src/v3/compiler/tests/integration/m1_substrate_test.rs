@@ -10,8 +10,8 @@ use crate::common::substrate_receipts::{
     assert_bootstrap_float64_aliases_real64, assert_bootstrap_int32_compose_int_machine_width,
     assert_bootstrap_int64_compose_int_machine_width,
     assert_bootstrap_int_is_group_completion_of_nat,
-    assert_bootstrap_integer_aliases_align_to_refinements,
     assert_bootstrap_nat_is_commutative_semiring_magnitude,
+    assert_bootstrap_numeric_aliases_align_to_refinements,
     assert_bootstrap_rational_is_field_of_fractions_int,
     assert_bootstrap_real64_compose_real_machine_width,
     assert_bootstrap_real_is_approximate_field_of_fractions_int,
@@ -54,11 +54,11 @@ fn bootstrap_int64_compose_int_machine_width_per_gate_19() {
 }
 
 #[test]
-fn bootstrap_integer_aliases_align_to_refinements_per_gate_19() {
+fn bootstrap_numeric_aliases_align_to_refinements_per_gate_19() {
     // R3 gate #19 covers the public numeric compatibility aliases: fixed-width
     // Int/UInt names refine the abstract integer carriers, and Float32/64 route
     // through Real32/64 to refine abstract Real.
-    assert_bootstrap_integer_aliases_align_to_refinements(&Dag::new());
+    assert_bootstrap_numeric_aliases_align_to_refinements(&Dag::new());
 }
 
 #[test]

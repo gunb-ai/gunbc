@@ -41,8 +41,9 @@ The String audit is documented-no-change: `dsl/std/string_type.dag` declares
 
 This slice adds/extends integration receipts:
 
-- `bootstrap_integer_aliases_align_to_refinements_per_gate_19` checks every
-  Int/UInt fixed-width alias resolves to `Compose<abstract, MachineWidth<W>>`.
+- `bootstrap_numeric_aliases_align_to_refinements_per_gate_19` checks every
+  Int/UInt fixed-width alias plus Float32/64 resolves to
+  `Compose<abstract, MachineWidth<W>>`.
 - `int_refinement_overflow_is_proven_parametric_for_representable_widths`
   already checks signed and unsigned widths through the shared
   `MagnitudeOutOfRange` path, including alias representatives.
