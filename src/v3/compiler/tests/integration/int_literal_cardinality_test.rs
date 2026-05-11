@@ -422,6 +422,64 @@ fn uint128_full_magnitude_literal_tokenizes_and_narrows() {
 }
 
 #[test]
+fn int128_max_literal_tokenizes_and_narrows() {
+    // R3 gate #22: signed positive endpoint must narrow without truncating through a
+    // narrower host intermediate (same decimal-string carrier as `UInt128` / `UInt64` cases).
+    let max_i128 = "170141183460469231731687303715884105727";
+    let dag = compile_to_dag(
+        &format!("data x: Int128 = {max_i128}"),
+        "int128_max_literal.v3",
+    )
+    .expect("i128::MAX must compile for Int128 under full-magnitude literal carrier");
+    let decl = dag.declaration_by_name("x").expect("data `x` declaration");
+    let ty = decl
+        .meta_tag
+        .expect("scalar data item should carry meta_tag to its type decl");
+    assert_eq!(
+        dag.declaration(ty).name.as_deref(),
+        Some("Int128"),
+        "literal should narrow to Int128"
+    );
+    assert!(
+        matches!(
+            &decl.value_body,
+            Some(ValueBody::Scalar(LiteralBits::Int(s))) if s == max_i128
+        ),
+        "expected preserved decimal magnitude on declaration, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
+fn int128_min_literal_tokenizes_and_narrows() {
+    // R3 gate #22: substrate documents unary `-` through `i128::MIN` as in-range for the
+    // signed decimal literal carrier (no magnitude clamp at `i64::MAX`).
+    let min_i128 = "-170141183460469231731687303715884105728";
+    let dag = compile_to_dag(
+        &format!("data x: Int128 = {min_i128}"),
+        "int128_min_literal.v3",
+    )
+    .expect("i128::MIN must compile for Int128 under full-magnitude literal carrier");
+    let decl = dag.declaration_by_name("x").expect("data `x` declaration");
+    let ty = decl
+        .meta_tag
+        .expect("scalar data item should carry meta_tag to its type decl");
+    assert_eq!(
+        dag.declaration(ty).name.as_deref(),
+        Some("Int128"),
+        "literal should narrow to Int128"
+    );
+    assert!(
+        matches!(
+            &decl.value_body,
+            Some(ValueBody::Scalar(LiteralBits::Int(s))) if s == min_i128
+        ),
+        "expected preserved decimal magnitude on declaration, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
 fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
     let err = compile_to_dag("data x: UInt8 = 256", "int_literal_u8_oob.v3")
         .expect_err("UInt8 overflow must fail closed");
