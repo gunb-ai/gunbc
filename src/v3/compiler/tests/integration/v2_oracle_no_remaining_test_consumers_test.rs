@@ -9,7 +9,8 @@
 //! `grep -rEn 'v2[_-]compiler(_tests|-tests)?' src/` excluding `src/v2/` → zero matches on
 //! comment-stripped Rust sources; Cargo **dependency** tables (including `workspace.dependencies`)
 //! parsed as TOML (not line regex)
-//! must not link the legacy v2 crates from manifests outside `src/v2/`.
+//! must not link the legacy v2 crates from manifests outside `src/v2/` (including path deps whose
+//! resolved tree lies under `src/v2/` even when the dep key / `package` spelling does not).
 
 use crate::common::strip_rust_comments;
 use std::fs;
@@ -91,6 +92,47 @@ fn is_g1_v2_manifest_name(name: &str) -> bool {
     G1_V2_CRATE_SUBSTRINGS.contains(&name)
 }
 
+/// Resolve `.` / `..` in `path` without touching the filesystem (Cargo path deps are relative to
+/// the manifest directory).
+fn lexical_normalize(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+                    out.pop();
+                }
+            }
+            _ => out.push(comp.as_os_str()),
+        }
+    }
+    out
+}
+
+fn dep_path_reaches_src_v2(manifest_path: &Path, workspace_root: &Path, spec: &Value) -> bool {
+    let Some(t) = spec.as_table() else {
+        return false;
+    };
+    let Some(rel) = t.get("path").and_then(Value::as_str) else {
+        return false;
+    };
+    let dir = manifest_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let joined = lexical_normalize(&dir.join(rel));
+    let Ok(resolved) = fs::canonicalize(&joined) else {
+        return false;
+    };
+    let src_v2 = workspace_root.join("src").join("v2");
+    let Ok(src_v2_canon) = fs::canonicalize(&src_v2) else {
+        return false;
+    };
+    resolved.starts_with(&src_v2_canon)
+}
+
 fn dep_spec_links_v2_crate(name: &str, spec: &Value) -> bool {
     let name_hit = is_g1_v2_manifest_name(name);
     let pkg_hit = spec
@@ -110,26 +152,39 @@ fn dep_spec_links_v2_crate(name: &str, spec: &Value) -> bool {
     }
 }
 
-fn scan_dep_table(table: &toml::map::Map<String, Value>) -> Option<String> {
+fn scan_dep_table(
+    table: &toml::map::Map<String, Value>,
+    scan_ctx: Option<(&Path, &Path)>,
+) -> Option<String> {
     for (dep_key, dep_spec) in table {
         if dep_spec_links_v2_crate(dep_key, dep_spec) {
             return Some(format!(
                 "dependency key or `package =` rename targets legacy v2 crate ({dep_key})",
             ));
         }
+        if let Some((manifest_path, workspace_root)) = scan_ctx {
+            if dep_path_reaches_src_v2(manifest_path, workspace_root, dep_spec) {
+                return Some(format!(
+                    "dependency `{dep_key}` path resolves under src/v2 (legacy tree link)",
+                ));
+            }
+        }
     }
     None
 }
 
-fn scan_dependencies_value(sect: &Value) -> Option<String> {
+fn scan_dependencies_value(sect: &Value, scan_ctx: Option<(&Path, &Path)>) -> Option<String> {
     let table = sect.as_table()?;
-    scan_dep_table(table)
+    scan_dep_table(table, scan_ctx)
 }
 
-fn manifest_violation_g1_v2_edge(root: &toml::map::Map<String, Value>) -> Option<String> {
+fn manifest_violation_g1_v2_edge(
+    root: &toml::map::Map<String, Value>,
+    scan_ctx: Option<(&Path, &Path)>,
+) -> Option<String> {
     for key in ["dependencies", "build-dependencies", "dev-dependencies"] {
         if let Some(sect) = root.get(key) {
-            if let Some(msg) = scan_dependencies_value(sect) {
+            if let Some(msg) = scan_dependencies_value(sect, scan_ctx) {
                 return Some(format!("{key}: {msg}"));
             }
         }
@@ -137,7 +192,7 @@ fn manifest_violation_g1_v2_edge(root: &toml::map::Map<String, Value>) -> Option
 
     if let Some(Value::Table(ws)) = root.get("workspace") {
         if let Some(sect) = ws.get("dependencies") {
-            if let Some(msg) = scan_dependencies_value(sect) {
+            if let Some(msg) = scan_dependencies_value(sect, scan_ctx) {
                 return Some(format!("workspace.dependencies: {msg}"));
             }
         }
@@ -150,7 +205,7 @@ fn manifest_violation_g1_v2_edge(root: &toml::map::Map<String, Value>) -> Option
             };
             for key in ["dependencies", "build-dependencies", "dev-dependencies"] {
                 if let Some(sect) = t.get(key) {
-                    if let Some(msg) = scan_dependencies_value(sect) {
+                    if let Some(msg) = scan_dependencies_value(sect, scan_ctx) {
                         return Some(format!("target.{triple} {key}: {msg}"));
                     }
                 }
@@ -174,7 +229,7 @@ fn g1_manifest_workspace_dependencies_detected() {
     );
     let v: Value = toml::from_str(&raw).expect("fixture toml");
     let root = v.as_table().expect("root table");
-    let viol = manifest_violation_g1_v2_edge(root);
+    let viol = manifest_violation_g1_v2_edge(root, None);
     assert!(
         viol.is_some(),
         "expected workspace.dependencies v2 path dep to register; got {viol:?}"
@@ -208,7 +263,7 @@ fn g1_manifest_dotted_dev_deps_table_detected() {
     );
     let v: Value = toml::from_str(raw).expect("fixture toml");
     let root = v.as_table().expect("root table");
-    let viol = manifest_violation_g1_v2_edge(root);
+    let viol = manifest_violation_g1_v2_edge(root, None);
     assert!(
         viol.is_some(),
         "expected dotted dev-dependencies table to register as v2 edge; got {viol:?}"
@@ -228,7 +283,7 @@ fn g1_manifest_package_rename_path_detected() {
     );
     let v: Value = toml::from_str(&raw).expect("fixture toml");
     let root = v.as_table().expect("root table");
-    let viol = manifest_violation_g1_v2_edge(root);
+    let viol = manifest_violation_g1_v2_edge(root, None);
     assert!(
         viol.is_some(),
         "expected package-rename path dep to register; got {viol:?}"
@@ -247,7 +302,7 @@ fn g1_manifest_registry_version_inline_table_detected() {
     );
     let v: Value = toml::from_str(&raw).expect("fixture toml");
     let root = v.as_table().expect("root table");
-    let viol = manifest_violation_g1_v2_edge(root);
+    let viol = manifest_violation_g1_v2_edge(root, None);
     assert!(
         viol.is_some(),
         "expected registry version inline-table dep to register; got {viol:?}"
@@ -267,10 +322,38 @@ fn g1_manifest_package_rename_version_inline_table_detected() {
     );
     let v: Value = toml::from_str(&raw).expect("fixture toml");
     let root = v.as_table().expect("root table");
-    let viol = manifest_violation_g1_v2_edge(root);
+    let viol = manifest_violation_g1_v2_edge(root, None);
     assert!(
         viol.is_some(),
         "expected package-rename registry dep to register; got {viol:?}"
+    );
+}
+
+#[test]
+fn g1_manifest_neutral_key_path_into_src_v2_detected() {
+    let workspace_root = workspace_root();
+    let manifest_path = workspace_root
+        .join("src")
+        .join("v3")
+        .join("compiler")
+        .join("Cargo.toml");
+    assert!(
+        manifest_path.is_file(),
+        "fixture requires {}",
+        manifest_path.display(),
+    );
+
+    let raw = concat!(
+        "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
+        "[dependencies]\n",
+        "shim-crate = { path = \"../../v2/stage0\" }\n",
+    );
+    let v: Value = toml::from_str(raw).expect("fixture toml");
+    let root = v.as_table().expect("root table");
+    let viol = manifest_violation_g1_v2_edge(root, Some((&manifest_path, &workspace_root)));
+    assert!(
+        viol.is_some(),
+        "expected neutral dep key with path into src/v2 to register; got {viol:?}"
     );
 }
 
@@ -327,7 +410,7 @@ fn v2_oracle_no_remaining_test_consumers_workspace_manifests() {
                 Value::Table(t) => t,
                 _ => panic!("expected Cargo.toml root table at {}", path.display()),
             };
-        if let Some(detail) = manifest_violation_g1_v2_edge(&root) {
+        if let Some(detail) = manifest_violation_g1_v2_edge(&root, Some((&path, &workspace_root))) {
             panic!(
                 "v2_oracle_no_remaining_test_consumers / G-1: `{}` links legacy v2 crate in a \
                  dependency table: {detail}",
