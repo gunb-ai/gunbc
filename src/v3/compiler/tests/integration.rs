@@ -185,6 +185,8 @@ mod r3_gate_87_lens_cementing_regen_receipts_test;
 mod r3_lens_producer_retirement_executable_witness_test;
 #[path = "integration/r3_pb_runtime_evaluator_corpus_seed_test.rs"]
 mod r3_pb_runtime_evaluator_corpus_seed_test;
+#[path = "integration/r3_v3_self_host_demonstration_dag_test.rs"]
+mod r3_v3_self_host_demonstration_dag_test;
 #[path = "integration/r3_verification_l4_l7_l5_skeleton_test.rs"]
 mod r3_verification_l4_l7_l5_skeleton_test;
 #[path = "integration/services_carrier_shape_test.rs"]
