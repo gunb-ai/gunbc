@@ -541,6 +541,25 @@ fn cementing_cost_receipt_pair_stays_explicit_until_complexity_summary_claim_lan
 }
 
 #[test]
+fn r3_gate_79_complexity_receipt_stays_explicit_until_summary_claim_lands() {
+    let complexity_receipts: BTreeSet<(&str, &str)> = CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
+        .iter()
+        .filter(|receipt| receipt.stem == "complexity_lens_behavioral_completion")
+        .map(|receipt| (receipt.registry_name, receipt.kind.as_str()))
+        .collect();
+
+    let expected = BTreeSet::from([("cost", "temporary-rust")]);
+    assert_eq!(
+        complexity_receipts, expected,
+        "R3 gate #79 (`complexity_lens_behaviorally_complete`) is carried by the \
+         temporary Rust `ComplexitySummary` receipt while `regen.dag` keeps \
+         `src/v3/lenses/complexity.dag` behind the historical `cost` registry key. \
+         Replace this with a `.dag` claim only when nested `ComplexitySummary` / \
+         `SymbolicCost` expected literals are expressible."
+    );
+}
+
+#[test]
 fn cementing_test_claims_exist_for_escalated_v2_complete_registry_claims() {
     run_with_cementing_stack(|| {
         let dag_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
