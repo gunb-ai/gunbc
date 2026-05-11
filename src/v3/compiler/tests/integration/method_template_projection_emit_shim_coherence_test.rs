@@ -6,8 +6,8 @@
 //! the tree, those surfaces must be **absent** (`Cargo.toml` `[[bin]]`, `lib.rs` export, sources, census —
 //! Grounding G6).
 //!
-//! **Pass condition.** Let `legacy_stage0` be `workspace_root/src` + `v2` + `stage0` (path built without a
-//! single `src/v2…` literal for mechanical greps). If that directory exists, the shim triplet must exist;
+//! **Pass condition.** `legacy_stage0` joins `workspace_root`, `src`, `v2`, and `stage0` as path segments
+//! (no forbidden contiguous path literal in source). If that directory exists, the shim triplet must exist;
 //! otherwise none of the shim artifacts may remain.
 //!
 //! **`autobins = false`** (`src/v3/compiler/Cargo.toml`): when the shim was load-bearing, the explicit
