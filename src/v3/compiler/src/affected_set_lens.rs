@@ -27,7 +27,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 
-use crate::dag::{Behavior, Dag, Lookup as CostLookup, NodeId, PortId, ProducerLookup};
+use crate::dag::{
+    ArrowBody, Behavior, Dag, DeclarationId, Lookup as CostLookup, NodeId, PortId, ProducerLookup,
+    TransformTarget, TypeConnective,
+};
 use crate::lens_cost::complexity_of;
 use crate::lens_effect_enumeration::StructuralEffectShape;
 
@@ -469,7 +472,8 @@ fn behavior_result_port(behavior: &Behavior) -> PortId {
 }
 
 /// Structural dependency anchor: port-level dataflow **or** an explicit subgraph
-/// body root (`Branch` arm / `Loop` kernel) per substrate `NodeId` (P2 facts-flow).
+/// body root (`Branch` arm / `Loop` kernel / `Transform` callee `Arrow` bind) per
+/// substrate `NodeId` (P2 facts-flow).
 ///
 /// Classification: 🟢 terminal coproduct (`DataPort` | `BodySubgraphRoot`) — partitions
 /// substrate carriers already present on `Behavior` / `BranchPath` / `LoopNode` without
@@ -490,15 +494,39 @@ struct UpstreamProducerWalk {
     fail_closed_consumer_seeds: Vec<NodeId>,
 }
 
-fn behavior_structural_operands(behavior: &Behavior) -> Vec<BehaviorStructuralOperand> {
+fn user_defined_arrow_bind_root_for_declaration(
+    dag: &Dag,
+    decl_id: DeclarationId,
+) -> Option<NodeId> {
+    let decl = dag.declaration_opt(&decl_id)?;
+    let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_id),
+        ..
+    } = &decl.connective
+    else {
+        return None;
+    };
+    Some(bind_id.node_id())
+}
+
+fn behavior_structural_operands(dag: &Dag, behavior: &Behavior) -> Vec<BehaviorStructuralOperand> {
     match behavior {
         Behavior::Value(_) => vec![],
-        Behavior::Transform(t) => t
-            .inputs
-            .iter()
-            .copied()
-            .map(BehaviorStructuralOperand::DataPort)
-            .collect(),
+        Behavior::Transform(t) => {
+            let mut ops: Vec<BehaviorStructuralOperand> = t
+                .inputs
+                .iter()
+                .copied()
+                .map(BehaviorStructuralOperand::DataPort)
+                .collect();
+            if let TransformTarget::Callable(decl_id) = &t.target {
+                if let Some(bind_root) = user_defined_arrow_bind_root_for_declaration(dag, *decl_id)
+                {
+                    ops.push(BehaviorStructuralOperand::BodySubgraphRoot(bind_root));
+                }
+            }
+            ops
+        }
         Behavior::Branch(b) => {
             let mut v = vec![BehaviorStructuralOperand::DataPort(b.input)];
             for path in &b.paths {
@@ -540,7 +568,7 @@ fn resolve_behavior_upstream_producers(dag: &Dag, consumer: &Behavior) -> Upstre
     let mut fail_closed_consumer_seeds: HashSet<NodeId> = HashSet::new();
     let consumer_id = consumer.id();
 
-    for operand in behavior_structural_operands(consumer) {
+    for operand in behavior_structural_operands(dag, consumer) {
         let port = match operand {
             BehaviorStructuralOperand::DataPort(p) => p,
             BehaviorStructuralOperand::BodySubgraphRoot(root) => {

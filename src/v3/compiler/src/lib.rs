@@ -3798,11 +3798,7 @@ pub mod lens_effect_enumeration {
     pub fn enumerate_effects(p0: &crate::Dag) -> EffectEnumerationReport {
         let facts = compute_effect_facts_host(p0);
         EffectEnumerationReport {
-            coverage_gaps: generated::compute_coverage_gaps_from_facts(
-                (p0).nodes(),
-                p0,
-                &facts,
-            ),
+            coverage_gaps: generated::compute_coverage_gaps_from_facts((p0).nodes(), p0, &facts),
             facts,
             redundant_reads: Vec::new(),
             transaction: generated::transaction_pattern(p0),
