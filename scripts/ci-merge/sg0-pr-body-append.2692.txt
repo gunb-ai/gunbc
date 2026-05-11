@@ -1,1 +1,2 @@
 SG-0 pairing: (c) follow-up dispatch via docs/briefs/r3-substrate-s1-gap-test-representative-worker.md
+P5 receipt: explicit deferral for docs/r3-program-plan.md §1.8 row #61 (`substrate_gap_function_valued_data_closed`) / §1.4 Class 2, dispatched by docs/briefs/r3-substrate-s1-gap-test-representative-worker.md; temporary Rust receipt dissolves when row #61 is expressible as a `.dag` TestClaim over evaluator output.
