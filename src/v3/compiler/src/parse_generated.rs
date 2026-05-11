@@ -6,7 +6,7 @@ use crate::operators::{LogicalOp, OperatorKind};
 pub use crate::parse_surface::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceMapEntry, SurfaceMatchArm,
     SurfaceModule, SurfaceParam, SurfacePattern, SurfacePatternField, SurfaceRecordField,
-    SurfaceType, SurfaceVariant, VariantPayload,
+    SurfaceType, SurfaceTypeArg, SurfaceVariant, VariantPayload,
 };
 use crate::parse_tables::{
     binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, primary_atom_class,
@@ -16,11 +16,19 @@ use crate::parse_tables::{
 use crate::tokenize::{Token, TokenKind};
 use std::collections::HashSet;
 
+impl SurfaceTypeArg {
+    pub fn span(&self) -> &SourceSpan {
+        match self {
+            SurfaceTypeArg::Ty { body } => body.span(),
+            SurfaceTypeArg::PhantomWidthLit { span, .. } => span,
+        }
+    }
+}
+
 impl SurfaceType {
     pub fn span(&self) -> &SourceSpan {
         match self {
             SurfaceType::Named { span, .. }
-            | SurfaceType::PhantomWidthLit { span, .. }
             | SurfaceType::Parameterized { span, .. }
             | SurfaceType::Optional { span, .. }
             | SurfaceType::Arrow { span, .. } => span,

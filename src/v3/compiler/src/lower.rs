@@ -48,8 +48,9 @@ use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use crate::parse::expr_span as surface_expr_span;
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
-    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceTypeArg, SurfaceVariant, VariantPayload,
+    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, VariantPayload,
 };
+use crate::parse_surface::SurfaceTypeArg;
 use crate::types::TypeShape;
 
 type CallableScope = HashMap<String, DeclarationId>;
