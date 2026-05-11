@@ -126,9 +126,16 @@ Per `feedback_construction_over_ratchets` — `NotYetImplemented` is a textual r
 
 ### §3.6 `ArrowBody::Pending` / `LensSurfacePending` — in-progress states in substrate
 
-`ArrowBody::Pending` is a `Behavior::Transform.body` variant indicating "this function hasn't been lowered yet." It's a transitional state baked into the substrate type. Consequence: every walker / lens that processes Transform bodies has to handle `Pending` (paper-over).
+**Correction per inline review finding 2026-05-11**: my original framing said `ArrowBody::Pending` is on `Behavior::Transform.body`. That's **factually wrong**. Verified via grep at HEAD:
+- `ArrowBody` enum lives at `src/v3/compiler/src/dag.rs:1092`
+- It's used at `TypeConnective::Arrow { body, .. }` (see `bootstrap.rs:288`) — i.e., on the **type-connective `Arrow` carrier** that lives on `Declaration.connective`, NOT on `Behavior::Transform.body`.
+- All `ArrowBody::Unparsed(...)` literal sites in `bootstrap_generated.rs` are inside `TypeConnective::Arrow { body: ArrowBody::Unparsed(...), .. }` patterns.
 
-Proposal: substrate-shape redesign — separate `UnresolvedSignature` (pre-lowering) from `ResolvedTransform` (post-lowering). The lowering pipeline transforms the former into the latter. Walkers / lenses operate on `ResolvedTransform` only. Pending becomes unrepresentable at the post-lowering substrate type level.
+So the proposed dissolution (separate `UnresolvedSignature` from `ResolvedTransform`) targets the wrong substrate boundary. The actual boundary is **declaration-tier type-connective**: a `Declaration` whose `connective: TypeConnective::Arrow { body: ArrowBody::Pending }` has had its signature parsed but the body hasn't been lowered to a `Behavior` yet. Walkers that operate on `Behavior::Transform` already see only resolved bodies; the "paper-over" cost is at the type-connective-walking layer, not the Behavior walker layer.
+
+**Revised proposal**: the substrate-shape question is whether the declaration-tier `TypeConnective::Arrow.body` should be a sum that includes `Pending` (allowing pre-lowering declarations to coexist with post-lowering ones), or whether two separate substrate types should partition the pre-/post-lowering states. This decision lives in the v3 dag substrate authority (`src/v3/M1_DESIGN.md` + `dag.rs`), is substantial substrate-shape work, and per `feedback_substrate_shape_belongs_in_mgr_canvas` belongs in a Substrate Mgr canvas with PM ratification on R3-load-bearing-ness.
+
+**Pre-dispatch requirement**: PM ratification on R3-load-bearing-ness; Substrate Mgr canvas authoring on the partition-vs-sum-with-Pending design question, citing `M1_DESIGN.md` authority + per-walker impact (which walkers/lenses actually touch the type-connective layer vs only Behavior).
 
 ### §3.7 Boundary-tool-in-interior cleanup (1100+ sites) — per-Mgr-canvas audit
 
