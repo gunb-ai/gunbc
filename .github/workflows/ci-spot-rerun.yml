@@ -21,8 +21,9 @@ jobs:
       - name: Rerun failed jobs once
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           echo "Rerunning failed jobs for workflow run ${RUN_ID} after conclusion=${CONCLUSION}"
-          gh run rerun "${RUN_ID}" --failed
+          gh run rerun "${RUN_ID}" --repo "${REPO}" --failed
