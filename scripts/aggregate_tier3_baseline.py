@@ -4,6 +4,11 @@
 For each budgeted bench name, per run: invoke ``src/v3/compiler/benches/tier3_extract_perf_stats.py``
 on that run's ``sample.json``. Then ``median_ns`` = median of N per-run medians; ``p99_ns`` = max
 of N per-run p99 values (R-7 conservative pin).
+
+``--host-id`` is stamped into ``captured_on.host_id`` exactly as supplied—there is no runner/OS probe.
+Callers MUST pass the truthful capture label (paired workflow step uses ``ubicloud-standard-2`` beside
+the matching ``runs-on`` VM); spoofing canonical hosts is procedural fraud, not something this CLI
+automates away.
 """
 
 from __future__ import annotations
