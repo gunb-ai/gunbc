@@ -161,6 +161,35 @@ Per-file canvas authoring expected; not a single PR.
 - Load-bearing for R3: close in R3 cycle
 - Not load-bearing: explicit carve to post-R3 (no silent tracking)
 
+### §3.8.1 Concrete inventory (per velocity-walk 7d window 2026-05-04 → 2026-05-11)
+
+Per Debt-Paydown Mgr's velocity-walk diagnostic (gunbc#846 c#4425420798; zesty-boar-261 msg_6774c4c1 + format-fix msg_9182e746), the introduction-class composition over the 7d window pre-2026-05-11 (anchor `04fa1ed47` → HEAD `eed86ffc9`) included **9 NON_TEST + 1 FRAGMENTS genuinely-net-new compiler-surface entries** matching the §3.7/§3.8 pattern ("we did it in Rust because the substrate path wasn't ready yet"). Per PM read at gunbc#828: "every one is a 'we did it in Rust because the substrate path wasn't ready yet' pattern, which is exactly what §3.7 boundary-tools cleanup + §3.8 structural-coverage-gap audit are designed to catch."
+
+This is the **concrete observable** that grounds §3.8 from abstract pattern to enumerated audit target.
+
+| # | File | LOC | Adjacent lane / dissolution path |
+|---|---|---:|---|
+| 1 | `src/v3/compiler/src/omni_shape_b_openapi.rs` | 842 | cross_target_coverage substrate or emit-spec extdeps (highest-signal single dissolution target — ~40% of class LOC) |
+| 2 | `src/v3/compiler/src/enforced_lens_application.rs` | 400 | T-LensProducer-Retirement adjacent; lens-application substrate landing |
+| 3 | `src/v3/compiler/src/r3_fc_lane2_loop_witness.rs` | 278 | Free-Consequences gate dissolution (transient demo evidence) |
+| 4 | `src/v3/compiler/src/emit/collection_ops_method_contract.rs` | 183 | cross_target_coverage substrate or emit-spec extdeps |
+| 5 | `src/v3/compiler/src/cost_basis_declaration.rs` | 165 | T-CostLens-Composition (#37/#40/#70 lineage) |
+| 6 | `src/v3/compiler/src/memory_peak_cost.rs` | 132 | T-CostLens-Composition adjacent |
+| 7 | `src/v3/compiler/src/complexity_lattice.rs` | 109 | Lens-substrate (complexity dimension); aligned with `ComplexitySummary` lifecycle |
+| 8 | `src/v3/compiler/src/lens_t_las_carrier.rs` | 53 | T-LAS lens-application substrate landing |
+| 9 | `src/v3/compiler/src/bin/regen_tokenize.rs` | 9 | gate #7 PB-1 bin-shim lineage (`.dag`-driven regen) |
+| 10 | `src/v3/compiler/src/lens_testgen_body.txt` (FRAGMENTS) | — | gate #6 sub-gate 2 lineage (per PR #2680 retirement path) |
+
+**Total**: 2,171 LOC across 9 NON_TEST files + 1 FRAGMENTS file. Grep-verified at HEAD `eed86ffc9` (2026-05-11).
+
+**Audit implication**: each entry has a named adjacent lane / dissolution path. §3.8's promote-or-carve discipline applies per-file:
+- **Load-bearing for R3**: dissolution lane must close within R3 cycle. If R3 close is reached with the entry still present, the file's adjacent gate hasn't closed.
+- **Not load-bearing**: file must be explicitly carved post-R3 with the adjacent gate carve, not silently tracked.
+
+The 10-entry set is the **per-PR review state-space for Director-tier discipline** (per audit §4 + §6 process implication): any future PR extending one of these files, refactoring within the same pattern, or — worst case — adding a same-pattern net-new sibling file (e.g., `complexity_lattice_v2.rs`) must surface the relevant dissolution-path mapping in the PR body. Director conformance read flags absent dissolution-path mapping as a §3.8 violation.
+
+**Re-audit cadence**: this inventory should be re-baselined per major velocity-walk window. Window-relative intro-class composition diverges from R3-close residual-inventory composition (per `feedback_intro_rate_not_residual_share`); the 7d window here captures the load-bearing slice of recent introduction-rate but does NOT enumerate the full §3.8 audit set on main. A full-main §3.8 audit (scoping all `EXPECTED_HAND_AUTHORED_NON_TEST` entries against their adjacent lanes) is post-R3-process work and out of scope for this audit doc.
+
 ## §4. Process implication — why review didn't catch this
 
 Operator notes: "this is me slacking — things like this should really be escalated/caught during review." Review-tier process gap.
