@@ -9645,14 +9645,18 @@ fn compute_mutually_recursive(
         .into_iter()
         .filter(|component| component.len() > 1)
     {
-        let contains_data_lambda = members
-            .iter()
-            .any(|member| callable_infos.get(member).is_some_and(|info| info.is_data_lambda));
+        let contains_data_lambda = members.iter().any(|member| {
+            callable_infos
+                .get(member)
+                .is_some_and(|info| info.is_data_lambda)
+        });
         if contains_data_lambda {
             let invalid = InvalidMutualCluster {
                 members: members
                     .iter()
-                    .filter_map(|member| callable_infos.get(member).map(|info| info.name.to_string()))
+                    .filter_map(|member| {
+                        callable_infos.get(member).map(|info| info.name.to_string())
+                    })
                     .collect(),
             };
             for member in members {
