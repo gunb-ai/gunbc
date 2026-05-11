@@ -370,6 +370,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/list_variant_tags.rs",
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
+    "src/v3/compiler/tests/integration/common/rust_comment_strip.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
     // R3 gate #78 / E-P: shared countdown `SymbolicCost` oracle helper for cost-lens consumer
     // tests (`cost_lens_symbolic_consumer_test`, lane2 `lane2_stage_2d_symbolic_cost_test`).
@@ -668,6 +669,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
     "src/v3/compiler/tests/integration/timing_lens_substrate_carrier_test.rs",
+    // R3 T-V2-Retirement §1.8 gate #41 (`v2_oracle_no_remaining_test_consumers`): comment-aware
+    // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
+    "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
