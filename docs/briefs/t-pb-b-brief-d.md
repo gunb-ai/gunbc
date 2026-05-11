@@ -6,9 +6,9 @@
 
 **Gates (unchanged):** Do not remove or replace existing Rust integration tests as the source of truth. Do not assert `pb_test_file_generated_from_dag` or `pb_rust_tests_outside_residual_zero` until Testgen signals. Draft `.v3` / `.dag` modules here are **fixtures** for eventual runner wiring.
 
-**Fixtures on disk:** `src/v3/compiler/tests/fixtures/t_pb_b_brief_d/*.v3` — each file is a self-contained v3 module declaring `TestSuite` / `TestClaim` values. **Compile smoke:** `t_pb_b_brief_d_fixture_smoke_test` in `tests/integration/` (lowers cleanly; not a pure-bootstrap gate).
+**Fixtures on disk:** `src/v3/compiler/tests/fixtures/t_pb_b_brief_d/*.v3` — each file is a self-contained v3 module declaring `TestSuite` / `TestClaim` values. **Compile smoke retired:** the former `t_pb_b_brief_d_fixture_smoke_test` host shim dissolved into the runner-backed `.dag` suites in `src/v3/compiler/tests/dag/t_pb_b_1_*.dag` plus `t_pb_b_1_dag_runner_test`.
 
-**Duplicate authority (bounded, P2/P5):** The same three claims exist here (`.v3`, suite names `t-pb-b/…`) and under T-PB-B-1 (`.dag`, suite names `t-pb-b-1/…`). **`.dag` modules are runner-backed** via `t_pb_b_1_dag_runner_test` (PR #736); **Brief D `.v3` fixtures remain compile-smoke only** (`t_pb_b_brief_d_fixture_smoke_test`) until someone intentionally adds runner coverage for the `let`-binding path. **Dissolution trigger (named):** remove or shrink the `.v3` copies once Testgen accepts `src/v3/compiler/tests/dag/t_pb_b_1_*.dag` as the single maintained source for those claims—until then, any edit to claim text must keep both paths aligned (each `.v3` file header points at its `.dag` sibling, including the runner-evaluated `CostBounded` witness value).
+**Duplicate authority (bounded, P2/P5):** The same three claims exist here (`.v3`, suite names `t-pb-b/…`) and under T-PB-B-1 (`.dag`, suite names `t-pb-b-1/…`). **`.dag` modules are runner-backed** via `t_pb_b_1_dag_runner_test` (PR #736); **Brief D `.v3` fixtures are now historical draft copies only** and no longer have a dedicated host-side compile-smoke shim. **Dissolution trigger (named):** remove or shrink the `.v3` copies once Testgen accepts `src/v3/compiler/tests/dag/t_pb_b_1_*.dag` as the single maintained source for those claims—until then, any edit to claim text must keep both paths aligned (each `.v3` file header points at its `.dag` sibling, including the runner-evaluated `CostBounded` witness value).
 
 **T-PB-B-1 (landed `.dag` home):** `src/v3/compiler/tests/dag/*.dag` + `docs/briefs/t-pb-b-1.md` + `t_pb_b_1_dag_runner_test` (runner-backed predicate evaluation; PR #736) — first batch as **`data` declarations** in real `.dag` modules. The former `t_pb_b_1_tests_dag_smoke_test` compile-only harness is retired (redundant). Further Rust-integration-test deletion per inventory remains gated on Testgen (see *Decisions log* in `docs/briefs/r1-testgen-manager.md`).
 
@@ -99,7 +99,6 @@ Paths are modules under `src/v3/compiler/tests/` unless noted. Primary classific
 | `sg3_surface_reflection_consumer_test` | Pipeline | D + G | |
 | `sg6_hand_authored_census_test` | Meta | A | |
 | `sg7_prep_variant_payload_freshness_test` | Pipeline / prep | D + G | |
-| `t_pb_b_brief_d_fixture_smoke_test` | Fixture host | A | Intentionally thin: only verifies Brief D `.v3` fixtures compile. |
 | `t_pb_b_1_dag_runner_test` | T-PB-B-1 `tests/dag/` host | A + D | Runner-backed; former `t_pb_b_1_tests_dag_smoke_test` **retired** (redundant). |
 | `thesis_parallelism_test` | Contract (thesis) | D + G | |
 | `thesis_validation_test` | Contract (thesis) | D + G | |

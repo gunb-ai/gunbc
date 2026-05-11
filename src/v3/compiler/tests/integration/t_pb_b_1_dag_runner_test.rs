@@ -153,8 +153,8 @@ fn t_pb_b_1_execute_command_boundary_suite_passes_through_runner() {
 /// R3 gate #74 — one Rust integration test ported to `.dag` `TestClaim` data and
 /// executed end-to-end through `TestRunner`.
 ///
-/// Port target: `t_pb_b_brief_d_pipeline_smoke_fixture_lowers_cleanly`
-/// (`t_pb_b_brief_d_fixture_smoke_test.rs`). The original Rust test asserts the
+/// Port target: retired `t_pb_b_brief_d_pipeline_smoke_fixture_lowers_cleanly`
+/// (`t_pb_b_brief_d_fixture_smoke_test.rs`). The original Rust test asserted the
 /// pipeline smoke fixture lowers cleanly; this carrier expresses the same
 /// surface as a `Compiles` claim over the embedded subject program.
 #[test]
