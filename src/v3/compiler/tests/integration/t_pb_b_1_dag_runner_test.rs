@@ -28,7 +28,7 @@ use v3_compiler::dag::Dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
-fn lower(source: &'static str, file: &'static str) -> Dag {
+fn lower(source: &str, file: &str) -> Dag {
     // `compile_to_dag` returns `Ok` iff the module diagnostic table is empty
     // (`lib.rs` — any semantic issue is `Err(Semantic(dag))` with non-empty
     // diagnostics). The retired `t_pb_b_1_tests_dag_smoke_test` required the
@@ -225,7 +225,8 @@ fn r1c_d_pb_census_gates_suite_evaluates_through_runner() {
 }
 
 const R1C_E_EMIT_GATES_TEMPLATE: &str = include_str!("../dag/r1c_e_emit_gates.template.dag");
-const R1C_E_EMIT_GATES_TEMPLATE_PATH: &str = "src/v3/compiler/tests/dag/r1c_e_emit_gates.template.dag";
+const R1C_E_EMIT_GATES_TEMPLATE_PATH: &str =
+    "src/v3/compiler/tests/dag/r1c_e_emit_gates.template.dag";
 const R1C_E_EMIT_GATES_BIN_PATH: &str = env!("CARGO_BIN_EXE_r1c_e_emit_gates");
 const R1C_E_BIN_PLACEHOLDER: &str = "__R1C_E_BIN__";
 
@@ -241,24 +242,7 @@ fn substituted_r1c_e_emit_gates_source() -> String {
 #[test]
 fn r1c_e_emit_gates_suite_passes_through_runner() {
     let source = substituted_r1c_e_emit_gates_source();
-    let dag = match compile_to_dag(&source, R1C_E_EMIT_GATES_TEMPLATE_PATH) {
-        Ok(dag) => {
-            assert!(
-                dag.diagnostics().is_empty(),
-                "{R1C_E_EMIT_GATES_TEMPLATE_PATH} (substituted): expected empty module diagnostics, got {:?}",
-                dag.diagnostics().iter().collect::<Vec<_>>()
-            );
-            dag
-        }
-        Err(CompileError::Semantic(dag)) => {
-            panic!(
-                "{R1C_E_EMIT_GATES_TEMPLATE_PATH} (substituted) should lower without module diagnostics. \
-                 Got `Err(Semantic)`: {:?}",
-                dag.diagnostics().iter().collect::<Vec<_>>()
-            );
-        }
-        Err(other) => panic!("unexpected compile error for {R1C_E_EMIT_GATES_TEMPLATE_PATH}: {other:?}"),
-    };
+    let dag = lower(&source, R1C_E_EMIT_GATES_TEMPLATE_PATH);
 
     let results = TestRunner::new(&dag).run_suite("r1c_e_emit_gates_suite");
     assert!(
@@ -278,7 +262,8 @@ fn r1c_e_emit_gates_suite_passes_through_runner() {
 }
 
 const R1C_E_OMNI_TEMPLATE: &str = include_str!("../dag/r1c_e_emit_gates_omni.template.dag");
-const R1C_E_OMNI_TEMPLATE_PATH: &str = "src/v3/compiler/tests/dag/r1c_e_emit_gates_omni.template.dag";
+const R1C_E_OMNI_TEMPLATE_PATH: &str =
+    "src/v3/compiler/tests/dag/r1c_e_emit_gates_omni.template.dag";
 
 fn substituted_r1c_e_emit_gates_omni_source() -> String {
     assert!(
@@ -293,24 +278,7 @@ fn substituted_r1c_e_emit_gates_omni_source() -> String {
 #[ignore]
 fn r1c_e_emit_gates_omni_suite_passes() {
     let source = substituted_r1c_e_emit_gates_omni_source();
-    let dag = match compile_to_dag(&source, R1C_E_OMNI_TEMPLATE_PATH) {
-        Ok(dag) => {
-            assert!(
-                dag.diagnostics().is_empty(),
-                "{R1C_E_OMNI_TEMPLATE_PATH} (substituted): expected empty module diagnostics, got {:?}",
-                dag.diagnostics().iter().collect::<Vec<_>>()
-            );
-            dag
-        }
-        Err(CompileError::Semantic(dag)) => {
-            panic!(
-                "{R1C_E_OMNI_TEMPLATE_PATH} (substituted) should lower without module diagnostics. \
-                 Got `Err(Semantic)`: {:?}",
-                dag.diagnostics().iter().collect::<Vec<_>>()
-            );
-        }
-        Err(other) => panic!("unexpected compile error for {R1C_E_OMNI_TEMPLATE_PATH}: {other:?}"),
-    };
+    let dag = lower(&source, R1C_E_OMNI_TEMPLATE_PATH);
 
     let results = TestRunner::new(&dag).run_suite("r1c_e_emit_gates_omni_suite");
     assert!(
