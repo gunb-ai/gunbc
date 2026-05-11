@@ -228,9 +228,10 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // Intentionally hand-authored: it measures live public substrate
     // entrypoints (`merge_evidence`, `positive_descent_count`,
     // `lower_call_pattern`, `type_iteration_dimension`,
-    // `lane2_workflow_idempotency_report`). R3 gate #4 retired the duplicate
-    // `workflow_idempotency.rs` file; behavior lives in `dag/effects.rs` as the
-    // native co-location with `std.effects` carriers while these benches still
+    // `lane2_workflow_idempotency_report`). R3 gate #4 **parallel module**
+    // `workflow_idempotency.rs` retired; native projection co-located in
+    // `dag/effects.rs` (full evaluator/emitted-authority slice still open while
+    // the std arrow is `Unparsed` in bootstrap). These benches still
     // target hot Rust call paths (Criterion). Broader Tier3 bench retirement
     // deletes this harness per parent brief §"Phase 1 deliverables" once the
     // remaining mirrors dissolve; only the frozen `tier3_baseline.json` data

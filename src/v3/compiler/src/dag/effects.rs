@@ -214,13 +214,22 @@ pub enum WorkflowParallelismReport {
     ParallelismUnsupported(ParallelismUnsupportedDetail),
 }
 
-// ── Lane 2 Stage 2b — native `Dag` realization (std.effects authority) ──
+// ── Lane 2 Stage 2b — native `Dag` substrate realization (std.effects shape) ──
 //
-// Behavioral algebra is authored in `src/v3/std/effects.dag`
-// (`compose_effects`, `lane2_workflow_idempotency_report`, …). This block is
-// the substrate-side realization colocated with the structural carriers above
-// (R3 gate #4 `tier3_effect_carrier_mirror_dissolved`: the former
-// `workflow_idempotency.rs` parallel mirror retired).
+// Authoritative algebra is **authored** in `src/v3/std/effects.dag`
+// (`compose_effects`, `lane2_workflow_idempotency_report`, …).
+//
+// **R3 gate #4 receipt (codex / inline review 2026-05-11):** the §Acceptance
+// clause “crate API consumes **emitted/evaluated** `std.effects` as sole
+// authority” is **not** satisfied by this Rust alone: in the bootstrapped
+// compiler `Dag`, `lane2_workflow_idempotency_report` is still
+// `ArrowBody::Unparsed` (see `lane2_stage_2b_db18_test` ratchet below / snapshot
+// `Declaration` for that name). Until that body lowers and a host bridge calls
+// through `evaluate_body` (or emitted Rust is `include!`d as the sole
+// implementation), the compiler keeps one **native** projection here,
+// co-located with the structural carriers — P2 progress vs the **retired
+// parallel module** `workflow_idempotency.rs`, not a claim of full
+// evaluator-backed dissolution.
 
 pub(crate) fn compose_operation_effects(effects: &[OperationEffect]) -> CompositionVerdict {
     for (index, effect) in effects.iter().enumerate() {

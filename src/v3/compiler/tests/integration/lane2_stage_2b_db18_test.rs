@@ -3,7 +3,7 @@
 use v3_compiler::analyze_workflow;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    Behavior, BreakingShape, CompositionVerdict, CreateCause, EffectShape, IdempotentShape,
+    ArrowBody, Behavior, BreakingShape, CompositionVerdict, CreateCause, EffectShape, IdempotentShape,
     KeySource, NonSingletonList, OperationEffect, TypeConnective, WorkflowEffect,
     WorkflowIdempotencyReport,
 };
@@ -27,6 +27,24 @@ fn op(name: &str, shape: EffectShape) -> OperationEffect {
         operation_name: name.to_string(),
         shape,
     }
+}
+
+#[test]
+fn tier3_gate4_lane2_workflow_idempotency_report_std_body_still_unparsed_in_bootstrap() {
+    // Receipt for codex BLOCKING review (PR #2679): full `tier3_effect_carrier_mirror_dissolved`
+    // “emitted/evaluated std.effects as sole authority” cannot land until this
+    // `std.effects` arrow lowers — there is no evaluated host call path today.
+    let dag = Dag::new();
+    let decl = dag
+        .declaration_by_name("lane2_workflow_idempotency_report")
+        .expect("bootstrapped std.effects exports lane2_workflow_idempotency_report");
+    let TypeConnective::Arrow { body, .. } = &decl.connective else {
+        panic!("expected lane2_workflow_idempotency_report to be an Arrow declaration");
+    };
+    assert!(
+        matches!(body, ArrowBody::Unparsed(_)),
+        "expected ArrowBody::Unparsed for lane2_workflow_idempotency_report until std lowering + host evaluator bridge replaces the native projection in dag/effects.rs"
+    );
 }
 
 #[test]
