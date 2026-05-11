@@ -14,10 +14,25 @@
 //! that is **not** a Band-C shortfall while `cost.dag` remains **PROXY** in
 //! `docs/v3-lens-capability-register.md` (Band-C would demand a v2-oracle or reviewed
 //! projection once the row is `COMPLETE` with a real v2 counterpart).
+//!
+//! Gate **#78** (`e_p_sub_value_relation_per_call_landed`): integration tests pin **`symbolic_cost_of`**
+//! on unary countdown fixtures with **`assert_recursive_countdown_linear_semantics`** (linear-family).
+//! Evidence-index discipline for **`per_call_descent_operand_port`** / **`inputs[k]`** vs **`inputs[0]`**
+//! is additionally unit-tested on synthetic evidence in **`dag::tests`**
+//! (`call_pattern_from_relations_skips_leading_preserved_rows_for_descent_bound_index`) — terminating
+//! surface recursion proves descent on the **first** parameter only (`lower.rs`), so those indices do not
+//! currently surface from **`compile_to_dag`** multi-arg fixtures.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+
+use crate::common::assert_recursive_countdown_linear_semantics;
+
+/// Single source of truth for the gate #78 regression fixture label (`compile_to_dag` second
+/// argument and `TransformNode.span.file` filter — keep them paired). Tracked debt: ROADMAP gate
+/// #78 row (*Test-side `span.file` bridge*).
+const E_P78_PER_CALL_PATTERN_FIXTURE_FILE: &str = "e_p78_cost_lens.v3";
 
 fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
     dag.nodes()
@@ -107,10 +122,36 @@ fn recursive_countdown_pins_symbolic_cost_linear_and_sizevar_on_fixture() {
             "recursive countdown cost should carry a SizeVariable keyed by the parameter port \
              {parameter:?}, got cost={cost:?}"
         );
+        assert_recursive_countdown_linear_semantics(&cost);
+    });
+}
+
+/// R3 **gate #78** (`e_p_sub_value_relation_per_call_landed`) — cost lens consumes the same
+/// `per_call_pattern_at` substrate query as `complexity.dag`, projecting `SubValueRelation`
+/// rows from `per_call_descent_evidence` (see `docs/design-cost-lens-sizevar-dimension-wiring.md` §3.2).
+#[test]
+fn e_p_sub_value_relation_per_call_landed_cost_lens_routes_through_per_call_pattern_query() {
+    run_with_symbolic_cost_stack(|| {
+        let dag = compile_to_dag(
+            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
+            E_P78_PER_CALL_PATTERN_FIXTURE_FILE,
+        )
+        .expect("compile");
+        let pattern_hits = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_transform)
+            .filter(|t| {
+                t.span.file == E_P78_PER_CALL_PATTERN_FIXTURE_FILE
+                    && v3_compiler::dag::per_call_pattern_at(&dag, t.id).is_some()
+            })
+            .count();
         assert!(
-            matches!(cost, SymbolicCost::LinearCost { .. }),
-            "recursive countdown should normalize iterate(O(n), O(1)) to a linear bound, \
-             got {cost:?}"
+            pattern_hits >= 1,
+            "expected >=1 user Callable transform with `per_call_pattern_at` Some (self-call \
+             evidence present so the cost lens can branch on recurrence)"
         );
+        let cost = expect_symbolic_cost(&dag, "countdown");
+        assert_recursive_countdown_linear_semantics(&cost);
     });
 }
