@@ -6,6 +6,10 @@
 #
 # Uses Python's stdlib JSON parser only (no `jq`); the v3 CI job sets up
 # Python before this step.
+#
+# `cargo metadata` output is materialized to a temp file (not process
+# substitution) so `set -e` surfaces producer failures and we never read an
+# empty target list as success (openai-pro review on #2681).
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -22,6 +26,32 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+metadata_json=$(mktemp)
+names_out=$(mktemp)
+trap 'rm -f "${metadata_json}" "${names_out}"' EXIT
+
+cargo metadata --no-deps --format-version 1 >"${metadata_json}"
+
+python3 -c '
+import json, sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as handle:
+    data = json.load(handle)
+names = []
+for pkg in data.get("packages", []):
+    if pkg.get("name") != "v3-compiler":
+        continue
+    for target in pkg.get("targets", []):
+        if target.get("kind") == ["test"]:
+            names.append(target["name"])
+if not names:
+    print("::error::no v3-compiler integration test targets in cargo metadata", file=sys.stderr)
+    sys.exit(1)
+for name in sorted(set(names)):
+    print(name)
+' "${metadata_json}" >"${names_out}"
+
 fail=false
 while IFS= read -r name; do
   [[ -z "${name}" ]] && continue
@@ -30,22 +60,7 @@ while IFS= read -r name; do
     echo "::error::v3-compiler integration test target '${name}' has no split full-suite step with --report-time in ${workflow}. Add a step (mirror determinism_test / integration) or fold the module into an existing tests/*.rs harness."
     fail=true
   fi
-done < <(
-  cargo metadata --no-deps --format-version 1 |
-    python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-names = []
-for pkg in data.get("packages", []):
-    if pkg.get("name") != "v3-compiler":
-        continue
-    for target in pkg.get("targets", []):
-        if target.get("kind") == ["test"]:
-            names.append(target["name"])
-for name in sorted(set(names)):
-    print(name)
-'
-)
+done <"${names_out}"
 
 if [[ "${fail}" == true ]]; then
   exit 1
