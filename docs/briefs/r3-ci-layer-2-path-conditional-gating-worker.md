@@ -7,8 +7,8 @@
 **Authority (cite-and-execute):**
 - **Operator escalation**: Brian's CI-up-to-1-hour framing at gunbc#846 2026-05-11 ("their CI is up to 1 hour ... not happening" — re v3 ratchet attempt context)
 - **Layer 1 prior art**: PR #2718 `ci(layer1): skip v3 job on docs-only PRs via changes-filter` — the `changes` job mechanism this brief EXTENDS (not parallels)
-- **Bridge-debt → dissolution trigger**: `docs/design-affected-set-lens.md` §5 (affected-set Introspect-lens R3 close-blocking gate) — when `ci_uses_provable_minimal_affected_set_selection` gate lands, Layer 2's hand-authored path-mapping table dissolves and per-group `skip_*` flags become `affected_dimensions.contains(group.dimension)`
-- **Per-dimension structural target**: `docs/design-affected-set-lens.md` §2 enum (`value | cost | complexity | effect | refinement`) — every Layer 2 path-mapping entry MUST carry a `dimension:` field matching this enum to prevent schema divergence from future lens output
+- **Bridge-debt → dissolution trigger**: `docs/design-affected-set-lens.md` §5 (affected-set Introspect-lens R3 close-blocking gate) — when `ci_uses_provable_minimal_affected_set_selection` gate lands, Layer 2's hand-authored path-mapping table dissolves and per-group `skip_*` flags become `(affected_dimensions ∩ group.dimensions) ≠ ∅` (set-intersection-non-empty, per locked-design §2 union semantics — NOT singular `.contains()` membership)
+- **Per-dimension structural target**: `docs/design-affected-set-lens.md` §2 (affected_set defined as union over `Set<Dimension>`) — every Layer 2 path-mapping entry MUST carry a `dimensions:` field of type `Set<Dimension>` (members drawn from `value | cost | complexity | effect | refinement`). Single-element sets like `{cost}` are valid for single-dimension groups; multi-dim consumers (e.g., LBP demonstration reading both `complexity` + `cost`) get expanded sets. Prevents schema divergence from future lens output AND silent-skip on multi-dim consumers when only the non-primary dim changes.
 - **Slow-test inventory sources** (per PM pre-stage at #828 c4425726922):
   - (a) `scripts/slow-test-exemptions.txt` — 78 active entries (curated >2s ratchet exemption list)
   - (b) `/tmp/v3-test-timings.log` — empirical per-test wall-time captured by every CI run via `--report-time` (consumed by `scripts/check-test-timeout.sh`, wired at `.github/workflows/ci.yml:405-424`)
@@ -84,12 +84,12 @@ v3:
 Per-group mapping table (the deliverable):
 
 ```
-(group_name, dimension, required_paths_regex, test_pattern)
+(group_name, dimensions, required_paths_regex, test_pattern)
 ```
 
 Where:
 - `group_name` — short identifier (e.g., `cost_lens`, `emit_target`, `parser_grammar`)
-- `dimension: Dimension` — value | cost | complexity | effect | refinement (load-bearing — matches future lens output enum)
+- `dimensions: Set<Dimension>` — non-empty subset of `{value, cost, complexity, effect, refinement}` per `docs/design-affected-set-lens.md` §2 union semantics. Single-element sets `{cost}` are valid for single-dim groups; multi-dim consumers MUST list all dimensions they read (e.g., LBP demonstration: `{complexity, cost}`). Empty set is invalid — escalate per §7.
 - `required_paths_regex` — regex over changed file paths; if no changed file matches, skip this group
 - `test_pattern` — `cargo test` arg pattern selecting the group's tests
 
@@ -105,8 +105,8 @@ Where:
 
 The PM template provides:
 - **All 78 `scripts/slow-test-exemptions.txt` entries** grouped into 9 clusters (A–I) by module prefix
-- **`(test_pattern, dimension, required_paths_regex)` skeleton table** with every row carrying a `dimension:` field matching the lens enum verbatim
-- **Pilot recommendation: Cluster B** (Lane 2 Stage 2d symbolic cost — high confidence, single `cost` dimension, ~6 tests). Note: my §6 recommendation was `cost_lens` first — these converge; Cluster B IS the cost-lens family.
+- **`(test_pattern, dimensions, required_paths_regex)` skeleton table** with every row carrying a `dimensions:` field of type `Set<Dimension>` per locked-design §2 union semantics (PM template post-fix at `dedcf69a4`)
+- **Pilot recommendation: Cluster B** (Lane 2 Stage 2d symbolic cost — high confidence, single-element set `{cost}`, ~6 tests). Note: my §6 recommendation was `cost_lens` first — these converge; Cluster B IS the cost-lens family with singleton `{cost}` dimensions.
 - **12 `[Mgr-fill]` placeholders** marking where consumer-tracing exceeded PM bandwidth (substrate-lens deps, R3-V L4/L7, R1C-E `.dag` wrapper, free-consequences cross-target). These are the Mgr-tier sub-classification decisions.
 
 Inline sketch (illustrative — defer to the PM template for the actual starting inventory):
@@ -120,7 +120,7 @@ parser_grammar     | refinement | ^(src/v3/parser/.*|src/v3/compiler/src/parser.
 
 **[Mgr-fill]**: full per-group table — exhaustive coverage of `scripts/slow-test-exemptions.txt` 78 entries grouped + empirical top-K from timings log + per-group required-paths regex tested against representative diffs.
 
-## §3. Per-dimension structural target — `feedback_parallel_representation_debt` prevention
+## §3. Per-dimensions structural target — `feedback_parallel_representation_debt` prevention (set semantics per locked-design §2)
 
 The Layer 2 path-mapping is bridge-debt by design. The dissolution is the affected-set Introspect-lens (canvas PR #2713 by `clever-tern-670`, locked-design `docs/design-affected-set-lens.md`). When the lens lands, the dissolution is:
 
@@ -135,10 +135,14 @@ changes:
           --output /tmp/affected.json
     - id: classify
       run: |
-        # per-group skip_* derived from lens output, not path-regex
+        # per-group skip_* derived from lens output, not path-regex.
+        # Set semantics per locked-design §2: skip iff (affected ∩ group.dimensions) is empty.
         for group in cost_lens emit_target parser_grammar ...; do
-          dim="${group_dimension[$group]}"
-          if jq -e ".affected_dimensions | contains([\"$dim\"])" /tmp/affected.json; then
+          dims_json="${group_dimensions[$group]}"  # JSON array, e.g., '["cost"]' or '["complexity","cost"]'
+          # (affected_dimensions ∩ group.dimensions) ≠ ∅ → run; otherwise skip
+          if jq -e --argjson dims "$dims_json" \
+               '.affected_dimensions | any(. as $d | $dims | contains([$d]))' \
+               /tmp/affected.json; then
             echo "skip_$group=false" >> $GITHUB_OUTPUT
           else
             echo "skip_$group=true" >> $GITHUB_OUTPUT
