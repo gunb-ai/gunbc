@@ -75,15 +75,22 @@ jobs:
 
       - name: Aggregate into tier3_baseline.json
         run: |
-          set -eux
+          set -euxo pipefail
           # Artifact-only aggregate (compare vs src/v3/compiler/benches/tier3_baseline.json in-tree).
           # Each matrix job uploaded `staging/` with `criterion/` + rustc_version.txt
-          dirs=(runs/tier3-criterion-{1..5})
+          shopt -s nullglob
+          bundles=(runs/tier3-criterion-*)
+          if [ "${#bundles[@]}" -lt 3 ]; then
+            echo "::error::expected ≥3 capture bundles under runs/tier3-criterion-*, got ${#bundles[@]}"
+            ls -la runs || true
+            exit 1
+          fi
+          mapfile -t sorted < <(printf '%s\n' "${bundles[@]}" | sort -V)
           python3 scripts/aggregate_tier3_baseline.py \
             --host-id ubicloud-standard-2 \
             --git-sha "${GITHUB_SHA}" \
             --output tier3_baseline.json \
-            "${dirs[@]}"
+            "${sorted[@]}"
 
       - name: Upload baseline JSON
         uses: actions/upload-artifact@v4
