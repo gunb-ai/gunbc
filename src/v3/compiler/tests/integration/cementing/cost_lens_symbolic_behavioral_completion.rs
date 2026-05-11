@@ -37,16 +37,6 @@ fn contains_linear_for_port(cost: &SymbolicCost, port: PortId) -> bool {
     }
 }
 
-fn contains_log_for_port(cost: &SymbolicCost, port: PortId) -> bool {
-    match cost {
-        SymbolicCost::LogCost { _0: var } => var.source_port == port,
-        SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => terms
-            .iter()
-            .any(|term| contains_log_for_port(term.as_ref(), port)),
-        _ => false,
-    }
-}
-
 fn expect_symbolic_cost_dimension(
     dag: &v3_compiler::dag::Dag,
     bind_name: &str,
@@ -125,31 +115,32 @@ fn recursive_countdown_cements_dimension_symbolic_cost_linear_sizevar() {
 }
 
 #[test]
-fn division_cements_log_cost_on_dividend_sizevar() {
+fn recursive_countdown_with_body_work_cements_linear_sizevar() {
     run_with_cost_cementing_stack(|| {
         let dag = compile_to_dag(
-            "import std.error_primitives { DivError, Result }\n\
-             fn half(n: Int) -> Int =\n  match n / 2 { Ok(q) => q, Err(e) => 0 }",
-            "cement_cost_symbolic_division.v3",
+            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1) + 1",
+            "cement_cost_symbolic_countdown_body_work.v3",
         )
-        .expect("division fixture compiles");
-        let half = find_bind(&dag, "half");
-        let dividend = half
+        .expect("recursive countdown with body work fixture compiles");
+        let countdown = find_bind(&dag, "countdown");
+        let parameter = countdown
             .params
             .first()
             .copied()
-            .expect("half should expose one dividend parameter");
+            .expect("countdown should expose one size-bearing parameter");
 
-        let (composed, witnesses) = expect_symbolic_cost_dimension(&dag, "half");
+        let (composed, witnesses) = expect_symbolic_cost_dimension(&dag, "countdown");
 
+        assert_recursive_countdown_linear_semantics(&composed);
         assert!(
-            contains_log_for_port(&composed, dividend),
-            "division frozen cost projection should carry a LogCost keyed by dividend \
-             {dividend:?}, got {composed:?}"
+            contains_linear_for_port(&composed, parameter),
+            "countdown with primitive body work should preserve a LinearCost keyed by parameter \
+             {parameter:?}, got {composed:?}"
         );
         assert!(
             witnesses.iter().all(|w| matches!(w, Witness::Inhabits(_))),
-            "division cost dimension should have only Inhabits witnesses, got {witnesses:?}"
+            "countdown with body work cost dimension should have only Inhabits witnesses, got \
+             {witnesses:?}"
         );
     });
 }
