@@ -37,27 +37,47 @@ This matters because gunbc's thesis (`THESIS.md:374-376`) names suboptimal-compl
 
 ## §2. Definition
 
-Given two compiled `.dag` graph states `Dag_before` and `Dag_after`, the **affected-set** is:
+Given two compiled `.dag` graph states `Dag_before` and `Dag_after`, the **dimension-parameterized affected-set** is:
 
 ```
-affected_set(Dag_before, Dag_after) →
+affected_set(Dag_before, Dag_after, dim) →
   Set<NodeRef> where each N satisfies:
     N exists in Dag_after AND
     (
-      // Case A: N is the changed Node itself
-      N has different structural identity in before vs after
+      // Case A: N is the changed Node itself, in this dimension
+      N has a PROVEN delta in dimension `dim` between before/after
       OR
-      // Case B: N consumes the change through a typed edge
-      ∃ edge (M → N) such that M.identity changed AND
-        N.behavior structurally depends on M via that edge
+      // Case B: N consumes a changed dimension through a typed edge
+      ∃ edge (M → N) such that:
+        M has a PROVEN delta in dimension `dim_M` between before/after
+        AND
+        N.behavior reads `dim_M` via that edge (i.e., the dimension
+        flows through the edge into N's projection of `dim`)
     )
 ```
 
-**Strictly excluded** from affected-set:
+The aggregate affected-set across dimensions:
 
-- Nodes that transitively reference a changed Node but don't structurally depend on the changed behavior (e.g., function calls the changed function but doesn't observe the changed code path)
-- Test-only Nodes that test the changed Node directly (they're in the affected-set themselves but their existence doesn't propagate)
-- Documentation / comments / non-structural metadata
+```
+affected_set(Dag_before, Dag_after) =
+  ⋃ over dim in {value, cost, complexity, effect, refinement, ...}
+    affected_set(Dag_before, Dag_after, dim)
+```
+
+**Fail-closed discipline** (per INVARIANTS P1/P3): identity-change alone is NOT sufficient for propagation. The propagation trigger is a **proven dimension delta**:
+
+- If `delta(M, dim_M)` can be **proven empty** by the lens → consumer N reading `dim_M` is excluded from the affected-set for that dimension
+- If `delta(M, dim_M)` **cannot be proven empty** (e.g., the lens lacks the substrate to compute the dimension delta, or the delta is unbounded) → consumer N is **included** by default (fail-closed)
+
+This makes the lens **strict-narrower-than-downstream** when deltas are provable AND **fail-closed-safe** when they aren't.
+
+**Strictly excluded** from affected-set (when delta proofs hold):
+
+- Nodes that transitively reference a changed Node but don't read any changed dimension (e.g., function calls the changed function with value-equivalence proven AND no cost/effect read → not affected)
+- Test-only Nodes that test the changed Node directly (they're in the affected-set themselves but their existence doesn't propagate to production code)
+- Documentation / comments / non-structural metadata (no dimension flow through any edge)
+
+**Critical**: the lens MUST emit a per-dimension proof receipt for each excluded consumer (similar to TestClaim fail-closed receipts per `verification.dag`). Without that receipt, the consumer falls back to the default-include (fail-closed) branch. No silent exclusions.
 
 The "depends on via that edge" predicate is structurally checkable per substrate:
 
@@ -75,8 +95,8 @@ The affected-set lens composes existing R3 substrate (no new substrate required)
 | Substrate piece | File | Role in lens |
 |---|---|---|
 | `Dag` forward graph | `src/v3/std/` + `dag.rs` | Reverse-traverse edges to find consumers |
-| `DescentEvidence` (gate #72 CONSUMER_LANDED) | `src/v3/std/descent_evidence.dag` | For each callsite, which port the recursion descends on — narrows propagation |
-| `SubValueRelation` (gate #78 in-flight) | `src/v3/std/sub_value_relation.dag` | Atomic-level subvalue tracking: which sub-piece flows where |
+| `DescentEvidence` (gate #72 CONSUMER_LANDED) | `src/v3/std/termination.dag:17` (type defn; see also `src/v3/std/computation.dag:11/:89` consumers) | For each callsite, well-founded descent evidence (`Strict / NonIncreasing / DescentUnknown` lattice) — narrows propagation |
+| `SubValueRelation` (gate #78 in-flight) | `src/v3/std/induction.dag:207` (type defn; see also call-site descent + composition helpers at `:220-385`) | Atomic-level subvalue tracking: which sub-piece flows where; threading provenance |
 | `Cardinality` lens | `src/v3/lenses/` | Distinguishes "data shape changed" from "data value changed" |
 | `cross_target_coverage` | `src/v3/std/cross_target_coverage.dag` | Per-substrate-variant × target emission paths — narrows cross-target propagation |
 | TestClaim DB-15 | `src/v3/std/verification.dag` | Every test is data; can intersect affected-set with TestClaim references |
