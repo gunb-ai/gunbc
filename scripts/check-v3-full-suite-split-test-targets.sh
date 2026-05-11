@@ -4,6 +4,14 @@
 # `.github/workflows/ci.yml` (each such target must run with `--report-time`
 # so `scripts/check-test-timeout.sh` sees per-test lines).
 #
+# 🟡 BRIDGE — hand-authored CI gate (THESIS.md: bootstrap/CI modeled as `.dag`
+# workflows; `dag run` primary). **Authority:** repo `ci.yml` split-suite shape +
+# `cargo metadata` as the mechanical source of truth for integration test targets.
+# **Named trigger:** self-hosted v3 suite split for log/timing survival (#2681).
+# **Dissolution:** fold this invariant into the Workflow-as-Data / single `.dag`
+# CI surface (or generated workflow) so adding a gate edits one `.dag` file;
+# delete this script and drop the `ci.yml` step in the **same** commit.
+#
 # Uses Python's stdlib JSON parser only (no `jq`); the v3 CI job sets up
 # Python before this step.
 #

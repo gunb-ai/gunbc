@@ -332,6 +332,9 @@ jobs:
       # **Target-discovery guard:** every `tests/*.rs` integration binary must appear in
       # a split step with `--report-time` (codex review on #2681); otherwise clippy
       # `--all-targets` could compile a new harness without the full suite ever running it.
+      # **Bridge debt:** script is a tracked hand-CI shim until Workflow-as-Data owns this
+      # gate (see header in `scripts/check-v3-full-suite-split-test-targets.sh`; openai-pro
+      # APPROVE_WITH_COMMENTS on #2681).
       - name: v3 full-suite split guard (integration test targets)
         run: scripts/check-v3-full-suite-split-test-targets.sh
 
