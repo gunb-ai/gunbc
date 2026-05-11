@@ -60,12 +60,18 @@ const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
 /// **Skips duplicate `ResolveError`:** callers attach the primary diagnostic before allocating this atom;
 /// `run_identifier_sweep` matches on this sentinel and continues without emitting `ResolveError` (P3).
 ///
-/// **User-namespace collision avoidance:** appended `U+E000` (Unicode private-use) is appended via `concat!`.
+/// **User-namespace collision avoidance:** `\u{e000}` (Unicode private use) suffix via `concat!`.
 /// v3 lexical `Ident` tokens are ASCII-only (`ScannerCharClass` in `tokenize_generated.rs`: start
 /// `[A-Za-z_]`, continue `[A-Za-z0-9_]`). User source therefore cannot lex a **single identifier token**
 /// equal to this full string literal — placeholders stay disjoint from reachable user type names (`#2697`).
 ///
-/// **Future dissolution:** a dedicated substrate `AtomPayload` variant remains the long-term narrowing.
+/// **Named dissolution trigger (🟡):** migrate when `substrate.dag` / `AtomPayload` carries an
+/// authoritatively distinguishable **`ParseFailedSurface`** (or equivalently typed) atom variant so
+/// `declaration_id_after_authoritative_surface_parse_error` no longer encodes failures as
+/// `TypeConnective::Atom` with `AtomPayload::UnresolvedIdentifier` carrying this marker; coordinate with whichever SG
+/// row lands substrate-level parse-failure payloads (typically **after** SG-2 grammar-as-data or a
+/// named `dag_scalar` carve-out mirrors the handwritten marker). Until then the sentinel stays the
+/// fail-closed bridge documented in Modeling Practice 6 / ROADMAP P5 scaffold receipts.
 const PARSE_FAILED_SURFACE_TYPE_MARKER: &str =
     concat!("__gunbc_parse_failed_surface_type__", "\u{e000}",);
 
@@ -3662,6 +3668,10 @@ fn type_to_declaration_id(
             });
             id
         }
+        SurfaceType::PhantomWidthNumericSugar { .. }
+        | SurfaceType::PhantomWidthMachineWidthSugar { .. } => unreachable!(
+            "rewrite_phantom_machine_width_surface always rewrites phantom-width sugar variants"
+        ),
     }
 }
 
@@ -3732,6 +3742,10 @@ fn type_to_connective(
             // outputs of either caller.
             body: ArrowBody::NoBody,
         },
+        SurfaceType::PhantomWidthNumericSugar { .. }
+        | SurfaceType::PhantomWidthMachineWidthSugar { .. } => unreachable!(
+            "rewrite_phantom_machine_width_surface always rewrites phantom-width sugar variants"
+        ),
     }
 }
 
@@ -3755,39 +3769,16 @@ fn type_to_connective(
 /// representable as a non-TypeParam reference at construction
 /// time.
 ///
-/// Generic arguments are [`SurfaceTypeArg`] so phantom width literals are substrate-nested only
-/// under sanctioned `Name<…>` lists (R3 gate #60).
-fn surface_type_arg_to_declaration_id(
-    arg: &SurfaceTypeArg,
-    symbols: &HashMap<String, DeclarationId>,
-    local: &HashMap<String, DeclarationId>,
-    dag: &mut Dag,
-) -> DeclarationId {
-    match arg {
-        SurfaceTypeArg::Ty { body } => type_to_declaration_id(body, symbols, local, dag),
-        SurfaceTypeArg::PhantomWidthLit { span, .. } => {
-            report_declaration_error(
-                dag,
-                Diagnostic::ParseError {
-                    message: "phantom machine-width literals are only allowed inside \
-                         `Int<N>`, `UInt<N>`, `Real<N>`, `Nat<N>`, or `MachineWidth<N>`"
-                        .to_string(),
-                    span: span.clone(),
-                    fixes: Vec::new(),
-                },
-            );
-            declaration_id_after_authoritative_surface_parse_error(dag, span)
-        }
-    }
-}
-
+/// `Parameterized.args` carries only nested [`SurfaceType`] values — R3 gate #60 phantom literals
+/// surface exclusively as [`SurfaceType::PhantomWidthNumericSugar`] /
+/// [`SurfaceType::PhantomWidthMachineWidthSugar`], rewritten before template arguments are built.
 fn build_template_arguments(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
     local: &HashMap<String, DeclarationId>,
     template: DeclarationId,
     template_name: &str,
-    args: &[SurfaceTypeArg],
+    args: &[SurfaceType],
     span: &SourceSpan,
 ) -> Vec<TemplateArgument> {
     let template_decl = dag.declaration(template);
@@ -3804,7 +3795,7 @@ fn build_template_arguments(
         // instantiation, and a TemplateArgument whose parameter
         // wasn't a TypeParam would violate the field contract.
         for arg in args {
-            let _ = surface_type_arg_to_declaration_id(arg, symbols, local, dag);
+            let _ = type_to_declaration_id(arg, symbols, local, dag);
         }
         return Vec::new();
     }
@@ -3812,7 +3803,7 @@ fn build_template_arguments(
         resolve_template_for_type_parameters(dag, template, template_name, span)
     else {
         for arg in args {
-            let _ = surface_type_arg_to_declaration_id(arg, symbols, local, dag);
+            let _ = type_to_declaration_id(arg, symbols, local, dag);
         }
         return Vec::new();
     };
@@ -3834,14 +3825,14 @@ fn build_template_arguments(
         // inventing parameter references that don't exist, which
         // would violate the field contract.
         for arg in args {
-            let _ = surface_type_arg_to_declaration_id(arg, symbols, local, dag);
+            let _ = type_to_declaration_id(arg, symbols, local, dag);
         }
         return Vec::new();
     }
     args.iter()
         .enumerate()
         .map(|(idx, arg)| {
-            let value = surface_type_arg_to_declaration_id(arg, symbols, local, dag);
+            let value = type_to_declaration_id(arg, symbols, local, dag);
             let parameter = template_param_id(dag, template_for_params, idx).expect(
                 "template_param_count equality was checked immediately above — \
                  param lookup at idx < count must succeed",

@@ -2930,8 +2930,7 @@ fn parse_type_inhabits_clause_with_parameterized_algebra_and_sum_rhs() {
                         && args.len() == 1
                         && matches!(
                             &args[0],
-                            parse_surface::SurfaceTypeArg::Ty { body }
-                                if matches!(body.as_ref(), parse_surface::SurfaceType::Named { name, .. } if name == "T")
+                            parse_surface::SurfaceType::Named { name, .. } if name == "T"
                         )
             ));
             assert_eq!(variants.len(), 2);
