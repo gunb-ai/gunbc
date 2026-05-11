@@ -342,6 +342,7 @@ pub(crate) fn lower_bodies_phase(
     lower_type_alias_refinements_phase(dag, module, symbols, is_first);
     validate_scalar_data_refinements_phase(dag, module, symbols, is_first);
     let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
+    reject_invalid_data_lambda_cycles_phase(dag, module, symbols, is_first, &mutual_recursion);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
