@@ -101,6 +101,18 @@ fn r3_gate60_phantom_width_unsupported_magnitude_emits_diagnostic() {
         "expected unsupported-width diagnostic, got {:?}",
         dag.diagnostics()
     );
+    let resolve_errors: Vec<&str> = dag
+        .diagnostics()
+        .iter()
+        .filter_map(|(_, d)| match d {
+            Diagnostic::ResolveError { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        resolve_errors.is_empty(),
+        "expected no spurious ResolveError after authoritative ParseError, got {resolve_errors:?}"
+    );
 }
 
 #[test]
@@ -116,6 +128,18 @@ fn r3_gate60_bare_phantom_width_literal_emits_diagnostic() {
         }),
         "expected bare-literal diagnostic, got {:?}",
         dag.diagnostics()
+    );
+    let resolve_errors: Vec<&str> = dag
+        .diagnostics()
+        .iter()
+        .filter_map(|(_, d)| match d {
+            Diagnostic::ResolveError { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        resolve_errors.is_empty(),
+        "expected no spurious ResolveError after authoritative ParseError, got {resolve_errors:?}"
     );
 }
 

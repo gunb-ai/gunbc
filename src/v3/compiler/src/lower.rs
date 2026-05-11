@@ -3565,7 +3565,7 @@ fn type_to_declaration_id(
             return type_to_declaration_id(&next, symbols, local, dag);
         }
         PhantomWidthSurfaceOutcome::Invalid => {
-            return alloc_identifier_stub(dag, "__phantom_width_bad_literal", ty.span());
+            return bool_declaration_id_after_parse_error(dag, ty.span());
         }
         PhantomWidthSurfaceOutcome::NotApplicable => {}
     }
@@ -3590,7 +3590,7 @@ fn type_to_declaration_id(
                     fixes: Vec::new(),
                 },
             );
-            alloc_identifier_stub(dag, "__bare_phantom_width", span)
+            bool_declaration_id_after_parse_error(dag, span)
         }
         SurfaceType::Parameterized { name, args, span } => {
             let template_id = local
@@ -3681,9 +3681,9 @@ fn type_to_connective(
             return type_to_connective(&next, symbols, local, dag);
         }
         PhantomWidthSurfaceOutcome::Invalid => {
-            let stub = alloc_identifier_stub(dag, "__phantom_width_bad_literal", ty.span());
+            let template = bool_declaration_id_after_parse_error(dag, ty.span());
             return TypeConnective::Instantiation {
-                template: stub,
+                template,
                 arguments: Vec::new(),
             };
         }
@@ -3712,9 +3712,9 @@ fn type_to_connective(
                     fixes: Vec::new(),
                 },
             );
-            let stub = alloc_identifier_stub(dag, "__bare_phantom_width", span);
+            let template = bool_declaration_id_after_parse_error(dag, span);
             TypeConnective::Instantiation {
-                template: stub,
+                template,
                 arguments: Vec::new(),
             }
         }
@@ -3867,6 +3867,16 @@ fn alloc_identifier_stub(dag: &mut Dag, name: &str, span: &SourceSpan) -> Declar
         span: span.clone(),
     });
     id
+}
+
+/// After attaching an authoritative `Diagnostic::ParseError`, lowering still needs a well-formed
+/// `DeclarationId`. Reuse the prelude `Bool` template (or allocate an ordinary `Bool` unresolved
+/// stub as last resort). Internal `__…` identifier stubs must not survive here — strict
+/// `run_identifier_sweep` would attach a duplicate `ResolveError` (INVARIANTS P3).
+fn bool_declaration_id_after_parse_error(dag: &mut Dag, span: &SourceSpan) -> DeclarationId {
+    dag.declaration_by_name("Bool")
+        .map(|decl| decl.id)
+        .unwrap_or_else(|| alloc_identifier_stub(dag, "Bool", span))
 }
 
 /// Emit a declaration-level diagnostic via `Dag::attach_diagnostic`.
