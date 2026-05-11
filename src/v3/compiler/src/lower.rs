@@ -3996,14 +3996,9 @@ fn lower_data_item(
                 callable_scope: &empty_callable_scope,
                 symbols,
             };
-            match lower_lambda_expr(params, body, span, ty_decl_id, &mut lambda_ctx) {
-                Ok(lambda_decl_id) => {
-                    let lowered = lambda_ctx
-                        .dag
-                        .declaration(lambda_decl_id)
-                        .connective
-                        .clone();
-                    lambda_ctx.dag.declaration_mut(decl_id).connective = lowered;
+            match lower_lambda_expr_to_arrow(params, body, span, ty_decl_id, &mut lambda_ctx) {
+                Ok(connective) => {
+                    lambda_ctx.dag.declaration_mut(decl_id).connective = connective;
                     suppress_unparsed_scaffold = true;
                     None
                 }
@@ -6783,6 +6778,32 @@ fn lower_lambda_expr(
     expected_decl: DeclarationId,
     ctx: &mut LambdaLoweringContext<'_>,
 ) -> Result<DeclarationId, Diagnostic> {
+    let connective = lower_lambda_expr_to_arrow(params, body, span, expected_decl, ctx)?;
+    let lambda_decl_id = ctx.dag.alloc_declaration_id();
+    ctx.dag.push_declaration(Declaration {
+        id: lambda_decl_id,
+        name: None,
+        connective,
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span: span.clone(),
+    });
+    Ok(lambda_decl_id)
+}
+
+fn lower_lambda_expr_to_arrow(
+    params: &[String],
+    body: &SurfaceExpr,
+    span: &SourceSpan,
+    expected_decl: DeclarationId,
+    ctx: &mut LambdaLoweringContext<'_>,
+) -> Result<TypeConnective, Diagnostic> {
     let Some((expected_inputs, expected_output)) =
         declaration_callable_signature(ctx.dag, expected_decl, 0)
     else {
@@ -6869,29 +6890,14 @@ fn lower_lambda_expr(
         emit_participation: Some(BindEmitParticipation::UserCallable),
     }));
 
-    let lambda_decl_id = ctx.dag.alloc_declaration_id();
-    ctx.dag.push_declaration(Declaration {
-        id: lambda_decl_id,
-        name: None,
-        connective: TypeConnective::Arrow {
-            inputs: expected_inputs,
-            output: expected_output,
-            body: ArrowBody::UserDefined(
-                BindNodeId::from_bind_node(ctx.dag, bind_id)
-                    .expect("UserDefined Arrow body bind id must point at a Bind"),
-            ),
-        },
-        type_params: Vec::new(),
-        phantom_params: Vec::new(),
-        meta_tag: None,
-        specialization_parent: None,
-        inhabits: None,
-        value_body: None,
-        refinement: None,
-        nominal_opacity: None,
-        span: span.clone(),
-    });
-    Ok(lambda_decl_id)
+    Ok(TypeConnective::Arrow {
+        inputs: expected_inputs,
+        output: expected_output,
+        body: ArrowBody::UserDefined(
+            BindNodeId::from_bind_node(ctx.dag, bind_id)
+                .expect("UserDefined Arrow body bind id must point at a Bind"),
+        ),
+    })
 }
 
 fn resolve_callable_reference(

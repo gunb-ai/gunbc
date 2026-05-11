@@ -56,6 +56,22 @@ fn substrate_gap_function_valued_data_executes_through_evaluator() {
         "function-valued data must carry an executable Arrow body"
     );
     assert!(
+        dag.declarations().iter().all(|decl| {
+            if decl.name.is_some() {
+                return true;
+            }
+            let TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(bind_id),
+                ..
+            } = &decl.connective
+            else {
+                return true;
+            };
+            !bind_id.bind(&dag).name.starts_with("__anon_lambda_")
+        }),
+        "function-valued data must not lower through an orphan anonymous lambda declaration"
+    );
+    assert!(
         dag.nodes().iter().any(|node| {
             matches!(
                 node,
