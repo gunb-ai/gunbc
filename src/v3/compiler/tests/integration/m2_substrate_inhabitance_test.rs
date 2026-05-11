@@ -6,11 +6,11 @@ use v3_compiler::dag::{
     join_evidence, literal_bits_int, lower_call_pattern, map_evidence_merge_at, merge_evidence,
     optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
     positive_amount_from_i64, promote_to_strict, size_bound_param, tree_size_bound,
-    type_iteration_dimension, AlgebraProfile,
-    ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue,
-    Interval, IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget,
-    PositiveDescentAmount, PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound,
-    SubValueRelation, TypeConnective, ValueBody,
+    type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
+    CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
+    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
+    TypeConnective, ValueBody,
 };
 use v3_compiler::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
 use v3_compiler::parse_surface;

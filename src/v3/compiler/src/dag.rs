@@ -1404,9 +1404,7 @@ fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPat
         return None;
     }
 
-    relations
-        .iter()
-        .find_map(project_sub_value_relation)
+    relations.iter().find_map(project_sub_value_relation)
 }
 
 fn project_sub_value_relation(relation: &SubValueRelation) -> Option<CallPattern> {
