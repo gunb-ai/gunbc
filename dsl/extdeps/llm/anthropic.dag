@@ -73,7 +73,8 @@ data models: List<AnthropicModelSpec> = [
 ]
 
 // -- Anthropic content blocks (provider-specific) ---------------------
-// Extends the shared ContentBlock (llm.dag) with tool-use blocks.
+// Tool-use / tool-result surfaces are Anthropic-specific; shared multimodal
+// primitives (`ImageSource`, …) import from `extdeps.llm.llm`.
 
 // 🟢 TERMINAL provider-domain coproduct for tool-result content. Anthropic accepts
 // either a scalar JSON string (`ToolResultText`) or a JSON array of nested blocks
@@ -94,7 +95,7 @@ type AnthropicToolResultContent
 // generated SDK (`TextBlockParam | ImageBlockParam | DocumentBlockParam |
 // SearchResultBlockParam | ToolReferenceBlockParam`).
 //
-// 🟡 SCAFFOLD — 🟡 / provider API extension trigger: Anthropic adds additional
+// 🟡 SCAFFOLD — provider API extension trigger: Anthropic adds additional
 // `tool_result.content[]` discriminators beyond the five modeled arms; fold new
 // wire tags here under `anthropic_tool_result_block_wire_contract` or escalate if
 // the wire contract shape changes non-additively.

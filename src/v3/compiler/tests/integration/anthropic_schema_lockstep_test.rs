@@ -311,6 +311,30 @@ fn v2_llm_disj_variants(name: &str) -> Vec<(String, V2VariantPayload)> {
     parse_v2_disj_block(name, block)
 }
 
+fn closing_paren_byte_idx(chunk: &str, open_paren: usize) -> usize {
+    let bytes = chunk.as_bytes();
+    debug_assert_eq!(bytes.get(open_paren), Some(&b'('));
+    let mut depth = 0usize;
+    let mut i = open_paren;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'(' => {
+                depth += 1;
+                i += 1;
+            }
+            b')' => {
+                depth -= 1;
+                i += 1;
+                if depth == 0 {
+                    return i - 1;
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    panic!("v2 variant fragment has unmatched `(` — lockstep parser needs an update: `{chunk}`")
+}
+
 fn parse_v2_disj_block(name: &str, block: &str) -> Vec<(String, V2VariantPayload)> {
     let eq = block.find('=').unwrap_or_else(|| {
         panic!("v2 `type {name}` is not a disj block (no `=` in extracted text)")
@@ -333,26 +357,42 @@ fn parse_v2_disj_block(name: &str, block: &str) -> Vec<(String, V2VariantPayload
         if chunk.is_empty() {
             continue;
         }
-        // Split into label-prefix vs payload `{ … }` (if any).
-        let (label_part, payload) = match chunk.find('{') {
-            Some(brace) => {
-                // Find the matching `}` (variants are flat — no nested
-                // braces in the v2 anthropic.dag — so a forward search
-                // suffices; if a future variant nests we'll need a
-                // bracket counter).
-                let body_end = chunk[brace + 1..].find('}').unwrap_or_else(|| {
-                    panic!(
-                        "v2 `type {name}` variant fragment has unmatched `{{` — \
-                         lockstep parser needs an update for new v2 syntax: `{chunk}`"
-                    )
-                });
-                let body = &chunk[brace + 1..brace + 1 + body_end];
-                (
-                    chunk[..brace].trim().to_string(),
-                    Some(parse_v2_brace_body_fields(body)),
+        let open_paren = chunk.find('(');
+        let open_brace = chunk.find('{');
+        let tuple_before_record = match (open_paren, open_brace) {
+            (Some(p), Some(b)) => p < b,
+            (Some(_), None) => true,
+            _ => false,
+        };
+
+        // Split into label-prefix vs payload.
+        let (label_part, payload) = if tuple_before_record {
+            let p = open_paren.expect("tuple_before_record implies `(` present");
+            let close = closing_paren_byte_idx(chunk, p);
+            let inner = chunk[p + 1..close].trim();
+            let label = chunk[..p].trim().to_string();
+            (
+                label,
+                Some(vec![("_0".to_string(), normalize_ty_text(inner), false)]),
+            )
+        } else if let Some(brace) = open_brace {
+            // Find the matching `}` (variants are flat — no nested
+            // braces in the v2 anthropic.dag — so a forward search
+            // suffices; if a future variant nests we'll need a
+            // bracket counter).
+            let body_end = chunk[brace + 1..].find('}').unwrap_or_else(|| {
+                panic!(
+                    "v2 `type {name}` variant fragment has unmatched `{{` — \
+                     lockstep parser needs an update for new v2 syntax: `{chunk}`"
                 )
-            }
-            None => (chunk.to_string(), None),
+            });
+            let body = &chunk[brace + 1..brace + 1 + body_end];
+            (
+                chunk[..brace].trim().to_string(),
+                Some(parse_v2_brace_body_fields(body)),
+            )
+        } else {
+            (chunk.to_string(), None)
         };
         let label = label_part.trim().to_string();
         if label.is_empty() {
@@ -618,6 +658,16 @@ fn anthropic_user_content_block_lockstep() {
 #[test]
 fn anthropic_tool_result_content_lockstep() {
     assert_disj_lockstep("AnthropicToolResultContent");
+}
+
+#[test]
+fn anthropic_tool_result_block_lockstep() {
+    assert_disj_lockstep("AnthropicToolResultBlock");
+}
+
+#[test]
+fn anthropic_tool_result_plain_text_document_source_lockstep() {
+    assert_record_lockstep("AnthropicToolResultPlainTextDocumentSource");
 }
 
 #[test]
