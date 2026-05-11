@@ -1,4 +1,5 @@
 use v3_compiler::compile_to_dag;
+use v3_compiler::CompileError;
 use v3_compiler::dag::{
     ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, PortState,
     TransformTarget, TypeConnective,
@@ -102,30 +103,19 @@ fn r3_gate60_phantom_width_unsupported_magnitude_emits_diagnostic() {
 
 #[test]
 fn r3_gate60_bare_phantom_width_literal_emits_diagnostic() {
-    // Bare decimal at type-atom position is rejected in the parser (`AtomTypePolicy`).
-    let outcome =
-        cached_compile_outcome("type BarePhantom = 64\n", "r3_gate60_bare_phantom_lit.v3");
-    let dag = outcome.dag();
-    assert!(
-        dag.diagnostics().iter().any(|(_, d)| {
-            d.message()
-                .contains("phantom machine-width literals are only allowed inside")
-        }),
-        "expected bare-literal diagnostic, got {:?}",
-        dag.diagnostics()
-    );
-    let resolve_errors: Vec<&str> = dag
-        .diagnostics()
-        .iter()
-        .filter_map(|(_, d)| match d {
-            Diagnostic::ResolveError { name, .. } => Some(name.as_str()),
-            _ => None,
-        })
-        .collect();
-    assert!(
-        resolve_errors.is_empty(),
-        "expected no spurious ResolveError after authoritative ParseError, got {resolve_errors:?}"
-    );
+    match compile_to_dag("type BarePhantom = 64\n", "r3_gate60_bare_phantom_lit.v3") {
+        Err(CompileError::Parse(diag)) => {
+            assert!(
+                diag.message().contains("phantom machine-width literals are only allowed inside"),
+                "expected bare-literal diagnostic, got {}",
+                diag.message()
+            );
+        }
+        Err(other) => {
+            panic!("expected CompileError::Parse at token `64`; got {other:?}");
+        }
+        Ok(_) => panic!("bare phantom magnitude must not compile cleanly"),
+    }
 }
 
 #[test]
