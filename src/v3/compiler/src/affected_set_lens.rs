@@ -3,16 +3,20 @@
 //! Pure-host analysis over two compiled [`Dag`] snapshots. Each **dimension slice**
 //! starts from nodes with a **non-empty delta** for that dimension (fail-closed when
 //! comparisons are unavailable), then closes **forward over downstream consumers**
-//! using the substrate port graph (reverse of `resolve_producer_lookup`).
+//! using the substrate port graph (reverse of `resolve_producer_lookup`). Every exported
+//! dimension carries at least one human-readable receipt in [`DimensionSlice::receipts`]
+//! (explicit seed/affected/discipline bookkeeping — prototype host projection, see gunbc#2699).
 //!
 //! ## Value dimension caveat
 //!
 //! Structural `Behavior` inequality does **not** prove return-value equivalence or
 //! non-equivalence. Following design §2 `PROVEN` discipline, this slice uses the
-//! structural-edit seed set (paired inequality on **fixture-scoped spans** plus orphan after-nodes) and the
-//! same downstream closure as the naive baseline for that seed set. **Per-node proof
-//! receipts that exclude downstream consumers on value grounds are not emitted yet**
-//! because the proof substrate does not expose an I/O-equivalence oracle in-tree.
+//! structural-edit seed set (paired span-key `Behavior` inequality via host `Debug`
+//! snapshots—**not** under-approximated by attribution path; orphan after-nodes are
+//! always seeds) and the same downstream closure as the naive baseline for that seed set.
+//! **Per-node proof receipts that exclude downstream consumers on value grounds are not
+//! emitted yet** because the proof substrate does not expose an I/O-equivalence oracle
+//! in-tree.
 //!
 //! Narrowing demos for gunbc#2699 lean on **`cost` / `effect` / `refinement`**
 //! deltas plus commentary in `.dag` worked examples.
@@ -34,10 +38,6 @@ use crate::dag::{
 use crate::lens_cost::complexity_of;
 use crate::lens_effect_enumeration::StructuralEffectShape;
 
-/// Substring identifying [`SourceSpan::file`] values tied to `tests/fixtures/affected_set/` cases.
-/// Paired span-key matches outside this path are treated as identical for structural seeding
-/// (bootstrap noise) in this prototype only.
-const AFFECTED_SET_FIXTURE_ATTR_SENTINEL: &str = "tests/fixtures/affected_set/";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AffectedSetReceipt {
     pub dimension: &'static str,
@@ -64,6 +64,9 @@ pub struct AffectedSetLensReport {
     /// ports on the full bootstrapped substrate and does not meet integration-test wall time.
     pub first_structural_difference: Option<String>,
     pub downstream_build_receipt: DownstreamBuildReceipt,
+    /// Seeds and transitive downstream closure for paired structural deltas (producer graph).
+    pub structural: DimensionSlice,
+    /// Convenience field: duplicates `structural.affected_ids` (structural downstream closure).
     pub transitive_downstream: Vec<NodeId>,
     pub value: DimensionSlice,
     pub cost: DimensionSlice,
@@ -207,11 +210,9 @@ impl BehaviorPairing {
         for (before_id, after_id) in &self.pairs {
             let b = dag_before.node(*before_id);
             let a = dag_after.node(*after_id);
-            let sb = b.span().file.contains(AFFECTED_SET_FIXTURE_ATTR_SENTINEL);
-            let sa = a.span().file.contains(AFFECTED_SET_FIXTURE_ATTR_SENTINEL);
-            if !(sb && sa) {
-                continue;
-            }
+            // Fail-closed (INVARIANTS P1/P3): never drop a paired structural delta based on
+            // `SourceSpan::file` heuristics—integration fixtures and production DAGs use the
+            // same seeding rule.
             if format!("{b:?}") != format!("{a:?}") {
                 seeds.insert(*after_id);
             }
@@ -271,6 +272,12 @@ pub fn compute_affected_set_lens_report(
     let mut structural_seeds_after: Vec<NodeId> = structural_seed_set.into_iter().collect();
     structural_seeds_after.sort_by_key(|id| id.raw());
     let first_structural_difference = None;
+    let transitive_downstream = downstream.transitive_forward(&structural_seeds_after);
+    let structural_slice = propagate_slice_structural(
+        &downstream_integrity,
+        structural_seeds_after.clone(),
+        transitive_downstream.clone(),
+    );
 
     let value_slice = propagate_slice_value(&downstream, structural_seeds_after.clone());
 
@@ -285,20 +292,54 @@ pub fn compute_affected_set_lens_report(
         propagate_slice_with_seeds_only("refinement", &downstream, refinement_seeds);
 
     let structural_seed_count = structural_seeds_after.len();
-    let transitive_downstream = downstream.transitive_forward(&structural_seeds_after);
-    let aggregate_union =
-        aggregate_union_sorted(&[&value_slice, &cost_slice, &effect_slice, &refinement_slice]);
+    let aggregate_union = aggregate_union_sorted(&[
+        &structural_slice,
+        &value_slice,
+        &cost_slice,
+        &effect_slice,
+        &refinement_slice,
+    ]);
 
     AffectedSetLensReport {
         structural_seed_count,
         first_structural_difference,
         downstream_build_receipt: downstream_integrity,
-        transitive_downstream,
+        structural: structural_slice,
+        transitive_downstream: transitive_downstream.clone(),
         value: value_slice,
         cost: cost_slice,
         effect: effect_slice,
         refinement: refinement_slice,
         aggregate_union,
+    }
+}
+
+fn propagate_slice_structural(
+    integrity: &DownstreamBuildReceipt,
+    structural_seeds_after: Vec<NodeId>,
+    transitive_downstream: Vec<NodeId>,
+) -> DimensionSlice {
+    let mut seed_ids_sorted = structural_seeds_after;
+    seed_ids_sorted.sort_by_key(|id| id.raw());
+    let mut summary = String::new();
+    let _ = write!(
+        &mut summary,
+        "dimension=structural; seed_count={}; affected_count={}; discipline=paired_span_key_behavior_snapshot_diff_orphans_downstream_anchor_fail_closed; downstream_walk_fail_closed_seeds={}; malformed_upstream_walk_strings={}",
+        seed_ids_sorted.len(),
+        transitive_downstream.len(),
+        integrity.fail_closed_consumer_seeds.len(),
+        integrity.malformed_producer_walks.len(),
+    );
+    let dimension_node = seed_ids_sorted.first().copied();
+    DimensionSlice {
+        dimension: "structural",
+        seed_ids: seed_ids_sorted,
+        affected_ids: transitive_downstream,
+        receipts: vec![AffectedSetReceipt {
+            dimension: "structural",
+            dimension_node,
+            summary,
+        }],
     }
 }
 
@@ -313,8 +354,8 @@ fn propagate_slice_value(
         dimension: "value",
         dimension_node: seed_ids_sorted.first().copied(),
         summary: String::from(
-            "value slice uses structural-edit seeds and full downstream closure; \
-             I/O-equivalence exclusions require future proof substrate (design §2 PROVEN)",
+            "dimension=value; mirrors structural-edit seeds via full downstream closure; \
+             discipline=host_structural_projection_not_io_proof; oracle=unknown (design §2 PROVEN)",
         ),
     }];
     DimensionSlice {
@@ -333,22 +374,19 @@ fn propagate_slice_with_seeds_only(
     let mut seed_ids_sorted: Vec<NodeId> = seeds.into_iter().collect();
     seed_ids_sorted.sort_by_key(|id| id.raw());
     let affected = downstream.transitive_forward(&seed_ids_sorted);
-    let mut receipts = Vec::new();
-    if !seed_ids_sorted.is_empty() {
-        let mut summary = String::new();
-        let _ = write!(
-            &mut summary,
-            "dimension={}; seed_count={}; affected_count={}",
-            dimension,
-            seed_ids_sorted.len(),
-            affected.len()
-        );
-        receipts.push(AffectedSetReceipt {
-            dimension,
-            dimension_node: seed_ids_sorted.first().copied(),
-            summary,
-        });
-    }
+    let mut summary = String::new();
+    let _ = write!(
+        &mut summary,
+        "dimension={}; seed_count={}; affected_count={}; discipline=paired_behavior_span_key_miss_or_carrier_diff_then_fail_closed",
+        dimension,
+        seed_ids_sorted.len(),
+        affected.len()
+    );
+    let receipts = vec![AffectedSetReceipt {
+        dimension,
+        dimension_node: seed_ids_sorted.first().copied(),
+        summary,
+    }];
     DimensionSlice {
         dimension,
         seed_ids: seed_ids_sorted,

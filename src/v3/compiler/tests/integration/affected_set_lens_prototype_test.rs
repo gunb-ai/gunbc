@@ -28,6 +28,11 @@ fn compile_fixture(source: &str, attribution: &str) -> Dag {
 fn assert_each_slice_within_transitive(
     report: &v3_compiler::affected_set_lens::AffectedSetLensReport,
 ) {
+    assert_eq!(
+        report.structural.affected_ids, report.transitive_downstream,
+        "structural.affected_ids must track legacy transitive_downstream"
+    );
+    assert_report_slices_carry_receipts(report);
     let bound = report.transitive_downstream.len();
     assert!(
         report.value.affected_ids.len() <= bound,
@@ -45,6 +50,25 @@ fn assert_each_slice_within_transitive(
         report.refinement.affected_ids.len() <= bound,
         "refinement slice should stay inside structural downstream envelope"
     );
+}
+
+fn assert_report_slices_carry_receipts(
+    report: &v3_compiler::affected_set_lens::AffectedSetLensReport,
+) {
+    let slices = [
+        &report.structural,
+        &report.value,
+        &report.cost,
+        &report.effect,
+        &report.refinement,
+    ];
+    for s in slices {
+        assert!(
+            !s.receipts.is_empty(),
+            "dimension '{}' must emit at least one discipline receipt",
+            s.dimension,
+        );
+    }
 }
 
 #[test]
@@ -87,6 +111,22 @@ fn case_b_signature_change_surfaces_wide_structural_seed() {
     assert_each_slice_within_transitive(&report);
 }
 
+/// #2699 charter §3 bookkeeping: merge-commit OID pins (REST `mergeCommit.oid` snapshots, 2026-05-11).
+#[test]
+fn charter_issue2699_upstream_pr_merge_oid_pins_may2026() {
+    const ROWS: &[(&str, &str)] = &[
+        ("2647", "a091e1a2671efdfe50ee49bb4a2f7b5908e85f53"),
+        ("2679", "6897445b874f1831468f27c871c00f5b23d7ded2"),
+        ("2693", "39ba757288246f95bea187f81593ed75729507e0"),
+    ];
+    for (label, oid) in ROWS {
+        assert_eq!(oid.len(), 40, "{label}: merge OID width");
+        assert!(
+            oid.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')),
+            "{label}: non-hex in merge OID",
+        );
+    }
+}
 #[test]
 fn case_c_algebra_carrier_surrogate_changes_walker_dependency() {
     let before = compile_fixture(

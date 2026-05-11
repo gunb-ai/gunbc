@@ -56,7 +56,11 @@ log_file_arg=${1:-}
 budget_ms=${2:-${TEST_TIMEOUT_MS:-2000}}
 pkg=${TEST_TIMEOUT_PACKAGE:-v3-compiler}
 exempt_file=${TEST_TIMEOUT_EXEMPT:-scripts/slow-test-exemptions.txt}
+<<<<<<< HEAD
 max_exemptions=${TEST_TIMEOUT_MAX_EXEMPTIONS:-80}
+=======
+max_exemptions=${TEST_TIMEOUT_MAX_EXEMPTIONS:-83}
+>>>>>>> 5d1cdce1e (WIP: silent-bat-152)
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$script_dir/.." && pwd)
