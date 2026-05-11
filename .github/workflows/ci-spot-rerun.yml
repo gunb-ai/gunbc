@@ -16,12 +16,13 @@ jobs:
     # fight the active run (extra v3 jobs, Zig setup canceled again).
     if: >
       github.event.workflow_run.conclusion == 'failure' &&
-      github.event.workflow_run.run_attempt < 2
+      github.event.workflow_run.run_attempt < 4
     runs-on: [self-hosted, linux, x64, gunbc-quick]
     timeout-minutes: 5
     steps:
-      # `run_attempt < 3` allows two automatic reruns after the initial run (three
-      # attempts total) when self-hosted spot runners drop mid-suite jobs.
+      # `run_attempt < 4` allows three automatic reruns after the initial run (four
+      # attempts total) on **failure** when self-hosted runners drop mid-suite jobs.
+      # `cancelled` is intentionally excluded (see job `if` comment above).
       - name: Rerun failed jobs (automatic retry)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
