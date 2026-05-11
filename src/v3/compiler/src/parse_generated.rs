@@ -1295,14 +1295,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type_expr(&mut self) -> Result<SurfaceType, Diagnostic> {
-        self.parse_type_expr_with_atom_policy(AtomTypePolicy::DisallowPhantomWidthLit)
-    }
-
-    fn parse_type_expr_with_atom_policy(
-        &mut self,
-        atom_policy: AtomTypePolicy,
-    ) -> Result<SurfaceType, Diagnostic> {
-        let mut ty = self.parse_atom_type(atom_policy)?;
+        let mut ty = self.parse_atom_type()?;
         while matches!(self.peek().kind, TokenKind::Question) {
             let q = self.bump().clone();
             let start = ty.span().byte_start;
@@ -1314,14 +1307,11 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    fn parse_atom_type(&mut self, atom_policy: AtomTypePolicy) -> Result<SurfaceType, Diagnostic> {
+    fn parse_atom_type(&mut self) -> Result<SurfaceType, Diagnostic> {
         if matches!(self.peek().kind, TokenKind::KwFn) {
             let fn_tok = self.bump().clone();
             self.expect_kind(TokenKind::LParen)?;
-            let inputs = self.parse_type_expr_list_until(
-                TokenKind::RParen,
-                AtomTypePolicy::DisallowPhantomWidthLit,
-            )?;
+            let inputs = self.parse_type_expr_list_until(TokenKind::RParen)?;
             self.expect_kind(TokenKind::RParen)?;
             self.expect_kind(TokenKind::Arrow)?;
             let output = self.parse_type_expr()?;
@@ -1333,36 +1323,9 @@ impl<'a> Parser<'a> {
             });
         }
 
-        // R3 §1.8 gate #60 / S3 Phase-2: `Int<64>`, … — decimal literals as magnitudes appear
-        // **only inside** `Name<…>` generic-arg lists (`AtomTypePolicy::AllowPhantomWidthLit`).
-        if matches!(&self.peek().kind, TokenKind::IntLit(_)) {
-            let lit_tok = self.bump().clone();
-            let bits_lit = if let TokenKind::IntLit(bits_lit) = lit_tok.kind {
-                bits_lit
-            } else {
-                return Err(Diagnostic::ParseError {
-                    message: format!(
-                        "internal parser inconsistency: expected integer literal atom, got {:?}",
-                        lit_tok.kind,
-                    ),
-                    span: lit_tok.span.clone(),
-                    fixes: Vec::new(),
-                });
-            };
-            return match atom_policy {
-                AtomTypePolicy::AllowPhantomWidthLit => Ok(SurfaceType::PhantomWidthLit {
-                    bits_lit,
-                    span: lit_tok.span,
-                }),
-                AtomTypePolicy::DisallowPhantomWidthLit => Err(Diagnostic::ParseError {
-                    message: "phantom machine-width literals are only allowed inside \
-                         `Int<N>`, `UInt<N>`, `Real<N>`, `Nat<N>`, or `MachineWidth<N>`"
-                        .to_string(),
-                    span: lit_tok.span,
-                    fixes: Vec::new(),
-                }),
-            };
-        }
+        // Bare decimal atoms at ordinary type-expression positions are rejected here (fall through).
+        // R3 gate #60: phantom magnitudes are **only** valid through `SurfaceTypeArg` inside generic
+        // angle-bracket lists (`parse_generic_type_arg`), never as standalone `SurfaceType`.
 
         let token = self.bump().clone();
         let name = match token.kind {
@@ -1378,8 +1341,7 @@ impl<'a> Parser<'a> {
 
         if matches!(self.peek().kind, TokenKind::Lt) && self.looks_like_type_args() {
             self.bump();
-            let args = self
-                .parse_type_expr_list_until(TokenKind::Gt, AtomTypePolicy::AllowPhantomWidthLit)?;
+            let args = self.parse_generic_type_arg_list_until(TokenKind::Gt)?;
             let close = self.expect_kind(TokenKind::Gt)?;
             Ok(SurfaceType::Parameterized {
                 name,
@@ -1406,14 +1368,13 @@ impl<'a> Parser<'a> {
     fn parse_type_expr_list_until(
         &mut self,
         end: TokenKind,
-        element_atom_policy: AtomTypePolicy,
     ) -> Result<Vec<SurfaceType>, Diagnostic> {
         let mut types = Vec::new();
         if self.peek().kind == end {
             return Ok(types);
         }
         loop {
-            types.push(self.parse_type_expr_with_atom_policy(element_atom_policy)?);
+            types.push(self.parse_type_expr()?);
             if matches!(self.peek().kind, TokenKind::Comma) {
                 self.bump();
                 continue;
@@ -1421,6 +1382,52 @@ impl<'a> Parser<'a> {
             break;
         }
         Ok(types)
+    }
+
+    fn parse_generic_type_arg(&mut self) -> Result<SurfaceTypeArg, Diagnostic> {
+        if matches!(&self.peek().kind, TokenKind::IntLit(_)) {
+            let lit_tok = self.bump().clone();
+            let bits_lit = if let TokenKind::IntLit(bits_lit) = lit_tok.kind {
+                bits_lit
+            } else {
+                return Err(Diagnostic::ParseError {
+                    message: format!(
+                        "internal parser inconsistency: expected integer literal atom, got {:?}",
+                        lit_tok.kind,
+                    ),
+                    span: lit_tok.span.clone(),
+                    fixes: Vec::new(),
+                });
+            };
+            return Ok(SurfaceTypeArg::PhantomWidthLit {
+                bits_lit,
+                span: lit_tok.span,
+            });
+        }
+
+        let ty = self.parse_type_expr()?;
+        Ok(SurfaceTypeArg::Ty {
+            body: Box::new(ty),
+        })
+    }
+
+    fn parse_generic_type_arg_list_until(
+        &mut self,
+        end: TokenKind,
+    ) -> Result<Vec<SurfaceTypeArg>, Diagnostic> {
+        let mut args = Vec::new();
+        if self.peek().kind == end {
+            return Ok(args);
+        }
+        loop {
+            args.push(self.parse_generic_type_arg()?);
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+                continue;
+            }
+            break;
+        }
+        Ok(args)
     }
 
     fn parse_ident(&mut self) -> Result<String, Diagnostic> {
