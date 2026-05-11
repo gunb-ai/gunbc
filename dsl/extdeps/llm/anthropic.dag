@@ -174,12 +174,18 @@ type AnthropicMessages200ContentBlock
 // by `server_tool_input_payloads_unmodeled`.
 type AnthropicServerToolName = WebSearch | WebFetch | CodeExecution | BashCodeExecution | TextEditorCodeExecution | ToolSearchToolRegex | ToolSearchToolBm25 | Advisor
 
+// 🟢 TERMINAL provider-domain enum for Anthropic Messages 200 `usage.service_tier`.
+// Dissolution receipt: the field is a closed API string domain, not free-form
+// metadata; fact placement would duplicate the usage field authority, algebraic
+// form has no operator surface, and dimensional split has no independent axes.
+type AnthropicMessages200ServiceTier = Standard | Priority | Batch
+
 type AnthropicMessages200Usage {
   input_tokens: Int
   output_tokens: Int
   cache_creation_input_tokens: Int?
   cache_read_input_tokens: Int?
-  service_tier: String?
+  service_tier: AnthropicMessages200ServiceTier?
 }
 
 // Anthropic Messages 200 response role. The API currently returns only
@@ -216,8 +222,7 @@ data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
   "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesToolUseBlock|residue:client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema|trigger:tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema",
   "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesServerToolUseBlock|residue:server_tool_input_and_optional_caller_payloads_unmodeled|trigger:fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName",
   "closure:anthropic_messages_200_residual|AnthropicServerToolName|external_spec_watch:server_tool_use_name_set|trigger:Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock|variant_pending:web_fetch_tool_result|variant_pending:code_execution_tool_result|variant_pending:bash_code_execution_tool_result|variant_pending:text_editor_code_execution_tool_result|variant_pending:tool_search_tool_result|variant_pending:advisor_tool_result|variant_pending:mcp_tool_use|variant_pending:mcp_tool_result|variant_pending:container_upload|trigger:Anthropic beta/server-tool content-block surface modeled structurally",
-  "closure:anthropic_messages_200_residual|llm.Anthropic.Messages.output.content|blocked:variant_aware_typed_rest_response_projection|path:content/0/text|requires_arm:AnthropicMessages200ContentBlock.MessagesTextBlock|trigger:structural projection metadata carrier lands"
+  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock|variant_pending:web_fetch_tool_result|variant_pending:code_execution_tool_result|variant_pending:bash_code_execution_tool_result|variant_pending:text_editor_code_execution_tool_result|variant_pending:tool_search_tool_result|variant_pending:advisor_tool_result|variant_pending:mcp_tool_use|variant_pending:mcp_tool_result|variant_pending:container_upload|trigger:Anthropic beta/server-tool content-block surface modeled structurally"
 ]
 
 // Request wire: Messages API expects string `role` + flat `content[]` objects
@@ -229,7 +234,8 @@ data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
 data rest_request_wire_serde_alignment_receipt: List<String> = [
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|paid:role_internally_tagged_object_user_assistant",
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock|paid:type_internally_tagged_object_text_tool_result",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use"
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicMessages200ContentBlock|paid:messages_200_content_block_internally_tagged_object"
 ]
 
 data structural_coverage_gap_anthropic_tool_result_content_wire_shape: List<String> = [
