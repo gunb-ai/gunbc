@@ -20,7 +20,9 @@ jobs:
     runs-on: [self-hosted, linux, x64, gunbc-quick]
     timeout-minutes: 5
     steps:
-      - name: Rerun failed jobs once
+      # `run_attempt < 3` allows two automatic reruns after the initial run (three
+      # attempts total) when self-hosted spot runners drop mid-suite jobs.
+      - name: Rerun failed jobs (automatic retry)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
