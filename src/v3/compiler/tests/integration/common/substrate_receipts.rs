@@ -361,19 +361,25 @@ pub fn assert_bootstrap_integer_aliases_align_to_refinements(dag: &Dag) {
     }
 }
 
-/// Receipt: `Real64` refines abstract `Real` with `MachineWidth<Word64>` (R3 gate #67).
-pub fn assert_bootstrap_real64_compose_real_machine_width(dag: &Dag) {
-    assert_compose_with_machine_width(dag, "Real64", "Real", "Word64");
+/// Receipt: fixed-width reals refine abstract `Real` with `MachineWidth<Word*>`
+/// (R3 gate #18), not parallel float carrier substrate.
+pub fn assert_bootstrap_real_aliases_align_to_refinements(dag: &Dag) {
+    for (alias, width) in [("Real32", "Word32"), ("Real64", "Word64")] {
+        assert_compose_with_machine_width(dag, alias, "Real", width);
+    }
 }
 
-/// Receipt: compatibility `Float64` names the same fixed-width `Real64` construction.
-pub fn assert_bootstrap_float64_aliases_real64(dag: &Dag) {
-    let float64_id = peel_zero_arg_alias(dag, find_named(dag, "Float64"));
-    let real64_id = peel_zero_arg_alias(dag, find_named(dag, "Real64"));
-    assert_eq!(
-        float64_id, real64_id,
-        "Float64 should alias the canonical Real64 construction entry"
-    );
+/// Receipt: compatibility `Float32` / `Float64` names alias the same fixed-width
+/// `Real32` / `Real64` construction entries.
+pub fn assert_bootstrap_float_aliases_real_width_refinements(dag: &Dag) {
+    for (float_alias, real_alias) in [("Float32", "Real32"), ("Float64", "Real64")] {
+        let float_id = peel_zero_arg_alias(dag, find_named(dag, float_alias));
+        let real_id = peel_zero_arg_alias(dag, find_named(dag, real_alias));
+        assert_eq!(
+            float_id, real_id,
+            "{float_alias} should alias the canonical {real_alias} construction entry"
+        );
+    }
 }
 
 /// Receipt: the String audit is a documented-no-change state check; `String`

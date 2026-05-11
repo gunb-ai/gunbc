@@ -63554,7 +63554,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             ])),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10937, 15602),
+            span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 10937, 15660),
         });
         declarations.push(Declaration {
             id: DeclarationId(1700),
