@@ -9,6 +9,13 @@ of N per-run p99 values (R-7 conservative pin).
 Callers MUST pass the truthful capture label (paired workflow step uses ``ubicloud-standard-2`` beside
 the matching ``runs-on`` VM); spoofing canonical hosts is procedural fraud, not something this CLI
 automates away.
+
+Ubicloud captures (``.github/workflows/tier3-baseline-capture.yml``) upload **one bundle per matrix job**
+(independent VMs). **Bootstrap sessions** often run **five sequential benches on one host**, then pass five
+captures here—they still compute **median-of-medians / max(per-run-p99)** (R‑7 aggregation), just with
+weaker temporal independence than isolated CI VMs. The **`local-*` bootstrap `tier3_baseline.json`** in
+this lineage was emitted via this CLI from five sequential captures on one honest host before the
+workflow became dispatchable; replacing it with the Ubicloud artifact repeats the **same formulae**.
 """
 
 from __future__ import annotations
