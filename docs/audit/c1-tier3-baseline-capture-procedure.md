@@ -19,7 +19,9 @@ Per `docs/audit/c1-tier3-perf-budget-readiness-matrix.md` §1:
 
 Worker brief §"Discipline / baseline noise concerns" (line 108) is explicit: *"Phase 1 capture and Phase 2 measurement should run on the same canonical CI machine to keep comparison meaningful (hardware-stable). If CI infrastructure varies, escalate to Substrate Mgr."*
 
-**Per dispatch constraint:** "No fake or local-machine baseline JSON unless the canonical-host authority is explicitly satisfied." This procedure document is therefore the bounded preparatory artifact — schema + commands + validation specification authored once, executed once, by the operator who owns the canonical host.
+**Per dispatch constraint (historical):** the *initial drafting* constraint was “No fake baseline JSON.” Executable landing still forbids fabrication; **honest non-R-3 captures** are admitted only under the **bootstrap exception** in §4 / §5 (single authority: `host_id` matches the actual machine; PR reconciles forward R-3 path).
+
+This artifact captures schema + executable capture steps; canonical host is **`ubicloud-standard-2`** per R-3 (see §1 revision below).
 
 **Concrete next-unblock shape:** PB Manager authors a one-line addition to `docs/r3-structure.md` (or a sibling brief) of the form:
 
