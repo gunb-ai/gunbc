@@ -3980,6 +3980,7 @@ fn lower_data_item(
     // paths attach a diagnostic via `report_declaration_error` so
     // user-facing code sees the error.
     // DB-10 (3a.2): `data x: T = v` bodies lower by shape:
+    //   - Lambda        → executable Arrow on the data declaration.
     //   - Record literal → ValueBody::Structural (existing path).
     //   - List literal   → ValueBody::List (top-level aggregate path).
     //   - Scalar literal  → ValueBody::Scalar (new path, DB-10).
