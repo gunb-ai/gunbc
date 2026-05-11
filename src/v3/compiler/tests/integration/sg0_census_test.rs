@@ -718,6 +718,9 @@ const EXPECTED_TESTS_AS_DATA_MIGRATION_AUDIT_COUNT: usize = 116;
 // `TestClaim` data, remove that class's path matcher branch with the
 // retired Rust paths; when `EXPECTED_HAND_AUTHORED_TEST` reaches zero,
 // this classifier should disappear with it.
+// Match order is load-bearing while this exists: check classification
+// before deleting or reordering a branch, especially broad substring
+// branches such as `contains("sg")`.
 fn tests_as_data_migration_class(path: &str) -> Option<TestsAsDataMigrationClass> {
     use TestsAsDataMigrationClass::*;
 
