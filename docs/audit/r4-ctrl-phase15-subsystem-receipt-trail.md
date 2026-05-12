@@ -40,7 +40,7 @@ Cells use compact `bool · evidence` form. `—` denotes not-yet-applicable (e.g
 |---|---|---|---|---|---|---|
 | `pr_digests` | 8 | `—` (non-consumer) | `false` | `false` | `false` | `false` |
 
-(Wave-1 trio anchor — first row inserted on placeholder; flips begin once PR #2777 + #2775 merge and Wave-1 worker spawns + lands `dsl/ctrl/pr_digests.dag`.)
+(Wave-1 trio anchor — first row inserted on placeholder; flips begin when the Wave-1 worker lands `dsl/ctrl/pr_digests.dag`. Charter PR #2775 and Mgr brief PR #2777 are merged on main as of 2026-05-12.)
 
 ---
 
