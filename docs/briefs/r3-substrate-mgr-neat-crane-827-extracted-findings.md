@@ -16,40 +16,53 @@ Per `feedback_redirect_noop_prs`: substantive content shouldn't be lost when the
 
 ---
 
-## §1. Findings
+## §1. Pending diagnostic pointers (NOT verified findings)
 
-### Finding 1 — PR-number wiring
+This doc records **pointers to reviewer comments whose exact semantics have not yet been recovered**. Per `INVARIANTS.md` P1 (Documentation Describes Live State) + codex BLOCKING review (sha 2098603f5): until the source evidence is reconstructed from the review artifact, these are hypotheses, not authoritative findings. Treat them as TODO breadcrumbs for a future extraction step, not as dispatch-ready work items.
 
-**Source**: cursor review 10210 inline comment on PR #2765 sha a889f6df638. Specific finding semantics need re-extraction from the review artifact (`/api/reviews/10210/artifacts/stdout.log`) before a follow-up worker briefs.
+### Pointer 1 — "PR-number wiring"
 
-**Surface category**: CI orchestration tooling — likely related to how the `ci.yml` shim or guard scripts derive / consume the current PR number for affected-set queries, fixture isolation, or other PR-keyed routing.
+**Source**: cursor review 10210 inline comment on PR #2765 sha a889f6df638. Comment topic header per worker neat-crane-827's status message msg_01dcded6: "REQUEST_CHANGES on PR-number wiring and per-test timeout ratchet behavior".
 
-**Why isolable from Slice 4/5**: Slice 4 (YamlStatic body) emits a `Workflow` value from `CIWorkflowDag` and does not directly produce PR-number-wiring logic. Slice 5 (BinaryShim body) emits a thin YAML invoking a compiled Rust binary; PR-number wiring would be in the binary's main() rather than in the projection-function shape. The finding is cross-cutting CI-orchestration plumbing.
+**Status**: **unverified**. Exact comment text + line citations + concrete change request have **not** been re-extracted from `/api/reviews/10210/artifacts/stdout.log`. The artifact URL was not directly fetchable from this session at authoring time.
 
-**Reproduction context**: neat-crane-827's `scripts/ci-binary-shim.sh` + adjusted `scripts/check-pr-sg0-net-shrink-discipline.sh` likely surfaced the wiring issue. Branch `session/neat-crane-827` preserved at GitHub for diff inspection.
+**What is known**:
+- neat-crane-827 verified the finding as "valid" before STOP fired (per msg_01dcded6), so SOMETHING substantive surfaced
+- The topic header references CI orchestration tooling but the actual semantics — which file, which line, which behavior change — are unknown
+- Branch `session/neat-crane-827` is preserved at GitHub and may carry the diff that triggered the review comment
 
-### Finding 2 — Per-test timeout ratchet behavior
+**What is NOT known** (do not assert these — they need recovery):
+- The specific file / function / line the review identified
+- The exact concrete fix the reviewer proposed (if any)
+- Whether the issue is in neat-crane-827's added scripts or in existing code they touched
 
-**Source**: cursor review 10210 inline comment on PR #2765 sha a889f6df638. Specific finding semantics need re-extraction.
+### Pointer 2 — "Per-test timeout ratchet behavior"
 
-**Surface category**: test-runner ratchet machinery — adjacent to the existing `TEST_TIMEOUT_MAX_EXEMPTIONS` ratchet (per MEMORY.md hot-fix 2026-05-12 ctrl#217 substrate). Likely concerns how the ratchet handles per-test timeout values vs. global timeout budget, or how the ratchet's emission-side discipline interacts with timeout-bearing test definitions.
+**Source**: same cursor review 10210, same status-message topic header.
 
-**Why isolable from Slice 4/5**: timeout ratchet is a `dsl/std/verification.dag` / `test_runner.rs` concern, orthogonal to the WAD emitter substrate. Slice 4/5/8 don't touch ratchet semantics.
+**Status**: **unverified**. Same recovery prerequisite as Pointer 1.
 
-**Reproduction context**: neat-crane-827's adjustments to `scripts/check-pr-sg0-net-shrink-discipline.sh` + `scripts/check-v3-full-suite-split-test-targets.sh` likely surfaced the ratchet behavior; branch preserved for inspection.
+**What is known**:
+- Topic header references test-runner ratchet machinery (adjacent to `TEST_TIMEOUT_MAX_EXEMPTIONS` per MEMORY.md hot-fix 2026-05-12 ctrl#217 substrate)
+- Worker verified as "valid" before STOP
+
+**What is NOT known**:
+- Whether the comment concerns ratchet emission-side discipline, ratchet consumption-side, ratchet baseline drift, or some other axis
+- The specific change the reviewer wanted
+- Whether the concern is orthogonal to T-WAD scope or load-bearing on it
 
 ---
 
-## §2. Routing recommendation
+## §2. Required first step before any routing
 
-**Author proposes**: two small separate PRs (one per finding) rather than a single bundled PR — they don't share substrate-cause (per `feedback_bundle_workstreams_per_pr`).
+**Recover the exact comment text** from `/api/reviews/10210/artifacts/stdout.log` (or via direct PR-review enumeration on PR #2765's reviews list). Until that step completes, **no follow-up PR can be authored against these pointers** — there is no grounded source to write acceptance criteria from.
 
-- **F1 (PR-number wiring)** — dispatch as a Mgr-direct PR after a re-grep of the review-10210 artifact extracts the exact finding semantics. Likely small (5-20 lines).
-- **F2 (per-test timeout ratchet)** — dispatch as a Mgr-direct PR similarly. Likely interacts with ratchet baseline; may need ctrl#217 coordination per MEMORY.md `project_hot_fix_2026_05_12_substrate_cuts`.
+Options for recovery:
+- Operator-side resolution of the artifact URL fetch (out-of-band)
+- Direct GitHub API enumeration of PR #2765's review comments
+- Re-spawning a session with explicit dashboard-artifact read access
 
-**Bandwidth**: hand off when warm-wolf-698 has bandwidth post-Slice-4 dispatch, or spawn dedicated worker per finding. Could re-use the neat-crane-827 session if archive is rescinded, but PM (msg_aacfd28c) recommends fresh spawn per "don't sit on idle children" discipline.
-
-**Prerequisite**: re-extract exact finding semantics from `/api/reviews/10210/artifacts/stdout.log` (the dashboard artifact). At authoring time the artifact URL was not directly fetchable; may need operator-side resolution or alternative review-comment retrieval.
+**Do not pre-size or pre-route** the resulting work until the source evidence is in hand. The earlier draft of this doc speculated on size ("likely 5-20 lines") and dispatch shape — those guesses are removed per `INVARIANTS.md` P1.
 
 ---
 
