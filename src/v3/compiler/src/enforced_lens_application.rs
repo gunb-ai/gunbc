@@ -477,6 +477,18 @@ mod diagnostic_severity_fail_closed_tests {
     use crate::dag::LiteralBits;
 
     #[test]
+    fn attach_diagnostic_round_trips_through_diagnostic_table() {
+        let mut dag = Dag::new();
+        assert!(dag.diagnostics().is_empty());
+        dag.attach_diagnostic(Diagnostic::ParseError {
+            message: "probe".to_string(),
+            span: SourceSpan::new("probe.v3", 0, 1),
+            fixes: Vec::new(),
+        });
+        assert_eq!(dag.diagnostics().len(), 1);
+    }
+
+    #[test]
     fn check_enforced_lens_emits_diagnostic_when_diagnostic_severity_authority_unresolvable() {
         let mut dag = Dag::new();
         let Some(ds_id) = dag
@@ -490,9 +502,7 @@ mod diagnostic_severity_fail_closed_tests {
         else {
             panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
         };
-        // Must not end with `lens_application.dag` — e.g. `not_lens_application.dag` *does* end
-        // with that suffix and would still resolve.
-        dag.declaration_mut(ds_id).span.file = "src/v3/std/lens.dag".to_string();
+        dag.declaration_mut(ds_id).name = Some("DiagnosticSeverity__test_unresolvable".to_string());
         check_enforced_lens_applications(&mut dag);
         assert!(
             dag.diagnostics().iter().any(|(_, d)| matches!(
