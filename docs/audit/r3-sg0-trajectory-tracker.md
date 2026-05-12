@@ -40,6 +40,8 @@ total=$((non_test + test + fragments))
 echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test fragments=$fragments total=$total"
 ```
 
+**Seven-day velocity-tripwire anchor (canonical).** Path-churn/tripwire rows use fixed **seven** UTC calendar days ending on snapshot UTC date **`D`** (seven days means from UTC day **`D−6`** through **`D`** inclusive). **Baseline** = latest `origin/main` commit strictly before **`D−6` 00:00:00 UTC**; **head** = **`origin/main`** at snapshot row SHA. Anchoring **`--before` on `D−7` UTC midnight** against an **EOD** snapshot dated **`D`** spans **approximately eight** calendar days — it mislabeled earlier prose as rolling **7d** and inflated introductory counts; **2026‑05‑11** rows normalize to **`4b156d839`** → **`eed86ffc9`**.
+
 ## §3. Snapshot history
 
 | Date | sha | non_test | test | fragments | total | delta | bulk events | notes |
@@ -52,10 +54,14 @@ echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test fragments=$fra
 | **2026-05-09 EOD** | **eb2cc15cd** (last commit before 2026-05-10 UTC) | **53** | **107** | **2** | **162** | **+12 (retroactive correction; 9-day total: +42)** | 12 entries landed during 2026-05-09 evening: T-CostLens γ-ratification (#2283), R3 plan audit (#2501), 21-PR cycle (R3 P0 dissolutions + gate landings + audit + bridge retirements) | retroactive baseline correction; previous tracker row (150) was taken mid-day on 2026-05-09 before the evening cycle landed; honest EOD count is 162 |
 | **2026-05-10 (00:38Z)** | **f1588bcc8** | **53** | **107** | **1** | **161** | **−1 (vs 2026-05-09 EOD)** | (none) — 1 fragment removed (`parse_corpus_manifest.txt`-class transient) between eb2cc15cd and f1588bcc8 | Director-receipted intermediate reading at gunbc#828 c#4414054598 (committed on `session/gentle-newt-665` branch as 88e6fca99; never merged to main due to session archival). Director framing: "Trajectory NOT yet inflected toward shrink — bulk events queued (gate #6 wise-crane-831 ACTIVE, F2 PR #2473, T-Tier3 D2a PR #2285, carve-promotion #81/#82/#83/#95) but pre-land at snapshot. Alarm 1 + Alarm 2 tripped on extrapolation against the (then-stale) 150 baseline." Honest delta vs corrected EOD baseline (162) is **−1** (a marginal shrinkage), not +11 |
 | **2026-05-10 (later)** | **cea1fbe87** | **53** | **108** | **2** | **163** | **+2 (vs f1588bcc8 intermediate; +1 vs 2026-05-09 EOD)** | PR #2506 [codex] add anthropic wire demo (1 test entry + 1 fragment re-added: `anthropic_messages_wire_demo_test.rs` + manifest fragment) | **velocity is steady, not anomalous** (prior +13 framing was a baseline-comparison artifact; Director's +11 framing was the same artifact against the 150 baseline). True 1-day delta vs 2026-05-09 EOD is +1 entry net; cumulative 10-day total is +43 (+30 prior + +12 retroactive 2026-05-09 evening + +1 today). Velocity tripwire (≥3:1 introduction:dissolution, 7-day): **status pending/uncomputed** — 7-day cumulative ratio not yet computed in this snapshot; will be computed once Cluster M Phase 1 lands |
+| **2026-05-11 (EOD row snapshot)** | **eed86ffc9** | **50** | **116** | **2** | **168** | **+5 vs visible prior §3 row (`cea1fbe87`, Σ=163)** | merge churn on `eed86ffc9` ancestry: net **−3** non_test / **+4** test | **Intraday +1 vs midday interim `31acf4357` (Σ=167)** — midday row not listed above (same pattern as **2026-05-09** mid-day vs EOD pairing). **True rolling 7 calendar UTC days** ending **2026-05-11** (start **2026-05-05**): baseline `4b156d839` (last `origin/main` before **2026-05-05 00:00 UTC**). Σ-count **`137→168 (+31)`**. **Velocity tripwire** (`EXPECTED_HAND_AUTHORED_*` path-set intros:dissolves vs that baseline): **37:6 → 6.17:1 (≥3:1, TRIPPED)**. Four gate/T-Workflow-As-Data tests landed on **`31acf4357`** lineage (+4 vs **`cea1fbe87`** on that ancestry); §1.8 promoter sweeps are still separate bookkeeping. Bulk-port shrink not yet inflecting SG-0. |
+| **2026-05-11 (later / `origin/main`)** | **e3ad91d12** | **50** | **117** | **2** | **169** | **+1 TEST vs documented §3 prior row (`eed86ffc9`, Σ=168)** | [PR **#2694** — R3 gate **#64** reflection closure substrate‑plumbing receipt](https://github.com/gunb-ai/gunbc/pull/2694) | Subsequent **PR #2712** (**`30da5fb1b`**) revises **`EXPECTED_HAND_AUTHORED_TEST`** **audit wiring** (**tests‑as‑data migration ratchet**) with **Σ count unchanged @ 169** (§2 procedure). Nominal timestamps **East**: **EOD row** **`eed86ffc9` ~16:51**, this row **~19:42** — labels are **authority-of-row**, not **UTC‑day exhaustion**. |
 
 ## §4. Velocity-to-zero math
 
-**Current state** (2026-05-10): 163 entries (53 non_test + 108 test + 2 fragments). True 10-day average is **+4.3/day** (43 entries over 2026-04-30 → 2026-05-10 window); 1-day delta vs 2026-05-09 EOD is **+1** (anthropic_messages_wire_demo_test.rs). Earlier "+13 anomaly" framing was a baseline-comparison artifact corrected here.
+**Archived trajectory math (seven‑day anchoring pinned to §3 snapshot `eed86ffc9`; not `HEAD`‑of‑`main`)**: **168** entries (50 non_test + 116 test + 2 fragments). Midday row (31acf4357) captured +4 vs 2026-05-10 cea1fbe87 on that SHA; HEAD advanced to **eed86ffc9** with **net +1** on the Σ-count (+4 test churn vs −3 non_test net). **Seven calendar UTC days** ending **2026-05-11** (inclusive): baseline **`4b156d839`** (last `origin/main` commit strictly before **2026-05-05 00:00 UTC**); head **eed86ffc9**. Σ-count **`137 → 168` (+31)**. **Introduction:dissolution path ratio** over that window (unique paths added vs removed within the three `EXPECTED_HAND_AUTHORED_*` slices): **37 : 6** (**6.17:1**) — **still fires the ≥3:1 standing tripwire** until bulk-dissolution events dominate. Census still accumulating (Cluster M Phase 3 bulk port not yet kicked in).
+
+**Immediately after that snapshot**, **`origin/main`** advanced **`168→169` (+1 `EXPECTED_HAND_AUTHORED_TEST` path)** at **`e3ad91d12`** — see **§3** row (**PR #2694**).
 
 **Required for R3 close**: 0 + 0 + 0.
 
@@ -78,11 +84,12 @@ echo "$(date -u +%Y-%m-%d) | $sha | non_test=$non_test test=$test fragments=$fra
 ## §6. Threshold alarms
 
 Configure PM standing duty / dashboard:
-- **Alarm 1**: 7-day net delta is `≥ +10` → trajectory-divergence flag (current state: +21 over last 7 days; alarm tripped)
-- **Alarm 2**: 14-day net delta is `≥ 0` → bulk-dissolution-events-not-firing flag (current state: +30 over 9 days; alarm tripped on extrapolation)
+- **Alarm 1**: 7-day net delta is `≥ +10` → trajectory-divergence flag (**2026-05-11 EOD**: Σ-count Δ vs true-7d baseline `4b156d839` (pre-**2026-05-05** UTC) = **`+31` ; tripped**)
+- **Standing velocity tripwire (Mgr)**: rolling **7 calendar UTC days** **path introductions : path dissolutions** in `EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}` **`≥ 3:1` ⇒ RED** (**2026-05-11 EOD**: **`37 : 6` ⇒ 6.17:1; tripped** — procedure: sort-unique `"src/v3/..."` lines inside each const slice; `comm` add/remove vs baseline SHA **`4b156d839`**, snapshot head **`eed86ffc9`**; baseline encodes **start of UTC day May 5** vs **snapshot EOD May 11** inclusive).
+- **Alarm 2**: 14-day net Σ-count delta is `≥ 0` → bulk-dissolution-events-not-firing flag (**rolling fourteen UTC-calendar-day window** ending snapshot **`D`**, analogous to Alarm 1 — baseline = last `origin/main` strictly before **`D−13` 00:00:00 UTC**; **explicit Σ Δ deferred** until the next tracker row pairs that baseline with **`D`**. The retired shorthand “**+30 / 9 days**” referred only to **§3 mid-day 2026-05-09 extrapolation receipts**, **not** a live **2026-05-11** Alarm 1-compatible reading.)
 - **Alarm 3**: 30-day net delta is `< -50` → progress-on-track flag (current state: not applicable; insufficient data)
 
-When Alarm 1 or 2 trips, surface to Director cycle absorption + r3-program-plan §10 RED.
+When Alarm 1, Alarm 2, or the standing velocity tripwire fires, surface to Director cycle absorption + `r3-program-plan` §10 RED.
 
 ## §7. Relationship to R3 progress bars
 
@@ -93,6 +100,12 @@ When Director authors new R3-close progress bars (per operator ask 2026-05-09), 
 - Velocity-to-zero projection vs R3-close window
 
 This artifact replaces lane-completion-proxy tracking with **honest trajectory tracking** for the PB-0 closure thesis.
+
+## §8. Appendix — operator-tier hot-fix bookkeeping (Σ-orthogonal)
+
+**2026-05-12 (~01:22Z) — hot-fix housekeeping**: [PR **#2723** — `hot-fix: cut cold-v3 slow tests`](https://github.com/gunb-ai/gunbc/pull/2723) — operator-tier **`main`** merge per operator directive ([**gunbc#846** comment `4426395595`](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4426395595)). **Σ strictly Σ‑orthogonal to this merge:** **`EXPECTED_HAND_AUTHORED_*` paths unchanged** (**`#[ignore]`** / slow-test bookkeeping only — no census-list file churn). **`origin/main` @ `d98d1e04b`** nevertheless reads **`169 (50 / 117 / 2)`** because **`168→169` landed earlier** via **§3** row **`e3ad91d12`** (**PR #2694** — **before** **`#2712`** re-audited the TEST slice **without Σ movement** **@ `30da5fb1b`**).
+
+**Sixteen** integration tests routed through **`#[ignore]`** (**no SG-0-listed `.rs` deletions attributable to this PR**); `slow-test-exemptions.txt` rows tagged **`hot-fix-2026-05-12`**; **`TEST_TIMEOUT_MAX_EXEMPTIONS`** bookkeeping ratchet **`80→84`** (covers **four** newly ignored **`m1_5_*`**/`testgen` rows among the cut set). **§2 recount @ `d98d1e04b`** — **`Σ=169`**. **Ratchet-down protocol** (Debt-Paydown / §1.8): each rebuild-session PR **removes one `hot-fix-2026-05-12` exemption row** and **`decrements`** the same **`TEST_TIMEOUT_MAX_EXEMPTIONS`** **in one commit/PR**. Conformance anchors: [**#2723** comment `4426470021`](https://github.com/gunb-ai/gunbc/pull/2723#issuecomment-4426470021); operator-tier merge-bypass precedent + overnight digest [**#828** comment `4426439325`](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4426439325) (infra surface classes **#2** parser-lag, etc.). **Companion event**: [PR **#2718** — `ci(layer1): skip v3 job on docs-only PRs via changes-filter`](https://github.com/gunb-ai/gunbc/pull/2718) merged **01:05:04Z** same cadence (**docs-only CI mitigation**).
 
 ---
 

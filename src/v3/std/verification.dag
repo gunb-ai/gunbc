@@ -178,8 +178,8 @@ type TestPredicate
     }
   // **🟡 Scaffold — ForAllTargets.** Per-emission-target gate: compile the claim's
   // program (`TestClaim.source` / `TestClaim.file_name` — single authority; not
-  // duplicated here) for each known target, then run the shell check below on each
-  // target's emitted output (T-Emit omni-demo gate).
+  // duplicated here) for each known target, then observe the declared
+  // `ProgramOutputBind` on each target's emitted output (T-Emit omni-demo gate).
   // Dissolution trigger: target-specific emission + verification facts live in the
   // target spec / runner tables; this sum variant narrows to declarative edges only.
   // Collapse with ExecuteCommand: same runner capability as singleton execution,
@@ -188,6 +188,7 @@ type TestPredicate
       command: String
       args: List<String>
       expect_exit_code: Int
+      input_ref: DeclarationRef
     }
   // **🟡 Scaffold — LensOutputEquals.** Apply named lens to named input declaration;
   // compare output structurally to named expected declaration (T-LaneE).

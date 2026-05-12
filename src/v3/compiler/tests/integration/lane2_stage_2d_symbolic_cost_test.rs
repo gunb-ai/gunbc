@@ -26,7 +26,7 @@ use v3_compiler::lens_cost_symbolic::{
     symbolic_cost_of, transform_cost_for_target, SymbolicCostEntry, SymbolicCostLookup,
 };
 
-use crate::common::cached_compile_to_dag;
+use crate::common::{assert_recursive_countdown_linear_semantics, cached_compile_to_dag};
 
 fn find_bind_value(dag: &Dag, name: &str) -> PortId {
     dag.nodes()
@@ -291,8 +291,12 @@ fn symbolic_cost_product_identity_stage_is_bootstrap_substrate_fact() {
 }
 
 // ── Per-Behavior lowering ────────────────────────────────────────
+//
+// Inner wall-clock budgets below use `24_000` ms: Stage 2d filters + cold neighbors
+// have measured ~14–19s wall on CI (busy runners); keep headroom above observed spikes.
 
 budgeted_test! {
+    24_000,
     value_reports_constant,
     {
         // `let x = 1` → ConstantCost(0) (leaf literal, no work).
@@ -306,6 +310,7 @@ budgeted_test! {
 }
 
 budgeted_test! {
+    24_000,
     transform_single_op_reports_constant,
     {
         // `let x = 1 + 2` → sequential(Constant(1), sum(Constant(0), Constant(0)))
@@ -362,6 +367,7 @@ fn branch_reports_constant_when_both_arms_constant() {
 }
 
 budgeted_test! {
+    24_000,
     recursive_fn_body_contributes_to_loop_cost,
     {
         // PR #537 reviewer call-out (briansrls, BLOCKING): the prior
@@ -375,22 +381,17 @@ budgeted_test! {
         //
         // Post-fix: `l.body: NodeId` is resolved through
         // `node(d, body_id)` → result_port, and THAT port's cost
-        // enters the iterate composition. The recursive fn's Branch
-        // body has a `ConstantCost(1)` (the comparison op). With
-        // `SymbolicCost` now honestly inhabiting `Semiring<SymbolicCost>`,
-        // `ConstantCost(1)` is the multiplicative identity, so the final
-        // normalized result is a bare `LinearCost`. The regression guard here
-        // is therefore the semantic value: the loop must remain linear rather
-        // than collapsing to constant/missing cost.
+        // enters the iterate composition. With **per-call** recurrence wiring
+        // (`per_call_pattern_at` / gate `e_p_sub_value_relation_per_call_landed`),
+        // iterate normalization may keep **`ProductCost(Linear, Linear)`** when bound vs spine carry
+        // distinct ports — still linear-family; regression asserts DB-7 semantics via
+        // `crate::common::assert_recursive_countdown_linear_semantics`.
         let dag = cached_compile_to_dag(
             "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
             "loop_body_countdown.v3",
         );
         let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
-        assert!(
-            matches!(cost, SymbolicCost::LinearCost { .. }),
-            "recursive fn with O(1) body should normalize Linear * 1 to Linear, got {cost:?}"
-        );
+        assert_recursive_countdown_linear_semantics(&cost);
     }
 }
 
@@ -413,6 +414,7 @@ fn iterate_keeps_non_identity_body_cost_in_product() {
 }
 
 budgeted_test! {
+    24_000,
     recursive_fn_reports_linear_via_loop_lowering,
     {
         // `fn countdown(n) = if n == 0 then 0 else countdown(n - 1)`

@@ -7,13 +7,14 @@ use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind
 use v3_compiler::Diagnostic;
 
 use crate::common::substrate_receipts::{
-    assert_bootstrap_float64_aliases_real64, assert_bootstrap_int32_compose_int_machine_width,
+    assert_bootstrap_float_aliases_real_width_refinements,
+    assert_bootstrap_int32_compose_int_machine_width,
     assert_bootstrap_int64_compose_int_machine_width,
     assert_bootstrap_int_is_group_completion_of_nat,
     assert_bootstrap_integer_aliases_align_to_refinements,
     assert_bootstrap_nat_is_commutative_semiring_magnitude,
     assert_bootstrap_rational_is_field_of_fractions_int,
-    assert_bootstrap_real64_compose_real_machine_width,
+    assert_bootstrap_real_aliases_align_to_refinements,
     assert_bootstrap_real_is_approximate_field_of_fractions_int,
     assert_bootstrap_string_is_free_monoid_char, bind_named, bind_value_type_decl,
     callable_instantiation_arguments, field, find_named, transforms_in_source_file,
@@ -59,10 +60,10 @@ fn bootstrap_integer_aliases_align_to_refinements_per_gate_19() {
 }
 
 #[test]
-fn bootstrap_float64_aliases_real64_machine_width_construction() {
+fn bootstrap_real_and_float_width_refinements_per_gate_18() {
     let dag = Dag::new();
-    assert_bootstrap_real64_compose_real_machine_width(&dag);
-    assert_bootstrap_float64_aliases_real64(&dag);
+    assert_bootstrap_real_aliases_align_to_refinements(&dag);
+    assert_bootstrap_float_aliases_real_width_refinements(&dag);
 }
 
 #[test]
@@ -3347,8 +3348,8 @@ fn substrate_accessor_rust_binding_invariants() {
         checked += 1;
     }
     assert_eq!(
-        checked, 8,
-        "expected 8 substrate accessor bindings (port, node, resolve_producer, lane2_workflow_at, declaration_by_id, workflow_root_port, declaration_by_name, per_call_pattern_at)"
+        checked, 9,
+        "expected 9 substrate accessor bindings (port, node, resolve_producer, lane2_workflow_at, declaration_by_id, workflow_root_port, declaration_by_name, per_call_pattern_at, per_call_descent_operand_port)"
     );
     let missing: Vec<_> = universe.difference(&rust_covered).copied().collect();
     assert!(

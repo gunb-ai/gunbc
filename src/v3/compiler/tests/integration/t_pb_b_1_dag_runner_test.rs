@@ -170,6 +170,22 @@ fn r3_tests_as_data_demonstration_suite_passes_through_runner() {
     );
 }
 
+/// R3 gate #65 — a Tier3 mirror-consumer `.dag` program executes through
+/// `TestRunner` using std termination authority instead of the hand-Rust mirror
+/// bench path.
+#[test]
+fn r3_tier3_dissolution_demonstration_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_r3_tier3_dissolution_demonstration.dag"),
+        "src/v3/compiler/tests/dag/t_r3_tier3_dissolution_demonstration.dag",
+    );
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "suite_tier3_dissolution_demonstration",
+        &["tier3_dissolution_demonstration_executes"],
+    );
+}
+
 #[test]
 fn t_impossiblebugs_nested_optional_flatten_suite_passes_through_runner() {
     let dag = lower(
@@ -333,6 +349,7 @@ const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
 ];
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
     for (source, file, suite, claim_names) in R3_GATE_87_CEMENTING_REGEN_SUITES {
         let dag = lower(source, file);

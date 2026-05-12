@@ -29,7 +29,7 @@
 //! `build.rs` names it. File contents do not participate: a hand-authored
 //! `.rs` that begins with `// AUTO-GENERATED` does not slip through.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -225,25 +225,19 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // `tier3_mirror_dissolution_perf_within_budget` per
     // `docs/briefs/r3-pb-tier3-perf-budget-worker.md` deliverable 0b
     // (parent brief #1331; readiness matrix #1358; this PR #1362).
-    // Intentionally hand-authored: it measures live public mirror
+    // Intentionally hand-authored: it measures live public substrate
     // entrypoints (`merge_evidence`, `positive_descent_count`,
     // `lower_call_pattern`, `type_iteration_dimension`,
-    // `lane2_workflow_idempotency_report`) before T-Tier3-Dissolution
-    // retires them — generated output cannot exist yet because the
-    // measurement target is the not-yet-dissolved Rust code.
-    // Dissolution trigger: deletes alongside the mirror-dissolution PRs
-    // per parent brief §"Phase 1 deliverables" — the bench harness has
-    // no role post-Phase-1; only the frozen `tier3_baseline.json` data
+    // `lane2_workflow_idempotency_report`). R3 gate #4 **parallel module**
+    // `workflow_idempotency.rs` retired; native projection co-located in
+    // `dag/effects.rs` (full evaluator/emitted-authority slice still open while
+    // the std arrow is `Unparsed` in bootstrap). These benches still
+    // target hot Rust call paths (Criterion). Broader Tier3 bench retirement
+    // deletes this harness per parent brief §"Phase 1 deliverables" once the
+    // remaining mirrors dissolve; only the frozen `tier3_baseline.json` data
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
-    // R3 row 85 / PB #1560 Gap 4 build-step shim: invokes
-    // `pb_method_template_projection_dag_emit` to materialize the
-    // ephemeral v2 source-root module consumed during stage0
-    // regeneration. Dissolution trigger: delete with the v2-retirement
-    // build-step consumer path once legacy v2 method-template reads are
-    // fully retired.
-    "src/v3/compiler/src/bin/emit_method_template_projection.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
@@ -292,11 +286,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // PB-zero / v2-retirement consumers (decision in
     // `docs/decisions/r3-row85-method-template-read-surface.md`).
     "src/v3/compiler/src/pb_method_template_projection.rs",
-    // R3 row 85 / PB #1560 Gap 4 build-step: producer that writes the
-    // canonical `MethodTemplateContract` projection to a build-time-
-    // ephemeral `.dag` dependency root for v2 consumption via the
-    // ephemeral source-root mechanism from PR #1575.
-    "src/v3/compiler/src/pb_method_template_projection_dag_emit.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
@@ -313,7 +302,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_tokenize.rs",
     "src/v3/compiler/src/self_host_receipt_p0.rs",
     "src/v3/compiler/src/test_runner.rs",
-    "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
 ];
 
@@ -370,7 +358,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/list_variant_tags.rs",
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
+    "src/v3/compiler/tests/integration/common/rust_comment_strip.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
+    // R3 gate #78 / E-P: shared countdown `SymbolicCost` oracle helper for cost-lens consumer
+    // tests (`cost_lens_symbolic_consumer_test`, lane2 `lane2_stage_2d_symbolic_cost_test`).
+    "src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs",
     // v3-side consumer wiring for generated `symbolic_cost_of` (cost.dag). Not
     // under `cementing/`: Band-C (`TESTING.md`) requires v2-oracle parity only for
     // explicit subsumption / COMPLETE+v2-counterpart register promotions.
@@ -533,12 +525,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `pb_method_template_projection` consumer hook. Stays hand-Rust
     // alongside `method_template_contract_test.rs` until testgen covers
     // reflected-Dag structural assertions over std/ row authorities.
-    // R3 row 85 / PB #1560 Gap 4 build-step: focused acceptance for the
-    // `pb_method_template_projection_dag_emit` producer (writes the
-    // ephemeral `.dag`). Stays hand-Rust alongside the projection-side
-    // tests until testgen covers reflected-Dag structural assertions
-    // over std/ row authorities.
-    "src/v3/compiler/tests/integration/pb_method_template_projection_dag_emit_test.rs",
     "src/v3/compiler/tests/integration/pb_method_template_projection_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     // Prereq-X (call-on-field-access) blocker ratchet for fold_lens<C>
@@ -570,6 +556,20 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
+    // R3 §1.4 Class 2 / §1.8 row #61
+    // (`substrate_gap_function_valued_data_closed`): hand-Rust executable
+    // receipt for the narrowed gap-test ratified in Q-Class-2-Chain-Break
+    // option (a) and dispatched by
+    // `docs/briefs/r3-substrate-s1-gap-test-representative-worker.md`.
+    // P5 receipt: explicit deferral cites ROADMAP.md post-merge debt F8
+    // (`SymbolicCost` first-class `Semiring<SymbolicCost>` witness; function-
+    // valued data prerequisite) plus docs/r3-program-plan.md §1.8 row #61.
+    // This bounded host-side harness asserts "function-valued data is first-
+    // class" through public evaluator consumption; production code removes an
+    // opaque data-body scaffold and routes through existing substrate `Arrow`
+    // / `Callable`. Dissolves when §1.8 row #61 can be expressed as a `.dag`
+    // TestClaim over evaluator output without direct Rust DAG inspection.
+    "src/v3/compiler/tests/integration/r3_class_2_function_valued_data_test.rs",
     // R3 T-Free-Consequences first batch: hand-Rust driver for five
     // author-now/fire-later `BinaryDimensionReportEquals` TestClaims.
     // Dissolves when generic DimensionReport<C> evaluation can execute
@@ -595,15 +595,37 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
     // R2-Evaluator corpus comparison directly without this host-side harness.
     "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
+    // R3 gate #64 substrate-plumbing receipt: hand-Rust driver for the
+    // non-canonical `.dag` residual-census receipt until the canonical
+    // PB-Runtime reflection consumer lands. P5 test-subset deferral:
+    // ROADMAP.md § "Nine lanes" row `T-PB-B` and § "Lane acceptance — .dag
+    // gates" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; dissolves
+    // when the generic TestClaim runner can execute the receipt without this
+    // host-side harness.
+    "src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs",
+    // R3 gate #71 (`v3_self_host_demonstration`): `.dag` + `CARGO_BIN_EXE` splice for
+    // `ExecuteCommand(self_host_fixed_point, [--r3-gate-71-demonstration], 0)` — strict DB-8 slice
+    // (non-zero unless `compiler.dag` parses + `fixed_point_diff` ok). Unignored compile-only smoke
+    // + ignored end-to-end until v3 parses `compiler.dag` (T-FixedPoint promotion).
+    // Explicit P5 receipt (INVARIANTS.md P5 per-PR gate): net +1 SG-0 integration path;
+    // dissolution / deferral naming — ROADMAP.md § "Nine lanes" row `T-PB-B` /
+    // `pb_rust_tests_outside_residual_zero` and `docs/r3-program-plan.md` §1.8 gate #71 /
+    // `docs/r3-structure.md` §T-V2-Retirement; harness retires when equivalent obligations run as
+    // `.dag` data without this Rust splice or T-V2-Retirement closure ends the receipt class.
+    "src/v3/compiler/tests/integration/r3_v3_self_host_demonstration_dag_test.rs",
     // R3 L4/L7/L5 skeleton + L7 enum-backed algebra-law matrix: hand-Rust receipt that Lane 1
-    // `DifferentialEquals` emit/eval pairing and Lane 1 `AlgebraicLaw` (`Associativity` /
-    // `Commutativity` / `Identity`) operational witnesses Pass on honest additive/multiplicative Int
-    // rows only (trimmed matrix — not ROADMAP exhaustive L7); L5 `ForAllTargets` still defers as
-    // `NotYetImplemented`. Matrix rows pin enum-backed law receipts without adding missing-law
-    // variants. Dissolves when `TestRunner` can evaluate these claims directly without this host-side
-    // harness (same dissolution class as the R3 Free-Consequences batches).
-    // Retirement must also fold the L5 program-text bridge (`fixtures/r3_l5_corpus/add_then_branch_seed.v3`
-    // vs embedded `TestClaim.source` — byte equality ratchet lives only in this harness today).
+    // `DifferentialEquals` emit/eval pairing, Lane 1 `AlgebraicLaw` (`Associativity` /
+    // `Commutativity` / `Identity`) operational witnesses, and the T-V-L5-Corpus seed
+    // `ForAllTargets` Rust/Python/Go observation row Pass on honest Int rows only (trimmed matrix —
+    // not ROADMAP exhaustive L7/L5). Matrix rows pin enum-backed law receipts without adding
+    // missing-law variants. Explicit P5 deferral: this test entry belongs to ROADMAP.md § "Nine
+    // lanes" row `T-PB-B` and § "Lane acceptance — .dag gates" row `T-PB-B` /
+    // `pb_rust_tests_outside_residual_zero`; R3 tracks the same test-residual outcome as
+    // `docs/r3-structure.md` § T-Tests-As-Data-Completeness / gate #84. It dissolves when the
+    // generic TestClaim runner can execute these claims directly without this host-side harness.
+    // Retirement must also fold the L5 program-text bridge
+    // (`fixtures/r3_l5_corpus/add_then_branch_seed.v3` vs embedded `TestClaim.source` — byte
+    // equality ratchet lives only in this harness today).
     "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
     "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
@@ -643,6 +665,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
     "src/v3/compiler/tests/integration/timing_lens_substrate_carrier_test.rs",
+    // R3 T-V2-Retirement §1.8 gate #41 (`v2_oracle_no_remaining_test_consumers`): comment-aware
+    // source ratchet — no `v2-compiler` crate references outside `src/v2/`.
+    "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
@@ -683,6 +708,94 @@ const EXPECTED_GENERATED_FRAGMENTS: &[&str] = &[
     // Produced by `cargo test refresh_handwritten_parse_snapshot_manifest -- --ignored`.
     "src/v3/compiler/tests/integration/parse_corpus_manifest.txt",
 ];
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum TestsAsDataMigrationClass {
+    CompileOrReject,
+    LensOutputEquality,
+    BehavioralObservation,
+    BoundaryHostProcess,
+    CementingV2Oracle,
+    CensusOrRatchet,
+    PropertyBased,
+}
+
+const EXPECTED_TESTS_AS_DATA_MIGRATION_AUDIT_COUNT: usize = 116;
+
+// Transitional gate #84 audit only. As each class migrates to `.dag`
+// `TestClaim` data, remove that class's path matcher branch with the
+// retired Rust paths; when `EXPECTED_HAND_AUTHORED_TEST` reaches zero,
+// this classifier should disappear with it.
+// Match order is load-bearing while this exists: check classification
+// before deleting or reordering a branch, especially broad substring
+// branches such as `contains("sg")`.
+fn tests_as_data_migration_class(path: &str) -> Option<TestsAsDataMigrationClass> {
+    use TestsAsDataMigrationClass::*;
+
+    if path.starts_with("src/v3/compiler/tests/boundary/") {
+        return Some(BoundaryHostProcess);
+    }
+
+    if path.contains("/cementing/")
+        || path.ends_with("lens_behavioral_parity_demonstration_test.rs")
+        || path.ends_with("r3_gate_87_lens_cementing_regen_receipts_test.rs")
+    {
+        return Some(CementingV2Oracle);
+    }
+
+    if path.contains("census")
+        || path.contains("ratchet")
+        || path.contains("bridge")
+        || path.contains("sg")
+        || path.contains("r1c_")
+        || path.contains("v2_oracle")
+        || path.contains("value_body_substrate_mirror")
+        || path.contains("lens_producer_retirement")
+    {
+        return Some(CensusOrRatchet);
+    }
+
+    if path.contains("free_consequences")
+        || path.contains("tc1_")
+        || path.contains("tc2_")
+        || path.contains("tc3_")
+    {
+        return Some(PropertyBased);
+    }
+
+    if path.contains("lens")
+        || path.contains("cost")
+        || path.contains("parallelism")
+        || path.contains("timing")
+        || path.contains("workflow")
+        || path.contains("e6_g1a")
+        || path.contains("lane2_stage_2d")
+    {
+        return Some(LensOutputEquality);
+    }
+
+    if path.contains("anthropic")
+        || path.contains("operation")
+        || path.contains("services")
+        || path.contains("omni")
+        || path.contains("openapi")
+        || path.contains("runtime_evaluator_corpus")
+        || path.contains("self_host_demonstration")
+        || path.contains("t_ci_workflow_as_data_demo")
+        || path.contains("pb1_bootstrap_full_snapshot")
+    {
+        return Some(BehavioralObservation);
+    }
+
+    if path.starts_with("src/v3/compiler/tests/integration/")
+        || path.starts_with("src/v3/compiler/tests/determinism_test.rs")
+        || path.starts_with("src/v3/compiler/tests/integration.rs")
+    {
+        return Some(CompileOrReject);
+    }
+
+    None
+}
 
 fn is_test_path(path: &str) -> bool {
     path.starts_with("src/v3/compiler/tests/")
@@ -938,6 +1051,46 @@ fn sg0_v3_test_hand_authored_subratchet() {
          EXPECTED_HAND_AUTHORED_TEST; new Rust-authored tests must match the TESTING.md \
          residual or wait for the testgen path."
     );
+}
+
+#[test]
+fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
+    let mut by_class: BTreeMap<TestsAsDataMigrationClass, Vec<&str>> = BTreeMap::new();
+    let mut unclassified = Vec::new();
+
+    for path in EXPECTED_HAND_AUTHORED_TEST {
+        match tests_as_data_migration_class(path) {
+            Some(class) => by_class.entry(class).or_default().push(*path),
+            None => unclassified.push(*path),
+        }
+    }
+
+    assert!(
+        unclassified.is_empty(),
+        "gate #84 migration audit must classify every hand-authored test path; \
+         unclassified paths: {unclassified:?}"
+    );
+    assert_eq!(
+        EXPECTED_HAND_AUTHORED_TEST.len(),
+        EXPECTED_TESTS_AS_DATA_MIGRATION_AUDIT_COUNT,
+        "gate #84 migration audit count drifted; update the migration-class audit \
+         when the SG-0 hand-authored test ratchet changes"
+    );
+
+    for class in [
+        TestsAsDataMigrationClass::CompileOrReject,
+        TestsAsDataMigrationClass::LensOutputEquality,
+        TestsAsDataMigrationClass::BehavioralObservation,
+        TestsAsDataMigrationClass::BoundaryHostProcess,
+        TestsAsDataMigrationClass::CementingV2Oracle,
+        TestsAsDataMigrationClass::CensusOrRatchet,
+        TestsAsDataMigrationClass::PropertyBased,
+    ] {
+        assert!(
+            by_class.get(&class).is_some_and(|paths| !paths.is_empty()),
+            "gate #84 migration audit lost class coverage for {class:?}"
+        );
+    }
 }
 
 #[test]
