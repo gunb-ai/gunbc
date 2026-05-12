@@ -24,10 +24,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     writeln!(out)?;
     writeln!(
         out,
-        "import std.list {{ List, Empty, Cons }}"
-    )?;
-    writeln!(
-        out,
         "import extdeps.github.actions {{"
     )?;
     writeln!(
@@ -117,7 +113,7 @@ fn emit_triggers(on: &Value) -> Result<String, Box<dyn std::error::Error>> {
     if parts.is_empty() {
         return Err("on: must contain at least one trigger".into());
     }
-    Ok(emit_cons_list(&parts))
+    Ok(emit_list_literal(&parts))
 }
 
 fn emit_push(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
@@ -142,7 +138,7 @@ fn emit_pull_request(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
 
 fn string_list_opt(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
     let Some(v) = v else {
-        return Ok("Empty".to_string());
+        return Ok("[]".to_string());
     };
     let seq = v.as_sequence().ok_or("expected sequence")?;
     let mut xs: Vec<String> = Vec::new();
@@ -150,12 +146,12 @@ fn string_list_opt(v: Option<&Value>) -> Result<String, Box<dyn std::error::Erro
         let s = it.as_str().ok_or("sequence of strings")?;
         xs.push(dag_string(s));
     }
-    Ok(emit_string_literals(&xs))
+    Ok(emit_list_literal(&xs))
 }
 
 fn pr_types_list(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
     let Some(v) = v else {
-        return Ok("Empty".to_string());
+        return Ok("[]".to_string());
     };
     let seq = v.as_sequence().ok_or("types must be sequence")?;
     let mut arms: Vec<String> = Vec::new();
@@ -171,23 +167,15 @@ fn pr_types_list(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>
         };
         arms.push(arm.to_string());
     }
-    Ok(emit_cons_list(&arms))
+    Ok(emit_list_literal(&arms))
 }
 
-fn emit_cons_list(items: &[String]) -> String {
-    let mut s = "Empty".to_string();
-    for it in items.iter().rev() {
-        s = format!("Cons {{ head: {it}, tail: {s} }}");
+fn emit_list_literal(items: &[String]) -> String {
+    if items.is_empty() {
+        "[]".to_string()
+    } else {
+        format!("[{}]", items.join(", "))
     }
-    s
-}
-
-fn emit_string_literals(items: &[String]) -> String {
-    let mut s = "Empty".to_string();
-    for it in items.iter().rev() {
-        s = format!("Cons {{ head: {it}, tail: {s} }}");
-    }
-    s
 }
 
 fn emit_concurrency(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
@@ -263,7 +251,7 @@ fn emit_permissions(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     let issues = perm_level(m.get("issues"))?;
     let actions = perm_level(m.get("actions"))?;
     Ok(format!(
-        "some(WorkflowPermissions {{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }})",
+        "some({{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }})",
         contents, pull_requests, issues, actions
     ))
 }
@@ -288,7 +276,7 @@ fn emit_jobs(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
         let id = k.as_str().ok_or("job id key must be string")?;
         job_exprs.push(emit_job(id, job)?);
     }
-    Ok(emit_cons_list(&job_exprs))
+    Ok(emit_list_literal(&job_exprs))
 }
 
 fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
@@ -340,7 +328,7 @@ fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
         Some(_) => return Err("job-level concurrency not supported".into()),
     };
     Ok(format!(
-        "Job {{\n      id: {},\n      name: {},\n      runner: {},\n      steps: {},\n      needs: {},\n      env: {},\n      outputs: {},\n      if_condition: {},\n      strategy: {},\n      timeout_minutes: {},\n      continue_on_error: {},\n      concurrency: {}\n    }}",
+        "{{\n      id: {},\n      name: {},\n      runner: {},\n      steps: {},\n      needs: {},\n      env: {},\n      outputs: {},\n      if_condition: {},\n      strategy: {},\n      timeout_minutes: {},\n      continue_on_error: {},\n      concurrency: {}\n    }}",
         dag_string(id),
         name,
         runner,
@@ -364,7 +352,7 @@ fn emit_runs_on(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     match s {
         "ubuntu-latest" => Ok("HostedRunner { label: UbuntuLatest }".to_string()),
         _ => Ok(format!(
-            "SelfHosted {{ labels: Cons {{ head: {}, tail: Empty }} }}",
+            "SelfHosted {{ labels: [{}] }}",
             dag_string(s)
         )),
     }
@@ -372,7 +360,7 @@ fn emit_runs_on(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
 
 fn emit_needs_list(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
     let Some(v) = v else {
-        return Ok("Empty".to_string());
+        return Ok("[]".to_string());
     };
     let seq = v.as_sequence().ok_or("needs sequence")?;
     let mut xs: Vec<String> = Vec::new();
@@ -380,7 +368,7 @@ fn emit_needs_list(v: Option<&Value>) -> Result<String, Box<dyn std::error::Erro
         let s = it.as_str().ok_or("needs string")?;
         xs.push(dag_string(s));
     }
-    Ok(emit_string_literals(&xs))
+    Ok(emit_list_literal(&xs))
 }
 
 fn emit_steps(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
@@ -389,7 +377,7 @@ fn emit_steps(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     for st in seq {
         steps.push(emit_step(st)?);
     }
-    Ok(emit_cons_list(&steps))
+    Ok(emit_list_literal(&steps))
 }
 
 fn emit_step(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
@@ -482,7 +470,7 @@ fn emit_action_ref(uses: &str) -> Result<String, Box<dyn std::error::Error>> {
         .split_once('/')
         .ok_or("uses owner/repo")?;
     Ok(format!(
-        "ActionRef {{ owner: {}, repo: {}, ref: {} }}",
+        "{{ owner: {}, repo: {}, ref: {} }}",
         dag_string(owner),
         dag_string(repo),
         dag_string(ref_part)

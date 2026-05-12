@@ -7,7 +7,6 @@
 
 module gunbc.ci_emission
 
-import std.list { List, Empty, Cons }
 import gunbc.ci { CIWorkflowDag, ci_workflow_dag }
 import extdeps.github.actions {
   Workflow, Job, RunStep, Push, HostedRunner, UbuntuLatest, Bash
@@ -23,7 +22,7 @@ import extdeps.github.actions {
 // (c) consumer-side dimension extraction.
 //
 // Initial enum (per docs/briefs/t-wad-wi2-substrate-and-slice4-yamlstatic-body-worker.md §1):
-//   YamlStatic | BinaryShim | ...
+//   YamlStatic | BinaryShim
 // PythonShim / InlineGunbc are DESIGN-ONLY (INVARIANTS P5) — not initial arms.
 
 type WorkflowRuntime = YamlStatic | BinaryShim
@@ -31,18 +30,15 @@ type WorkflowRuntime = YamlStatic | BinaryShim
 func github_actions_binary_shim_placeholder_workflow() -> Workflow =
   {
     name: "ci-binary-shim-placeholder",
-    on: Cons {
-      head: Push { branches: Empty, paths: Empty },
-      tail: Empty,
-    },
+    on: [ Push { branches: [], paths: [] } ],
     concurrency: none,
-    jobs: Cons {
-      head: Job {
+    jobs: [
+      {
         id: "slice-5-binaryshim-todo",
         name: none,
         runner: HostedRunner { label: UbuntuLatest },
-        steps: Cons {
-          head: RunStep {
+        steps: [
+          RunStep {
             name: some("Echo placeholder"),
             id: none,
             run: "echo Slice-5-BinaryShim-body-TODO",
@@ -52,10 +48,9 @@ func github_actions_binary_shim_placeholder_workflow() -> Workflow =
             if_condition: none,
             continue_on_error: false,
             timeout_minutes: none
-          },
-          tail: Empty
-        },
-        needs: Empty,
+          }
+        ],
+        needs: [],
         env: none,
         outputs: none,
         if_condition: none,
@@ -63,9 +58,8 @@ func github_actions_binary_shim_placeholder_workflow() -> Workflow =
         timeout_minutes: none,
         continue_on_error: false,
         concurrency: none
-      },
-      tail: Empty
-    },
+      }
+    ],
     env: none,
     permissions: none
   }
