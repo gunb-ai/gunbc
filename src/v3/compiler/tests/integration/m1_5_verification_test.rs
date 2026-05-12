@@ -389,7 +389,7 @@ data parse_smoke_generator: List<ProgramShape> = [
   LiteralProgram { source: "let y: Bool = true", file_name: "gen_002.v3" }
 ]
 
-let generator_ref: ProgramGenerator = ProgramGenerator { generator: parse_smoke_generator }
+let generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
 
 let parse_smoke_universal: QuantifiedTestClaim = {
   name: "every parse-smoke fixture compiles",
