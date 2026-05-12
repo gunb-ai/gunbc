@@ -74,7 +74,7 @@ After this PR lands, **no** workflow `if:` condition may encode run-vs-skip on `
 ## §4. PR body framing
 
 - Cite gate #103 closure
-- Cite PR #2766 ratified canvas as substrate authority
+- Cite **canvas authority**: `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` (Slice 7 BinaryShim consumption / fail-closed / selection algorithm / path-regex removal) + **upstream lens authority**: PR #2713 / `docs/design-affected-set-lens.md` §2 + **harness/ratchet authority**: PR #2766 (Layer 2 path-regex inventory ratchet enforcing canvas §5)
 - Cite verifier ratchet contract (specific paragraph in canvas)
 - Inline 2-3 worked examples of selection behavior
 
@@ -86,6 +86,8 @@ After this PR lands, **no** workflow `if:` condition may encode run-vs-skip on `
 
 ## §6. Reference
 
-- PR #2766 (cool-crab-565 Slice 7 canvas) — substrate authority
+- `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` (in main) — Slice 7 BinaryShim canvas authority (§1 consumption / §3 fail-closed / §4 selection algorithm / §5 path-regex removal)
+- PR #2713 (already merged) + `docs/design-affected-set-lens.md` §2 — upstream affected-set lens substrate authority
+- PR #2766 (cool-crab-565, merged) — Slice 7 implementation harness contract + Layer 2 path-regex inventory ratchet (enforces canvas §5)
 - `docs/r3-remaining-work-dependency-graph.md:125` — gate-row metadata
 - TESTING.md band-A — structural test discipline
