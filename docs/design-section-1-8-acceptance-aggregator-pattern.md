@@ -4,6 +4,8 @@
 
 **Status**: PILOT scaffold (Director-authored 2026-05-12 per Brian exploratory + PM-confirmed cadence message). REVISED 2026-05-12 per codex REQUEST_CHANGES /api/reviews/9982 on PR #2748 — aggregators relocated OUT of §1.8 into a new §1.9 section to preserve §1.8's "canonical closure-authority ledger" single-authority semantics per INVARIANTS P2.
 
+**Sunset condition** (P5 "scaffold" posture per cursor /api/reviews/10013): this pilot doc retires when `docs/r3-program-plan.md` contains §1.9 per the table shape below AND at least one §1.9 view entry (e.g., V1 `t_ci_wad_full_r3_close`) is live in the ledger. At that point this doc's authority is consumed; PM may delete it or fold any remaining cross-references into `r3-program-plan.md` §1.9 itself.
+
 **Purpose**: Provide a derived **view layer** over `docs/r3-program-plan.md` §1.8 that surfaces cluster-tier meta-program closure progress as the lattice-meet of constituent §1.8 rows. Resolves the "viz gap" where cluster-level programs (Cluster M = T-Tests-As-Data-Completeness, Cluster F = T-LP-Retirement parity, T-CI-WAD = ci.yml WAD program) have disparate constituent blockers but no single rendering of the cluster as a whole.
 
 ## INVARIANTS P2 framing — why a SEPARATE section, not §1.8 rows
