@@ -76,7 +76,7 @@ fn main() {
         compile_full_bootstrap_without_parse_surface_dag_from_std_seed(std_dag);
     let full_no_parse_surface_formatted = render_bootstrap_generated_rs(
         &full_no_parse_surface_dag,
-        "dsl/std/*.dag + src/v3/std/*.dag + src/v3/spec/*.dag + src/v3/compiler/*.dag minus tokenize.dag and src/v3/std/parse_surface.dag + dsl/extdeps/languages/rust/primitives.dag",
+        "dsl/std/*.dag + src/v3/std/*.dag + src/v3/spec/*.dag + src/v3/compiler/*.dag minus tokenize.dag, src/v3/std/parse_surface.dag, src/v3/spec/{rust,go,python}.dag + dsl/extdeps/languages/rust/primitives.dag",
         "bootstrapped_fixture_without_parse_surface_dag",
     )
     .unwrap_or_else(|e| panic!("regen_bootstrap no-parse-surface: {e}"));

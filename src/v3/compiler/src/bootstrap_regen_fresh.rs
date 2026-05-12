@@ -92,29 +92,47 @@ pub fn compile_full_bootstrap_dag_from_std_seed(std_seed: Dag) -> Dag {
     dag
 }
 
+/// Staged/spec authorities omitted when composing the parse-surface-free bootstrap
+/// snapshot (`bootstrap_generated_without_parse_surface.rs`).
+///
+/// `parse_surface.dag` defines the `DeclarationRef` targets for surface-shaped
+/// records in `rust.dag` / `go.dag` / `python.dag`. Loading those specs without
+/// `parse_surface` leaves resolve diagnostics in the DAG — forbidden for committed
+/// bootstrap snapshots (PB-1-e / fail-closed substrate).
+const WITHOUT_PARSE_SURFACE_EXCLUDED_FIXTURE_PATHS: &[&str] = &[
+    "src/v3/std/parse_surface.dag",
+    "src/v3/spec/rust.dag",
+    "src/v3/spec/go.dag",
+    "src/v3/spec/python.dag",
+];
+
 pub fn compile_full_bootstrap_without_parse_surface_dag_from_std_seed(std_seed: Dag) -> Dag {
     let mut dag = std_seed;
-    load_runtime_bootstrap_authorities(&mut dag, &["src/v3/std/parse_surface.dag"], &[]);
+    load_runtime_bootstrap_authorities(&mut dag, WITHOUT_PARSE_SURFACE_EXCLUDED_FIXTURE_PATHS, &[]);
     dag
 }
 
 fn load_runtime_bootstrap_authorities(
     dag: &mut Dag,
-    excluded_staged_paths: &[&str],
+    excluded_authority_paths: &[&str],
     excluded_compiler_paths: &[&str],
 ) {
     let staged_iter = STAGED_FILES
         .iter()
         .copied()
-        .filter(|(path, _)| !excluded_staged_paths.contains(path))
+        .filter(|(path, _)| !excluded_authority_paths.contains(path))
         .filter(|(path, _)| *path != APPROXIMATE_FIELD_BOOTSTRAP_PATH);
+    let spec_iter = V3_SPECS
+        .iter()
+        .copied()
+        .filter(|(path, _)| !excluded_authority_paths.contains(path));
     let compiler_iter = COMPILER_FILES
         .iter()
         .copied()
         .filter(|(path, _)| !excluded_compiler_paths.contains(path));
     assert_bootstrap_fixture_keys_resolve();
     let fixtures: Vec<(&'static str, &'static str)> = staged_iter
-        .chain(V3_SPECS.iter().copied())
+        .chain(spec_iter)
         .chain(compiler_iter)
         .chain(extdeps_keyed_bootstrap_fixtures())
         .collect();
