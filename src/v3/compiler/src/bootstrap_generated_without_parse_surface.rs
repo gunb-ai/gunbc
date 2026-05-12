@@ -9168,14 +9168,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(1277)),
             inputs: vec![PortId(968)],
             output: PortId(969),
-            span: SourceSpan::new("src/v3/std/verification.dag", 22146, 22169),
+            span: SourceSpan::new("src/v3/std/verification.dag", 22156, 22179),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(809),
             target: TransformTarget::Callable(DeclarationId(1278)),
             inputs: vec![PortId(970)],
             output: PortId(971),
-            span: SourceSpan::new("src/v3/std/verification.dag", 22191, 22225),
+            span: SourceSpan::new("src/v3/std/verification.dag", 22201, 22235),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(810),
@@ -9186,7 +9186,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(969),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Enumerated".to_string(),
-                        span: SourceSpan::new("src/v3/std/verification.dag", 22129, 22142),
+                        span: SourceSpan::new("src/v3/std/verification.dag", 22139, 22152),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "c".to_string(),
@@ -9198,7 +9198,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(971),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Quantified".to_string(),
-                        span: SourceSpan::new("src/v3/std/verification.dag", 22174, 22187),
+                        span: SourceSpan::new("src/v3/std/verification.dag", 22184, 22197),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "q".to_string(),
@@ -9207,7 +9207,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(972),
-            span: SourceSpan::new("src/v3/std/verification.dag", 22111, 22229),
+            span: SourceSpan::new("src/v3/std/verification.dag", 22121, 22239),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -9215,7 +9215,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "obligation_for_suite_claim".to_string(),
             value: PortId(972),
             params: vec![PortId(967)],
-            span: SourceSpan::new("src/v3/std/verification.dag", 22111, 22229),
+            span: SourceSpan::new("src/v3/std/verification.dag", 22121, 22239),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -41649,7 +41649,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 19411, 19505),
+            span: SourceSpan::new("src/v3/std/verification.dag", 19421, 19515),
         });
         declarations.push(Declaration {
             id: DeclarationId(1272),
@@ -41678,7 +41678,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 19507, 19610),
+            span: SourceSpan::new("src/v3/std/verification.dag", 19517, 19620),
         });
         declarations.push(Declaration {
             id: DeclarationId(1273),
@@ -41703,7 +41703,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 20343, 20420),
+            span: SourceSpan::new("src/v3/std/verification.dag", 20353, 20430),
         });
         declarations.push(Declaration {
             id: DeclarationId(1274),
@@ -41728,7 +41728,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 20422, 20482),
+            span: SourceSpan::new("src/v3/std/verification.dag", 20432, 20492),
         });
         declarations.push(Declaration {
             id: DeclarationId(1275),
@@ -41753,7 +41753,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 20680, 20761),
+            span: SourceSpan::new("src/v3/std/verification.dag", 20690, 20771),
         });
         declarations.push(Declaration {
             id: DeclarationId(1276),
@@ -41763,8 +41763,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(2221),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-                    21203,
-                    21219,
+                    21213,
+                    21229,
                 )),
             },
             type_params: vec![],
@@ -41775,7 +41775,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 21132, 21219),
+            span: SourceSpan::new("src/v3/std/verification.dag", 21142, 21229),
         });
         declarations.push(Declaration {
             id: DeclarationId(1277),
@@ -41785,8 +41785,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1275),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-                    21277,
-                    21362,
+                    21287,
+                    21372,
                 )),
             },
             type_params: vec![],
@@ -41797,7 +41797,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 21221, 21362),
+            span: SourceSpan::new("src/v3/std/verification.dag", 21231, 21372),
         });
         declarations.push(Declaration {
             id: DeclarationId(1278),
@@ -41807,8 +41807,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1275),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-                    21669,
-                    21735,
+                    21679,
+                    21745,
                 )),
             },
             type_params: vec![],
@@ -41819,7 +41819,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 21592, 21735),
+            span: SourceSpan::new("src/v3/std/verification.dag", 21602, 21745),
         });
         declarations.push(Declaration {
             id: DeclarationId(1279),
@@ -41837,7 +41837,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 22040, 22229),
+            span: SourceSpan::new("src/v3/std/verification.dag", 22050, 22239),
         });
         declarations.push(Declaration {
             id: DeclarationId(1280),
@@ -41847,8 +41847,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(2223),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-                    22313,
-                    22358,
+                    22323,
+                    22368,
                 )),
             },
             type_params: vec![],
@@ -41859,7 +41859,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 22231, 22358),
+            span: SourceSpan::new("src/v3/std/verification.dag", 22241, 22368),
         });
         declarations.push(Declaration {
             id: DeclarationId(1281),
@@ -60194,7 +60194,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 21179, 21202),
+            span: SourceSpan::new("src/v3/std/verification.dag", 21189, 21212),
         });
         declarations.push(Declaration {
             id: DeclarationId(2222),
@@ -60214,7 +60214,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 22271, 22287),
+            span: SourceSpan::new("src/v3/std/verification.dag", 22281, 22297),
         });
         declarations.push(Declaration {
             id: DeclarationId(2223),
@@ -60234,7 +60234,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 22292, 22312),
+            span: SourceSpan::new("src/v3/std/verification.dag", 22302, 22322),
         });
         declarations.push(Declaration {
             id: DeclarationId(2224),
@@ -61270,7 +61270,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 19432, 19461),
+            span: SourceSpan::new("src/v3/std/verification.dag", 19442, 19471),
         });
         declarations.push(Declaration {
             id: DeclarationId(2275),
@@ -61289,7 +61289,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 19466, 19505),
+            span: SourceSpan::new("src/v3/std/verification.dag", 19476, 19515),
         });
         declarations.push(Declaration {
             id: DeclarationId(2276),
@@ -61308,7 +61308,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 20363, 20384),
+            span: SourceSpan::new("src/v3/std/verification.dag", 20373, 20394),
         });
         declarations.push(Declaration {
             id: DeclarationId(2277),
@@ -61327,7 +61327,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 20389, 20420),
+            span: SourceSpan::new("src/v3/std/verification.dag", 20399, 20430),
         });
         declarations.push(Declaration {
             id: DeclarationId(2278),
@@ -61347,7 +61347,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 20464, 20480),
+            span: SourceSpan::new("src/v3/std/verification.dag", 20474, 20490),
         });
         declarations.push(Declaration {
             id: DeclarationId(2279),
@@ -61367,7 +61367,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 20736, 20759),
+            span: SourceSpan::new("src/v3/std/verification.dag", 20746, 20769),
         });
         declarations.push(Declaration {
             id: DeclarationId(2280),
