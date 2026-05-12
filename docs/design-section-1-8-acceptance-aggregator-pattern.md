@@ -61,6 +61,8 @@ Live §1.8 uses more status values than the abstract 3-value lattice. The deriva
 |---|---|---|
 | `PASSING` | `PASSING` | identity |
 | `SATISFIED-BY-CONSTRUCTION` | `PASSING` | gate is closed by structural construction; no executable receipt needed; functionally identical to PASSING for closure arithmetic |
+| `CONSUMER_LANDED + PASSING` (composite) | `PASSING` | composite form (~25 instances in live §1.8, e.g., #86 `program_generator_carrier_landed`) means the gate progressed through CONSUMER_LANDED and reached PASSING; current state is PASSING |
+| **Composite rule** `<earlier> + <later>` | coerce to `<later>` | general rule for composite status cells: the `+` is conjunction-of-progression-stages; current state is the most-advanced (rightmost) component. Applies to any future composite forms not enumerated above. |
 | `CONSUMER_LANDED` | `CONSUMER_LANDED` | identity |
 | `INTEGRATION_RECEIPT (partial — ε-slice)` (or any `_partial`-suffixed bracketed form) | `CONSUMER_LANDED` | partial-receipt forms close to `CONSUMER_LANDED` per §1.7 corpus-quantified rule (slice receipts ≠ PASSING) |
 | `R3-LOAD-BEARING` | **REJECTED — see precondition rule below** | this is scope-metadata ("in R3 per carve-promotion-IN-R3 2026-05-09; formerly R4-carved (C1/C2/C3), now DISSOLVED per Director ratification gunbc#846"), NOT a closure-progress status; cells with this value must be reframed to expose closure-progress status before view-membership applies |
