@@ -21,84 +21,94 @@ import extdeps.github.actions {
 // `docs/briefs/t-wad-wi2-substrate-and-slice4-yamlstatic-body-worker.md` §1). `InlineGunbc` stays off the enum until a
 // real runtime consumer exists (emitter-dispatch §5.4).
 
-type WorkflowRuntime = YamlStatic | BinaryShim | PythonShim
+type WorkflowRuntime
+  = YamlStatic
+  | BinaryShim
+  | PythonShim
 
-// Single top-level `func` with `= match` (v3 parse surface: consecutive `func … =` items
-// are not accepted in this module position — shim arms use inlined placeholder `Workflow` literals).
-func project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow =
+fn project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow {
   match runtime {
     YamlStatic => dag.github_actions_workflow
-    BinaryShim => {
-      name: "ci-binary-shim-placeholder",
-      on: [ Push { branches: [], paths: [] } ],
-      concurrency: none,
-      jobs: [
-        {
-          id: "slice-5-binaryshim-todo",
-          name: none,
-          runner: HostedRunner { label: UbuntuLatest },
-          steps: [
-            RunStep {
-              name: Some { value: "Echo placeholder" },
-              id: none,
-              run: "echo Slice-5-BinaryShim-body-TODO",
-              shell: Bash,
-              env: none,
-              working_directory: none,
-              if_condition: none,
-              continue_on_error: false,
-              timeout_minutes: none
-            }
-          ],
-          needs: [],
-          env: none,
-          outputs: none,
-          if_condition: none,
-          strategy: none,
-          timeout_minutes: none,
-          continue_on_error: false,
-          concurrency: none
-        }
-      ],
-      env: none,
-      permissions: none
-    }
-    PythonShim => {
-      name: "ci-python-shim-placeholder",
-      on: [ Push { branches: [], paths: [] } ],
-      concurrency: none,
-      jobs: [
-        {
-          id: "slice-5-pythonshim-todo",
-          name: none,
-          runner: HostedRunner { label: UbuntuLatest },
-          steps: [
-            RunStep {
-              name: Some { value: "Echo placeholder" },
-              id: none,
-              run: "echo Slice-5-PythonShim-body-TODO",
-              shell: Bash,
-              env: none,
-              working_directory: none,
-              if_condition: none,
-              continue_on_error: false,
-              timeout_minutes: none
-            }
-          ],
-          needs: [],
-          env: none,
-          outputs: none,
-          if_condition: none,
-          strategy: none,
-          timeout_minutes: none,
-          continue_on_error: false,
-          concurrency: none
-        }
-      ],
-      env: none,
-      permissions: none
-    }
+    BinaryShim => gunbc_ci_emission_binary_shim_placeholder_workflow
+    PythonShim => gunbc_ci_emission_python_shim_placeholder_workflow
   }
+}
+
+// Slice 5 / follow-on: replace stub `Workflow` rows with real thin-shim projections. Match arms
+// must not use `Arm => { ... }` record bodies here — the `{` opens a statement block in this
+// v3 surface; carriers are pinned as `data` instead (WI-2 brief §1: BinaryShim + PythonShim TODO-stubbed).
+
+data gunbc_ci_emission_binary_shim_placeholder_workflow: Workflow = {
+  name: "ci-binary-shim-placeholder",
+  on: [ Push { branches: [], paths: [] } ],
+  concurrency: none,
+  jobs: [
+    {
+      id: "slice-5-binaryshim-todo",
+      name: none,
+      runner: HostedRunner { label: UbuntuLatest },
+      steps: [
+        RunStep {
+          name: Some { value: "Echo placeholder" },
+          id: none,
+          run: "echo Slice-5-BinaryShim-body-TODO",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }
+      ],
+      needs: [],
+      env: none,
+      outputs: none,
+      if_condition: none,
+      strategy: none,
+      timeout_minutes: none,
+      continue_on_error: false,
+      concurrency: none
+    }
+  ],
+  env: none,
+  permissions: none
+}
+
+data gunbc_ci_emission_python_shim_placeholder_workflow: Workflow = {
+  name: "ci-python-shim-placeholder",
+  on: [ Push { branches: [], paths: [] } ],
+  concurrency: none,
+  jobs: [
+    {
+      id: "slice-5-pythonshim-todo",
+      name: none,
+      runner: HostedRunner { label: UbuntuLatest },
+      steps: [
+        RunStep {
+          name: Some { value: "Echo placeholder" },
+          id: none,
+          run: "echo Slice-5-PythonShim-body-TODO",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }
+      ],
+      needs: [],
+      env: none,
+      outputs: none,
+      if_condition: none,
+      strategy: none,
+      timeout_minutes: none,
+      continue_on_error: false,
+      concurrency: none
+    }
+  ],
+  env: none,
+  permissions: none
+}
 
 // Pinned projection: same `ci_workflow_dag` row, YamlStatic transport (Slice 4).
 data gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)
