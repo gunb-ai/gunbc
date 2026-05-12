@@ -39,5 +39,5 @@ data tc3_strong_normalization_substrate_introduced: TestClaim = {
 
 data tc3_strong_normalization_suite: TestSuite = {
   name: "tc3_strong_normalization_suite",
-  claims: [tc3_strong_normalization_substrate_introduced]
+  claims: [Enumerated(tc3_strong_normalization_substrate_introduced)]
 }

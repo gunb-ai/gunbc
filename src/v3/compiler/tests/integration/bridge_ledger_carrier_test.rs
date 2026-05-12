@@ -277,7 +277,7 @@ data ledger_zero_claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "bridge_ledger_zero_runner_suite",
-  claims: [ledger_zero_claim]
+  claims: [Enumerated(ledger_zero_claim)]
 }
 "#;
     let dag = compile_clean(source, "bridge_ledger_zero_runner.dag");
@@ -365,7 +365,7 @@ data sibling_claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "bridge_ledger_zero_sibling_suite",
-  claims: [sibling_claim]
+  claims: [Enumerated(sibling_claim)]
 }
 "#;
     let dag = compile_clean(source, "bridge_ledger_zero_sibling.dag");
@@ -420,7 +420,7 @@ data wrong_type_claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "bridge_ledger_zero_wrong_type_suite",
-  claims: [wrong_type_claim]
+  claims: [Enumerated(wrong_type_claim)]
 }
 "#;
     let dag = compile_clean(source, "bridge_ledger_zero_wrong_type.dag");

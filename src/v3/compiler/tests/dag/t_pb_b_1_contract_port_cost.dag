@@ -24,5 +24,5 @@ data claim_answer_cost_bounded: TestClaim = {
 
 data suite_contract_port_and_cost: TestSuite = {
   name: "t-pb-b-1/contract/port_and_cost",
-  claims: [claim_answer_resolved, claim_answer_cost_bounded]
+  claims: [Enumerated(claim_answer_resolved), Enumerated(claim_answer_cost_bounded)]
 }
