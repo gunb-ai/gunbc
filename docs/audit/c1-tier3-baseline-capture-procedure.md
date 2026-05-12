@@ -133,6 +133,7 @@ The committed baseline file lives at `src/v3/compiler/benches/tier3_baseline.jso
   - **Standard commits:** SHOULD use **`ubicloud-standard-2`** (captured via `.github/workflows/tier3-baseline-capture.yml` once dispatchable).
   - **Bootstrap seed landing** (workflow YAML introduced in the same Phase-1 PR—`workflow_dispatch` not yet on `default`): **`host_id` MUST remain the truthful non-Ubicloud identifier**, with PR-body reconciliation naming **forward canonical authority** (`ubicloud-standard-2`) per §1. Replacing that seed via Ubicloud artifact follows **Director / PB-approved recapture** (worker brief) — **not** by silently rewriting `host_id`.
 - `git_sha` is the full 40-char SHA, not abbreviated.
+- **`captured_at`:** RFC 3339 UTC for when **`tier3_baseline.json`** was **finalized** (**`scripts/aggregate_tier3_baseline.py`** stamps aggregator wall clock—intentional audit receipt); it **need not** match any single **`cargo bench`** end instant. Bench execution spans live in archived **`criterion/`** bundles + workflow/job logs retained with the aggregate PR or artifact lineage.
 - `mirror_groups` keys MUST be exactly the four strings `termination`, `computation`, `induction`, `effect_carrier` — no others, no aliases. The Phase 2 gate uses these as join keys.
 - `benches[].name` MUST exactly match a `bench_function` argument in `tier3_mirror_perf.rs` at the captured `git_sha`. CI validation rejects mismatches.
 
