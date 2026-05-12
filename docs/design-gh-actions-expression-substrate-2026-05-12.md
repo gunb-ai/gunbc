@@ -330,7 +330,9 @@ expression-capable fields in actions.dag carriers (audited 2026-05-12):
 
 | Carrier | Field | Type at HEAD | Expression-capable per GH Actions docs |
 |---|---|---|---|
+| `Workflow` | `name: String` (`:22`) | String | ✓ |
 | `Workflow` | `env: Map<String, String>` | Map values | ✓ values |
+| `Job` | `name: String?` (`:112`) | String? | ✓ (per jobs.<job_id>.name context) |
 | `Job` | `if_condition: String?` | String? | ✓ (already in 7-site) |
 | `Job` | `env: Map<String, String>` | Map values | ✓ values |
 | `Job` | `runner: RunnerSpec` | enum | ✓ via new `ExpressionRunner` (in 7-site) |
@@ -353,19 +355,20 @@ expression-capable fields in actions.dag carriers (audited 2026-05-12):
 | `UsesStep` | `continue_on_error: Bool` | Bool | ✓ |
 | `UsesStep` | `timeout_minutes: Int?` | Int? | ✓ |
 
-Total expression-capable surface: **22 fields** across `Workflow`, `Job`,
+Total expression-capable surface: **24 fields** across `Workflow`, `Job`,
 `RunStep`, `UsesStep`, `ConcurrencySpec`, `RunnerSpec`. The 7-site
 enumeration was keyed to ci.yml usage, not actions.dag schema —
-under-modeling the platform surface by 15 sites.
+under-modeling the platform surface by 17 sites.
 
 ### §5.5.1 Migration rule (revised — string-typed sites only; typed-field sites HOLD per §5.5.2)
 
-The 22 expression-capable sites split into three classes by HEAD-type:
+The 24 expression-capable sites split into three classes by HEAD-type:
 
-- **String-typed sites (13)**: fields already typed `String` / `String?` /
-  `Map<String, String>` at HEAD — `Workflow.env`, `Job.if_condition`,
-  `Job.env`, `Job.concurrency.group`, `RunStep.name`, `RunStep.run`,
-  `RunStep.env`, `RunStep.working_directory`, `RunStep.if_condition`,
+- **String-typed sites (15)**: fields already typed `String` / `String?` /
+  `Map<String, String>` at HEAD — `Workflow.name`, `Workflow.env`,
+  `Job.name`, `Job.if_condition`, `Job.env`, `Job.concurrency.group`,
+  `RunStep.name`, `RunStep.run`, `RunStep.env`,
+  `RunStep.working_directory`, `RunStep.if_condition`,
   `UsesStep.name`, `UsesStep.with`, `UsesStep.env`,
   `UsesStep.if_condition`. Migration shape under (c) is uniform:
   every site → `Expression` / `Expression?` / `Map<String, Expression>`.
@@ -384,11 +387,11 @@ The 22 expression-capable sites split into three classes by HEAD-type:
   to the existing sum/struct rather than swapping the type. Per §2
   (c) sketch for `RunnerSpec`; `UsesStep.uses` extension is symmetric.
   These 2 sites are in scope for the §7.5 ask #4 prereq PR alongside
-  the 13 string-typed sites — same uniform-string-expression class
+  the 15 string-typed sites — same uniform-string-expression class
   at the substrate level (each adds an `Expression`-carrying variant).
 
 Total in-scope for the substrate-prereq PR under §7.5 ask #4 / Slice 4
-brief: **13 string-typed + 2 enum-extension = 15 sites**. The 7
+brief: **15 string-typed + 2 enum-extension = 17 sites**. The 7
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -411,7 +414,7 @@ create the contradiction codex REQUEST_CHANGES review 10083 flagged
 ("ALL 22 migrate" + "typed shape unresolved" cannot both hold).
 
 **Implementing-PR scope**: §7.5 ask #4 / Slice 4 brief migrates the
-13 string-typed + 2 enum-extension sites (15 total) uniformly. The 7
+15 string-typed + 2 enum-extension sites (17 total) uniformly. The 7
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -444,7 +447,7 @@ This canvas does not pre-author the choice (per §6 framing); routing to
 
 The §1 table and §2 (a/b/c) code sketches retain their 7-site framing as
 the ci.yml-keyed reference set, with §5.5 as the actions.dag-keyed audit
-extending to 22 sites. The substrate-shape ratification covers the
+extending to 24 sites. The substrate-shape ratification covers the
 expanded scope per §5.5.1 migration rule (all expression-capable fields);
 the §1/§2 7-site enumeration is the minimum subset proven by current
 ci.yml usage, not the migration ceiling.
@@ -476,7 +479,7 @@ ci.yml usage, not the migration ceiling.
    question; it was implied by §3 reasoning point #4 ("Pre-empts the
    type-alias trap") which applies equally to record-form aliases.
 
-2. **Migration sequencing across the 22 expression-capable fields**
+2. **Migration sequencing across the 24 expression-capable fields**
    (revised from "seven sites" per §5.5 audit). Do all sites migrate
    to `Expression` in one PR (substrate-prereq PR before Slice 4) or
    incrementally? Recommendation: one PR (cohesive substrate change;
