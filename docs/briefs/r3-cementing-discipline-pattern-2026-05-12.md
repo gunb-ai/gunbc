@@ -131,7 +131,7 @@ dispatch against `sg0_census_test.rs`). Per-worker acceptance:
 Phase 1 → cementing coupling is **wrapper-level only**: when #85
 lands the `SuiteClaim` consumer (per `r3-program-plan.md` row #85
 note), existing `TestSuite.claims: List<TestClaim>` sites mechanically
-migrate to wrap claims in `Enumerated(...)` (design §6 line 344).
+migrate to wrap claims in `Enumerated(...)` (design §6 bullet 1).
 Cementing `TestClaim`s participate in that mechanical wrap as a
 follow-on; the per-claim predicate shape (§2) does **not** change.
 Phase 3 bulk-port may proceed independently of #85 dispatch.
