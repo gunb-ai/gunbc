@@ -1,6 +1,6 @@
 # R3 T-LensProducer-Retirement — Sub-gate 2: `lens_testgen.rs` retirement (skeleton)
 
-**Status:** PROPOSAL skeleton (planning artifact, dispatch-gated). Authored 2026-04-30 by PB Manager continuation per dispatch on inbox #1149 (R3-continuation-by-design; R2 closed via #1275). Worker dispatch is gated; this brief is read at gate-clear and does NOT instruct implementation against runtime surfaces that don't yet exist.
+**Status:** IMPLEMENTATION PR in flight (2026-05-11). The standalone `src/v3/compiler/src/lens_testgen.rs` file is retired; the remaining `lens_testgen_body.txt` compatibility fragment is tracked by the fragment ratchet and no longer counted as the retired `.rs` file in the lens-producer subset predicate.
 
 **Owning manager:** Pure Bootstrap Manager (R2 → R3 continuation).
 
@@ -35,7 +35,7 @@ Sub-gates 1+2 share Item 4's mechanism. Sub-gate 2 does **not** require sub-gate
 ## Acceptance shape
 
 - **`lens_testgen_dot_rs_retired`** — `src/v3/compiler/src/lens_testgen.rs` deleted.
-- **SG-0 census delta** — `EXPECTED_HAND_AUTHORED_NON_TEST` decreases by 1 (`lens_testgen.rs` removed from the census authority at `src/v3/compiler/tests/integration/sg0_census_test.rs`).
+- **SG-0 census delta** — `EXPECTED_HAND_AUTHORED_NON_TEST` decreases by 1 (`lens_testgen.rs` removed from the census authority at `src/v3/compiler/tests/integration/sg0_census_test.rs`). Any temporary non-`.rs` compatibility fragment remains in `EXPECTED_HAND_AUTHORED_FRAGMENTS` and does not count as `lens_testgen.rs` for `lens_producer_files_remaining`.
 - **Testgen invariants preserved by construction** — every testgen consumer that reached `lens_testgen.rs` now routes through PB-Runtime's `evaluate(...)` of the equivalent `.dag` testgen body (per anti-bridge invariant #4: "no parallel emit logic"; one canonical mechanism).
 - **No new `TestPredicate` variant** — escalate per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure) if a substrate gap surfaces.
 
