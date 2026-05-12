@@ -78,6 +78,7 @@ type GateSource
   | FixedPointGate                       // proves regen(regen(source)) == regen(source)
 
 type CIGate {
+  id: String
   name: String
   command: String
   blocking: Bool
@@ -89,18 +90,14 @@ type CIPipeline {
   gates: List<CIGate>
 }
 
-// CI workflow as a DAG, separate from GitHub Actions transport. Nodes are
-// structural gates; edges are prerequisite relationships between gate ids.
+// CI workflow as a DAG, separate from GitHub Actions transport. `pipeline.gates`
+// is the single gate-membership authority; edges are prerequisite relationships
+// between gate ids carried by those gates.
 //
 // Scaffold boundary: until a real projection function derives provider
 // transports from this graph, `CIWorkflowDag` is the modeled authority for gate
 // dependency shape. Demo mirrors must be drift-checked against this row rather
 // than treated as an independent source of truth.
-type CIGateNode {
-  id: String
-  gate: CIGate
-}
-
 type CIGateEdge {
   from: String
   to: String
@@ -108,7 +105,7 @@ type CIGateEdge {
 
 type CIWorkflowDag {
   name: String
-  nodes: List<CIGateNode>
+  pipeline: CIPipeline
   edges: List<CIGateEdge>
 }
 
@@ -120,15 +117,17 @@ type CIWorkflowDag {
 // serve as a fail-closed authority for CI topology inspection.
 
 data lint_gate: CIGate = {
+  id: "lint",
   name: "Lint",
-  command: "cargo clippy --workspace -- -D warnings",
+  command: lint_command(cargo: "cargo"),
   blocking: true,
   source: LintGate
 }
 
 data test_gate: CIGate = {
+  id: "tests",
   name: "Tests",
-  command: "cargo test -p v3-compiler",
+  command: test_command(cargo: "cargo", package: test_package),
   blocking: true,
   source: TestSuiteGate { test_name: "" }
 }
@@ -137,6 +136,7 @@ data test_gate: CIGate = {
 // workflows execute reliably in any environment.
 
 data l1_gate: CIGate = {
+  id: "l1-ratchet",
   name: "L1 Type Knowledge Ratchet",
   command: "scripts/l1-ratchet.sh --check",
   blocking: true,
@@ -152,8 +152,9 @@ data l1_gate: CIGate = {
 // (6 self-compiles → 2).
 
 data compile_gates_gate: CIGate = {
+  id: "compile-gates",
   name: "Compile Gates",
-  command: "cargo test -p v3-compiler ci_ -- --ignored --nocapture",
+  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "ci_"),
   blocking: true,
   source: FixedPointGate
 }
@@ -175,12 +176,7 @@ data ci_pipeline: CIPipeline = {
 
 data ci_workflow_dag: CIWorkflowDag = {
   name: "gunbc-ci",
-  nodes: [
-    { id: "compile-gates", gate: compile_gates_gate },
-    { id: "lint", gate: lint_gate },
-    { id: "tests", gate: test_gate },
-    { id: "l1-ratchet", gate: l1_gate }
-  ],
+  pipeline: ci_pipeline,
   edges: [
     { from: "compile-gates", to: "lint" },
     { from: "compile-gates", to: "tests" },

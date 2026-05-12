@@ -299,9 +299,10 @@ fn structural_list(value: &FieldValue) -> &[FieldValue] {
 
 fn workflow_topology(fields: &[(String, FieldValue)]) -> (&str, Vec<&str>, Vec<(&str, &str)>) {
     let name = literal_string(structural_field(fields, "name"));
-    let node_ids = structural_list(structural_field(fields, "nodes"))
+    let pipeline = structural_record(structural_field(fields, "pipeline"));
+    let node_ids = structural_list(structural_field(pipeline, "gates"))
         .iter()
-        .map(|node| literal_string(structural_field(structural_record(node), "id")))
+        .map(|gate| literal_string(structural_field(structural_record(gate), "id")))
         .collect();
     let edges = structural_list(structural_field(fields, "edges"))
         .iter()
