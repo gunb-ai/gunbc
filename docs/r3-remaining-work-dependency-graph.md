@@ -70,8 +70,8 @@ Each entry documents a finding initially enumerated as in-scope here but RETRACT
 
 **Phase structure**:
 - **Phase 1** (parallel-dispatchable NOW): #85 quantifier substrate + #86 generator substrate. Locked-design-resolved, no canvas needed. Substrate Mgr owns.
-- **Phase 2** (cascade post-Phase 1): #87 cementing discipline pattern. Verification Mgr owns. Migrates hand-Rust cementing tests → .dag TestClaim + frozen-oracle witness.
-- **Phase 3** (cascade post-Phase 2): #84 bulk-port. Coordinator + 6 per-class workers (cementing / reflected-Dag / generic DimensionReport / boundary / R1C residuals / L4/L7/L5 skeleton). **~80-90 entries dissolve**.
+- **Phase 2** (#87 cementing discipline): **LANDED at HEAD** — `docs/r3-program-plan.md` §1.8 row #87 is **CONSUMER_LANDED + PASSING** (PR #2639 regen harness + PR #2757 `LensOutputEquals` / `DifferentialEquals` / frozen-oracle receipts; Band-C dispatch successor `src/v3/compiler/tests/dag/cementing_dispatch.dag`). Do **not** respawn “#87 pattern brief” Wave-1 workers; see §retractions. Residual cementing-adjacent Rust outside the `regen.dag` enumeration drains through Phase 3 #84 per [`docs/briefs/r3-v-cluster-m-84-bulkport-coordinator.md`](briefs/r3-v-cluster-m-84-bulkport-coordinator.md).
+- **Phase 3** (#84 bulk-port): Coordinator + 6 per-class workers (cementing / reflected-Dag / generic DimensionReport / boundary / R1C residuals / L4/L7/L5 skeleton). **~80-90 entries dissolve**. **Not** predicate-blocked on #87 at HEAD (pattern + dispatch receipt landed); gated on coordinator/class-brief readiness + per-row port work.
 
 **Timeline estimate** (per `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md`):
 - Phase 1: 1-2 weeks
@@ -154,7 +154,6 @@ These gates have NO unsatisfied prerequisites. Each is an independent worker spa
 | **#82** F-β.1 canvas | T-LBP / Cluster F | Substrate | migration-shape ratification (canvas-tier; no predicate block on F-α) | S |
 | **#85** forall_exists_quantifier_substrate_landed | Tests-As-Data / Cluster M | Substrate | Quantifier/{ForAll, Exists}, QuantifiedTestClaim carriers; PR #2734 in flight | S-M |
 | **#86** program_generator_carrier_landed | Tests-As-Data / Cluster M | Substrate | ProgramGenerator + ProgramShape carriers; PR #2752 DRAFT (close out) | S-M |
-| **#87** cementing_discipline (Phase 2 brief authoring) | Tests-As-Data / Cluster M | Verification | cementing-discipline pattern: hand-Rust cementing test → .dag TestClaim + frozen-oracle | Brief NOW |
 | **#84** bulk-port coordinator (framework brief) | Tests-As-Data / Cluster M | Verification | coordinator framework + 6 per-class brief stubs | Brief NOW |
 | **#98** ci_yml_hand_authority_dissolved | T-WAD | Substrate | actual ci.yml swap with WAD-emitted artifact (Slice 5) | M (post-Slice 4) |
 | **#103** ci_uses_affected_set_selection | T-WAD | Substrate / Verification | Slice 7 affected-set integration; canvas at PR #2766 | M |
@@ -165,7 +164,7 @@ These gates have NO unsatisfied prerequisites. Each is an independent worker spa
 | **#70** cost_lens_demonstration | CostLens | Substrate | Rust-side composition fixture + ≥2 algebra-instances | M |
 | **#73** lens_behavioral_parity_demonstration | T-LBP | Substrate/Verification | all 4 lenses vs frozen v2-oracle snapshot | M |
 
-**Total parallel-dispatchable NOW: ~14 gates** (some are brief authoring, some are immediate worker spawn).
+**Total parallel-dispatchable NOW: ~13 gates** (some are brief authoring, some are immediate worker spawn). **#87** was incorrectly listed here at authoring time — §1.8 shows **PASSING**; see §retractions.
 
 ### Cascade-gated (waiting on specific predecessors)
 
@@ -174,7 +173,7 @@ These gates have NO unsatisfied prerequisites. Each is an independent worker spa
 | #82 F-β.2 implementation | F-β.1 canvas Director-ratified | post-canvas-ratification |
 | #83 register status | #81 + #82 + #79 + #80 all COMPLETE | end-chain Cluster F |
 | #95 opt-in iteration demo | #81 + T-LAS #91 | mid-chain Cluster F |
-| #84 Phase 3 bulk-port workers | #87 Phase 2 pattern landing | mid-Cluster M |
+| #84 Phase 3 bulk-port workers | #84 coordinator + per-class brief readiness (§1.8 **#87 already PASSING** — not pattern-blocked) | mid-Cluster M |
 | #91 T-LAS enforce_violation_routing | T-LBP cascade COMPLETE | post-cluster-F |
 | #56-#59 T-Lens-Self-Application | T-WAD + T-LAS cascade | post-cluster + slice-cascade |
 | #15 l5_cross_target_consistency | L4 (#9) corpus completion | L4 mature |
@@ -194,10 +193,9 @@ These gates have NO unsatisfied prerequisites. Each is an independent worker spa
 - Worker S6: **#103 Slice 7 implementation** (consumes PR #2766 canvas)
 - Worker S7: **#98 Slice 5 (post-Slice 4 / PR #2774 land)** — pre-stage brief; spawn worker on Slice 4 merge
 
-**Verification Mgr (clever-tern-670)** can spawn up to 8. Currently 3 (sharp-deer-47, calm-newt-227, tidy-gull-504). Spawn 3 more:
-- Worker V1: **#87 Phase 2 cementing-discipline pattern brief**
-- Worker V2: **#84 Phase 3 coordinator framework brief** (6 per-class stubs)
-- Worker V3: **#40 symbolic_cost_expr_equals + #70 cost_lens_demonstration** (bundled)
+**Verification Mgr (clever-tern-670)** can spawn up to 8. Currently 3 (sharp-deer-47, calm-newt-227, tidy-gull-504). Spawn 2 more (**#87** pattern work landed — do not duplicate):
+- Worker V1: **#84 Phase 3 coordinator framework brief** (6 per-class stubs)
+- Worker V2: **#40 symbolic_cost_expr_equals + #70 cost_lens_demonstration** (bundled)
 
 **Debt-Paydown Mgr (zesty-boar-261)** can spawn up to 8. Currently 0. Spawn 2-3:
 - Worker D1: **Slow-test residual sweep** (post-cost-dim-landing follow-on)
@@ -207,13 +205,13 @@ These gates have NO unsatisfied prerequisites. Each is an independent worker spa
 - Worker PB1: **#2 tier3_computation_mirror_dissolved** (scope-matches #1/#4)
 - Worker PB2: **#16 pb_self_compile_fixed_point** (R3 interpretation strengthening)
 
-**Wave 1 worker count: ~13-15 parallel workers**. Mgr capacity not exhausted; can scale further if needed.
+**Wave 1 worker count: ~12-14 parallel workers**. Mgr capacity not exhausted; can scale further if needed.
 
 ### **Wave 2 — Day 7-10 (cascade-gated)**
 
 Triggered by Wave 1 landings:
 - **#82 F-β.2 implementation** (4 sub-phase workers post-canvas-ratification)
-- **#84 Phase 3 bulk-port** (6 per-class workers post-#87 pattern landing — ~80-90 SG-0 dissolutions begin)
+- **#84 Phase 3 bulk-port** (6 per-class workers once coordinator + class briefs are ready — ~80-90 SG-0 dissolutions begin; **#87 PASSING** removes the old pattern gate)
 - **#83 register status** (post-all-4-lenses-COMPLETE)
 - **#95 opt-in iteration demo** (post-#81 + post-T-LAS #91)
 
@@ -270,12 +268,12 @@ Current state (per `dashboard-ops graph deep-wolf-155`):
 1. Relay Wave-1 dispatch plan to zesty-bear-812 (Director) for ratification + Mgr-tier dispatch
 2. Director ratifies and authors next-queue briefs OR delegates to Mgr-tier brief-queue depth
 3. Mgrs bulk-author briefs (5+ each) per Wave-1 catalog
-4. Mgrs spawn workers up to Wave-1 count (~13-15 workers)
+4. Mgrs spawn workers up to Wave-1 count (~12-14 workers)
 
 **Cluster M sequencing (critical path)**:
 - Day 1: Substrate Mgr spawns S2 (#85 + #86 bundled brief)
 - Day 1-3: Workers ship Phase 1 substrate; PR cycles
-- Day 4-7: Verification Mgr lands Phase 2 pattern (#87 first migration)
+- Day 4-7: ~~Verification Mgr lands Phase 2 pattern (#87)~~ **DONE at HEAD** (PR #2639 + #2757); focus shifts to #84 coordinator + Phase 3 spawn-up
 - Day 7+: Verification Mgr spawns 6 per-class Phase 3 bulk-port workers; ~80-90 SG-0 entries dissolve over 2-4 weeks
 
 **Cluster F sequencing (parallel critical path)**:
@@ -314,20 +312,20 @@ Current state (per `dashboard-ops graph deep-wolf-155`):
 
 - **Day 1-3**: Wave-1 brief authoring + worker spawn-up
 - **Week 1**: Phase 1 carriers land (#85 + #86); F-α + F-β.1 canvas in flight
-- **Week 2**: Phase 2 cementing-discipline pattern lands (#87); F-β.2 implementation begins; T-WAD Slice 4 lands
+- **Week 2**: ~~Phase 2 #87 pattern~~ **landed pre-snapshot**; F-β.2 implementation begins; T-WAD Slice 4 lands
 - **Week 3-4**: Phase 3 bulk-port begins (per-class workers); F-γ cascade; T-WAD Slice 5/7 cascade
 - **Week 5-6**: ~80-90 SG-0 entries dissolved via #84; Cluster F all-4-lenses COMPLETE
 - **Week 6-8**: Final cascade — T-LAS Slice B + T-Lens-Self-Application + remaining lane closures + ledger zero
 
 **Total**: 6-8 weeks honest timeline from full Wave-1 dispatch to R3-close-ready, contingent on:
-- Worker spawn-up reaches +13-15 parallel (currently 5)
+- Worker spawn-up reaches +12-14 parallel (currently 5)
 - Brief-queue-depth maintained (pre-authored)
 - Review-parser fix lands mid-window (reduces coordination tax)
 - No major substrate-cascade re-evaluations
 
 **Critical-path nodes**:
 - M1(2.8) compiler-surface lowering gap (PR #2774 — proud-dove-838) — substantive engineering; unblocks Slice 5
-- Cluster M Phase 2 cementing-discipline pattern landing — unblocks 80-90 entries
+- Cluster M Phase 3 #84 bulk-port execution — dissolves ~80-90 entries (**#87** receipt stack already landed)
 - F-β.1 canvas Director-ratification — unblocks F-β.2 → F-γ cascade
 
 ---
