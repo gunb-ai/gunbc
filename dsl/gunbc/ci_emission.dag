@@ -1,0 +1,80 @@
+// gunbc/ci_emission.dag — T-WAD WI-2 / Slice 4: `WorkflowRuntime` + `project_github_actions`.
+//
+// Canonical GitHub Actions `Workflow` bytes live in `gunbc.ci.github_actions_workflow`
+// (`dsl/gunbc/ci_github_actions_workflow.dag`, regenerated from `.github/workflows/ci.yml`).
+// `CIWorkflowDag.github_actions_workflow` pins that carrier as part of the same authority
+// row as the gate graph (`dsl/gunbc/ci.dag`).
+
+module gunbc.ci_emission
+
+import std.list { List, Empty, Cons }
+import gunbc.ci { CIWorkflowDag, ci_workflow_dag }
+import extdeps.github.actions {
+  Workflow, Job, RunStep, Push, HostedRunner, UbuntuLatest, Bash
+}
+
+// 🟡 YELLOW (scaffold) — coproduct-dissolution receipt.
+// sum-of-tagged-coordinates carrier shape (NOT Cartesian product
+// of (EmissionArtifactShape × ShimRunnerKind)):
+//   Static(EmissionArtifactShape) | Shim { runner: ShimRunnerKind }
+// Dissolution triggers: (a) 4th arm pressure (InlineGunbc design-only
+// pending real runtime consumer per emitter-dispatch canvas §5.4);
+// (b) per-arm body axis discovery during Slice 4/5 implementation;
+// (c) consumer-side dimension extraction.
+//
+// Initial enum (per docs/briefs/t-wad-wi2-substrate-and-slice4-yamlstatic-body-worker.md §1):
+//   YamlStatic | BinaryShim | ...
+// PythonShim / InlineGunbc are DESIGN-ONLY (INVARIANTS P5) — not initial arms.
+
+type WorkflowRuntime = YamlStatic | BinaryShim | ...
+
+func github_actions_binary_shim_placeholder_workflow() -> Workflow =
+  Workflow {
+    name: "ci-binary-shim-placeholder",
+    on: Cons {
+      head: Push { branches: Empty, paths: Empty },
+      tail: Empty,
+    },
+    concurrency: none,
+    jobs: Cons {
+      head: Job {
+        id: "slice-5-binaryshim-todo",
+        name: none,
+        runner: HostedRunner { label: UbuntuLatest },
+        steps: Cons {
+          head: RunStep {
+            name: some("Echo placeholder"),
+            id: none,
+            run: "echo Slice-5-BinaryShim-body-TODO",
+            shell: Bash,
+            env: none,
+            working_directory: none,
+            if_condition: none,
+            continue_on_error: false,
+            timeout_minutes: none
+          },
+          tail: Empty
+        },
+        needs: Empty,
+        env: none,
+        outputs: none,
+        if_condition: none,
+        strategy: none,
+        timeout_minutes: none,
+        continue_on_error: false,
+        concurrency: none
+      },
+      tail: Empty
+    },
+    env: none,
+    permissions: none
+  }
+
+func project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow =
+  match runtime {
+    YamlStatic => dag.github_actions_workflow
+    BinaryShim => github_actions_binary_shim_placeholder_workflow()
+  }
+
+// Pinned projection: same `ci_workflow_dag` row, YamlStatic transport (Slice 4).
+data gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)

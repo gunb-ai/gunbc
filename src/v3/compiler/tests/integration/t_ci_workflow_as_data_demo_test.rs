@@ -513,6 +513,28 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
 }
 
 #[test]
+fn gunbc_ci_github_actions_workflow_authority_compiles() {
+    let dag = compile_to_dag(GUNBC_CI_GITHUB_WORKFLOW_SOURCE, GUNBC_CI_GITHUB_WORKFLOW_FILE)
+        .unwrap_or_else(|e| panic!("compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {e:?}"));
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn gunbc_ci_emission_substrate_compiles() {
+    let dag = compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE)
+        .unwrap_or_else(|e| panic!("compile {GUNBC_CI_EMISSION_FILE}: {e:?}"));
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 #[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator() {
     let dag = demo_bootstrap_dag();
