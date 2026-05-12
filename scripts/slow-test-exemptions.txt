@@ -23,6 +23,13 @@
 #
 # Adding an entry here is a short-term tolerance, not a permanent waiver.
 # The goal remains: every `#[test]` under 2s wall-clock.
+#
+# hot-fix-2026-05-12 (gunbc#2722; Brian operator directive at gunbc#846
+# c#4426395595): rows tagged with this marker are ignored-by-default to cut
+# cold-v3 wall time now. Dissolution trigger: rebuild each row under
+# OnceLock/cached_compile/shared-fixture amortization, remove its `#[ignore]`,
+# delete the row here, and lower TEST_TIMEOUT_MAX_EXEMPTIONS in the same PR.
+# Rebuild owner: TBD per separate dispatch.
 
 # Baseline captured locally on 2026-04-19 by
 # `scripts/check-test-timeout.sh` against `cargo test -p v3-compiler -- -Z unstable-options --report-time`.
@@ -37,6 +44,10 @@ emit_matrix_program_go_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 d
 emit_matrix_program_python_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; program re-emit sweep.
 emit_matrix_program_rust_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; program re-emit sweep.
 four_fixture_disk_sources_emit_deterministically  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; four-fixture disk corpus.
+m1_5_testgen_test::testgen_lens_emits_claims_as_structural_testclaim_values  # hot-fix-2026-05-12 — rebuild owner: TBD; gunbc#2722 cut of exhaustive M1.5 testgen sweep. Dissolution: rebuild under shared OnceLock/cached_compile amortization, remove #[ignore], delete this row, and lower TEST_TIMEOUT_MAX_EXEMPTIONS.
+m1_5_testgen_test::testgen_generated_claims_execute_against_compile_boundary  # hot-fix-2026-05-12 — rebuild owner: TBD; gunbc#2722 cut of exhaustive M1.5 generated-claim execution sweep. Dissolution: rebuild under shared OnceLock/cached_compile amortization, remove #[ignore], delete this row, and lower TEST_TIMEOUT_MAX_EXEMPTIONS.
+m1_5_testgen_test::representative_generated_claims_cover_predicate_families  # hot-fix-2026-05-12 — rebuild owner: TBD; gunbc#2722 cut of bootstrapped M1.5 corpus query. Dissolution: rebuild under shared OnceLock/cached_compile amortization, remove #[ignore], delete this row, and lower TEST_TIMEOUT_MAX_EXEMPTIONS.
+m1_5_testgen_test::representative_generated_claims_execute_against_compile_boundary  # hot-fix-2026-05-12 — rebuild owner: TBD; gunbc#2722 cut of representative M1.5 generated-claim execution. Dissolution: rebuild under shared OnceLock/cached_compile amortization, remove #[ignore], delete this row, and lower TEST_TIMEOUT_MAX_EXEMPTIONS.
 four_fixture_regression_test::four_fixture_suite_shares_one_reachability_shape  # ROADMAP Lane 3 Stage 3c prep / four-fixture pressure corpus; shared `compile_to_dag` suite can exceed 2s on cold ubuntu-latest (neighbor: `four_fixture_disk_sources_emit_deterministically`).
 
 common::cached_compile::tests::cached_compile_any_returns_clean_dag_when_key_warmed_by_strict  # TESTING.md "Mocks over compile" paydown; compile-cache behavior test still performs real compile work.

@@ -646,7 +646,7 @@ fn assert_generated_claim_holds(claim_name: &str, expected_predicate: &str) {
 }
 
 #[test]
-#[ignore = "slow exhaustive testgen sweep; excluded from required PR CI wall-clock gate"]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization - owner: TBD per separate dispatch"]
 fn testgen_lens_emits_claims_as_structural_testclaim_values() {
     let dag = bootstrapped_dag();
     assert!(
@@ -713,7 +713,7 @@ fn testgen_lens_emits_claims_as_structural_testclaim_values() {
 }
 
 #[test]
-#[ignore = "slow exhaustive testgen sweep; excluded from required PR CI wall-clock gate"]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization - owner: TBD per separate dispatch"]
 fn testgen_generated_claims_execute_against_compile_boundary() {
     let claims = generated_claims();
     assert!(
@@ -730,7 +730,7 @@ fn testgen_generated_claims_execute_against_compile_boundary() {
 }
 
 #[test]
-#[ignore = "bootstrapped testgen corpus query remains too expensive for required PR CI; keep as spot-check coverage only"]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization - owner: TBD per separate dispatch"]
 fn representative_generated_claims_cover_predicate_families() {
     for (claim_name, expected_predicate) in [
         ("TestPredicate variant Compiles compiles", "Compiles"),
@@ -748,7 +748,7 @@ fn representative_generated_claims_cover_predicate_families() {
 }
 
 #[test]
-#[ignore = "bootstrapped testgen corpus query remains too expensive for required PR CI; keep as spot-check coverage only"]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization - owner: TBD per separate dispatch"]
 fn representative_generated_claims_execute_against_compile_boundary() {
     for (claim_name, expected_predicate) in [
         ("TestPredicate variant Compiles compiles", "Compiles"),
