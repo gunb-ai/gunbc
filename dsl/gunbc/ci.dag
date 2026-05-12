@@ -46,8 +46,9 @@ import extdeps.github.actions {
   UsesStep,
   HostedRunner,
   SelfHosted,
-  UbuntuLatest,
+  RunsOnExpression,
   Push,
+  ConcurrencySpec,
   PullRequest,
   Opened,
   Synchronize,
@@ -179,7 +180,7 @@ data ci_pipeline: CIPipeline = {
 
 // ── GitHub Actions workflow mirror (`.github/workflows/ci.yml`) ──────────────
 // Hierarchy: Workflow > Job > Step (RunStep | UsesStep). Structural TODOs:
-// workflow `concurrency:`, Layer-2 `if:` regex cluster, affected-set wiring — see slice / Director notes.
+// Layer-2 `if:` regex cluster, affected-set wiring — see slice / Director notes.
 
 data gunbc_ci_yml_workflow: Workflow = Workflow {
   name: "ci",
@@ -199,11 +200,15 @@ data gunbc_ci_yml_workflow: Workflow = Workflow {
     tail: Empty
   }
 },
+  concurrency: ConcurrencySpec {
+    group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+    cancel_in_progress: true
+  },
   jobs:         Cons {
           head:         Job {
           id: "fmt",
           name: none,
-          runner: HostedRunner { label: UbuntuLatest },
+          runner: RunsOnExpression { expression: "${{ vars.CI_RUNNER || 'ubuntu-latest' }}" },
           steps:         Cons {
           head: UsesStep {
   name: none,
@@ -255,7 +260,7 @@ data gunbc_ci_yml_workflow: Workflow = Workflow {
           head:         Job {
           id: "ci",
           name: none,
-          runner: HostedRunner { label: UbuntuLatest },
+          runner: RunsOnExpression { expression: "${{ vars.CI_RUNNER || 'ubuntu-latest' }}" },
           steps:         Cons {
           head: UsesStep {
   name: none,
@@ -462,7 +467,7 @@ data gunbc_ci_yml_workflow: Workflow = Workflow {
           head:         Job {
           id: "changes",
           name: none,
-          runner: HostedRunner { label: UbuntuLatest },
+          runner: RunsOnExpression { expression: "${{ vars.CI_RUNNER || 'ubuntu-latest' }}" },
           steps:         Cons {
           head: UsesStep {
   name: none,

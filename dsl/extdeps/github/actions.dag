@@ -17,10 +17,12 @@ import std.types { SecretName }
 
 // -- Workflows --------------------------------------------------------
 // A workflow is the top-level unit: trigger + jobs.
+// `concurrency` is workflow-scoped (YAML `concurrency:`); `none` = block absent.
 
 type Workflow {
   name: String
   on: List<WorkflowTrigger>
+  concurrency: ConcurrencySpec?
   jobs: List<Job>
   env: Map<String, String>
   permissions: WorkflowPermissions?
@@ -136,6 +138,8 @@ type ConcurrencySpec {
 type RunnerSpec
   = HostedRunner { label: RunnerLabel }
   | SelfHosted { labels: List<String> }
+  // `runs-on:` as an expression (e.g. `${{ vars.CI_RUNNER || 'ubuntu-latest' }}`).
+  | RunsOnExpression { expression: String }
 
 type RunnerLabel
   = UbuntuLatest

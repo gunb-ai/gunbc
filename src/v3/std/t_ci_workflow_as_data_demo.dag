@@ -38,6 +38,7 @@ data modeled_gunbc_ci_workflow: Workflow = Workflow {
     head: Push { branches: Empty, paths: Empty },
     tail: Empty,
   },
+  concurrency: none,
   jobs: Cons {
     head: Job {
       id: "build",
