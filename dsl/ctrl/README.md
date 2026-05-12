@@ -2,7 +2,14 @@
 
 This directory hosts the **subsystem-modeling artifacts** for the `ctrl/` → `.dag` migration program. Each `.dag` file here is a type-only service contract for one `ctrl/` subsystem; the corresponding TS implementation in [the `ctrl/` repo](https://github.com/gunb-ai/ctrl) remains authoritative until cut-over (Phase 4).
 
-**Authority**: every file in this directory is `🟡 STAGED`, not `🟢 AUTHORITY`, per INVARIANTS P2. The TS implementation in [the `ctrl/` repo](https://github.com/gunb-ai/ctrl) is the sole `🟢 AUTHORITY` while a subsystem is staged here. The `STAGED → AUTHORITY` flip happens in **Phase 4 cut-over** — the ctrl PR that deletes the corresponding TS file(s). Trio convergence (algebra ✓ + Phase 1.5 modeling PR ✓ + Phase 3 emission target ✓ + parity test ✓) is the **gating precondition** for Phase 4 cut-over dispatch, **not** an authority-flip in itself. This single-trigger discipline avoids the competing-authority failure mode under INVARIANTS P2/P5 (one and only one event flips authority per subsystem: the ctrl-side TS deletion PR). See [`docs/r4-ctrl-dag-migration-project-plan.md`](../../docs/r4-ctrl-dag-migration-project-plan.md) §6 + §"Phase 4" and [`docs/briefs/r4-ctrl-migration-subsystem-modeling-manager.md`](../../docs/briefs/r4-ctrl-migration-subsystem-modeling-manager.md) for the gate definition.
+**Authority**: every file in this directory is `🟡 STAGED`, not `🟢 AUTHORITY`, per INVARIANTS P2. The TS implementation in [the `ctrl/` repo](https://github.com/gunb-ai/ctrl) is the sole `🟢 AUTHORITY` while a subsystem is staged here. **Two distinct gates** govern the lifecycle — kept separate per INVARIANTS P2/P5 single-trigger discipline:
+
+1. **Parity-proof gate (readiness)**: trio convergence — algebra ✓ + Phase 1.5 modeling PR ✓ + Phase 3 emission target ✓ + parity test ✓. Crossing this gate *proves* the .dag substrate can stand in for the TS implementation; it does NOT itself flip authority. Workers and Mgrs cite this gate when judging whether a subsystem is ready for Phase 4 dispatch.
+2. **Source-authority deletion gate (`STAGED → AUTHORITY` flip)**: the **ctrl PR cut-over** that deletes the corresponding TS file(s). This is the *only* event that flips a subsystem from `🟡 STAGED` to `🟢 AUTHORITY`. The PR's existence + merge IS the deletion receipt.
+
+The parity-proof gate is a **precondition** for cut-over dispatch but is not sufficient by itself; the cut-over PR must still land. This collapses-then-splits ordering avoids the competing-authority failure mode (no overlap window where two artifacts claim authority simultaneously).
+
+See [`docs/r4-ctrl-dag-migration-project-plan.md`](../../docs/r4-ctrl-dag-migration-project-plan.md) §6 + §"Phase 4" and [`docs/briefs/r4-ctrl-migration-subsystem-modeling-manager.md`](../../docs/briefs/r4-ctrl-migration-subsystem-modeling-manager.md) for the gate definitions.
 
 ## Conventions
 
