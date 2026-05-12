@@ -489,7 +489,7 @@ This is ~50 lines of substrate. CLI / REST / SQL / audit emissions derive.
 - `dsl/gunbc/workflow/types.dag` — pre-existing workflow types (dissolution scope per §4)
 - `dsl/gunbc/ci.dag:29-32` — projection-function pattern (`project_github_actions`); concrete implementation in flight via Slice 4
 - `docs/v3-modeling-analysis.md:217-229` — Practice 4 dissolution-receipt ledger rule
-- `INVARIANTS.md` P1 (single-authority), P2 (illegal-states-unrepresentable), P5 (Pure Bootstrap)
+- `INVARIANTS.md` P1 (Modeling Faithfulness — single-authority is a consequence), P2 (Boundary Discipline — illegal-states-unrepresentable is `docs/modeling-discipline.md` Practice 2, downstream of P2), P5 (Progress Is Dissolution — Pure Bootstrap is the `docs/design-pure-bootstrap-zero.md` thesis, a separate concern)
 - `MODELING.md` M9 (DFS the concept DAG before defining)
 - Memory `feedback_lenses_not_passes.md` — lenses over physics, not heuristic passes
 - Memory `feedback_coproduct_dissolution.md` — 4 dissolution patterns
