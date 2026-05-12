@@ -304,20 +304,30 @@ type ProcessNodeModeState
   | BucketState { drain: BucketDrainState }
   | UndeclaredState
 
-// 🟡 STAGED graph snapshot for closure projection. This is the minimum state
-// needed by the Phase-1 guard; workflow phase and run-keyed facts remain in
-// `gunbc.workflow.types`.
+// 🟡 STAGED node facts for closure projection. Identity is carried by the
+// graph entry below, not by this closure-fact row, so mode/close facts cannot
+// treat ProcessNodeId as another mutable sibling field.
 //
 // Dissolution trigger: when `state(log: ProcessEventLog)` is emitted, this
 // snapshot is generated from the event log and no longer hand-authored.
-type ProcessNodeState {
-  id: ProcessNodeId
+type ProcessNodeFacts {
   mode: ProcessNodeModeState
   close: ProcessCloseState
 }
 
+// 🟡 STAGED keyed-carrier scaffold — `id` is the graph row key for these node
+// facts until a generic keyed map / graph-storage substrate exists in std.
+//
+// Dissolution trigger: replace `List<ProcessNodeEntry>` with the shared keyed
+// graph carrier once it lands; consumers continue to address nodes by
+// `ProcessNodeId`.
+type ProcessNodeEntry {
+  id: ProcessNodeId
+  facts: ProcessNodeFacts
+}
+
 type ProcessGraph {
-  nodes: List<ProcessNodeState>
+  nodes: List<ProcessNodeEntry>
 }
 
 // Projection signatures. Bodies wait for emission/parity work; declaring the
