@@ -20,6 +20,8 @@ import std.types { SecretName }
 // -- Workflows --------------------------------------------------------
 // A workflow is the top-level unit: trigger + jobs.
 // `concurrency` is workflow-scoped (YAML `concurrency:`); `none` = block absent.
+// Actions accepts a scalar group string or a mapping (`group` + optional `cancel-in-progress`);
+// both are modeled — no fabricated booleans when the mapping omits `cancel-in-progress`.
 
 type Workflow {
   name: String
@@ -130,10 +132,15 @@ type Job {
   concurrency: ConcurrencySpec?
 }
 
-type ConcurrencySpec {
-  group: String
-  cancel_in_progress: Bool
-}
+// YAML `concurrency:` is either a scalar group expression or a mapping.
+// See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#concurrency
+type ConcurrencySpec
+  = ConcurrencyScalar { group: String }
+  | ConcurrencyMapping {
+      group: String
+      // `none` when YAML omits `cancel-in-progress:` (do not invent `false`).
+      cancel_in_progress: Bool?
+    }
 
 // -- Runners ----------------------------------------------------------
 // The execution environment for a job.
