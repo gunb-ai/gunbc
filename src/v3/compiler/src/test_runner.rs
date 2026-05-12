@@ -5861,11 +5861,7 @@ fn field_value_to_symbolic_cost_bind_param_expected_pattern(
                      a record, got {record:?}"
                 )
             })?;
-            let var = find_first_field_through_expected_value(record, "var").ok_or_else(|| {
-                "SymbolicCostExprEqualsForBindParam: LinearCostForBindParam missing `var`"
-                    .to_string()
-            })?;
-            parse_bind_param_size_variable_expected(dag, var)?;
+            parse_bind_param_size_variable_expected(dag, record)?;
             Ok(SymbolicCostEqPattern::Linear {
                 source_port: SymbolicCostPortPattern::ExpectedBindParam,
             })
@@ -5880,26 +5876,6 @@ fn peel_single_underscore_record(fv: &FieldValue) -> &FieldValue {
     match fv {
         FieldValue::Record(fields) if fields.len() == 1 && fields[0].0 == "_" => &fields[0].1,
         other => other,
-    }
-}
-
-fn find_first_field_through_expected_value<'a>(
-    fv: &'a FieldValue,
-    key: &str,
-) -> Option<&'a FieldValue> {
-    match fv {
-        FieldValue::Record(fields) => field(fields, key).or_else(|| {
-            fields
-                .iter()
-                .find_map(|(_, inner)| find_first_field_through_expected_value(inner, key))
-        }),
-        FieldValue::Variant { payload, .. } => payload
-            .iter()
-            .find_map(|inner| find_first_field_through_expected_value(inner, key)),
-        FieldValue::List(items) => items
-            .iter()
-            .find_map(|inner| find_first_field_through_expected_value(inner, key)),
-        FieldValue::Literal(_) | FieldValue::Map(_) => None,
     }
 }
 
