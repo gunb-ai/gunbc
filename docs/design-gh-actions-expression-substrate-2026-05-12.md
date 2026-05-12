@@ -342,7 +342,7 @@ expression-capable fields in actions.dag carriers (audited 2026-05-12):
 | `Job` | `name: String?` (`:112`) | String? | ✓ (per jobs.<job_id>.name context) |
 | `Job` | `if_condition: String?` | String? | ✓ (already in 7-site) |
 | `Job` | `env: Map<String, String>` | Map values | ✓ values |
-| `Job` | `runner: RunnerSpec` | enum | ✓ via new `ExpressionRunner` (in 7-site) |
+| `Job` | `runner: RunnerSpec` | enum | **partial** — `ExpressionRunner { expr: Expression }` (§2 (c) sketch) covers only the whole-`runs-on` scalar-expression case. GH workflow syntax also admits arrays mixing literal labels and expression variables (`runs-on: [self-hosted, '${{ matrix.os }}', linux]`) and object form (`runs-on: { group, labels: [...] }`); label-element and group/labels expressions are **unmodeled** by the §2 (c) sketch. Resolution: §6 Q#6 (`RunsOnScalar` / `RunsOnArray` / `RunsOnGroup` carrier-split) precedes full coverage. Operator BLOCKING at :345 (2026-05-12T12:32:10Z) surfaced the partial-coverage gap. |
 | `Job` | `timeout_minutes: Int?` | Int? | ✓ (string-coerced to int) |
 | `Job` | `continue_on_error: Bool` | Bool | ✓ (string-coerced to bool) |
 | `Job` | `concurrency.group: String` | String | ✓ (already in 7-site via ConcurrencySpec) |
@@ -435,12 +435,20 @@ re-derived whenever a §5.5 row is added or removed (last re-derivation:
   The shape that captures this (wrap vs `TypedOrExpression<T>` sum vs
   defer) is an **open Director-tier question** per §5.5.2 / §6 Q#4.
   **HOLD migration** until §6 Q#4 ratifies.
-- **Enum-extension sites (1)**: `Job.runner: RunnerSpec`. Migration adds
-  a new variant (`ExpressionRunner { expr: Expression }`) to the existing
-  sum rather than swapping the type. Per §2 (c) sketch for `RunnerSpec`.
-  This site is in scope for the §7.5 ask #4 prereq PR alongside the
-  17 string-container sites — same uniform-string-expression class at the
-  substrate level (the variant carries `Expression`).
+- **Enum-extension sites (1, partial-coverage)**: `Job.runner: RunnerSpec`.
+  Migration adds `ExpressionRunner { expr: Expression }` to the existing
+  sum (per §2 (c) sketch). **Partial coverage** (operator BLOCKING at :345
+  2026-05-12T12:32:10Z): this variant captures only the whole-`runs-on`
+  scalar-expression case (e.g., `runs-on: ${{ vars.CI_RUNNER }}`). GH
+  workflow syntax also admits **array form with mixed literal/expression
+  elements** (`runs-on: [self-hosted, '${{ matrix.os }}', linux]`) and
+  **object form** (`runs-on: { group: my-group, labels: [...] }`); the
+  array-element and group/labels expression positions are **unmodeled**
+  by the §2 (c) sketch alone. Full coverage requires the §6 Q#6
+  `RunsOnScalar` / `RunsOnArray` / `RunsOnGroup` carrier-split. The
+  scalar-only case ships in the §7.5 ask #4 prereq PR alongside the 17
+  string-container sites; the array/object cases sequence after §6 Q#6
+  ratifies (parallel to the §6 Q#5 `DispatchInput.default` deferral).
 
   **Note**: `UsesStep.uses: ActionRef` was previously listed here as a
   second enum-extension site (with a proposed `ExpressionActionRef`
