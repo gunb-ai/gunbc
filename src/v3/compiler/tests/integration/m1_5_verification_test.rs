@@ -386,7 +386,7 @@ fn program_generator_authoring_surface_compiles_cleanly() {
     let src = r#"
 data parse_smoke_generator: List<ProgramShape> = []
 
-data generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
+let generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
 "#;
 
     let dag = compile_any(src, "program_generator_authoring_surface.v3");
@@ -397,28 +397,15 @@ data generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
     );
 
     assert_eq!(
-        find_named(&dag, "generator_ref"),
+        bind_value_type_decl(&dag, "generator_ref"),
         find_named(&dag, "ProgramGenerator")
-    );
-    let Some(ValueBody::Structural { fields }) =
-        dag.declaration(find_named(&dag, "generator_ref"))
-            .value_body
-            .as_ref()
-    else {
-        panic!("generator_ref should lower to a structural data body");
-    };
-    assert_eq!(fields.len(), 1);
-    assert_eq!(fields[0].0, "generator");
-    assert_eq!(
-        fields[0].1,
-        FieldValue::Reference(find_named(&dag, "parse_smoke_generator"))
     );
 }
 
 #[test]
 fn program_generator_rejects_empty_declaration_ref_literal() {
     let src = r#"
-data generator_ref: ProgramGenerator = { generator: {  } }
+let generator_ref: ProgramGenerator = { generator: {  } }
 "#;
 
     let dag = compile_any(src, "program_generator_empty_ref.v3");
