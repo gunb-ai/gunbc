@@ -22,13 +22,6 @@ import extdeps.github.actions {
   checkout_action,
   setup_rust_action
 }
-import gunbc.ci {
-  CIWorkflowDag,
-  compile_gates_gate,
-  lint_gate,
-  test_gate,
-  l1_gate
-}
 import v3.std.dimensions { Witness, OptionalDiagnostic, DimensionReport }
 import v3.std.diagnostics { Diagnostic }
 import v3.std.timing_lens {
@@ -39,6 +32,22 @@ import v3.std.timing_lens {
   timing_sequential_identity
 }
 import v3.std.workflows { behavior_spine }
+
+type ModeledCIGateNode {
+  id: String
+  gate_name: String
+}
+
+type ModeledCIGateEdge {
+  from: String
+  to: String
+}
+
+type ModeledCIWorkflowDag {
+  name: String
+  nodes: List<ModeledCIGateNode>
+  edges: List<ModeledCIGateEdge>
+}
 
 // Modeled subset of gunbc CI: push trigger + ubuntu-latest job with checkout + Rust setup.
 data modeled_gunbc_ci_workflow: Workflow = Workflow {
@@ -92,13 +101,13 @@ data modeled_gunbc_ci_workflow: Workflow = Workflow {
 // Same CI intent as a provider-neutral DAG. The GitHub Actions transport below
 // projects the graph with `Job.needs`; the structural authority for gate
 // dependencies is a provider-neutral node/edge graph, not YAML job ordering.
-data modeled_gunbc_ci_workflow_dag: CIWorkflowDag = {
+data modeled_gunbc_ci_workflow_dag: ModeledCIWorkflowDag = {
   name: "gunbc-ci",
   nodes: [
-    { id: "compile-gates", gate: compile_gates_gate },
-    { id: "lint", gate: lint_gate },
-    { id: "tests", gate: test_gate },
-    { id: "l1-ratchet", gate: l1_gate }
+    { id: "compile-gates", gate_name: "Compile Gates" },
+    { id: "lint", gate_name: "Lint" },
+    { id: "tests", gate_name: "Tests" },
+    { id: "l1-ratchet", gate_name: "L1 Type Knowledge Ratchet" }
   ],
   edges: [
     { from: "compile-gates", to: "lint" },
