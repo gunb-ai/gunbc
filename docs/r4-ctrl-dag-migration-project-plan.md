@@ -186,7 +186,7 @@ operator (Brian)
 
 **Coordination between programs**: PM (deep-wolf-155) bridges zesty-bear-812 (gunbc R3-close) and Ctrl-Migration Director. Cross-program substrate-shape conflicts route through PM. Each Director owns their program's scope independently; PM owns the inter-program interface.
 
-**Compositional-modeling enforcement**: Director's standing brief discipline = every new carrier requires (1) M9 DFS trace to existing `dsl/std/` primitive showing why-not-reuse, (2) Practice 4 dissolution receipt for any open enum, (3) cost-of-change-1 verification (adding next variant touches 1 file), (4) cross-reference to source TS file being replaced. Per `feedback_grep_substrate_before_naming_ratification.md`: grep dsl/std/ + docs/audit/ before ratifying new carrier names.
+**Compositional-modeling enforcement**: Director's standing brief discipline = every new carrier requires (1) M9 DFS trace to existing `dsl/std/` primitive showing why-not-reuse, (2) Practice 4 dissolution receipt for every enum/sum with ≥2 variants (including closed sums; per `docs/modeling-discipline.md` Practice 4 — 🟢/🟡/🔴 classification applies to every N≥2 coproduct, not just open enums), (3) cost-of-change-1 verification (adding next variant touches 1 file), (4) cross-reference to source TS file being replaced. Per `feedback_grep_substrate_before_naming_ratification.md`: grep dsl/std/ + docs/audit/ before ratifying new carrier names.
 
 ---
 
@@ -252,9 +252,9 @@ Once operator spawns the Ctrl-Migration Director:
 
 **Day 1**:
 - Director ratifies project plan + companion scope doc
-- Director spawns 3 Mgr sessions (Substrate / Subsystem-Modeling / Verification)
-  - Emission-Targets Mgr deferred to Day-N when Phase 1 nears landing
+- Director spawns **4 Mgr sessions Day 1 in parallel** (Substrate / Subsystem-Modeling / Emission-Targets / Verification) per §6 parallel critical-path framing. Emission-Targets is **NOT** Day-N-deferred — §6 + §10 make emission a parallel critical-path, and deferring it weakens the P5 staged-debt guard (Phase 1.5 PRs landing without matching Phase 3 emission targets accumulate as 🟡 STAGED without dissolution triggers in sight).
 - Substrate Mgr authors brief for `dsl/std/process_algebra.dag` Phase 1 substrate
+- Emission-Targets Mgr authors Day-1 design briefs for HTTP / SQL / audit-event extdeps (per §4 ordering) so Phase 3 PRs can land in lockstep with Phase 1.5 modeling PRs
 
 **Day 2-5** (parallel) — first wave of Phase 1.5 (independent items, no Phase 1 dependency):
 - Substrate Mgr's worker drafts Phase 1 substrate PR
@@ -278,7 +278,7 @@ Once operator spawns the Ctrl-Migration Director:
   - Worker L: `dsl/ctrl/pools.dag` (catalog #7 — big 7-file group)
   - Worker M: `dsl/ctrl/scheduler.dag` (catalog #9)
   - Worker N: `dsl/ctrl/chatgpt_reviewer.dag` (catalog #13 — partial; contract today, browser-execution deferred)
-- Review verdict (catalog #1) parallel-tracked under operator's existing text-parsing fix work; merges in as a co-authority once both stabilize.
+- Review verdict (catalog #1) parallel-tracked under operator's existing text-parsing fix work; cut-over PR lands when the .dag emission proves out for verdict parsing **AND** deletes the TS authority in the same PR (no co-authority window per Q-G operator directive 2026-05-12T~19:05Z; substrate becomes authority THE MOMENT emission proves out per subsystem).
 
 **Day 11-14**:
 - First + second wave PRs cycle reviews + land

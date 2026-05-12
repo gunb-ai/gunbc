@@ -51,7 +51,18 @@ Inventoried from `~/ctrl/research/market/viability/demos/c-compiler-in-dag/`:
 - `product.dag` — product type
 - `ssa_value.dag` — SSA value primitive
 
-**Promotion**: `dsl/extdeps/common/ir/` in gunbc per PLAN.md §"Bidirectional-extdeps reframe."
+**Promotion gate** (added per codex/operator BLOCKING 2026-05-12T20:19Z): wholesale move into `dsl/extdeps/common/ir/` risks parallel substrate for existing std primitives. Each of the 5 W0 files goes through a per-concept **M9 + extdeps-spec grounding gate** before promotion:
+
+1. **M9 DFS from `dsl/std/`** — for each primitive (bitvector / integer / array / product / ssa_value), DFS the existing std concept DAG. Where the concept already exists (`std.bit` / `std.integer` / `std.constructors.Product`), the W0 file MUST reuse-or-extend the std primitive rather than introduce a parallel carrier. Pure parallel-substrate promotion is forbidden.
+2. **Extdeps-spec citation** — for each primitive that is genuinely IR-domain (not reusable from std/), cite the external authority (e.g., LLVM IR language reference §"Type System" for bitvector / array; SSA spec for ssa_value) so the extdeps placement is grounded in an external-spec fact, not in research-folder convenience.
+3. **Decision matrix per file** (must be in the promotion PR description):
+   - `bitvector.dag` → likely **extend** `std.bit` (if std.bit covers single-bit only) or **reuse** if std.bit handles fixed-width. Spec: LLVM IR `iN` types.
+   - `integer.dag` → likely **reuse** `std.integer` (integer is a math primitive, not IR-specific). Spec: LLVM IR integer-types reference for any IR-specific narrowing.
+   - `array.dag` → likely **reuse** existing std container primitives (`List<T>` / fixed-size array). Spec: LLVM IR array-type reference.
+   - `product.dag` → **reuse** `std.constructors.Product` (existing M2 type-authority). Promotion is forbidden if it creates parallel Product carrier.
+   - `ssa_value.dag` → likely **new extdeps carrier** (SSA is genuinely IR-domain, no std equivalent). Spec: SSA-form references.
+
+Promotion destination is `dsl/extdeps/common/ir/` per PLAN.md §"Bidirectional-extdeps reframe" **only after** each file passes the gate above. Files failing the gate either dissolve into std reuse/extension PRs or get rescoped to extdeps-only IR-domain concepts.
 
 ### W4 — LLVM IR text emitter spike (DONE)
 `research/.../spike-llvm-ir/`:
