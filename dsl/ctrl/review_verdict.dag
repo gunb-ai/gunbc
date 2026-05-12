@@ -1,0 +1,209 @@
+// ctrl/review_verdict.dag -- staged substrate for ctrl PR-review verdicts.
+//
+// Current runtime authority remains in gunb-ai/ctrl:
+//   scripts/session-dashboard/findings_extract.mjs
+//   scripts/session-dashboard/findings_parser.mjs
+//   scripts/session-dashboard/findings_store.mjs
+//   scripts/session-dashboard/findings_triage.mjs
+//   scripts/session-dashboard/pr_feedback_format.mjs
+//   scripts/session-dashboard/review_subprocess_runner.mjs
+//   scripts/api-reviewer/review-one.mjs
+//   scripts/api-reviewer/review-with-cli.mjs
+//   scripts/api-reviewer/review-meta-with-cli.mjs
+//
+// This file is a Phase 1.5 staged contract for the ctrl/ -> .dag migration
+// program. It becomes authority only after the review-verdict emission target
+// and parity tests land, and the ctrl TS parser/tally files are deleted.
+
+module ctrl.review_verdict
+
+import std.types { ContentHash, NonEmptyStr, Timestamp, Url }
+
+// Practice 4 receipt: terminal for the current provider coordinate.
+// Adding a provider is a new declaration row or ProviderOther value, not a
+// rewrite of parser/tally logic.
+type ReviewProvider
+  = OpenaiPro
+  | Codex
+  | Claude
+  | Cursor
+  | HumanReviewer
+  | ProviderOther { name: NonEmptyStr }
+
+// Practice 4 receipt: staged. GitHub review/comment transport is the first
+// consumer; dashboard-only artifacts remain modeled so extraction can preserve
+// source identity instead of flattening every artifact to raw Markdown.
+// Dissolution trigger: when extdeps.github review/comment facts are reflected,
+// replace GitHubReviewState with typed GitHub state references.
+type ReviewArtifactKind
+  = GitHubReview { state: GitHubReviewState }
+  | GitHubReviewComment
+  | GitHubIssueComment
+  | DashboardReviewArtifact
+
+// Practice 4 receipt: terminal closed enum mirroring the GitHub review states
+// consumed by ctrl today.
+type GitHubReviewState
+  = Approved
+  | ChangesRequested
+  | Commented
+  | Dismissed
+  | Pending
+
+// Practice 4 receipt: terminal. This is the semantic verdict coordinate that
+// downstream merge-readiness logic consumes; it is not the same axis as raw
+// GitHub review state.
+type ReviewVerdict
+  = Approve
+  | ApproveWithComments
+  | RequestChanges
+  | NeedsHumanTriage
+  | NoVerdict
+
+// Practice 4 receipt: staged. BLOCKING/P0/P1 currently drive action-routing in
+// ctrl pr_feedback_format.mjs. Priority and severity are split so the relay can
+// preserve both reviewer intent and scheduling weight.
+// Dissolution trigger: generated dashboard relay consumes this file and deletes
+// the regex classifier in pr_feedback_format.mjs.
+type FindingSeverity
+  = Blocking
+  | NonBlocking
+  | Info
+
+type FindingPriority
+  = P0
+  | P1
+  | P2
+  | P3
+  | Unprioritized
+
+// Practice 4 receipt: staged. Textual recognizers remain named evidence until
+// the review providers emit structural verdict rows directly.
+// Dissolution trigger: review providers return ReviewVerdictReport as JSON or
+// another typed transport payload, making TextualVerdictMarker unnecessary.
+type VerdictEvidence
+  = ExplicitVerdictLine { verdict: ReviewVerdict }
+  | GitHubReviewStateEvidence { state: GitHubReviewState }
+  | BlockingFindingPresent
+  | NoBlockingConcernsText
+  | HumanOverride { reason: String }
+  | TextualVerdictMarker { marker: NonEmptyStr }
+
+// Practice 4 receipt: staged. These are extraction outcomes, not verdicts.
+// Parser fallback is explicit so "whole comment stored as one finding" is a
+// typed degraded state instead of silently looking like a clean parse.
+// Dissolution trigger: provider outputs become structural and the Markdown
+// section parser is retired.
+type FindingExtractionState
+  = ParsedDiscreteFindings
+  | FallbackWholeCommentStored
+  | CommentNotFound
+  | AmbiguousShaMarker
+  | EmptyComment
+
+type ReviewArtifact {
+  artifact_id: NonEmptyStr
+  provider: ReviewProvider
+  kind: ReviewArtifactKind
+  repo: NonEmptyStr
+  pr_number: Int
+  commit_sha: NonEmptyStr
+  source_url: Url?
+  body_hash: ContentHash?
+  body_text: String
+  observed_at: Timestamp?
+}
+
+type ReviewFinding {
+  index_in_run: Int
+  severity: FindingSeverity
+  priority: FindingPriority
+  heading: String?
+  path: String?
+  line: Int?
+  body: String
+  source_artifact_id: NonEmptyStr
+}
+
+type ReviewVerdictReport {
+  provider: ReviewProvider
+  repo: NonEmptyStr
+  pr_number: Int
+  head_sha: NonEmptyStr
+  artifact_id: NonEmptyStr
+  verdict: ReviewVerdict
+  extraction_state: FindingExtractionState
+  findings: List<ReviewFinding>
+  evidence: List<VerdictEvidence>
+  parsed_at: Timestamp?
+}
+
+type MergeReadinessTally {
+  repo: NonEmptyStr
+  pr_number: Int
+  head_sha: NonEmptyStr
+  reports: List<ReviewVerdictReport>
+  approval_count: Int
+  request_changes_count: Int
+  blocking_finding_count: Int
+  mergeable_clean: Bool
+}
+
+type ReviewVerdictParseRequest {
+  artifact: ReviewArtifact
+  expected_head_sha: NonEmptyStr
+}
+
+type ReviewVerdictParseResult
+  = ParsedReport { report: ReviewVerdictReport }
+  | ParseDeferred { state: FindingExtractionState, artifact: ReviewArtifact }
+
+fn is_approving_verdict(verdict: ReviewVerdict) -> Bool {
+  match verdict {
+    Approve => true
+    ApproveWithComments => true
+    RequestChanges => false
+    NeedsHumanTriage => false
+    NoVerdict => false
+  }
+}
+
+fn is_actionable_finding(finding: ReviewFinding) -> Bool {
+  match finding.severity {
+    Blocking => true
+    NonBlocking => match finding.priority {
+      P0 => true
+      P1 => true
+      P2 => false
+      P3 => false
+      Unprioritized => false
+    }
+    Info => false
+  }
+}
+
+service ctrl.ReviewVerdicts {
+  operation Parse {
+    input {
+      request: ReviewVerdictParseRequest
+    }
+    output {
+      result: ReviewVerdictParseResult
+    }
+    readonly
+  }
+
+  operation Tally {
+    input {
+      repo: NonEmptyStr
+      pr_number: Int
+      head_sha: NonEmptyStr
+      reports: List<ReviewVerdictReport>
+      mergeable_clean: Bool
+    }
+    output {
+      tally: MergeReadinessTally
+    }
+    readonly
+  }
+}
