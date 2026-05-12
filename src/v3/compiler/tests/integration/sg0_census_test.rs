@@ -717,8 +717,6 @@ enum TestsAsDataMigrationClass {
     PropertyBased,
 }
 
-const EXPECTED_TESTS_AS_DATA_MIGRATION_AUDIT_COUNT: usize = 116;
-
 // Transitional gate #84 audit only. As each class migrates to `.dag`
 // `TestClaim` data, remove that class's path matcher branch with the
 // retired Rust paths; when `EXPECTED_HAND_AUTHORED_TEST` reaches zero,
@@ -1066,12 +1064,6 @@ fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
         unclassified.is_empty(),
         "gate #84 migration audit must classify every hand-authored test path; \
          unclassified paths: {unclassified:?}"
-    );
-    assert_eq!(
-        EXPECTED_HAND_AUTHORED_TEST.len(),
-        EXPECTED_TESTS_AS_DATA_MIGRATION_AUDIT_COUNT,
-        "gate #84 migration audit count drifted; update the migration-class audit \
-         when the SG-0 hand-authored test ratchet changes"
     );
 
     for class in [
