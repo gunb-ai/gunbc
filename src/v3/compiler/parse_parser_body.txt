@@ -1503,6 +1503,13 @@ impl<'a> Parser<'a> {
 
     fn parse_primary(&mut self) -> Result<SurfaceExpr, Diagnostic> {
         let peek = &self.peek().kind;
+        // Map literals share the `{` prefix with record literals. Top-level `data`
+        // disambiguates via `looks_like_map_literal` before `parse_record_literal`;
+        // mirror that here so nested `Map<String, _>` fields (e.g. GitHub Actions
+        // `with:`) can use string keys like `"fetch-depth"`.
+        if matches!(peek, TokenKind::LBrace) && self.looks_like_map_literal() {
+            return self.parse_map_literal();
+        }
         match primary_prefix_dispatch(peek) {
             Some(PrimaryPrefixDispatch::If) => return self.parse_if(),
             Some(PrimaryPrefixDispatch::Match) => return self.parse_match(),
