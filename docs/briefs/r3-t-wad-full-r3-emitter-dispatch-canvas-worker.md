@@ -8,8 +8,8 @@
 
 **The (c-refined) substrate-shape is LOCKED** (post-2026-05-12 cascade):
 
-- `EmissionTarget` is an invocation-time parameter to `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow`, **NOT a field on any carrier**.
-- `EmissionTarget` lives in gunbc namespace (`dsl/gunbc/ci_emission.dag` — NEW file landed by WI-2).
+- `WorkflowRuntime` is an invocation-time parameter to `project_github_actions: (CIWorkflowDag, WorkflowRuntime) -> Workflow`, **NOT a field on any carrier**.
+- `WorkflowRuntime` lives in gunbc namespace (`dsl/gunbc/ci_emission.dag` — NEW file landed by WI-2).
 - `dsl/extdeps/github/actions.dag::Workflow` stays platform-faithful and UNMODIFIED.
 - The earlier option (a) "field on Workflow" was **RETRACTED** at Director msg_b4151f45 + codex BLOCKING #9970 on PR #2749 (INVARIANTS P1 violation — CI logic on platform carrier).
 - Option (b) "field on CIPipeline" was **SUPERSEDED** — `CIPipeline { name, gates: List<CIGate> }` is flat without edge structure; cannot serve as projection input per warm-wolf-698 msg_27d99080. Replaced by `CIWorkflowDag` (PR #2736) as input domain.
@@ -35,7 +35,7 @@ Design the emitter-dispatch architecture for T-Workflow-As-Data FULL R3-close on
 
 3. **Affected-set integration shape** — how `BinaryShim` arm consumes `affected_set(Dag_before, Dag_after)` from `docs/design-affected-set-lens.md`; what the runtime decision surface looks like (matrix-spec emission, job-skip emission, etc.); cross-tier coordination with Slice 7 owner (Verification Mgr clever-tern-670).
 
-4. **Equivalence claim** — what does "same `CIWorkflowDag` emits semantically equivalent output across emission targets" mean precisely; test claim shape for `emission_target_open_enum_landed` + `project_github_actions_landed` gates (per scope doc §1).
+4. **Equivalence claim** — what does "same `CIWorkflowDag` emits semantically equivalent output across workflow runtimes" mean precisely; test claim shape for `workflow_runtime_open_enum_landed` + `project_github_actions_landed` gates (per scope doc §1).
 
 5. **GH Actions expression-substrate consumption** — per Director ratification of PR #2751 (warm-wolf-698 expression-substrate canvas): canvas should reference the ratified `Expression = OpaqueString(String)` 🟡 YELLOW shape + 5-site uniform migration (RunnerSpec / Job.if_condition / ConcurrencySpec.group / Step.with[k] / Step.env[k]); YamlStatic emission = "emit Expression::OpaqueString variant verbatim to YAML"; BinaryShim/PythonShim = "evaluate Expression at runtime" (opaque-passthrough until dissolution fires).
 

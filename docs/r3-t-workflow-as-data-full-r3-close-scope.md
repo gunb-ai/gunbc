@@ -1,7 +1,7 @@
 # T-Workflow-As-Data — FULL R3-close scope (operator elevation 2026-05-12)
 
 **Author**: deep-wolf-155 (PM)
-**Authority**: operator directive 2026-05-12 (Brian; transcript-cited at gunbc#846 / Director inbox routing) — elevate T-CI-Workflow-As-Data to FULL R3-close criterion (not just demonstration). Operator design ratification: emission target is **modeled data** (open enum, invocation-time projection parameter), not a hard-coded emitter choice. **Substrate-shape RATIFIED (c-refined)** per PR #2749 §7 + Director msg_237bde05 / msg_f9fd669e / msg_2a68a4b5: `EmissionTarget` is an invocation-time parameter to `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow`, NOT a field on any carrier. See §2 for full (a)/(b)/(c) RETRACTED/SUPERSEDED treatment.
+**Authority**: operator directive 2026-05-12 (Brian; transcript-cited at gunbc#846 / Director inbox routing) — elevate T-CI-Workflow-As-Data to FULL R3-close criterion (not just demonstration). Operator design ratification: workflow runtime is **modeled data** (open enum, invocation-time projection parameter), not a hard-coded emitter choice. **Substrate-shape RATIFIED (c-refined)** per PR #2749 §7 + Director msg_237bde05 / msg_f9fd669e / msg_2a68a4b5: `WorkflowRuntime` is an invocation-time parameter to `project_github_actions: (CIWorkflowDag, WorkflowRuntime) -> Workflow`, NOT a field on any carrier. See §2 for full (a)/(b)/(c) RETRACTED/SUPERSEDED treatment.
 **Routing**: Director (zesty-bear-812) **RATIFIED** scope + framing at msg_5cbdad24 2026-05-12 ~06:35Z. Substrate Mgr (warm-wolf-698) lane-absorbs Slices 4-5/8; Verification Mgr (clever-tern-670) absorbs Slice 7 (affected-set integration); Debt-Paydown Mgr (zesty-boar-261) absorbs Slice 6 sub-component (slow-test-exemptions dissolution).
 **Parent program**: T-Workflow-As-Data lane in `docs/r3-program-plan.md` §4.4 + §1.8 gates 53-58 + 63.
 **Status**: **RATIFIED 2026-05-12** (Director). PR #2744 + downstream Mgr-tier briefs/canvases proceeding.
@@ -14,8 +14,8 @@
 
 **FULL R3-close scope** (operator-ratified 2026-05-12; Director-ratified gate-additive framing msg_5cbdad24):
 1. **ALL** CI workflow authored as `.dag` (not just one demo workflow) — `.github/workflows/ci.yml` content sourced from gunbc-substrate via projection function `project_github_actions(ci_workflow_dag, target) → Workflow`; WI-2 lands the projection-substrate (new file `dsl/gunbc/ci_emission.dag`); Slice 4-5 implements per-arm projection bodies that walk `CIWorkflowDag` (PR #2736) + emit the chosen target.
-2. **Hand-authored `ci.yml` AUTHORITY DISSOLVED** — `.github/workflows/ci.yml` content authored by gunbc emission (not hand-edited); file present as full-emit artifact (YamlStatic) OR thin-shim entry-point (BinaryShim / PythonShim) OR absent (some emission targets); regression-guard test prevents hand-authored re-introduction. **Per briansrls BLOCKING #PR2744 2026-05-12**: NOT file deletion — P5 / Pure Bootstrap dissolves authority; YamlStatic and shim targets STILL require some `.github/workflows/ci.yml` artifact for GH Actions trigger discovery.
-3. **EmissionTarget toggle** — same `CIWorkflowDag` (PR #2736 carrier) projects through `project_github_actions(ci_workflow_dag, target)` to multiple target shapes (YamlStatic, BinaryShim, PythonShim, …; `InlineGunbc` is DESIGN-ONLY future target per PR #2746 §5.4, NOT in initial enum); `EmissionTarget` is invocation-time projection parameter (modeled data), NOT carrier-time field. Substrate-shape LOCKED per (c-refined) ratification — see §2 for full treatment.
+2. **Hand-authored `ci.yml` AUTHORITY DISSOLVED** — `.github/workflows/ci.yml` content authored by gunbc emission (not hand-edited); file present as full-emit artifact (YamlStatic) OR thin-shim entry-point (BinaryShim / PythonShim) OR absent (some workflow runtimes); regression-guard test prevents hand-authored re-introduction. **Per briansrls BLOCKING #PR2744 2026-05-12**: NOT file deletion — P5 / Pure Bootstrap dissolves authority; YamlStatic and shim targets STILL require some `.github/workflows/ci.yml` artifact for GH Actions trigger discovery.
+3. **WorkflowRuntime toggle** — same `CIWorkflowDag` (PR #2736 carrier) projects through `project_github_actions(ci_workflow_dag, target)` to multiple target shapes (YamlStatic, BinaryShim, PythonShim, …; `InlineGunbc` is DESIGN-ONLY future target per PR #2746 §5.4, NOT in initial enum); `WorkflowRuntime` is invocation-time projection parameter (modeled data), NOT carrier-time field. Substrate-shape LOCKED per (c-refined) ratification — see §2 for full treatment.
 4. **Affected-set integration** — Layer 2 path-regex bridge (PR #2718/#2721/#2727) dissolved; CI selection consumes affected-set lens output (PR #2713 ✓ merged)
 5. **Cost dimension on test nodes** — `slow-test-exemptions.txt` dissolved; slow-test ratchet derives from Cost dimension structurally
 
@@ -29,34 +29,36 @@
 
 **Citation chain**: operator directive aligns with prior #846 c#4412330468 ("0 hand-Rust including tests AND stage0; bootstrap is data + self-generated") — `.github/workflows/ci.yml` is structurally identical to hand-Rust under that framing. Dissolution is load-bearing for R3 close.
 
-**Substrate-shape ratified** (per PR #2749 (c-refined)): `EmissionTarget` sum-type lives in gunbc namespace; `project_github_actions: (CIWorkflowDag, EmissionTarget) → Workflow` lives in gunbc; extdeps.github.actions.Workflow unmodified. Emission choice is invocation-time data (projection parameter), NOT carrier-time data. See PR #2749 for the comparison canvas authority.
+**Substrate-shape ratified** (per PR #2749 (c-refined)): `WorkflowRuntime` sum-type lives in gunbc namespace; `project_github_actions: (CIWorkflowDag, WorkflowRuntime) → Workflow` lives in gunbc; extdeps.github.actions.Workflow unmodified. Emission choice is invocation-time data (projection parameter), NOT carrier-time data. See PR #2749 for the comparison canvas authority.
+
+**Type-name rename `EmissionTarget` → `WorkflowRuntime`** (2026-05-12 per warm-wolf-698 PR #2749 commit `575eb7e36` addressing operator BLOCKING at PR #2749 :666 / :672): the original `EmissionTarget` name collided with the canonical Shape-A carrier `type EmissionTarget { language: LanguageSpec, rendering: RenderingSpec? }` declared at `src/v3/SELF_HOSTING.md:609`. Per INVARIANTS P2 (single-authority for type names across gunbc surface), the rename is structurally required; Director ratification msg_4f7f536d at sum-type-name level is superseded by post-ratification name-collision discovery per `feedback_pre_compaction_framings_self_supersede`. All OTHER ratified elements stand: variant names (`YamlStatic | BinaryShim | PythonShim`), 22-site migration scope (per PR #2751 §5.5 expansion), 🟡 YELLOW Practice 4 receipt, projection function signature shape, gunbc-namespace placement, named dissolution trigger. Cascade renames coordinated across PR #2746 merged content (follow-on PR), PR #2745 WI-2 implementation (cool-carp-720 surfaced), and PR #2750 ledger sync (gate-ID rename `emission_target_open_enum_landed` → `workflow_runtime_open_enum_landed`).
 
 | Gate ID | Predicate-family | Lane | Pass condition |
 |---|---|---|---|
 | **#56** (unchanged) | demonstration | T-WAD | At least one workflow as `.dag` data executes through evaluator (existing scope — promotable when PR #2371 demo + integration is gate-PASSING) |
-| **NEW: `ci_yml_hand_authority_dissolved`** | state-check | T-WAD | `.github/workflows/ci.yml` is no longer hand-authored CI logic — file is either (a) absent (some emission targets may not require a `.github/workflows/` artifact), (b) committed-emission-artifact byte-identical to `project_github_actions(ci_workflow_dag, target)` output with regression-guard test (YamlStatic), or (c) thin-shim entry-point invoking the emitted binary/python (BinaryShim / PythonShim); in NO case is it hand-edited CI logic. Regression guard test prevents hand-authored re-introduction. **Per briansrls BLOCKING #PR2744 inline review 2026-05-12T06:58:55Z**: deleting hand-maintenance ≠ deleting executable artifact; P5 / Pure Bootstrap dissolves authority, not file presence. |
-| **NEW: `emission_target_open_enum_landed`** | substrate-shape | T-WAD | `EmissionTarget` sum-type with 3 initial arms (`YamlStatic \| BinaryShim \| PythonShim \| ...`) declared in gunbc namespace as open enum; `InlineGunbc` is DESIGN-ONLY per PR #2746 §5.4 — lands via separate substrate-prereq PR paired with a runtime consumer |
-| **NEW: `project_github_actions_landed`** | substrate-shape | T-WAD | `project_github_actions: (CIWorkflowDag, EmissionTarget) → Workflow` projection function declared in gunbc namespace; consumes `extdeps.github.actions.Workflow` as output type; per (c-refined) substrate-shape per PR #2749 §7 |
+| **NEW: `ci_yml_hand_authority_dissolved`** | state-check | T-WAD | `.github/workflows/ci.yml` is no longer hand-authored CI logic — file is either (a) absent (some workflow runtimes may not require a `.github/workflows/` artifact), (b) committed-emission-artifact byte-identical to `project_github_actions(ci_workflow_dag, target)` output with regression-guard test (YamlStatic), or (c) thin-shim entry-point invoking the emitted binary/python (BinaryShim / PythonShim); in NO case is it hand-edited CI logic. Regression guard test prevents hand-authored re-introduction. **Per briansrls BLOCKING #PR2744 inline review 2026-05-12T06:58:55Z**: deleting hand-maintenance ≠ deleting executable artifact; P5 / Pure Bootstrap dissolves authority, not file presence. |
+| **NEW: `workflow_runtime_open_enum_landed`** | substrate-shape | T-WAD | `WorkflowRuntime` sum-type with 3 initial arms (`YamlStatic \| BinaryShim \| PythonShim \| ...`) declared in gunbc namespace as open enum; `InlineGunbc` is DESIGN-ONLY per PR #2746 §5.4 — lands via separate substrate-prereq PR paired with a runtime consumer |
+| **NEW: `project_github_actions_landed`** | substrate-shape | T-WAD | `project_github_actions: (CIWorkflowDag, WorkflowRuntime) → Workflow` projection function declared in gunbc namespace; consumes `extdeps.github.actions.Workflow` as output type; per (c-refined) substrate-shape per PR #2749 §7 |
 | **NEW: `test_cost_dimension_landed`** | substrate-shape | T-WAD + Debt-Paydown | `Cost` dimension declared on test nodes (substrate-shape only — splits from state-check sibling below) |
 | **NEW: `slow_test_exemptions_dissolved`** | state-check | T-WAD + Debt-Paydown | `scripts/slow-test-exemptions.txt` deleted; slow-test ratchet derives from `Cost` dimension structurally (state-check sibling of `test_cost_dimension_landed` per kernel-modeling discipline split) |
 | **NEW: `ci_uses_affected_set_selection`** | state-check | T-WAD + T-Verification | `BinaryShim` emitter consumes affected-set lens output from PR #2713; Layer 2 path-regex `if:` gates removed from any remaining workflow files (cross-tier co-owned with clever-tern-670 Slice 7 work) |
 
 ## §2. Architectural shape (operator-ratified 2026-05-12; (c-refined) substrate-shape LOCKED 2026-05-12 per PR #2749 §7)
 
-**`EmissionTarget` as modeled data** (open enum, same shape as `Dimension`):
+**`WorkflowRuntime` as modeled data** (open enum, same shape as `Dimension`):
 
 ```dag
-type EmissionTarget = YamlStatic | BinaryShim | PythonShim | ...
+type WorkflowRuntime = YamlStatic | BinaryShim | PythonShim | ...
 // InlineGunbc DESIGN-ONLY per PR #2746 §5.4 — NOT in initial enum; lands when runtime consumer exists
 ```
 
 **Substrate-shape RATIFIED** (per PR #2749 §7 + Director msg_237bde05 + msg_f9fd669e — (c-refined) shape; was option (c) wrapper, refined to projection-function):
 
-**`EmissionTarget` is an invocation-time parameter to the projection function in gunbc-substrate**, NOT a field on any carrier:
+**`WorkflowRuntime` is an invocation-time parameter to the projection function in gunbc-substrate**, NOT a field on any carrier:
 
 ```dag
 // In dsl/gunbc/ci_emission.dag (NEW file, WI-2 lands it):
-project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow
+project_github_actions: (CIWorkflowDag, WorkflowRuntime) -> Workflow
 
 // Invocation pin (canonical YAML-emission point for Slice 4):
 gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)
@@ -64,11 +66,11 @@ gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlSt
 
 - **Input domain**: `CIWorkflowDag` (PR #2736 carrier; gate-dependency-bearing semantic source — flat `CIPipeline` is INSUFFICIENT per warm-wolf-698 msg_27d99080)
 - **Output codomain**: `extdeps.github.actions.Workflow` (platform-faithful; UNMODIFIED — INVARIANTS P1)
-- **Emission choice**: invocation-time argument (`target: EmissionTarget`); per-arm projection bodies are Slice 4-5 implementation
+- **Emission choice**: invocation-time argument (`target: WorkflowRuntime`); per-arm projection bodies are Slice 4-5 implementation
 
 **Prior framings — RETRACTED / DISSOLVED**:
 
-- **(a) Field on `Workflow` (extdeps platform carrier)** — RETRACTED 2026-05-12 at Director msg_b4151f45 + codex BLOCKING #9970 on PR #2749. INVARIANTS P1 violation: emission_target IS CI logic, not platform fact; cannot land on `dsl/extdeps/github/actions.dag` per its scope header ("platform constraints — not CI logic").
+- **(a) Field on `Workflow` (extdeps platform carrier)** — RETRACTED 2026-05-12 at Director msg_b4151f45 + codex BLOCKING #9970 on PR #2749. INVARIANTS P1 violation: workflow_runtime IS CI logic, not platform fact; cannot land on `dsl/extdeps/github/actions.dag` per its scope header ("platform constraints — not CI logic").
 - **(b) Field on `CIPipeline`** — superseded; `CIPipeline { name, gates: List<CIGate> }` is flat without edge structure; cannot serve as projection input per warm-wolf-698 msg_27d99080. Replaced by `CIWorkflowDag` (PR #2736) input domain.
 - **(c) Wrapper node** `WorkflowEmission { workflow, target }` — superseded by (c-refined) projection function. Wrapper introduces an extra carrier; projection function is the cleaner shape (parameter-as-data preserves single-substrate-fact + cost-of-change ≤ 1).
 
@@ -111,11 +113,11 @@ Existing T-WAD slices (state at 2026-05-12):
 
 **New slices added by FULL elevation** (Director-ratified absorption to lanes):
 
-- **Slice 4**: YamlStatic projection-arm implementation — body of `project_github_actions(..., YamlStatic)` walks `CIWorkflowDag` and emits a `Workflow` value whose deterministic YAML encoding is **semantically equivalent** to current `.github/workflows/ci.yml` (same triggers, jobs, steps, runner specs, conditions, permissions, and matrix structure as consumed by GitHub Actions). One-time migration rewrites the committed file to the canonical emission output; non-semantic facts in pre-migration `ci.yml` (comments, blank-line whitespace, key ordering quirks) are discarded — they are not load-bearing CI logic per P1 (`Workflow` is the single authority for CI semantics). Any load-bearing comments in current `ci.yml` (workaround explanations, dissolution-trigger pointers) must migrate into substrate as modeled facts (e.g., structured `Notes` on the carrier OR inlined documentation in `dsl/gunbc/ci_emission.dag`) — they MUST NOT become parallel byte-authority alongside the semantic carrier. The regression-guard gate (per §1 row `ci_yml_hand_authority_dissolved` option (b)) compares the on-disk artifact byte-wise to **fresh projection output** (not to pre-migration `ci.yml`); the byte-identity is internal to the substrate (projection-output ↔ committed-artifact), not external (substrate-output ↔ legacy hand-authored content). Consumed by emission pipeline to produce the on-disk artifact → **Substrate Mgr (warm-wolf-698) lane**. Gated on WI-1 + WI-2 PR merges + PR #2736 (CIWorkflowDag) merge. NOTE: NOT an "EmissionTarget field landing" — per (c-refined) shape (§2), `EmissionTarget` is invocation-time projection parameter, not carrier-time data.
+- **Slice 4**: YamlStatic projection-arm implementation — body of `project_github_actions(..., YamlStatic)` walks `CIWorkflowDag` and emits a `Workflow` value whose deterministic YAML encoding is **semantically equivalent** to current `.github/workflows/ci.yml` (same triggers, jobs, steps, runner specs, conditions, permissions, and matrix structure as consumed by GitHub Actions). One-time migration rewrites the committed file to the canonical emission output; non-semantic facts in pre-migration `ci.yml` (comments, blank-line whitespace, key ordering quirks) are discarded — they are not load-bearing CI logic per P1 (`Workflow` is the single authority for CI semantics). Any load-bearing comments in current `ci.yml` (workaround explanations, dissolution-trigger pointers) must migrate into substrate as modeled facts (e.g., structured `Notes` on the carrier OR inlined documentation in `dsl/gunbc/ci_emission.dag`) — they MUST NOT become parallel byte-authority alongside the semantic carrier. The regression-guard gate (per §1 row `ci_yml_hand_authority_dissolved` option (b)) compares the on-disk artifact byte-wise to **fresh projection output** (not to pre-migration `ci.yml`); the byte-identity is internal to the substrate (projection-output ↔ committed-artifact), not external (substrate-output ↔ legacy hand-authored content). Consumed by emission pipeline to produce the on-disk artifact → **Substrate Mgr (warm-wolf-698) lane**. Gated on WI-1 + WI-2 PR merges + PR #2736 (CIWorkflowDag) merge. NOTE: NOT an "WorkflowRuntime field landing" — per (c-refined) shape (§2), `WorkflowRuntime` is invocation-time projection parameter, not carrier-time data.
 - **Slice 5**: BinaryShim emitter implementation → **Substrate Mgr (warm-wolf-698) lane**. Parallel to Slice 4; proves toggle.
 - **Slice 6**: Cost dimension on test nodes + slow-test-exemptions.txt dissolution → **Debt-Paydown Mgr (zesty-boar-261) lane** (sub-component). Gated on Phase 3 Cluster M settling (test-as-data substrate stable).
 - **Slice 7**: Affected-set integration via BinaryShim → **Verification Mgr (clever-tern-670) lane**. Gated on Slice 5 + PR #2713 (✓ merged).
-- **Slice 8**: ci.yml hand-authority dissolution (hand-authored content replaced by emission artifact or thin-shim per chosen `EmissionTarget`) + emission-target toggle finalized + `ci_yml_hand_authority_dissolved` gate PASSING → **Substrate Mgr (warm-wolf-698) lane**. Gated on Slices 4-7 + acceptance verification. **NOTE** (per briansrls BLOCKING #PR2744 2026-05-12): NOT file-deletion — P5 / Pure Bootstrap dissolves AUTHORITY, and YamlStatic / BinaryShim / PythonShim emission paths all require some `.github/workflows/ci.yml` artifact (full-emit or thin-shim) for GH Actions trigger discovery.
+- **Slice 8**: ci.yml hand-authority dissolution (hand-authored content replaced by emission artifact or thin-shim per chosen `WorkflowRuntime`) + workflow-runtime toggle finalized + `ci_yml_hand_authority_dissolved` gate PASSING → **Substrate Mgr (warm-wolf-698) lane**. Gated on Slices 4-7 + acceptance verification. **NOTE** (per briansrls BLOCKING #PR2744 2026-05-12): NOT file-deletion — P5 / Pure Bootstrap dissolves AUTHORITY, and YamlStatic / BinaryShim / PythonShim emission paths all require some `.github/workflows/ci.yml` artifact (full-emit or thin-shim) for GH Actions trigger discovery.
 
 ## §4. Dependency graph
 
@@ -144,7 +146,7 @@ Critical path (forward):
 
 Parallelizable (started 2026-05-12 — dispatched under PM):
   - WI-1 emitter-dispatch architecture canvas (worker still-heron-763)
-  - WI-2 new file dsl/gunbc/ci_emission.dag — declares EmissionTarget open enum + project_github_actions function signature + gunbc_ci_yml_workflow pinned-projection (worker cool-carp-720)
+  - WI-2 new file dsl/gunbc/ci_emission.dag — declares WorkflowRuntime open enum + project_github_actions function signature + gunbc_ci_yml_workflow pinned-projection (worker cool-carp-720)
 ```
 
 ## §5. Realistic R3-close timing
@@ -168,7 +170,7 @@ Assumes:
 - Independent of held substrate; Slice 1 LANDED
 
 **WI-2**: NEW file `dsl/gunbc/ci_emission.dag` — projection-function substrate scaffold (per (c-refined) shape)
-- Output: NEW file `dsl/gunbc/ci_emission.dag` declaring `EmissionTarget` open enum + `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow` function signature + `gunbc_ci_yml_workflow` pinned-projection data binding
+- Output: NEW file `dsl/gunbc/ci_emission.dag` declaring `WorkflowRuntime` open enum + `project_github_actions: (CIWorkflowDag, WorkflowRuntime) -> Workflow` function signature + `gunbc_ci_yml_workflow` pinned-projection data binding
 - Scope: DECLARATION + signature ONLY (per-arm projection bodies are Slice 4-5 owned by Substrate Mgr post-canvas-merge)
 - Worker: **cool-carp-720** (PM auto-spawn 2026-05-12 ~06:30Z)
 - Brief: `docs/briefs/r3-t-wad-full-r3-cidag-scaffold-worker.md`
@@ -201,7 +203,7 @@ PM-relay to warm-wolf-698 + Director co-sign at #828 if cross-tier confirmation 
 - `docs/briefs/r3-substrate-t-workflow-as-data-slice-1-worker.md` — Slice 1 substrate carrier brief (LANDED PR #2160)
 - `dsl/extdeps/github/actions.dag` — canonical platform carriers (`Workflow:21` `Job:110` `Step:147` `WorkflowSecret:102`)
 - `dsl/gunbc/ci.dag` — existing gate-centric CI intent declarations (PR #2371); WI-2 does NOT extend this file (per (c-refined) shape); CIPipeline is NOT used as projection input (flat without edge structure per warm-wolf-698 msg_27d99080)
-- `dsl/gunbc/ci_emission.dag` — NEW file WI-2 creates (projection-function substrate; EmissionTarget enum + project_github_actions signature + pinned-projection binding)
+- `dsl/gunbc/ci_emission.dag` — NEW file WI-2 creates (projection-function substrate; WorkflowRuntime enum + project_github_actions signature + pinned-projection binding)
 - PR #2736 (neat-badger-30) — `CIWorkflowDag` carrier introduction; WI-2 sources projection input from this
 - `dsl/extdeps/cron_schedule_model.dag` — CronSchedule carrier (LANDED via PR #2169)
 - `docs/ci-pipeline-optimization.md` — pre-v3 historical optimization (background context; not active program)
@@ -217,7 +219,7 @@ Director scaffolded acceptance-aggregator pattern doc at `docs/design-section-1-
 
 | Proposed | Predicate-family | Lane | depends_on (lattice-meet status) |
 |---|---|---|---|
-| `t_ci_wad_acceptance` (or PM-named equivalent) | acceptance-aggregator | T-CI-WAD | **#56 + 6 NEW** (from §1): #56, `ci_yml_hand_authority_dissolved`, `emission_target_open_enum_landed`, `project_github_actions_landed`, `test_cost_dimension_landed`, `slow_test_exemptions_dissolved`, `ci_uses_affected_set_selection` |
+| `t_ci_wad_acceptance` (or PM-named equivalent) | acceptance-aggregator | T-CI-WAD | **#56 + 6 NEW** (from §1): #56, `ci_yml_hand_authority_dissolved`, `workflow_runtime_open_enum_landed`, `project_github_actions_landed`, `test_cost_dimension_landed`, `slow_test_exemptions_dissolved`, `ci_uses_affected_set_selection` |
 
 **Status**: PARKED pending PR #2748 ratification (currently 1/2 approvals). When PR #2748 ratifies, this pilot row inserts into §1.8 ledger as the canonical T-CI-WAD aggregator. Sibling clusters (Cluster M / Cluster F / Cluster K / T-V2-Retirement) get the same template at low marginal cost.
 
