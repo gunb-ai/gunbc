@@ -22,13 +22,8 @@ pipeline files, but no longer the authoritative compiler. The
 "real" compiler is the `.dag` one; Rust stage0 exists to get it
 off the ground.
 
-**v2 is already self-hosting.** `src/v2/` contains the v2
-compiler written in v2's own `.dag` language plus a minimal
-Rust stage0 (`src/v2/stage0/`) that can compile the `.dag`
-source. v2's pipeline stages — `02_parse.dag`, `03_resolve.dag`,
-`04_infer.dag`, `05_emit_rust.dag`, etc. — are `.dag` functions
-operating over v2's IR. v3 is catching up to v2's self-hosting
-model, not inventing it.
+**Historical note.** The legacy self-hosted compiler tree (retired under T-V2-Retirement) established the same
+pattern v3 follows: `.dag` pipeline plus a small Rust bootstrap. v3 proceeds under PB-Runtime / Pure-Bootstrap-Zero.
 
 **What changes with self-hosting:**
 
@@ -1174,9 +1169,8 @@ pipeline compiling itself.
    doesn't drift larger than necessary.
 5. **Meta-circular test infrastructure.** The self-consistency
    test in §7 needs tooling: run pipeline-v1 on its own source,
-   diff the output against pipeline-v2. v2 has this test
-   (`cargo test -p v2-compiler-tests ci_freshness` and
-   `ci_fixed_point`). v3 will need the same.
+   diff the output against pipeline-v2. Historical compiler-integration
+   suites ran `ci_freshness` / `ci_fixed_point`-style gates; v3 will need the same.
 6. **Interaction with L2 consumer migrations.** If `lens_complexity`
    is running on v3's pipeline stages during their migration,
    the lens's output should reveal whether the ported stage is
@@ -1188,40 +1182,19 @@ pipeline compiling itself.
 
 ---
 
-## §9. Relationship to v2
+## §9. Relationship to the retired legacy compiler
 
-v2 is the oracle and the reference implementation. Every v3
-pipeline stage migration should:
+Prior art for v3 migrations lived in the historical `.dag` pipeline files (parse,
+resolve, infer, emit families). Every v3 pipeline stage migration should still:
 
-1. Read the corresponding v2 `.dag` file as prior art
-2. Identify which parts of v2's implementation are
-   reconstruction heuristics (the "annotate_*" helpers in
-   complexity are the clearest examples) and plan to dissolve
-   them
-3. Identify which parts of v2's implementation are genuine
-   structural work and port those directly
-4. Track any v2 feature the v3 substrate doesn't yet support as
-   a prerequisite substrate extension
+1. Read archived `Complexity` / `ownership` / emit DAG lineages as prior art (`docs/substrate-reflection-design.md`,
+   `docs/v2-retrospective.md`, git history).
+2. Identify reconstruction heuristics to dissolve versus genuine structural work to port.
+3. Track any behavior the v3 substrate does not yet support as a prerequisite extension.
 
-v2's pipeline files are the best reference for "what does this
-stage actually need to do." Not to copy line-for-line — v3's
-substrate is cleaner — but as the empirical ground truth for
-"compilation works because this code runs correctly." If v3's
-`.dag` port produces output that v2's pipeline rejects, either
-v3 has a bug or v2 has a legacy assumption that v3 is
-deliberately removing. Investigate either way.
-
-**v2 pipeline files, for reference:**
-
-- `src/v2/02_parse.dag`
-- `src/v2/03_normalize.dag` / `src/v2/03_resolve.dag`
-- `src/v2/04_infer.dag` / `src/v2/04_lookup.dag` /
-  `src/v2/04_resolve.dag` / others
-- `src/v2/05_emit_rust.dag` (+ `_python.dag`, `_go.dag`)
-
-These are multi-thousand-line files. Direct ports are not
-expected; the reference is for architectural patterns, not
-source.
+**Historical pipeline arcs** (architectural reference, not live paths) included large parse / infer / emit
+`.dag` modules documented pre-retirement in design notes and retrospectives. Direct line-for-line ports are not
+expected; the reference is for patterns, not verbatim source.
 
 ---
 

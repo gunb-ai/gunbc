@@ -86,9 +86,21 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
             port: (v).result_port(),
             cost: Lookup::Hit(SymbolicCost::ConstantCost { _0: 0 }),
         },
-        Behavior::Transform(t) => SymbolicCostEntry {
-            port: (t).result_port(),
-            cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
+        Behavior::Transform(t) => match &(per_call_pattern_at(p0, *&((t).id))) {
+            None => SymbolicCostEntry {
+                port: (t).result_port(),
+                cost: transform_cost_for_target(p1, &((t).target), &((t).inputs)),
+            },
+            Some(pattern) => match &(per_call_descent_operand_port(p0, *&((t).id))) {
+                None => SymbolicCostEntry {
+                    port: (t).result_port(),
+                    cost: Lookup::Miss,
+                },
+                Some(descent_port) => SymbolicCostEntry {
+                    port: (t).result_port(),
+                    cost: recursive_transform_cost(p1, pattern, descent_port, &((t).inputs)),
+                },
+            },
         },
         Behavior::Branch(b) => SymbolicCostEntry {
             port: (b).result_port(),
@@ -102,6 +114,81 @@ pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicC
             port: (bind).result_port(),
             cost: lookup_cost(p1, &((bind).result_port())),
         },
+    }
+}
+pub fn recursive_transform_cost(
+    p0: &[SymbolicCostEntry],
+    p1: &CallPattern,
+    p2: &PortId,
+    p3: &[PortId],
+) -> Lookup<SymbolicCost> {
+    match p3 {
+        [] => Lookup::Miss,
+        [__list_head, __list_tail @ ..] => combine_iterate(
+            &(pattern_to_iter_bound(p1, p2)),
+            &(combine_sequential(
+                &(lookup_cost(p0, p2)),
+                &(sum_costs_excluding_descent_operand(p0, p3, p2)),
+            )),
+        ),
+    }
+}
+pub fn pattern_to_iter_bound(p0: &CallPattern, p1: &PortId) -> Lookup<SymbolicCost> {
+    match p0 {
+        CallPattern::ArithmeticSubtractCall {
+            steps: _,
+            ring_param: _,
+        } => Lookup::Hit(SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        }),
+        CallPattern::ArithmeticDivideCall {
+            divisor: _,
+            ring_param: _,
+        } => Lookup::Hit(SymbolicCost::LogCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        }),
+        CallPattern::ChildAccessorCall { accessor: _ } => Lookup::Hit(SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        }),
+        CallPattern::CollectionShrinkCall {
+            amount: _,
+            collection: _,
+        } => Lookup::Hit(SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        }),
+        CallPattern::FoldBodyCall {
+            outer_collection: _,
+        } => Lookup::Hit(SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        }),
+        CallPattern::ParserAdvanceCall { witness: _ } => Lookup::Hit(SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        }),
+        CallPattern::WorklistDrainCall { element: _ } => Lookup::Hit(SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                source_port: *p1,
+                display_name: None,
+            },
+        }),
+        CallPattern::SameArgumentCall => Lookup::Miss,
     }
 }
 pub fn loop_cost(p0: &Dag, p1: &[SymbolicCostEntry], p2: &LoopNode) -> Lookup<SymbolicCost> {
@@ -226,6 +313,22 @@ pub fn sum_costs(p0: &[SymbolicCostEntry], p1: &[PortId]) -> Lookup<SymbolicCost
     (p1).iter().fold(
         Lookup::Hit(SymbolicCost::ConstantCost { _0: 0 }),
         |__fold_acc, __fold_item| combine_sequential(&__fold_acc, &(lookup_cost(p0, __fold_item))),
+    )
+}
+pub fn sum_costs_excluding_descent_operand(
+    p0: &[SymbolicCostEntry],
+    p1: &[PortId],
+    p2: &PortId,
+) -> Lookup<SymbolicCost> {
+    (p1).iter().fold(
+        Lookup::Hit(SymbolicCost::ConstantCost { _0: 0 }),
+        |__fold_acc, __fold_item| {
+            if ((*(__fold_item)) == (*(p2))) {
+                __fold_acc
+            } else {
+                combine_sequential(&__fold_acc, &(lookup_cost(p0, __fold_item)))
+            }
+        },
     )
 }
 pub fn combine_sequential(

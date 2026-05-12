@@ -183,7 +183,7 @@ fn register_row_has_real_v2_counterpart_matches_testing_md_band_c() {
     assert!(!register_row_has_real_v2_counterpart("N/A"));
     assert!(!register_row_has_real_v2_counterpart("  `N/A`  "));
     assert!(register_row_has_real_v2_counterpart(
-        "src/v2/complexity.dag (5488L)"
+        "src/v3/lenses/complexity.dag (586L)"
     ));
 }
 
@@ -534,9 +534,13 @@ fn cementing_cost_receipt_pair_stays_explicit_until_complexity_summary_claim_lan
     assert_eq!(
         cost_receipts, expected,
         "`cost` currently needs both the gate #87 `.dag` harness and the temporary \
-         `ComplexitySummary` Rust receipt. Remove the Rust receipt only when the named \
+         `ComplexitySummary` Rust receipt. R3 gate #79 \
+         (`complexity_lens_behaviorally_complete`) is carried by that temporary Rust \
+         receipt while `regen.dag` keeps `src/v3/lenses/complexity.dag` behind the \
+         historical `cost` registry key. Remove the Rust receipt only when the named \
          TestPredicate/substrate blocker has landed and the replacement `.dag` claim \
-         covers the published `complexity_of` carrier."
+         covers the published `complexity_of` carrier with nested `ComplexitySummary` / \
+         `SymbolicCost` expected literals."
     );
 }
 
