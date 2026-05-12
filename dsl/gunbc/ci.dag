@@ -80,6 +80,11 @@ type CIPipeline {
 
 // CI workflow as a DAG, separate from GitHub Actions transport. Nodes are
 // structural gates; edges are prerequisite relationships between gate ids.
+//
+// Scaffold boundary: until a real projection function derives provider
+// transports from this graph, `CIWorkflowDag` is the modeled authority for gate
+// dependency shape. Demo mirrors must be drift-checked against this row rather
+// than treated as an independent source of truth.
 type CIGateNode {
   id: String
   gate: CIGate
