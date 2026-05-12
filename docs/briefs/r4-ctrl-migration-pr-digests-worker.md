@@ -36,7 +36,7 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
 
 `dsl/ctrl/pr_digests.dag` containing:
 
-1. **Module header** with consumer receipt** (neutral Phase-3 trigger per Director ratification 2026-05-12 `msg_d1589d17`)**:
+1. **Module header** with consumer receipt (neutral Phase-3 trigger per Director ratification 2026-05-12 `msg_d1589d17`):
    ```
    // ctrl/pr_digests.dag — PR digest helpers (status / conflicts / merge-readiness / URL extraction).
    //
