@@ -99,6 +99,17 @@ type Attestation {
   evidence: List<AttestationEvidence>
 }
 
+// 🟢 TERMINAL record — a non-empty list of process nodes. Used where the
+// substrate fact says at least one node exists, so an empty `List` cannot
+// contradict the enclosing state.
+//
+// Dissolution trigger: replace with a shared `NonEmptyList<ProcessNodeId>` when
+// that carrier is available in `dsl/std`.
+type NonEmptyProcessNodeIds {
+  first: ProcessNodeId
+  rest: List<ProcessNodeId>
+}
+
 // 🟢 TERMINAL coproduct at Phase-1 scope — explicit closure guard results
 // matching ctrl PR #1195. This is fail-closed: every known refusal has a
 // distinct inhabitant, including the undeclared post-cutoff and bucket-drain
@@ -132,7 +143,7 @@ type ProcessClosureRefusal
   | ProcessAlreadyClosed
   | ProcessModeNotDeclared
   | ProcessBucketNotDrained
-  | ProcessCompositeHasOpenChildren { open_children: List<ProcessNodeId> }
+  | ProcessCompositeHasOpenChildren { open_children: NonEmptyProcessNodeIds }
 
 // 🟢 TERMINAL coproduct — closure eligibility effect per operation. This
 // replaces the rejected blanket monotonicity claim with typed per-operation
@@ -150,9 +161,11 @@ type ClosureEligibilityEffect
   | ClosureNeutral
   | ClosureOverride
 
-// 🟡 STAGED record — a typed effect summary is required per operation. The
+// 🟡 STAGED record — a typed effect summary is projected per operation. The
 // `external_effect` field reuses the layer-local `std.effects.OperationEffect`
-// authority instead of importing v3 workflow carriers into `dsl/std`.
+// authority instead of importing v3 workflow carriers into `dsl/std`. This row
+// is derived by `process_operation_effect`; it is not an authored sibling field
+// on `ProcessOperation` arms.
 //
 // Dissolution trigger: when ctrl HTTP/SQL/audit emission consumes this file,
 // operation effect rows are generated from each `ProcessOperation` arm and
@@ -190,50 +203,41 @@ type ProcessOperation
       node: ProcessNodeId
       mode: DeclaredProcessNodeMode
       attestation: Attestation
-      effect: ProcessOperationEffect
     }
   | DecomposeProcessNode {
       parent: ProcessNodeId
       children: List<ProcessNodeId>
       attestation: Attestation
-      effect: ProcessOperationEffect
     }
   | DrainProcessBucket {
       bucket: ProcessNodeId
       attestation: Attestation
-      effect: ProcessOperationEffect
     }
   | ReplanProcessNode {
       node: ProcessNodeId
       reason: Attestation
-      effect: ProcessOperationEffect
     }
   | EscalateProcessDebt {
       from: ProcessNodeId
       to_parent: ProcessNodeId
       debt: Attestation
-      effect: ProcessOperationEffect
     }
   | PauseProcessNode {
       node: ProcessNodeId
       reason: Attestation
-      effect: ProcessOperationEffect
     }
   | ReopenProcessNode {
       node: ProcessNodeId
       reopen: ReopenAttestation
-      effect: ProcessOperationEffect
     }
   | RegressProcessSubtree {
       node: ProcessNodeId
       retracted_child_ids: List<ProcessNodeId>
       regression: RegressionAttestation
-      effect: ProcessOperationEffect
     }
   | AttestedClosureOverride {
       rule: ProcessRuleName
       attestation: Attestation
-      effect: ProcessOperationEffect
     }
 
 // 🟡 STAGED record — append-only event row for replay-as-truth. `position`
@@ -338,6 +342,10 @@ type ProcessGraph {
 // signature here fixes the substrate boundary that ctrl projections consume.
 fn current_process_mode(_graph: ProcessGraph, _node: ProcessNodeId) -> ProcessModeProjection {
   host process_algebra_current_mode
+}
+
+fn process_operation_effect(_operation: ProcessOperation) -> ProcessOperationEffect {
+  host process_algebra_operation_effect
 }
 
 fn can_close_process_node(
