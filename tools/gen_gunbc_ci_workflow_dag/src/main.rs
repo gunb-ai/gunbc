@@ -79,7 +79,7 @@ fn emit_workflow(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let permissions = emit_permissions(m.get("permissions"))?;
     Ok(format!(
         "Workflow {{\n  name: {},\n  on: {},\n  concurrency: {},\n  jobs: {},\n  env: {},\n  permissions: {}\n}}",
-        dag_string(name),
+        dag_string(&name),
         on,
         concurrency,
         jobs,
@@ -88,9 +88,10 @@ fn emit_workflow(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     ))
 }
 
-fn str_field(m: &serde_yaml::Mapping, k: &str) -> Result<&str, Box<dyn std::error::Error>> {
+fn str_field(m: &serde_yaml::Mapping, k: &str) -> Result<String, Box<dyn std::error::Error>> {
     m.get(Value::String(k.to_string()))
         .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
         .ok_or_else(|| format!("missing string field {k}").into())
 }
 
@@ -204,7 +205,7 @@ fn emit_concurrency(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     };
     Ok(format!(
         "some(ConcurrencyMappingQueueNotMax {{\n      group: {},\n      cancel_in_progress: {},\n      explicit_single: none\n    }})",
-        dag_string(group),
+        dag_string(&group),
         cancel
     ))
 }
