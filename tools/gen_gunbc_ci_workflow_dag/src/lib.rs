@@ -213,7 +213,11 @@ fn yaml_scalar_to_dag_string(v: &Value) -> Result<String, Box<dyn std::error::Er
         Value::String(s) => dag_string(s),
         Value::Bool(b) => dag_string(&b.to_string()),
         Value::Number(n) => dag_string(&n.to_string()),
-        Value::Null => dag_string(""),
+        // Fail closed: `null` in a string-valued Actions slot is not a faithful scalar — do not
+        // fabricate `""` (INVARIANTS P3/M5). Omit the key in YAML or emit an explicit string.
+        Value::Null => {
+            return Err("YAML null is not a representable GitHub Actions string scalar".into());
+        }
         _ => return Err(format!("unsupported scalar {v:?}").into()),
     })
 }
