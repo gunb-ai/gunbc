@@ -17,7 +17,6 @@
 //! This crate fails to build if the cited worker brief is removed from the worktree.
 
 use crate::common::find_list_empty_constructor_tag;
-use std::collections::HashSet;
 use v3_compiler::dag::{
     AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueNode,
 };
@@ -311,6 +310,24 @@ fn structural_record_ref<'a>(
     }
 }
 
+fn variant_label(dag: &v3_compiler::dag::Dag, sum_name: &str, value: &FieldValue) -> &'static str {
+    let FieldValue::Variant { constructor, .. } = value else {
+        panic!("expected structural variant field, got {value:?}");
+    };
+
+    for label in [
+        "LintCommand",
+        "TestCommand",
+        "IgnoredTestCommand",
+        "ShellCommand",
+    ] {
+        if *constructor == disj_variant_constructor_id(dag, sum_name, label) {
+            return label;
+        }
+    }
+    panic!("unexpected {sum_name} constructor {constructor:?}");
+}
+
 fn structural_list(value: &FieldValue) -> &[FieldValue] {
     let FieldValue::List(items) = value else {
         panic!("expected structural list field, got {value:?}");
@@ -332,9 +349,11 @@ fn workflow_topology<'a>(
         .iter()
         .map(|edge| {
             let edge = structural_record(edge);
+            let from = structural_record_ref(dag, structural_field(edge, "from"));
+            let to = structural_record_ref(dag, structural_field(edge, "to"));
             (
-                literal_string(structural_field(edge, "from")),
-                literal_string(structural_field(edge, "to")),
+                literal_string(structural_field(from, "id")),
+                literal_string(structural_field(to, "id")),
             )
         })
         .collect();
@@ -414,17 +433,8 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
         "CI workflow dependencies must be modeled as provider-neutral DAG edges"
     );
 
-    let node_id_set: HashSet<_> = node_ids.iter().copied().collect();
-    for (from, to) in edges {
-        assert!(
-            node_id_set.contains(from),
-            "CI workflow edge source `{from}` must reference a pipeline gate id"
-        );
-        assert!(
-            node_id_set.contains(to),
-            "CI workflow edge target `{to}` must reference a pipeline gate id"
-        );
-    }
+    // Edge endpoints are structural CIGate references; `workflow_topology`
+    // projects ids only for readable assertions above.
 }
 
 #[test]
@@ -438,15 +448,18 @@ fn ci_workflow_as_data_demo_pins_interim_command_shape() {
         .iter()
         .map(|gate| {
             let id = literal_string(structural_field(gate, "id"));
-            let command = structural_record(structural_field(gate, "command"));
-            (
-                id,
-                literal_string(structural_field(command, "kind")),
-                literal_string(structural_field(command, "renderer")),
-                literal_string(structural_field(command, "package")),
-                literal_string(structural_field(command, "test_name")),
-                literal_string(structural_field(command, "shell_command")),
-            )
+            let command = structural_field(gate, "command");
+            let label = variant_label(&ci, "CICommand", command);
+            let payload = match command {
+                FieldValue::Variant { payload, .. } => payload.as_slice(),
+                _ => unreachable!(),
+            };
+            let payload_text = payload
+                .iter()
+                .map(literal_string)
+                .collect::<Vec<_>>()
+                .join("|");
+            (id, label, payload_text)
         })
         .collect::<Vec<_>>();
     commands.sort_by_key(|(id, ..)| *id);
@@ -454,26 +467,16 @@ fn ci_workflow_as_data_demo_pins_interim_command_shape() {
     assert_eq!(
         commands,
         vec![
-            (
-                "compile-gates",
-                "ignored-test",
-                "ignored_test_command",
-                "test_package",
-                "ci_",
-                ""
-            ),
+            ("compile-gates", "IgnoredTestCommand", "ci_".to_string()),
             (
                 "l1-ratchet",
-                "shell",
-                "",
-                "",
-                "",
-                "scripts/l1-ratchet.sh --check"
+                "ShellCommand",
+                "scripts/l1-ratchet.sh --check".to_string()
             ),
-            ("lint", "lint", "lint_command", "", "", ""),
-            ("tests", "test", "test_command", "test_package", "", ""),
+            ("lint", "LintCommand", String::new()),
+            ("tests", "TestCommand", String::new()),
         ],
-        "interim CICommand rows must keep impossible field combinations out of authored gate data"
+        "CICommand must keep impossible field combinations out of authored gate data"
     );
 }
 
