@@ -1,5 +1,11 @@
 //! Enforced lens applications (`EnforcedApplication` from `lens_application.dag`).
 //!
+//! Gate #91 (`enforce_violation_routing_landed`): budget-violation diagnostics are
+//! routed through the authored `diagnostic_severity` field — today the single
+//! substrate variant `DiagnosticSeverity::Error` maps to [`Diagnostic::ParseError`]
+//! (compile-fail / fail-closed), per `lens_application.dag`, design §3, and
+//! INVARIANTS C-8.
+//!
 //! Gate #92 (`complexity_violation_compile_error_demonstrated`): when a program
 //! authors `EnforcedApplication<ComplexitySummary, AsymptoticClass>` referencing
 //! `complexity_enforceable`, infer checks the named section using the **same**
@@ -63,6 +69,17 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         return;
     };
     let Some(declaration_scope_conj) = declaration_scope_payload_conj(dag, section_ref_disj) else {
+        return;
+    };
+    let Some(diagnostic_severity_disj) = dag
+        .declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("DiagnosticSeverity")
+                && d.span.file.ends_with("lens_application.dag")
+        })
+        .map(|d| d.id)
+    else {
         return;
     };
     let positive_descent_disj = dag
@@ -155,15 +172,31 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         if !complexity_enforcement_violates(&budget_class, &observed) {
             continue;
         }
-        violations.push(Diagnostic::ParseError {
-            message: format!(
-                "lens enforcement violation: complexity budget {budget_class:?} exceeded \
-                 by observed class {observed:?} (declared `EnforcedApplication` at {})",
-                decl.name.as_deref().unwrap_or("?")
-            ),
+        let severity_val = match fm.get("diagnostic_severity") {
+            Some(v) => *v,
+            _ => {
+                violations.push(Diagnostic::ParseError {
+                    message:
+                        "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
+                            .to_string(),
+                    span: decl.span.clone(),
+                    fixes: Vec::new(),
+                });
+                continue;
+            }
+        };
+        let violation_message = format!(
+            "lens enforcement violation: complexity budget {budget_class:?} exceeded \
+             by observed class {observed:?} (declared `EnforcedApplication` at {})",
+            decl.name.as_deref().unwrap_or("?")
+        );
+        violations.push(enforced_violation_diagnostic(
+            dag,
+            diagnostic_severity_disj,
+            severity_val,
+            violation_message,
             span,
-            fixes: Vec::new(),
-        });
+        ));
     }
 
     for diagnostic in violations {
@@ -173,6 +206,59 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
 
 fn field_map(fields: &[(String, FieldValue)]) -> HashMap<&str, &FieldValue> {
     fields.iter().map(|(k, v)| (k.as_str(), v)).collect()
+}
+
+/// Routes an enforce-mode **budget violation** through `EnforcedApplication.diagnostic_severity`.
+///
+/// Substrate policy (C-8): only `DiagnosticSeverity::Error` is a valid steady-state choice; unknown
+/// constructors or malformed values fail closed with an explanatory diagnostic.
+fn enforced_violation_diagnostic(
+    dag: &Dag,
+    diagnostic_severity_disj: DeclarationId,
+    severity_val: &FieldValue,
+    violation_message: String,
+    span: SourceSpan,
+) -> Diagnostic {
+    let TypeConnective::Disj { variants } = &dag.declaration(diagnostic_severity_disj).connective
+    else {
+        return Diagnostic::ParseError {
+            message: "lens enforcement: internal error (DiagnosticSeverity is not a sum type)"
+                .to_string(),
+            span,
+            fixes: Vec::new(),
+        };
+    };
+    let Some(error_ctor) = variants.iter().find(|v| v.label == "Error").map(|v| v.ty) else {
+        return Diagnostic::ParseError {
+            message: "lens enforcement: internal error (DiagnosticSeverity lacks `Error` variant)"
+                .to_string(),
+            span,
+            fixes: Vec::new(),
+        };
+    };
+    let FieldValue::Variant { constructor, .. } = severity_val else {
+        return Diagnostic::ParseError {
+            message: "lens enforcement: `diagnostic_severity` must be a `DiagnosticSeverity` \
+                      variant value"
+                .to_string(),
+            span,
+            fixes: Vec::new(),
+        };
+    };
+    if *constructor != error_ctor {
+        return Diagnostic::ParseError {
+            message: "lens enforcement: `diagnostic_severity` on `EnforcedApplication` must be \
+                      `Error` (INVARIANTS C-8; fail-closed discipline)"
+                .to_string(),
+            span,
+            fixes: Vec::new(),
+        };
+    }
+    Diagnostic::ParseError {
+        message: violation_message,
+        span,
+        fixes: Vec::new(),
+    }
 }
 
 fn matches_enforced_application_instantiation(
