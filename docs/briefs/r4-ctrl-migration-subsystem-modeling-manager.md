@@ -105,6 +105,23 @@ Every Wave-1 / Wave-2 worker brief this Mgr authors MUST declare:
 
 ## Working state
 
-- **2026-05-12**: Mgr session `merry-newt-448` spawned at `node://adhoc-5d3bbf79-ce5`. PR #2775 (project plan + companion algebra doc) OPEN, not yet merged — Mgr operates against the PR diff as authority pending merge. No Wave-1 worker dispatched yet; this brief is the first Mgr-tier deliverable. Wave-1 trio anchor proposed: catalog #8 (PR digests) per "Wave-1-trio checkpoint" §.
+- **2026-05-12**: Mgr session `merry-newt-448` spawned at `node://adhoc-5d3bbf79-ce5`. PR #2775 (project plan + companion algebra doc) OPEN, not yet merged — Mgr operates against the PR diff as authority pending merge. Director-ratified Mgr-PR shape Q1(a) brief-first (no thin-exemplar) via `msg_c1daa5ae-2dfd-4e0c-a4bd-cdec024e383a` 2026-05-12; Q2(b) DRAFT-until-#2775 confirmed; Director also confirmed Wave-1-trio + 3-unmatched-stagings throttle (already encoded in §"Wave-1-trio checkpoint" and §"Staged-debt budget").
 
-- **Open coordination**: PM-tier ack sent to parent (`clever-ant-97`) 2026-05-12T19:39Z requesting (Q1) Mgr-PR deliverable shape and (Q2) wait-on-#2775 disposition. Mgr default if no reply ~30min: brief-authoring + scaffold (this file); workers dispatched post-#2775 merge. Worker briefs for Wave-1 catalog rows will land in follow-up PRs from this session before child-worker dispatch.
+- **Artifacts landed in PR #2777 (this PR)**:
+  - this Mgr standing brief
+  - [`dsl/ctrl/README.md`](../../dsl/ctrl/README.md) — scaffold + path conventions + receipt-format pointer (so worker briefs reference a stable consumer-receipt header shape)
+  - [`docs/briefs/r4-ctrl-migration-pr-digests-worker.md`](r4-ctrl-migration-pr-digests-worker.md) — concrete Wave-1 trio-anchor worker brief (catalog #8)
+
+- **Dispatch queue (Wave-1, in dispatch order)**:
+  1. **catalog #8 PR digests** — trio anchor; worker brief landed in PR #2777; spawn first post-merge
+  2. **catalog #10 work_prompts** — small (~400 LOC), template construction
+  3. **catalog #16 utility-helpers** — fold-into-consumers; small surface
+  4. **catalog #14 api-reviewer** — backend selection + invocation contract
+  5. **catalog #12 ci** — poll + gate decisions pure
+  6. **catalog #11 analyses** — sync + table queries
+  7. **catalog #3 inbox** — promote existing demo (≈90% there per plan §3)
+  8. **catalog #5 session_lifecycle** — spawn/idle/archive emergence
+  
+  Items 2–8 get worker briefs in follow-up PRs from this session (one per file, per `feedback_one_canonical_subissue_per_workitem.md` — no omnibus brief). Worker dispatch fires post-#2775 merge + Mgr-brief merge.
+
+- **Cross-Mgr coordination open**: Verification Mgr (throttle interface for staged-debt budget) and Emission-Targets Mgr (Phase 3 partner for trio convergence on catalog #8 — needs to author `dsl/extdeps/github/digest_render.dag` brief in parallel). Director ratification of trio anchor 2026-05-12 unblocks scheduling that coordination.
