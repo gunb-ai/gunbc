@@ -61,7 +61,7 @@ Gate IDs reference [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.8 "Can
 
 ## Implementation slices (suggested PR sequence)
 
-1. **V4-a — Census + mapping:** refresh readiness audit §1; extend predicate coverage map (audit §6 slice 2).
+1. **V4-a — Census + mapping:** refresh readiness audit §1; extend predicate coverage map (audit §6 slice 2). The SG-0 migration-class matcher is transitional: each class-by-class migration PR should remove the corresponding path matcher branch as those Rust paths move to `.dag` `TestClaim` data, and gate #84 close requires the matcher itself to disappear with `EXPECTED_HAND_AUTHORED_TEST` at zero.
 2. **V4-b — First executable port:** satisfy `tests_as_data_demonstration` + shrink SG-0 net (audit §6 slice 3).
 3. **V4-c — Quantifiers + generator:** land when **T4** clears (audit §6 slice 4).
 4. **V4-d — Facet-3 close:** census **0** + cementing discipline satisfied (audit §6 slice 5).
