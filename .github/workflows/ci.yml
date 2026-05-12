@@ -52,7 +52,7 @@ jobs:
     # Skip draft PRs. `github.event.pull_request.draft` is undefined on push
     # events, so `!= true` keeps main-branch pushes running.
     if: github.event.pull_request.draft != true
-    runs-on: [self-hosted, linux, x64, gunbc-quick]
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -82,7 +82,7 @@ jobs:
   # #1559; rationale: docs/audit/bootstrap-snapshot-drift-dissolution-assessment.md.
   ci:
     if: github.event.pull_request.draft != true
-    runs-on: [self-hosted, linux, x64, gunbc-ci]
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -200,7 +200,7 @@ jobs:
   # 'skipped'`.
   changes:
     if: github.event.pull_request.draft != true
-    runs-on: [self-hosted, linux, x64, gunbc-quick]
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 3
     outputs:
       code: ${{ steps.filter.outputs.code }}
@@ -254,25 +254,17 @@ jobs:
     needs: [changes]
     # Heavy compute (cargo release builds, full v3 test suite at the
     # 4000s transitional budget + clippy + lens gates). 2-core ubuntu-latest blows
-    # the 60min cap reliably. Run the heavy job on the gunb-ci ephemeral
-    # GCE Spot runner pool: each queued job gets one n2d-standard-8 VM,
-    # the VM registers as an ephemeral GitHub runner, runs one job, then
-    # self-deletes. Spot preemption is acceptable here; the companion
-    # ci-spot-rerun workflow retries failed jobs while `run_attempt < 4` (four attempts).
-    runs-on: [self-hosted, linux, x64, gunbc-ci]
+    # the 60min cap reliably; `ubicloud-standard-8` (8 vCPU, ~$0.0256/hr) finishes
+    # the workload well under cap. The `vars.CI_RUNNER` indirection is intentionally
+    # absent for this job because the core-count requirement is structural — no
+    # orchestrator should route this onto a 2-core runner regardless of cost-routing.
+    runs-on: ubicloud-standard-8
     # Full suite is transitionally capped at 4000s (~67m), plus lane2d gate, prebuild,
     # two clippy passes, regen-fresh compile check, and L-7/L-8 shell gates. A 60m job cap
     # cancels mid-suite on cold/cache-miss runners (observed: Actions "maximum execution time
     # of 1h0m0s"). Keep headroom above the in-step 4000s budget + downstream steps.
     # Revert toward 60–90m when OnceLock/module-cache brings warmed full-suite wall back down.
     timeout-minutes: 120
-    env:
-      # Self-hosted `gunbc-ci` runs the Actions agent alongside `cargo` link jobs.
-      # Default `.cargo/config.toml` uses `build.jobs = 2`; on cold integration builds
-      # that has correlated with "runner lost communication" disconnect annotations
-      # (oversubscribed VM + linker RSS). Force single-job compiles for this workflow
-      # job only — wall time may rise slightly; stability beats flaky red merges.
-      CARGO_BUILD_JOBS: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -596,8 +588,7 @@ jobs:
     # Always schedule this job name on PRs so branch-protection "required checks" get a
     # definitive **success** after `v3` (skipped jobs / workflow-wide cancels were surfacing
     # as merge-blocking reds on #2681). The heavy DB-8 matrix still runs **only** on
-    # `push` to `main`; PRs execute a cheap stub on `gunbc-quick` instead of competing
-    # for `gunbc-ci` with `v3`.
+    # `push` to `main`; PRs execute a cheap stub via the `DB-8 stub` step below.
     #
     # Layer 1 CI mitigation widens this `if:`: when `v3` is skipped on a docs-only
     # PR (via the `changes` filter job), this stub must still report green so its
@@ -624,16 +615,11 @@ jobs:
     # continue-on-error to preserve their non-blocking semantics.
     if: ${{ always() && github.event.pull_request.draft != true }}
     # Same sizing rationale as `v3` above: DB-8 release builds + determinism_test (5× matrix) +
-    # `self_host_fixed_point` run on the same ephemeral GCE Spot runner pool as `v3`;
-    # small/default runners saw mid-compile shutdown on #1794. **60m** wall so cold-cache
-    # / full release `cargo` is unlikely to cancel mid-job; ratchet remains non-blocking.
-    # (Runner label is orthogonal to P2:
+    # `self_host_fixed_point` run on `ubicloud-standard-8` (#1814); small/default runners saw
+    # mid-compile shutdown on #1794. **60m** wall so cold-cache / full release `cargo` is unlikely
+    # to cancel mid-job; ratchet remains non-blocking. (Runner label is orthogonal to P2:
     # `rust-toolchain.toml` + no workflow `toolchain:` input.)
-    runs-on:
-      - self-hosted
-      - linux
-      - x64
-      - ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'gunbc-ci' || 'gunbc-quick' }}
+    runs-on: ubicloud-standard-8
     timeout-minutes: 60
     # `changes` added to `needs:` so the fail-closed `if:` clause above can
     # reference `needs.changes.result` (openai-pro REQUEST_CHANGES fix). Without
