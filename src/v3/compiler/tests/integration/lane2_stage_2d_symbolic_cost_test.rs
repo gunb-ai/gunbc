@@ -28,6 +28,22 @@ use v3_compiler::lens_cost_symbolic::{
 
 use crate::common::{assert_recursive_countdown_linear_semantics, cached_compile_to_dag};
 
+/// Shared `(source, file)` for the two recursive-countdown `budgeted_test!` bodies so
+/// `cached_compile_to_dag` amortizes **duplicate** compile work when both tests run in one
+/// process. This is **not** a `TESTING.md` Phase-0 exemption dissolution receipt: the first
+/// caller still pays cold bootstrap, and libtest parallelism can inflate wall time — those
+/// tests stay listed in `scripts/test-node-wall-clock-ratchet.jsonl` until a sole-filter
+/// `--report-time` ≤2000ms receipt exists (or gate #102 lands a structural cost ratchet).
+const LANE2D_COUNTDOWN_SOURCE: &str =
+    "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)";
+const LANE2D_COUNTDOWN_FILE: &str = "lane2d_shared_countdown.v3";
+
+/// One compile for literal + scalar-op binds — avoids a second cold key when both tests run.
+/// Same caveat as the countdown shared-key pair: compile-cache sharing only; not a per-test wall
+/// ratchet receipt by itself.
+const LANE2D_LITERAL_AND_SCALAR_OP_SOURCE: &str = "let x = 1\nlet y = 1 + 2";
+const LANE2D_LITERAL_AND_SCALAR_OP_FILE: &str = "lane2d_literal_and_scalar_op.v3";
+
 fn find_bind_value(dag: &Dag, name: &str) -> PortId {
     dag.nodes()
         .iter()
@@ -300,7 +316,10 @@ budgeted_test! {
     value_reports_constant,
     {
         // `let x = 1` → ConstantCost(0) (leaf literal, no work).
-        let dag = cached_compile_to_dag("let x = 1", "test.v3");
+        let dag = cached_compile_to_dag(
+            LANE2D_LITERAL_AND_SCALAR_OP_SOURCE,
+            LANE2D_LITERAL_AND_SCALAR_OP_FILE,
+        );
         let cost = expect_cost(&dag, find_bind_value(&dag, "x"));
         assert!(
             is_constant(&cost),
@@ -313,9 +332,13 @@ budgeted_test! {
     24_000,
     transform_single_op_reports_constant,
     {
-        // `let x = 1 + 2` → sequential(Constant(1), sum(Constant(0), Constant(0)))
+        // `let y = 1 + 2` → sequential(Constant(1), sum(Constant(0), Constant(0)))
         // → Constant wrapper. Asymptotically O(1).
-        let cost = bind_cost("let x = 1 + 2", "test.v3", "x");
+        let dag = cached_compile_to_dag(
+            LANE2D_LITERAL_AND_SCALAR_OP_SOURCE,
+            LANE2D_LITERAL_AND_SCALAR_OP_FILE,
+        );
+        let cost = expect_cost(&dag, find_bind_value(&dag, "y"));
         assert!(
             is_constant(&cost),
             "single scalar op should report Constant, got {cost:?}"
@@ -386,10 +409,7 @@ budgeted_test! {
         // iterate normalization may keep **`ProductCost(Linear, Linear)`** when bound vs spine carry
         // distinct ports — still linear-family; regression asserts DB-7 semantics via
         // `crate::common::assert_recursive_countdown_linear_semantics`.
-        let dag = cached_compile_to_dag(
-            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
-            "loop_body_countdown.v3",
-        );
+        let dag = cached_compile_to_dag(LANE2D_COUNTDOWN_SOURCE, LANE2D_COUNTDOWN_FILE);
         let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
         assert_recursive_countdown_linear_semantics(&cost);
     }
@@ -421,10 +441,7 @@ budgeted_test! {
         // lowers to a Loop whose source is the `n` param port. The
         // lens's `loop_cost` fires LinearCost(size_var_of(source)),
         // so the bound carries a LinearCost term.
-        let dag = cached_compile_to_dag(
-            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
-            "countdown.v3",
-        );
+        let dag = cached_compile_to_dag(LANE2D_COUNTDOWN_SOURCE, LANE2D_COUNTDOWN_FILE);
         let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
         assert!(
             mentions_linear(&cost),
