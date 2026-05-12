@@ -43,7 +43,10 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
    // Current authority (consumer-side): ctrl/scripts/session-dashboard/{pr_attached_urls,
    // pr_ci_digest, pr_conflict_digest, pr_merge_ready_digest, pr_rest_fallback}.mjs
    //
-   // STAGED → AUTHORITY trigger: a Phase-3 trio of
+   // STAGED → AUTHORITY trigger (single event under INVARIANTS P2/P5): the
+   // ctrl PR cut-over deleting the 5 .mjs files. Trio convergence below is
+   // the gating precondition that authorizes cut-over dispatch — it is NOT
+   // itself the authority flip:
    //   (a) digest source-fact authority (consuming dsl/extdeps/github/pulls.dag PullRequest
    //       as fetched source-of-record; if a narrow GitHub-domain digest-summary record
    //       is needed, lands at dsl/extdeps/github/pull_digest.dag importing pulls.dag —
@@ -53,7 +56,6 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
    //       name dsl/gunbc/digest_render.dag); any Markdown-specific wrapper
    //       is a separate authority decision, not assumed live,
    //   (c) named parity-harness gate green
-   // PLUS ctrl PR cut-over deleting the 5 .mjs files.
    ```
 
 2. **Carrier types** (DFS via M9 before defining; **MUST grep `dsl/extdeps/github/pulls.dag` before naming any carrier** per substrate-grep-miss correction below):

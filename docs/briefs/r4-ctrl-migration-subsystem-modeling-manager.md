@@ -65,7 +65,7 @@ This manager owns Phase 1.5 of the program — 16 subsystem `.dag` modeling PRs 
 
 Per plan §6 / §7 (incorporating claude review #10327 exploratory observation 2026-05-12T19:22Z):
 
-**Before any Wave-2 dispatch fires, this Mgr requires at least one full trio convergence on a Wave-1 subsystem**: algebra ✓ (Phase 1 substrate landed) **+** Phase 1.5 modeling PR ✓ (this lane) **+** Phase 3 emission target ✓ (Emission-Targets Mgr lane) **+** parity test passing.
+**Before any Wave-2 dispatch fires, this Mgr requires at least one full trio convergence on a Wave-1 subsystem**: algebra ✓ (Phase 1 substrate landed) **+** Phase 1.5 modeling PR ✓ (this lane) **+** Phase 3 emission target ✓ (Emission-Targets Mgr lane) **+** parity test passing. Trio convergence is a **gating precondition for Phase 4 cut-over dispatch**, NOT itself the `STAGED → AUTHORITY` flip — the authority flip is the single ctrl-side cut-over PR that deletes the TS files (per INVARIANTS P2/P5 single-trigger discipline; see [`dsl/ctrl/README.md`](../../dsl/ctrl/README.md) §"Authority").
 
 **Recommended trio anchor**: catalog #8 (PR digests). Reason: pure-function-heavy, no SQL/HTTP runtime side-effects, the corresponding Phase 3 deliverable is the smallest possible — a **gunbc-owned render projection** over `dsl/std/render.dag` (proposed `dsl/gunbc/digest_render.dag`), consuming GitHub source facts already in `dsl/extdeps/github/pulls.dag`. Per INVARIANTS P1 + `feedback_extdeps_header_discriminator_before_field_placement.md`: extdeps own third-party source facts; rendering/projection is gunbc-owned. The trio's Phase-3 emission is NOT an extdep landing.
 
