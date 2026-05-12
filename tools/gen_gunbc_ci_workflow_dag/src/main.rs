@@ -99,9 +99,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     writeln!(out, "  ShellType, Bash")?;
     writeln!(out, "}}")?;
     writeln!(out)?;
+    // Empty `{}` is not a map literal in surface parse (see `looks_like_map_literal` —
+    // only `{ StringLit :` opens the map lane). Use the `empty_map()` primitive.
     writeln!(
         out,
-        "data gunbc_ci_wf_str_map_empty: Map<String, String> = {{}}"
+        "data gunbc_ci_wf_str_map_empty: Map<String, String> = empty_map()"
     )?;
     for line in &hoist.map_data_lines {
         writeln!(out, "{line}")?;

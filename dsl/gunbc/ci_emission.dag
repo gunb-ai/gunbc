@@ -26,7 +26,7 @@ import extdeps.github.actions {
 //   YamlStatic | BinaryShim | ...
 // PythonShim / InlineGunbc are DESIGN-ONLY (INVARIANTS P5) — not initial arms.
 
-type WorkflowRuntime = YamlStatic | BinaryShim | ...
+type WorkflowRuntime = YamlStatic | BinaryShim
 
 func github_actions_binary_shim_placeholder_workflow() -> Workflow =
   Workflow {
