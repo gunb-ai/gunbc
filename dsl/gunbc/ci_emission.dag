@@ -4,6 +4,10 @@
 // (`dsl/gunbc/ci_github_actions_workflow.dag`, regenerated from `.github/workflows/ci.yml`).
 // `CIWorkflowDag.github_actions_workflow` pins that carrier as part of the same authority
 // row as the gate graph (`dsl/gunbc/ci.dag`).
+//
+// `project_github_actions(..., YamlStatic)` returns that YAML-pinned carrier (Slice 4:
+// no structural projection from `pipeline`/`edges` yet; WI-2 follow-on). Transport-arm
+// selection, not a second gate-topology editor.
 
 module gunbc.ci_emission
 
@@ -27,7 +31,7 @@ import extdeps.github.actions {
 
 type WorkflowRuntime = YamlStatic | BinaryShim
 
-func github_actions_binary_shim_placeholder_workflow() -> Workflow =
+func github_actions_binary_shim_placeholder_workflow() -> Workflow {
   {
     name: "ci-binary-shim-placeholder",
     on: [ Push { branches: [], paths: [] } ],
@@ -63,15 +67,14 @@ func github_actions_binary_shim_placeholder_workflow() -> Workflow =
     env: none,
     permissions: none
   }
+}
 
-func project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow =
-  // YamlStatic: return the **YAML-pinned** carrier on `dag` (Slice 4 — no derived
-  // projection from `pipeline`/`edges` yet; that dissolution is WI-2 follow-on).
-  // This is transport-arm selection, not a second gate-topology editor.
+func project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow {
   match runtime {
     YamlStatic => dag.github_actions_workflow
     BinaryShim => github_actions_binary_shim_placeholder_workflow()
   }
+}
 
 // Pinned projection: same `ci_workflow_dag` row, YamlStatic transport (Slice 4).
 data gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)
