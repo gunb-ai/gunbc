@@ -3,8 +3,7 @@
 // Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE.
 // See docs/v3-lens-capability-register.md.
 //
-// Port authority: retired hand-Rust `src/v3/compiler/src/workflow_parallelism.rs`
-// (2026-05-12), specifically:
+// Port authority: retired hand-Rust Stage 2e bridge (2026-05-12), specifically:
 //   - `idempotent_operations_commute`
 //   - `first_breaking_across_branches`
 //   - `extract_linear_branches`
