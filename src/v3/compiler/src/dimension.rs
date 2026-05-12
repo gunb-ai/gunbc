@@ -463,6 +463,43 @@ mod fail_closed_tests {
     use crate::operators::{ArithmeticOp, OperatorKind};
 
     #[test]
+    fn cost_lens_complete_receipt_uses_generated_surface_and_dimension_entrypoint() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("cost_lens_complete_receipt", 0, 0);
+        let lhs = dag.push_value(literal_bits_int(1), span.clone());
+        let rhs = dag.push_value(literal_bits_int(2), span.clone());
+        let add_out = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, rhs],
+            span.clone(),
+        );
+        let root = dag.push_bind("sum", add_out, vec![], span);
+
+        let SymbolicCostLookup::Hit(generated_cost) = symbolic_cost_of(&dag, &add_out) else {
+            panic!("generated cost lens should Hit for a bounded add workflow");
+        };
+        assert!(
+            matches!(generated_cost, SymbolicCost::ConstantCost { .. }),
+            "bounded add should stay in the ConstantCost family, got {generated_cost:?}"
+        );
+
+        let DimensionReport::DimensionOk {
+            dimension_name,
+            composed,
+            witnesses,
+        } = analyze_symbolic_cost_dimension(&dag, root)
+        else {
+            panic!("dimension entrypoint should pass for bounded add workflow");
+        };
+        assert_eq!(dimension_name, "symbolic_cost");
+        assert_eq!(composed, generated_cost);
+        assert!(
+            witnesses.iter().all(|w| matches!(w, Witness::Inhabits(_))),
+            "dimension entrypoint should report only Inhabits witnesses, got {witnesses:?}"
+        );
+    }
+
+    #[test]
     fn missing_symbolic_cost_surfaces_as_dimension_fail_with_violates_witnesses() {
         let mut dag = Dag::new();
         let span = SourceSpan::new("dimension_fail_closed_test", 0, 0);
