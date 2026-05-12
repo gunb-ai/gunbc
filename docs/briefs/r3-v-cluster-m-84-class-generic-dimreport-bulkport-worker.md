@@ -19,6 +19,12 @@
 
 Migrate the **generic DimensionReport / runner-discipline family** — Rust integration tests that wrap `.dag` `TestClaim` evaluation via the runner-side discipline (suite enumeration, derived inventory, expected-claim-names match) — to extend the Phase-2 pattern landed at PR #2639 across the full DimensionReport surface.
 
+Owned files/surfaces:
+- DimensionReport and runner-discipline Rust tests under `src/v3/compiler/tests/integration/`
+- replacement `.dag` TestClaims under `src/v3/compiler/tests/dag/`
+- runner-side suite enumeration constants and expected-claim-name checks
+- `EXPECTED_HAND_AUTHORED_TEST` rows for each migrated file
+
 **Seed inventory (10 of estimated 20-25 entries; Mgr finalizes full list)** per Verification Mgr msg_755c3f43:
 
 Primary census anchors: `sg0_census_test.rs:573-583` (free-consequences), `:639-655` (TC1/TC2/TC3 Pattern-A), `:584-587` (paired Rust receipt), runner-side at `t_pb_b_1_dag_runner_test.rs:257-357`.
@@ -85,6 +91,7 @@ The Phase-2 pattern landed for the **cementing-test family** (#87 lineage). This
 
 The bulk-port PR-set is acceptable when:
 - `EXPECTED_HAND_AUTHORED_TEST` SG-0 census decreases by **N** (one per migrated entry; 18-23 for full class minus the 2 framework entries from §3.2)
+- Same-PR SG-0 rule: each replacement `.dag` claim and census decrement land together.
 - Each migrated entry has a corresponding `.dag` `TestClaim` under `tests/dag/` evaluating to the same Pass/Fail verdict as the original Rust assertion
 - Runner-side suite enumeration constants extend cleanly (no parallel suite-enumeration mechanisms introduced)
 - Receipt-discipline (per Phase-2 pattern) preserved
@@ -108,6 +115,7 @@ Escalate via dashboard-message to Verification Mgr if:
 - Framework entries (§3.2) need migration path — Coordinator decides on scope expansion vs runner-side scaffolding hold
 - A `.dag` TestClaim cannot express the DimensionReport assertion
 - SG-0 census wouldn't decrease
+- A row resists cementing because it needs structural/compiler fixes; route to D2 with the blocker named
 
 Do not push a workaround PR for any of these.
 
