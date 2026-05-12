@@ -337,7 +337,7 @@ let claim_alias_refine: TestClaim = {
 
 let suite: TestSuite = {
   name: "verification_smoke",
-  claims: [claim_compiles, claim_fails, claim_alias_refine]
+  claims: [Enumerated(claim_compiles), Enumerated(claim_fails), Enumerated(claim_alias_refine)]
 }
 "#;
 
