@@ -1,4 +1,4 @@
-# T-CI-WAD emission target placement sketch
+# T-CI-WAD CI projection policy sketch
 
 **Status**: PREP ONLY — consumes the pending
 `docs/design-ci-workflow-substrate-shape-2026-05-12.md` canvas. This file does
@@ -10,15 +10,28 @@ scope: GitHub Actions facts describe provider constraints, while emission
 policy is gunbc CI intent. Any surviving shape keeps the emission target under
 `dsl/gunbc/`.
 
+Terminology is deliberately **not** Shape-A compiler `EmissionTarget` here.
+`src/v3/SELF_HOSTING.md` distinguishes compiler emission targets from Shape-B
+artifact generation: YAML is a Shape-B artifact produced by a `.dag` program,
+never a compiler target value. The names below are a CI projection policy
+placeholder for workflow artifact generation, not compiler target selection.
+
+**Coproduct classification**: 🟡 SCAFFOLD. The current variants name the
+minimum CI projection modes needed for T-CI-WAD planning. The dissolution
+trigger is the ratified `(c-refined)` substrate landing: replace this prep
+placeholder with the canonical gunbc-namespace sum type and
+`project_github_actions(CIWorkflowDag, <projection-policy>) -> Workflow`
+signature, preserving the Shape-B/Shape-A distinction.
+
 ## Option B — Field on `CIPipeline`
 
 ```dag
-type EmissionTarget = YamlStatic | BinaryShim | PythonShim
+type CIProjectionMode = YamlStatic | BinaryShim | PythonShim
 
 type CIPipeline {
   name: String
   gates: List<CIGate>
-  emission_target: EmissionTarget?
+  projection_mode: CIProjectionMode?
 }
 ```
 
@@ -29,11 +42,11 @@ its own CI.
 ## Option C — Wrapper in `gunbc.ci`
 
 ```dag
-type EmissionTarget = YamlStatic | BinaryShim | PythonShim
+type CIProjectionMode = YamlStatic | BinaryShim | PythonShim
 
 type WorkflowEmission {
   pipeline: CIPipeline
-  target: EmissionTarget
+  mode: CIProjectionMode
 }
 ```
 
@@ -45,7 +58,7 @@ between provider-neutral CI intent and emitted transport.
 
 Whichever option wins:
 
-- `EmissionTarget` has a single authority in `dsl/gunbc/ci.dag`.
-- No `EmissionTarget` field or variant is introduced in `dsl/extdeps/`.
+- The CI projection policy has a single authority in `dsl/gunbc/`.
+- No CI projection policy field or variant is introduced in `dsl/extdeps/`.
 - The focused T-CI-WAD test should assert the selected carrier exists and that
-  `YamlStatic`, `BinaryShim`, and `PythonShim` are the only initial variants.
+  the initial variants match the ratified `(c-refined)` substrate.
