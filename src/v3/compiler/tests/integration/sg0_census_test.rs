@@ -226,7 +226,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // `docs/briefs/r3-pb-tier3-perf-budget-worker.md` deliverable 0b
     // (parent brief #1331; readiness matrix #1358; this PR #1362).
     // Intentionally hand-authored: it measures live public substrate
-    // entrypoints (`merge_evidence`, `positive_descent_count`,
+    // entrypoints (`std_termination_lattice_host::merge_evidence`, `positive_descent_count`,
     // `lower_call_pattern`, `type_iteration_dimension`,
     // `lane2_workflow_idempotency_report`). R3 gate #4 **parallel module**
     // `workflow_idempotency.rs` retired; native projection co-located in
@@ -301,6 +301,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
     "src/v3/compiler/src/regen_tokenize.rs",
     "src/v3/compiler/src/self_host_receipt_p0.rs",
+    // R3 `tier3_termination_mirror_dissolved`: lattice ops out of `dag.rs`; host shim until std lowers.
+    "src/v3/compiler/src/std_termination_lattice_host.rs",
     "src/v3/compiler/src/test_runner.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
 ];

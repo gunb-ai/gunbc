@@ -15,11 +15,12 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use v3_compiler::dag::{
-    lower_call_pattern, merge_evidence, positive_amount_from_i64, positive_descent_count,
-    type_iteration_dimension, CallPattern, DescentEvidence,
+    lower_call_pattern, positive_amount_from_i64, positive_descent_count, type_iteration_dimension,
+    CallPattern, DescentEvidence,
 };
 use v3_compiler::dag::{EffectShape, IdempotentShape, OperationEffect, WorkflowEffect};
 use v3_compiler::lane2_workflow_idempotency_report;
+use v3_compiler::std_termination_lattice_host::merge_evidence;
 
 fn bench_termination_mirror(c: &mut Criterion) {
     let a = DescentEvidence::Strict;

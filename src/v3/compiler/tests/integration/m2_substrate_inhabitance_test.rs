@@ -2,18 +2,20 @@ use std::collections::{HashMap, HashSet};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
-    join_evidence, literal_bits_int, lower_call_pattern, map_evidence_merge_at, merge_evidence,
-    optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
-    positive_amount_from_i64, promote_to_strict, size_bound_param, tree_size_bound,
-    type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
-    CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
-    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    algebra_profile_to_dimension, constant_bound_value, is_constant_bound, literal_bits_int,
+    lower_call_pattern, per_call_descent_evidence, per_call_pattern_at, positive_amount_from_i64,
+    size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile, ArrowBody,
+    AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval,
+    IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
     PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
     TypeConnective, ValueBody,
 };
 use v3_compiler::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
 use v3_compiler::parse_surface;
+use v3_compiler::std_termination_lattice_host::{
+    evidence_rank, join_evidence, map_evidence_merge_at, merge_evidence, optional_evidence_meet,
+    promote_to_strict,
+};
 use v3_compiler::CompileError;
 use v3_compiler::Dag;
 use v3_compiler::Diagnostic;
@@ -488,6 +490,27 @@ fn termination_lattice_functions_preserve_std_body_spans() {
         assert!(
             matches!(arrow_body(&dag, name), ArrowBody::Unparsed(_)),
             "`{name}` should preserve its v3 std body span until std block bodies lower"
+        );
+    }
+}
+
+#[test]
+fn termination_lattice_rust_mirror_dissolved() {
+    // Gate `tier3_termination_mirror_dissolved` (R3, T-Tier3-Dissolution):
+    // `dsl/std/termination.dag` is the lattice authority; `dag.rs` keeps the
+    // `DescentEvidence` carrier for substrate wiring only.
+    let dag_rs = include_str!("../../src/dag.rs");
+    for forbidden in [
+        "pub fn evidence_rank",
+        "pub fn merge_evidence",
+        "pub fn join_evidence",
+        "pub fn promote_to_strict",
+        "pub fn optional_evidence_meet",
+        "pub fn map_evidence_merge_at",
+    ] {
+        assert!(
+            !dag_rs.contains(forbidden),
+            "`dag.rs` must not define `{forbidden}` — host bridge: `std_termination_lattice_host`"
         );
     }
 }
