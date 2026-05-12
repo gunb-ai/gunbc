@@ -2,6 +2,9 @@
 // `origin_of` / `Origin` parity receipts stay in Rust (`cementing_lens_registry_dispatch_test`,
 // `m2_lens_provenance_migration_test`) until `LensOutputEquals` can compare stable `Origin`
 // literals on fixture ports.
+//
+// **Discipline:** `Compiles` here is harness wiring only — not provenance lens output. Do not
+// substitute unrelated predicates that imply provenance behavior without applying the lens.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_provenance
 

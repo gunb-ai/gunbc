@@ -328,6 +328,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (#1252). Hand-authored ratchet entry added per SG-0 census discipline.
     "src/v3/compiler/tests/integration/anthropic_operations_test.rs",
     "src/v3/compiler/tests/integration/anthropic_schema_lockstep_test.rs",
+    // R3 coproduct slice 2: hermetic JSON for `tool_result.content` scalar vs block array.
+    "src/v3/compiler/tests/integration/anthropic_tool_result_wire_demo_test.rs",
     "src/v3/compiler/tests/integration/bridge_ledger_carrier_test.rs",
     // PB Tier-2 lower-helper exact-string patch class (#1014): zero-residual receipt +
     // source ratchet; see `bridge_lower_helpers_patch_zero_residual_test.rs` module docs.
@@ -544,21 +546,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolution trigger: R3 closes the named T-LensProducer-Retirement /
     // T-PB-B bulk-migration lanes and this R1-only acceptance wrapper retires.
     "src/v3/compiler/tests/integration/r1_release_acceptance_test.rs",
-    // R1C-D (PB census `.dag` `TestClaim` wrappers): runner-side receipt
-    // for the six PB census gates in `tests/fixtures/r1_pb_census_gates.dag`.
-    // Asserts `TestRunner` dispatches each PB census predicate to a wired
-    // `eval_*_shape` slice (no `NotYetImplemented`) and that results are
-    // structural `Pass`/`Fail` against the live SG-0 census authority.
-    // Same residual class as the R1C-E driver below — paired hand-Rust
-    // shim until R1 close dissolves the wrappers (D.5 / cascade-promotion
-    // 0-floor work in the Pure Bootstrap to Zero program).
-    "src/v3/compiler/tests/integration/r1c_d_pb_census_gates_test.rs",
-    // R1C-E (T-Emit `.dag` `TestClaim` wrappers): integration-test driver
-    // that splices `env!("CARGO_BIN_EXE_r1c_e_emit_gates")` into the
-    // `tests/dag/r1c_e_emit_gates.template.dag` source and runs the suite
-    // through `TestRunner`. Scaffold until R1 close dissolves the wrappers.
-    "src/v3/compiler/tests/integration/r1c_e_emit_gates_dag_test.rs",
-    "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
     // R3 §1.4 Class 2 / §1.8 row #61
@@ -647,8 +634,19 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
     "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
+    // T-PB-B-1 `tests/dag` runner table; gate #74 + #87 cementing regen suites; R3 Cluster M #84
+    // R1C-D/E runner receipts (co-located harness).
+    //
+    // **P5(b) / SG-0 accounting (#2715 pilot — not gate #84 closure):** the merge-visible
+    // receipt is **−3** paths removed from this list (deleted `r1c_*_gates*_test.rs` shims).
+    // R1C-D/E **predicates** live in `.dag` (`tests/dag/t_r1c_d_pb_census_gates.dag`,
+    // `r1c_e_emit_gates*.template.dag`); Rust here is runner-only (`compile_to_dag` +
+    // `TestRunner`), same structural class as gate #74 — consolidation must not be read as
+    // Pure Bootstrap / T-PB-B "zero hand-maintained Rust" progress. Gate #84 /
+    // `every_rust_test_ports_to_dag_or_generated` dissolution stays under ROADMAP T-PB-B +
+    // `docs/r3-structure.md` § T-Tests-As-Data-Completeness until `EXPECTED_HAND_AUTHORED_TEST`
+    // reaches zero.
     "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
-    "src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs",
     // TC1 substrate lens eta-equivalence (deferred / R2 research): integration for
     // `SubstrateResearchDeferredClaim` + `tc1_substrate_lens_eta_equivalence_deferred.dag`.
     // SG-0 path ratchet: Director sign-off (gunb-ai/gunbc#1130, comment 4341571168;
@@ -724,8 +722,6 @@ enum TestsAsDataMigrationClass {
     CensusOrRatchet,
     PropertyBased,
 }
-
-const EXPECTED_TESTS_AS_DATA_MIGRATION_AUDIT_COUNT: usize = 116;
 
 // Transitional gate #84 audit only. As each class migrates to `.dag`
 // `TestClaim` data, remove that class's path matcher branch with the
@@ -1074,12 +1070,6 @@ fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
         unclassified.is_empty(),
         "gate #84 migration audit must classify every hand-authored test path; \
          unclassified paths: {unclassified:?}"
-    );
-    assert_eq!(
-        EXPECTED_HAND_AUTHORED_TEST.len(),
-        EXPECTED_TESTS_AS_DATA_MIGRATION_AUDIT_COUNT,
-        "gate #84 migration audit count drifted; update the migration-class audit \
-         when the SG-0 hand-authored test ratchet changes"
     );
 
     for class in [

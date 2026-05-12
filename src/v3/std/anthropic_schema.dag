@@ -18,8 +18,10 @@ module v3.std.anthropic_schema
 // input + output signature (`dsl/extdeps/llm/anthropic.dag:180-203`).
 // Types not in that reach (`AnthropicModel`, `AnthropicModelSpec`,
 // `AnthropicToolDefinition`, `AnthropicApiVersion`, `SystemPrompt`,
-// `CacheControl`, `ThinkingMode`, `ThinkingConfig`, `AnthropicErrorShape`)
-// are deliberately omitted. `AnthropicErrorShape` covers the 4xx/5xx
+// `ThinkingMode`, `ThinkingConfig`, `AnthropicErrorShape`)
+// are deliberately omitted. `CacheControl` and `AnthropicSearchResultCitationsConfig`
+// are mirrored because nested tool-result `AnthropicSearchResultBlock` references them
+// in `dsl/extdeps/llm/anthropic.dag`. `AnthropicErrorShape` covers the 4xx/5xx
 // response slots only; the callable's typed return is `AnthropicMessages200Body`,
 // so the error carrier is not on the signature reach today and lands with
 // the operation-row response/wire lockstep lane (per PR-β scope) rather
@@ -56,17 +58,79 @@ type ImageSource
     }
   | UrlImage { url: String }
 
+// Cross-provider message-body coordinate mirrored from `dsl/extdeps/llm/llm.dag`.
+// The v3 bootstrap loads `anthropic_schema.dag` without importing `llm.dag`;
+// keep this twin so `shared_content_block_lockstep` pins the shared surface.
 type ContentBlock
   = TextContent { text: String }
   | ImageContent { source: ImageSource }
 
+// 🟢 TERMINAL — same row as `dsl/extdeps/llm/anthropic.dag` (`CacheControl`);
+// referenced from nested tool-result `AnthropicSearchResultBlock.cache_control`.
+type CacheControl {
+  type: String
+}
+
+// 🟢 TERMINAL — `dsl/extdeps/llm/anthropic.dag` (`AnthropicSearchResultCitationsConfig`).
+type AnthropicSearchResultCitationsConfig {
+  enabled: Bool
+}
+
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicToolResultContent`
-// (`dsl/extdeps/llm/anthropic.dag`). Scalar text and nested content blocks are
-// alternatives in Anthropic's tool-result content slot, not optional sibling
-// fields on the tool-result row.
+// (`dsl/extdeps/llm/anthropic.dag`). Tuple carriers mirror v2 exactly so serde
+// untagged emission can map the JSON string vs JSON array alternatives without
+// inventing parallel record shapes on the v3 mirror.
 type AnthropicToolResultContent
-  = ToolResultText { text: String }
-  | ToolResultBlocks { blocks: List<ContentBlock> }
+  = ToolResultText(String)
+  | ToolResultBlocks(List<AnthropicToolResultBlock>)
+
+// 🟡 SCAFFOLD mirroring `AnthropicToolResultBlock` (`dsl/extdeps/llm/anthropic.dag`).
+// Carries the same 🟡 rationale as v2: nested payload gaps on
+// `structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads`, not an
+// open-ended “API might add tags” dissolution story.
+//
+// Dissolution trigger: when v2 `dsl/extdeps/llm/anthropic.dag` promotes this coproduct
+// to 🟢 TERMINAL per the v2 comment on that declaration (residual rows closed + five-arm
+// discriminator surface terminalized there), update this mirror under
+// `anthropic_schema_lockstep_test` and re-tag 🟢; when v3 ingests v2 `anthropic.dag` with
+// full service/structural fidelity (#1246 / file-header dissolution above), this entire
+// twin file retires and this declaration deletes with it (ROADMAP.md “Provider/API mirror
+// multiplication risk” — T-Ground-Services ingestion replaces per-provider mirrors).
+//
+// Maintenance trigger (not dissolution): new top-level `tool_result.content[]` arm on
+// the wire → land the fold on v2 first, then extend this mirror lockstep.
+// Singleton wire tag — mirrors `AnthropicToolResultWireTextTag` (v2 authority).
+type AnthropicToolResultWireTextTag
+  = Text {}
+
+// Singleton — mirrors `AnthropicPlainTextDocumentMediaType` (v2 authority).
+type AnthropicPlainTextDocumentMediaType
+  = TextPlain {}
+
+// Nested `search_result.content[]` rows — wire carries fixed `type: "text"` + `text`.
+type AnthropicToolResultTextBlock {
+  type: AnthropicToolResultWireTextTag
+  text: String
+}
+
+type AnthropicToolResultBlock
+  = AnthropicTextBlock { text: String }
+  | AnthropicImageBlock { source: ImageSource }
+  | AnthropicDocumentBlock { source: AnthropicToolResultPlainTextDocumentSource }
+  | AnthropicSearchResultBlock {
+      source: String
+      title: String
+      content: List<AnthropicToolResultTextBlock>
+      citations: AnthropicSearchResultCitationsConfig?
+      cache_control: CacheControl?
+    }
+  | AnthropicToolReferenceBlock { tool_name: String }
+
+type AnthropicToolResultPlainTextDocumentSource {
+  type: AnthropicToolResultWireTextTag
+  media_type: AnthropicPlainTextDocumentMediaType
+  document_data: String // v2 wire label `data`; renamed — `data` is a v3 keyword.
+}
 
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicUserContentBlock`
 // (`dsl/extdeps/llm/anthropic.dag`). Tool-result content is optional on the

@@ -1,7 +1,7 @@
 // R1C-E — T-Emit omni three-way gate (separate template so the integration
 // receipt can stay `#[ignore]`d: `go` + `python3` are not on all CI images).
 // `__R1C_E_BIN__` is replaced with `env!("CARGO_BIN_EXE_r1c_e_emit_gates")`
-// in `r1c_e_emit_gates_omni_dag_test.rs`. `ForAllTargets` is not wired in the
+// in `t_pb_b_1_dag_runner_test.rs`. `ForAllTargets` is not wired in the
 // Rust `TestRunner` (see `test_runner.rs`); this gate is one `ExecuteCommand`
 // to the `omni-demo` subcommand (brief §3 — three separate claims not needed).
 
