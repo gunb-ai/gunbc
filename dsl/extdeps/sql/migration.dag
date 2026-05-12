@@ -1,0 +1,50 @@
+// extdeps/sql/migration.dag -- SQL migration emission target surface.
+//
+// Specs:
+//   ISO/IEC 9075 SQL overview
+//     https://www.iso.org/standard/76583.html
+//   PostgreSQL transactional DDL behavior
+//     https://www.postgresql.org/docs/current/sql-commands.html
+//   SQLite ALTER TABLE behavior
+//     https://www.sqlite.org/lang_altertable.html
+//
+// Ctrl-Migration Phase 3 authority for generated database migration artifacts.
+// This file models migration-script shape and ordering constraints; the SQL
+// transport execution config remains in extdeps.transports.sql.
+
+module extdeps.sql.migration
+
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// GREEN (terminal). Migration operations have distinct externally visible
+// schema effects and rollback constraints. Keeping them as variants preserves
+// the operation class without requiring SQL string inspection downstream.
+type SqlMigrationOperationKind
+  = CreateTable
+  | AlterTable
+  | DropTable
+  | CreateIndex
+  | DropIndex
+  | AddColumn
+  | DropColumn
+  | RawSqlStep
+
+type SqlMigrationStep {
+  name: String
+  operation: SqlMigrationOperationKind
+  statement: String
+  reversible: Bool
+}
+
+type SqlMigrationScript {
+  migration_id: String
+  wraps_transaction: Bool
+  steps: List<SqlMigrationStep>
+}
+
+// STAGED. This target is consumed by ctrl subsystem projections before any
+// generated migration becomes authority over the current TypeScript-backed DB
+// behavior.
+type SqlMigrationEmissionTarget {
+  database_name: String
+  migrations: List<SqlMigrationScript>
+}

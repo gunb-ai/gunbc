@@ -1,0 +1,67 @@
+// extdeps/http/server.dag -- HTTP server emission target surface.
+//
+// Specs:
+//   RFC 9110 HTTP Semantics
+//     https://www.rfc-editor.org/rfc/rfc9110
+//   RFC 3986 URI generic syntax
+//     https://www.rfc-editor.org/rfc/rfc3986
+//   OpenAPI 3.1 path templating convention
+//     https://spec.openapis.org/oas/v3.1.0
+//
+// Ctrl-Migration Phase 3 authority for generated HTTP server surfaces.
+// This file models the emitted server artifact shape, not a runtime framework
+// and not a concrete ctrl subsystem. Subsystem projections consume this target
+// only after their staged model has parity coverage.
+
+module extdeps.http.server
+
+import std.types { HttpMethod }
+
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// GREEN (terminal). These are distinct HTTP request-body media families
+// with externally specified wire behavior. A variant payload would erase the
+// parser/serializer selection carried by the media type itself.
+type HttpRequestBodyKind
+  = NoRequestBody
+  | JsonRequestBody
+  | TextRequestBody
+  | BinaryRequestBody
+  | FormRequestBody
+
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// GREEN (terminal). Route parameters are externally visible in different
+// request locations; server emitters must bind them from different request
+// components, so the variants are not aliases for one unstructured map.
+type HttpInputLocation
+  = PathInput
+  | QueryInput
+  | HeaderInput
+  | BodyInput
+
+type HttpServerParameter {
+  name: String
+  location: HttpInputLocation
+  required: Bool
+}
+
+type HttpStatusResponse {
+  status: Int
+  body_kind: HttpRequestBodyKind
+}
+
+type HttpServerRoute {
+  operation_name: String
+  method: HttpMethod
+  path_template: String
+  request_body: HttpRequestBodyKind
+  parameters: List<HttpServerParameter>
+  responses: List<HttpStatusResponse>
+}
+
+// STAGED. This is the Phase 3 emission target contract a ctrl subsystem
+// projection will consume. It intentionally carries no framework, port, or
+// deployment policy; those are subsystem/runtime decisions, not HTTP facts.
+type HttpServerEmissionTarget {
+  service_name: String
+  routes: List<HttpServerRoute>
+}
