@@ -499,6 +499,17 @@ fn decode_positive_descent_variant(
 mod diagnostic_severity_fail_closed_tests {
     use super::*;
     use crate::dag::{LiteralBits, TypeConnective};
+    use crate::diagnostics::Diagnostic;
+
+    fn assert_parse_error_at(diag: Diagnostic, expected_span: &SourceSpan) {
+        match diag {
+            Diagnostic::ParseError { span, fixes, .. } => {
+                assert_eq!(&span, expected_span);
+                assert!(fixes.is_empty());
+            }
+            other => panic!("expected ParseError, got {other:?}"),
+        }
+    }
 
     #[test]
     fn missing_diagnostic_severity_substrate_records_fail_closed_diagnostic() {
@@ -514,6 +525,7 @@ mod diagnostic_severity_fail_closed_tests {
         else {
             panic!("bootstrap should declare EnforcedApplication in lens_application.dag");
         };
+        let expected_span = dag.declaration(enforced_template).span.clone();
         let Some(ds_id) = super::diagnostic_severity_substrate_disj(&dag) else {
             panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
         };
@@ -523,15 +535,10 @@ mod diagnostic_severity_fail_closed_tests {
             "Expected DiagnosticSeverity substrate row to be unresolvable after rename"
         );
         super::attach_missing_diagnostic_severity_substrate_diagnostic(&mut dag, enforced_template);
-        assert!(
-            dag.diagnostics().iter().any(|(_, d)| matches!(
-                d,
-                Diagnostic::ParseError { message, .. }
-                    if message.contains("could not resolve substrate `DiagnosticSeverity`")
-            )),
-            "expected fail-closed diagnostic, got {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
-        );
+        let mut it = dag.diagnostics().iter();
+        let (_, d) = it.next().expect("fail-closed diagnostic");
+        assert!(it.next().is_none(), "expected exactly one diagnostic");
+        assert_parse_error_at(d.clone(), &expected_span);
     }
 
     #[test]
@@ -551,7 +558,7 @@ mod diagnostic_severity_fail_closed_tests {
         let wrong_ctor = dag
             .bool_runtime_variant_id(true)
             .expect("bootstrap True variant");
-        let span = SourceSpan::new("t.v3", 0, 1);
+        let expected_span = SourceSpan::new("t.v3", 0, 1);
         let diag = enforced_violation_diagnostic(
             &dag,
             ds_disj,
@@ -560,15 +567,9 @@ mod diagnostic_severity_fail_closed_tests {
                 payload: Vec::new(),
             },
             "violation".to_string(),
-            span.clone(),
+            expected_span.clone(),
         );
-        let Diagnostic::ParseError { message, .. } = diag else {
-            panic!("expected ParseError, got {diag:?}");
-        };
-        assert!(
-            message.contains("must be `Error`"),
-            "unexpected message: {message}"
-        );
+        assert_parse_error_at(diag, &expected_span);
     }
 
     #[test]
@@ -585,20 +586,15 @@ mod diagnostic_severity_fail_closed_tests {
         else {
             panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
         };
+        let expected_span = SourceSpan::new("t.v3", 0, 1);
         let diag = enforced_violation_diagnostic(
             &dag,
             ds_disj,
             &FieldValue::Literal(LiteralBits::Int("0".to_string())),
             "violation".to_string(),
-            SourceSpan::new("t.v3", 0, 1),
+            expected_span.clone(),
         );
-        let Diagnostic::ParseError { message, .. } = diag else {
-            panic!("expected ParseError, got {diag:?}");
-        };
-        assert!(
-            message.contains("must be a `DiagnosticSeverity` variant value"),
-            "unexpected message: {message}"
-        );
+        assert_parse_error_at(diag, &expected_span);
     }
 
     #[test]
@@ -623,6 +619,7 @@ mod diagnostic_severity_fail_closed_tests {
             .find(|v| v.label == "Error")
             .map(|v| v.ty)
             .expect("bootstrap DiagnosticSeverity should have Error variant");
+        let expected_span = SourceSpan::new("t.v3", 0, 1);
         let diag = enforced_violation_diagnostic(
             &dag,
             ds_disj,
@@ -631,15 +628,9 @@ mod diagnostic_severity_fail_closed_tests {
                 payload: vec![FieldValue::Literal(LiteralBits::Int("0".to_string()))],
             },
             "violation".to_string(),
-            SourceSpan::new("t.v3", 0, 1),
+            expected_span.clone(),
         );
-        let Diagnostic::ParseError { message, .. } = diag else {
-            panic!("expected ParseError, got {diag:?}");
-        };
-        assert!(
-            message.contains("must be nullary"),
-            "unexpected message: {message}"
-        );
+        assert_parse_error_at(diag, &expected_span);
     }
 }
 
