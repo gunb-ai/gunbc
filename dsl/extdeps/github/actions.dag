@@ -3,26 +3,36 @@
 // Models the GitHub Actions CI/CD platform as external dependency facts:
 // workflows, jobs, steps, runners, logging annotations, artifacts, and
 // matrix strategies. These are platform constraints -- what GH Actions
-// provides and requires -- not CI logic (that lives in gunbc/ci.dag).
+// provides and requires -- not repository CI orchestration logic (that stays in `gunbc/ci.dag` for
+// gate intent; future `gunbc/ci_emission.dag` — WI-2 — will hold `Workflow` projection scaffolding).
 //
 // Spec: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 //
-// Consumers:
-//   gunbc/ci.dag -- CI intent declarations that compile against these types
+// Consumers (gunbc namespace):
+//   future: gunbc/ci_emission.dag — WI-2: `Workflow` via `project_github_actions` from `CIWorkflowDag` (not in tree yet)
+//   gunbc/ci.dag — compiler-intent `CIPipeline` / `CIGate` only (no Actions `Workflow` mirror)
+//
+// Related extdeps:
+//   extdeps/github/ci.dag — repository workflow path facts (complements this syntax model)
 
 module extdeps.github.actions
 
 import extdeps.cron.schedule_model { CronSchedule }
-import std.types { SecretName }
+import std.types { SecretName, Unit }
 
 // -- Workflows --------------------------------------------------------
 // A workflow is the top-level unit: trigger + jobs.
+// `concurrency` is workflow-scoped (YAML `concurrency:`); `none` = block absent.
+// Actions accepts a scalar group string or a mapping (`group` + optional `cancel-in-progress`);
+// both are modeled — no fabricated booleans when the mapping omits `cancel-in-progress`.
 
 type Workflow {
   name: String
   on: List<WorkflowTrigger>
+  concurrency: ConcurrencySpec?
   jobs: List<Job>
-  env: Map<String, String>
+  // `none` models an absent top-level `env:` block in Actions YAML (no fabricated keys).
+  env: Map<String, String>?
   permissions: WorkflowPermissions?
 }
 
@@ -49,6 +59,7 @@ type PullRequestActivity
   = Opened
   | Synchronize
   | Reopened
+  | ReadyForReview
   | Closed
 
 type DispatchInput {
@@ -85,13 +96,14 @@ type DispatchInputType = InputString | InputBoolean | InputChoice | InputEnviron
 //
 // Structural-consumer dissolution trigger:
 // `WorkflowSecret` is a Slice 1 carrier introduction; structural attachment
-// to consumer sites (`Step.env`, `Job.env`, `Workflow.env` value-shape
-// migrating from `Map<String, String>` to a sum type that includes
-// `WorkflowSecret`) is the responsibility of Slice 3
-// (`ci_workflow_modeled_as_dag` demo, tracked at #1956), which consumes
-// Slices 1+2. Until that wiring lands, the carrier is intentionally
-// unattached -- promoting the env-shape change in Slice 1 would expand
-// the migration cascade beyond the brief's authorized 2-fixture scope.
+// to consumer sites (`Step.env`, `Job.env`, `Workflow.env`) is the **next**
+// shape change after today's GitHub-faithful optional plain-text maps
+// (`Map<String, String>?` everywhere — `none` = absent `env:` at workflow,
+// job, and step scopes; no fabricated keys). Slice 3 upgrades those maps to a
+// sum type that includes `WorkflowSecret` (`ci_workflow_modeled_as_dag` demo,
+// tracked at #1956), consuming Slices 1+2. Until that wiring lands, the carrier
+// is intentionally unattached -- promoting the env-shape change in Slice 1
+// would expand the migration cascade beyond the brief's authorized 2-fixture scope.
 
 type SecretScope = StepScope | JobScope | WorkflowScope
 
@@ -113,7 +125,10 @@ type Job {
   runner: RunnerSpec
   steps: List<Step>
   needs: List<String>
-  env: Map<String, String>
+  // `none` models an absent `env:` block in Actions YAML (no fabricated keys).
+  env: Map<String, String>?
+  // Job outputs: map output name -> expression string (e.g. `${{ steps.id.outputs.k }}`).
+  outputs: Map<String, String>?
   if_condition: String?
   strategy: MatrixStrategy?
   timeout_minutes: Int?
@@ -121,17 +136,77 @@ type Job {
   concurrency: ConcurrencySpec?
 }
 
-type ConcurrencySpec {
-  group: String
-  cancel_in_progress: Bool
-}
+// YAML `concurrency:` is either a scalar group expression or a mapping.
+// See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#concurrency
+// and https://docs.github.com/en/actions/using-jobs/using-concurrency (mapping keys
+// `group`, `cancel-in-progress`, `queue`; expression-valued cancel-in-progress).
+
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟡 YELLOW (scaffold). Literal bool vs opaque `${{ }}` expression string mirrors GitHub's
+// surface union; richer source is a typed Actions boolean-expression carrier when/if
+// modeled structurally in this repo.
+// Named dissolution trigger: typed workflow-boolean expression substrate lands AND
+// `gunbc/ci_emission.dag` projection consumes it for `cancel-in-progress` mapping values.
+type CancelInProgressSpec
+  = CancelInProgressBool { value: Bool }
+  | CancelInProgressExpression { expression: String }
+
+// When YAML fixes `queue: max`, GitHub rejects `cancel-in-progress: true` (literal bool).
+// This sum therefore excludes literal `true` while still modeling omitted key, literal
+// `false`, and opaque `${{ }}` (expression truth remains runtime — see 🟡 below).
+//
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟢 GREEN (terminal). `QueueMaxCancelInProgressFalse` is 1:1 with YAML `cancel-in-progress: false`.
+// 🟡 YELLOW (scaffold). `QueueMaxCancelInProgressExpression` mirrors expression-valued mapping;
+// GitHub may still reject at runtime if the expression evaluates to true with `queue: max`.
+// Named dissolution trigger: same as `CancelInProgressSpec` — typed boolean-expression substrate
+// plus `gunbc/ci_emission.dag` consumption for mapping values.
+type CancelInProgressWhenQueueMax
+  = QueueMaxCancelInProgressFalse
+  | QueueMaxCancelInProgressExpression { expression: String }
+
+// 🟡 YELLOW (scaffold). Scalar vs mapping mirrors GitHub's top-level `concurrency:` grammar
+// split. Mapping is split into two arms so `queue: max` + literal `cancel-in-progress: true`
+// is **unrepresentable** (GitHub validation rejects that product — docs:
+// https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#concurrency ).
+// Named dissolution trigger: GitHub adds documented concurrency mapping fields beyond
+// `group` / `cancel-in-progress` / `queue` OR emitter needs single-axis dimensional dispatch.
+type ConcurrencySpec
+  = ConcurrencyScalar { group: String }
+  | ConcurrencyMappingQueueMax {
+      group: String
+      // `none` when YAML omits `cancel-in-progress:` (do not invent `false`).
+      cancel_in_progress: CancelInProgressWhenQueueMax?
+    }
+  | ConcurrencyMappingQueueNotMax {
+      group: String
+      // `none` when YAML omits `cancel-in-progress:` (do not invent `false`).
+      cancel_in_progress: CancelInProgressSpec?
+      // `none` when YAML omits `queue:` (GitHub default single-queue semantics).
+      // `some(Unit)` when YAML sets explicit `queue: single` (marker only — no payload).
+      explicit_single: Unit?
+    }
 
 // -- Runners ----------------------------------------------------------
 // The execution environment for a job.
 
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟢 GREEN (terminal). `HostedRunner` + `RunnerLabel` are a closed scaffold set aligned with
+// GitHub's documented hosted runner images for this repo's first-draft model.
+// Ledger (patterns 1–4): no cheaper dissolution for the label enum itself — expanding the
+// closed set is a deliberate taxonomy change when GitHub documents new hosted targets.
+// 🟡 YELLOW (scaffold). `SelfHosted` carries arbitrary label strings as GitHub accepts for
+// self-hosted runner label matching; dissolution: typed runner-label substrate OR emission
+// narrows to a closed vocabulary where the compiler owns runner topology.
+// 🟡 YELLOW (scaffold). `RunsOnExpression` mirrors GitHub's expression-valued `runs-on:` form;
+// the opaque string is faithful YAML surface syntax, not a typed Actions expression carrier.
+// Named dissolution trigger: typed Actions string-expression substrate for `runs-on:` AND
+// `gunbc/ci_emission.dag` projection consumes it for emitted workflow YAML.
 type RunnerSpec
   = HostedRunner { label: RunnerLabel }
   | SelfHosted { labels: List<String> }
+  // `runs-on:` as an expression (e.g. `${{ vars.CI_RUNNER || 'ubuntu-latest' }}`).
+  | RunsOnExpression { expression: String }
 
 type RunnerLabel
   = UbuntuLatest
@@ -147,9 +222,10 @@ type RunnerLabel
 type Step
   = RunStep {
       name: String?,
+      id: String?,
       run: String,
       shell: ShellType,
-      env: Map<String, String>,
+      env: Map<String, String>?,
       working_directory: String?,
       if_condition: String?,
       continue_on_error: Bool,
@@ -157,9 +233,10 @@ type Step
     }
   | UsesStep {
       name: String?,
+      id: String?,
       uses: ActionRef,
       with: Map<String, String>,
-      env: Map<String, String>,
+      env: Map<String, String>?,
       if_condition: String?,
       continue_on_error: Bool,
       timeout_minutes: Int?
