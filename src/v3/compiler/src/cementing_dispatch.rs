@@ -494,8 +494,10 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                         path.display()
                     ));
                 }
-                if !integration_rs_cementing_path_attr_binds_mod_stem(&integration_rs, &module_stem)?
-                {
+                if !integration_rs_cementing_path_attr_binds_mod_stem(
+                    &integration_rs,
+                    &module_stem,
+                )? {
                     let expected = format!(r#"#[path = "integration/cementing/{module_stem}.rs"]"#);
                     return Err(format!(
                         "registry lens `{registry_name}` lists temporary Rust cementing stem `{module_stem}` but \

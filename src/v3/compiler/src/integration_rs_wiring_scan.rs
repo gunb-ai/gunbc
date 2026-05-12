@@ -354,6 +354,9 @@ pub fn integration_rs_cementing_path_attr_binds_mod_stem(
 /// **Not handled:** raw strings (`r#"…"#`), byte strings (`b"…"`, `br#"…"#`). If those appear in
 /// scanned **Code**, this returns `Err` with an explicit message (so `TestPredicate` callers can
 /// map to `ClaimResult::Fail`) until `IntegrationRsScan` is widened for those forms.
-pub fn integration_rs_active_line_contains(integration_rs: &str, needle: &str) -> Result<bool, String> {
+pub fn integration_rs_active_line_contains(
+    integration_rs: &str,
+    needle: &str,
+) -> Result<bool, String> {
     Ok(!integration_rs_code_substring_positions(integration_rs, needle)?.is_empty())
 }

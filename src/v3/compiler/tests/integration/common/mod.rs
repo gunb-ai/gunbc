@@ -372,11 +372,9 @@ mod real;
 
     #[test]
     fn integration_rs_scan_does_not_match_needle_inside_byte_char_literal() {
-        assert!(!integration_rs_active_line_contains(
-            concat!("let _ = b'#';", "\n"),
-            "#",
-        )
-        .unwrap());
+        assert!(
+            !integration_rs_active_line_contains(concat!("let _ = b'#';", "\n"), "#",).unwrap()
+        );
         assert!(integration_rs_active_line_contains(
             concat!(
                 "let _ = b'#';",
