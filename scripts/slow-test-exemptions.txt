@@ -103,7 +103,6 @@ t_demo_fixture_test::t_demo_canonical_suites_are_runner_visible  # ROADMAP T-Dem
 
 t_ci_workflow_as_data_demo_test::ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator  # hot-fix-2026-05-12 — rebuild owner: TBD; existing gunbc#1956 T-Workflow-As-Data row: `generated_full_bootstrap_dag()` + `evaluate_body` receipt ~3s wall on cold CI. Dissolution: rebuild under shared bootstrap OnceLock/slimmer demo, remove #[ignore], delete this row, and lower TEST_TIMEOUT_MAX_EXEMPTIONS.
 
-t_las_complexity_contract_compile_error_test::complexity_violation_compile_error_demonstrated  # hot-fix-2026-05-12 — rebuild owner: TBD; existing ROADMAP gate #92 / issue #1952 row: T-LAS `compile_to_dag` demo fixture + 64MiB stack thread, cold CI ~14s wall. Dissolution: rebuild under shared OnceLock/slimmer demo, remove #[ignore], delete this row, and lower TEST_TIMEOUT_MAX_EXEMPTIONS.
 
 t_pb_b_1_dag_runner_test::r3_gate_87_cementing_regen_lens_suites_pass_through_runner  # hot-fix-2026-05-12 — rebuild owner: TBD; existing R3 gate #87 / gunbc#2609 row: 10x cold `compile_to_dag` + `TestRunner::run_suite`, ~3.7s wall on CI. Dissolution: rebuild under shared OnceLock lower cache or shrink claim set, remove #[ignore], delete this row, and lower TEST_TIMEOUT_MAX_EXEMPTIONS.
 
