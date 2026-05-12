@@ -6,7 +6,12 @@
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_cost_symbolic
 
 import std.algebra { SymbolicCost }
-import std.verification { SymbolicCostExprEquals, TestClaim, TestSuite }
+import std.verification {
+  SymbolicCostExprEquals,
+  SymbolicCostExprEqualsForBindParam,
+  TestClaim,
+  TestSuite
+}
 
 data gate87_symbolic_cost_expected: SymbolicCost = ConstantCost(0)
 
