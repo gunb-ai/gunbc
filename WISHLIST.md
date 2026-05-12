@@ -60,11 +60,17 @@ R3 ships when the 96 R3-load-bearing §1.8 gates are GREEN + `r3_debt_paydown_ze
 
 **Emission is one projection — it is OPTIONAL.** The architecture's value does NOT depend on always emitting code. Many high-value use cases consume **non-emission outputs**: "does this program satisfy property X" (verification witness), "what's affected if I change Y" (affected-set lens), "give me the structural facts" (introspect lens), "is X structurally equivalent to Y" (parity receipt), and so on. The "compiler outputs are NOT just code" pitch is a load-bearing architectural feature, not a side property.
 
-R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), and R4.C (low-level emission targets) are three dimensions of stress-testing this framing.
+R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), R4.C (low-level emission targets), and R4.D (projection-correctness / faithfulness proof framework) are four dimensions of stress-testing this framing. R4.D is the **meta-wish** that the other three must satisfy — for every LHS substrate declaration, every RHS projection must come with a proof (or proof-structure) that it is faithful to the LHS.
 
 ### R4.A — Omni-ingestion
 
-**Wish**: any language we can emit, we can also ingest. User writes Python, Rust, Go (or whatever subset we support) → gunbc parses + lowers to canonical IR → all the gunbc benefits apply (lens composition, multi-target emission, query). Compiler stays neutral; per-language knowledge lives in extdeps (same extdeps that drive emission, possibly with symmetric-extension entries for ingest).
+**Wish**: any language we can emit, we can also ingest. User writes Python, Rust, Go, **C, C++** (or whatever subset we support) → gunbc parses + lowers to canonical IR → all the gunbc benefits apply (lens composition, multi-target emission, query). Compiler stays neutral; per-language knowledge lives in extdeps (same extdeps that drive emission, possibly with symmetric-extension entries for ingest).
+
+**C / C++ ingestion+emission added per operator 2026-05-12**: alongside Rust / Python / Go, the R4 target set explicitly includes **C and C++** as bidirectional targets (both ingest and emit). C/C++ in particular stress-test the omni-architecture because:
+- C/C++ has the richest ABI / calling-convention / linkage surface — proves the substrate can carry low-level facts without per-target leak
+- C++ specifically pressures variant/template/inheritance modeling — proves the algebra is expressive enough to carry OO + generic-programming concepts without parallel substrate
+- C/C++ ingestion is the hardest "real-codebase" test (existing C++ codebases run into the millions of LOC; ingestion success means gunbc can work on any existing systems code)
+- Distinct from the dropped C-compiler+LLVM modeling program (which was about MODELING the C/LLVM ecosystem in `.dag`; this wish is just bidirectional extdeps for C/C++ as targets)
 
 **Why it matters**:
 - Lower entry barrier — you don't have to learn `.dag` to use gunbc
@@ -117,6 +123,46 @@ R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), and R4.C (low
 - **Sequencing vs R4.A/B**: R4.C may need to wait until R4.A omni-ingestion settles (the emission-bias audit clears) so we know the substrate is consumer-neutral before adding 3 more emission consumers. Or it could go in parallel as a non-blocker since it's strictly more projections of the same substrate.
 
 **Composes with R4.B**: once `.dag` substrate compiles to machine code, queries-as-data can include "what's the actual binary cost of this function?" — that's a composed lens over cost-of-machine-code-emission, which falls out structurally if R4.C lands. Bridging cost-lens to *realized cost on actual hardware* is a real-world thesis cash beyond the symbolic cost story.
+
+### R4.D — Projection-correctness / faithfulness proof framework
+
+**Wish (operator 2026-05-12)**: for every LHS substrate declaration, every RHS projection must come with a proof (or proof-structure) that it is **faithful to the LHS** — actually works, is correct, preserves the substrate's semantic content. This is the architectural assertion that gunbc's value is not just "many projections from one substrate" but "many *faithful* projections from one substrate."
+
+**Why it matters**:
+- Without faithfulness, "algebra + projection" degenerates to "many disconnected outputs from a shared input" — no different from running N independent tools over a shared source file. The unique-to-gunbc claim is that projections are **provably related** to each other and to the substrate, because they're all folds over the same typed substrate.
+- The architectural value proposition ("LLM agents can trust gunbc's outputs because they're structurally derived from the substrate, not heuristic per-tool") only holds if faithfulness is provable per-projection.
+- Falsifies the "we're just a transpiler" framing — transpilers don't carry faithfulness witnesses; gunbc does (or must).
+
+**Proof shape (per projection class)** — what "faithful" means concretely:
+
+1. **Emission projections** (target language / LLVM IR / machine code / assembly / etc.) — faithfulness = **cross-target consistency**: emitted code in language T1 produces the same observable behavior as emitted code in language T2, for the same LHS. This is the existing R3 free-consequences-demonstration lane (gates #43-#52) generalized to all R4 emission targets. Cementing pattern: frozen-oracle parity per gate #87.
+
+2. **Ingestion projections** (parse target → substrate) — faithfulness = **round-trip identity**: `parse(emit(x)) ≡ x` for the substrate (up to substrate-equivalence; not byte-level). This is the R4.A architectural falsifier. If any extdep has emission-only assumptions, the round-trip breaks.
+
+3. **Lens projections** (Introspect / query / witness / affected-set / cost / complexity / etc.) — faithfulness = **structural-fold correctness**: the lens is a fold/descend/repeat over the substrate (per the behavioral concept DAG); generators map correctly; by structural induction all compositions of generators map correctly. The Lens<C> 6-field shape enforces this structurally (Director-locked).
+
+4. **Diagnostic projections** (compile errors / violations / failed witnesses) — faithfulness = **fail-closed-discipline**: every detectable problem is a Diagnostic; no silent Nones; no warnings (per `feedback_fail_closed_discipline` C-8 + INVARIANTS P3). The PROOF is that the substrate cannot represent the "I detected this but didn't tell you" state.
+
+5. **Cementing-receipt projections** (frozen-oracle parity / regression-guard ratchets) — faithfulness = **monotone-ratchet discipline**: ratchets only go down (per `feedback_ratchet_only_down`); receipts prove non-regression. R3 gate #87 cementing pattern is the production shape.
+
+**Composition rule (the load-bearing claim)**: because all projections are folds over the SAME substrate, **composing projections is itself a faithful projection**. E.g., (cost-lens) ∘ (emit-to-machine-code) gives realized-cost-on-actual-hardware, and the composition is faithful by construction if each individual projection is faithful. This is the "free consequences" thesis — auto-parallelism, auto-memoization, cross-target-optimization fall out structurally because **faithful folds compose**.
+
+**What needs to land structurally for the framework to be live**:
+- **Per-projection faithfulness witness type** — every projection (lens / emission / ingest / etc.) carries a typed witness in the substrate that proves the faithfulness contract for that projection class. (Adjacent to the existing `Witness<C>` substrate in `src/v3/std/dimensions.dag:35` — may extend that carrier or compose with it.)
+- **Composition-preserves-faithfulness lemma** as a structural fact — proven by lens-self-application (R3 T-Lens-Self-Application lane) or as a meta-cementing test.
+- **Negative tests** — programs whose faithfulness witness is INTENTIONALLY broken (e.g., a deliberately-buggy emission target) must FAIL closed via the witness, not silently pass.
+- **Open enum of projection classes** with Practice 4 dissolution receipts — as new projection classes are added (e.g., R4.C machine code, R4.A C/C++ ingest), each gets its own faithfulness-witness class + dissolution discipline.
+
+**Open questions** (this is the LEAST-settled R4 wish; surfaces real architectural research):
+- Is faithfulness a single uniform type across projection classes, or class-specific? (E.g., emission faithfulness = behavioral equivalence; lens faithfulness = structural-fold correctness; ingestion faithfulness = round-trip identity. These are different proof shapes.)
+- How does faithfulness relate to the existing `Witness<C>` substrate? Same carrier with new instances, or new carrier alongside?
+- What's the minimum scope for R4.D? Does it require a new substrate authority, or does it fall out of composing existing lens / Witness / DimensionReport carriers?
+- Should faithfulness be checked at *every emission* (runtime cost) or only at *cementing-test boundaries* (build-time cost amortized)?
+- What's the LLM-agent surface? Should gunbc emit a faithfulness-witness-as-data alongside each projection so LLM consumers can verify before trusting?
+
+**Connection to R3**: R3's free-consequences gates (#43-#52), cementing-discipline pattern (#87 + V2 #84 coordinator), and lens-self-application (T-Lens-Self-Application) are all PARTIAL R4.D foundation. R4.D unifies them under the faithfulness-as-first-class-substrate framing.
+
+**Composes with R4.A/B/C**: R4.D is the meta-wish that makes the other three meaningful — without it, "many projections from one substrate" is descriptive, not load-bearing.
 
 ---
 
