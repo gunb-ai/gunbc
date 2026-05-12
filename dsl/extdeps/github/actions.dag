@@ -235,7 +235,8 @@ type Step
       name: String?,
       id: String?,
       uses: ActionRef,
-      with: Map<String, String>,
+      // `none` models omitted `with:` or YAML `with: {}` (no fabricated action inputs).
+      with: Map<String, String>?,
       env: Map<String, String>?,
       if_condition: String?,
       continue_on_error: Bool,
