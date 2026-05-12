@@ -10,11 +10,13 @@
 
 ## §1. Mission
 
-Migrate `ctrl/` (dashboard / planning / review-pipeline / session-tree / messaging) processes into `.dag` substrate so the .dag model is **single authority** for behavior. ctrl/ TS becomes a projected emission target. Apply the gunbc thesis (lens-not-pass; cost-of-change = 1 file; coproduct dissolution at C-checkpoints) to a real product surface.
+**Replace the existing dashboard with .dag code ASAP.** Per operator directive 2026-05-12T~19:05Z: this is not a "future authority" project; it's a direct replacement. ctrl/ TS dies when .dag emission proves out. Apply the gunbc thesis (lens-not-pass; cost-of-change = 1 file; coproduct dissolution at C-checkpoints; M9 DFS-the-concept-DAG-before-defining) to a real product surface.
 
-**Why now**: today's 7 parser-class operator-tier-bypass surfaces in 8h (3 distinct fingerprints) validate the heuristic-pass-on-unstructured-text cost. The ctrl/ decomposition-algebra series (PRs #1192-#1197) is in flight and the right substrate to consume. ctrl/ already has some .dag (`workflows/review.dag`, `DAG_MODELING_PROPOSAL.md`), so this is an acceleration not a kickoff.
+**Compositional-modeling discipline**: the intent layer is THIN — "replace dashboard with .dag." The substrate work underneath is where the rigor goes. Per `MODELING.md` M9: every new type DFS-traces back to existing `dsl/std/` primitives; no parallel hierarchies; no opaque-string bridges; no heuristic passes. Per `feedback_lenses_not_passes.md`: lenses over physics, no heuristic enforcement.
 
-**ASAP discipline**: maximize Phase 1.5 parallel work (type-only modeling of ctrl/ subsystems in .dag, no emission targets required) so the substrate-tier authority lands across subsystems while Phase 3 emission-target work proceeds in parallel.
+**Why now**: today's 7 parser-class operator-tier-bypass surfaces in 8h (3 distinct fingerprints) validate the heuristic-pass-on-unstructured-text cost. The ctrl/ decomposition-algebra series (PRs #1192-#1197) is in flight and the right substrate to consume. Existing .dag precedents (`workflows/review.dag`, `research/.../inbox_delivery_slice.dag`) prove the approach.
+
+**ASAP execution**: Phase 1 algebra substrate + Phase 1.5 subsystem modeling + Phase 3 emission targets all run **in parallel** as critical-path. No "deferred until Phase N" — emission targets land as fast as substrate, so per-subsystem cut-over (Phase 4) can fire as soon as the trio converges for that subsystem. Per `feedback_holistic_over_patches.md`: systematic fix, not patches.
 
 ---
 
@@ -139,65 +141,89 @@ Each is real R4-class substrate work, parallel to T-WAD's `dsl/extdeps/github/ac
 
 ---
 
-## §5. Parallel program tree
+## §5. Parallel program tree (orthogonal to gunbc R3-close)
 
-**Proposed org**:
+**CONFIRMED by operator 2026-05-12T~19:05Z**: Ctrl-Migration Director is **orthogonal to `zesty-bear-812`** (gunbc R3-close Director). Two Director-tier programs at operator root.
 
 ```
 operator (Brian)
-└── Ctrl-Migration Director  ← NEW root, parallel to zesty-bear-812 (gunbc R3-close Director)
-    ├── Substrate Mgr
-    │   └── workers: Phase 1 algebra substrate, EventLog primitive, Lens type, Witness
-    ├── Subsystem-Modeling Mgr
-    │   └── workers: Phase 1.5 catalog items (review_verdict, work_item, session_lifecycle, inbox, messaging, reviews, ...)
-    ├── Emission-Targets Mgr
-    │   └── workers: HTTP extdeps, SQL extdeps, audit-event extdeps (Phase 3)
-    └── Verification Mgr
-        └── workers: parity tests + byte-identity gates (Phase 4)
+├── zesty-bear-812 (gunbc R3-close Director)  ← EXISTING, continues
+│   └── ... R3-close subtree (3 R3 Mgrs + workers)
+└── Ctrl-Migration Director  ← NEW root, ORTHOGONAL not subordinate
+    ├── Substrate Mgr            (Phase 1 — critical path)
+    │   └── algebra substrate, EventLog primitive, Lens type, Witness
+    ├── Subsystem-Modeling Mgr   (Phase 1.5 — critical path, 8-14 workers across waves)
+    │   └── 16 subsystem .dag modeling PRs per §3 catalog
+    ├── Emission-Targets Mgr     (Phase 3 — critical path, PARALLEL not deferred)
+    │   └── HTTP extdeps → SQL extdeps → audit-event extdeps
+    └── Verification Mgr         (Phase 4 — convergence + cut-over)
+        └── parity tests; per-subsystem cut-over PRs; TS deletion
 ```
 
-**Decisions per ladder**:
-- Director: scopes phases, ratifies cross-Mgr signals, surfaces to operator
-- Substrate Mgr: own Phase 1 substrate landing (single substrate file + practice 4 receipts)
-- Subsystem-Modeling Mgr: own Phase 1.5 — dispatches 5-8 parallel workers; each lands one subsystem .dag modeling PR
-- Emission-Targets Mgr: own Phase 3 — HTTP/SQL/audit extdeps (sequential or parallel TBD)
-- Verification Mgr: own Phase 4 — byte-identity tests; consumes emission outputs
+**4 Mgrs spawn on Day 1**, not 3 — Emission-Targets Mgr is NOT deferred. Phase 3 work starts in parallel with Phase 1 + 1.5.
 
-**Why parallel to zesty-bear-812 not under it**: gunbc R3-close is its own program (substrate-prereq + Cost-Dim + affected-set lens + workflow-as-data). Ctrl migration is orthogonal (consumes gunbc substrate but doesn't gate R3-close gates). Two parallel Director-tier programs with operator at root.
+**Decisions per ladder**:
+- Director: scopes phases, ratifies cross-Mgr signals, surfaces to operator, enforces compositional-modeling discipline (M9 DFS before any new carrier)
+- Substrate Mgr: own Phase 1 — single algebra substrate file + Practice 4 receipts; lands `dsl/std/process_algebra.dag`
+- Subsystem-Modeling Mgr: own Phase 1.5 — dispatches 8 parallel workers Wave 1 (Day 2-5), 6 more Wave 2 (Day 6-10); each lands one subsystem `.dag` PR with service-contract shape
+- Emission-Targets Mgr: own Phase 3 — HTTP/SQL/audit-event extdeps; **starts Day 3** authoring HTTP extdeps brief (parallel with Substrate Mgr Phase 1)
+- Verification Mgr: own Phase 4 — byte-identity / behavior-parity tests; spawns cut-over PRs as each subsystem's trio converges (algebra ✓ + subsystem-modeled ✓ + emission-target-landed ✓)
+
+**Why orthogonal not subordinate**: gunbc R3-close is its own program (substrate-prereq + Cost-Dim + affected-set lens + workflow-as-data → R3 close). Ctrl migration consumes gunbc substrate but doesn't gate R3-close gates. The two programs share operator-tier coordination only.
+
+**Compositional-modeling enforcement**: Director's standing brief discipline = every new carrier requires (1) M9 DFS trace to existing `dsl/std/` primitive showing why-not-reuse, (2) Practice 4 dissolution receipt for any open enum, (3) cost-of-change-1 verification (adding next variant touches 1 file), (4) cross-reference to source TS file being replaced. Per `feedback_grep_substrate_before_naming_ratification.md`: grep dsl/std/ + docs/audit/ before ratifying new carrier names.
 
 ---
 
-## §6. Phase sequencing + dependency graph
+## §6. Phase sequencing — parallel critical paths (revised per "replace ASAP")
+
+**Old framing** (rejected): Phase 1 → Phase 3 → Phase 4 sequential. Treats emission as "deferred."
+
+**New framing** (per operator 2026-05-12): Phase 1 + Phase 1.5 + Phase 3 **in parallel**, all critical-path. Per-subsystem cut-over (Phase 4) fires as soon as the three converge for that subsystem.
 
 ```
-Phase 0 (DONE today)
-  - docs/design-decomposition-algebra.md (PR #2775)
-  - this project plan
-  - ctrl audit complete
-       ↓
-Phase 1 (~1 week)
-  - Substrate Mgr lands dsl/std/process_algebra.dag
-  - Phase 1.5 starts in parallel
-       ↓
-Phase 1.5 (~1-3 weeks parallel; depends on Phase 1 for items consuming algebra)
-  - 5-8 subsystem modeling PRs, doc-only
-  - Items 1, 3, 4, 5, 6 from §3 can start NOW (don't need Phase 1)
-  - Items 2, 7, 8 wait for Phase 1
-       ↓
-Phase 2 (~1-2 weeks, parallel with Phase 3 if Mgrs available)
-  - CLI projection to Rust binary
-       ↓
-Phase 3 (multi-week)
-  - HTTP / SQL / audit-event extdeps
-       ↓
-Phase 4 (multi-week)
-  - Ctrl/ cut-over per subsystem
-       ↓
-Phase 5 (open-ended)
-  - Generalize to additional subsystems; eventual full ctrl/ in .dag
+Phase 0 (DONE)
+  ├── docs/design-decomposition-algebra.md  (PR #2775)
+  ├── docs/r4-ctrl-dag-migration-project-plan.md  (PR #2775)
+  └── ctrl audit complete (16 subsystems / ~21,800 TS LOC)
+                            │
+        ┌───────────────────┼───────────────────┐
+        ↓                   ↓                   ↓
+    Phase 1            Phase 1.5            Phase 3
+  (algebra)         (subsystem            (emission
+                     modeling)             targets)
+        │                   │                   │
+        │ Day 2-5:          │ Day 2-5:          │ Day 3-7:
+        │ Substrate Mgr     │ Subsystem-Mgr     │ Emission-Mgr
+        │ lands             │ dispatches 8      │ HTTP extdeps
+        │ process_algebra   │ parallel workers  │ brief authored
+        │                   │ (independent      │
+        │                   │ items)            │
+        ↓                   ↓                   ↓
+   Phase 1 lands       Wave 1 PRs land    HTTP extdeps land
+                            │                   │
+                            ↓                   ↓
+                       Day 6-10:           Day 8-14:
+                       Subsystem-Mgr       Emission-Mgr
+                       Wave 2 (algebra-    SQL + audit
+                       consumers)          extdeps
+                            │                   │
+                       ─────┴───────────────────┴─────
+                                    │
+                                    ↓
+                          Phase 4: per-subsystem cut-over
+                            ↓ (as each subsystem's trio converges)
+                          Phase 5: generalize / full replacement
 ```
 
-**Critical-path**: Phase 1 → Phase 3 → Phase 4. Phase 1.5 is parallel-fast-track. Phase 2 is parallel.
+**Critical-path** (all three lanes simultaneously):
+1. **Algebra substrate** → enables: work_item / messaging / scheduler subsystem modeling
+2. **Subsystem modeling** → enables: contracts that emission projects against
+3. **Emission targets** → enables: actual TS replacement at runtime
+
+**Convergence trigger for cut-over** (per subsystem): subsystem's `.dag` contract authored ✓ AND relevant emission target landed (HTTP for routes / SQL for schema / etc.) ✓ AND parity test passes ✓ → cut-over PR lands; TS file deleted.
+
+**No "future authority" phase**: Q-G resolved per operator directive — substrate becomes authority THE MOMENT emission proves out for that subsystem. No co-authority window.
 
 ---
 
@@ -305,27 +331,43 @@ Each Phase 1.5 worker brief should declare:
 ## §10. First-week concrete actions
 
 **Operator (Brian) — Day 0**:
-1. Review + ratify this project plan
-2. Decide §11 open Qs (especially A: where do `dsl/ctrl/*.dag` files live — gunbc or `~/ctrl`)
-3. Spawn Ctrl-Migration Director session via dashboard (one-time operator action)
+1. Review + ratify this project plan (PR #2775 merge)
+2. Confirm remaining §11 Qs (B Director shape, C workflow-types dissolution, E ctrl PRs disposition, F cross-Director coord, H per-subsystem PR cadence)
+3. **Spawn Ctrl-Migration Director session via dashboard** — one-time operator action (e.g. `dashboard-ops work-items create "Ctrl-Migration Director"` or analogous spawn-root-session command)
 
 **Ctrl-Migration Director — Day 1**:
-1. Ratify scope per operator directive
-2. Spawn 3 Mgrs: Substrate / Subsystem-Modeling / Verification
-3. Dispatch Substrate Mgr to author Phase 1 brief
+1. Ratify scope per operator directive (compositional-modeling discipline; M9 DFS enforcement)
+2. Spawn **4 Mgrs simultaneously**: Substrate / Subsystem-Modeling / Emission-Targets / Verification
+3. Dispatch Substrate Mgr to author Phase 1 brief AND Emission-Targets Mgr to author HTTP extdeps brief — both critical-path Day 2+
 
-**Substrate Mgr — Day 2-3**:
+**Substrate Mgr — Day 2-5**:
 1. Author Phase 1 brief: `dsl/std/process_algebra.dag` substrate (companion doc §9 skeleton)
-2. Spawn worker; PR cycle
+2. Spawn worker; PR cycle; coordinate with Subsystem-Modeling Mgr on algebra-consumer briefs
 
 **Subsystem-Modeling Mgr — Day 2-5 (parallel)**:
-1. Author 5 first-wave briefs (review_verdict, work_item_api, session_lifecycle, inbox, messaging)
-2. Spawn 5 workers in parallel
+1. Author **8 first-wave briefs** for independent items (catalog #3, 5, 8, 10, 11, 12, 14, 16)
+2. Spawn 8 workers in parallel
 3. PR cycle
 
-**Verification Mgr — Day 4+ (when first PRs land)**:
+**Emission-Targets Mgr — Day 3-7 (parallel — NOT deferred)**:
+1. Author HTTP extdeps brief: `dsl/extdeps/http/server.dag` carriers (route + handler + middleware shapes)
+2. Spawn worker; PR cycle
+3. Author SQL extdeps brief (Day 6+); audit-event extdeps brief (Day 8+)
+
+**Verification Mgr — Day 5+ (parallel)**:
 1. Author parity-test framework brief
-2. Set up byte-identity tests for emission targets (when Phase 3 begins)
+2. Spawn worker to scaffold byte-identity test infrastructure
+3. Author first per-subsystem cut-over brief when first subsystem's trio (algebra + modeling + emission) converges (~Day 10-14)
+
+**Wave-2 dispatch (~Day 6-10)**:
+- Subsystem-Modeling Mgr: 6 second-wave briefs (catalog #2, 4, 6, 7, 9, 13) for algebra-consuming items
+- Emission-Targets Mgr: SQL + audit-event briefs in parallel
+- Verification Mgr: parity test infrastructure landing
+
+**Convergence cut-over (~Day 14+)**:
+- First subsystem cut-over PR lands (TS file deleted; emission projection becomes authority)
+- Per `feedback_parity_script_over_comment_reframe.md`: parity script with fail-close, not process discipline
+- Subsequent cut-overs cascade as each subsystem's trio converges
 
 ---
 
@@ -356,9 +398,7 @@ Each Phase 1.5 worker brief should declare:
 - Proposed: cross-tier coordination via operator-relay (operator routes signals between Directors); substrate-shape conflicts get operator ratification
 - Operator confirm — sets the inter-program protocol
 
-**Q-G (new): Service-contract authority claim** — when `dsl/ctrl/<subsystem>.dag` lands, does it become "future authority" (TS still authoritative until Phase 4 cut-over) or "co-authority" (both must agree)?
-- Proposed: future-authority during Phase 1.5/2; co-authority during Phase 3 emission landing; substrate-authority post-Phase 4 cut-over
-- This avoids parallel-authority debt while preserving the migration runway
+**Q-G — RESOLVED (operator 2026-05-12T~19:05Z)**: substrate becomes authority **immediately when emission proves out per subsystem**. No "future authority" / "co-authority" phases. Per `feedback_parallel_representation_debt.md`: when canonical source exists, consume it rather than scaffold. Cut-over PR deletes the TS file in the same PR that lands the emission projection.
 
 **Q-H (new): Per-subsystem PR cadence** — bundle related subsystems (e.g., all 4 `findings_*` files → one PR) or one PR per .mjs file?
 - Proposed: bundle by subsystem (catalog row) per `feedback_bundle_workstreams_per_pr.md`; ~16 PRs total for Phase 1.5
