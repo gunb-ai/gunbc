@@ -18,6 +18,9 @@
 // once tools/ratchet.dag and tools/freshness.dag execute reliably in
 // any environment (blocked on tool upsert landing end-to-end).
 //
+// Related modules:
+//   dsl/extdeps/github/ci.dag — repository-relative workflow file path facts (GitHub `.github/workflows/`).
+//
 // Consumers:
 //   .github/workflows/ci.yml — sole live Actions transport for gunbc CI (single authority).
 //   dsl/gunbc/ci.dag — compiler-intent gates only (`CIPipeline` / `CIGate`). No parallel `Workflow`

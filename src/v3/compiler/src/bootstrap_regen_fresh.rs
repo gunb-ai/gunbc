@@ -14,6 +14,13 @@
 //! module in favor of that single authority — same cost-of-change rule as the
 //! retired `bootstrap_std_fixtures_only` dissolution trigger, reframed for
 //! “regen host goes data-native” rather than “in-tree tests stop diffing.”
+//!
+//! **P5 receipt** (`INVARIANTS.md` §P5 Dispatch-Discipline Mechanisms (b), explicit
+//! deferral): `docs/briefs/pb1-e-parse-surface-free-bootstrap-regen-p5-receipt.md`
+//! cites lane **T-PB-A** and concrete `ROADMAP.md` rows for this file’s continued
+//! hand-Rust (including `WITHOUT_PARSE_SURFACE_EXCLUDED_FIXTURE_PATHS` /
+//! `load_runtime_bootstrap_authorities` spec filtering for the parse-surface-free
+//! snapshot).
 
 use crate::dag::{Dag, DeclarationId, RuntimeBootstrapFixtureKind};
 use crate::lower::{collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers};

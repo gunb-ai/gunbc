@@ -11,6 +11,9 @@
 // Consumers (gunbc namespace):
 //   future: gunbc/ci_emission.dag — WI-2: `Workflow` via `project_github_actions` from `CIWorkflowDag` (not in tree yet)
 //   gunbc/ci.dag — compiler-intent `CIPipeline` / `CIGate` only (no Actions `Workflow` mirror)
+//
+// Related extdeps:
+//   extdeps/github/ci.dag — repository workflow path facts (complements this syntax model)
 
 module extdeps.github.actions
 

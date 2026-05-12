@@ -1,0 +1,31 @@
+// extdeps/github/ci.dag — GitHub repository facts for Actions workflow artifacts.
+//
+// This module is the extdeps home for **where** GitHub expects workflow YAML
+// under a repository tree — not the YAML syntax model (`extdeps.github.actions`
+// in actions.dag) and not compiler CI gate intent (`gunbc.ci` in gunbc/ci.dag).
+//
+// Ratified substrate layering (PR #2749 option (c-refined), T-WAD FULL R3):
+//   - Semantic gate DAG + `EmissionTarget` + `project_github_actions` live in
+//     gunbc namespace; projection outputs bind there, not in this file.
+//   - `extdeps.github.actions.Workflow` stays a platform-only carrier (no
+//     emission-policy fields).
+//
+// Spec (workflow file location): https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
+//
+// Consumers (planned / future):
+//   gunbc/ci_emission.dag — default sink path when emitting static YAML
+
+module extdeps.github.ci
+
+// Directory (repository-relative, forward slashes) where GitHub loads workflow definitions.
+data github_actions_workflows_dir: String = ".github/workflows"
+
+// Basename of a workflow file under `github_actions_workflows_dir` (e.g. "ci.yml").
+type GitHubActionsWorkflowBasename {
+  name: String
+}
+
+// Full repository-relative path to a workflow definition (e.g. ".github/workflows/ci.yml").
+type GitHubActionsWorkflowFileRef {
+  path: String
+}
