@@ -20,106 +20,102 @@ import std.verification {
 }
 
 // --- Capability projection (mirrors docs/v3-lens-capability-register.md §table) ---
-
-type LensStructuralCapability = Terminal | Partial | Unsound
-
-type LensBehavioralCapability = Complete | Partial | Stub | Proxy | BehavioralNA
-
-type LensV2CounterpartDiscipline = NoneV3Native | NotApplicable | RealV2
+// `structural` / `behavioral` / `v2_counterpart` are plain strings so the runner does not
+// depend on anonymous sum-variant constructor ids in fixture-local lowering.
 
 type LensCapabilityRegisterRow {
   lens_basename: String
-  structural: LensStructuralCapability
-  behavioral: LensBehavioralCapability
-  v2_counterpart: LensV2CounterpartDiscipline
+  structural: String
+  behavioral: String
+  v2_counterpart: String
 }
-
-type CementingReceiptKind = DagHarness | TemporaryRustModule
 
 type CementingBandCReceipt {
   registry_name: String
   module_stem: String
-  kind: CementingReceiptKind
+  // `dag` = `.dag` TestClaim harness under `tests/dag/<module_stem>.dag`;
+  // `temporary-rust` = `tests/integration/cementing/<module_stem>.rs` + `integration.rs` wiring.
+  kind: String
 }
 
 data lens_capability_register_rows: List<LensCapabilityRegisterRow> = [
   {
     lens_basename: "complexity.dag"
-    structural: Terminal
-    behavioral: Complete
-    v2_counterpart: RealV2
+    structural: "Terminal"
+    behavioral: "Complete"
+    v2_counterpart: "RealV2"
   },
   {
     lens_basename: "cost.dag"
-    structural: Terminal
-    behavioral: Complete
-    v2_counterpart: RealV2
+    structural: "Terminal"
+    behavioral: "Complete"
+    v2_counterpart: "RealV2"
   },
   {
     lens_basename: "cost_target_realization.dag"
-    structural: Terminal
-    behavioral: BehavioralNA
-    v2_counterpart: NoneV3Native
+    structural: "Terminal"
+    behavioral: "BehavioralNA"
+    v2_counterpart: "NoneV3Native"
   },
   {
     lens_basename: "effect_enumeration.dag"
-    structural: Terminal
-    behavioral: Partial
-    v2_counterpart: NoneV3Native
+    structural: "Terminal"
+    behavioral: "Partial"
+    v2_counterpart: "NoneV3Native"
   },
   {
     lens_basename: "idempotency.dag"
-    structural: Terminal
-    behavioral: Complete
-    v2_counterpart: NoneV3Native
+    structural: "Terminal"
+    behavioral: "Complete"
+    v2_counterpart: "NoneV3Native"
   },
   {
     lens_basename: "parallelism.dag"
-    structural: Partial
-    behavioral: Stub
-    v2_counterpart: NoneV3Native
+    structural: "Partial"
+    behavioral: "Stub"
+    v2_counterpart: "NoneV3Native"
   },
   {
     lens_basename: "provenance.dag"
-    structural: Terminal
-    behavioral: Complete
-    v2_counterpart: NoneV3Native
+    structural: "Terminal"
+    behavioral: "Complete"
+    v2_counterpart: "NoneV3Native"
   },
   {
     lens_basename: "unused_parameters.dag"
-    structural: Terminal
-    behavioral: Complete
-    v2_counterpart: NoneV3Native
+    structural: "Terminal"
+    behavioral: "Complete"
+    v2_counterpart: "NoneV3Native"
   },
   {
     lens_basename: "variant_payload.dag"
-    structural: Terminal
-    behavioral: Complete
-    v2_counterpart: NoneV3Native
+    structural: "Terminal"
+    behavioral: "Complete"
+    v2_counterpart: "NoneV3Native"
   },
   {
     lens_basename: "structural_resolution.dag"
-    structural: Terminal
-    behavioral: Complete
-    v2_counterpart: NoneV3Native
+    structural: "Terminal"
+    behavioral: "Complete"
+    v2_counterpart: "NoneV3Native"
   },
   {
     lens_basename: "infer_helpers.dag"
-    structural: Partial
-    behavioral: BehavioralNA
-    v2_counterpart: NotApplicable
+    structural: "Partial"
+    behavioral: "BehavioralNA"
+    v2_counterpart: "NotApplicable"
   },
   {
     lens_basename: "lower_helpers.dag"
-    structural: Partial
-    behavioral: BehavioralNA
-    v2_counterpart: NotApplicable
+    structural: "Partial"
+    behavioral: "BehavioralNA"
+    v2_counterpart: "NotApplicable"
   },
   {
     lens_basename: "named_function_count.dag"
-    structural: Terminal
-    behavioral: BehavioralNA
-    v2_counterpart: NotApplicable
+    structural: "Terminal"
+    behavioral: "BehavioralNA"
+    v2_counterpart: "NotApplicable"
   }
 ]
 
@@ -127,17 +123,17 @@ data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
   {
     registry_name: "cost"
     module_stem: "t_r3_gate_87_cementing_regen_cost"
-    kind: DagHarness
+    kind: "dag"
   },
   {
     registry_name: "cost"
     module_stem: "complexity_lens_behavioral_completion"
-    kind: TemporaryRustModule
+    kind: "temporary-rust"
   },
   {
     registry_name: "cost_symbolic"
     module_stem: "cost_lens_symbolic_consumer_test"
-    kind: TemporaryRustModule
+    kind: "temporary-rust"
   }
 ]
 

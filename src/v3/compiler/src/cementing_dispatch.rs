@@ -53,19 +53,6 @@ fn resolve_declaration_ref_id(value: &FieldValue, field_label: &str) -> Result<c
     }
 }
 
-fn nullary_variant_name(dag: &Dag, value: &FieldValue) -> Result<String, String> {
-    match value {
-        FieldValue::Variant { constructor, payload } if payload.is_empty() => Ok(dag
-            .declaration(*constructor)
-            .name
-            .clone()
-            .unwrap_or_else(|| "<anonymous-variant>".to_string())),
-        other => Err(format!(
-            "expected a nullary sum variant (constructor with empty payload), got {other:?}"
-        )),
-    }
-}
-
 fn list_items_of_declaration(
     dag: &Dag,
     id: crate::dag::DeclarationId,
@@ -180,19 +167,13 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
             Ok(s) => s,
             Err(reason) => return Err(reason),
         };
-        let behavioral = match record_field(fields, "behavioral") {
-            Some(v) => match nullary_variant_name(dag, v) {
-                Ok(s) => s,
-                Err(reason) => return Err(reason),
-            },
-            None => return Err("capability row missing `behavioral` field".to_string()),
+        let behavioral = match string_field(fields, "behavioral") {
+            Ok(s) => s,
+            Err(reason) => return Err(reason),
         };
-        let v2 = match record_field(fields, "v2_counterpart") {
-            Some(v) => match nullary_variant_name(dag, v) {
-                Ok(s) => s,
-                Err(reason) => return Err(reason),
-            },
-            None => return Err("capability row missing `v2_counterpart` field".to_string()),
+        let v2 = match string_field(fields, "v2_counterpart") {
+            Ok(s) => s,
+            Err(reason) => return Err(reason),
         };
         if behavioral == "Complete" && v2 == "RealV2" {
             basenames.insert(lens_basename);
@@ -252,19 +233,19 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
             Some(v) => v,
             None => return Err("cementing receipt row missing `kind`".to_string()),
         };
-        let kind = match nullary_variant_name(dag, kind_val) {
-            Ok(s) => s,
-            Err(reason) => return Err(reason),
-        };
-        let kind_str = match kind.as_str() {
-            "DagHarness" => "dag",
-            "TemporaryRustModule" => "temporary-rust",
+        let kind_str = match kind_val {
+            FieldValue::Literal(LiteralBits::String(s)) => s.as_str(),
             other => {
                 return Err(format!(
-                    "cementing receipt `kind` must be `DagHarness` or `TemporaryRustModule`, got `{other}`"
+                    "cementing receipt `kind` must be a string literal (`dag` or `temporary-rust`), got {other:?}"
                 ));
             }
         };
+        if kind_str != "dag" && kind_str != "temporary-rust" {
+            return Err(format!(
+                "cementing receipt `kind` must be `dag` or `temporary-rust`, got `{kind_str}`"
+            ));
+        }
         let triple = (registry_name.clone(), module_stem.clone(), kind_str.to_string());
         if !receipt_triples.insert(triple.clone()) {
             return Err(format!(
@@ -336,11 +317,9 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
         };
         let registry_name = string_field(fields, "registry_name")?;
         let module_stem = string_field(fields, "module_stem")?;
-        let kind = nullary_variant_name(dag, record_field(fields, "kind").ok_or_else(|| {
-            "cementing receipt row missing `kind` (second pass)".to_string()
-        })?)?;
-        match kind.as_str() {
-            "DagHarness" => {
+        let kind_str = string_field(fields, "kind")?;
+        match kind_str.as_str() {
+            "dag" => {
                 let path = manifest_dir
                     .join("tests")
                     .join("dag")
@@ -353,7 +332,7 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                     ));
                 }
             }
-            "TemporaryRustModule" => {
+            "temporary-rust" => {
                 let path = manifest_dir
                     .join("tests")
                     .join("integration")
