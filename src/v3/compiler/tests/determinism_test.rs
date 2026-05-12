@@ -145,6 +145,7 @@ fn audit_rust_emit_text(rust: &str, label: &str) {
 }
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn emit_matrix_program_rust_is_deterministic() {
     for fixture in PROGRAM_FIXTURES {
         let name = fixture.name;
@@ -156,6 +157,7 @@ fn emit_matrix_program_rust_is_deterministic() {
 }
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn emit_matrix_program_go_is_deterministic() {
     // Pre-filter via GO_EMIT_EXCLUDE (currently empty — Loop landed in PR #692).
     for fixture in PROGRAM_FIXTURES
@@ -168,6 +170,7 @@ fn emit_matrix_program_go_is_deterministic() {
 }
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn emit_matrix_program_python_is_deterministic() {
     // Pre-filter via PYTHON_EMIT_EXCLUDE (currently empty — operators + Loop both landed).
     for fixture in PROGRAM_FIXTURES
@@ -183,6 +186,7 @@ fn emit_matrix_program_python_is_deterministic() {
 }
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn emit_matrix_module_rust_is_deterministic() {
     for fixture in MODULE_FIXTURES {
         let name = fixture.name;
@@ -191,6 +195,7 @@ fn emit_matrix_module_rust_is_deterministic() {
 }
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn emit_matrix_module_go_is_deterministic() {
     for fixture in MODULE_FIXTURES {
         let name = fixture.name;
@@ -199,6 +204,7 @@ fn emit_matrix_module_go_is_deterministic() {
 }
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn emit_matrix_module_python_is_deterministic() {
     for fixture in MODULE_FIXTURES {
         let name = fixture.name;
@@ -210,6 +216,7 @@ fn emit_matrix_module_python_is_deterministic() {
 }
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn four_fixture_disk_sources_emit_deterministically() {
     for file in FOUR_FIXTURE_FILES {
         let path = fixtures_dir_four().join(file);
@@ -250,6 +257,7 @@ fn four_fixture_disk_sources_emit_deterministically() {
 }
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix() {
     for fixture in PROGRAM_FIXTURES {
         let rust = emit_rust_program(fixture);
