@@ -254,6 +254,11 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
     );
 }
 
+// R3 gate #74 (`tests_as_data_demonstration`) — executable `.dag` `TestClaim` + runner receipt
+// lives in `r3_tests_as_data_demonstration_suite_passes_through_runner` above (and
+// `tests/dag/t_r3_tests_as_data_demonstration.dag` on `main`). Gate-#87 regen harnesses below are a
+// separate ratchet; do not conflate the two in PR titles or census expectations.
+
 // R3 gate #87 — every `LensRegistryEntry` in `src/v3/compiler/regen.dag` has a
 // `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` harness evaluated here.
 const R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX: &str =
