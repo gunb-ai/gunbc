@@ -152,6 +152,26 @@ test takes >2s locally (cold bootstrap aside), the suite is
 drifting into heavy-integration territory. See
 `feedback_test_timeout_2s`.
 
+### Phase-0 per-test wall clock (CI)
+
+The v3 CI job tees libtest `--report-time` output and
+`scripts/check-test-timeout.sh` enforces `TEST_TIMEOUT_MS` (default
+2000 ms). **Warn-only backlog** is the checked-in manifest
+**`scripts/test-node-wall-clock-ratchet.jsonl`**: one JSON object per
+line, `{"test":"<libtest token>","policy":"warn"}`. That file is an
+**interim shell bridge** (P5 scaffold): same libtest name tokens the
+substrate will eventually attach `TestNodeCostDimension` facts to (R3
+gate **#101**, `src/v3/std/verification.dag`), but **today the script
+reads the JSONL directly** — it is not yet a projection from modeled
+test-node timing facts. Retiring `scripts/slow-test-exemptions.txt`
+drops the free-form table plus the `TEST_TIMEOUT_MAX_EXEMPTIONS`
+row-count ratchet and tightens fail-closed behavior; it does **not** by
+itself satisfy gate **#102** `slow_test_exemptions_dissolved` as “no
+side manifest” under `INVARIANTS.md` P5. Unknown tests over budget **fail
+closed**. Any `#[test]` that must **warn** instead of **fail** when over
+budget needs a manifest row in the **same PR** as the policy intent.
+Override: **`TEST_TIMEOUT_MANIFEST`**.
+
 ## Mocks and dependency injection
 
 Prefer passing `&Dag` / `&dyn Lens` / etc. over globals. Prefer
