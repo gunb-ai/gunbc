@@ -124,20 +124,19 @@ These three may invalidate "PASSING" gate claims and are worth Director-tier sig
 
 ---
 
-### Finding 6 — `build.rs` bootstrap priority list
+### Finding 6 — `build.rs` bootstrap priority list — **ALREADY TRACKED; RETRACTED FROM NOVEL LIST**
 
-**Class**: bootstrap dispatch gap; Rust authority for facts that should be `.dag`-declared.
+**Status (post-operator + codex BLOCKING on PR #2787, 2026-05-12; two-reviewer convergence)**: this finding is **NOT NOVEL**. The build.rs priority-list bootstrap scaffold is **already owned by `docs/history/roadmap-active-deferrals.md:172`** as an active deferral with explicit dissolution trigger and yellow-flag threshold. Routing it as a Wave-2 novel finding would create dual dispatch authority (deferrals doc + audit doc) — INVARIANTS P2/P5 violation.
 
-**Source**: Review A #4 + Review B #8 (independently flagged).
+**Single authority**: `docs/history/roadmap-active-deferrals.md:172` (excerpt):
+> Follow-up — `build.rs` load-order priority list bootstrap scaffold (not blocking, type-readiness signal gates graduation). [...] **Dissolution trigger:** termination analysis grows a type-readiness signal (phase-1 declaration with fully-populated variant-list, rather than requiring phase-2-lowered body) so `structural_binding_info_for_variant` can succeed regardless of file order. When that lands, the priority list collapses to the empty default. **Yellow-flag threshold: whenever a third std file joins the priority list** — two entries is scaffold, three signals the rule is load-bearing enough to need structural lift.
 
-**Citations**:
-- `src/v3/compiler/build.rs:372-383` — comment explains required dependency: `std/list.dag` + `std/substrate.dag` must lower before sibling std files
-- `src/v3/compiler/build.rs:387-401` — staged file list encoded in Rust: `list.dag`, `substrate_minimal.dag`, `effects.dag`, `substrate.dag`, `methods.dag`
-- `src/v3/compiler/build.rs:403-416` — also excludes `tokenize.dag` + `parse_tables.dag` from bootstrap bundle by filename check
+**Source convergence preserved** (audit-trail value): both Review A #4 and Review B #8 independently flagged the build.rs scaffold; convergence between gpt-5-5-pro runs validates the deferrals-doc framing but does **NOT** add new dispatch scope. No worker brief is authored from this finding; the existing deferral owns the trigger.
 
-**Bug shape**: file dependency order is not derived from `.dag` imports/declarations — it's a second authority in a build script. Cuts against thesis claim that program IS the dependency graph.
-
-**Fix shape**: staged-file loading should be a topological pass over declared module/import/dependency facts. Special exclusions should be `.dag` bootstrap-role facts, not filename checks in Rust.
+**Citations** (preserved as redundant verification of deferrals-doc claim, not as dispatch surface):
+- `src/v3/compiler/build.rs:372-383` — required dependency comment
+- `src/v3/compiler/build.rs:387-401` — staged file list
+- `src/v3/compiler/build.rs:403-416` — filename exclusions
 
 ---
 
@@ -185,7 +184,7 @@ These three may invalidate "PASSING" gate claims and are worth Director-tier sig
 | 3 — Certainty non-isomorphism | T1 (bug) | Substrate Mgr | **Wave-2**; Director-tier signal for #79/#80 validity |
 | 4 — post_emit_verifier unbounded | T2 (defense) | Verification Mgr (clever-tern-670) | **Wave-2**; ties to bounded-ExecuteCommand pattern |
 | 5 — CompositionVerdict Monoid | T3 (modeling) | Substrate Mgr | **Wave-2**; algebra-witness pattern reuse |
-| 6 — build.rs priority list | T3 (modeling) | Substrate Mgr | **Wave-2 or Wave-3**; bootstrap discipline |
+| ~~6 — build.rs priority list~~ | ~~T3~~ **RETRACTED — already tracked at `docs/history/roadmap-active-deferrals.md:172`; not a novel dispatch surface** | — | — |
 | 7 — GH Actions Job.needs | T3 (modeling) | Substrate Mgr (T-WAD scope) | **Wave-2**; gates #98-#103 |
 | 8 — L5_REQUIRED_TOOLCHAINS | T4 (small) | Verification Mgr | **Wave-2 or Wave-3** |
 
@@ -205,7 +204,7 @@ These three may invalidate "PASSING" gate claims and are worth Director-tier sig
 | 3 | Partly tracked (complexity-honesty work mentioned at ROADMAP:430); concrete dual-authority novel |
 | 4 | Novel specific finding (bounded ExecuteCommand landed for tests per ROADMAP:54,83; post_emit_verifier path not called out) |
 | 5 | Mostly novel as algebraic framing (compose_effects mentioned at ROADMAP:92,642; missed Monoid framing not named) |
-| 6 | Partly tracked (general Pure Bootstrap direction at ROADMAP:37,170; specific bootstrap priority dissolution not named) |
+| 6 | **ALREADY TRACKED — RETRACTED** per operator + codex BLOCKING on PR #2787 (two-reviewer convergence 2026-05-12). Owned by `docs/history/roadmap-active-deferrals.md:172` with explicit dissolution trigger + yellow-flag threshold. Prior "Partly tracked" classification was wrong — I missed the deferrals doc when reconciling against ROADMAP.md only. |
 | 7 | Likely novel (workflow-as-data ActionRef gap at ROADMAP:68; Job.needs string-keyed not directly tracked) |
 | 8 | Likely novel/adjacent (verification toolchain carrier debt tracked broadly; this constant not named) |
 
