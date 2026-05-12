@@ -18,7 +18,8 @@
 module lenses.parallelism
 
 import std.list { List, Empty, Cons, empty, cons, concat }
-import v3.std.substrate { Dag, NodeId, ElementRef, NonSingletonList, lane2_workflow_at }
+import v3.std.substrate { Dag, NodeId, ElementRef, lane2_workflow_at }
+import v3.std.substrate_minimal { NonSingletonList }
 import std.effects {
   EffectShape,
   IdempotentShape,
@@ -38,8 +39,8 @@ type NonCommutingPairLookup
   = NonCommutingPairFound { left: OperationEffect, right: OperationEffect }
   | AllPairsCommute
 
-fn nsl_to_workflow_list(branches: NonSingletonList<WorkflowEffect>) -> List<WorkflowEffect> =
-  cons(branches.first, cons(branches.second, branches.rest))
+fn nsl_to_workflow_list(nsl: NonSingletonList<WorkflowEffect>) -> List<WorkflowEffect> =
+  cons(nsl.first, cons(nsl.second, nsl.rest))
 
 fn idempotent_shapes_commute(a: IdempotentShape, b: IdempotentShape) -> Bool =
   match a {

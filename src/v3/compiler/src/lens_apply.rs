@@ -352,9 +352,7 @@ pub fn apply_lens_declaration(
             let v = pu
                 .workflow_lane2_subject()
                 .map(|subject| {
-                    crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(
-                        pu, subject,
-                    )
+                    crate::loop_iteration_parallel_emission_indicator(pu, subject)
                 })
                 .unwrap_or(0);
             return Ok(FieldValue::Literal(LiteralBits::Int(v.to_string())));

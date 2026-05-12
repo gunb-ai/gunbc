@@ -179,7 +179,7 @@ mod tests {
         let dag = compile_to_dag(src, "witness_after_preamble.v3").expect("compile");
         let subject = dag.workflow_lane2_subject().expect("lane2 subject");
         assert_eq!(
-            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, subject),
+            crate::loop_iteration_parallel_emission_indicator(&dag, subject),
             1
         );
     }
@@ -206,7 +206,7 @@ mod tests {
                 )
         ));
         assert_eq!(
-            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, subject),
+            crate::loop_iteration_parallel_emission_indicator(&dag, subject),
             1
         );
     }
@@ -234,7 +234,7 @@ mod tests {
                 )
         ));
         assert_eq!(
-            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, subject),
+            crate::loop_iteration_parallel_emission_indicator(&dag, subject),
             0
         );
     }
@@ -246,7 +246,7 @@ mod tests {
         let subject = dag.workflow_lane2_subject().expect("lane2 subject");
         assert!(dag.lane2_workflow_effect_at(&subject).is_none());
         assert_eq!(
-            crate::workflow_parallelism::loop_iteration_parallel_emission_indicator(&dag, subject),
+            crate::loop_iteration_parallel_emission_indicator(&dag, subject),
             0
         );
     }
