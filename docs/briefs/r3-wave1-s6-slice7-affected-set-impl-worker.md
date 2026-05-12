@@ -10,43 +10,42 @@
 
 **Do not start authoring until prerequisite clears**:
 
-1. **PR #2766 (cool-crab-565 / Slice 7 affected-set canvas) Director-ratified** — the canvas establishes the affected-set selection contract (input: `CIWorkflowDag` + diff; output: subset of gate-nodes to execute). Worker reads ratified canvas as substrate authority before authoring implementation.
-
-If PR #2766 hasn't ratified at spawn time, hold; ping warm-wolf-698 for status. Brief may need revision per ratified contract details.
+1. **PR #2766 (Slice 7 pre-impl prequeue: harness contract + Layer 2 path-regex inventory ratchet) merged** — the post-merge canvas establishes the implementation contract. Merge = post-Director-ratification.
 
 ## §1. Scope
 
-Implement the affected-set selection logic referenced by Slice 7 canvas (PR #2766). Closes gate #103 `ci_uses_affected_set_selection`.
+Implement the **BinaryShim affected-set selection** per the ratified Slice 7 canvas (`docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` in main, post-PR-#2766). Closes gate #103 `ci_uses_affected_set_selection`.
 
-### Phase A — Read the ratified canvas
+**Authority chain** (corrected per codex BLOCKING review on PR #2782 sha b28cf884 — earlier draft of this brief mis-cited high-level T-WAD substrate-shape framing):
+- **Upstream lens authority**: **PR #2713** — affected-set lens substrate (already merged per scope docs); `docs/design-affected-set-lens.md` §2 defines `affected_set(Dag_before, Dag_after, dim)` per-dimension + aggregate
+- **Slice 7 canvas authority**: `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` (in main) — §1 BinaryShim consumption contract, §3 fail-closed policy, §4 selection-derivation algorithm, §5 path-regex removal invariant
+- **Implementation harness**: PR #2766's harness contract + Layer 2 path-regex inventory ratchet (in main)
 
-`docs/design-ci-workflow-substrate-shape-2026-05-12.md` (Slice 7 canvas, post-#2766 merge) is the substrate authority. Inventory:
-- Input domain: `CIWorkflowDag` + diff-against-base shape
-- Output: gate-id subset / matrix specification
-- Verifier ratchet contract (per PM dispatch msg_a63f5e7e: "Brief should reference upstream gate-state for verifier ratchet")
+### Phase A — Read the canvas + lens authorities
 
-### Phase B — Implement the selection function
+Inventory canvas §1: BinaryShim runner consumes PR #2713's affected-set lens output (NOT path globs). At PR time, runner builds `Dag_before` (merge-base) + `Dag_after` (PR head) using same compiler revision + feature flags per `CIWorkflowDag` + pinned toolchain facts. Lens output: `Set<NodeRef>` (or NodeRef-keyed record with dimension + provenance — treat **authoritative serialized form from PR #2713** as single source of truth).
 
-Author the selection logic in the appropriate gunbc/ci namespace module. The function shape is likely:
-```
-func select_affected_gates(workflow_dag: CIWorkflowDag, diff: <diff-shape>) -> List<CIGateId>
-```
-(exact signature per canvas ratification).
+### Phase B — Implement the selection function per canvas §4
+
+Algorithm verbatim from canvas §4:
+1. Compute `A = ⋃_dim affected_set(Dag_before, Dag_after, dim)` (aggregate affected nodes)
+2. For each `TestClaim` or test-shaped obligation `t ∈ B`: derive selected vs skip-safe status from `TestClaim` declarations + gate records + `CIWorkflowDag` metadata
+3. Map `NodeRef` sets to **executable CI actions** (cargo filters, job labels, gate commands) using metadata anchored in `CIWorkflowDag`, `TestClaim` declarations, and gate records — **NOT** by parsing GitHub `paths`/`paths-ignore` in YAML
 
 Implementation MUST:
-- Honor single-authority derivation: every selection decision derives from `CIWorkflowDag` + diff input
+- Honor single-authority derivation from `Dag_before` + `Dag_after` + PR #2713 lens output + `TestClaim` / gate metadata
 - Be testable structurally (per TESTING.md band-A)
-- Handle edge cases per canvas (empty diff, diff-touches-everything, isolated-gate)
+- Handle canvas §3 fail-closed cases: `Dag_before`/`Dag_after` unbuildable → superset + diagnostic; `TestClaim` lacks dimension declarations → superset (cannot prove skip-safe)
 
-### Phase C — Verifier ratchet integration
+### Phase C — Path-regex removal invariant (canvas §5)
 
-Wire the affected-set output into the verifier ratchet per upstream gate-state contract. The ratchet shape is whatever PR #2766 canvas ratifies; brief cannot pre-author this without that ratification.
+After this PR lands, **no** workflow `if:` condition may encode run-vs-skip on `git diff` path patterns, `paths-filter` equivalents, or hand-maintained regex allowlists. That logic lives **only** in the BinaryShim runner using PR #2713 output. Layer 2 path-regex inventory ratchet (in main per PR #2766) tracks removal.
 
 ## §2. STOP conditions
 
-1. **PR #2766 canvas not ratified** — already noted in §0. Hold.
-2. **Single-authority violation in selection logic** — if any selection rule requires reading state outside `CIWorkflowDag` + diff (e.g., environment vars, external service calls, hand-written config), **STOP** — P2/P3 violation by inventing inputs.
-3. **Verifier ratchet contract ambiguity** — if the ratchet contract isn't unambiguously specified in the ratified canvas, **STOP** and surface — don't infer.
+1. **PR #2713 lens output shape uncertainty** — if the authoritative serialized form (`Set<NodeRef>` vs richer NodeRef-keyed record per canvas §1.2) isn't unambiguous at landing time, **STOP** and surface — the canvas explicitly names PR #2713 as the single source of truth; do not re-derive.
+2. **Single-authority violation in selection logic** — if any selection rule requires reading state outside `Dag_before` / `Dag_after` / PR #2713 lens output / `TestClaim` / gate records / `CIWorkflowDag` (e.g., env vars, external service calls, hand-written config, path globs), **STOP** — P2/P3 violation; the canvas §5 invariant explicitly bars path-regex shortcuts.
+3. **Layer 2 path-regex inventory drift** — if canvas §5 invariant cannot be enforced without leaving residual `if:` path-regex conditions in main, **STOP** and surface — the inventory ratchet (in main per PR #2766) is the structural enforcement; can't dissolve incrementally.
 
 ## §3. Verification
 
