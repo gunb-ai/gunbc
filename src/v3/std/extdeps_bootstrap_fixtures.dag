@@ -41,6 +41,7 @@ type BootstrapFixtureSet {
   extdeps_cron: BootstrapFixture
   extdeps_github_github: BootstrapFixture
   extdeps_github_actions: BootstrapFixture
+  extdeps_github_ci: BootstrapFixture
 }
 
 data bootstrap_fixture_authority: BootstrapFixtureSet = {
@@ -70,5 +71,8 @@ data bootstrap_fixture_authority: BootstrapFixtureSet = {
   },
   extdeps_github_actions: {
     virtual_path: "dsl/extdeps/github/actions.dag"
+  },
+  extdeps_github_ci: {
+    virtual_path: "dsl/extdeps/github/ci.dag"
   }
 }
