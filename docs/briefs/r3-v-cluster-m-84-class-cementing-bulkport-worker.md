@@ -6,7 +6,7 @@
 
 **Authority (cite-and-execute):**
 - Phase 3 coordinator: [`r3-v-cluster-m-84-bulkport-coordinator.md`](r3-v-cluster-m-84-bulkport-coordinator.md) §2 row "Cementing-test family"
-- Landed cementing pattern synthesis: [`r3-cementing-discipline-pattern-2026-05-12.md`](r3-cementing-discipline-pattern-2026-05-12.md) — 6-class predicate-taxonomy reference this worker enumerates against
+- Landed cementing pattern synthesis: [`r3-cementing-discipline-pattern-2026-05-12.md`](r3-cementing-discipline-pattern-2026-05-12.md) — predicate-taxonomy reference this worker enumerates against
 - Phase 2 pattern brief: [`r3-v-cluster-m-87-cementing-worker.md`](r3-v-cluster-m-87-cementing-worker.md)
 - Locked design: [`docs/design-tests-as-data-completeness.md`](../design-tests-as-data-completeness.md) §5 cementing discipline + §C5 predicate-class table
 - Standing testing discipline: [`TESTING.md`](../../TESTING.md) Band C cementing tests
@@ -33,6 +33,9 @@ Owned files/surfaces for Mgr inventory:
 Use the landed cementing pattern synthesis exactly:
 - v2 counterpart exists: `DifferentialEquals`
 - v3-native expected output: `LensOutputEquals`
+- symbolic-cost contract: `SymbolicCostExprEquals`
+- helper-only or intentionally narrower rows: `Compiles` plus paired receipt
+- blocked rows: named hand-Rust blocker routed to D2
 - landed #87 dispatch receipt confirms the `regen.dag` registry corpus has matching `.dag` receipts
 
 No new predicate family is in scope for this class. If an entry cannot fit the #87 predicate axis, STOP and ping the Coordinator.
@@ -57,7 +60,7 @@ Escalate if the entry requires a new predicate, if the lens is not behaviorally 
 
 **Mgr-finalization checklist:**
 - [ ] Complete live inventory.
-- [ ] Mark each entry DifferentialEquals vs LensOutputEquals vs substrate-gap.
+- [ ] Mark each entry as `DifferentialEquals`, `LensOutputEquals`, `SymbolicCostExprEquals`, `Compiles` plus paired receipt, or D2-routed blocker.
 - [ ] Select 1-3 pilot entries.
 - [ ] Confirm selected pilot/bulk split against the landed #87 pattern.
 
