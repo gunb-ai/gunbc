@@ -8,16 +8,6 @@
     "captured_at": "2026-05-11T20:33:04Z"
   },
   "mirror_groups": {
-    "termination": {
-      "claim": "tier3_termination_mirror_perf_within_budget",
-      "benches": [
-        {
-          "name": "tier3_termination_merge_evidence",
-          "median_ns": 1,
-          "p99_ns": 2
-        }
-      ]
-    },
     "computation": {
       "claim": "tier3_computation_mirror_perf_within_budget",
       "benches": [
