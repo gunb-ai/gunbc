@@ -62038,7 +62038,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5875, 6378),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5875, 6380),
         });
         declarations.push(Declaration {
             id: DeclarationId(1726),
@@ -62075,7 +62075,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6380, 6428),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6382, 6430),
         });
         declarations.push(Declaration {
             id: DeclarationId(1727),
@@ -62104,7 +62104,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6430, 6493),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6432, 6495),
         });
         declarations.push(Declaration {
             id: DeclarationId(1728),
@@ -62153,7 +62153,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6727, 7154),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6729, 7156),
         });
         declarations.push(Declaration {
             id: DeclarationId(1729),
@@ -62172,7 +62172,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7220, 7269),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7222, 7271),
         });
         declarations.push(Declaration {
             id: DeclarationId(1730),
@@ -62191,7 +62191,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7270, 7323),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7272, 7325),
         });
         declarations.push(Declaration {
             id: DeclarationId(1731),
@@ -62210,7 +62210,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7324, 7375),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7326, 7377),
         });
         declarations.push(Declaration {
             id: DeclarationId(1732),
@@ -62229,7 +62229,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7376, 7426),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7378, 7428),
         });
         declarations.push(Declaration {
             id: DeclarationId(1733),
@@ -62248,7 +62248,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7427, 7476),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7429, 7478),
         });
         declarations.push(Declaration {
             id: DeclarationId(1734),
@@ -62267,7 +62267,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7477, 7541),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7479, 7543),
         });
         declarations.push(Declaration {
             id: DeclarationId(1735),
@@ -62286,7 +62286,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7542, 7598),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7544, 7600),
         });
         declarations.push(Declaration {
             id: DeclarationId(1736),
@@ -62305,7 +62305,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7599, 7665),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7601, 7667),
         });
         declarations.push(Declaration {
             id: DeclarationId(1737),
@@ -62330,7 +62330,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7887, 8052),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7889, 8054),
         });
         declarations.push(Declaration {
             id: DeclarationId(1738),
@@ -62359,7 +62359,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8054, 8106),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8056, 8108),
         });
         declarations.push(Declaration {
             id: DeclarationId(1739),
@@ -62375,12 +62375,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                 "dsl/extdeps/github/actions.dag",
-                8198,
-                8266,
+                8200,
+                8268,
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8157, 8266),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8159, 8268),
         });
         declarations.push(Declaration {
             id: DeclarationId(1740),
@@ -62396,12 +62396,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                 "dsl/extdeps/github/actions.dag",
-                8311,
-                8381,
+                8313,
+                8383,
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8268, 8381),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8270, 8383),
         });
         declarations.push(Declaration {
             id: DeclarationId(1741),
@@ -62438,7 +62438,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8520, 8696),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8522, 8698),
         });
         declarations.push(Declaration {
             id: DeclarationId(1742),
@@ -62479,7 +62479,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8825, 8927),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8827, 8929),
         });
         declarations.push(Declaration {
             id: DeclarationId(1743),
@@ -62495,12 +62495,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                 "dsl/extdeps/github/actions.dag",
-                9087,
-                9148,
+                9089,
+                9150,
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9053, 9148),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9055, 9150),
         });
         declarations.push(Declaration {
             id: DeclarationId(1744),
@@ -62516,12 +62516,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                 "dsl/extdeps/github/actions.dag",
-                9186,
-                9274,
+                9188,
+                9276,
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9150, 9274),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9152, 9276),
         });
         declarations.push(Declaration {
             id: DeclarationId(1745),
@@ -62537,12 +62537,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                 "dsl/extdeps/github/actions.dag",
-                9307,
-                9365,
+                9309,
+                9367,
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9276, 9365),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9278, 9367),
         });
         declarations.push(Declaration {
             id: DeclarationId(1746),
@@ -62559,7 +62559,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: Some(ValueBody::Scalar(LiteralBits::Int("360".to_string()))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9441, 9480),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9443, 9482),
         });
         declarations.push(Declaration {
             id: DeclarationId(1747),
@@ -62576,7 +62576,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: Some(ValueBody::Scalar(LiteralBits::Int("360".to_string()))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9482, 9525),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9484, 9527),
         });
         declarations.push(Declaration {
             id: DeclarationId(1748),
@@ -62593,7 +62593,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: Some(ValueBody::Scalar(LiteralBits::Int("256".to_string()))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9527, 9566),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9529, 9568),
         });
         declarations.push(Declaration {
             id: DeclarationId(1749),
@@ -80623,7 +80623,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6039, 6046),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6040, 6047),
         });
         declarations.push(Declaration {
             id: DeclarationId(2738),
@@ -80642,7 +80642,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6068, 6075),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6069, 6076),
         });
         declarations.push(Declaration {
             id: DeclarationId(2739),
@@ -80661,7 +80661,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6131, 6135),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6132, 6136),
         });
         declarations.push(Declaration {
             id: DeclarationId(2740),
@@ -80714,7 +80714,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5889, 6141),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5889, 6142),
         });
         declarations.push(Declaration {
             id: DeclarationId(2741),
@@ -80733,7 +80733,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6169, 6176),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6170, 6177),
         });
         declarations.push(Declaration {
             id: DeclarationId(2742),
@@ -80752,7 +80752,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6188, 6195),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6189, 6196),
         });
         declarations.push(Declaration {
             id: DeclarationId(2743),
@@ -80778,7 +80778,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6232, 6251),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6233, 6252),
         });
         declarations.push(Declaration {
             id: DeclarationId(2744),
@@ -80804,7 +80804,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6264, 6283),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6265, 6284),
         });
         declarations.push(Declaration {
             id: DeclarationId(2745),
@@ -80823,7 +80823,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6264, 6284),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6265, 6285),
         });
         declarations.push(Declaration {
             id: DeclarationId(2746),
@@ -80842,7 +80842,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6305, 6312),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6307, 6314),
         });
         declarations.push(Declaration {
             id: DeclarationId(2747),
@@ -80861,7 +80861,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6368, 6372),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6370, 6374),
         });
         declarations.push(Declaration {
             id: DeclarationId(2748),
@@ -80910,7 +80910,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6146, 6378),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6147, 6380),
         });
         declarations.push(Declaration {
             id: DeclarationId(2749),
@@ -80924,7 +80924,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6397, 6401),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6399, 6403),
         });
         declarations.push(Declaration {
             id: DeclarationId(2750),
@@ -80938,7 +80938,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6404, 6406),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6406, 6408),
         });
         declarations.push(Declaration {
             id: DeclarationId(2751),
@@ -80952,7 +80952,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6409, 6413),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6411, 6415),
         });
         declarations.push(Declaration {
             id: DeclarationId(2752),
@@ -80966,7 +80966,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6416, 6422),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6418, 6424),
         });
         declarations.push(Declaration {
             id: DeclarationId(2753),
@@ -80980,7 +80980,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6425, 6428),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6427, 6430),
         });
         declarations.push(Declaration {
             id: DeclarationId(2754),
@@ -80999,7 +80999,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6791, 6798),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6793, 6800),
         });
         declarations.push(Declaration {
             id: DeclarationId(2755),
@@ -81018,7 +81018,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6806, 6810),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6808, 6812),
         });
         declarations.push(Declaration {
             id: DeclarationId(2756),
@@ -81037,7 +81037,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6817, 6821),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6819, 6823),
         });
         declarations.push(Declaration {
             id: DeclarationId(2757),
@@ -81070,7 +81070,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6750, 6823),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6752, 6825),
         });
         declarations.push(Declaration {
             id: DeclarationId(2758),
@@ -81089,7 +81089,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6871, 6878),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6873, 6880),
         });
         declarations.push(Declaration {
             id: DeclarationId(2759),
@@ -81108,7 +81108,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6886, 6890),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6888, 6892),
         });
         declarations.push(Declaration {
             id: DeclarationId(2760),
@@ -81127,7 +81127,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6897, 6901),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6899, 6903),
         });
         declarations.push(Declaration {
             id: DeclarationId(2761),
@@ -81160,7 +81160,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6828, 6903),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6830, 6905),
         });
         declarations.push(Declaration {
             id: DeclarationId(2762),
@@ -81179,7 +81179,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6950, 6957),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6952, 6959),
         });
         declarations.push(Declaration {
             id: DeclarationId(2763),
@@ -81198,7 +81198,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6965, 6969),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6967, 6971),
         });
         declarations.push(Declaration {
             id: DeclarationId(2764),
@@ -81217,7 +81217,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6976, 6980),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6978, 6982),
         });
         declarations.push(Declaration {
             id: DeclarationId(2765),
@@ -81250,7 +81250,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6908, 6982),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6910, 6984),
         });
         declarations.push(Declaration {
             id: DeclarationId(2766),
@@ -81269,7 +81269,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6987, 7020),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6989, 7022),
         });
         declarations.push(Declaration {
             id: DeclarationId(2767),
@@ -81283,7 +81283,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7025, 7043),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7027, 7045),
         });
         declarations.push(Declaration {
             id: DeclarationId(2768),
@@ -81308,7 +81308,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7048, 7089),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7050, 7091),
         });
         declarations.push(Declaration {
             id: DeclarationId(2769),
@@ -81327,7 +81327,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7094, 7119),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7096, 7121),
         });
         declarations.push(Declaration {
             id: DeclarationId(2770),
@@ -81346,7 +81346,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7124, 7154),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7126, 7156),
         });
         declarations.push(Declaration {
             id: DeclarationId(2771),
@@ -81365,7 +81365,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7960, 7964),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7962, 7966),
         });
         declarations.push(Declaration {
             id: DeclarationId(2772),
@@ -81398,7 +81398,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7907, 8007),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7909, 8009),
         });
         declarations.push(Declaration {
             id: DeclarationId(2773),
@@ -81417,7 +81417,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8043, 8050),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8045, 8052),
         });
         declarations.push(Declaration {
             id: DeclarationId(2774),
@@ -81442,7 +81442,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8012, 8052),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8014, 8054),
         });
         declarations.push(Declaration {
             id: DeclarationId(2775),
@@ -81456,7 +81456,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8082, 8086),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8084, 8088),
         });
         declarations.push(Declaration {
             id: DeclarationId(2776),
@@ -81470,7 +81470,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8089, 8097),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8091, 8099),
         });
         declarations.push(Declaration {
             id: DeclarationId(2777),
@@ -81484,7 +81484,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8100, 8106),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8102, 8108),
         });
         declarations.push(Declaration {
             id: DeclarationId(2778),
@@ -81504,7 +81504,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8568, 8580),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8570, 8582),
         });
         declarations.push(Declaration {
             id: DeclarationId(2779),
@@ -81530,7 +81530,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8556, 8581),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8558, 8583),
         });
         declarations.push(Declaration {
             id: DeclarationId(2780),
@@ -81556,7 +81556,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8598, 8617),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8600, 8619),
         });
         declarations.push(Declaration {
             id: DeclarationId(2781),
@@ -81576,7 +81576,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8593, 8618),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8595, 8620),
         });
         declarations.push(Declaration {
             id: DeclarationId(2782),
@@ -81602,7 +81602,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8635, 8654),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8637, 8656),
         });
         declarations.push(Declaration {
             id: DeclarationId(2783),
@@ -81622,7 +81622,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8630, 8655),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8632, 8657),
         });
         declarations.push(Declaration {
             id: DeclarationId(2784),
@@ -81641,7 +81641,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8690, 8694),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8692, 8696),
         });
         declarations.push(Declaration {
             id: DeclarationId(2785),
@@ -81655,7 +81655,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8850, 8857),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8852, 8859),
         });
         declarations.push(Declaration {
             id: DeclarationId(2786),
@@ -81669,7 +81669,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8862, 8869),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8864, 8871),
         });
         declarations.push(Declaration {
             id: DeclarationId(2787),
@@ -81683,7 +81683,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8874, 8883),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8876, 8885),
         });
         declarations.push(Declaration {
             id: DeclarationId(2788),
@@ -81697,7 +81697,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8888, 8895),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8890, 8897),
         });
         declarations.push(Declaration {
             id: DeclarationId(2789),
@@ -81711,7 +81711,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8900, 8908),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8902, 8910),
         });
         declarations.push(Declaration {
             id: DeclarationId(2790),
@@ -81725,7 +81725,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8913, 8927),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8915, 8929),
         });
         declarations.push(Declaration {
             id: DeclarationId(2791),
@@ -88066,7 +88066,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6039, 6046),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6040, 6047),
         });
         declarations.push(Declaration {
             id: DeclarationId(3119),
@@ -88080,7 +88080,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6039, 6046),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6040, 6047),
         });
         declarations.push(Declaration {
             id: DeclarationId(3120),
@@ -88105,7 +88105,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6039, 6046),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6040, 6047),
         });
         declarations.push(Declaration {
             id: DeclarationId(3121),
@@ -88124,7 +88124,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6068, 6075),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6069, 6076),
         });
         declarations.push(Declaration {
             id: DeclarationId(3122),
@@ -88138,7 +88138,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6068, 6075),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6069, 6076),
         });
         declarations.push(Declaration {
             id: DeclarationId(3123),
@@ -88163,7 +88163,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6068, 6075),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6069, 6076),
         });
         declarations.push(Declaration {
             id: DeclarationId(3124),
@@ -88182,7 +88182,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6131, 6135),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6132, 6136),
         });
         declarations.push(Declaration {
             id: DeclarationId(3125),
@@ -88196,7 +88196,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6131, 6135),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6132, 6136),
         });
         declarations.push(Declaration {
             id: DeclarationId(3126),
@@ -88221,7 +88221,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6131, 6135),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6132, 6136),
         });
         declarations.push(Declaration {
             id: DeclarationId(3127),
@@ -88240,7 +88240,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6169, 6176),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6170, 6177),
         });
         declarations.push(Declaration {
             id: DeclarationId(3128),
@@ -88254,7 +88254,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6169, 6176),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6170, 6177),
         });
         declarations.push(Declaration {
             id: DeclarationId(3129),
@@ -88279,7 +88279,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6169, 6176),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6170, 6177),
         });
         declarations.push(Declaration {
             id: DeclarationId(3130),
@@ -88298,7 +88298,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6188, 6195),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6189, 6196),
         });
         declarations.push(Declaration {
             id: DeclarationId(3131),
@@ -88312,7 +88312,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6188, 6195),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6189, 6196),
         });
         declarations.push(Declaration {
             id: DeclarationId(3132),
@@ -88337,7 +88337,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6188, 6195),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6189, 6196),
         });
         declarations.push(Declaration {
             id: DeclarationId(3133),
@@ -88356,7 +88356,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6264, 6284),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6265, 6285),
         });
         declarations.push(Declaration {
             id: DeclarationId(3134),
@@ -88370,7 +88370,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6264, 6284),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6265, 6285),
         });
         declarations.push(Declaration {
             id: DeclarationId(3135),
@@ -88395,7 +88395,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6264, 6284),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6265, 6285),
         });
         declarations.push(Declaration {
             id: DeclarationId(3136),
@@ -88414,7 +88414,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6305, 6312),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6307, 6314),
         });
         declarations.push(Declaration {
             id: DeclarationId(3137),
@@ -88428,7 +88428,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6305, 6312),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6307, 6314),
         });
         declarations.push(Declaration {
             id: DeclarationId(3138),
@@ -88453,7 +88453,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6305, 6312),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6307, 6314),
         });
         declarations.push(Declaration {
             id: DeclarationId(3139),
@@ -88472,7 +88472,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6368, 6372),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6370, 6374),
         });
         declarations.push(Declaration {
             id: DeclarationId(3140),
@@ -88486,7 +88486,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6368, 6372),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6370, 6374),
         });
         declarations.push(Declaration {
             id: DeclarationId(3141),
@@ -88511,7 +88511,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6368, 6372),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6370, 6374),
         });
         declarations.push(Declaration {
             id: DeclarationId(3142),
@@ -88530,7 +88530,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6791, 6798),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6793, 6800),
         });
         declarations.push(Declaration {
             id: DeclarationId(3143),
@@ -88544,7 +88544,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6791, 6798),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6793, 6800),
         });
         declarations.push(Declaration {
             id: DeclarationId(3144),
@@ -88569,7 +88569,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6791, 6798),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6793, 6800),
         });
         declarations.push(Declaration {
             id: DeclarationId(3145),
@@ -88588,7 +88588,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6806, 6810),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6808, 6812),
         });
         declarations.push(Declaration {
             id: DeclarationId(3146),
@@ -88602,7 +88602,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6806, 6810),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6808, 6812),
         });
         declarations.push(Declaration {
             id: DeclarationId(3147),
@@ -88627,7 +88627,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6806, 6810),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6808, 6812),
         });
         declarations.push(Declaration {
             id: DeclarationId(3148),
@@ -88646,7 +88646,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6817, 6821),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6819, 6823),
         });
         declarations.push(Declaration {
             id: DeclarationId(3149),
@@ -88660,7 +88660,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6817, 6821),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6819, 6823),
         });
         declarations.push(Declaration {
             id: DeclarationId(3150),
@@ -88685,7 +88685,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6817, 6821),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6819, 6823),
         });
         declarations.push(Declaration {
             id: DeclarationId(3151),
@@ -88704,7 +88704,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6871, 6878),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6873, 6880),
         });
         declarations.push(Declaration {
             id: DeclarationId(3152),
@@ -88718,7 +88718,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6871, 6878),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6873, 6880),
         });
         declarations.push(Declaration {
             id: DeclarationId(3153),
@@ -88743,7 +88743,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6871, 6878),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6873, 6880),
         });
         declarations.push(Declaration {
             id: DeclarationId(3154),
@@ -88762,7 +88762,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6886, 6890),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6888, 6892),
         });
         declarations.push(Declaration {
             id: DeclarationId(3155),
@@ -88776,7 +88776,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6886, 6890),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6888, 6892),
         });
         declarations.push(Declaration {
             id: DeclarationId(3156),
@@ -88801,7 +88801,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6886, 6890),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6888, 6892),
         });
         declarations.push(Declaration {
             id: DeclarationId(3157),
@@ -88820,7 +88820,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6897, 6901),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6899, 6903),
         });
         declarations.push(Declaration {
             id: DeclarationId(3158),
@@ -88834,7 +88834,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6897, 6901),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6899, 6903),
         });
         declarations.push(Declaration {
             id: DeclarationId(3159),
@@ -88859,7 +88859,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6897, 6901),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6899, 6903),
         });
         declarations.push(Declaration {
             id: DeclarationId(3160),
@@ -88878,7 +88878,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6950, 6957),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6952, 6959),
         });
         declarations.push(Declaration {
             id: DeclarationId(3161),
@@ -88892,7 +88892,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6950, 6957),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6952, 6959),
         });
         declarations.push(Declaration {
             id: DeclarationId(3162),
@@ -88917,7 +88917,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6950, 6957),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6952, 6959),
         });
         declarations.push(Declaration {
             id: DeclarationId(3163),
@@ -88936,7 +88936,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6965, 6969),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6967, 6971),
         });
         declarations.push(Declaration {
             id: DeclarationId(3164),
@@ -88950,7 +88950,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6965, 6969),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6967, 6971),
         });
         declarations.push(Declaration {
             id: DeclarationId(3165),
@@ -88975,7 +88975,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6965, 6969),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6967, 6971),
         });
         declarations.push(Declaration {
             id: DeclarationId(3166),
@@ -88994,7 +88994,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6976, 6980),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6978, 6982),
         });
         declarations.push(Declaration {
             id: DeclarationId(3167),
@@ -89008,7 +89008,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6976, 6980),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6978, 6982),
         });
         declarations.push(Declaration {
             id: DeclarationId(3168),
@@ -89033,7 +89033,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6976, 6980),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6978, 6982),
         });
         declarations.push(Declaration {
             id: DeclarationId(3169),
@@ -89052,7 +89052,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7960, 7964),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7962, 7966),
         });
         declarations.push(Declaration {
             id: DeclarationId(3170),
@@ -89066,7 +89066,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7960, 7964),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7962, 7966),
         });
         declarations.push(Declaration {
             id: DeclarationId(3171),
@@ -89091,7 +89091,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7960, 7964),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7962, 7966),
         });
         declarations.push(Declaration {
             id: DeclarationId(3172),
@@ -89110,7 +89110,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8043, 8050),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8045, 8052),
         });
         declarations.push(Declaration {
             id: DeclarationId(3173),
@@ -89124,7 +89124,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8043, 8050),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8045, 8052),
         });
         declarations.push(Declaration {
             id: DeclarationId(3174),
@@ -89149,7 +89149,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8043, 8050),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8045, 8052),
         });
         declarations.push(Declaration {
             id: DeclarationId(3175),
@@ -89168,7 +89168,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8690, 8694),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8692, 8696),
         });
         declarations.push(Declaration {
             id: DeclarationId(3176),
@@ -89182,7 +89182,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8690, 8694),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8692, 8696),
         });
         declarations.push(Declaration {
             id: DeclarationId(3177),
@@ -89207,7 +89207,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8690, 8694),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8692, 8696),
         });
         declarations
     }

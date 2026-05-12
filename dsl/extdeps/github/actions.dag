@@ -160,7 +160,7 @@ type Step
       id: String?,
       run: String,
       shell: ShellType,
-      env: Map<String, String>?
+      env: Map<String, String>?,
       working_directory: String?,
       if_condition: String?,
       continue_on_error: Bool,
@@ -171,7 +171,7 @@ type Step
       id: String?,
       uses: ActionRef,
       with: Map<String, String>,
-      env: Map<String, String>?
+      env: Map<String, String>?,
       if_condition: String?,
       continue_on_error: Bool,
       timeout_minutes: Int?
