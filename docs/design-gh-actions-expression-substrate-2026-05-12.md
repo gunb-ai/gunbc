@@ -435,18 +435,26 @@ ci.yml usage, not the migration ceiling.
    question; it was implied by §3 reasoning point #4 ("Pre-empts the
    type-alias trap") which applies equally to record-form aliases.
 
-2. **Migration sequencing across the seven sites.** Do all seven sites
-   migrate to `Expression` in one PR (substrate-prereq PR before Slice 4)
-   or incrementally (per-site as Slice 4 lands each emitter arm)?
-   Recommendation: one PR (cohesive substrate change; per
-   `feedback_single_bundle_ratification_uniform_substrate_cause` — the
-   substrate-cause is uniform across sites).
+2. **Migration sequencing across the 22 expression-capable fields**
+   (revised from "seven sites" per §5.5 audit). Do all sites migrate
+   to `Expression` in one PR (substrate-prereq PR before Slice 4) or
+   incrementally? Recommendation: one PR (cohesive substrate change;
+   per `feedback_single_bundle_ratification_uniform_substrate_cause` —
+   the substrate-cause is uniform across sites).
 3. **`Job.if_condition: String?` precedent retirement.** The existing
    opaque-string precedent on `Job.if_condition` becomes
    `Job.if_condition: Expression?` under option (c). This is a real
    substrate edit, not just an addition; any current consumer reading
    `if_condition` must accept the Expression type. Audit at migration PR
    authoring time.
+4. **Typed-field expression semantics (per §5.5.2).** How do
+   `timeout_minutes: Int?`, `continue_on_error: Bool`, and
+   `concurrency.cancel_in_progress: Bool` migrate? Three candidate
+   shapes: (i) wrap to `Expression?` losing typed-literal case,
+   (ii) sum `TypedOrExpression<T> = Literal(T) | Expression(Expression)`,
+   (iii) defer typed-field migration until ci.yml uses expressions at
+   those sites. Director-tier choice; substrate-shape implication for
+   how gunbc models GH Actions' string-coerced expression semantics.
 
 ---
 
