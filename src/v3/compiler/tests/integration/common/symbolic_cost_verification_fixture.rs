@@ -128,10 +128,7 @@ mod symbolic_cost_verification_fixture_tests {
                 display_name: None,
             },
         };
-        let expected = format!(
-            "LinearCost(unnamed_size_variable(PortId({})))",
-            p.raw()
-        );
+        let expected = format!("LinearCost(unnamed_size_variable(PortId({})))", p.raw());
         assert_eq!(symbolic_cost_as_v3_data_initializer(&c), expected);
     }
 }

@@ -896,8 +896,10 @@ data symbolic_cost_expr_equals_gate40_suite: TestSuite = {{
             file_name = SYMBOLIC_COST_EXPR_EQUALS_GATE40_COUNTDOWN_FILE,
         );
 
-        let dag = match compile_to_dag(&module_src, "symbolic_cost_expr_equals_gate40_countdown.dag")
-        {
+        let dag = match compile_to_dag(
+            &module_src,
+            "symbolic_cost_expr_equals_gate40_countdown.dag",
+        ) {
             Ok(dag) => {
                 assert!(
                     dag.diagnostics().is_empty(),
