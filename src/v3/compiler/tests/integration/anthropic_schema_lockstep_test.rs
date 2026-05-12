@@ -674,6 +674,11 @@ fn anthropic_tool_result_wire_text_tag_lockstep() {
 }
 
 #[test]
+fn anthropic_plain_text_document_media_type_lockstep() {
+    assert_disj_lockstep("AnthropicPlainTextDocumentMediaType");
+}
+
+#[test]
 fn anthropic_tool_result_text_block_row_lockstep() {
     assert_record_lockstep("AnthropicToolResultTextBlock");
 }

@@ -101,6 +101,11 @@ type AnthropicToolResultContent
 type AnthropicToolResultWireTextTag
   = Text {}
 
+// Singleton: `PlainTextSourceParam.media_type` is the literal `"text/plain"` on the wire
+// (Practice 2 — https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/plain_text_source_param.py).
+type AnthropicPlainTextDocumentMediaType
+  = TextPlain {}
+
 // Nested `search_result.content[]` rows per platform schema (each object carries
 // wire `type: "text"` alongside `text` — https://platform.claude.com/docs/en/build-with-claude/search-results).
 type AnthropicToolResultTextBlock {
@@ -164,7 +169,7 @@ data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: L
 // is the fixed `"text"` wire slot — same singleton as nested search-result text rows).
 type AnthropicToolResultPlainTextDocumentSource {
   type: AnthropicToolResultWireTextTag
-  media_type: String
+  media_type: AnthropicPlainTextDocumentMediaType
   data: String
 }
 

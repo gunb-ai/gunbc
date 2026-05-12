@@ -13,6 +13,7 @@
 //! `AnthropicToolResultContent`, internally tagged `AnthropicToolResultBlock`
 //! with `StripPrefixSuffixAndSnakeCase { prefix: \"Anthropic\", suffix: \"Block\" }`).
 
+use serde::ser::Serializer;
 use serde::Serialize;
 use serde_json::json;
 use v3_compiler::dag::{CardinalityBound, Dag, DeclarationId, TypeConnective};
@@ -99,11 +100,24 @@ enum ImageSourceWire {
     },
 }
 
+/// Serializes as the literal `"text/plain"` (`PlainTextSourceParam.media_type` in the SDK).
+#[derive(Debug, Clone, Copy, Default)]
+struct PlainTextSourceMediaTypeWire;
+
+impl Serialize for PlainTextSourceMediaTypeWire {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str("text/plain")
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct PlainTextDocumentSourceWire {
     #[serde(rename = "type")]
     source_type: &'static str,
-    media_type: &'static str,
+    media_type: PlainTextSourceMediaTypeWire,
     /// Wire field name `data` (`AnthropicToolResultPlainTextDocumentSource` in v2).
     data: String,
 }
@@ -124,6 +138,21 @@ fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
         TypeConnective::Conj { children } => children.iter().map(|f| f.label.clone()).collect(),
         other => panic!("`{name}` is not a Conj: {other:?}"),
     }
+}
+
+fn conj_field_ty(dag: &Dag, owner: &str, label: &str) -> DeclarationId {
+    let decl = dag
+        .declaration_by_name(owner)
+        .unwrap_or_else(|| panic!("`{owner}` missing from full bootstrap"));
+    let children = match &decl.connective {
+        TypeConnective::Conj { children } => children,
+        other => panic!("`{owner}` is not a Conj: {other:?}"),
+    };
+    children
+        .iter()
+        .find(|f| f.label == label)
+        .unwrap_or_else(|| panic!("`{owner}.{label}` missing"))
+        .ty
 }
 
 fn disj_variant_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -305,6 +334,18 @@ fn tool_result_wire_demo_projection_is_locked_to_modeled_dag_surface() {
         vec!["type", "media_type", "document_data"],
         "document source demo JSON keys map wire `data` ↔ mirror `document_data` (see lockstep)"
     );
+    let media_ty = v3_canonical_ty(
+        &dag,
+        conj_field_ty(
+            &dag,
+            "AnthropicToolResultPlainTextDocumentSource",
+            "media_type",
+        ),
+    );
+    assert_eq!(
+        media_ty, "AnthropicPlainTextDocumentMediaType",
+        "plaintext document `media_type` must be the singleton literal carrier (SDK `Literal[\"text/plain\"]`)"
+    );
 
     let search_payload = v3_variant_payload_fields(
         &dag,
@@ -388,7 +429,7 @@ fn tool_result_content_serializes_nested_block_array_without_outer_wrapper_objec
                 ToolResultBlockWire::Document {
                     source: PlainTextDocumentSourceWire {
                         source_type: "text",
-                        media_type: "text/plain",
+                        media_type: PlainTextSourceMediaTypeWire,
                         data: "doc bytes".to_string(),
                     },
                 },

@@ -103,6 +103,10 @@ type AnthropicToolResultContent
 type AnthropicToolResultWireTextTag
   = Text {}
 
+// Singleton — mirrors `AnthropicPlainTextDocumentMediaType` (v2 authority).
+type AnthropicPlainTextDocumentMediaType
+  = TextPlain {}
+
 // Nested `search_result.content[]` rows — wire carries fixed `type: "text"` + `text`.
 type AnthropicToolResultTextBlock {
   type: AnthropicToolResultWireTextTag
@@ -124,7 +128,7 @@ type AnthropicToolResultBlock
 
 type AnthropicToolResultPlainTextDocumentSource {
   type: AnthropicToolResultWireTextTag
-  media_type: String
+  media_type: AnthropicPlainTextDocumentMediaType
   document_data: String // v2 wire label `data`; renamed — `data` is a v3 keyword.
 }
 
