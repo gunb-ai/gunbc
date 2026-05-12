@@ -23,7 +23,7 @@ use v3_compiler::dag::{
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
 };
-use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag};
+use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag, CompileError};
 
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
 const GUNBC_CI_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci.dag");
@@ -514,8 +514,14 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
 
 #[test]
 fn gunbc_ci_github_actions_workflow_authority_compiles() {
-    let dag = compile_to_dag(GUNBC_CI_GITHUB_WORKFLOW_SOURCE, GUNBC_CI_GITHUB_WORKFLOW_FILE)
-        .unwrap_or_else(|e| panic!("compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {e:?}"));
+    let dag = match compile_to_dag(GUNBC_CI_GITHUB_WORKFLOW_SOURCE, GUNBC_CI_GITHUB_WORKFLOW_FILE) {
+        Ok(d) => d,
+        Err(CompileError::Semantic(d)) => panic!(
+            "compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {:?}",
+            d.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(e) => panic!("compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {e:?}"),
+    };
     assert!(
         dag.diagnostics().is_empty(),
         "{:?}",
