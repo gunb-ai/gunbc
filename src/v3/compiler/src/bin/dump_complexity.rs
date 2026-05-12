@@ -41,12 +41,40 @@ fn main() -> ExitCode {
         dag.diagnostics().len()
     );
 
+    // File histogram across all binds (so caller can see what's actually present
+    // in the nodes table and pick a useful --file filter).
+    if filter.is_none() {
+        let mut file_hist: BTreeMap<String, usize> = BTreeMap::new();
+        for node in dag.nodes() {
+            if let Some(bind) = node.as_bind() {
+                let short = bind
+                    .span
+                    .file
+                    .rsplit_once("/src/v3/")
+                    .map(|(_, s)| format!("v3/{s}"))
+                    .unwrap_or_else(|| bind.span.file.clone());
+                *file_hist.entry(short).or_default() += 1;
+            }
+        }
+        println!("\nbind-count by source file (top 20):");
+        let mut by_count: Vec<(&String, &usize)> = file_hist.iter().collect();
+        by_count.sort_by_key(|(_, c)| std::cmp::Reverse(**c));
+        for (file, count) in by_count.iter().take(20) {
+            println!("  {:>5}  {}", count, file);
+        }
+        println!();
+    }
+
     let mut class_hist: BTreeMap<String, usize> = BTreeMap::new();
     let mut certainty_hist: BTreeMap<String, usize> = BTreeMap::new();
     let mut miss_count = 0usize;
     let mut hit_count = 0usize;
     let mut shown = 0usize;
 
+    if filter.is_none() {
+        println!("(no --file filter — skipping per-bind complexity_of; pass --file <suffix> to dump)");
+        return ExitCode::SUCCESS;
+    }
     for node in dag.nodes() {
         let Some(bind) = node.as_bind() else { continue };
         if let Some(ref suffix) = filter {
