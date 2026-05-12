@@ -1,4 +1,6 @@
-# Diagnostic-findings extraction from closed PR #2765 (neat-crane-827)
+# PENDING RECOVERY — Review-10210 comment pointers from closed PR #2765 (neat-crane-827)
+
+> **⚠ NOT A DISPATCHABLE BRIEF.** This file lives in `docs/briefs/_pending-recovery/` because its content is unverified review-comment pointers awaiting source-evidence recovery (per `INVARIANTS.md` P1 "Documentation Describes Live State" — addressed by codex APPROVE_WITH_COMMENTS review 10266 on PR #2768). Do not author worker PRs against this file in its current state. See §2 for the recovery prerequisite that must complete before this content becomes dispatchable; once recovered + verified, the file may be promoted out of `_pending-recovery/` with explicit findings.
 
 **Authored by**: warm-wolf-698 (R3 Substrate Mgr)
 **Date**: 2026-05-12
