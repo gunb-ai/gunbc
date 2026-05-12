@@ -152,35 +152,39 @@ Each is real R4-class substrate work, parallel to T-WAD's `dsl/extdeps/github/ac
 
 ---
 
-## §5. Parallel program tree (orthogonal to gunbc R3-close)
+## §5. Program tree (Ctrl-Migration Director under PM/CEO)
 
-**CONFIRMED by operator 2026-05-12T~19:05Z**: Ctrl-Migration Director is **orthogonal to `zesty-bear-812`** (gunbc R3-close Director). Two Director-tier programs at operator root.
+**UPDATED per operator directive 2026-05-12T~19:20Z**: deep-wolf-155 (PM) operates at CEO-tier above the gunbc R3-close Director `zesty-bear-812`. Ctrl-Migration Director is **a child under deep-wolf-155**, not parallel-root. Spawn fired via `dashboard-ops work-items create` at `node://adhoc-dc298bc7-9f7` 2026-05-12T19:20:39Z.
 
 ```
 operator (Brian)
-├── zesty-bear-812 (gunbc R3-close Director)  ← EXISTING, continues
-│   └── ... R3-close subtree (3 R3 Mgrs + workers)
-└── Ctrl-Migration Director  ← NEW root, ORTHOGONAL not subordinate
-    ├── Substrate Mgr            (Phase 1 — critical path)
-    │   └── algebra substrate, EventLog primitive, Lens type, Witness
-    ├── Subsystem-Modeling Mgr   (Phase 1.5 — critical path, 8-14 workers across waves)
-    │   └── 16 subsystem .dag modeling PRs per §3 catalog
-    ├── Emission-Targets Mgr     (Phase 3 — critical path, PARALLEL not deferred)
-    │   └── HTTP extdeps → SQL extdeps → audit-event extdeps
-    └── Verification Mgr         (Phase 4 — convergence + cut-over)
-        └── parity tests; per-subsystem cut-over PRs; TS deletion
+└── deep-wolf-155 (CEO/PM, root session)
+    ├── zesty-bear-812 (gunbc R3-close Director, operationally under PM)
+    │   └── R3-close subtree (3 R3 Mgrs + workers)
+    └── Ctrl-Migration Director (NEW child, just spawned at adhoc-dc298bc7-9f7)
+        ├── Substrate Mgr            (Phase 1 — critical path)
+        │   └── algebra substrate (`dsl/std/process_algebra.dag` + Attestation)
+        ├── Subsystem-Modeling Mgr   (Phase 1.5 — critical path, 8-14 workers across waves)
+        │   └── 16 subsystem .dag modeling PRs per §3 catalog
+        ├── Emission-Targets Mgr     (Phase 3 — critical path, PARALLEL not deferred)
+        │   └── HTTP extdeps → SQL extdeps → audit-event extdeps
+        └── Verification Mgr         (Phase 4 — convergence + cut-over)
+            └── parity tests; per-subsystem cut-over PRs; TS deletion
 ```
 
 **4 Mgrs spawn on Day 1**, not 3 — Emission-Targets Mgr is NOT deferred. Phase 3 work starts in parallel with Phase 1 + 1.5.
 
+**Auto-spawn mechanics**: per the dashboard ladder, `dashboard-ops work-items create` creates a work-item bound to the caller; the dashboard auto-spawns a child session within ~30s with the title as charter. The Director then runs its own `dashboard-ops work-items create` for each Mgr to populate the next tier.
+
 **Decisions per ladder**:
-- Director: scopes phases, ratifies cross-Mgr signals, surfaces to operator, enforces compositional-modeling discipline (M9 DFS before any new carrier)
+- PM/CEO (deep-wolf-155): inter-program coordination between zesty-bear-812 (R3-close) and the new Ctrl-Migration Director; ratifies cross-program signals; surfaces structural conflicts to operator
+- Director: scopes phases, ratifies cross-Mgr signals, surfaces to PM, enforces compositional-modeling discipline (M9 DFS before any new carrier)
 - Substrate Mgr: own Phase 1 — single algebra substrate file + Practice 4 receipts; lands `dsl/std/process_algebra.dag`
 - Subsystem-Modeling Mgr: own Phase 1.5 — dispatches 8 parallel workers Wave 1 (Day 2-5), 6 more Wave 2 (Day 6-10); each lands one subsystem `.dag` PR with service-contract shape
 - Emission-Targets Mgr: own Phase 3 — HTTP/SQL/audit-event extdeps; **starts Day 3** authoring HTTP extdeps brief (parallel with Substrate Mgr Phase 1)
 - Verification Mgr: own Phase 4 — byte-identity / behavior-parity tests; spawns cut-over PRs as each subsystem's trio converges (algebra ✓ + subsystem-modeled ✓ + emission-target-landed ✓)
 
-**Why orthogonal not subordinate**: gunbc R3-close is its own program (substrate-prereq + Cost-Dim + affected-set lens + workflow-as-data → R3 close). Ctrl migration consumes gunbc substrate but doesn't gate R3-close gates. The two programs share operator-tier coordination only.
+**Coordination between programs**: PM (deep-wolf-155) bridges zesty-bear-812 (gunbc R3-close) and Ctrl-Migration Director. Cross-program substrate-shape conflicts route through PM. Each Director owns their program's scope independently; PM owns the inter-program interface.
 
 **Compositional-modeling enforcement**: Director's standing brief discipline = every new carrier requires (1) M9 DFS trace to existing `dsl/std/` primitive showing why-not-reuse, (2) Practice 4 dissolution receipt for any open enum, (3) cost-of-change-1 verification (adding next variant touches 1 file), (4) cross-reference to source TS file being replaced. Per `feedback_grep_substrate_before_naming_ratification.md`: grep dsl/std/ + docs/audit/ before ratifying new carrier names.
 
@@ -300,8 +304,8 @@ Each Phase 1.5 worker brief should declare:
 ## Scope
 - Type-only modeling; no emission target yet
 - Define carriers + closed/open enums + projections
-- Practice 4 dissolution receipts for any open enum
-- Cite the corresponding ctrl/ TS file(s) as "current authority; this PR proposes substrate authority post-Phase 4"
+- **Practice 4 dissolution receipts for every enum/sum with ≥2 variants** (including closed sums; per codex inline BLOCKING #5 — modeling-discipline requires 🟢/🟡/🔴 classification for every N≥2 coproduct, not just open enums). See acceptance gate #2 below for receipt-format details.
+- Cite the corresponding ctrl/ TS file(s) as "current authority; this PR proposes STAGED substrate, becomes authority on Phase 4 cut-over trio convergence"
 
 ## Reference materials
 - `docs/r4-ctrl-dag-migration-project-plan.md` §3 item N (this brief's parent)
