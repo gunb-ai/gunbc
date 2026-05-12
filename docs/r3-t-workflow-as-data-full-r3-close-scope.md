@@ -14,7 +14,7 @@
 
 **FULL R3-close scope** (operator-ratified 2026-05-12; Director-ratified gate-additive framing msg_5cbdad24):
 1. **ALL** CI workflow authored as `.dag` (not just one demo workflow) — extend `dsl/gunbc/ci.dag` to cover full `.github/workflows/ci.yml`
-2. **Hand-authored `ci.yml` DELETED** — replaced by static-regen artifact OR thin shim invoking compiled binary
+2. **Hand-authored `ci.yml` AUTHORITY DISSOLVED** — `.github/workflows/ci.yml` content authored by gunbc emission (not hand-edited); file present as full-emit artifact (YamlStatic) OR thin-shim entry-point (BinaryShim / PythonShim) OR absent (some emission targets); regression-guard test prevents hand-authored re-introduction. **Per briansrls BLOCKING #PR2744 2026-05-12**: NOT file deletion — P5 / Pure Bootstrap dissolves authority; YamlStatic and shim targets STILL require some `.github/workflows/ci.yml` artifact for GH Actions trigger discovery.
 3. **EmissionTarget toggle** — same `ci.dag` emits multiple target shapes (YamlStatic, BinaryShim, PythonShim, …); choice is a modeled field, not a build-system decision. Field placement OPEN (see §2).
 4. **Affected-set integration** — Layer 2 path-regex bridge (PR #2718/#2721/#2727) dissolved; CI selection consumes affected-set lens output (PR #2713 ✓ merged)
 5. **Cost dimension on test nodes** — `slow-test-exemptions.txt` dissolved; slow-test ratchet derives from Cost dimension structurally
@@ -34,7 +34,7 @@
 | Gate ID | Predicate-family | Lane | Pass condition |
 |---|---|---|---|
 | **#56** (unchanged) | demonstration | T-WAD | At least one workflow as `.dag` data executes through evaluator (existing scope — promotable when PR #2371 demo + integration is gate-PASSING) |
-| **NEW: `ci_yml_deleted`** | state-check | T-WAD | `.github/workflows/ci.yml` absent from repo + regression guard test prevents re-introduction |
+| **NEW: `ci_yml_hand_authority_dissolved`** | state-check | T-WAD | `.github/workflows/ci.yml` is no longer hand-authored CI logic — file is either (a) absent (some emission targets may not require a `.github/workflows/` artifact), (b) committed-emission-artifact byte-identical to `project_github_actions(ci_workflow_dag, target)` output with regression-guard test (YamlStatic), or (c) thin-shim entry-point invoking the emitted binary/python (BinaryShim / PythonShim); in NO case is it hand-edited CI logic. Regression guard test prevents hand-authored re-introduction. **Per briansrls BLOCKING #PR2744 inline review 2026-05-12T06:58:55Z**: deleting hand-maintenance ≠ deleting executable artifact; P5 / Pure Bootstrap dissolves authority, not file presence. |
 | **NEW: `emission_target_open_enum_landed`** | substrate-shape | T-WAD | `EmissionTarget` sum-type (`YamlStatic | BinaryShim | PythonShim | InlineGunbc | ...`) declared in gunbc namespace as open enum |
 | **NEW: `project_github_actions_landed`** | substrate-shape | T-WAD | `project_github_actions: (CIWorkflowDag, EmissionTarget) → Workflow` projection function declared in gunbc namespace; consumes `extdeps.github.actions.Workflow` as output type; per (c-refined) substrate-shape per PR #2749 §7 |
 | **NEW: `test_cost_dimension_landed`** | substrate-shape | T-WAD + Debt-Paydown | `Cost` dimension declared on test nodes (substrate-shape only — splits from state-check sibling below) |
@@ -96,7 +96,7 @@ Existing T-WAD slices (state at 2026-05-12):
 - **Slice 5**: BinaryShim emitter implementation → **Substrate Mgr (warm-wolf-698) lane**. Parallel to Slice 4; proves toggle.
 - **Slice 6**: Cost dimension on test nodes + slow-test-exemptions.txt dissolution → **Debt-Paydown Mgr (zesty-boar-261) lane** (sub-component). Gated on Phase 3 Cluster M settling (test-as-data substrate stable).
 - **Slice 7**: Affected-set integration via BinaryShim → **Verification Mgr (clever-tern-670) lane**. Gated on Slice 5 + PR #2713 (✓ merged).
-- **Slice 8**: ci.yml deletion + emission-target toggle finalized + `ci_yml_dissolved` gate PASSING → **Substrate Mgr (warm-wolf-698) lane**. Gated on Slices 4-7 + acceptance verification.
+- **Slice 8**: ci.yml hand-authority dissolution (hand-authored content replaced by emission artifact or thin-shim per chosen `EmissionTarget`) + emission-target toggle finalized + `ci_yml_hand_authority_dissolved` gate PASSING → **Substrate Mgr (warm-wolf-698) lane**. Gated on Slices 4-7 + acceptance verification. **NOTE** (per briansrls BLOCKING #PR2744 2026-05-12): NOT file-deletion — P5 / Pure Bootstrap dissolves AUTHORITY, and YamlStatic / BinaryShim / PythonShim emission paths all require some `.github/workflows/ci.yml` artifact (full-emit or thin-shim) for GH Actions trigger discovery.
 
 ## §4. Dependency graph
 
@@ -116,9 +116,9 @@ Critical path (forward):
                                                           │                                        │
                           Phase 3 Cluster M settles → Slice 6 (Cost dim) ─────────────────────────┤
                                                                                                   │
-                                                                                                  ├─→ Slice 8 (ci.yml deletion)
+                                                                                                  ├─→ Slice 8 (ci.yml hand-authority dissolution)
                                                                                                   │
-                                                                                                  └─→ all 4 NEW §1.8 gates PASSING
+                                                                                                  └─→ all 6 NEW §1.8 gates PASSING
 
 Parallelizable (started 2026-05-12 — dispatched under PM):
   - WI-1 emitter-dispatch architecture canvas (worker still-heron-763)
@@ -133,7 +133,7 @@ Assumes:
 - WI-1 + WI-2 land within 1 week (drafts in flight)
 - Slices 4-5 take 1-2 weeks each (emitter implementation)
 - Slice 7 (affected-set integration) takes 1-2 weeks
-- Slice 8 (ci.yml deletion + acceptance) takes 1 week
+- Slice 8 (ci.yml hand-authority dissolution + acceptance) takes 1 week
 
 **Estimated R3-close-with-FULL**: 6-10 weeks from 2026-05-12. Tight but achievable if external gates (T-LBP, Phase 3 Cluster M) resolve on schedule.
 
@@ -158,12 +158,12 @@ Both workers briefed with brief-pointer messages 2026-05-12 ~06:30Z. Canvas + ex
 **Director (zesty-bear-812) ratified at msg_5cbdad24 2026-05-12 ~06:35Z**:
 
 1. ✅ **FULL R3-close scope ratified** — operator directive aligns with #846 c#4412330468 framing; no R4 carve
-2. ✅ **Gate framing: GATE-ADDITIVE** (NOT scope-expand #56); 4 NEW gates per §1
+2. ✅ **Gate framing: GATE-ADDITIVE** (NOT scope-expand #56); 4 NEW gates per §1 (subsequently revised to 6 NEW per msg_f9fd669e + briansrls BLOCKING fix 2026-05-12 — see §1 current table)
 3. ✅ **Owner-Mgr decision: LANE-ABSORB to Substrate Mgr (warm-wolf-698)** with explicit T-CI-WAD program-tag on work-items; no dedicated T-CI-WAD Mgr spawn (avoids standing-Mgr-bottleneck per `feedback_standing_managers_need_owned_deliverables`)
 4. ✅ **Sequencing endorsed** (Slice 2 gated T-LBP; Slice 6 gated Phase 3 Cluster M; WI-1/WI-2 dispatched immediately)
 
 **Lane-absorption details** (Director-ratified):
-- **Substrate Mgr (warm-wolf-698)**: absorbs Slices 4-5 (emitters) + Slice 8 (ci.yml deletion) into T-WAD lane with T-CI-WAD program-tag; consumes WI-1 canvas + WI-2 extension PR output
+- **Substrate Mgr (warm-wolf-698)**: absorbs Slices 4-5 (emitters) + Slice 8 (ci.yml hand-authority dissolution) into T-WAD lane with T-CI-WAD program-tag; consumes WI-1 canvas + WI-2 extension PR output
 - **Verification Mgr (clever-tern-670)**: absorbs Slice 7 (affected-set integration in BinaryShim) — natural extension of PR #2713 ownership
 - **Debt-Paydown Mgr (zesty-boar-261)**: absorbs Slice 6 sub-component (slow-test-exemptions.txt dissolution; Cost-dimension on tests integrates with Phase 3 Cluster M test-as-data substrate)
 
@@ -190,7 +190,7 @@ Director scaffolded acceptance-aggregator pattern doc at `docs/design-section-1-
 
 | Proposed | Predicate-family | Lane | depends_on (lattice-meet status) |
 |---|---|---|---|
-| `t_ci_wad_acceptance` (or PM-named equivalent) | acceptance-aggregator | T-CI-WAD | **#56 + 6 NEW** (from §1): #56, `ci_yml_deleted`, `emission_target_open_enum_landed`, `project_github_actions_landed`, `test_cost_dimension_landed`, `slow_test_exemptions_dissolved`, `ci_uses_affected_set_selection` |
+| `t_ci_wad_acceptance` (or PM-named equivalent) | acceptance-aggregator | T-CI-WAD | **#56 + 6 NEW** (from §1): #56, `ci_yml_hand_authority_dissolved`, `emission_target_open_enum_landed`, `project_github_actions_landed`, `test_cost_dimension_landed`, `slow_test_exemptions_dissolved`, `ci_uses_affected_set_selection` |
 
 **Status**: PARKED pending PR #2748 ratification (currently 1/2 approvals). When PR #2748 ratifies, this pilot row inserts into §1.8 ledger as the canonical T-CI-WAD aggregator. Sibling clusters (Cluster M / Cluster F / Cluster K / T-V2-Retirement) get the same template at low marginal cost.
 
