@@ -113,6 +113,40 @@ elif (( actual_diff_count < expected_diff_count )) && (( inventoried_present == 
   :
 fi
 
+# ---- Drift detector: OTHER path-regex selection mechanisms -----------------
+# A second class of authoritative path-regex selection that does NOT route
+# through `git diff --name-only`:
+#
+#   * Trigger-level `paths:` / `paths-ignore:` filters on `on: push:` /
+#     `on: pull_request:` (skip the workflow when no matching files change).
+#   * `dorny/paths-filter` action usage (popular changed-files filter action).
+#   * `tj-actions/changed-files` action usage (alternative changed-files
+#     action).
+#   * The literal substring `paths-filter` used in step uses-clauses.
+#
+# Baseline today (`.github/workflows/*.yml`): zero occurrences of any of
+# these. The Slice 7 dissolution surface is meant to consume the PR #2713
+# affected-set lens via the BinaryShim runner — not to grow a second
+# parallel selection authority. Any introduction → fail.
+#
+# If a legitimate event-orthogonal use of `paths:` is needed in future,
+# document it in $INVENTORY_DOC §3 and add the specific file:line to an
+# explicit allowlist here (mirroring the `expected_diff_count` pattern
+# above). The default stance is fail-closed.
+while IFS= read -r match; do
+  [[ -z "$match" ]] && continue
+  fail "new non-diff path-regex selection candidate: $match
+        Matches one of: trigger-level paths:/paths-ignore:, dorny/paths-filter,
+        tj-actions/changed-files, or 'paths-filter' uses-clause substring.
+        Either dissolve via the BinaryShim runner (post–Slice 5) or, if event-
+        orthogonal, document in $INVENTORY_DOC §3 and add an explicit allowlist
+        entry to this script."
+done < <(
+  git ls-files -z '.github/workflows/*.yml' \
+    | xargs -0 grep -nHE "^[[:space:]]*paths(-ignore)?:|dorny/paths-filter|tj-actions/changed-files|paths-filter@" \
+        2>/dev/null || true
+)
+
 if (( violations > 0 )); then
   note "$violations violation(s) — see messages above."
   exit 1

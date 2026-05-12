@@ -76,15 +76,25 @@ edits don't false-trip):
 The script `scripts/check-workflow-path-regex-inventory.sh` is a structural
 test that exits non-zero in any of:
 
-- **New authoritative selection** appears outside the inventoried sites. The
-  script counts `git diff --name-only` invocations across **all**
+- **New authoritative selection** appears outside the inventoried sites.
+  The script covers **two** detector classes across **all**
   `.github/workflows/*.yml` (explicitly including `ci.yml` itself, so the
-  inventoried file is not free to grow a second un-inventoried selector) and
-  compares against the expected baseline (currently `1`, the §3 row #1
-  invocation anchored at `origin/main...HEAD`). Any occurrence beyond the
-  inventoried anchor → fail with a pointer to this document so the operator
-  must either add to inventory + canvas (and bump `expected_diff_count` in
-  the script) or remove the new bridge.
+  inventoried file is not free to grow un-inventoried selection):
+
+  1. **`git diff --name-only` bridges.** Count of these invocations is
+     compared against the expected baseline (currently `1`, the §3 row #1
+     invocation anchored at `origin/main...HEAD`). Any occurrence beyond
+     that anchor fails.
+  2. **Non-diff path-regex mechanisms.** Trigger-level `paths:` /
+     `paths-ignore:` filters on `on: push:` / `on: pull_request:`; use of
+     `dorny/paths-filter`; use of `tj-actions/changed-files`; or the
+     literal substring `paths-filter@` in a `uses:` clause. Baseline today
+     is **zero** occurrences across all workflows; any occurrence fails.
+
+  Either detector firing → fail with a pointer to this document so the
+  operator must dissolve the selection via the BinaryShim runner
+  (post–Slice 5) OR, if the bridge is genuinely event-orthogonal, add it
+  to §3 with rationale and an explicit allowlist entry in the script.
 - **Inventory drift before replacement**: if either fingerprint listed in §3
   vanishes before Slice 7 implementation lands a structurally documented
   BinaryShim runner consuming PR #2713, the script fails. Rationale: silently
