@@ -135,7 +135,10 @@ R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), R4.C (low-lev
 
 **Proof shape (per projection class)** — what "faithful" means concretely:
 
-1. **Emission projections** (target language / LLVM IR / machine code / assembly / etc.) — faithfulness = **cross-target consistency**: emitted code in language T1 produces the same observable behavior as emitted code in language T2, for the same LHS. This is the existing R3 free-consequences-demonstration lane (gates #43-#52) generalized to all R4 emission targets. Cementing pattern: frozen-oracle parity per gate #87.
+1. **Emission projections** (target language / LLVM IR / machine code / assembly / etc.) — faithfulness has **two structural requirements** (per `THESIS.md:178-180` Tier 3 + `docs/design-emission-model.md:406-408`):
+    - **L4 emit/eval match** (LHS↔RHS faithfulness; load-bearing): emitted target output executes equivalently to `.dag` evaluation of the same LHS. Without L4, multiple targets could agree (L5) while all being unfaithful to the LHS substrate. L4 is the primary faithfulness gate. Lane: `T-Verification-L4-L7-Direct` corpus-driven runtime harness.
+    - **L5 cross-target consistency** (inter-RHS faithfulness): emitted code in language T1 produces the same observable behavior as emitted code in language T2, for the same LHS. R3 free-consequences-demonstration lane (gates #43-#52) generalized to all R4 emission targets. Lane: `T-Verification-L5-Corpus` corpus-driven equivalence check.
+    Cementing pattern for both: frozen-oracle parity per gate #87. L4 catches "all targets agree but diverge from LHS"; L5 catches "targets disagree". Both required for full emission faithfulness.
 
 2. **Ingestion projections** (parse target → substrate) — faithfulness = **round-trip identity**: `parse(emit(x)) ≡ x` for the substrate (up to substrate-equivalence; not byte-level). This is the R4.A architectural falsifier. If any extdep has emission-only assumptions, the round-trip breaks.
 
