@@ -992,11 +992,13 @@ dispositioned:
    declaration + derived-binding form.
 5. **S1 projection function gate — NEW §1.8 GATE**:
    `project_github_actions_landed` (substrate-shape family) — discrete
-   from Slice 5 (`ci_yml_deleted`, state-check). Per kernel-modeling
-   discipline (Conj over discrete constituents) + PR #2748 aggregator-
-   pattern semantics. Aggregator pilot row (PR #2748) revises T-CI-WAD
-   `depends_on:` from #56 + 4 NEW to **#56 + 5 NEW** to include this
-   gate.
+   from **Slice 8 `ci_yml_dissolved`** (state-check, per §4 / §1
+   Director-ratified gate-set). The projection function landing is a
+   substrate-shape gate independent of the ci.yml dissolution
+   state-check Slice 8 performs. Per kernel-modeling discipline (Conj
+   over discrete constituents) + PR #2748 aggregator-pattern semantics.
+   Aggregator pilot row (PR #2748) revises T-CI-WAD `depends_on:` from
+   #56 + 4 NEW to **#56 + 5 NEW** to include this gate.
 
 **Memorialized discipline**:
 `feedback_extdeps_header_discriminator_before_field_placement` —
