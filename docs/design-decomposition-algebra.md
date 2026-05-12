@@ -136,13 +136,30 @@ type Phase
 
 **Until either proof lands**: workflow-types stay extant; decomp-algebra is co-located not replacing. The dissolution claim is **staged with trigger**: trigger = per-consumer enumeration proves no information loss.
 
-**Other workflow-type mappings** (unchanged from initial proposal):
-- `ImplementationTask.done: Bool` IS the leaf-Mode + Phase=Closed case
-- `AuditEntry` → per-event payload inside `EventLog<NodeOperation>` primitive (Gap 1 from §5)
-- `StageOutcome.status` → Operation outcome (already part of operation algebra)
-- `Signal` (idempotent event) → audit-log-position model; idempotency-key becomes "log-position-or-higher matches"
+**Pipeline-coordinate facts MUST be preserved as separate axes** (post-codex inline BLOCKING #2 2026-05-12T19:08Z): the grep audit of `dsl/gunbc/workflow/types.dag` surfaces facts USED downstream as pipeline coordinates, that the initial dissolution proposal would have dropped:
 
-Per `feedback_checkpoint_dissolution_default.md`: at C-checkpoints, dissolution is default — but dissolution requires structural-coordinate preservation, not lossy collapse.
+| Fact | Citation | Pipeline role | Preservation strategy |
+|---|---|---|---|
+| `StageRunKey` | `dsl/gunbc/workflow/types.dag:159` | Unique per-stage-invocation identifier; threads through `StageOutcome:184`, `PipelineArtifact:213`, `MetricRecord:225`, `RetryDue:239`, `TerminalStateReached:243` | KEEP as first-class fact; `RunKey` is a node-decomposition-independent coordinate (work-item can have N runs across its lifecycle). NOT dissolved into Mode/Phase. |
+| `ClaimLease` | `dsl/gunbc/workflow/types.dag:166` | Lease-generation + expiry for stage-execution claims | KEEP. Lease-claim semantics are pipeline-coordinate, not decomposition-state. |
+| `SignalType` | `dsl/gunbc/workflow/types.dag:235` | Idempotency-keyed signal payload kind | KEEP. Signals are events on the EventLog (Gap 1); SignalType is the event-payload tag, structurally distinct from Mode/Phase. |
+| `PipelineArtifact` | `dsl/gunbc/workflow/types.dag:120, 212-214` | Stage-output artifact with type tag (`artifact_id`, `artifact_type`) | KEEP. Artifacts are stage-produced facts; flow forward from run to run. |
+| `ArtifactType` | `dsl/gunbc/workflow/types.dag:214, 226` | Artifact taxonomy | KEEP as open enum subject to Practice 4. |
+| Metrics (`artifacts_stored: Int` at 318, `MetricRecord` at 225) | `dsl/gunbc/workflow/types.dag:225, 318` | Per-stage telemetry; aggregated upstream | KEEP. Metrics are observability facts, structurally separate. |
+
+**Per `feedback_projections_must_compose_facts.md`** + **INVARIANTS P2 facts-flow-forward**: facts MUST flow forward through projections. Dissolving stage to mode/phase WITHOUT preserving stage-bound facts violates P2. The corrected dissolution treats `IssueLifecycleStage` as a stage-tag whose VALUE collapses into `(Mode, Phase)` BUT the run-keyed facts (RunKey / ClaimLease / SignalType / Artifacts / Metrics) remain structurally distinct.
+
+**Other workflow-type mappings** (refined):
+- `ImplementationTask.done: Bool` → leaf-Mode + Phase=Closed case (Mode × Phase axes)
+- `TrackedIssue.stage` (the stage-value) → collapses into `(currentMode, currentPhase)` projection lens
+- `StageOutcome` → KEEP as run-keyed pipeline fact; `StageOutcome.status` → Operation outcome on a specific run; `run_key` threads forward
+- `StageRunKey` → KEEP as first-class run-identifier; orthogonal to decomposition
+- `ClaimLease` → KEEP as lease-execution coordinate
+- `Signal` → audit-log-position model for idempotency; `SignalType` enum tag stays
+- `PipelineArtifact` → KEEP; artifacts are stage-output facts forward-flowing
+- `AuditEntry` → per-event payload inside `EventLog<Operation>` primitive (Gap 1 from §5)
+
+Per `feedback_checkpoint_dissolution_default.md`: at C-checkpoints, dissolution is default — but dissolution requires both structural-coordinate preservation (Mode × Phase axes) AND fact-preservation (run-keyed facts flow forward unaffected). The dissolution proof is bounded: only stage-VALUE collapses; stage-bound facts persist.
 
 ---
 
