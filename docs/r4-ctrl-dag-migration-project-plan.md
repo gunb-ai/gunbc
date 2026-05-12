@@ -240,6 +240,10 @@ Phase 0 (DONE)
 
 **No "future authority" phase**: Q-G resolved per operator directive — substrate becomes authority THE MOMENT emission proves out for that subsystem. No co-authority window.
 
+**Parallel ≠ independent — Verification Mgr is the throttle** (per claude #10327 exploratory observation 2026-05-12T19:22Z): "Phase 1 + 1.5 + 3 in parallel" does NOT mean Phase 1.5 PRs can outrun their matching Phase 3 emission target indefinitely. Each Phase 1.5 PR that lands before its matching Phase 3 emission target **explicitly accepts staged-debt** — the .dag file is 🟡 STAGED with no convergence trigger in sight. The Verification Mgr **throttles** by tracking the staged-debt backlog per subsystem; when staged-debt exceeds a budget (proposed: 3 subsystems with no matching emission target landed), pause Phase 1.5 dispatch and prioritize the emission target Mgr's work.
+
+**Wave-1-trio checkpoint** (per claude #10327 exploratory observation): before fanning Wave 2 dispatch (Day 6-10), require **at least one full trio convergence** on a Wave-1 subsystem (algebra ✓ + Phase 1.5 modeling PR ✓ + Phase 3 emission target ✓). This validates the convergence pattern works END-TO-END on a real subsystem before spinning up the other 13 in parallel. If Wave-1 trio fails to converge by Day 10, surface to PM for re-scope. Risk this mitigates: 16 staged `.dag` files with no dissolution receipts firing.
+
 ---
 
 ## §7. First-wave dispatch shape
@@ -376,10 +380,17 @@ Each Phase 1.5 worker brief should declare:
 2. Spawn worker to scaffold byte-identity test infrastructure
 3. Author first per-subsystem cut-over brief when first subsystem's trio (algebra + modeling + emission) converges (~Day 10-14)
 
-**Wave-2 dispatch (~Day 6-10)**:
+**WAVE-1-TRIO CHECKPOINT (~Day 7-10)** — REQUIRED before Wave 2 dispatch:
+- Verification Mgr validates one Wave-1 subsystem's full trio convergence: algebra ✓ + Phase 1.5 modeling PR merged ✓ + Phase 3 emission target landed ✓ + parity test passes ✓
+- If trio converges: Wave 2 fans out (Day 6-10 timeline holds)
+- If trio does NOT converge by Day 10: PAUSE Wave 2 dispatch; surface to PM for re-scope. Risk mitigated: 16 staged `.dag` files with no dissolution receipts firing (per claude #10327 exploratory observation 2026-05-12T19:22Z)
+
+**Wave-2 dispatch (~Day 6-10, gated on Wave-1-trio checkpoint)**:
 - Subsystem-Modeling Mgr: 6 second-wave briefs (catalog #2, 4, 6, 7, 9, 13) for algebra-consuming items
 - Emission-Targets Mgr: SQL + audit-event briefs in parallel
-- Verification Mgr: parity test infrastructure landing
+- Verification Mgr: parity test infrastructure landing + ongoing staged-debt-budget throttle
+
+**Staged-debt budget** (Verification Mgr enforces): if at any time 3+ subsystems have merged 🟡 STAGED .dag files with no matching Phase 3 emission target landed, Subsystem-Modeling Mgr PAUSES new Phase 1.5 dispatch until Emission-Targets Mgr catches up. Prevents runaway staged-debt accumulation.
 
 **Convergence cut-over (~Day 14+)**:
 - First subsystem cut-over PR lands (TS file deleted; emission projection becomes authority)
