@@ -138,6 +138,11 @@ const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[CementingReceipt] = &[
         stem: "complexity_lens_behavioral_completion",
         kind: CementingReceiptKind::TemporaryRustModule,
     },
+    CementingReceipt {
+        registry_name: "cost_symbolic",
+        stem: "cost_lens_symbolic_consumer_test",
+        kind: CementingReceiptKind::TemporaryRustModule,
+    },
 ];
 
 fn run_with_cementing_stack(f: impl FnOnce() + Send + 'static) {
@@ -541,6 +546,22 @@ fn cementing_cost_receipt_pair_stays_explicit_until_complexity_summary_claim_lan
          TestPredicate/substrate blocker has landed and the replacement `.dag` claim \
          covers the published `complexity_of` carrier with nested `ComplexitySummary` / \
          `SymbolicCost` expected literals."
+    );
+}
+
+#[test]
+fn cementing_cost_symbolic_receipt_stays_explicit_until_symbolic_cost_claim_lands() {
+    let cost_symbolic_receipts: BTreeSet<(&str, &str)> = CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
+        .iter()
+        .filter(|receipt| receipt.registry_name == "cost_symbolic")
+        .map(|receipt| (receipt.stem, receipt.kind.as_str()))
+        .collect();
+
+    let expected = BTreeSet::from([("cost_lens_symbolic_consumer_test", "temporary-rust")]);
+    assert_eq!(
+        cost_symbolic_receipts, expected,
+        "`cost_symbolic` must keep an explicit Band-C receipt while `.dag` TestClaims \
+         cannot express nested `SymbolicCost` / `SizeVariable` expected values."
     );
 }
 
