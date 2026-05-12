@@ -45,7 +45,7 @@ This doc records **pointers to reviewer comments whose exact semantics have not 
 **Status**: **unverified**. Same recovery prerequisite as Pointer 1.
 
 **What is known**:
-- Topic header references test-runner ratchet machinery (adjacent to `TEST_TIMEOUT_MAX_EXEMPTIONS` per MEMORY.md hot-fix 2026-05-12 ctrl#217 substrate)
+- Topic header references test-runner ratchet machinery (adjacent to the `TEST_TIMEOUT_MAX_EXEMPTIONS` ratchet substrate landed via ctrl#217 around 2026-05-08; the in-repo authority for this ratchet is the macro-call grep predicates and TEST_TIMEOUT_MAX_EXEMPTIONS constant location in the test-runner sources — *not* an in-repo `MEMORY.md` file. Earlier draft of this bullet cited `MEMORY.md` (the agent's session-local auto-memory file, not committed to the repo); reference updated per cursor APPROVE_WITH_COMMENTS review 10287 on PR #2768 — see ctrl#217 + adjacent feedback memories `feedback_macro_call_grep_whitespace` for the discipline trail outside this repo)
 - Worker verified as "valid" before STOP
 
 **What is NOT known**:
