@@ -118,9 +118,9 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
         Ok(()) => WorkflowParallelismReport::ParallelCompositionVerdict(
             CompositionVerdict::IdempotentComposition,
         ),
-        Err((a, b)) => parallel_unsupported(
+        Err((_a, _b)) => parallel_unsupported(
             ParallelismUnsupportedKind::PairwiseNonCommute,
-            format!("operations `{a}` and `{b}` do not commute under parallel scheduling"),
+            "parallel branch operations do not commute under parallel scheduling",
         ),
     }
 }
