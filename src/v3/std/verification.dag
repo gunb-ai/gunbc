@@ -314,7 +314,7 @@ type TestPredicate
   // unique, pinned `cost` / `cost_symbolic` receipt subsets hold, and each receipt's
   // on-disk harness exists (`tests/dag/<stem>.dag` vs `integration/cementing/<stem>.rs`
   // + `tests/integration.rs` wiring for temporary Rust receipts). See
-  // `test_runner::eval_cementing_dispatch_matches_projection`.
+  // `cementing_dispatch::evaluate_cementing_dispatch_projection` (wired from `test_runner`).
   | CementingDispatchMatchesProjection {
       capability_register: DeclarationRef
       cementing_receipts: DeclarationRef
