@@ -59,7 +59,16 @@ pub enum CiWorkflowDiff {
     TouchedGates(BTreeSet<CiGateId>),
 }
 
-/// Returns gate ids to execute: the **connected component** of the seed under the symmetric
+/// [`select_affected_gates`] failed: malformed `CIWorkflowDag` carrier or non-acyclic prerequisites.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CiAffectedGatesError {
+    /// `CIGateEdge` names a gate id not present in [`CiWorkflowDagInput::gates`] (violates single roster authority in `dsl/gunbc/ci.dag`).
+    UnknownEdgeEndpoint { from: CiGateId, to: CiGateId },
+    /// The directed prerequisite subgraph on the selected vertex set is not a DAG (cycle or broken indegree accounting).
+    NonAcyclicPrerequisiteGraph,
+}
+
+/// On success, returns gate ids to execute: the **connected component** of the seed under the symmetric
 /// closure of prerequisite edges (iterate `from ↔ to` adjacency to fixpoint), then
 /// **topologically sorted** on the directed subgraph (prerequisites first).
 ///
@@ -67,11 +76,28 @@ pub enum CiWorkflowDiff {
 /// any touched id not present in `dag.gates` forces **all** gates listed in `dag.gates`
 /// into the plan (superset within this DAG).
 ///
-/// **Empty diff** (`TouchedGates` empty): returns an **empty** plan — callers map that
+/// **Empty diff** (`TouchedGates` empty): returns `Ok` of an **empty** plan — callers map that
 /// to “no merge-blocking re-verify” vs “full superset” per repository policy **outside**
 /// this function (this module does not read policy carriers).
-pub fn select_affected_gates(dag: &CiWorkflowDagInput, diff: &CiWorkflowDiff) -> Vec<CiGateId> {
+///
+/// **Malformed carrier:** any edge whose `from` or `to` is absent from [`CiWorkflowDagInput::gates`]
+/// yields [`CiAffectedGatesError::UnknownEdgeEndpoint`] (fail-closed; no silent skip of bad edges).
+/// A directed cycle (or other non-DAG shape) on the selected prerequisite subgraph yields
+/// [`CiAffectedGatesError::NonAcyclicPrerequisiteGraph`] instead of fabricating a sort order.
+pub fn select_affected_gates(
+    dag: &CiWorkflowDagInput,
+    diff: &CiWorkflowDiff,
+) -> Result<Vec<CiGateId>, CiAffectedGatesError> {
     let known: HashSet<&str> = dag.gates.iter().map(|g| g.id.as_str()).collect();
+    for (from, to) in &dag.edges {
+        if !known.contains(from.as_str()) || !known.contains(to.as_str()) {
+            return Err(CiAffectedGatesError::UnknownEdgeEndpoint {
+                from: from.clone(),
+                to: to.clone(),
+            });
+        }
+    }
+
     let force_superset = match diff {
         CiWorkflowDiff::TouchAll => false,
         CiWorkflowDiff::TouchedGates(ids) => ids.iter().any(|id| !known.contains(id.as_str())),
@@ -87,7 +113,7 @@ pub fn select_affected_gates(dag: &CiWorkflowDagInput, diff: &CiWorkflowDiff) ->
     };
 
     if seed.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     // Symmetric edge closure: expand along `from ↔ to` until stable, then topo-sort
@@ -115,7 +141,8 @@ pub fn select_affected_gates(dag: &CiWorkflowDagInput, diff: &CiWorkflowDiff) ->
 
 /// Set inclusion witness for ratchet tests.
 ///
-/// Returns whether `select_affected_gates(dag, narrow)` ⊆ `select_affected_gates(dag, wide)` as sets.
+/// Returns whether `select_affected_gates(dag, narrow)` ⊆ `select_affected_gates(dag, wide)` as sets
+/// when **both** calls succeed; if either returns `Err`, returns `false`.
 /// Intended use: both arguments are [`CiWorkflowDiff::TouchedGates`] with `narrow_ids ⊆ wide_ids`, or
 /// `wide` is [`CiWorkflowDiff::TouchAll`] (superset selection). Other pairings are not a refinement
 /// partial order and may return `false` even when both plans are individually valid.
@@ -124,12 +151,23 @@ pub fn selection_subset_under_touch_set_growth(
     narrow: &CiWorkflowDiff,
     wide: &CiWorkflowDiff,
 ) -> bool {
-    let a: BTreeSet<_> = select_affected_gates(dag, narrow).into_iter().collect();
-    let b: BTreeSet<_> = select_affected_gates(dag, wide).into_iter().collect();
-    a.is_subset(&b)
+    match (
+        select_affected_gates(dag, narrow),
+        select_affected_gates(dag, wide),
+    ) {
+        (Ok(a), Ok(b)) => {
+            let a: BTreeSet<_> = a.into_iter().collect();
+            let b: BTreeSet<_> = b.into_iter().collect();
+            a.is_subset(&b)
+        }
+        _ => false,
+    }
 }
 
-fn topo_sort_subset(dag: &CiWorkflowDagInput, subset: &HashSet<&str>) -> Vec<CiGateId> {
+fn topo_sort_subset(
+    dag: &CiWorkflowDagInput,
+    subset: &HashSet<&str>,
+) -> Result<Vec<CiGateId>, CiAffectedGatesError> {
     let mut indegree: HashMap<&str, usize> = HashMap::new();
     for id in subset.iter().copied() {
         indegree.entry(id).or_insert(0);
@@ -171,12 +209,9 @@ fn topo_sort_subset(dag: &CiWorkflowDagInput, subset: &HashSet<&str>) -> Vec<CiG
     }
 
     if out.len() != subset.len() {
-        // Cycle or broken graph — fail-closed: deterministic id order of subset.
-        let mut all: Vec<CiGateId> = subset.iter().map(|s| (*s).to_string()).collect();
-        all.sort();
-        return all;
+        return Err(CiAffectedGatesError::NonAcyclicPrerequisiteGraph);
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -216,13 +251,14 @@ mod tests {
     fn select_affected_gates_empty_diff_returns_empty_plan() {
         let dag = demo_ci_dag();
         let diff = CiWorkflowDiff::TouchedGates(BTreeSet::new());
-        assert!(select_affected_gates(&dag, &diff).is_empty());
+        assert_eq!(select_affected_gates(&dag, &diff), Ok(Vec::new()));
     }
 
     #[test]
     fn select_affected_gates_touch_all_runs_full_dag_in_topo_order() {
         let dag = demo_ci_dag();
-        let got = select_affected_gates(&dag, &CiWorkflowDiff::TouchAll);
+        let got =
+            select_affected_gates(&dag, &CiWorkflowDiff::TouchAll).expect("demo dag is valid");
         assert_eq!(
             got,
             vec![
@@ -244,23 +280,66 @@ mod tests {
             edges: vec![],
         };
         let diff = CiWorkflowDiff::TouchedGates(BTreeSet::from(["solo".into()]));
-        assert_eq!(select_affected_gates(&dag, &diff), vec!["solo"]);
+        assert_eq!(
+            select_affected_gates(&dag, &diff),
+            Ok(vec!["solo".to_string()])
+        );
     }
 
     #[test]
     fn select_affected_gates_unknown_touch_id_forces_superset() {
         let dag = demo_ci_dag();
         let diff = CiWorkflowDiff::TouchedGates(BTreeSet::from(["no-such-gate".into()]));
-        let got = select_affected_gates(&dag, &diff);
-        let expect = select_affected_gates(&dag, &CiWorkflowDiff::TouchAll);
+        let got = select_affected_gates(&dag, &diff).expect("superset path is acyclic");
+        let expect = select_affected_gates(&dag, &CiWorkflowDiff::TouchAll).expect("demo dag");
         assert_eq!(got, expect);
+    }
+
+    #[test]
+    fn select_affected_gates_rejects_unknown_edge_endpoint() {
+        let dag = CiWorkflowDagInput {
+            gates: vec![CiGateMeta {
+                id: "solo".into(),
+                blocking: true,
+            }],
+            edges: vec![("solo".into(), "phantom".into())],
+        };
+        let diff = CiWorkflowDiff::TouchedGates(BTreeSet::from(["solo".into()]));
+        assert_eq!(
+            select_affected_gates(&dag, &diff),
+            Err(CiAffectedGatesError::UnknownEdgeEndpoint {
+                from: "solo".into(),
+                to: "phantom".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn select_affected_gates_rejects_prerequisite_cycle() {
+        let dag = CiWorkflowDagInput {
+            gates: vec![
+                CiGateMeta {
+                    id: "a".into(),
+                    blocking: true,
+                },
+                CiGateMeta {
+                    id: "b".into(),
+                    blocking: true,
+                },
+            ],
+            edges: vec![("a".into(), "b".into()), ("b".into(), "a".into())],
+        };
+        assert_eq!(
+            select_affected_gates(&dag, &CiWorkflowDiff::TouchAll),
+            Err(CiAffectedGatesError::NonAcyclicPrerequisiteGraph)
+        );
     }
 
     #[test]
     fn select_affected_gates_lint_only_pulls_l1_and_shared_prereqs() {
         let dag = demo_ci_dag();
         let diff = CiWorkflowDiff::TouchedGates(BTreeSet::from(["lint".into()]));
-        let got = select_affected_gates(&dag, &diff);
+        let got = select_affected_gates(&dag, &diff).expect("demo dag");
         let set: BTreeSet<_> = got.iter().cloned().collect();
         assert_eq!(
             set,
