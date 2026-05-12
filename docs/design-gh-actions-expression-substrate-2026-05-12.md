@@ -348,7 +348,7 @@ expression-capable fields in actions.dag carriers (audited 2026-05-12):
 | `RunStep` | `continue_on_error: Bool` | Bool | ✓ |
 | `RunStep` | `timeout_minutes: Int?` | Int? | ✓ |
 | `UsesStep` | `name: String?` | String? | ✓ |
-| `UsesStep` | `uses: ActionRef` | ActionRef | ✓ |
+| ~~`UsesStep`~~ | ~~`uses: ActionRef`~~ | ~~ActionRef~~ | ✗ **literal-only** per GH Actions workflow-syntax docs (no `jobs.<job_id>.steps.uses` in context-availability table); removed from inventory per operator BLOCKING at :381 (2026-05-12T10:12:15Z) — modeling-faithfulness P1 violation to invent platform capability |
 | `UsesStep` | `with: Map<String, String>` | Map values | ✓ (already in 7-site) |
 | `UsesStep` | `env: Map<String, String>` | Map values | ✓ (already in 7-site) |
 | `UsesStep` | `if_condition: String?` | String? | ✓ (already in 7-site) |
