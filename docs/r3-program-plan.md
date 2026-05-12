@@ -111,7 +111,7 @@ R3 closes when **all 102 R3-load-bearing §1.8 gates** pass + zero tracked-debt 
 - **Lane `.dag` TestClaim gates (103 enumerated; 102 R3-load-bearing post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12 — only #11 canvas-deferred)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
 - **`r3_debt_paydown_zero_remaining`**: standing-program ledger predicate — no tracked ROADMAP debt rows survive R3 close (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" + §1.5 tracked-debt inclusion list).
 
-Both must hold for R3 close. "**96** R3-load-bearing gates green" (post-carve-promotion 2026-05-09; equivalently: all §1.8 rows except canvas-deferred #11) alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
+Both must hold for R3 close. "**102** R3-load-bearing gates green" (post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12; equivalently: all §1.8 rows except canvas-deferred #11) alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
 
 **Tracked-debt inclusion list for `r3_debt_paydown_zero_remaining`** (per Director poke-hole 2026-05-06 finding 3.1; closes definition gap):
 
@@ -620,7 +620,7 @@ Pattern A executable (4-family cluster — see §1.1):
    - Remaining families (RustDagIsomorphism / SymbolicCostExprEquals / BridgeLedgerZero / Free-Consequences)
      have separate unblock paths per §2.1
 
-R3 close = **R3-load-bearing §1.8 gates GREEN** (**96** load-bearing post-carve-promotion 2026-05-09; only #11 canvas-deferred — §1.5) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt-rows-remaining (per §1 two-Pass-surfaces clarification; both must hold)
+R3 close = **R3-load-bearing §1.8 gates GREEN** (**102** load-bearing post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12; only #11 canvas-deferred — §1.5) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt-rows-remaining (per §1 two-Pass-surfaces clarification; both must hold)
 ```
 
 **Edges added in §6 graph per Director poke-hole 2026-05-06**:
@@ -998,7 +998,7 @@ PB Mgr's substantive review on PR #1808 + canvas/refinements receipt at gunbc#84
 #### §10.2.6 R3 Debt-Paydown Mgr (quiet-otter-416) — full canvas + plan-poke-hole absorbed at sha `e41e4fbe8` (2026-05-06)
 
 Substrate canvas + plan-poke-hole both folded in. Key absorptions:
-- **§1 Two-Pass-surfaces clarification**: lane TestClaim gates (97 total) AND `r3_debt_paydown_zero_remaining` are distinct Pass surfaces; both must hold for R3 close
+- **§1 Two-Pass-surfaces clarification**: lane TestClaim gates (103 total; 102 R3-load-bearing post-T-WAD-FULL-R3-elevation 2026-05-12) AND `r3_debt_paydown_zero_remaining` are distinct Pass surfaces; both must hold for R3 close
 - **§7 four-mechanism structure** (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" canonical authority): added §7.6 Velocity tripwire + §7.7 Closure-receipt cadence + §7.8 SG-0 PR-window net-shrink discipline
 - **§3 T-Debt-Paydown row** updated from "(TBD from canvas)" → YELLOW with PR #1807 + PR #1566 + Tier-1 dispatch-brief-drift-sweep anchors
 
