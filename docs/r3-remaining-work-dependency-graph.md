@@ -114,7 +114,7 @@ Each entry documents a finding initially enumerated as in-scope here but RETRACT
 
 | # | Lane | Mgr | Total | 🟢 | 🟡 | 🔴 | Critical? |
 |---|---|---|---|---|---|---|---|
-| 1 | T-Tier3-Dissolution | PB Mgr | 4 | 2 | 1 | 1 | No |
+| 1 | T-Tier3-Dissolution | PB Mgr | 4 | 2 | 2 | 0 | No |
 | 2 | T-LensProducer-Retirement | PB Mgr | 4 | 1 | 1 | 2 | **PB-Runtime gated** |
 | 3 | T-V-L4-L7-Direct | Verification | 6 | 3 | 1 | 2 | No |
 | 4 | T-V-L5-Corpus | Verification | 1 | 0 | 0 | 1 | Depends on L4 |
@@ -158,7 +158,7 @@ These gates have NO unsatisfied prerequisites. Each is an independent worker spa
 | **#84** bulk-port coordinator (framework brief) | Tests-As-Data / Cluster M | Verification | coordinator framework + 6 per-class brief stubs | Brief NOW |
 | **#98** ci_yml_hand_authority_dissolved | T-WAD | Substrate | actual ci.yml swap with WAD-emitted artifact (Slice 5) | M (post-Slice 4) |
 | **#103** ci_uses_affected_set_selection | T-WAD | Substrate / Verification | Slice 7 affected-set integration; canvas at PR #2766 | M |
-| **#2** tier3_computation_mirror_dissolved | Tier3 | PB Mgr | scope-matched to #1/#4 pattern (already landed) | S |
+| **#2** tier3_computation_mirror_dissolved | Tier3 | PB Mgr | **CONSUMER_LANDED** slice landed (`kernel_algebra_profile` routing ratchet); full **PASSING** awaits Evaluator-backed mirror retirement for `SizeBound` / `CallPattern` scaffolds | S |
 | **#15** l5_cross_target_consistency | V-L5-Corpus | Verification | corpus-driven; depends on L4 status | M |
 | **#36** bridge_retirement_ledger_zero | Bridge-Retirement | Substrate | unified ledger zero | S |
 | **#40** symbolic_cost_expr_equals_executable | CostLens | Substrate | ε path ratified 2026-05-07; Verification Mgr ratchet authoring | S-M |
@@ -203,9 +203,10 @@ These gates have NO unsatisfied prerequisites. Each is an independent worker spa
 - Worker D1: **Slow-test residual sweep** (post-cost-dim-landing follow-on)
 - Worker D2: **SG-0 trajectory follow-on** per `docs/audit/r3-sg0-trajectory-tracker.md`
 
-**PB Mgr** (currently no active session — needs successor spawn or Director re-allocation):
-- Worker PB1: **#2 tier3_computation_mirror_dissolved** (scope-matches #1/#4)
-- Worker PB2: **#16 pb_self_compile_fixed_point** (R3 interpretation strengthening)
+**PB Mgr** (nimble-crab-786 — Wave-1 pre-authored worker briefs landed under `docs/briefs/`):
+- **Briefs (author before spawn):** [`r3-wave1-pb1-tier3-gate2-computation-mirror-worker.md`](briefs/r3-wave1-pb1-tier3-gate2-computation-mirror-worker.md) (gate **#2**), [`r3-wave1-pb2-fixedpoint-gate16-r3-horizon-worker.md`](briefs/r3-wave1-pb2-fixedpoint-gate16-r3-horizon-worker.md) (gate **#16**)
+- Worker PB1: **#2** remainder — Evaluator-gated dissolution of `SizeBound` / `CallPattern` bootstrap mirrors (post-`kernel_algebra_profile` slice)
+- Worker PB2: **#16 pb_self_compile_fixed_point** (R3 interpretation strengthening; parent [`r3-pb-t-fixedpoint-worker.md`](briefs/r3-pb-t-fixedpoint-worker.md))
 
 **Wave 1 worker count: ~13-15 parallel workers**. Mgr capacity not exhausted; can scale further if needed.
 
@@ -253,7 +254,7 @@ Current state (per `dashboard-ops graph deep-wolf-155`):
 
 5. **F-β.1 canvas immediate authoring** — #82 migration-shape decisions need Director ratification. Substrate Mgr authors canvas, Director ratifies, Phase F-β.2 unblocks. **Earliest possible canvas dispatch = earliest possible cascade trigger.**
 
-6. **PB Mgr successor spawn** — currently no active PB Mgr session. T-LensProducer-Retirement + Tier3 + V2 + FixedPoint lanes need owner. Operator or Director call.
+6. **PB Mgr lane** — gate **#2** `kernel_algebra_profile` substrate-authority slice + §1.8 ledger sync can land from nimble-crab-786; Evaluator-gated Tier3 / T-LP / **#16** work remains parallel-dispatchable to child workers.
 
 7. **Class-authorization batch merges** (Director-ratified per msg_836c373b) — eliminates PM-per-PR-auth bottleneck for parser-lag PRs.
 
@@ -263,7 +264,7 @@ Current state (per `dashboard-ops graph deep-wolf-155`):
 
 **Operator (Brian) — Day 0**:
 1. Review + ratify this dispatch plan
-2. Confirm/spawn PB Mgr successor (no active session)
+2. Confirm **PB Mgr** lane authority: Wave-1 carrier is **nimble-crab-786** (PR #2781; pre-authored briefs in `docs/briefs/` per §5). Do **not** spawn a second PB Mgr while that session is active. Schedule a **successor** only on explicit handoff after #2781 merges/archives.
 3. Optionally fire reviewer-schedule for any PRs that need it (or trust auto-cycle)
 
 **PM (deep-wolf-155) — Day 1 immediately**:
@@ -288,8 +289,8 @@ Current state (per `dashboard-ops graph deep-wolf-155`):
 
 ## §9. Open questions for operator
 
-**Q-A**: PB Mgr successor — currently no active session. Spawn under Director (zesty-bear-812) for T-LP-Retirement + Tier3 + V2 + FixedPoint lanes?
-- Proposed: spawn via `dashboard-ops work-items create` under Director
+**Q-A**: PB Mgr **after nimble-crab-786 (PR #2781) handoff** — when that Wave-1 carrier merges/archives, should the next PB Mgr successor spawn under Director (zesty-bear-812) for remaining T-LP-Retirement + Tier3 + V2 + FixedPoint lanes?
+- Proposed: spawn via `dashboard-ops work-items create` under Director once the active PB Mgr session is explicitly closed (no duplicate PB Mgr merge surfaces).
 
 **Q-B**: Worker-spawn limits — Mgr capacity is +28 R3 budget. Should we cap aggressive parallelism somewhere (token cost, review-pipeline capacity, etc.)?
 - Proposed: spawn up to ~15 Wave-1; observe; scale if reviewer schedule absorbs
