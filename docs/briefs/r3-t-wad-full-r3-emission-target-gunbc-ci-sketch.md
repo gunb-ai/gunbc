@@ -1,64 +1,66 @@
 # T-CI-WAD CI projection policy sketch
 
-**Status**: PREP ONLY — consumes the pending
-`docs/design-ci-workflow-substrate-shape-2026-05-12.md` canvas. This file does
-not ratify a carrier shape.
+**Status**: PREP — supersedes prior Option B/C framings. Updated
+2026-05-12 to reflect `(c-refined)` ratification per PR #2749 §7.3-§7.5
+and Director msg_4f7f536d.
 
-The retracted option placed `EmissionTarget` on
-`dsl/extdeps/github/actions.dag::Workflow`. That violates the file's platform
-scope: GitHub Actions facts describe provider constraints, while emission
-policy is gunbc CI intent. Any surviving shape keeps the emission target under
-`dsl/gunbc/`.
+`dsl/extdeps/github/actions.dag` remains a GitHub Actions platform model only.
+It must not carry gunbc CI emission policy. The CI projection choice lives in
+the `dsl/gunbc/` namespace and is supplied at projection invocation time.
 
-Terminology is deliberately **not** Shape-A compiler `EmissionTarget` here.
-`src/v3/SELF_HOSTING.md` distinguishes compiler emission targets from Shape-B
-artifact generation: YAML is a Shape-B artifact produced by a `.dag` program,
-never a compiler target value. The names below are a CI projection policy
-placeholder for workflow artifact generation, not compiler target selection.
+Terminology remains deliberately separate from Shape-A compiler target
+selection. `src/v3/SELF_HOSTING.md` says YAML is a Shape-B artifact produced by
+`.dag` programs, never a compiler `EmissionTarget` value. The ratified
+T-CI-WAD `EmissionTarget` below is a gunbc CI projection mode for workflow
+artifact generation, not a compiler target.
 
-**Coproduct classification**: 🟡 SCAFFOLD. The current variants name the
-minimum CI projection modes needed for T-CI-WAD planning. The dissolution
-trigger is the ratified `(c-refined)` substrate landing: replace this prep
-placeholder with the canonical gunbc-namespace sum type and
-`project_github_actions(CIWorkflowDag, <projection-policy>) -> Workflow`
-signature, preserving the Shape-B/Shape-A distinction.
+**Coproduct classification**: 🟡 SCAFFOLD. The initial variants are the
+ratified projection modes needed for the T-CI-WAD sequence. Future variants are
+added only at this single gunbc-namespace authority when a real projection
+consumer lands.
 
-## Option B — Field on `CIPipeline`
+## Ratified Shape
 
 ```dag
-type CIProjectionMode = YamlStatic | BinaryShim | PythonShim
+type EmissionTarget
+  = YamlStatic
+  | BinaryShim
+  | PythonShim
+  | InlineGunbc
 
-type CIPipeline {
-  name: String
-  gates: List<CIGate>
-  projection_mode: CIProjectionMode?
-}
+fn project_github_actions(workflow: CIWorkflowDag, target: EmissionTarget) -> Workflow
 ```
 
-This is the smallest CI-intent-level placement. It is appropriate if the
-canvas ratifies `CIPipeline` as the authority that selects how gunbc projects
-its own CI.
-
-## Option C — Wrapper in `gunbc.ci`
+`EmissionTarget` is standalone. It is not a field on `CIPipeline`,
+`Workflow`, or a wrapper record. The selected target is a property of the
+projection call:
 
 ```dag
-type CIProjectionMode = YamlStatic | BinaryShim | PythonShim
-
-type WorkflowEmission {
-  pipeline: CIPipeline
-  mode: CIProjectionMode
-}
+data gunbc_ci_yml_workflow: Workflow =
+  project_github_actions(ci_workflow_dag, YamlStatic)
 ```
 
-This keeps `CIPipeline` unchanged and makes emission selection an explicit
-projection row. It is appropriate if the canvas wants a separate join point
-between provider-neutral CI intent and emitted transport.
+The binding name may persist for tests and downstream emitters, but the value
+is derived from `ci_workflow_dag`; it is not an independent hand-authored
+workflow declaration.
+
+## Rejected Shapes
+
+- `CIPipeline { emission_target }`: rejected because `CIPipeline` is
+gate-centric, not emission-artifact-centric; coupling projection policy to the
+gate list violates modeling faithfulness.
+- `WorkflowEmission { workflow, target }`: rejected because it introduces an
+implicit join and duplicate authority between workflow value and target choice.
+- `extdeps.github.actions.Workflow { emission_target }`: rejected because it
+puts gunbc CI policy into provider platform facts.
 
 ## Shared Ratchet Shape
 
-Whichever option wins:
+The focused T-CI-WAD ratchet should assert:
 
-- The CI projection policy has a single authority in `dsl/gunbc/`.
-- No CI projection policy field or variant is introduced in `dsl/extdeps/`.
-- The focused T-CI-WAD test should assert the selected carrier exists and that
-  the initial variants match the ratified `(c-refined)` substrate.
+- `EmissionTarget` and `project_github_actions` live under `dsl/gunbc/`.
+- `dsl/extdeps/github/actions.dag` has no CI projection policy field.
+- `gunbc_ci_yml_workflow` is a derived projection binding of
+  `project_github_actions(ci_workflow_dag, YamlStatic)`.
+- The initial variants are `YamlStatic`, `BinaryShim`, `PythonShim`, and
+  `InlineGunbc`.

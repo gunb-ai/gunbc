@@ -1,49 +1,58 @@
-# Worker brief skeleton — T-CI-WAD Slice 4 emission-target implementation
+# Worker brief skeleton — T-CI-WAD Slice 4 YamlStatic projection
 
-**Status**: SKELETON ONLY — substantive scope waits on
-`docs/design-ci-workflow-substrate-shape-2026-05-12.md` ratification.
+**Status**: PREP — supersedes prior option-neutral skeleton. Updated
+2026-05-12 to reflect `(c-refined)` ratification per PR #2749 §7.3-§7.5
+and Director msg_4f7f536d.
 
 **Program tag**: `t_ci_wad_full_r3_close`
 
-**Scope claim**: implement the canvas-ratified substrate shape for
-`workflow_emission_target_open_enum_landed` without introducing a second
-workflow authority. The implementation must preserve the concrete
-`Workflow > Job > Step` carrier hierarchy if option (ii) wins, preserve the
-provider-neutral node/edge graph as single authority if option (i) wins, or
-make the projection boundary explicit if option (iii) wins.
+**Scope claim**: Slice 4 implements the YamlStatic projection path over the
+ratified gunbc-namespace substrate. The target workflow value is derived as:
+
+```dag
+data gunbc_ci_yml_workflow: Workflow =
+  project_github_actions(ci_workflow_dag, YamlStatic)
+```
+
+No workflow authority is added to `dsl/extdeps/`; `Workflow` remains the GitHub
+Actions platform output carrier and `ci_workflow_dag` remains the gunbc CI
+semantic authority.
 
 ## Authority
 
-- Director hold notice: substrate-shape canvas pending under R3 Substrate Mgr.
+- PR #2749 §7.3-§7.5 and Director msg_4f7f536d: `(c-refined)` substrate shape.
+- PR #2751 / Director msg_168005e1: GitHub Actions `Expression` substrate.
 - Aggregator pattern: `t_ci_wad_full_r3_close` derives from constituent gate
   statuses by lattice meet; this brief does not hand-set aggregator status.
-- Shape canvas: `docs/design-ci-workflow-substrate-shape-2026-05-12.md`
-  (pending at skeleton authoring time).
 
 ## Inputs
 
-- Gate #56 substrate-shape decision: option (i), (ii), or (iii).
-- Existing T-WAD demo receipt and tests.
-- Existing `dsl/gunbc/ci.dag` CI intent declarations.
-- Existing GitHub Actions platform carriers, if retained by the ratified shape.
+- `dsl/gunbc/ci_emission.dag` once WI-2 lands.
+- `CIWorkflowDag` authority for gunbc CI topology.
+- `EmissionTarget` standalone gunbc sum type.
+- `project_github_actions(CIWorkflowDag, EmissionTarget) -> Workflow`.
+- `Expression::OpaqueString` for GitHub Actions expressions that remain opaque
+  until a non-YamlStatic consumer needs structural evaluation.
 
-## Deliverables
+## Slice 4 Deliverables
 
-- Ratified substrate carrier or projection-layer edits.
-- Checkable ratchet proving the chosen authority is present and singular.
+- YamlStatic emitter consumes
+  `project_github_actions(ci_workflow_dag, YamlStatic)`.
+- The emitted `.github/workflows/ci.yml` is derived from the projected
+  `Workflow` value.
+- Checkable ratchet proves the emitted artifact is not hand-authoritative.
 - Bootstrap regeneration, if `.dag` authorities change.
-- PR body mapping the implementation to the selected canvas option.
 
 ## Acceptance
 
-- No parallel workflow authority.
-- No unratified carrier hierarchy changes.
+- No `EmissionTarget` field in `dsl/extdeps/github/actions.dag`.
+- No independent hand-authored `Workflow` copy for gunbc CI.
+- `Expression::OpaqueString` is emitted verbatim to YAML.
 - Focused T-CI-WAD tests pass.
 - `regen_bootstrap --verify` passes after any intentional authority edit.
 
-## Deferred Until Ratification
+## Deferred Until WI-2 Lands
 
-- Concrete file list.
-- Exact type names and field placement.
-- YamlStatic emitter implementation details.
-- BinaryShim handoff boundary.
+- Exact file list and line-level references.
+- Concrete YamlStatic emitter entrypoint.
+- BinaryShim/PythonShim runtime handoff details.
