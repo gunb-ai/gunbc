@@ -77,9 +77,16 @@ type GateSource
   | FreshnessGate                        // proves committed stage0 == compile(source)
   | FixedPointGate                       // proves regen(regen(source)) == regen(source)
 
+type CICommand
+  = LintCommand
+  | TestCommand
+  | IgnoredTestCommand { test_name: String }
+  | ShellCommand { command: String }
+
 type CIGate {
+  id: String
   name: String
-  command: String
+  command: CICommand
   blocking: Bool
   source: GateSource
 }
@@ -89,23 +96,42 @@ type CIPipeline {
   gates: List<CIGate>
 }
 
+// CI workflow as a DAG, separate from GitHub Actions transport. `pipeline.gates`
+// is the single gate-membership authority; edges are prerequisite relationships
+// between gates carried by the pipeline.
+//
+// Scaffold boundary: until a real projection function derives provider
+// transports from this graph, `CIWorkflowDag` is the modeled authority for gate
+// dependency shape. Demo mirrors must be drift-checked against this row rather
+// than treated as an independent source of truth.
+type CIGateEdge {
+  from: CIGate
+  to: CIGate
+}
+
+type CIWorkflowDag {
+  pipeline: CIPipeline
+  edges: List<CIGateEdge>
+}
+
 // ── Gates ───────────────────────────────────────────────────────────
-// Commands are derived from compiler.dag; commands use bare "cargo"
-// because CI runners always have cargo on PATH. For local dag run,
-// tools/*.dag workflows resolve the absolute path via extdeps.tools.
-// Sustainability test: changing package_name in compiler.dag updates
-// all gate commands automatically.
+// Commands are structural intent, not rendered shell text. The coproduct keeps
+// invalid field combinations unrepresentable for the current gate set. ROADMAP
+// F12 tracks the broader typed command-record carrier that can add declaration
+// edges to gunbc.compiler command renderers and package facts.
 
 data lint_gate: CIGate = {
+  id: "lint",
   name: "Lint",
-  command: lint_command(cargo: "cargo"),
+  command: LintCommand,
   blocking: true,
   source: LintGate
 }
 
 data test_gate: CIGate = {
+  id: "tests",
   name: "Tests",
-  command: test_command(cargo: "cargo", package: test_package),
+  command: TestCommand,
   blocking: true,
   source: TestSuiteGate { test_name: "" }
 }
@@ -114,8 +140,9 @@ data test_gate: CIGate = {
 // workflows execute reliably in any environment.
 
 data l1_gate: CIGate = {
+  id: "l1-ratchet",
   name: "L1 Type Knowledge Ratchet",
-  command: "scripts/l1-ratchet.sh --check",
+  command: ShellCommand { command: "scripts/l1-ratchet.sh --check" },
   blocking: true,
   source: RatchetGate { metric: L1TypeKnowledge, direction: Stable }
 }
@@ -129,8 +156,9 @@ data l1_gate: CIGate = {
 // (6 self-compiles → 2).
 
 data compile_gates_gate: CIGate = {
+  id: "compile-gates",
   name: "Compile Gates",
-  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "ci_"),
+  command: IgnoredTestCommand { test_name: "ci_" },
   blocking: true,
   source: FixedPointGate
 }
@@ -150,3 +178,12 @@ data ci_pipeline: CIPipeline = {
   ]
 }
 
+data ci_workflow_dag: CIWorkflowDag = {
+  pipeline: ci_pipeline,
+  edges: [
+    { from: compile_gates_gate, to: lint_gate },
+    { from: compile_gates_gate, to: test_gate },
+    { from: lint_gate, to: l1_gate },
+    { from: test_gate, to: l1_gate }
+  ]
+}
