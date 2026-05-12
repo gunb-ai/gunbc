@@ -48,7 +48,9 @@ This canvas does not:
 
 - implement `WorkflowRuntime`
 - rewrite `.github/workflows/ci.yml`
-- introduce a new `MatrixSpec`, `WorkflowRuntime`, or sibling workflow carrier
+- introduce a new `MatrixSpec` or sibling workflow carrier alongside the
+  ratified `WorkflowRuntime` (`WorkflowRuntime` itself is the canvas's
+  primary substrate output and is in scope)
 - extend `dsl/gunbc/ci.dag` to full workflow coverage
 - implement affected-set lens evaluation
 - replace current Rust/Python/Go program emitters
@@ -572,7 +574,7 @@ and repository state:
 This yields two TestClaim shapes:
 
 ```dag
-data workflow_workflow_runtime_toggle_proven: TestClaim = ...
+data workflow_runtime_toggle_proven: TestClaim = ...
 data workflow_target_semantics_equivalent: TestClaim = ...
 ```
 
@@ -682,7 +684,7 @@ Recommended ratchets:
 
 | Ratchet | Purpose |
 |---|---|
-| `workflow_workflow_runtime_consumed` | `WorkflowRuntime` is read by the workflow projection/emitter. |
+| `workflow_runtime_consumed` | `WorkflowRuntime` is read by the workflow projection/emitter. |
 | `workflow_yaml_static_fresh` | emitted YAML matches checked-in artifact while static artifact remains checked in. |
 | `workflow_binary_shim_is_thin` | shim YAML contains only bootstrap/checkout/setup/invoke steps. |
 | `workflow_no_path_regex_policy` | no durable CI selection policy remains in YAML path regexes after affected-set lands. |
