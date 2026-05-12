@@ -8,7 +8,7 @@
 
 **Closure predicate**: `dsl/ctrl/pr_digests.dag` authored + 2-distinct-provider APPROVE + Mgr ratification of Practice-4 receipts.
 
-**Wave-1-trio-anchor status**: this worker is the **proposed trio anchor** per Mgr brief §"Wave-1-trio checkpoint." If this subsystem converges end-to-end (algebra ✓ + this PR ✓ + Phase 3 render-helpers extdep ✓ + parity test ✓) by Day 10, Wave-2 fanout unblocks. If not, Mgr surfaces to Director for re-scope before Wave-2 dispatch.
+**Wave-1-trio-anchor status**: this worker is the **proposed trio anchor** per Mgr brief §"Wave-1-trio checkpoint." If this subsystem converges end-to-end (algebra ✓ + this PR ✓ + Phase 3 gunbc-owned render projection over `dsl/std/render.dag` ✓ + named parity-harness gate green ✓) by Day 10, Wave-2 fanout unblocks. If not, Mgr surfaces to Director for re-scope before Wave-2 dispatch. **Phase-3 is gunbc-owned render projection, NOT a new extdep** — per INVARIANTS P1 + Director/Emission ratification 2026-05-12.
 
 ---
 

@@ -67,7 +67,7 @@ Per plan §6 / §7 (incorporating claude review #10327 exploratory observation 2
 
 **Before any Wave-2 dispatch fires, this Mgr requires at least one full trio convergence on a Wave-1 subsystem**: algebra ✓ (Phase 1 substrate landed) **+** Phase 1.5 modeling PR ✓ (this lane) **+** Phase 3 emission target ✓ (Emission-Targets Mgr lane) **+** parity test passing.
 
-**Recommended trio anchor**: catalog #8 (PR digests). Reason: pure-function-heavy, no SQL/HTTP runtime side-effects, the corresponding emission target is the smallest possible Phase 3 deliverable (a render-helpers extdep, essentially zero new external authority).
+**Recommended trio anchor**: catalog #8 (PR digests). Reason: pure-function-heavy, no SQL/HTTP runtime side-effects, the corresponding Phase 3 deliverable is the smallest possible — a **gunbc-owned render projection** over `dsl/std/render.dag` (proposed `dsl/gunbc/digest_render.dag`), consuming GitHub source facts already in `dsl/extdeps/github/pulls.dag`. Per INVARIANTS P1 + `feedback_extdeps_header_discriminator_before_field_placement.md`: extdeps own third-party source facts; rendering/projection is gunbc-owned. The trio's Phase-3 emission is NOT an extdep landing.
 
 If the Wave-1 trio fails to converge by Day 10, this Mgr **pauses Wave-2 dispatch and surfaces to the Director for re-scope** — do not paper over a structural convergence failure by dispatching more staged-debt.
 
