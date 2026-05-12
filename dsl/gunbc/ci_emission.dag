@@ -65,6 +65,9 @@ func github_actions_binary_shim_placeholder_workflow() -> Workflow =
   }
 
 func project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow =
+  // YamlStatic: return the **YAML-pinned** carrier on `dag` (Slice 4 — no derived
+  // projection from `pipeline`/`edges` yet; that dissolution is WI-2 follow-on).
+  // This is transport-arm selection, not a second gate-topology editor.
   match runtime {
     YamlStatic => dag.github_actions_workflow
     BinaryShim => github_actions_binary_shim_placeholder_workflow()

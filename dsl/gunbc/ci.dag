@@ -105,6 +105,16 @@ type CIPipeline {
 // transports from this graph, `CIWorkflowDag` is the modeled authority for gate
 // dependency shape. Demo mirrors must be drift-checked against this row rather
 // than treated as an independent source of truth.
+//
+// `github_actions_workflow` does **not** author or compete with `pipeline` /
+// `edges` (still the sole gate-topology authority). It pins the **typed Actions
+// `Workflow` carrier** regenerated from `.github/workflows/ci.yml` into
+// `dsl/gunbc/ci_github_actions_workflow.dag` (byte-for-byte drift test in
+// `t_ci_workflow_as_data_demo_test.rs`). That is **one mechanical encoding** of
+// the repo's CI YAML — not a second editorial truth for *which compiler gates
+// exist*; YAML↔carrier drift is fail-closed, while gate↔YAML alignment remains a
+// separate process concern until a structural projection dissolves the scaffold
+// (see `project_github_actions` / WI-2 follow-on).
 type CIGateEdge {
   from: CIGate
   to: CIGate
