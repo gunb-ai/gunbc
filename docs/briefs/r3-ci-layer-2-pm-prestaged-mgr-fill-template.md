@@ -143,6 +143,17 @@ Each row: `(test_pattern, dimensions, required_paths_regex, confidence, dissolut
 
 **Conservative fail-closed default**: any group where Mgr is unsure of paths → mark `required_paths_regex: .*` (always-run). Similarly, when in doubt about dimensions, **add more dimensions to the set, never narrow** — over-running is cheap during the bridge-debt period; miss-running violates the locked-design contract.
 
+**Cluster aggregation predicate** (load-bearing per codex BLOCKING on earlier revision): a cluster has multiple rows (e.g., Cluster A has 4 modules). The cluster-level `skip_<cluster>` boolean is computed by **conjunction** over rows — skip the cluster ONLY when ALL rows are unaffected:
+
+```
+skip_<cluster> = ∀ row ∈ cluster :
+  (changed_files ∩ row.required_paths_regex matches) = ∅
+```
+
+Equivalently: `run_<cluster> = ∃ row ∈ cluster : row affected`. Aggregating with `any-row-empty` (i.e., disjunction) would skip the cluster when only ONE row is affected — silently skipping the OTHER affected rows. Aggregation must be `all-rows-empty` (conjunction).
+
+**Path-mapping verification discipline** (load-bearing per codex BLOCKING on earlier revision): the `required_paths_regex` values below are **PM best-effort manual authoring** — they have NOT been verified against the live source tree at the cited inventory sha (`e9c8f9896`). Workers MUST validate each regex against the source tree at HEAD before implementing the CI gate. Any regex that does not match a path actually present in the tree, OR that a Mgr cannot quickly verify, MUST be replaced with `.*` (always-run) — the conservative fail-closed default. The `confidence` column indicates PM's subjective certainty per row; treat `low` rows as `.*` candidates first, `medium` as audit-then-decide, `high` as audit-but-likely-fine.
+
 | Cluster | test_pattern | dimensions | required_paths_regex | confidence | dissolution_note |
 |---|---|---|---|---|---|
 | A | `db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix` | `[Value]` | `^(dsl/extdeps/rust.*\.dag|src/v3/compiler/src/emit.*\.rs|src/v3/compiler/tests/integration/db8_.*\.rs)$` | high | gate ci_uses_provable_minimal_affected_set_selection lands → lens emits per-Node delta; consumer reads only Value |
@@ -193,14 +204,30 @@ Each row: `(test_pattern, dimensions, required_paths_regex, confidence, dissolut
 
 3. **`[Mgr-fill]` rows count**: 12 rows out of ~36 need Mgr to derive `required_paths_regex` from consumer tracing. PM left these blank where derivation requires deeper substrate knowledge (substrate-lens deps, R3-V L4/L7 direct-consumer maps, R1C-E `.dag` wrapper internals, free-consequences cross-target topology).
 
-4. **Mechanism — single regex per row + dimension-set per row**: each row contributes to `skip_<cluster>` computation as: `skip_<cluster> = "true" iff (changed files ∩ required_paths_regex matches is empty)` — i.e., skip when no relevant file changed. Dimension-set is the **structural carrier for post-dissolution lens substitution**: when the lens lands, `skip_<cluster>` becomes `(affected_dimensions ∩ row.dimensions) = ∅` — same polarity: skip when no affected dim that this cluster reads (intersection is empty). The CI consumer is a shell snippet in `ci.yml`:
+4. **Mechanism — per-row regex + cluster-level aggregation**: each row contributes a per-row intersection check `(changed_files ∩ row.required_paths_regex matches) = ∅`. The cluster-level boolean **aggregates by conjunction** (all-rows-empty), NOT disjunction:
+
+   ```
+   skip_<cluster> = ∀ row ∈ cluster : (changed_files ∩ row.required_paths_regex) = ∅
+   ```
+
+   Equivalently: `run_<cluster> = ∃ row ∈ cluster : row affected`. Aggregating by disjunction (any-row-empty) would silently skip the cluster when only ONE row is affected — running affected tests is mandatory per locked-design contract. **Conjunction is load-bearing; do not invert.**
+
+   Dimension-set is the **structural carrier for post-dissolution lens substitution**: when the lens lands, per-row paths flip to per-row dimension-intersection, but the cluster-level conjunction over rows stays the same:
+
+   ```
+   skip_<cluster> = ∀ row ∈ cluster : (affected_dimensions ∩ row.dimensions) = ∅
+   ```
+
+   Same polarity, same aggregation. The CI consumer is a shell snippet in `ci.yml`:
    ```yaml
    - name: <Cluster X test step>
      if: needs.changes.outputs.skip_<cluster> != 'true'
      run: cargo test -p v3-compiler --test integration <module_filter>
    ```
 
-5. **Pilot cluster selection**: which cluster does Mgr prototype first? PM recommendation: **Cluster B (Lane 2 Stage 2d symbolic cost)** — high confidence in path-regex, contained module, 7 tests, **single-dimension set `[Cost]`** (no multi-dim union complexity for the pilot). Lowest risk, highest learning per LOC.
+5. **PM-best-effort regex verification** (per codex BLOCKING on earlier revision): the `required_paths_regex` values in §3 are PM-authored without source-tree verification at the cited inventory sha (`e9c8f9896`). Workers MUST validate each regex against live source tree at HEAD before CI implementation. Unverified or unverifiable regexes → replace with `.*` per the conservative fail-closed default. Treat the `confidence` column as audit priority: `low` → `.*` first, `medium` → audit then decide, `high` → audit but likely fine.
+
+6. **Pilot cluster selection**: which cluster does Mgr prototype first? PM recommendation: **Cluster B (Lane 2 Stage 2d symbolic cost)** — high confidence in path-regex, contained module, 7 tests, **single-dimension set `[Cost]`** (no multi-dim union complexity for the pilot). Lowest risk, highest learning per LOC.
 
 ---
 
@@ -213,7 +240,9 @@ Mgr-fill complete when:
 - [ ] `changes` job in `ci.yml` extended with per-cluster `skip_<cluster>` boolean outputs.
 - [ ] At least one cluster (pilot) has its `if: needs.changes.outputs.skip_<cluster> != 'true'` gate landed and CI-validated against a representative test case (docs-only PR skips; in-cluster code change runs).
 - [ ] All path-mapping entries have a `dimensions:` field that is a Set<Dimension> with every member of the set in `{Value, Cost, Complexity, Effect, Refinement}`. **Single-element sets are valid (e.g., `[Cost]`); narrowing a known-multi-dim consumer to a single-element set is not.**
-- [ ] Post-dissolution mapping verified: each row's `skip_<cluster>` formula reads `(affected_dimensions ∩ row.dimensions) = ∅` (skip when intersection IS empty / nothing affected), NOT `≠ ∅`. The CI gate is `if: skip_<cluster> != 'true'` (run when skip is false); inverting the polarity silently skips affected tests.
+- [ ] Post-dissolution mapping verified: each row's per-row formula reads `(affected_dimensions ∩ row.dimensions) = ∅` (skip when intersection IS empty / nothing affected), NOT `≠ ∅`. The CI gate is `if: skip_<cluster> != 'true'` (run when skip is false); inverting the polarity silently skips affected tests.
+- [ ] **Cluster-level aggregation verified**: `skip_<cluster>` aggregates per-row results by conjunction (`∀ row : row-skip-empty`). NOT disjunction (`∃ row : row-skip-empty`). Disjunction silently skips affected rows when only one row is unaffected.
+- [ ] **Path regex validation against live source tree**: every concrete (non-`.*`) `required_paths_regex` validated against source tree at HEAD before CI implementation. Unverified entries replaced with `.*` per conservative default. Validation record kept (PR description or commit message citing the validation pass).
 
 ---
 
@@ -223,6 +252,8 @@ Mgr-fill complete when:
 - Any path-mapping entry has a `dimensions:` element outside `{Value, Cost, Complexity, Effect, Refinement}` → STOP. Surface to Director: this is a coproduct-dissolution candidate.
 - Any row tempted to use a single-dimension `dimensions:` set when consumer tracing reveals multi-dim reads → STOP and EXPAND the set. Narrowing is a semantic-contract violation (codex REQUEST_CHANGES on PR #2721 caught one such instance; do not regress).
 - Any cluster's `required_paths_regex` requires depending on test-output (not just changed files) → STOP. That's the lens, not the bridge.
+- Any cluster aggregation tempted to use **disjunction** (`∃ row : row-skip-empty`) instead of **conjunction** (`∀ row : row-skip-empty`) → STOP. Disjunction silently skips affected rows; conjunction is load-bearing (codex BLOCKING on PR #2721 caught this gap; aggregation predicate now explicit at §3 + §4 + §5).
+- Any concrete `required_paths_regex` adopted without source-tree validation at HEAD → STOP and replace with `.*` per conservative fail-closed default. PM-best-effort regexes in §3 are NOT pre-validated; Mgr must validate before CI implementation (codex BLOCKING on PR #2721 caught this gap).
 
 ---
 
