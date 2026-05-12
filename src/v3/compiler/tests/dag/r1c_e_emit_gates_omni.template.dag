@@ -19,5 +19,5 @@ data emit_omni_demo_fixtures_green_claim: TestClaim = {
 
 data r1c_e_emit_gates_omni_suite: TestSuite = {
   name: "r1c_e_emit_gates_omni_suite",
-  claims: [emit_omni_demo_fixtures_green_claim]
+  claims: [Enumerated(emit_omni_demo_fixtures_green_claim)]
 }

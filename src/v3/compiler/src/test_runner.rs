@@ -2483,7 +2483,7 @@ impl<'a> TestRunner<'a> {
             },
             "Quantified" => ClaimEvaluation {
                 claim_name: decl_label,
-                result: ClaimResult::Fail(
+                result: ClaimResult::NotYetImplemented(
                     "QuantifiedTestClaim runner evaluation NotYetImplemented \
                      (gate #85 shape-only stub; eval lands with Verification follow-up)"
                         .to_string(),

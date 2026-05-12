@@ -55,5 +55,5 @@ data tc3_pattern_a_second_mover_executable_claim: TestClaim = {
 
 data tc3_strong_normalization_strict_fire_suite: TestSuite = {
   name: "tc3_strong_normalization_strict_fire_suite",
-  claims: [tc3_pattern_a_second_mover_executable_claim]
+  claims: [Enumerated(tc3_pattern_a_second_mover_executable_claim)]
 }

@@ -736,7 +736,7 @@ data symbolic_cost_expr_equals_claim: TestClaim = {
 
 data symbolic_cost_expr_equals_suite: TestSuite = {
   name: "symbolic_cost_expr_equals_smoke_suite",
-  claims: [symbolic_cost_expr_equals_claim]
+  claims: [Enumerated(symbolic_cost_expr_equals_claim)]
 }
 "#;
 

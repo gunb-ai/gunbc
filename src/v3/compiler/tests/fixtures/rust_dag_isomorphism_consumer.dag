@@ -28,5 +28,5 @@ data rust_dag_isomorphism_executable: TestClaim = {
 
 data rust_dag_isomorphism_consumer_suite: TestSuite = {
   name: "rust_dag_isomorphism_consumer_suite",
-  claims: [rust_dag_isomorphism_executable]
+  claims: [Enumerated(rust_dag_isomorphism_executable)]
 }

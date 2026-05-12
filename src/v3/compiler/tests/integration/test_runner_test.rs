@@ -77,7 +77,7 @@ data claim_fails: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_smoke",
-  claims: [claim_compiles, claim_fails]
+  claims: [Enumerated(claim_compiles), Enumerated(claim_fails)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_smoke.dag");
@@ -100,7 +100,7 @@ data claim_should_compile: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_failure",
-  claims: [claim_should_compile]
+  claims: [Enumerated(claim_should_compile)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_failure.dag");
@@ -179,7 +179,7 @@ data claim_with_requires: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_requires",
-  claims: [claim_with_requires]
+  claims: [Enumerated(claim_with_requires)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_requires.dag");
@@ -205,7 +205,7 @@ data claim_parse_error: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_parse_error",
-  claims: [claim_parse_error]
+  claims: [Enumerated(claim_parse_error)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_parse_error.dag");
@@ -267,7 +267,7 @@ data claim_cost: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_cost",
-  claims: [claim_cost]
+  claims: [Enumerated(claim_cost)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_cost.dag");
@@ -290,7 +290,7 @@ data claim_state: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_port_state",
-  claims: [claim_state]
+  claims: [Enumerated(claim_state)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_port_state.dag");
@@ -310,7 +310,7 @@ data claim_true: TestClaim = {
   predicate: ExecuteCommand("true", [], 0),
   requires: []
 }
-data suite_pass: TestSuite = { name: "execute_command_pass", claims: [claim_true] }
+data suite_pass: TestSuite = { name: "execute_command_pass", claims: [Enumerated(claim_true)] }
 "#;
     let dag = compile_clean(pass, "test_runner_exec_pass.dag");
     let results = TestRunner::new(&dag).run_suite("suite_pass");
@@ -325,7 +325,7 @@ data claim_mismatch: TestClaim = {
   predicate: ExecuteCommand("true", [], 1),
   requires: []
 }
-data suite_mismatch: TestSuite = { name: "execute_command_mismatch", claims: [claim_mismatch] }
+data suite_mismatch: TestSuite = { name: "execute_command_mismatch", claims: [Enumerated(claim_mismatch)] }
 "#;
     let dag = compile_clean(mismatch, "test_runner_exec_mismatch.dag");
     let results = TestRunner::new(&dag).run_suite("suite_mismatch");
@@ -361,7 +361,7 @@ data claim: TestClaim = {
   ),
   requires: []
 }
-data suite: TestSuite = { name: "execute_command_spawn", claims: [claim] }
+data suite: TestSuite = { name: "execute_command_spawn", claims: [Enumerated(claim)] }
 "#;
     let dag = compile_clean(source, "test_runner_exec_spawn.dag");
     let result = &TestRunner::new(&dag).run_suite("suite")[0].result;
@@ -410,7 +410,7 @@ data claim_cost: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_shadow_bind",
-  claims: [claim_state, claim_cost]
+  claims: [Enumerated(claim_state), Enumerated(claim_cost)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_shadow_bind.dag");
@@ -433,7 +433,7 @@ data claim_output: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_output",
-  claims: [claim_output]
+  claims: [Enumerated(claim_output)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_output.dag");
@@ -458,7 +458,7 @@ data claim_nyi: TestClaim = {
 
 data suite: TestSuite = {
   name: "runner_nyi",
-  claims: [claim_nyi]
+  claims: [Enumerated(claim_nyi)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_nyi.dag");
@@ -533,11 +533,11 @@ data generated_from_dag_claim: TestClaim = {
 data suite: TestSuite = {
   name: "pb_census_predicate_shapes",
   claims: [
-    census_bound_claim,
-    census_subset_claim,
-    fixed_point_claim,
-    ratchet_zero_claim,
-    generated_from_dag_claim
+    Enumerated(census_bound_claim),
+    Enumerated(census_subset_claim),
+    Enumerated(fixed_point_claim),
+    Enumerated(ratchet_zero_claim),
+    Enumerated(generated_from_dag_claim)
   ]
 }
 "#;
@@ -627,7 +627,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "clean_mock_subject_suite",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     let dag = compile_clean(source, "clean_mock_subject_harness.v3");
@@ -654,7 +654,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "s",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     compile_clean(source, "lens_output_equals_int_harness.v3");
@@ -680,7 +680,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "s",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     let dag = compile_clean(source, "binary_dimension_report_non_report_harness.v3");
@@ -721,7 +721,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "s",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     let dag = compile_clean(
@@ -766,7 +766,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "s",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     let dag = compile_clean(source, "binary_dimension_report_same_carrier_harness.v3");
@@ -809,7 +809,7 @@ data claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "s",
-  claims: [claim]
+  claims: [Enumerated(claim)]
 }
 "#;
     let dag = compile_clean(
@@ -857,7 +857,7 @@ data claim_bad_program: TestClaim = {
 
 data suite: TestSuite = {
   name: "suite",
-  claims: [claim_bad_program]
+  claims: [Enumerated(claim_bad_program)]
 }
 "#;
     let dag = compile_clean(source, "lens_output_equals_bad_claim_source_harness.dag");
@@ -953,7 +953,7 @@ data spoof_claim: TestClaim = {
 
 data spoof_suite: TestSuite = {
   name: "spoof_suite",
-  claims: [spoof_claim]
+  claims: [Enumerated(spoof_claim)]
 }
 "#;
     let dag = compile_clean(source, "lens_output_equals_sentinel_spoof_harness.dag");
@@ -1010,7 +1010,7 @@ data wrong_lens_claim: TestClaim = {
 
 data wrong_lens_suite: TestSuite = {
   name: "wrong_lens_suite",
-  claims: [wrong_lens_claim]
+  claims: [Enumerated(wrong_lens_claim)]
 }
 "#;
     let dag = compile_clean(source, "lens_output_equals_wrong_output_bind_harness.dag");
@@ -1047,7 +1047,7 @@ data claim_comm: TestClaim = {
 
 data suite: TestSuite = {
   name: "algebraic_law_commutativity_suite",
-  claims: [claim_comm]
+  claims: [Enumerated(claim_comm)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_algebraic_law_comm.dag");
@@ -1076,7 +1076,7 @@ data claim_comm: TestClaim = {
 
 data suite: TestSuite = {
   name: "algebraic_law_commutativity_fail_suite",
-  claims: [claim_comm]
+  claims: [Enumerated(claim_comm)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_algebraic_law_comm_fail.dag");
@@ -1105,7 +1105,7 @@ data claim_identity: TestClaim = {
 
 data suite: TestSuite = {
   name: "algebraic_law_identity_suite",
-  claims: [claim_identity]
+  claims: [Enumerated(claim_identity)]
 }
 "#;
     let dag = compile_clean(source, "test_runner_algebraic_law_identity.dag");

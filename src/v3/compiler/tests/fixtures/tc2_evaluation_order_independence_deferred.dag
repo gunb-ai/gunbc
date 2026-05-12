@@ -45,5 +45,5 @@ data evaluation_order_independent_lens_results: TestClaim = {
 
 data tc2_evaluation_order_independence_suite: TestSuite = {
   name: "tc2_evaluation_order_independence_suite",
-  claims: [evaluation_order_independent_lens_results]
+  claims: [Enumerated(evaluation_order_independent_lens_results)]
 }
