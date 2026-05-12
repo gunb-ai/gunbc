@@ -381,6 +381,52 @@ let suite: TestSuite = {
     );
 }
 
+#[test]
+fn program_generator_authoring_surface_compiles_cleanly() {
+    let src = r#"
+data parse_smoke_generator: List<ProgramShape> = [
+  LiteralProgram { source: "let x: Int = 1", file_name: "gen_001.v3" },
+  LiteralProgram { source: "let y: Bool = true", file_name: "gen_002.v3" }
+]
+
+let generator_ref: ProgramGenerator = ProgramGenerator { generator: parse_smoke_generator }
+
+let parse_smoke_universal: QuantifiedTestClaim = {
+  name: "every parse-smoke fixture compiles",
+  generator: generator_ref,
+  quantifier: ForAll,
+  predicate: Compiles,
+  requires: []
+}
+
+let parse_smoke_witness: SuiteClaim = Quantified(parse_smoke_universal)
+"#;
+
+    let dag = compile_any(src, "program_generator_authoring_surface.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "ProgramGenerator authoring surface should compile cleanly, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+
+    assert_eq!(
+        bind_value_type_decl(&dag, "parse_smoke_generator"),
+        find_named(&dag, "List")
+    );
+    assert_eq!(
+        bind_value_type_decl(&dag, "generator_ref"),
+        find_named(&dag, "ProgramGenerator")
+    );
+    assert_eq!(
+        bind_value_type_decl(&dag, "parse_smoke_universal"),
+        find_named(&dag, "QuantifiedTestClaim")
+    );
+    assert_eq!(
+        bind_value_type_decl(&dag, "parse_smoke_witness"),
+        find_named(&dag, "SuiteClaim")
+    );
+}
+
 /// PR-D (Evaluator Manager): cross-target equivalence harness — slice 0 `Compiles` claim plus
 /// slice 1 `DifferentialEquals` scaffold both compile and pass under `TestRunner` (see
 /// `docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`).
