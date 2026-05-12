@@ -75,9 +75,14 @@ If the Wave-1 trio fails to converge by Day 10, this Mgr **pauses Wave-2 dispatc
 
 ## Staged-debt budget (Verification Mgr throttle interface)
 
-Per plan §6 staged-debt-throttle: if **3 or more Phase 1.5 PRs have merged with no matching Phase 3 emission target landed**, this Mgr pauses new dispatch (Wave-2 entries onward) and routes the saturated subsystems to the Emission-Targets Mgr for prioritization. Verification Mgr tracks the receipt-trail; this Mgr enforces the dispatch gate.
+The throttle predicate is **defined by the receipt-trail ledger**, not restated here, to keep the predicate single-sourced (per operator review codex finding #2 2026-05-12 commit `a6bd5f56`). See [`docs/audit/r4-ctrl-phase15-subsystem-receipt-trail.md`](../audit/r4-ctrl-phase15-subsystem-receipt-trail.md) §"Column semantics":
 
-The budget is **not a soft signal** — it is the structural answer to "parallel ≠ independent." Wave-1 PRs landing without their Phase-3 partner is acceptable (single trio converging); a fleet of 8 unmatched stagings is not.
+- **`open_receipt_debt`** is the ledger's derived column: `phase15_pr_merged ∧ ¬(phase3_emission_landed ∧ parity_passed)`. It does NOT reference `algebra_landed` (per ledger `N/A` semantics).
+- **Dispatch-pause gate** is the ledger's stated condition: `count(rows where open_receipt_debt = true) ≥ 3` ⇒ pause new dispatch.
+
+This Mgr **enforces** the gate by polling the ledger before authoring any new worker brief or spawning any new worker; Verification Mgr (`deep-badger-38`) **owns** the column semantics and the parity-flip evidence. If the predicate needs adjustment, the change lands in the ledger first; this brief defers verbatim.
+
+Operational meaning: the budget is **not a soft signal** — it is the structural answer to "parallel ≠ independent." Wave-1 PRs landing without their Phase-3 partner is acceptable (single trio converging); a fleet of 8 unmatched stagings is not.
 
 ---
 

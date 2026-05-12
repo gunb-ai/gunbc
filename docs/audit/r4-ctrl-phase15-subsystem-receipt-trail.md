@@ -24,9 +24,11 @@
 | `parity_passed` | bool | Verification Mgr | gate_id string + CI job URL OR in-tree test path |
 | `open_receipt_debt` | derived | computed | `phase15_pr_merged ∧ ¬(phase3_emission_landed ∧ parity_passed)` |
 
-**Dispatch-pause gate (Subsystem-Modeling Mgr polls before any new Phase 1.5 worker dispatch)**: `count(rows where open_receipt_debt = true) ≥ 3` ⇒ **pause** new Wave-1 / Wave-2 dispatch until catch-up (Phase-3 landings or parity flips reduce count below 3). Director-confirmed wording: STAGED Phase 1.5 subsystem merges without both emission-target landing and parity must not accumulate past 2 open debts.
+**`N/A` semantics** (per operator review codex finding #1 2026-05-12 commit `a6bd5f56`): the marker `—` on `algebra_landed` means **the row is non-consumer of the Phase-1 algebra substrate** and therefore the algebra prerequisite **does not apply per-row**. In every gate computation below, `algebra_landed ∈ {true, —}` is treated as satisfied; **only `false` is unsatisfied**. This makes algebra a **per-row receipt** (not a global gate) and admits a non-consumer trio anchor without misclassification.
 
-**Wave-1-trio gate**: Wave-2 fanout unblocked only when a designated trio-anchor row has all four `*_landed` / `*_passed` booleans `true`. Current trio anchor: catalog #8 (PR digests).
+**Dispatch-pause gate (Subsystem-Modeling Mgr polls before any new Phase 1.5 worker dispatch)**: `count(rows where open_receipt_debt = true) ≥ 3` ⇒ **pause** new Wave-1 / Wave-2 dispatch until catch-up (Phase-3 landings or parity flips reduce count below 3). Director-confirmed wording: STAGED Phase 1.5 subsystem merges without both emission-target landing and parity must not accumulate past 2 open debts. **Note**: `open_receipt_debt` does NOT reference `algebra_landed` — algebra status does not contribute to staged-debt.
+
+**Wave-1-trio gate**: Wave-2 fanout unblocked only when a designated trio-anchor row satisfies `algebra_landed ∈ {true, —}` ∧ `phase15_pr_merged = true` ∧ `phase3_emission_landed = true` ∧ `parity_passed = true` — i.e. all four columns "satisfied" under the `N/A`-counts-as-satisfied semantics above. Current trio anchor: catalog #8 (PR digests).
 
 ---
 

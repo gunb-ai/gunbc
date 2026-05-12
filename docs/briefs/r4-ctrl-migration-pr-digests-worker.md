@@ -69,9 +69,14 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
 
    **No `pull_digest.dag` prerequisite** (per Emission Mgr `msg_c5b7d419`): do NOT propose a `pull_digest.dag` extdep landing as gate to this worker. If the worker discovers it needs a stable digest-input summary record, model it as a derived record over **existing** `PullRequest` facts inside `dsl/ctrl/pr_digests.dag` (or surface upward), NOT as new provider source authority.
 
-   **Gunbc-side carriers this file owns** (narrowed to smaller-first-path scope):
-   - `MergeReadinessVerdict` — closed sum `Ready | NotReady(reasons: List<String>)` — Practice-4 receipt **required**. Reason strings derived only from existing PullRequest/PullReview fields (draft / state / merged_at / review states) — NOT from CI/conflict facts (deferred).
-   - `AttachedUrl` — `{ url: Url, source: AttachedUrlSource }` (reuse `Url` from `std.types`); `AttachedUrlSource` closed sum (`PrBody | CommentThread | ReviewComment | InlineCode`) — Practice-4 receipt **required**
+   **Gunbc-side carriers this file owns** (narrowed to smaller-first-path scope; Practice-4 dimensional check applied per operator review codex findings #3 + #4 2026-05-12 commit `a6bd5f56`):
+   - `MergeReadinessVerdict` — closed sum:
+     - `Ready`
+     - `NotReady { first_reason: String, more_reasons: List<String> }` — **structural cardinality**: `NotReady` is uninhabitable with zero reasons (the invariant is encoded in the carrier shape, not in a runtime check on a bare `List<String>`). Reasons derived only from existing PullRequest/PullReview fields (draft / state / merged_at / review states) — NOT from CI/conflict facts (deferred). Practice-4 receipt **required**.
+   - `AttachedUrl` — `{ url: Url, container: AttachedUrlContainer, context: AttachedUrlTextContext }` (reuse `Url` from `std.types`). Two **separate dimensional coordinates**, not a single conflated sum:
+     - `AttachedUrlContainer` closed sum: `PrBody | IssueCommentBody | PullReviewBody | ReviewCommentBody` — *source container* dimension (which GitHub object the URL was found in)
+     - `AttachedUrlTextContext` closed sum: `Prose | InlineCode` — *text context* dimension (whether the URL was in a code fence/backticks vs prose). Note: Practice-4 dimensional check made this split visible — original conflated `AttachedUrlSource` was mixing the two coordinates.
+     - Both sums get Practice-4 receipts **required**.
    - `RestFallbackReason` — closed sum (`GraphqlIncomplete | GraphqlRateLimited | GraphqlSchemaUnknown`) — Practice-4 receipt **required**
 
    `CiDigestLine` / `ConflictDigestLine` deferred to follow-up Phase 1.5 PR per scope narrowing.
@@ -93,9 +98,9 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
 ## Acceptance gates
 
 1. `dsl/ctrl/pr_digests.dag` parses + compiles (whatever validates `.dag` files in this repo — likely `cargo test -p v3-compiler` covers it).
-2. Practice-4 receipts on `MergeReadinessVerdict`, `AttachedUrlSource`, `RestFallbackReason` — each names classification + dissolution-pattern + trigger.
+2. Practice-4 receipts on `MergeReadinessVerdict`, `AttachedUrlContainer`, `AttachedUrlTextContext`, `RestFallbackReason` — each names classification + dissolution-pattern + trigger. (Four receipts: dimensional split made `AttachedUrl*` two independent coordinates.)
 3. Consumer-receipt header cites all 5 ctrl `.mjs` files + names the **neutral 3-part Phase-3 trigger** (digest source-fact authority + gunbc/std render projection + named parity harness green) per Director ratification `msg_d1589d17`. **DO NOT** name `dsl/extdeps/github/digest_render.dag` or any new render-field on `PullRequest` — both placements were ruled out by Director + Emission Mgr 2026-05-12.
-4. Cost-of-change check: adding a new `RestFallbackReason` variant touches **only** this file (no parallel registry / no extdep update / no consumer-side fix-up). If it touches more, surface to Mgr — that's a substrate-shape signal.
+4. Cost-of-change check: adding a new `RestFallbackReason` variant — or a new `AttachedUrlContainer` (e.g. `IssueBody` when issues join the lane) or `AttachedUrlTextContext` variant — touches **only** this file (no parallel registry / no extdep update / no consumer-side fix-up). If it touches more, surface to Mgr — that's a substrate-shape signal.
 5. M9 DFS audit comment: for each carrier, name the existing `dsl/std/` or `dsl/extdeps/github/` primitive it attaches to (or document why it must be new — must be a substantive structural reason, not "didn't find one").
 6. Doc-only — zero emission code; zero TS-side changes.
 
