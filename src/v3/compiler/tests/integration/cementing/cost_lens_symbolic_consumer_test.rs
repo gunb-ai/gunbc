@@ -8,6 +8,14 @@
 //! compile-backed fixtures and checks that `analyze_symbolic_cost_dimension`
 //! composes the same carrier returned by `symbolic_cost_of`.
 //!
+//! Frozen v2-projection contract for the abstract cost scope:
+//! - leaf literal cost projects to `SymbolicCost::ConstantCost(0)`;
+//! - unary recursive countdown projects to one linear size variable keyed by the
+//!   countdown parameter port, with no polynomial or unknown carrier.
+//!
+//! The live v2 oracle is intentionally not invoked here; R3 consumes reviewed
+//! frozen projections so v2-oracle retirement does not regain a test consumer.
+//!
 //! Temporary Rust receipt: `.dag` `TestClaim` data cannot yet express the
 //! nested `SymbolicCost` / `SizeVariable` expected values asserted here
 //! (`M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA`).
@@ -50,7 +58,7 @@ fn find_bind_node(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::
         .id
 }
 
-/// v3 `symbolic_cost_of` lookup only (no v2 oracle); see module docs for Band-C scope.
+/// Generated `symbolic_cost_of` lookup; see module docs for the frozen v2 projection scope.
 fn expect_symbolic_cost(dag: &v3_compiler::dag::Dag, bind_name: &str) -> SymbolicCost {
     let port = find_bind_value(dag, bind_name);
     match symbolic_cost_of(dag, &port) {
@@ -120,7 +128,7 @@ fn literal_bind_pins_symbolic_cost_of_constant_on_fixture() {
 
         assert!(
             matches!(cost, SymbolicCost::ConstantCost { _0: 0 }),
-            "literal cost should preserve constant source, got {cost:?}"
+            "frozen v2 projection: literal cost should project to ConstantCost(0), got {cost:?}"
         );
     });
 }
@@ -155,8 +163,8 @@ fn recursive_countdown_pins_symbolic_cost_linear_and_sizevar_on_fixture() {
         linear_size_ports(&cost, &mut ports);
         assert!(
             ports.contains(&parameter),
-            "recursive countdown cost should carry a SizeVariable keyed by the parameter port \
-             {parameter:?}, got cost={cost:?}"
+            "frozen v2 projection: recursive countdown cost should carry a SizeVariable keyed \
+             by the parameter port {parameter:?}, got cost={cost:?}"
         );
         assert_recursive_countdown_linear_semantics(&cost);
     });
