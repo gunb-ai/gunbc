@@ -41,8 +41,11 @@ type ReviewArtifactKind
   | GitHubIssueComment
   | DashboardReviewArtifact
 
-// Practice 4 receipt: terminal closed enum mirroring the GitHub review states
-// consumed by ctrl today.
+// Practice 4 receipt: staged mirror of GitHub review states consumed by ctrl
+// today. This is not the extdeps authority for GitHub's review wire model.
+// Dissolution trigger: replace this mirror with typed state references from
+// the extdeps.github review/comment authority once that source-fact carrier
+// exists.
 type GitHubReviewState
   = Approved
   | ChangesRequested
@@ -89,21 +92,20 @@ type VerdictEvidence
   | HumanOverride { reason: String }
   | TextualVerdictMarker { marker: NonEmptyStr }
 
-// Practice 4 receipt: staged. These are extraction outcomes, not verdicts.
-// Parser fallback is explicit so "whole comment stored as one finding" is a
-// typed degraded state instead of silently looking like a clean parse.
+// Practice 4 receipt: staged. These are successful report extraction outcomes,
+// not verdicts. Parser fallback is explicit so "whole comment stored as one
+// finding" is a typed degraded success instead of silently looking like a clean
+// parse.
 // Dissolution trigger: provider outputs become structural and the Markdown
 // section parser is retired.
-type FindingExtractionState
+type ReportExtractionState
   = ParsedDiscreteFindings
   | FallbackWholeCommentStored
-  | CommentNotFound
-  | AmbiguousShaMarker
-  | EmptyComment
 
 // Practice 4 receipt: terminal subset for parse attempts that did not produce
-// a report. Kept separate from FindingExtractionState so ParseDeferred cannot
-// carry the successful ParsedDiscreteFindings state.
+// a report. Kept separate from ReportExtractionState so ReviewVerdictReport
+// cannot carry no-report states, and ParseDeferred cannot carry successful
+// report states.
 type ParseDeferredState
   = DeferredCommentNotFound
   | DeferredAmbiguousShaMarker
@@ -140,7 +142,7 @@ type ReviewVerdictReport {
   head_sha: NonEmptyStr
   artifact_id: NonEmptyStr
   verdict: ReviewVerdict
-  extraction_state: FindingExtractionState
+  extraction_state: ReportExtractionState
   findings: List<ReviewFinding>
   evidence: List<VerdictEvidence>
   parsed_at: Timestamp?
@@ -150,7 +152,9 @@ type MergeReadinessTally {
   repo: NonEmptyStr
   pr_number: Int
   head_sha: NonEmptyStr
-  reports: List<ReviewVerdictReport>
+  // Non-authoritative lineage pointer only. ReviewVerdictReport values remain
+  // the Tally service input; the tally output owns only derived verdict counts.
+  source_artifact_ids: List<NonEmptyStr>
   approval_count: Int
   request_changes_count: Int
   blocking_finding_count: Int
@@ -162,6 +166,12 @@ type ReviewVerdictParseRequest {
   expected_head_sha: NonEmptyStr
 }
 
+// Practice 4 receipt: staged boundary result. ParsedReport and ParseDeferred
+// intentionally carry disjoint state axes: reports can only carry successful
+// ReportExtractionState, while deferred results can only carry no-report
+// ParseDeferredState. Dissolution trigger: provider outputs become structural
+// enough for Parse to return a provider-authored ReviewVerdictReport directly
+// or a typed extdeps failure carrier, retiring this parser boundary sum.
 type ReviewVerdictParseResult
   = ParsedReport { report: ReviewVerdictReport }
   | ParseDeferred { state: ParseDeferredState, artifact: ReviewArtifact }
