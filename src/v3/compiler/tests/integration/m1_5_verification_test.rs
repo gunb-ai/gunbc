@@ -337,7 +337,7 @@ let claim_alias_refine: TestClaim = {
 
 let suite: TestSuite = {
   name: "verification_smoke",
-  claims: [claim_compiles, claim_fails, claim_alias_refine]
+  claims: [Enumerated(claim_compiles), Enumerated(claim_fails), Enumerated(claim_alias_refine)]
 }
 "#;
 
@@ -773,7 +773,7 @@ data symbolic_cost_expr_equals_claim: TestClaim = {
 
 data symbolic_cost_expr_equals_suite: TestSuite = {
   name: "symbolic_cost_expr_equals_smoke_suite",
-  claims: [symbolic_cost_expr_equals_claim]
+  claims: [Enumerated(symbolic_cost_expr_equals_claim)]
 }
 "#;
 
