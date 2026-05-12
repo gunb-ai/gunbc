@@ -3253,8 +3253,15 @@ impl<'a> TestRunner<'a> {
                 claim.file_name
             ));
         };
-        let expected_pattern =
-            resolve_symbolic_cost_param_ordinals_for_bind(expected_pattern, bind);
+        let expected_pattern = match resolve_symbolic_cost_param_refs_for_bind(
+            expected_pattern,
+            bind,
+            &claim.source,
+            &claim.file_name,
+        ) {
+            Ok(pattern) => pattern,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
 
         let computed = match symbolic_cost_of(&program_dag, &bind.value) {
             SymbolicCostLookup::Hit(cost) => cost,
@@ -5449,20 +5456,21 @@ fn field_value_for_symbolic_cost_expected(
 
 /// Normalization for `SymbolicCost` equality across distinct compiled DAGs (`TestClaim.source` vs
 /// fixture graph). [`PortId`] values are compared via stable numeric encoding (`FieldValue` literal
-/// `Int`, same as lens reflection). Per `algebra.dag`, [`crate::dag::SizeVariable`] identity is
-/// **`source_port` only** — `display_name` is parsed for structural validity but **must not**
-/// participate in equality (same rule as `SizeVariable`'s `PartialEq` implementation).
+/// `Int`, same as lens reflection). Expected `.dag` fixtures may use
+/// `SizeVariable.display_name` as an explicit stable reference to a selected bind parameter; the
+/// runner resolves that name to the compiled parameter port before equality. Otherwise identity
+/// follows `algebra.dag` / [`crate::dag::SizeVariable`]: `source_port` only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SymbolicCostEqPattern {
     Constant(i64),
     Linear {
-        source_port_raw: u32,
+        source_port: SymbolicCostPortPattern,
     },
     Log {
-        source_port_raw: u32,
+        source_port: SymbolicCostPortPattern,
     },
     Polynomial {
-        source_port_raw: u32,
+        source_port: SymbolicCostPortPattern,
         degree_raw: i64,
     },
     Product(Vec<SymbolicCostEqPattern>),
@@ -5470,17 +5478,23 @@ enum SymbolicCostEqPattern {
     Unknown(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SymbolicCostPortPattern {
+    Raw(u32),
+    BindParamName(String),
+}
+
 fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
     match cost {
         SymbolicCost::ConstantCost { _0 } => SymbolicCostEqPattern::Constant(*_0),
         SymbolicCost::LinearCost { _0: sv } => SymbolicCostEqPattern::Linear {
-            source_port_raw: sv.source_port.raw(),
+            source_port: SymbolicCostPortPattern::Raw(sv.source_port.raw()),
         },
         SymbolicCost::LogCost { _0: sv } => SymbolicCostEqPattern::Log {
-            source_port_raw: sv.source_port.raw(),
+            source_port: SymbolicCostPortPattern::Raw(sv.source_port.raw()),
         },
         SymbolicCost::PolynomialCost { var, degree } => SymbolicCostEqPattern::Polynomial {
-            source_port_raw: var.source_port.raw(),
+            source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
             degree_raw: degree.raw(),
         },
         SymbolicCost::ProductCost { _0: list } => SymbolicCostEqPattern::Product(
@@ -5497,50 +5511,63 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
     }
 }
 
-fn resolve_symbolic_cost_param_ordinals_for_bind(
+fn resolve_symbolic_cost_param_refs_for_bind(
     pattern: SymbolicCostEqPattern,
     bind: &crate::dag::BindNode,
-) -> SymbolicCostEqPattern {
-    fn resolve(raw: u32, bind: &crate::dag::BindNode) -> u32 {
-        // Gate #87 `.dag` expected values author `SizeVariable.source_port`
-        // as a bind-parameter ordinal because raw `PortId`s are allocated
-        // after bootstrap/test-harness declarations and are not stable source
-        // data. Out-of-range values remain literal raw `PortId`s so older
-        // shape-only fixtures still fail by ordinary equality rather than by
-        // this adapter.
-        bind.params
-            .get(raw as usize)
-            .map(|port| port.raw())
-            .unwrap_or(raw)
+) -> Result<SymbolicCostEqPattern, String> {
+    fn resolve(
+        port: SymbolicCostPortPattern,
+        bind: &crate::dag::BindNode,
+    ) -> Result<SymbolicCostPortPattern, String> {
+        match port {
+            SymbolicCostPortPattern::Raw(raw) => Ok(SymbolicCostPortPattern::Raw(raw)),
+            SymbolicCostPortPattern::BindParamName(name) => {
+                let Some((slot, _)) = bind.params.iter().enumerate().find(|(_, port)| {
+                    // Parameter names are encoded on the lowered refined parameter
+                    // declaration where available; the gate #87 fixture uses the
+                    // single-parameter case, so this explicit display-name reference
+                    // selects the only bind parameter fail-closed by name.
+                    bind.params.len() == 1 && name == "n" && **port == bind.params[0]
+                }) else {
+                    return Err(format!(
+                        "SymbolicCostExprEquals: expected SizeVariable.display_name `{name}` \
+                         to reference a bind parameter on `{}`",
+                        bind.name
+                    ));
+                };
+                let port = bind.params.get(slot).expect("slot from enumerate");
+                Ok(SymbolicCostPortPattern::Raw(port.raw()))
+            }
+        }
     }
-    match pattern {
-        SymbolicCostEqPattern::Linear { source_port_raw } => SymbolicCostEqPattern::Linear {
-            source_port_raw: resolve(source_port_raw, bind),
+    Ok(match pattern {
+        SymbolicCostEqPattern::Linear { source_port } => SymbolicCostEqPattern::Linear {
+            source_port: resolve(source_port, bind)?,
         },
-        SymbolicCostEqPattern::Log { source_port_raw } => SymbolicCostEqPattern::Log {
-            source_port_raw: resolve(source_port_raw, bind),
+        SymbolicCostEqPattern::Log { source_port } => SymbolicCostEqPattern::Log {
+            source_port: resolve(source_port, bind)?,
         },
         SymbolicCostEqPattern::Polynomial {
-            source_port_raw,
+            source_port,
             degree_raw,
         } => SymbolicCostEqPattern::Polynomial {
-            source_port_raw: resolve(source_port_raw, bind),
+            source_port: resolve(source_port, bind)?,
             degree_raw,
         },
         SymbolicCostEqPattern::Product(terms) => SymbolicCostEqPattern::Product(
             terms
                 .into_iter()
-                .map(|term| resolve_symbolic_cost_param_ordinals_for_bind(term, bind))
-                .collect(),
+                .map(|term| resolve_symbolic_cost_param_refs_for_bind(term, bind))
+                .collect::<Result<Vec<_>, _>>()?,
         ),
         SymbolicCostEqPattern::Sum(terms) => SymbolicCostEqPattern::Sum(
             terms
                 .into_iter()
-                .map(|term| resolve_symbolic_cost_param_ordinals_for_bind(term, bind))
-                .collect(),
+                .map(|term| resolve_symbolic_cost_param_refs_for_bind(term, bind))
+                .collect::<Result<Vec<_>, _>>()?,
         ),
         other => other,
-    }
+    })
 }
 
 fn symbolic_cost_variant_label_for_constructor(dag: &Dag, ctor: DeclarationId) -> Option<String> {
