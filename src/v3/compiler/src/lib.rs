@@ -5204,9 +5204,7 @@ pub(crate) mod variant_payload {
     #[cfg(test)]
     mod tests {
         use super::{variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup};
-        use crate::dag::{
-            AtomPayload, Dag, Declaration, DeclarationId, Field, TypeConnective,
-        };
+        use crate::dag::{AtomPayload, Dag, Declaration, DeclarationId, Field, TypeConnective};
         use crate::diagnostics::SourceSpan;
 
         fn span() -> SourceSpan {
@@ -5271,7 +5269,8 @@ pub(crate) mod variant_payload {
                 "single `_0` field is the positional-single payload convention"
             );
 
-            let named_one = push_payload_decl(&mut dag, "NamedOnePayload", vec![("value", int_decl)]);
+            let named_one =
+                push_payload_decl(&mut dag, "NamedOnePayload", vec![("value", int_decl)]);
             match shape_for(&dag, named_one) {
                 VariantPayloadShape::NamedFields { _0: fields } => {
                     assert_eq!(fields, vec!["value".to_string()]);
