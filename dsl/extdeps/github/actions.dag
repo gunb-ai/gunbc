@@ -4,12 +4,12 @@
 // workflows, jobs, steps, runners, logging annotations, artifacts, and
 // matrix strategies. These are platform constraints -- what GH Actions
 // provides and requires -- not repository CI orchestration logic (that stays in `gunbc/ci.dag` for
-// gate intent and, per WI-2, `gunbc/ci_emission.dag` for `Workflow` projection scaffolding).
+// gate intent; future `gunbc/ci_emission.dag` — WI-2 — will hold `Workflow` projection scaffolding).
 //
 // Spec: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 //
-// Consumers:
-//   gunbc/ci_emission.dag — WI-2: `Workflow` values derived via `project_github_actions` from `CIWorkflowDag`
+// Consumers (gunbc namespace):
+//   future: gunbc/ci_emission.dag — WI-2: `Workflow` via `project_github_actions` from `CIWorkflowDag` (not in tree yet)
 //   gunbc/ci.dag — compiler-intent `CIPipeline` / `CIGate` only (no Actions `Workflow` mirror)
 
 module extdeps.github.actions
