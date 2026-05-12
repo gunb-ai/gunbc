@@ -290,6 +290,26 @@ fn structural_record(value: &FieldValue) -> &[(String, FieldValue)] {
     fields
 }
 
+fn structural_record_ref<'a>(
+    dag: &'a v3_compiler::dag::Dag,
+    value: &'a FieldValue,
+) -> &'a [(String, FieldValue)] {
+    match value {
+        FieldValue::Record(fields) => fields,
+        FieldValue::Reference(id) => {
+            let decl = dag.declaration(*id);
+            let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+                panic!(
+                    "expected reference to structural data, got {:?}",
+                    decl.value_body
+                );
+            };
+            fields
+        }
+        _ => panic!("expected structural record or reference, got {value:?}"),
+    }
+}
+
 fn structural_list(value: &FieldValue) -> &[FieldValue] {
     let FieldValue::List(items) = value else {
         panic!("expected structural list field, got {value:?}");
@@ -297,12 +317,15 @@ fn structural_list(value: &FieldValue) -> &[FieldValue] {
     items
 }
 
-fn workflow_topology(fields: &[(String, FieldValue)]) -> (&str, Vec<&str>, Vec<(&str, &str)>) {
+fn workflow_topology<'a>(
+    dag: &'a v3_compiler::dag::Dag,
+    fields: &'a [(String, FieldValue)],
+) -> (&'a str, Vec<&'a str>, Vec<(&'a str, &'a str)>) {
     let name = literal_string(structural_field(fields, "name"));
-    let pipeline = structural_record(structural_field(fields, "pipeline"));
+    let pipeline = structural_record_ref(dag, structural_field(fields, "pipeline"));
     let node_ids = structural_list(structural_field(pipeline, "gates"))
         .iter()
-        .map(|gate| literal_string(structural_field(structural_record(gate), "id")))
+        .map(|gate| literal_string(structural_field(structural_record_ref(dag, gate), "id")))
         .collect();
     let edges = structural_list(structural_field(fields, "edges"))
         .iter()
@@ -355,7 +378,7 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
     let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
         .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
     let fields = structural_value_body(&ci, "ci_workflow_dag");
-    let (name, node_ids, edges) = workflow_topology(fields);
+    let (name, node_ids, edges) = workflow_topology(&ci, fields);
 
     assert_eq!(
         name, "gunbc-ci",
@@ -393,7 +416,7 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
         "bootstrap demo must not carry a mirror of ci_workflow_dag"
     );
     assert_eq!(
-        workflow_topology(structural_value_body(&ci, "ci_workflow_dag")),
+        workflow_topology(&ci, structural_value_body(&ci, "ci_workflow_dag")),
         (
             "gunbc-ci",
             vec!["compile-gates", "lint", "tests", "l1-ratchet"],
