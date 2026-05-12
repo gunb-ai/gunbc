@@ -3,6 +3,27 @@
 
 use serde_yaml::Value;
 
+/// Fail closed on unknown YAML mapping keys so Actions facts cannot silently drop
+/// (P2 facts-flow-forward / P3).
+fn reject_unknown_keys(
+    m: &serde_yaml::Mapping,
+    allowed: &[&str],
+    ctx: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (k, _) in m {
+        let key = k
+            .as_str()
+            .ok_or_else(|| format!("{ctx}: mapping keys must be YAML strings"))?;
+        if !allowed.iter().any(|a| *a == key) {
+            return Err(format!(
+                "{ctx}: unsupported YAML key `{key}` (generator is fail-closed; extend gen_gunbc_ci_workflow_dag if this field should project into the carrier)"
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
 /// Full `.dag` module text (including header comments). `source_path_in_header` is echoed in the
 /// `@generated` line and must match the committed path when checking drift (for example
 /// `.github/workflows/ci.yml`).
@@ -42,6 +63,18 @@ pub fn emit_ci_github_actions_workflow_module(
 
 fn emit_workflow(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let m = v.as_mapping().ok_or("workflow root must be mapping")?;
+    reject_unknown_keys(
+        m,
+        &[
+            "name",
+            "on",
+            "jobs",
+            "env",
+            "permissions",
+            "concurrency",
+        ],
+        "workflow root",
+    )?;
     let name = str_field(m, "name")?;
     let on = emit_triggers(m.get("on").ok_or("missing on:")?)?;
     let concurrency = emit_concurrency(m.get("concurrency"))?;
@@ -72,6 +105,7 @@ fn dag_string(s: &str) -> String {
 
 fn emit_triggers(on: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let m = on.as_mapping().ok_or("on: must be mapping")?;
+    reject_unknown_keys(m, &["push", "pull_request"], "workflow.on")?;
     let mut parts: Vec<String> = Vec::new();
     for (k, v) in m {
         let key = k.as_str().ok_or("on: key must be string")?;
@@ -89,6 +123,7 @@ fn emit_triggers(on: &Value) -> Result<String, Box<dyn std::error::Error>> {
 
 fn emit_push(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let m = v.as_mapping().ok_or("push: mapping")?;
+    reject_unknown_keys(m, &["branches", "paths"], "on.push")?;
     let branches = string_list_opt(m.get("branches"))?;
     let paths = string_list_opt(m.get("paths"))?;
     Ok(format!(
@@ -99,6 +134,7 @@ fn emit_push(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
 
 fn emit_pull_request(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let m = v.as_mapping().ok_or("pull_request: mapping")?;
+    reject_unknown_keys(m, &["branches", "types"], "on.pull_request")?;
     let branches = string_list_opt(m.get("branches"))?;
     let types = pr_types_list(m.get("types"))?;
     Ok(format!(
@@ -154,6 +190,11 @@ fn emit_concurrency(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
         return Ok("none".to_string());
     };
     let m = v.as_mapping().ok_or("concurrency mapping")?;
+    reject_unknown_keys(
+        m,
+        &["group", "cancel-in-progress"],
+        "workflow.concurrency",
+    )?;
     let group = str_field(m, "group")?;
     let cip = m.get(Value::String("cancel-in-progress".to_string()));
     let cancel = match cip {
