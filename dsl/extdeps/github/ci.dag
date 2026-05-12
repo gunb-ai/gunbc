@@ -1,0 +1,50 @@
+// extdeps/github/ci.dag — GitHub CI execution facts (Actions + Checks API).
+//
+// `extdeps.github.actions` models workflow YAML (authoring-time).
+// `gunbc.ci` models repository gate intent (what must pass locally).
+// This module captures platform-observable CI state: run lifecycle and
+// terminal conclusions as surfaced by GitHub REST.
+//
+// Spec:
+//   https://docs.github.com/en/rest/actions/workflow-runs
+//   https://docs.github.com/en/rest/checks/runs
+//
+// Consumers:
+//   T-WAD R3 — bridges from modeled `Workflow` data (actions.dag) to live run status.
+
+module extdeps.github.ci
+
+// Shared in-flight phases for workflow runs and check runs.
+type CiActivityPhase = Queued | InProgress | Waiting
+
+// Terminal conclusion vocabulary (workflow runs + check runs).
+type CiConclusion
+  = Success
+  | Failure
+  | Neutral
+  | Cancelled
+  | Skipped
+  | TimedOut
+  | ActionRequired
+  | Stale
+
+// Either still active or completed with a conclusion.
+type CiRunLifecycle
+  = Active { phase: CiActivityPhase }
+  | Complete { conclusion: CiConclusion }
+
+// Minimal workflow-run projection (`GET .../actions/runs/{run_id}`).
+type WorkflowRunSummary {
+  id: Int
+  name: String
+  head_sha: String
+  lifecycle: CiRunLifecycle
+}
+
+// Minimal check-run projection (`GET .../check-runs/{check_run_id}`).
+type CheckRunSummary {
+  id: Int
+  name: String
+  head_sha: String
+  lifecycle: CiRunLifecycle
+}
