@@ -358,21 +358,62 @@ Total expression-capable surface: **22 fields** across `Workflow`, `Job`,
 enumeration was keyed to ci.yml usage, not actions.dag schema —
 under-modeling the platform surface by 15 sites.
 
-### §5.5.1 Migration rule (revised)
+### §5.5.1 Migration rule (revised — string-typed sites only; typed-field sites HOLD per §5.5.2)
 
-**ALL expression-capable fields in actions.dag carriers migrate to
-`Expression`** under (c). The 22 enumerated sites in the table above
-are the audit set; the implementing PR (per §7.5 ask #4 / Slice 4
-brief) must verify against the current `dsl/extdeps/github/actions.dag`
-HEAD + GH Actions context-availability docs and migrate any additional
-expression-capable fields surfaced.
+The 22 expression-capable sites split into three classes by HEAD-type:
 
-**Why uniform-not-partial**: leaving any expression-capable field as
-opaque `String` / `Bool` / `Int` while migrating others creates the
-exact hidden-parallel-authority pattern the operator BLOCKING flags —
-P2/P5 violation by structural split. Either gunbc structurally
+- **String-typed sites (13)**: fields already typed `String` / `String?` /
+  `Map<String, String>` at HEAD — `Workflow.env`, `Job.if_condition`,
+  `Job.env`, `Job.concurrency.group`, `RunStep.name`, `RunStep.run`,
+  `RunStep.env`, `RunStep.working_directory`, `RunStep.if_condition`,
+  `UsesStep.name`, `UsesStep.with`, `UsesStep.env`,
+  `UsesStep.if_condition`. Migration shape under (c) is uniform:
+  every site → `Expression` / `Expression?` / `Map<String, Expression>`.
+- **Typed-field sites (7)**: `Job.timeout_minutes: Int?`,
+  `Job.continue_on_error: Bool`,
+  `Job.concurrency.cancel_in_progress: Bool`,
+  `RunStep.continue_on_error: Bool`, `RunStep.timeout_minutes: Int?`,
+  `UsesStep.continue_on_error: Bool`, `UsesStep.timeout_minutes: Int?`.
+  GH Actions string-coerces expressions at these sites at runtime.
+  The shape that captures this (wrap vs `TypedOrExpression<T>` sum vs
+  defer) is an **open Director-tier question** per §5.5.2 / §6 Q#4.
+  **HOLD migration** until §6 Q#4 ratifies.
+- **Enum-extension sites (2)**: `Job.runner: RunnerSpec` and
+  `UsesStep.uses: ActionRef`. Migration adds a new variant
+  (`ExpressionRunner { expr: Expression }`, `ExpressionActionRef { expr: Expression }`)
+  to the existing sum/struct rather than swapping the type. Per §2
+  (c) sketch for `RunnerSpec`; `UsesStep.uses` extension is symmetric.
+  These 2 sites are in scope for the §7.5 ask #4 prereq PR alongside
+  the 13 string-typed sites — same uniform-string-expression class
+  at the substrate level (each adds an `Expression`-carrying variant).
+
+Total in-scope for the substrate-prereq PR under §7.5 ask #4 / Slice 4
+brief: **13 string-typed + 2 enum-extension = 15 sites**. The 7
+typed-field sites sequence as a follow-on substrate-prereq PR after
+§6 Q#4 Director ratification resolves the wrap/sum/defer choice.
+
+**Why uniform-not-partial within the string-typed class**: leaving any
+string-typed expression-capable field as opaque `String` while migrating
+others creates the hidden-parallel-authority pattern operator BLOCKING
+flags — P2/P5 violation by structural split. Either gunbc structurally
 recognizes "this field can carry a GH Actions expression" via
-`Expression`, or it doesn't; per-field opt-in produces drift.
+`Expression`, or it doesn't.
+
+**Why typed-field sites can HOLD without violating the same discipline**:
+typed-field sites carry a different question (how to model
+string-coerced-to-typed expressions), not the same question. The 5 sites
+in the typed-field class form a separate uniform migration class once
+§6 Q#4 ratifies; deferring the class as a whole pending the typed-
+question resolution preserves single-authority for "what is a
+string-typed expression-bearing field" while leaving the typed-coerce
+class as a distinct decision. Mixing the two classes in §5.5.1 would
+create the contradiction codex REQUEST_CHANGES review 10083 flagged
+("ALL 22 migrate" + "typed shape unresolved" cannot both hold).
+
+**Implementing-PR scope**: §7.5 ask #4 / Slice 4 brief migrates the
+13 string-typed + 2 enum-extension sites (15 total) uniformly. The 7
+typed-field sites sequence as a follow-on substrate-prereq PR after
+§6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
 ### §5.5.2 Typed-field expression semantics (new §6 question)
 
