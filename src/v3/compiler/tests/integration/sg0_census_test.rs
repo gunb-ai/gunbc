@@ -367,18 +367,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
     // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
     // COMPLETE promotion against frozen v2-oracle values. Temporarily stays Rust
-    // because `.dag` TestClaims cannot yet express `ComplexitySummary` /
-    // nested `SymbolicCost` expected values (M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA,
-    // Gate73_ReportPredicateCarriers).
+    // because `.dag` TestClaims cannot yet consume the `ComplexitySummary`
+    // report carrier (`Gate73_ReportPredicateCarriers`).
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
-    // R3 T-Lens-Behavioral-Parity gate #80 (`cost_lens_behaviorally_complete`):
-    // Band-C cementing receipt for the standalone `cost_symbolic` lens COMPLETE
-    // promotion. P5 deferral receipt: lane=T-Lens-Behavioral-Parity; concrete
-    // ROADMAP row=ROADMAP.md "R3 Cluster M / §1.8 gate #84 coordinator anchors";
-    // dissolution trigger=retire this Rust receipt when `.dag` TestClaims can
-    // express nested `SymbolicCost` / `SizeVariable` expected values, tracked by
-    // blocker token M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA. PR-level SG-0 pairing
-    // cites the queued dispatch brief `docs/briefs/r3-v-tests-as-data-v1-worker.md`.
+    // R3 gate #78 residual: pins `per_call_pattern_at` on the unary countdown fixture while the
+    // host `symbolic_cost_of` wrapper still owns the alias-collapse post-pass. Gate #80 Band-C
+    // symbolic-cost cementing moved to
+    // `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`; do not count this file as the
+    // `cost_symbolic` COMPLETE receipt.
     "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
