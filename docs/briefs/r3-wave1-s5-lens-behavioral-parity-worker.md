@@ -14,14 +14,16 @@ Closes gate #73 `lens_behavioral_parity_demonstration` — all 4 R3 lenses vs fr
 
 Demonstrate behavioral parity between each of the 4 R3 lenses and their frozen v2-oracle snapshot:
 
-Per `docs/v3-lens-capability-register.md` (lens enumeration authority), the 4 R3 lenses with v2-oracle parity candidates are:
+**Gate authority**: `docs/r3-structure.md:197` + `docs/r3-program-plan.md:299` (canonical gate #73 row) — the canonical 4-lens enumeration per Director carve-promotion ratification 2026-05-09 (gunbc#846 c#4412330468) is:
 
-1. **`src/v3/lenses/complexity.dag`** — COMPLETE per register; v2 counterpart `src/v2/complexity.dag` (5488L). Cementing receipt at `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs` (frozen oracle while `.dag` TestClaims can't express `ComplexitySummary` / nested `SymbolicCost` directly).
-2. **`src/v3/lenses/cost.dag`** — COMPLETE for abstract `SymbolicCost` scope per register; v2 counterpart is `CostExpr` (embedded in v2 `complexity.dag`). Cementing receipt at `src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs`.
-3. **`src/v3/lenses/idempotency.dag`** — COMPLETE per register; lens consumes `std.effects::lane2_workflow_idempotency_report`. Verify cementing-receipt presence + frozen-oracle parity step before claiming gate #73 closure for this lens.
-4. **`src/v3/lenses/parallelism.dag`** — currently STUB (returns `LensSurfacePending` until Stage 2e walk lands). Gate #73 closure for this lens **depends on S1 #81 walker port landing first** (parallelism walker port from `src/v3/compiler/src/workflow_parallelism.rs` → `.dag`). If S1 hasn't merged when this brief dispatches, surface to warm-wolf-698: gate #73 may need to split into 3-lens-immediate + 1-lens-post-S1, or fully gate on S1 landing.
+1. **`src/v3/lenses/complexity.dag`** — v2 counterpart `src/v2/complexity.dag`. Per `docs/v3-lens-capability-register.md`: COMPLETE; cementing receipt at `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs`.
+2. **`src/v3/lenses/cost.dag`** — v2 counterpart `CostExpr` embedded in v2 `complexity.dag`. Per register: COMPLETE for abstract `SymbolicCost` scope; cementing receipt at `src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs`.
+3. **`src/v3/lenses/parallelism.dag`** — currently STUB (returns `LensSurfacePending` per register). Gate #73 closure for this lens **depends on S1 #81 walker port landing first**. If S1 hasn't merged when this brief dispatches, surface to warm-wolf-698: gate #73 may need to split into 3-lens-immediate + 1-lens-post-S1, or fully gate on S1 landing.
+4. **`src/v3/lenses/effect_enumeration.dag`** — currently PARTIAL (v3-native; no v2 counterpart — but per r3-program-plan.md:299 explicitly canonical-4 within Cluster F R3-load-bearing scope). Gate #73 closure depends on F-β (#82 effect_enum migration) landing — see S3 F-β.1 canvas + Wave-2 F-β.2 implementation cascade.
 
-Grep verification step: re-read `docs/v3-lens-capability-register.md` at HEAD before authoring — drift since 2026-05-12 may have promoted parallelism or other rows. Note: `cost_target_realization.dag` (TERMINAL / N/A behavioral) is **NOT** in scope for gate #73 since it has no v2 counterpart; same for `effect_enumeration.dag` (v3-native, PARTIAL) and `infer_helpers.dag` (N/A for parity).
+**Out of scope for gate #73**: `idempotency.dag` (COMPLETE per register but NOT in the canonical-4 per r3-structure.md / r3-program-plan.md gate #73 row; an earlier draft of this brief erroneously included it — corrected per codex BLOCKING review on PR #2782). Also out: `cost_target_realization.dag` (TERMINAL / N/A behavioral), `infer_helpers.dag` (N/A for parity).
+
+Grep verification step: re-read `docs/r3-structure.md:197` + `docs/r3-program-plan.md:299` + `docs/v3-lens-capability-register.md` at HEAD before authoring — these are the authorities, drift since 2026-05-12 not assumable.
 
 ### Acceptance pattern (`LensOutputEquals` receipt)
 

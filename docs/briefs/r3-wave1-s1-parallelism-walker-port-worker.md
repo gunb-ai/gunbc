@@ -27,7 +27,7 @@ The hand-Rust authority is the **source of truth at port time** per `feedback_gr
 
 ### Phase B — Express the walker in DSL
 
-Author the equivalent walker as a DSL fold/recursion in the appropriate module (likely `dsl/std/` or a new module; grep authority-namespace before placement per `feedback_self_hosting_md_authority_audit_before_naming`).
+Author the equivalent walker as a DSL fold/recursion in the **F-α authority path: `src/v3/std/` or `src/v3/lenses/`** (per `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` F-α framing). `dsl/std/` is the historical-mirror namespace — DO NOT place the F-α port there; F-α lives in the v3 substrate. Grep authority-namespace at placement-time per `feedback_self_hosting_md_authority_audit_before_naming`.
 
 The DSL form should:
 - Match the hand-Rust walker behavior **byte-identically** at the test surface (use a shadow-mode test if the consumer can be exercised both ways)

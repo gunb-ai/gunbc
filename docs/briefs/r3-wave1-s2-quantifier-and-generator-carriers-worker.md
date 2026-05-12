@@ -17,32 +17,54 @@ In-flight precedent:
 
 ## §1. Scope
 
+**Authority**: `docs/design-tests-as-data-completeness.md` §2.1 + §2.2 + §2.3 (locked carrier shapes). Substrate lives in **`src/v3/std/verification.dag`** (existing single-authority extension per P2 — NOT a new module).
+
 ### #85 — `forall_exists_quantifier_substrate_landed`
 
-Land the following carriers in the existing Tests-as-Data module (likely `dsl/std/tests_as_data.dag` or successor; grep before placement):
+Land the canonical carriers from `docs/design-tests-as-data-completeness.md`:
 
 ```
+// §2.2 — closed two-variant Quantifier sum (forall / exists are the only structurally meaningful quantifications over a ProgramGenerator's output)
 type Quantifier = ForAll | Exists
+
+// §2.3 — QuantifiedTestClaim references a ProgramGenerator + property declaration
 type QuantifiedTestClaim {
   quantifier: Quantifier
-  // additional fields per existing TestClaim shape; mirror Tests-as-Data surface
+  generator: ProgramGenerator
+  // property surface fields per design §2.3 (see source doc for full shape)
+}
+
+// §2.4 — SuiteClaim aggregator over List<QuantifiedTestClaim>
+type SuiteClaim {
+  claims: List<QuantifiedTestClaim>
+  // suite-level fields per design §2.4
 }
 ```
 
-**Acceptance**: Quantifier sum + QuantifiedTestClaim carrier present + at least one consumer-side wiring point that exercises the variant pattern-match (no scaffold-without-consumer per INVARIANTS P5 / modeling-discipline Practice 4). Closes gate #85.
+**Acceptance**: `Quantifier` + `QuantifiedTestClaim` + `SuiteClaim` carriers present in `src/v3/std/verification.dag` per design §2 shapes + at least one consumer-side wiring point per carrier (no scaffold-without-consumer per INVARIANTS P5 / modeling-discipline Practice 4). Closes gate #85.
 
 ### #86 — `program_generator_carrier_landed`
 
-Land:
+Land canonical carriers from `docs/design-tests-as-data-completeness.md` §2.1:
+
 ```
-type ProgramShape   = ...   // discriminator per Cluster-M plan §...
+// §2.1 — ProgramGenerator is a structural reference to a generator declaration
+// (NOT a closed roster of shape kinds — that's the lens-extensibility failure flagged by
+//  docs/lens-library-design.md §1.5)
 type ProgramGenerator {
-  shape: ProgramShape
-  // generator surface fields per cluster-M plan
+  generator: DeclarationRef
 }
+
+// §2.1 — ProgramShape coproduct; single-variant at bootstrap (LiteralProgram)
+// per INVARIANTS P1 coproduct-vs-coordinate honesty; future variants
+// (ParameterizedProgram, SubstrateDerivedProgram) added when consumer demand exists
+type ProgramShape
+  = LiteralProgram { source: String, file_name: String }
+  // future: ParameterizedProgram { ... }
+  // future: SubstrateDerivedProgram { ... }
 ```
 
-**Acceptance**: ProgramGenerator + ProgramShape declared; consumer-side wiring point. Closes gate #86.
+**Acceptance**: `ProgramGenerator` + `ProgramShape` declared in `src/v3/std/verification.dag` per design §2.1 shape + at least one consumer-side wiring exercising the `LiteralProgram` variant. Closes gate #86.
 
 ## §2. STOP conditions (per brief P2/P3 discipline established in PR #2762 / PR #2774)
 
