@@ -72,7 +72,8 @@ Current evidence receipts:
 Dissolution / next-authoring trigger: land a design receipt for workflow-as-data
 carriers before authoring live substrate. That receipt must decide the `uses` target
 shape, job/step/dependency carriers, permissions/secret policy modeling, and how it
-relates to the timing-lens `WorkflowObservationAnchor` / external-attachment pattern.
+relates to the timing-lens **`WorkflowObservationAnchor`** / **Shared External Attachment**
+pattern ([`docs/design-timing-lens.md`](docs/design-timing-lens.md) §2 — six invariants; typed substrate in `src/v3/std/timing_lens.dag`).
 
 ### Lane acceptance — `.dag` gates
 
