@@ -378,26 +378,23 @@ jobs:
           trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
           cargo test -p v3-compiler --test integration --no-run
 
-      - name: v3 tests (Stage 2d integration module, 360s cold-compile-safe budget)
-        env:
-          # Bootstrap snapshot fn `bootstrapped_fixture_dag_declarations` in
-          # `bootstrap_generated.rs` is ~66K lines of stack-allocated `Declaration{...}`
-          # struct literals. With the default 8MB main-thread stack, debug-mode
-          # initialization runs the snapshot building right against the limit
-          # and overflows whenever the snapshot grows (PR #2161 hit this after
-          # adding 12 IntW*/UIntW* declarations). 16MB clears the cliff with
-          # headroom; long-term remedy is splitting the snapshot fn — tracked
-          # separately from this CI tune.
-          RUST_MIN_STACK: 16777216
+      # **HOT-FIX 2026-05-12 — Stage 2d test execution SKIPPED** per operator
+      # directive at gunbc#846 ('cut all demos and integration tests for now,
+      # get v3 to 10 minutes'). The lane2d integration tests are part of the
+      # full integration harness and execution is paused until OnceLock/
+      # cached_compile amortization (rebuild session) lands. Compile coverage
+      # remains via the `--no-run` prebuild step above (catches Rust-level
+      # breakages); only execution is skipped.
+      #
+      # **Restore criteria** (rebuild session per #2722 §5): when each lane2d
+      # symbolic-cost test re-enables under shared bootstrap + OnceLock
+      # amortization with per-test wall ≤ 2s, restore this step (or transition
+      # to per-cluster path-conditional gating per Layer 2 brief #2719).
+      - name: v3 tests (Stage 2d integration module, HOT-FIX SKIPPED)
         run: |
-          start=$(date +%s)
-          cargo test -p v3-compiler --test integration lane2_stage_2d_symbolic_cost_test::
-          elapsed=$(( $(date +%s) - start ))
-          echo "v3 Stage 2d (lane2d) wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 360 ]; then
-            echo "::error::v3 lane2d tests took ${elapsed}s (budget: 360s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
-            exit 1
-          fi
+          echo "::notice::v3 lane2d Stage 2d test execution SKIPPED per operator hot-fix directive at gunbc#846 (cold-v3 → ~10min target)."
+          echo "::notice::Restore criteria: per-test wall ≤ 2s under OnceLock/cached_compile amortization (rebuild session per #2722 §5)."
+          exit 0
 
       # **Dissolution trigger:** reshape m1_5_testgen to spot-check instead of exhaustive
       # compile-every-claim, OR mark the two slow tests `#[ignore]`-by-default + nightly job.
@@ -466,28 +463,34 @@ jobs:
             exit "$status"
           fi
 
-      - name: v3 tests (full suite integration harness, timings part 4/4 + 4000s budget)
-        env:
-          CARGO_TERM_COLOR: never
-          RUST_MIN_STACK: 16777216
+      # **HOT-FIX 2026-05-12 — full integration harness execution SKIPPED** per
+      # operator directive at gunbc#846 ('cut all demos and integration tests
+      # for now, get v3 to 10 minutes'). The integration test binary is the
+      # dominant wall-time contributor (~67min cold per Director tick framing);
+      # execution is paused until OnceLock/cached_compile amortization (rebuild
+      # session per #2722 §5) lands and tests can run within per-test 2s ratchet.
+      #
+      # **What still gates correctness on every PR** (NOT cut):
+      # - lib+bins (Part 1/4 above) — unit-level correctness in src/
+      # - determinism_test (Part 2/4) — emission determinism gate
+      # - doc tests (Part 3/4) — doc-comment examples
+      # - Compile coverage of integration via `--no-run` prebuild — catches Rust-level breakages
+      # - Clippy + L-7 + L-8 + compiler-std + banked-dissolutions ratchets (below)
+      #
+      # **Restore criteria**: rebuild session #2722 §5 (OnceLock/cached_compile
+      # amortization) reshapes each integration test to ≤2s under shared bootstrap.
+      # As each test class re-enables, restore step + ratchet budget downward
+      # incrementally.
+      #
+      # **Budget ratchet**: 4000s → effectively N/A (no execution); when integration
+      # tests re-enable per cluster (via Layer 2 path-conditional gating from brief
+      # #2719) or rebuild session, set per-step or per-cluster timeouts at that point.
+      - name: v3 tests (full suite integration harness, HOT-FIX SKIPPED)
         run: |
-          set -euo pipefail
-          if [ -z "${V3_SUITE_START_TS:-}" ]; then
-            echo "::error::missing V3_SUITE_START_TS (full suite part 1 must run first)"
-            exit 1
-          fi
-          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log
-          status=${PIPESTATUS[0]}
-          elapsed=$(( $(date +%s) - V3_SUITE_START_TS ))
-          echo "v3 full-suite wall time: ${elapsed}s"
-          if [ "$status" -ne 0 ]; then
-            echo "::error::cargo test (integration) failed (exit=$status)"
-            exit "$status"
-          fi
-          if [ "$elapsed" -gt 4000 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 4000s transitional). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work. Revert this transitional budget once the OnceLock/module-cache fix restores warmed runs below 1200s."
-            exit 1
-          fi
+          echo "::notice::v3 integration test execution SKIPPED per operator hot-fix directive at gunbc#846."
+          echo "::notice::Cold-v3 wall-time target: ~10min (per Brian framing 2026-05-12)."
+          echo "::notice::Correctness coverage preserved: lib+bins + determinism + doc tests + integration --no-run compile + clippy + lens gates + ratchets."
+          echo "::notice::Restore criteria: rebuild session per #2722 §5 OnceLock/cached_compile amortization → per-test wall ≤ 2s ratchet → re-enable per cluster via Layer 2 path-conditional gating."
 
       # Per-test 2s wall-clock ratchet — binding Phase 0 gate.
       # Parses the timing log captured by the full-suite steps above; does not
