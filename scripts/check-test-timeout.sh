@@ -11,8 +11,9 @@
 # retired free-form `slow-test-exemptions.txt` table + row-count ratchet.
 #
 # **Naming alignment (gate #101; gate #102 in flight).** Rows use the same
-# libtest name tokens as `--report-time` — the tokens `TestNodeCostDimension`
-# will attach to in `src/v3/std/verification.dag`. **Enforcement here still
+# libtest name tokens as `--report-time` — the tokens that
+# `TestNodeCostDimension` will attach to in `src/v3/std/verification.dag`.
+# **Enforcement here still
 # reads this file** until #102 wires the ratchet to modeled timing facts. Each
 # line is JSON `{"test":"<token>","policy":"warn"}` carrying warn-only policy
 # for that node (shell transport today; substrate projection is the retirement
