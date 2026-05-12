@@ -6,6 +6,9 @@
 //! (compile-fail / fail-closed), per `lens_application.dag`, design §3, and
 //! INVARIANTS C-8.
 //!
+//! Future extra `DiagnosticSeverity` constructors stay fail-closed at this consumer until
+//! an intentional substrate + routing co-update assigns their `Diagnostic::*` shape.
+//!
 //! Gate #92 (`complexity_violation_compile_error_demonstrated`): when a program
 //! authors `EnforcedApplication<ComplexitySummary, AsymptoticClass>` referencing
 //! `complexity_enforceable`, infer checks the named section using the **same**
