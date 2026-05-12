@@ -286,27 +286,31 @@ type ProcessCloseState
   = ProcessOpen
   | ProcessClosed { closed_at: Timestamp }
 
-// 🟢 TERMINAL coproduct at Phase-1 scope — mode-specific closure facts. This
-// avoids sibling nullable fields that admit impossible states, such as a leaf
-// with a bucket-drain timestamp or a bucket with child facts.
+// 🟢 TERMINAL coproduct at Phase-1 scope — mode-specific closure facts for
+// declared process nodes. This avoids sibling nullable fields that admit
+// impossible states, such as a leaf with a bucket-drain timestamp or a bucket
+// with child facts.
 //
 // Practice 4 receipt:
 // - Classification: 🟢 TERMINAL for the closure guard state consumed by
 //   `can_close_process_node`.
 // - Dissolution pattern rejected: nullable sibling fields collapse distinct
-//   repair paths and admit contradictory states. Each mode owns only the
-//   facts needed for its closure rule.
+//   repair paths and admit contradictory states. Each declared mode owns only
+//   the facts needed for its closure rule.
+// - Dissolution pattern applied: undeclared/cutoff remains a projection result
+//   in `ProcessModeProjection`, not stored node state.
 // - Trigger: none for PR #1195 parity; new mode-specific closure facts must
 //   extend the corresponding carrier here.
 type ProcessNodeModeState
   = LeafState
   | CompositeState { open_children: List<ProcessNodeId> }
   | BucketState { drain: BucketDrainState }
-  | UndeclaredState
 
 // 🟡 STAGED node facts for closure projection. Identity is carried by the
 // graph entry below, not by this closure-fact row, so mode/close facts cannot
-// treat ProcessNodeId as another mutable sibling field.
+// treat ProcessNodeId as another mutable sibling field. Undeclared/cutoff
+// nodes are represented by `ProcessModeProjection` and refusal facts, not by
+// storing a fourth mode here.
 //
 // Dissolution trigger: when `state(log: ProcessEventLog)` is emitted, this
 // snapshot is generated from the event log and no longer hand-authored.
