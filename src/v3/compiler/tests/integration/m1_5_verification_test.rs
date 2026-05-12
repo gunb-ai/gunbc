@@ -4,6 +4,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective, ValueBody,
 };
+use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
@@ -386,7 +387,7 @@ fn program_generator_authoring_surface_compiles_cleanly() {
     let src = r#"
 data parse_smoke_generator: List<ProgramShape> = []
 
-let generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
+data generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
 "#;
 
     let dag = compile_any(src, "program_generator_authoring_surface.v3");
@@ -396,23 +397,35 @@ let generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
 
+    let generator_decl = dag
+        .declaration_by_name("generator_ref")
+        .expect("generator_ref declaration");
+    assert_eq!(generator_decl.meta_tag, Some(find_named(&dag, "ProgramGenerator")));
+    let Some(ValueBody::Structural { fields }) = &generator_decl.value_body else {
+        panic!("generator_ref should lower to a structural value body");
+    };
+    let [(label, FieldValue::Reference(generator_target))] = fields.as_slice() else {
+        panic!("ProgramGenerator.generator should lower as a DeclarationRef edge, got {fields:?}");
+    };
+    assert_eq!(label, "generator");
     assert_eq!(
-        bind_value_type_decl(&dag, "generator_ref"),
-        find_named(&dag, "ProgramGenerator")
+        *generator_target,
+        find_named(&dag, "parse_smoke_generator")
     );
 }
 
 #[test]
 fn program_generator_rejects_empty_declaration_ref_literal() {
     let src = r#"
-let generator_ref: ProgramGenerator = { generator: {  } }
+data generator_ref: ProgramGenerator = { generator: {  } }
 "#;
 
     let dag = compile_any(src, "program_generator_empty_ref.v3");
     assert!(
-        dag.diagnostics().iter().any(|diagnostic| {
-            format!("{diagnostic:?}").contains("must be a DeclarationRef edge")
-        }),
+        dag.diagnostics().iter().any(|diagnostic| matches!(
+            diagnostic,
+            (_, Diagnostic::ResolveError { name, .. }) if name.contains("must be a DeclarationRef edge")
+        )),
         "empty DeclarationRef literal should fail-closed for ProgramGenerator.generator, got {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
