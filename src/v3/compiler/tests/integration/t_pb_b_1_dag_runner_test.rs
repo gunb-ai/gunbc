@@ -218,6 +218,12 @@ fn r3_tests_as_data_demonstration_suite_passes_through_runner() {
 const R1C_D_PB_CENSUS_GATES_PATH: &str = "src/v3/compiler/tests/dag/t_r1c_d_pb_census_gates.dag";
 const R1C_D_PB_CENSUS_SUITE: &str = "r1_pb_census_gates_suite";
 
+/// R1C-D integration receipt: the six PB census gates are `TestClaim` + predicate **data** in
+/// `t_r1c_d_pb_census_gates.dag` (path: `R1C_D_PB_CENSUS_GATES_PATH`), not in this Rust body. This
+/// `#[test]` only lowers the module and runs the suite through `TestRunner` (runner-only, same
+/// class as gate #74). **P5(b):** merge-visible SG-0 receipt is **−3** deleted census paths; **not**
+/// gate #84 / facet-3 closure — see `sg0_census_test.rs` on this file's `EXPECTED_HAND_AUTHORED_TEST`
+/// line and the module doc above.
 #[test]
 fn r1c_d_pb_census_gates_suite_evaluates_through_runner() {
     let dag = lower(
@@ -242,6 +248,9 @@ fn substituted_r1c_e_emit_gates_source() -> String {
     R1C_E_EMIT_GATES_TEMPLATE.replace(R1C_E_BIN_PLACEHOLDER, R1C_E_EMIT_GATES_BIN_PATH)
 }
 
+/// R1C-E: emit-gate claims live in `r1c_e_emit_gates.template.dag` (host path substituted in
+/// `substituted_r1c_e_emit_gates_source`). Runner-only wiring; same P5(b) / #84 accounting as
+/// `r1c_d_pb_census_gates_suite_evaluates_through_runner`.
 #[test]
 fn r1c_e_emit_gates_suite_passes_through_runner() {
     let source = substituted_r1c_e_emit_gates_source();
