@@ -20,7 +20,14 @@ import extdeps.github.actions { Workflow }
 // `docs/briefs/t-wad-wi2-substrate-and-slice4-yamlstatic-body-worker.md` §1). `InlineGunbc` stays off the enum until a
 // real runtime consumer exists (emitter-dispatch §5.4).
 
-type WorkflowRuntime = YamlStatic | BinaryShim | PythonShim
+data _gunbc_ci_emission_parse_order_marker: Int = 0
+
+type WorkflowRuntime
+  = YamlStatic
+  | BinaryShim
+  | PythonShim
+
+type GunbcCiEmissionWorkflowCodomain = Workflow
 
 func project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow =
   match runtime {
