@@ -345,9 +345,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs",
     // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
     // COMPLETE promotion against frozen v2-oracle values. Temporarily stays Rust
-    // because `.dag` TestClaims cannot yet express `ComplexitySummary` /
-    // nested `SymbolicCost` expected values (M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA,
-    // Gate73_ReportPredicateCarriers).
+    // because `.dag` TestClaims cannot yet consume the `ComplexitySummary`
+    // report carrier (`Gate73_ReportPredicateCarriers`).
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
     // R3 gate #78 residual: pins `per_call_pattern_at` on the unary countdown fixture while the
     // host `symbolic_cost_of` wrapper still owns the alias-collapse post-pass. Gate #80 Band-C

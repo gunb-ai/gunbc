@@ -557,10 +557,7 @@ fn cementing_cost_symbolic_receipt_is_dag_claim_after_symbolic_cost_data_lands()
         .map(|receipt| (receipt.stem, receipt.kind.as_str()))
         .collect();
 
-    let expected = BTreeSet::from([(
-        "t_r3_gate_87_cementing_regen_cost_symbolic",
-        "dag",
-    )]);
+    let expected = BTreeSet::from([("t_r3_gate_87_cementing_regen_cost_symbolic", "dag")]);
     assert_eq!(
         cost_symbolic_receipts, expected,
         "`cost_symbolic` Band-C coverage is carried by the gate #87 `.dag` \
