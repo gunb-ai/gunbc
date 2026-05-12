@@ -71,18 +71,27 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
     let Some(declaration_scope_conj) = declaration_scope_payload_conj(dag, section_ref_disj) else {
         return;
     };
-    let Some(diagnostic_severity_disj) = dag
+    let diagnostic_severity_disj = dag
         .declarations()
         .iter()
         .find(|d| {
             d.name.as_deref() == Some("DiagnosticSeverity")
                 && d.span.file.ends_with("lens_application.dag")
         })
-        .map(|d| d.id)
-    else {
+        .map(|d| d.id);
+    #[cfg(test)]
+    if std::env::var_os("ENFORCED_LENS_DEBUG").is_some() {
+        eprintln!(
+            "check_enforced_lens: diagnostic_severity_disj = {:?}",
+            diagnostic_severity_disj
+        );
+    }
+    let Some(diagnostic_severity_disj) = diagnostic_severity_disj else {
         // Fail-closed: this pass consumes substrate `DiagnosticSeverity` from
         // `lens_application.dag`. Absence must not disable enforcement (openai-pro /
         // INVARIANTS P3, C-8).
+        #[cfg(test)]
+        eprintln!("enforced_lens: diagnostic severity substrate missing — attaching fail-closed diagnostic");
         dag.attach_diagnostic(Diagnostic::ParseError {
             message: "lens enforcement: could not resolve substrate `DiagnosticSeverity` from \
                       `lens_application.dag` (modeled authority missing; fail-closed)"
@@ -503,6 +512,46 @@ mod diagnostic_severity_fail_closed_tests {
             panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
         };
         dag.declaration_mut(ds_id).name = Some("DiagnosticSeverity__test_unresolvable".to_string());
+        assert_eq!(
+            dag.declaration(ds_id).name.as_deref(),
+            Some("DiagnosticSeverity__test_unresolvable"),
+            "rename should stick"
+        );
+
+        let section_ref_disj = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                d.name.as_deref() == Some("SectionRef")
+                    && d.span.file.ends_with("lens_application.dag")
+            })
+            .map(|d| d.id)
+            .expect("SectionRef");
+        let scope_ok =
+            super::declaration_scope_payload_conj(&dag, section_ref_disj).is_some();
+        let still_resolves_ds = dag.declarations().iter().any(|d| {
+            d.name.as_deref() == Some("DiagnosticSeverity")
+                && d.span.file.ends_with("lens_application.dag")
+        });
+        assert!(
+            scope_ok,
+            "declaration_scope_payload_conj should still resolve after DS rename"
+        );
+        assert!(
+            !still_resolves_ds,
+            "DiagnosticSeverity substrate row should be unfindable after rename"
+        );
+
+        let probe_ds = dag.declarations().iter().find(|d| {
+            d.name.as_deref() == Some("DiagnosticSeverity")
+                && d.span.file.ends_with("lens_application.dag")
+        });
+        assert!(
+            probe_ds.is_none(),
+            "probe before check: expected None, got {:?}",
+            probe_ds.map(|d| (d.id, d.name.clone()))
+        );
+
         check_enforced_lens_applications(&mut dag);
         assert!(
             dag.diagnostics().iter().any(|(_, d)| matches!(
