@@ -89,7 +89,7 @@ type EmissionTarget
   | BinaryShim
   | PythonShim
 
-fn project_github_actions(source: CIWorkflowDag, target: EmissionTarget?) -> Workflow
+fn project_github_actions(source: CIWorkflowDag, target: EmissionTarget) -> Workflow
 ```
 
 `EmissionTarget` is a normal `.dag` sum type. It is "open" only in the same
@@ -97,25 +97,20 @@ operational sense as other R3 extension surfaces: new variants are added to
 this single authority when a real consumer lands. A new variant must not create
 a sibling workflow carrier.
 
-The projection argument is optional to preserve migration compatibility:
+Authoritative projection calls must pass the target explicitly. There is no
+authoritative "missing target" state:
 
 ```
-normalize_target(target) =
-  YamlStatic if target is none
-  the contained target otherwise
+project_github_actions(ci_workflow_dag, YamlStatic)
+project_github_actions(ci_workflow_dag, BinaryShim)
+project_github_actions(ci_workflow_dag, PythonShim)
 ```
 
-This lets existing projection call sites remain valid before Slice 4 lands the
-enum and emitter consumers. The final authored projection call should still
-carry the target explicitly once the emitter consumes it.
-
-Optionality is migration-only. The retirement trigger is Slice 8
-`ci_yml_dissolved`: once hand-authored `.github/workflows/ci.yml` is gone and
-the workflow artifact is emitted from `.dag`, every authoritative projection
-call must carry an explicit `EmissionTarget`. At that point
-`normalize_target(none) = YamlStatic` becomes a compatibility reader for older
-fixtures only, and a ratchet should reject new authoritative projection calls
-that omit the target.
+Migration compatibility belongs outside the authoritative projection API. A
+temporary fixture reader or adapter may map historical records that predate the
+field to `YamlStatic`, but it must return a fully explicit `EmissionTarget`
+before calling `project_github_actions`. That keeps `YamlStatic` and "omitted"
+from becoming two authoritative encodings of the same decision.
 
 ### 3.1 Placement Evaluation Summary
 
@@ -294,7 +289,7 @@ workflow data.
 
 The dispatch steps are:
 
-1. Normalize the target.
+1. Require an explicit target at the authoritative projection boundary.
 2. Validate the workflow against GitHub Actions platform facts.
 3. Validate target-specific prerequisites.
 4. Render deterministic artifacts.
@@ -303,8 +298,7 @@ The dispatch steps are:
 Pseudocode:
 
 ```dag
-fn emit_workflow(source: CIWorkflowDag, projection_target: EmissionTarget?) -> WorkflowEmissionResult =
-  let target = normalize_target(projection_target)
+fn emit_workflow(source: CIWorkflowDag, target: EmissionTarget) -> WorkflowEmissionResult =
   let workflow = project_github_actions(source, target)
   match target {
     YamlStatic =>
