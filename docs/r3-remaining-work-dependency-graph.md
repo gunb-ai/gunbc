@@ -97,11 +97,13 @@
 | 14 | **T-Lens-Behavioral-Parity** | Cross | 5 | 1 | 0 | 4 | **Cluster F** |
 | 15 | **T-Tests-As-Data-Completeness** | Verification | 4 | 2 | 1 | 1 | **Cluster M ★** |
 | 16 | **T-Lens-Application-Surface** | Cross | 7 | 3 | 1 | 3 | Cascade for F-γ.1 |
-| 17 | **T-Workflow-As-Data** | Substrate | 8 | 4 | 3 | 5 | T-WAD FULL R3 |
+| 17 | **T-Workflow-As-Data** | Substrate | 12¹ | 4 | 3 | 5 | T-WAD FULL R3 |
 | 18 | T-Lens-Self-Application | Verification | 3 | 0 | 0 | 3 | Cascade post-T-WAD + T-LAS |
 | - | R3 Debt-Paydown (standing) | DP Mgr | 1 | 1 | 0 | 0 | ✓ DONE |
 
 **Two lanes 100% done**: T-Omni-Shape-B, T-Free-Consequences-Demonstration. Standing program gate also done.
+
+¹ T-WAD row Total reconciled to status-column sum (4+3+5=12). Canonical §1.8 count in `docs/r3-program-plan.md:90` shows T-WAD = 4 + 6 NEW T-WAD FULL R3 (#98–#103) = 10. The 2-gate delta (12 here vs 10 canonical) reflects status-column overcounting — Substrate Mgr canvas refreshes per `docs/r3-program-plan.md:447` are the formal authority; this row reconciles arithmetic for dispatch-planning auditability and flags the delta for status-drift sweep post-Wave-1 cleanup.
 
 **Star lane**: Cluster M (T-Tests-As-Data-Completeness) — critical-path.
 
