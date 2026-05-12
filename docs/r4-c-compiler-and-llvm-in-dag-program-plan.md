@@ -243,7 +243,7 @@ Three sibling programs under PM:
 
 ## §8. What this plan does NOT do
 
-- Implement any compiler code (Phase A is doc-shape promotion only)
+- Implement any compiler runtime code in Phase A (Phase A promotes typed `.dag` substrate from `~/ctrl/research/.../demos/c-compiler-in-dag/` into `dsl/extdeps/{common,llvm,hardware}/` per §3 — real tree additions, ~6-9 PRs — but NO Rust runtime, NO parser/emitter execution paths, NO codegen invocation; those are Phase B / Phase C scope)
 - Override the existing PLAN.md A1-A10 locks (those stay authoritative for workstream content)
 - Commit to Interpretation (b) "LLVM entirely" — that's Phase D, operator-decision
 - Set hard timelines on Phase B (worker-weeks per workstream are estimates from PLAN.md; actual cadence depends on staffing)
