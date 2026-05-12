@@ -35,9 +35,9 @@
 module gunbc.ci
 
 import std.list { List }
+import std.types { NonEmptyStr }
 import gunbc.compiler {
-  compiler_cycle, test_package,
-  lint_command, test_command, ignored_test_command
+  compiler_cycle, test_package
 }
 
 // ── Ratchet kind ────────────────────────────────────────────────────
@@ -77,10 +77,16 @@ type GateSource
   | FreshnessGate                        // proves committed stage0 == compile(source)
   | FixedPointGate                       // proves regen(regen(source)) == regen(source)
 
+type CICommand
+  = LintCommand
+  | TestCommand { package: NonEmptyStr }
+  | IgnoredTestCommand { package: NonEmptyStr, test_name: String }
+  | ShellCommand { command: String }
+
 type CIGate {
   id: String
   name: String
-  command: String
+  command: CICommand
   blocking: Bool
   source: GateSource
 }
@@ -110,17 +116,16 @@ type CIWorkflowDag {
 }
 
 // ── Gates ───────────────────────────────────────────────────────────
-// Commands use bare "cargo" because CI runners always have cargo on PATH. For
-// local dag run, tools/*.dag workflows resolve the absolute path via
-// extdeps.tools. Command literals are intentionally structural data here:
-// CI topology remains fail-closed inspectable through gate ids and workflow
-// edges. Dissolution path: ROADMAP F12 typed command-record carrier, extended
-// to preserve gunbc.compiler-derived command facts in structural data rows.
+// Commands are structural intent, not rendered shell text. The package-bearing
+// commands reference gunbc.compiler's `test_package`; live transports render the
+// shell string later using resolved tools or CI's conventional `cargo` on PATH.
+// ROADMAP F12 tracks the broader typed command-record carrier shared with other
+// command consumers.
 
 data lint_gate: CIGate = {
   id: "lint",
   name: "Lint",
-  command: "cargo clippy --workspace -- -D warnings",
+  command: LintCommand,
   blocking: true,
   source: LintGate
 }
@@ -128,7 +133,7 @@ data lint_gate: CIGate = {
 data test_gate: CIGate = {
   id: "tests",
   name: "Tests",
-  command: "cargo test -p v3-compiler",
+  command: TestCommand { package: test_package },
   blocking: true,
   source: TestSuiteGate { test_name: "" }
 }
@@ -139,7 +144,7 @@ data test_gate: CIGate = {
 data l1_gate: CIGate = {
   id: "l1-ratchet",
   name: "L1 Type Knowledge Ratchet",
-  command: "scripts/l1-ratchet.sh --check",
+  command: ShellCommand { command: "scripts/l1-ratchet.sh --check" },
   blocking: true,
   source: RatchetGate { metric: L1TypeKnowledge, direction: Stable }
 }
@@ -155,7 +160,7 @@ data l1_gate: CIGate = {
 data compile_gates_gate: CIGate = {
   id: "compile-gates",
   name: "Compile Gates",
-  command: "cargo test -p v3-compiler ci_ -- --ignored --nocapture",
+  command: IgnoredTestCommand { package: test_package, test_name: "ci_" },
   blocking: true,
   source: FixedPointGate
 }
