@@ -124,6 +124,16 @@ without an explicit node/edge prerequisite graph.
 
 ### Option (c) — Hybrid: provider-neutral semantic source + actions.dag-composing projection layer
 
+> **⚠ SUPERSEDED.** This option-(c) framing places `emission_target` on
+> `extdeps.github.actions.Workflow` and refers to a hand-declared
+> "pinned `Workflow` value" the emitter validates against. Both are
+> retracted: §7 (INVARIANTS P2/P1) moves `EmissionTarget` to gunbc
+> namespace as a projection-function parameter, and §8 retracts the
+> pinned-`Workflow`-as-modeled-authority framing. The ratified
+> substrate-shape is **(c-refined)** in §7.3 / §9. The text below is
+> preserved as canvas-evolution record; for current substrate shape,
+> read §7.3 + §7.4 + §8 + §9.
+
 **Carrier surface**: option (a)'s `CIWorkflowDag` retained as semantic
 gate-dependency authority **plus** option (b)'s `emission_target: EmissionTarget?`
 retained on `extdeps.github.actions.Workflow`. The two carriers occupy
@@ -244,6 +254,16 @@ property too (else any new CI provider re-shadows the same fact).
 
 ### §2.3 Option (c) evaluation
 
+> **⚠ SUPERSEDED.** Evaluation below assumes option (c) as authored (with
+> `emission_target` on `extdeps.github.actions.Workflow` and a hand-
+> declared "pinned `Workflow`" validation target). Both elements are
+> retracted in §7 (P2/P1) and §8 (single-authority). Ratified shape is
+> (c-refined) in §7.3 + §7.4 + §9. Specifically: the "emission validates
+> the declared `Workflow` against the projection" sentence at :265-:267
+> describes the dual-authority condition §8 retracts; under (c-refined)
+> there is no separately-declared `Workflow` — the projection output is
+> the sole authority. Section preserved as canvas-evolution record.
+
 **Cost-of-change**: low across both axes — new provider = new projection
 function (semantic source unchanged); new emission target = one `EmissionTarget`
 variant + emitter consumer (semantic source unchanged). The two
@@ -293,6 +313,21 @@ ci.yml under the YamlStatic emission target.
 ---
 
 ## §3. WI-1 canvas (PR #2746) assumption-breakage under (c)
+
+> **⚠ SUPERSEDED.** This section analyzed WI-1 assumptions under option
+> (c) as originally authored — keeping `emission_target` on
+> `extdeps.github.actions.Workflow`. Under the ratified (c-refined) in
+> §7.3, the substrate decision on `EmissionTarget` placement is **a
+> substantive retraction**, not a framing-narrowing: PR #2746's "field
+> on `Workflow`" placement is withdrawn in favor of `EmissionTarget` in
+> gunbc namespace as a projection-function parameter. Specifically:
+> the `"emission_target` field on `Workflow` is correct placement"
+> bullet below is OVERTURNED by §7.1; the "Workflow data chooses its
+> emission target" framing is OVERTURNED by §7.6; the "merge with a
+> one-paragraph clarifying note" disposition is OVERTURNED by §7.5 ask
+> #2 + §9 ratification ask #2 (AMEND, not framing-narrowing). For
+> current WI-1 disposition, read §7 + §9.
+
 
 PR #2746 was authored under the implicit framing that `extdeps.github.actions.Workflow`
 is the modeled authority for the CI workflow (option (b) framing). Under
@@ -350,6 +385,16 @@ framing narrows.
 ---
 
 ## §4. Slice 4 / 5 / 8 sequencing under (c)
+
+> **⚠ SUPERSEDED in part.** Sequencing structure (S0→S1→S2∥S3→S4) and
+> the load-bearing role of S1 (projection function) REMAIN VALID under
+> (c-refined). What changes: any S0 / S1 description that places
+> `EmissionTarget?` on `Workflow` or refers to a hand-declared
+> `Workflow` validation target is overturned by §7/§8. WI-2 (PR #2745)
+> re-brief scope is also LARGER than §5.4 implied — see §9 ratification
+> ask #4. For current sequencing read this section IN COMBINATION with
+> §7.3 / §7.5 / §9.
+
 
 The Director-ratified gate-additions (per PM relay `msg_93e14076`):
 
@@ -413,6 +458,17 @@ S6 is fully orthogonal. Slice 4 ∥ Slice 5 can dispatch in parallel once S1
 ---
 
 ## §5. Recommendation
+
+> **⚠ SUPERSEDED.** Section recommends "option (c)" with
+> `Workflow.emission_target` on `dsl/extdeps/github/actions.dag`, asks
+> for PR #2746 merge with "no substrate retraction" + a pinned
+> `Workflow` validation target. All three positions are OVERTURNED:
+> §7 (P2/P1) retracts the extdeps placement; §8 retracts the pinned-
+> `Workflow`-as-modeled-authority framing; §7.5 escalates PR #2746
+> disposition to substantive substrate retraction. **Current
+> recommendation is (c-refined) per §7.5 + §9 ratification.** Section
+> preserved as canvas-evolution record.
+
 
 **Adopt option (c) — hybrid: provider-neutral semantic source (`CIWorkflowDag`
 at `dsl/gunbc/ci.dag`) + actions.dag-composing projection layer (`Workflow.emission_target`
