@@ -1,6 +1,7 @@
 # T-WAD Slice 7 — Affected-set selection via `BinaryShim` (gate `ci_uses_affected_set_selection`, program row 103)
 
 **Status:** Verification-lane design canvas (implementation **not** in this PR).  
+**PR:** [gunbc#2760](https://github.com/gunb-ai/gunbc/pull/2760) is **draft** while the canvas is iterated; dashboard auto-reviews/CI gates skip draft until **ready**. When the branch is complete, opt into GitHub auto-coverage: `gh pr ready 2760 --repo gunb-ai/gunbc`.  
 **Authority:** `docs/r3-structure.md` (gate `ci_uses_affected_set_selection`), `docs/r3-program-plan.md` row 103, `docs/r3-t-workflow-as-data-full-r3-close-scope.md` §0–§1, PR #2744 WI / FULL R3-close scope context, `docs/design-ci-workflow-emitter-dispatch.md`, `docs/design-affected-set-lens.md`.  
 **Parent emitter canvas:** `docs/design-ci-workflow-emitter-dispatch.md` §5.2, §6 (this document **specializes** Slice 7; it does not reopen (c-refined) placement or `WorkflowRuntime` shape).  
 **Upstream lens:** PR #2713 (affected-set lens substrate; merged per scope docs).  
@@ -22,14 +23,22 @@
    - Per-dimension: proof receipts for exclusions / unknown deltas as required by `docs/design-affected-set-lens.md` §2 fail-closed discipline (“without that receipt, the consumer falls back to the default-include branch”).
 5. The binary **maps** `NodeRef` sets to **executable CI actions** (cargo filters, job labels, gate commands) using metadata anchored in `CIWorkflowDag`, `TestClaim` declarations, and gate records — not by parsing GitHub `paths`/`paths-ignore` in YAML.
 
-### §1.2 Interface stub (pending Slice 5)
+### §1.2 PM-assumed BinaryShim hand-off (implementation waits on Slice 5)
 
-The **exact** Rust (or generated) API surface between “emitted binary entrypoint” and “lens evaluation” is owned by the Slice 5 implementation PR. This canvas requires only:
+Until warm-wolf-698 lands Slice 5, the following is **assumed interface / dependency text** (not executable in this canvas PR):
+
+- **Projection:** `project_github_actions(ci_workflow_dag, BinaryShim)` emits a provider `Workflow` value that **points at** a **compiled CI binary entry-point** plus **thin shim YAML** (bootstrap only; policy in binary — matches `docs/design-ci-workflow-emitter-dispatch.md` §5.2).
+- **PR-time runner:** the binary reads the **git diff / event** (equivalently: materializes `Dag_before`, `Dag_after`), **computes affected-set** via the PR #2713 lens pipeline, then **dispatches the matrix dynamically** (GitHub-native matrix payload and/or in-runner execution list — see §2 for staged vs end-state wording).
+- **Caveat:** no gunbc code in **this** document PR implements that path; integration PRs queue **behind** Slice 5.
+
+### §1.3 Interface stub (Slice 5–owned details)
+
+The **exact** Rust (or generated) API between “emitted binary `main`” and “lens evaluation” is owned by the Slice 5 implementation PR. This canvas still requires:
 
 - A **stable, versioned** internal contract: “runner requests affected-set bundle for `(before_ref, after_ref)`; receives `Ok(structured_receipt)` or `Err/Unknown`.”
 - **No** dependency on YAML `github` context expressions for that bundle.
 
-Verification Mgr may request a written **Slice 5 public surface** from warm-wolf-698 / PM before first integration PR; until then, integration work assumes the contract above.
+Verification Mgr may request a written **Slice 5 public surface** from warm-wolf-698 / PM before first integration PR; until then, §1.2 is the assumed hand-off.
 
 ---
 
@@ -139,12 +148,41 @@ Use this as the ordered work queue for the **implementation** PR(s) after warm-w
 - Fail-closed and “no silent skips” match `design-affected-set-lens.md` §2.
 - Initial shape choice (§2) is explicit and justified.
 - Path-regex invariant (§5) distinguishes selection vs orthogonal `if:`.
+- **§9** states a concrete future test matrix aligned with `feedback_lenses_not_passes` + `TESTING.md` without pretending runtime code exists in this PR.
 
 **After implementation (future PR test obligations — not this canvas):**
 
 - Unit tests for §3 reason codes (mock lens returning unknown / missing receipt).
 - Integration test: small repo fixture where only one dimension changes and only the expected `cargo test` filter runs.
 - Ratchet: no `paths:`/`paths-ignore:`-style selection in `.github/workflows/*.yml` (exact pattern set to be defined in implementation PR).
+- Shapes in **§9** land as real `#[test]` / `TestClaim` rows when Slice 5 runtime exists — this PR only records the harness contract.
+
+---
+
+## §9. Future verification test harness (skeleton — no runtime in this PR)
+
+PM explicitly allows **pre-authoring** the **verification test shape** here: the relationship **affected-set ↔ workflow-dispatch** must become a **structurally testable behavioral claim**, not a hand-waved “CI went green.”
+
+### §9.1 Discipline anchors
+
+- **`feedback_lenses_not_passes`** (`CODING.md`, design-index cites): selection logic reads **lens physics** (structured receipts over `Dag_before` × `Dag_after` × dimensions) plus **declared metadata** (`CIWorkflowDag`, `TestClaim`, gate records). It does **not** re-derive merge safety from YAML `if:` text, log scraping, or path heuristics parallel to the lens.
+- **`TESTING.md`**: tests are **hermetic** (each declares its own inputs), **behavior-driven** (name the interface + one behavior), **unit-first**; reserve full `compile_to_dag` / full-pipeline tests for cases where the pipeline itself is the subject.
+
+### §9.2 Recommended harness layers
+
+| Layer | Interface under test | Example behavior (one claim per test) |
+|-------|------------------------|----------------------------------------|
+| **Unit — dispatch planner** | Pure `plan_dispatch(receipt, obligation_metadata) -> RunPlan` (name TBD at implementation) | Given a **synthetic** receipt with `Unknown` on a narrowing edge, output equals full baseline obligation set `B` (§4 superset). |
+| **Unit — receipt gaps** | Same planner | Missing per-dimension exclusion proof → obligation stays **selected** (fail-closed). |
+| **Unit — narrow path** | Same planner | Receipt proves only subgraph `S` changed; metadata maps obligations outside proven non-affected closure → those obligations **absent** from `RunPlan`. |
+| **Integration — lens + planner (optional, cost-gated)** | Real affected-set lens on **tiny** paired `.dag` fixtures | Expected `NodeRef` set matches golden; planner output matches expected run list. |
+| **Ratchet / static** | Emitted workflow artifact | No authoritative path-regex selection patterns (denylist spelled in implementation PR; aligns with `workflow_no_path_regex_policy` in `design-ci-workflow-emitter-dispatch.md` §11). |
+
+**Fixture discipline:** inject **mock structured receipts** or minimal compiled DAG pairs **inside** each test; no shared mutable fixtures across tests (`TESTING.md` §Hermetic).
+
+### §9.3 What this PR does *not* ship
+
+No Rust modules, no `gunbc-ci` binary, no GitHub workflow edits — only the contract above so the follow-on implementation PR has an explicit test matrix.
 
 ---
 
