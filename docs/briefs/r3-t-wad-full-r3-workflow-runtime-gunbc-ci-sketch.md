@@ -9,10 +9,14 @@ It must not carry gunbc CI emission policy. The CI projection choice lives in
 the `dsl/gunbc/` namespace and is supplied at projection invocation time.
 
 Terminology remains deliberately separate from Shape-A compiler target
-selection. `src/v3/SELF_HOSTING.md` says YAML is a Shape-B artifact produced by
-`.dag` programs, never a compiler `EmissionTarget` value. The ratified
-T-CI-WAD `EmissionTarget` below is a gunbc CI projection mode for workflow
-artifact generation, not a compiler target.
+selection. `src/v3/SELF_HOSTING.md:609` defines the Shape-A
+`type EmissionTarget { language: LanguageSpec, rendering: RenderingSpec? }`
+for compiler language targets (Rust/Python/Go/etc.); YAML is a Shape-B
+artifact produced by `.dag` programs, never a compiler `EmissionTarget`
+value. The ratified T-CI-WAD `WorkflowRuntime` below is a gunbc CI
+projection mode for workflow artifact generation, not a compiler target;
+the name was deliberately chosen to avoid the prior collision with
+Shape-A `EmissionTarget` per PR #2749 INVARIANTS P2 finding.
 
 **Coproduct classification**: 🟡 SCAFFOLD. The initial variants are the
 ratified projection modes needed for the T-CI-WAD sequence. Future variants are
@@ -22,16 +26,16 @@ consumer lands.
 ## Ratified Shape
 
 ```dag
-type EmissionTarget
+type WorkflowRuntime
   = YamlStatic
   | BinaryShim
   | PythonShim
   | InlineGunbc
 
-fn project_github_actions(workflow: CIWorkflowDag, target: EmissionTarget) -> Workflow
+fn project_github_actions(workflow: CIWorkflowDag, target: WorkflowRuntime) -> Workflow
 ```
 
-`EmissionTarget` is standalone. It is not a field on `CIPipeline`,
+`WorkflowRuntime` is standalone. It is not a field on `CIPipeline`,
 `Workflow`, or a wrapper record. The selected target is a property of the
 projection call:
 
@@ -46,19 +50,19 @@ workflow declaration.
 
 ## Rejected Shapes
 
-- `CIPipeline { emission_target }`: rejected because `CIPipeline` is
+- `CIPipeline { workflow_runtime }`: rejected because `CIPipeline` is
 gate-centric, not emission-artifact-centric; coupling projection policy to the
 gate list violates modeling faithfulness.
 - `WorkflowEmission { workflow, target }`: rejected because it introduces an
 implicit join and duplicate authority between workflow value and target choice.
-- `extdeps.github.actions.Workflow { emission_target }`: rejected because it
+- `extdeps.github.actions.Workflow { workflow_runtime }`: rejected because it
 puts gunbc CI policy into provider platform facts.
 
 ## Shared Ratchet Shape
 
 The focused T-CI-WAD ratchet should assert:
 
-- `EmissionTarget` and `project_github_actions` live under `dsl/gunbc/`.
+- `WorkflowRuntime` and `project_github_actions` live under `dsl/gunbc/`.
 - `dsl/extdeps/github/actions.dag` has no CI projection policy field.
 - `gunbc_ci_yml_workflow` is a derived projection binding of
   `project_github_actions(ci_workflow_dag, YamlStatic)`.

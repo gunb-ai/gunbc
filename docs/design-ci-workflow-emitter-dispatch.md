@@ -1,7 +1,12 @@
 # CI Workflow Emitter Dispatch - Design Canvas
 
 **Status:** Design canvas for T-Workflow-As-Data FULL R3-close; consumes the
-placement decision from substrate-shape comparison PR #2749.
+placement decision from substrate-shape comparison PR #2749. Carrier name
+**`EmissionTarget` → `WorkflowRuntime`** per PR #2749 §7.3.3 P2
+name-collision fix (Shape-A `type EmissionTarget` at
+`src/v3/SELF_HOSTING.md:609` owns the original name); all references in
+this canvas use `WorkflowRuntime` post-rename. Variant names + projection
+function shape + Shape A/B mapping unchanged.
 **Authority:** Worker output for PR #2744 WI-1; substrate-shape comparison
 canvas PR #2749; final lane absorption proceeds through the T-WAD owner.
 **Scope:** Workflow emission target dispatch only. This document does not
@@ -41,9 +46,11 @@ target syntax. The target is a workflow runtime shape, not a compiler policy.
 
 This canvas does not:
 
-- implement `EmissionTarget`
+- implement `WorkflowRuntime`
 - rewrite `.github/workflows/ci.yml`
-- introduce a new `MatrixSpec`, `WorkflowRuntime`, or sibling workflow carrier
+- introduce a new `MatrixSpec` or sibling workflow carrier alongside the
+  ratified `WorkflowRuntime` (`WorkflowRuntime` itself is the canvas's
+  primary substrate output and is in scope)
 - extend `dsl/gunbc/ci.dag` to full workflow coverage
 - implement affected-set lens evaluation
 - replace current Rust/Python/Go program emitters
@@ -76,23 +83,23 @@ PR #2749 evaluated the carrier-placement question:
 
 | Option | Shape | Result |
 |---|---|---|
-| A | Add `emission_target` to `extdeps.github.actions.Workflow` | Rejected after comparison-canvas review: violates extdeps fidelity by adding gunbc projection policy to a GitHub Actions platform carrier. |
-| B | Add `emission_target` to `gunbc.ci.CIPipeline` | Rejected for this gate: `CIPipeline` is gate-centric CI intent, while the target controls projection of the GitHub Actions workflow artifact. |
+| A | Add `workflow_runtime` to `extdeps.github.actions.Workflow` | Rejected after comparison-canvas review: violates extdeps fidelity by adding gunbc projection policy to a GitHub Actions platform carrier. |
+| B | Add `workflow_runtime` to `gunbc.ci.CIPipeline` | Rejected for this gate: `CIPipeline` is gate-centric CI intent, while the target controls projection of the GitHub Actions workflow artifact. |
 | C | Add `WorkflowEmission { workflow, target }` wrapper | Rejected in wrapper form: preserves separation superficially but introduces an implicit join and duplicate authority. |
-| C-refined | Put `EmissionTarget` in gunbc namespace and pass it to `project_github_actions(ci_workflow_dag, target) -> Workflow` | **Consumed here.** The target choice is invocation-time modeled data, extdeps stays provider-faithful, and the emitted `Workflow` is derived from one source. |
+| C-refined | Put `WorkflowRuntime` in gunbc namespace and pass it to `project_github_actions(ci_workflow_dag, target) -> Workflow` | **Consumed here.** The target choice is invocation-time modeled data, extdeps stays provider-faithful, and the emitted `Workflow` is derived from one source. |
 
 The recommended substrate shape is a gunbc-owned enum plus projection function:
 
 ```dag
-type EmissionTarget
+type WorkflowRuntime
   = YamlStatic
   | BinaryShim
   | PythonShim
 
-fn project_github_actions(source: CIWorkflowDag, target: EmissionTarget) -> Workflow
+fn project_github_actions(source: CIWorkflowDag, target: WorkflowRuntime) -> Workflow
 ```
 
-`EmissionTarget` is a normal `.dag` sum type. It is "open" only in the same
+`WorkflowRuntime` is a normal `.dag` sum type. It is "open" only in the same
 operational sense as other R3 extension surfaces: new variants are added to
 this single authority when a real consumer lands. A new variant must not create
 a sibling workflow carrier.
@@ -108,7 +115,7 @@ project_github_actions(ci_workflow_dag, PythonShim)
 
 Migration compatibility belongs outside the authoritative projection API. A
 temporary fixture reader or adapter may map historical records that predate the
-field to `YamlStatic`, but it must return a fully explicit `EmissionTarget`
+field to `YamlStatic`, but it must return a fully explicit `WorkflowRuntime`
 before calling `project_github_actions`. That keeps `YamlStatic` and "omitted"
 from becoming two authoritative encodings of the same decision.
 
@@ -116,7 +123,7 @@ Practice 4 coproduct receipt for the initial enum:
 
 | Receipt | Classification | Disposition |
 |---|---|---|
-| `EmissionTarget = YamlStatic | BinaryShim | PythonShim` | 🟡 YELLOW scaffold | The variants currently encode two dimensions: artifact shape (`StaticYaml` vs thin shim) and runner realization (`compiled binary` vs emitted Python). Keep the flat enum only as the Slice 4/5 dispatch surface while there are exactly three concrete consumers. |
+| `WorkflowRuntime = YamlStatic | BinaryShim | PythonShim` | 🟡 YELLOW scaffold | The variants currently encode two dimensions: artifact shape (`StaticYaml` vs thin shim) and runner realization (`compiled binary` vs emitted Python). Keep the flat enum only as the Slice 4/5 dispatch surface while there are exactly three concrete consumers. |
 
 The named dissolution trigger is the first additional shim runtime or the first
 need to share runner metadata across shim targets. At that point the enum must
@@ -126,7 +133,7 @@ dissolve into coordinates equivalent to:
 type EmissionArtifactShape = StaticYaml | ThinShim
 type ShimRunnerKind = CompiledBinary | EmittedPython
 
-type EmissionTarget =
+type WorkflowRuntime =
   Static(EmissionArtifactShape)
   | Shim { runner: ShimRunnerKind }
 ```
@@ -146,7 +153,7 @@ This option is rejected. It would put the target choice on
 
 The objection is that `dsl/extdeps/github/actions.dag` describes platform
 constraints, not gunbc CI policy. That objection is load-bearing:
-`EmissionTarget` is not a GitHub Actions provider fact and must not become a
+`WorkflowRuntime` is not a GitHub Actions provider fact and must not become a
 field rendered into, or normalized as part of, the provider `Workflow` type.
 
 The workflow carrier already describes a provider artifact:
@@ -172,7 +179,7 @@ type CIPipeline {
 }
 ```
 
-This is attractive because `emission_target` can be read as CI-level policy,
+This is attractive because `workflow_runtime` can be read as CI-level policy,
 and `actions.dag` explicitly names `gunbc/ci.dag` as a consumer. It also keeps
 provider platform facts free of gunbc-specific emission choices.
 
@@ -187,7 +194,7 @@ It names `CIGate`s and their structural gate sources. It does not own:
 - step rendering
 - provider-specific syntax obligations
 
-Putting `emission_target` on `CIPipeline` would require the emitter to join a
+Putting `workflow_runtime` on `CIPipeline` would require the emitter to join a
 pipeline declaration to a separate `Workflow` declaration. That join becomes a
 new coherence surface: which pipeline emits which workflow, which value wins if
 multiple pipelines reference the same workflow, and how a target-specific shim
@@ -205,7 +212,7 @@ A wrapper shape would be:
 ```dag
 type WorkflowEmission {
   workflow: Workflow
-  target: EmissionTarget
+  target: WorkflowRuntime
 }
 ```
 
@@ -248,10 +255,10 @@ This keeps all three layers distinct:
 | Layer | Authority |
 |---|---|
 | CI semantics | `gunbc.ci` workflow/gate graph |
-| Emission choice | invocation-time `EmissionTarget` argument |
+| Emission choice | invocation-time `WorkflowRuntime` argument |
 | Provider artifact | derived `extdeps.github.actions.Workflow` |
 
-The cost of adding a target remains bounded: add one `EmissionTarget` variant
+The cost of adding a target remains bounded: add one `WorkflowRuntime` variant
 and one projection consumer. The extdeps carrier remains unchanged.
 
 ### 3.2 Carrier Reuse Audit
@@ -303,7 +310,7 @@ it for Slice 4 or Slice 5.
 The workflow emitter has one structural responsibility:
 
 ```
-(CI workflow graph, EmissionTarget, GitHub Actions platform facts,
+(CI workflow graph, WorkflowRuntime, GitHub Actions platform facts,
  target language/runtime facts)
   -> emitted workflow artifact(s)
 ```
@@ -323,7 +330,7 @@ The dispatch steps are:
 Pseudocode:
 
 ```dag
-fn emit_workflow(source: CIWorkflowDag, target: EmissionTarget) -> WorkflowEmissionResult =
+fn emit_workflow(source: CIWorkflowDag, target: WorkflowRuntime) -> WorkflowEmissionResult =
   let workflow = project_github_actions(source, target)
   match target {
     YamlStatic =>
@@ -465,7 +472,7 @@ orchestrator. GitHub Actions becomes a minimal host that invokes gunbc's
 workflow interpreter directly.
 
 This target is intentionally sketched only. It should not block Slice 4 or
-Slice 5. It is not part of the initial `EmissionTarget` substrate enum. Its
+Slice 5. It is not part of the initial `WorkflowRuntime` substrate enum. Its
 value is architectural: the target surface can later express "workflow stays
 inside gunbc runtime" without inventing a second workflow model.
 
@@ -567,7 +574,7 @@ and repository state:
 This yields two TestClaim shapes:
 
 ```dag
-data workflow_emission_target_toggle_proven: TestClaim = ...
+data workflow_runtime_toggle_proven: TestClaim = ...
 data workflow_target_semantics_equivalent: TestClaim = ...
 ```
 
@@ -616,7 +623,7 @@ This canvas keeps Slice 4 and Slice 5 small:
 
 | Slice | Dependency |
 |---|---|
-| Slice 4: projection + `YamlStatic` | gunbc-owned `EmissionTarget` plus `project_github_actions(..., YamlStatic)` |
+| Slice 4: projection + `YamlStatic` | gunbc-owned `WorkflowRuntime` plus `project_github_actions(..., YamlStatic)` |
 | Slice 5: `BinaryShim` | Slice 4 target dispatch plus compiled runner surface |
 | Slice 7: affected-set CI | Slice 5 plus affected-set lens |
 | Slice 8: `ci.yml` deletion | Slice 4-7 accepted |
@@ -633,13 +640,13 @@ is shaped to consume affected-set receipts when they become available.
 ### Phase A: Ratify Shape
 
 - Land this canvas.
-- Ratify `EmissionTarget` placement in gunbc namespace as the projection
+- Ratify `WorkflowRuntime` placement in gunbc namespace as the projection
   argument to `project_github_actions`.
 - Ratify that authoritative projection calls require an explicit target.
 
 ### Phase B: Static Parity
 
-- Add `EmissionTarget` to gunbc CI/emission substrate, not to extdeps.
+- Add `WorkflowRuntime` to gunbc CI/emission substrate, not to extdeps.
 - Model current CI in `dsl/gunbc/ci.dag` as the semantic source.
 - Emit `.github/workflows/ci.yml` from
   `project_github_actions(ci_workflow_dag, YamlStatic)`.
@@ -677,7 +684,7 @@ Recommended ratchets:
 
 | Ratchet | Purpose |
 |---|---|
-| `workflow_emission_target_consumed` | `EmissionTarget` is read by the workflow projection/emitter. |
+| `workflow_runtime_consumed` | `WorkflowRuntime` is read by the workflow projection/emitter. |
 | `workflow_yaml_static_fresh` | emitted YAML matches checked-in artifact while static artifact remains checked in. |
 | `workflow_binary_shim_is_thin` | shim YAML contains only bootstrap/checkout/setup/invoke steps. |
 | `workflow_no_path_regex_policy` | no durable CI selection policy remains in YAML path regexes after affected-set lands. |
@@ -693,7 +700,7 @@ The following questions should be answered by ratification, not by worker
 implementation:
 
 1. Which non-authoritative fixture reader or migration adapter should translate
-   legacy records that predate `EmissionTarget`?
+   legacy records that predate `WorkflowRuntime`?
 2. Should `BinaryShim` first run jobs in-process, or should it emit dynamic
    matrix JSON for GitHub fanout?
 3. What is the minimal verifier for GitHub Actions YAML in CI before a full
@@ -712,7 +719,7 @@ This canvas recommends:
 
 This design is ready for downstream implementation when:
 
-- `EmissionTarget` lives in gunbc namespace as a projection argument, with
+- `WorkflowRuntime` lives in gunbc namespace as a projection argument, with
   explicit target required at authoritative projection call sites.
 - `YamlStatic`, `BinaryShim`, and `PythonShim` have explicit semantics and
   acceptance contracts.
