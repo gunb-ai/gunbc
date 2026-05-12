@@ -311,6 +311,30 @@ fn v2_llm_disj_variants(name: &str) -> Vec<(String, V2VariantPayload)> {
     parse_v2_disj_block(name, block)
 }
 
+fn closing_paren_byte_idx(chunk: &str, open_paren: usize) -> usize {
+    let bytes = chunk.as_bytes();
+    debug_assert_eq!(bytes.get(open_paren), Some(&b'('));
+    let mut depth = 0usize;
+    let mut i = open_paren;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'(' => {
+                depth += 1;
+                i += 1;
+            }
+            b')' => {
+                depth -= 1;
+                i += 1;
+                if depth == 0 {
+                    return i - 1;
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    panic!("v2 variant fragment has unmatched `(` — lockstep parser needs an update: `{chunk}`")
+}
+
 fn parse_v2_disj_block(name: &str, block: &str) -> Vec<(String, V2VariantPayload)> {
     let eq = block.find('=').unwrap_or_else(|| {
         panic!("v2 `type {name}` is not a disj block (no `=` in extracted text)")
@@ -333,26 +357,42 @@ fn parse_v2_disj_block(name: &str, block: &str) -> Vec<(String, V2VariantPayload
         if chunk.is_empty() {
             continue;
         }
-        // Split into label-prefix vs payload `{ … }` (if any).
-        let (label_part, payload) = match chunk.find('{') {
-            Some(brace) => {
-                // Find the matching `}` (variants are flat — no nested
-                // braces in the v2 anthropic.dag — so a forward search
-                // suffices; if a future variant nests we'll need a
-                // bracket counter).
-                let body_end = chunk[brace + 1..].find('}').unwrap_or_else(|| {
-                    panic!(
-                        "v2 `type {name}` variant fragment has unmatched `{{` — \
-                         lockstep parser needs an update for new v2 syntax: `{chunk}`"
-                    )
-                });
-                let body = &chunk[brace + 1..brace + 1 + body_end];
-                (
-                    chunk[..brace].trim().to_string(),
-                    Some(parse_v2_brace_body_fields(body)),
+        let open_paren = chunk.find('(');
+        let open_brace = chunk.find('{');
+        let tuple_before_record = match (open_paren, open_brace) {
+            (Some(p), Some(b)) => p < b,
+            (Some(_), None) => true,
+            _ => false,
+        };
+
+        // Split into label-prefix vs payload.
+        let (label_part, payload) = if tuple_before_record {
+            let p = open_paren.expect("tuple_before_record implies `(` present");
+            let close = closing_paren_byte_idx(chunk, p);
+            let inner = chunk[p + 1..close].trim();
+            let label = chunk[..p].trim().to_string();
+            (
+                label,
+                Some(vec![("_0".to_string(), normalize_ty_text(inner), false)]),
+            )
+        } else if let Some(brace) = open_brace {
+            // Find the matching `}` (variants are flat — no nested
+            // braces in the v2 anthropic.dag — so a forward search
+            // suffices; if a future variant nests we'll need a
+            // bracket counter).
+            let body_end = chunk[brace + 1..].find('}').unwrap_or_else(|| {
+                panic!(
+                    "v2 `type {name}` variant fragment has unmatched `{{` — \
+                     lockstep parser needs an update for new v2 syntax: `{chunk}`"
                 )
-            }
-            None => (chunk.to_string(), None),
+            });
+            let body = &chunk[brace + 1..brace + 1 + body_end];
+            (
+                chunk[..brace].trim().to_string(),
+                Some(parse_v2_brace_body_fields(body)),
+            )
+        } else {
+            (chunk.to_string(), None)
         };
         let label = label_part.trim().to_string();
         if label.is_empty() {
@@ -429,9 +469,12 @@ fn v3_variant_payload_fields(
 // ── Lockstep assertions ───────────────────────────────────────────────
 
 fn assert_record_lockstep(type_name: &str) {
+    assert_record_lockstep_with_v2_fields(type_name, v2_record_fields(type_name));
+}
+
+fn assert_record_lockstep_with_v2_fields(type_name: &str, v2_fields: Vec<V2Field>) {
     let dag = generated_full_bootstrap_dag();
     let v3_labels: BTreeSet<String> = conj_field_labels(&dag, type_name).into_iter().collect();
-    let v2_fields = v2_record_fields(type_name);
     let v2_labels: BTreeSet<String> = v2_fields.iter().map(|(l, _, _)| l.clone()).collect();
     assert_eq!(
         v3_labels,
@@ -618,6 +661,50 @@ fn anthropic_user_content_block_lockstep() {
 #[test]
 fn anthropic_tool_result_content_lockstep() {
     assert_disj_lockstep("AnthropicToolResultContent");
+}
+
+#[test]
+fn anthropic_tool_result_block_lockstep() {
+    assert_disj_lockstep("AnthropicToolResultBlock");
+}
+
+#[test]
+fn anthropic_tool_result_wire_text_tag_lockstep() {
+    assert_disj_lockstep("AnthropicToolResultWireTextTag");
+}
+
+#[test]
+fn anthropic_plain_text_document_media_type_lockstep() {
+    assert_disj_lockstep("AnthropicPlainTextDocumentMediaType");
+}
+
+#[test]
+fn anthropic_tool_result_text_block_row_lockstep() {
+    assert_record_lockstep("AnthropicToolResultTextBlock");
+}
+
+#[test]
+fn anthropic_search_result_citations_config_lockstep() {
+    assert_record_lockstep("AnthropicSearchResultCitationsConfig");
+}
+
+#[test]
+fn anthropic_cache_control_row_lockstep() {
+    assert_record_lockstep("CacheControl");
+}
+
+#[test]
+fn anthropic_tool_result_plain_text_document_source_lockstep() {
+    // v3 reserves `data` as a keyword; the mirror uses `document_data` while the
+    // v2 authority keeps wire-faithful `data` (same escape pattern as
+    // `ImageSource.Base64Image` → `base64` and redacted-thinking → `redacted_data`).
+    let mut v2_fields = v2_record_fields("AnthropicToolResultPlainTextDocumentSource");
+    for (label, _, _) in &mut v2_fields {
+        if label == "data" {
+            *label = "document_data".to_string();
+        }
+    }
+    assert_record_lockstep_with_v2_fields("AnthropicToolResultPlainTextDocumentSource", v2_fields);
 }
 
 #[test]
