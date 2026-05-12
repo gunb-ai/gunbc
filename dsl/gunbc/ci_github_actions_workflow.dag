@@ -16,7 +16,7 @@ import extdeps.github.actions {
   ShellType, Bash
 }
 
-data gunbc_ci_wf_str_map_empty: Map<String, String> = empty_map()
+data gunbc_ci_wf_str_map_empty: Map<String, String> = { "__gunbc_ci_gen_unused__": "" }
 data gunbc_ci_wf_str_map_0: Map<String, String> = { "fetch-depth": "1" }
 data gunbc_ci_wf_str_map_1: Map<String, String> = { "components": "rustfmt", "cache": "false", "rustflags": "" }
 data gunbc_ci_wf_str_map_2: Map<String, String> = { "fetch-depth": "0" }
