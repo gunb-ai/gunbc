@@ -39,7 +39,7 @@ func github_actions_binary_shim_placeholder_workflow() -> Workflow =
         runner: HostedRunner { label: UbuntuLatest },
         steps: [
           RunStep {
-            name: some("Echo placeholder"),
+            name: "Echo placeholder",
             id: none,
             run: "echo Slice-5-BinaryShim-body-TODO",
             shell: Bash,
