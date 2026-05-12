@@ -114,7 +114,8 @@ type CIWorkflowDag {
 // local dag run, tools/*.dag workflows resolve the absolute path via
 // extdeps.tools. Command literals are intentionally structural data here:
 // CI topology remains fail-closed inspectable through gate ids and workflow
-// edges until a typed command carrier can preserve derived command facts.
+// edges. Dissolution path: ROADMAP F12 typed command-record carrier, extended
+// to preserve gunbc.compiler-derived command facts in structural data rows.
 
 data lint_gate: CIGate = {
   id: "lint",
