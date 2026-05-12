@@ -187,14 +187,17 @@ fn emit_concurrency(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     let cip = m.get(Value::String("cancel-in-progress".to_string()));
     let cancel = match cip {
         None => "none".to_string(),
-        Some(Value::Bool(true)) => "CancelInProgressBool { value: true }".to_string(),
-        Some(Value::Bool(false)) => "CancelInProgressBool { value: false }".to_string(),
+        Some(Value::Bool(true)) => {
+            "Some { value: CancelInProgressBool { value: true } }".to_string()
+        }
+        Some(Value::Bool(false)) => {
+            "Some { value: CancelInProgressBool { value: false } }".to_string()
+        }
         Some(other) => return Err(format!("unsupported cancel-in-progress: {other:?}").into()),
     };
-    // `ConcurrencySpec?` is cardinality optional — structural `data` carries the
-    // payload shape directly (no `some(...)` call), same as other `T?` fields.
+    // `ConcurrencySpec?` uses the standard optional `Some` / `None` sum (cardinality).
     Ok(format!(
-        "ConcurrencyMappingQueueNotMax {{\n      group: {},\n      cancel_in_progress: {},\n      explicit_single: none\n    }}",
+        "Some {{\n  value: ConcurrencyMappingQueueNotMax {{\n      group: {},\n      cancel_in_progress: {},\n      explicit_single: none\n    }}\n  }}",
         dag_string(&group),
         cancel
     ))
@@ -203,7 +206,7 @@ fn emit_concurrency(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
 fn emit_env_map(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
     match v {
         None => Ok("none".to_string()),
-        Some(e) => Ok(emit_string_map(e)?),
+        Some(e) => Ok(format!("Some {{ value: {} }}", emit_string_map(e)?)),
     }
 }
 
@@ -249,7 +252,7 @@ fn emit_permissions(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
     let issues = perm_level(m.get("issues"))?;
     let actions = perm_level(m.get("actions"))?;
     Ok(format!(
-        "{{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }}",
+        "Some {{\n  value: {{\n      contents: {},\n      pull_requests: {},\n      issues: {},\n      actions: {}\n    }}\n  }}",
         contents, pull_requests, issues, actions
     ))
 }
@@ -281,7 +284,7 @@ fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let m = v.as_mapping().ok_or("job mapping")?;
     let name = match m.get(Value::String("name".to_string())) {
         None => "none".to_string(),
-        Some(Value::String(s)) => dag_string(s),
+        Some(Value::String(s)) => format!("Some {{ value: {} }}", dag_string(s)),
         Some(_) => return Err("job name must be string".into()),
     };
     let runner = emit_runs_on(m.get("runs-on").ok_or("runs-on")?)?;
@@ -289,15 +292,15 @@ fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let needs = emit_needs_list(m.get("needs"))?;
     let env = match m.get(Value::String("env".to_string())) {
         None => "none".to_string(),
-        Some(e) => emit_string_map(e)?,
+        Some(e) => format!("Some {{ value: {} }}", emit_string_map(e)?),
     };
     let outputs = match m.get(Value::String("outputs".to_string())) {
         None => "none".to_string(),
-        Some(o) => emit_string_map(o)?,
+        Some(o) => format!("Some {{ value: {} }}", emit_string_map(o)?),
     };
     let if_condition = match m.get(Value::String("if".to_string())) {
         None => "none".to_string(),
-        Some(i) => yaml_scalar_to_dag_string(i)?,
+        Some(i) => format!("Some {{ value: {} }}", yaml_scalar_to_dag_string(i)?),
     };
     let strategy = match m.get(Value::String("strategy".to_string())) {
         None => "none".to_string(),
@@ -306,13 +309,14 @@ fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let timeout_minutes = match m.get(Value::String("timeout-minutes".to_string())) {
         None => "none".to_string(),
         Some(Value::Number(n)) => {
-            if let Some(u) = n.as_u64() {
-                format!("{u}")
+            let v = if let Some(u) = n.as_u64() {
+                u.to_string()
             } else if let Some(i) = n.as_i64() {
-                format!("{i}")
+                i.to_string()
             } else {
                 return Err("timeout-minutes number".into());
-            }
+            };
+            format!("Some {{ value: {v} }}")
         }
         Some(_) => return Err("timeout-minutes must be number".into()),
     };
@@ -382,17 +386,17 @@ fn emit_step(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let m = v.as_mapping().ok_or("step mapping")?;
     let name = match m.get(Value::String("name".to_string())) {
         None => "none".to_string(),
-        Some(Value::String(s)) => dag_string(s),
+        Some(Value::String(s)) => format!("Some {{ value: {} }}", dag_string(s)),
         Some(_) => return Err("step name".into()),
     };
     let id = match m.get(Value::String("id".to_string())) {
         None => "none".to_string(),
-        Some(Value::String(s)) => dag_string(s),
+        Some(Value::String(s)) => format!("Some {{ value: {} }}", dag_string(s)),
         Some(_) => return Err("step id".into()),
     };
     let if_condition = match m.get(Value::String("if".to_string())) {
         None => "none".to_string(),
-        Some(i) => yaml_scalar_to_dag_string(i)?,
+        Some(i) => format!("Some {{ value: {} }}", yaml_scalar_to_dag_string(i)?),
     };
     let continue_on_error = match m.get(Value::String("continue-on-error".to_string())) {
         None => "false".to_string(),
@@ -402,13 +406,14 @@ fn emit_step(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let timeout_minutes = match m.get(Value::String("timeout-minutes".to_string())) {
         None => "none".to_string(),
         Some(Value::Number(n)) => {
-            if let Some(u) = n.as_u64() {
-                format!("{u}")
+            let v = if let Some(u) = n.as_u64() {
+                u.to_string()
             } else if let Some(i) = n.as_i64() {
-                format!("{i}")
+                i.to_string()
             } else {
                 return Err("timeout".into());
-            }
+            };
+            format!("Some {{ value: {v} }}")
         }
         Some(_) => return Err("timeout-minutes".into()),
     };
@@ -421,7 +426,7 @@ fn emit_step(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
         };
         let env = match m.get(Value::String("env".to_string())) {
             None => "none".to_string(),
-            Some(e) => emit_string_map(e)?,
+            Some(e) => format!("Some {{ value: {} }}", emit_string_map(e)?),
         };
         Ok(format!(
             "UsesStep {{\n          name: {},\n          id: {},\n          uses: {},\n          with: {},\n          env: {},\n          if_condition: {},\n          continue_on_error: {},\n          timeout_minutes: {}\n        }}",
@@ -438,11 +443,11 @@ fn emit_step(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
         let run_s = run.as_str().ok_or("run string")?;
         let env = match m.get(Value::String("env".to_string())) {
             None => "none".to_string(),
-            Some(e) => emit_string_map(e)?,
+            Some(e) => format!("Some {{ value: {} }}", emit_string_map(e)?),
         };
         let wd = match m.get(Value::String("working-directory".to_string())) {
             None => "none".to_string(),
-            Some(w) => yaml_scalar_to_dag_string(w)?,
+            Some(w) => format!("Some {{ value: {} }}", yaml_scalar_to_dag_string(w)?),
         };
         Ok(format!(
             "RunStep {{\n          name: {},\n          id: {},\n          run: {},\n          shell: Bash,\n          env: {},\n          working_directory: {},\n          if_condition: {},\n          continue_on_error: {},\n          timeout_minutes: {}\n        }}",
