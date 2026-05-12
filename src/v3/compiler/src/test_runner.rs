@@ -5877,10 +5877,20 @@ fn parse_bind_param_size_variable_expected(dag: &Dag, fv: &FieldValue) -> Result
             "SymbolicCostExprEqualsForBindParam: BindParamSizeVariable expected record, got {fv:?}"
         ));
     };
-    if !fields.is_empty() {
+    let witness = field(fields, "witness").ok_or_else(|| {
+        "SymbolicCostExprEqualsForBindParam: BindParamSizeVariable missing `witness`".to_string()
+    })?;
+    if string_literal_field_value(witness)? != "selected_bind_param" {
+        return Err(
+            "SymbolicCostExprEqualsForBindParam: BindParamSizeVariable `witness` must be \
+             \"selected_bind_param\""
+                .to_string(),
+        );
+    }
+    if fields.len() != 1 {
         return Err(format!(
-            "SymbolicCostExprEqualsForBindParam: BindParamSizeVariable must not carry fields; \
-             predicate `param_name` is the selected-parameter authority, got {fields:?}"
+            "SymbolicCostExprEqualsForBindParam: BindParamSizeVariable only supports `witness`, \
+             got {fields:?}"
         ));
     }
     let Some(bind_param_size_variable) = dag

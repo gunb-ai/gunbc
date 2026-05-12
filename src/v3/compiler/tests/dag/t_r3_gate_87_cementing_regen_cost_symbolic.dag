@@ -18,7 +18,7 @@ import std.verification {
 data gate87_symbolic_cost_expected: SymbolicCost = ConstantCost(0)
 
 data gate87_symbolic_cost_countdown_expected: SymbolicCostBindParamExpected =
-  LinearCostForBindParam { var: BindParamSizeVariable {} }
+  LinearCostForBindParam { var: { witness: "selected_bind_param" } }
 
 data cementing_regen_cost_symbolic_literal_claim: TestClaim = {
   name: "cementing_regen_cost_symbolic",

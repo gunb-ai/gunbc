@@ -4157,7 +4157,7 @@ fn lower_data_item(
                 (Some(canonical), Some(&callee)) if callee == canonical => {
                     try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, ctx.dag)
                 }
-                _ => try_lower_symbolic_cost_structural_data(
+                _ => try_lower_symbolic_cost_bind_param_expected_structural_data(
                     name,
                     body.expect("call arm has body"),
                     ty_decl_id,
@@ -4165,6 +4165,16 @@ fn lower_data_item(
                     ctx.dag,
                     ctx.pending_refined_function_refs,
                 )
+                .or_else(|| {
+                    try_lower_symbolic_cost_structural_data(
+                        name,
+                        body.expect("call arm has body"),
+                        ty_decl_id,
+                        ctx.symbols,
+                        ctx.dag,
+                        ctx.pending_refined_function_refs,
+                    )
+                })
                 .or_else(|| {
                     try_lower_symbolic_cost_constant_cost_data(
                         target,
