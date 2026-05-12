@@ -26,11 +26,12 @@ Two coupled deliverables in one PR:
 
 NEW file `dsl/gunbc/ci_emission.dag` declaring:
 
-1. **`WorkflowRuntime` open enum** with **2 initial arms** (NOT 3):
+1. **`WorkflowRuntime` open enum** with **3 initial arms** per the ratified emitter-dispatch canvas (`docs/design-ci-workflow-emitter-dispatch.md:126` in main):
    - `YamlStatic` — emit a static YAML artifact
    - `BinaryShim` — emit a thin YAML shim invoking a compiled binary entry-point
+   - `PythonShim` — emit a thin YAML shim invoking an emitted Python CI runner (parallel to BinaryShim; proves target shape generalizes)
 
-   **DO NOT** add `PythonShim` or `InlineGunbc` arms — those are DESIGN-ONLY discipline established in PR #2744 cascade (commits 338a83fd3 / 89a84583d). The 4-arm framing in earlier briefs is **stale**.
+   **DO NOT** add `InlineGunbc` arm — `InlineGunbc` is DESIGN-ONLY per emitter-dispatch canvas §5.4 (no enum variant until a real runtime consumer exists). An earlier draft of this brief erroneously demoted `PythonShim` to DESIGN-ONLY; operator BLOCKING on PR #2762 at :17 (2026-05-12T17:25:05Z) caught the stale 2-arm framing that survived squash-merge of PR #2762 (commit 0d95ba09d) despite later sections already saying 3-arm. This fix-forward PR closes the internal inconsistency.
 
 2. **`project_github_actions` function signature**:
    ```
