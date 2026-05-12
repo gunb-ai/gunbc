@@ -355,7 +355,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // express nested `SymbolicCost` / `SizeVariable` expected values, tracked by
     // blocker token M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA. PR-level SG-0 pairing
     // cites the queued dispatch brief `docs/briefs/r3-v-tests-as-data-v1-worker.md`.
-    "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_behavioral_completion.rs",
+    "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
     // R3 T-Lens-Application-Surface gate #94 (`memory_peak_cost_basis_demonstrated`).
     "src/v3/compiler/tests/integration/cementing/memory_peak_cost_basis_demo.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
@@ -372,10 +372,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 gate #78 / E-P: shared countdown `SymbolicCost` oracle helper for cost-lens consumer
     // tests (`cost_lens_symbolic_consumer_test`, lane2 `lane2_stage_2d_symbolic_cost_test`).
     "src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs",
-    // v3-side consumer wiring for generated `symbolic_cost_of` (cost.dag). Not
-    // under `cementing/`: Band-C (`TESTING.md`) requires v2-oracle parity only for
-    // explicit subsumption / COMPLETE+v2-counterpart register promotions.
-    "src/v3/compiler/tests/integration/cost_lens_symbolic_consumer_test.rs",
     // R3 L6 carrier slice (PR #1842; Measure-carrier precedent at #1819,
     // Director Option 2 RATIFIED at
     // gunbc#828 #issuecomment-4377533390): slice-active ratchet for

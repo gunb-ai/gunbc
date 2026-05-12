@@ -41,7 +41,7 @@
 // T-E-P-Producer-Broadening Phase 3): same `SubValueRelation`→`CallPattern` projection
 // authority as `complexity.dag`, per `docs/design-cost-lens-sizevar-dimension-wiring.md` §3.2.
 // Band-C cementing for the abstract cost projection lives at
-// `integration/cementing/cost_lens_symbolic_behavioral_completion.rs`. E-M closed method
+// `integration/cementing/cost_lens_symbolic_consumer_test.rs`. E-M closed method
 // carrier parity by structural subsumption
 // through `TransformTarget` and typed declaration/effect metadata. Integration module
 // `cost_lens_symbolic_consumer_test` pins the generated `symbolic_cost_of` consumer on

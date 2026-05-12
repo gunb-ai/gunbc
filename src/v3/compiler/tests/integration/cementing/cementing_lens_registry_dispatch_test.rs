@@ -140,7 +140,7 @@ const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[CementingReceipt] = &[
     },
     CementingReceipt {
         registry_name: "cost_symbolic",
-        stem: "cost_lens_symbolic_behavioral_completion",
+        stem: "cost_lens_symbolic_consumer_test",
         kind: CementingReceiptKind::TemporaryRustModule,
     },
 ];
@@ -557,7 +557,7 @@ fn cementing_cost_symbolic_receipt_stays_explicit_until_symbolic_cost_claim_land
         .map(|receipt| (receipt.stem, receipt.kind.as_str()))
         .collect();
 
-    let expected = BTreeSet::from([("cost_lens_symbolic_behavioral_completion", "temporary-rust")]);
+    let expected = BTreeSet::from([("cost_lens_symbolic_consumer_test", "temporary-rust")]);
     assert_eq!(
         cost_symbolic_receipts, expected,
         "`cost_symbolic` must keep an explicit Band-C receipt while `.dag` TestClaims \

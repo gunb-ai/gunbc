@@ -1,19 +1,16 @@
 //! **Layer:** integration
 //!
-//! **`symbolic_cost_of` consumer wiring** for `src/v3/lenses/cost.dag` (`regen_lens` →
-//! `lens_cost_symbolic_generated.rs`).
+//! Band-C cementing for the generated `symbolic_cost_of` consumer in
+//! `src/v3/lenses/cost.dag` (`regen_lens` → `lens_cost_symbolic_generated.rs`).
 //!
-//! **Not Band-C cementing** (`TESTING.md` § *Cementing tests — lens subsumption*): Band-C
-//! governs explicit v3 **subsumes v2** / register **`COMPLETE` + real v2 counterpart**
-//! claims and expects a v2-oracle match or reviewed projection on the same fixture. The
-//! `cost.dag` row is **PROXY** until those obligations clear; this module is only a
-//! v3-side regression pin on `compile_to_dag` fixtures (the same lookup surface
-//! `analyze_symbolic_cost_dimension` walks in `v3_compiler::dimension`).
+//! This is the same-PR temporary Rust receipt for the gate #80 promotion of
+//! `cost_symbolic` to COMPLETE. It pins the exported generated lens on
+//! compile-backed fixtures and checks that `analyze_symbolic_cost_dimension`
+//! composes the same carrier returned by `symbolic_cost_of`.
 //!
-//! Tests below exercise **only** the generated `symbolic_cost_of` consumer by design;
-//! that is **not** a Band-C shortfall while `cost.dag` remains **PROXY** in
-//! `docs/v3-lens-capability-register.md` (Band-C would demand a v2-oracle or reviewed
-//! projection once the row is `COMPLETE` with a real v2 counterpart).
+//! Temporary Rust receipt: `.dag` `TestClaim` data cannot yet express the
+//! nested `SymbolicCost` / `SizeVariable` expected values asserted here
+//! (`M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA`).
 //!
 //! Gate **#78** (`e_p_sub_value_relation_per_call_landed`): integration tests pin **`symbolic_cost_of`**
 //! on unary countdown fixtures with **`assert_recursive_countdown_linear_semantics`** (linear-family).
