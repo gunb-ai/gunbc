@@ -391,19 +391,17 @@ type QuantifiedTestClaim {
   requires: List<ResourceReference>
 }
 
-// Staged ordered suite-entry carrier for the post-#85 wrapper migration.
-// Today `TestSuite.claims` remains `List<TestClaim>` so existing enumerated
-// fixtures keep compiling while the quantifier substrate lands. Bounded
-// trigger: #2609 wraps existing suite entries as `Enumerated(...)` and flips
-// `TestSuite.claims` to `List<SuiteClaim>`, preserving reporting/dependency
-// order without parallel enumerated/quantified lists.
+// Ordered suite-entry carrier (gate #85 CONSUMER_LANDED wrapper migration).
+// Existing enumerated fixtures wrap each claim reference in `Enumerated(...)`;
+// quantified claims land as `Quantified(QuantifiedTestClaim)`. Preserves
+// reporting/dependency order without parallel enumerated/quantified lists.
 type SuiteClaim
   = Enumerated(TestClaim)
   | Quantified(QuantifiedTestClaim)
 
 type TestSuite {
   name: String
-  claims: List<TestClaim>
+  claims: List<SuiteClaim>
 }
 
 // DB-15 — dependency-walk projection: each claim's `requires` list is the

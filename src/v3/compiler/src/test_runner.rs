@@ -2447,28 +2447,55 @@ impl<'a> TestRunner<'a> {
         };
         claims
             .iter()
-            .map(|claim_ref| match claim_ref {
-                FieldValue::Reference(id) => {
-                    let decl = self.dag.declaration(*id);
-                    match TestClaimValue::from_declaration(decl) {
-                        Ok(claim) => self.run_claim(&claim),
-                        Err(reason) => ClaimEvaluation {
-                            claim_name: decl
-                                .name
-                                .clone()
-                                .unwrap_or_else(|| format!("Declaration#{}", id.raw())),
-                            result: ClaimResult::Fail(reason),
-                        },
-                    }
-                }
-                other => ClaimEvaluation {
-                    claim_name: suite_name.to_string(),
-                    result: ClaimResult::Fail(format!(
-                        "TestSuite `{suite_name}` claim entry is not a reference: {other:?}"
-                    )),
-                },
-            })
+            .map(|entry| self.run_suite_entry(suite_name, entry))
             .collect()
+    }
+
+    fn run_suite_entry(&self, suite_name: &str, entry: &FieldValue) -> ClaimEvaluation {
+        let Some((label, payload)) = self.variant_value(entry) else {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` claim entry is not a SuiteClaim variant: {entry:?}"
+                )),
+            };
+        };
+        let Some(FieldValue::Reference(id)) = payload.first() else {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` `{label}` payload is not a reference: {payload:?}"
+                )),
+            };
+        };
+        let decl = self.dag.declaration(*id);
+        let decl_label = decl
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("Declaration#{}", id.raw()));
+        match label.as_str() {
+            "Enumerated" => match TestClaimValue::from_declaration(decl) {
+                Ok(claim) => self.run_claim(&claim),
+                Err(reason) => ClaimEvaluation {
+                    claim_name: decl_label,
+                    result: ClaimResult::Fail(reason),
+                },
+            },
+            "Quantified" => ClaimEvaluation {
+                claim_name: decl_label,
+                result: ClaimResult::Fail(
+                    "QuantifiedTestClaim runner evaluation NotYetImplemented \
+                     (gate #85 shape-only stub; eval lands with Verification follow-up)"
+                        .to_string(),
+                ),
+            },
+            other => ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` unknown SuiteClaim variant `{other}`"
+                )),
+            },
+        }
     }
 
     pub fn run_claim(&self, claim: &TestClaimValue) -> ClaimEvaluation {
