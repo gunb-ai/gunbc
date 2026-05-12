@@ -490,7 +490,7 @@ Both rejections cost more substrate churn than (c) ratification.
 
 ---
 
-## §7. Addendum — INVARIANTS P1 BLOCKING reframes (c) (2026-05-12 ~06:54Z)
+## §7. Addendum — INVARIANTS P2/P1 BLOCKING reframes (c) (2026-05-12 ~06:54Z)
 
 **Trigger**: BLOCKING inline review on PR #2746 at
 `docs/design-ci-workflow-emitter-dispatch.md:360` from briansrls
