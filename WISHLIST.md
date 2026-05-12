@@ -41,6 +41,7 @@ R3 ships when the 96 R3-load-bearing §1.8 gates are GREEN + `r3_debt_paydown_ze
 **Wishes I want from R3 close beyond gates** (audit-tier, not gate-additions):
 - An honest read on **what we're losing** during emission/lowering — does the unified-DAG claim hold under self-host pressure, or are there hidden per-target couplings? (R3-close audit point per operator framing 2026-05-10.)
 - Confidence that the **architecture is symmetric enough for R4 omni-ingestion** — i.e., extdeps that work for emit also work (with detail extensions) for ingest. R3 doesn't have to deliver this; R3 has to NOT preclude it.
+- An explicit **emission-bias leak audit** — score every `dsl/extdeps/*` file + every substrate field for consumer-neutrality (no hidden emission-only assumptions that would preclude R4.A omni-ingestion or R4.C low-level emission targets). Substrate-Mgr-authored audit; ratified by Director. R3-close-or-fast-follow; the concrete output is a consumer-neutrality scorecard + flagged leak sites. (Wishlist ratification 2026-05-12 per operator agreement on the "algebra + projection" framing.)
 - A **clean cementing pattern** generalizable beyond R3 — every lens has a cementing test against frozen v2-oracle (gate #87). Pattern should outlive R3 as the standard discipline.
 - **Free-consequences demonstrations** (gates #43-#52) — auto-parallelism, auto-memoization, cross-target optimization fall out structurally from lens composition. These are the "thesis cashes" of R3. Want them visceral, not just passing.
 - **Operational maturity of the Mgr machine** — 5 standing R3 Mgrs (PB / Substrate / Grounding / Verification / Debt-Paydown) + auto-spawn cascade + ratchet discipline. R3 is also a stress test of whether this org structure scales to R4+.
@@ -49,7 +50,17 @@ R3 ships when the 96 R3-load-bearing §1.8 gates are GREEN + `r3_debt_paydown_ze
 
 ## R4 — upcoming
 
-**The architecture-validation milestone.** R4 is where the unified-DAG claim gets falsified or confirmed by inverse use cases — ingestion (read substrate) and structural query (interrogate substrate). If R3 proves we can build a compiler in `.dag`, R4 proves the substrate is actually neutral + queryable in the way we claim.
+**The architecture-validation milestone.** R4 is where the unified-DAG claim gets falsified or confirmed by inverse use cases — ingestion (read substrate) and structural query (interrogate substrate). If R3 proves we can build a self-hosting algebra + projection engine in `.dag`, R4 proves the substrate is actually neutral + queryable in the way we claim.
+
+**Framing correction (operator 2026-05-12)**: "compiler" is the legacy name for what gunbc actually is. The more accurate framing is **algebra + projection engine**. The gesture is:
+
+> **LHS** = an input that says "x then y then z" (a typed substrate declaration — the dependency graph)
+> **RHS** = a provable version of the LHS (a projection)
+> The projection could be: the SAME language re-expressed; ANOTHER language; a witness; a query answer; an affected-set; a diagnostic; a cementing-receipt; or NONE-of-the-above (no emission at all).
+
+**Emission is one projection — it is OPTIONAL.** The architecture's value does NOT depend on always emitting code. Many high-value use cases consume **non-emission outputs**: "does this program satisfy property X" (verification witness), "what's affected if I change Y" (affected-set lens), "give me the structural facts" (introspect lens), "is X structurally equivalent to Y" (parity receipt), and so on. The "compiler outputs are NOT just code" pitch is a load-bearing architectural feature, not a side property.
+
+R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), and R4.C (low-level emission targets) are three dimensions of stress-testing this framing.
 
 ### R4.A — Omni-ingestion
 
@@ -86,6 +97,26 @@ R3 ships when the 96 R3-load-bearing §1.8 gates are GREEN + `r3_debt_paydown_ze
 **Sequencing** (operator framing 2026-05-10; RESOLVED 2026-05-11): R4.A and R4.B both land in R4. Stress-test the use cases first; design follows requirements. ~~Core query concept may be expressible as `lens` with a different consumer disposition (rather than a new substrate type) — confirm via stress test before deciding.~~ **RESOLVED via affected-set stress test (2026-05-11)**: query IS lens (Introspect config); no new substrate carrier. See top-of-section LOCKED note + `docs/design-affected-set-lens.md` §0.
 
 **Connection to R3**: a lot of substrate is being built under R3 lane names that turns out to be R4.B foundation (T-E-P descent evidence, T-Lens-Self-Application, T-CostLens-Composition reading realization cost). R4.B is partly a *lens over R3 work* asking "did we accidentally build the right substrate, or do we have gaps?"
+
+### R4.C — Low-level emission targets
+
+**Wish (operator 2026-05-12)**: extend the emission projection set to include **machine code**, **assembly**, and **LLVM IR text** as native emission targets — same Lens<C> shape as the existing Rust / Python / Go target codegen, just at lower levels in the toolchain stack.
+
+**Orthogonal-to-LLVM framing** (explicit): gunbc is **NOT built on LLVM** and is **NOT competing with LLVM**. The substrate is gunbc-native; the projection to LLVM IR is an **interop output**, not an internal dependency. (The dropped `docs/r4-c-compiler-and-llvm-in-dag-program-plan.md` was about IMPORTING LLVM IR + C as substrate via bidirectional extdeps — multi-month effort, currently out of scope per operator 2026-05-12. R4.C is the much narrower wish: emit LLVM IR text as one more target alongside Rust / Python / Go, no ingestion / no LLVM-as-internal-engine claim.)
+
+**Why these matter**:
+- **Machine code / assembly** = lowest-friction emission for systems-software / firmware / embedded targets. Demonstrates the substrate is **target-class-neutral** — gunbc compiles down equally to managed runtimes AND bare metal, with all per-target knowledge in extdeps and no per-target leak in the substrate.
+- **LLVM IR text** = interop with the entire LLVM-consuming ecosystem (object files, linking, optimization passes, JIT engines). Gives gunbc-authored programs the ability to be consumed by existing LLVM tooling without claiming to be inside LLVM. Same posture as "we emit Python" — the consumer is the existing Python interpreter ecosystem; we don't write a Python runtime.
+- **Architectural falsifier**: same substrate, three more emission targets → demonstrates the projection-engine framing is structurally sound. If we have to add target-specific carriers to std/ to make machine-code emission work, that's a leak (emission-bias) that R3-close-audit should catch.
+
+**Open questions**:
+- **Target-realization cost composition**: how does machine-code emission compose with the cost lens? Realization cost should fall out of substrate composition (per T-CostLens work in R3) — same lens, different target. If it doesn't, that's a R3 cost-lens-generality gap.
+- **ABI / linkage substrate**: machine code requires calling conventions, register allocation, debug info, relocations. Modeled in `dsl/extdeps/*` (preferred — per-target knowledge in extdeps, not std/) or does something need to live in std/?
+- **LLVM IR fidelity**: which LLVM IR version, which subset, which dialect? Probably pin similar to existing extdeps version pinning (e.g., `dsl/extdeps/llvm/v20/ir/` shape, per the dropped C-compiler plan's promotion target — but without the ingest direction).
+- **Slicing**: R4.C as a single program or per-target (machine + assembly + LLVM IR each their own slice)? Probably per-target since each has different extdeps weight (assembly = small ABI-only; machine code = full ABI + relocations; LLVM IR = LLVM dialect modeling).
+- **Sequencing vs R4.A/B**: R4.C may need to wait until R4.A omni-ingestion settles (the emission-bias audit clears) so we know the substrate is consumer-neutral before adding 3 more emission consumers. Or it could go in parallel as a non-blocker since it's strictly more projections of the same substrate.
+
+**Composes with R4.B**: once `.dag` substrate compiles to machine code, queries-as-data can include "what's the actual binary cost of this function?" — that's a composed lens over cost-of-machine-code-emission, which falls out structurally if R4.C lands. Bridging cost-lens to *realized cost on actual hardware* is a real-world thesis cash beyond the symbolic cost story.
 
 ---
 
