@@ -64,6 +64,13 @@ pub enum CiWorkflowDiff {
     TouchedGates(BTreeSet<CiGateId>),
 }
 
+// Practice 4 (coproduct checkpoint, `docs/modeling-discipline.md` §4):
+// 🟢 GREEN — terminal typed failure surface for [`select_affected_gates`]: malformed `CIWorkflowDag`
+// carrier vs non-acyclic directed prerequisites on the selected vertex set (no silent success).
+// Ledger: (1) fact placement — not split across consumers; this `Result` boundary owns the `Err`
+// coproduct. (2) variant-is-data — rejected; payloads differ structurally. (3) algebraic — not
+// `std/` refs. (4) dimensional — not one decomposed axis space; each variant is an irreducible
+// outcome at the `dsl/gunbc/ci.dag` structural mirror until `.dag`-owned dispatch absorbs diagnostics.
 /// [`select_affected_gates`] failed: malformed `CIWorkflowDag` carrier or non-acyclic prerequisites.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CiAffectedGatesError {
