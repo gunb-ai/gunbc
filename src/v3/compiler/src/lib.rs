@@ -5249,60 +5249,13 @@ pub(crate) mod variant_payload {
             }
         }
 
-        #[test]
-        fn variant_payload_shape_cements_empty_positional_and_named_products() {
-            let mut dag = Dag::new();
+        fn dag_with_int_decl() -> (Dag, DeclarationId) {
+            let dag = Dag::new();
             let int_decl = dag.int_shape().expect("bootstrap Int shape").declaration;
-
-            let empty = push_payload_decl(&mut dag, "EmptyPayload", Vec::new());
-            assert!(
-                matches!(shape_for(&dag, empty), VariantPayloadShape::Empty),
-                "zero-field Conj payloads are empty variants"
-            );
-
-            let positional = push_payload_decl(&mut dag, "TuplePayload", vec![("_0", int_decl)]);
-            assert!(
-                matches!(
-                    shape_for(&dag, positional),
-                    VariantPayloadShape::PositionalSingle
-                ),
-                "single `_0` field is the positional-single payload convention"
-            );
-
-            let named_one =
-                push_payload_decl(&mut dag, "NamedOnePayload", vec![("value", int_decl)]);
-            match shape_for(&dag, named_one) {
-                VariantPayloadShape::NamedFields { _0: fields } => {
-                    assert_eq!(fields, vec!["value".to_string()]);
-                }
-                other => panic!("single non-`_0` field must stay named, got {other:?}"),
-            }
-
-            let named_many = push_payload_decl(
-                &mut dag,
-                "NamedManyPayload",
-                vec![("left", int_decl), ("right", int_decl)],
-            );
-            match shape_for(&dag, named_many) {
-                VariantPayloadShape::NamedFields { _0: fields } => {
-                    assert_eq!(fields, vec!["left".to_string(), "right".to_string()]);
-                }
-                other => panic!("multi-field payload must stay named, got {other:?}"),
-            }
+            (dag, int_decl)
         }
 
-        #[test]
-        fn variant_payload_shape_fails_closed_on_missing_or_non_product_declaration() {
-            let mut dag = Dag::new();
-            let missing = DeclarationId::test_raw(u32::MAX);
-            assert!(
-                matches!(
-                    variant_payload_shape(&dag, &missing),
-                    VariantPayloadShapeLookup::DeclarationMissing
-                ),
-                "missing declaration ids are substrate-integrity failures, not not-a-product"
-            );
-
+        fn push_atom_decl(dag: &mut Dag) -> DeclarationId {
             let atom = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id: atom,
@@ -5318,6 +5271,78 @@ pub(crate) mod variant_payload {
                 nominal_opacity: None,
                 span: span(),
             });
+            atom
+        }
+
+        #[test]
+        fn variant_payload_shape_cements_empty_product_payload() {
+            let (mut dag, _) = dag_with_int_decl();
+            let empty = push_payload_decl(&mut dag, "EmptyPayload", Vec::new());
+            assert!(
+                matches!(shape_for(&dag, empty), VariantPayloadShape::Empty),
+                "zero-field Conj payloads are empty variants"
+            );
+        }
+
+        #[test]
+        fn variant_payload_shape_cements_positional_single_payload() {
+            let (mut dag, int_decl) = dag_with_int_decl();
+            let positional = push_payload_decl(&mut dag, "TuplePayload", vec![("_0", int_decl)]);
+            assert!(
+                matches!(
+                    shape_for(&dag, positional),
+                    VariantPayloadShape::PositionalSingle
+                ),
+                "single `_0` field is the positional-single payload convention"
+            );
+        }
+
+        #[test]
+        fn variant_payload_shape_cements_single_named_field_payload() {
+            let (mut dag, int_decl) = dag_with_int_decl();
+            let named_one =
+                push_payload_decl(&mut dag, "NamedOnePayload", vec![("value", int_decl)]);
+            match shape_for(&dag, named_one) {
+                VariantPayloadShape::NamedFields { _0: fields } => {
+                    assert_eq!(fields, vec!["value".to_string()]);
+                }
+                other => panic!("single non-`_0` field must stay named, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn variant_payload_shape_cements_multi_named_field_payload() {
+            let (mut dag, int_decl) = dag_with_int_decl();
+            let named_many = push_payload_decl(
+                &mut dag,
+                "NamedManyPayload",
+                vec![("left", int_decl), ("right", int_decl)],
+            );
+            match shape_for(&dag, named_many) {
+                VariantPayloadShape::NamedFields { _0: fields } => {
+                    assert_eq!(fields, vec!["left".to_string(), "right".to_string()]);
+                }
+                other => panic!("multi-field payload must stay named, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn variant_payload_shape_fails_closed_on_missing_declaration() {
+            let (dag, _) = dag_with_int_decl();
+            let missing = DeclarationId::test_raw(u32::MAX);
+            assert!(
+                matches!(
+                    variant_payload_shape(&dag, &missing),
+                    VariantPayloadShapeLookup::DeclarationMissing
+                ),
+                "missing declaration ids are substrate-integrity failures, not not-a-product"
+            );
+        }
+
+        #[test]
+        fn variant_payload_shape_reports_non_product_declaration() {
+            let (mut dag, _) = dag_with_int_decl();
+            let atom = push_atom_decl(&mut dag);
             assert!(
                 matches!(
                     variant_payload_shape(&dag, &atom),
