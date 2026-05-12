@@ -43,11 +43,13 @@ mod real;
     assert!(!integration_rs_active_line_contains(
         src,
         r#"#[path = "integration/cementing/ghost.rs"]"#,
-    ));
+    )
+    .unwrap());
     assert!(integration_rs_active_line_contains(
         src,
         r#"#[path = "integration/cementing/real.rs"]"#,
-    ));
+    )
+    .unwrap());
 }
 
 #[test]
@@ -62,11 +64,13 @@ mod real;
     assert!(!integration_rs_active_line_contains(
         src,
         r#"#[path = "integration/cementing/ghost.rs"]"#,
-    ));
+    )
+    .unwrap());
     assert!(integration_rs_active_line_contains(
         src,
         r#"#[path = "integration/cementing/real.rs"]"#,
-    ));
+    )
+    .unwrap());
 }
 
 #[test]
@@ -111,9 +115,7 @@ fn integration_rs_cementing_path_attr_binds_mod_rejects_mismatched_mod_name() {
         "mod decoy;\n\n",
         "mod real;\n",
     );
-    assert!(!integration_rs_cementing_path_attr_binds_mod_stem(
-        src, "real"
-    ));
+    assert!(!integration_rs_cementing_path_attr_binds_mod_stem(src, "real").unwrap());
 }
 
 #[test]
@@ -122,9 +124,7 @@ fn integration_rs_cementing_path_attr_binds_mod_rejects_stem_extra_mod_name() {
         "#[path = \"integration/cementing/stem.rs\"]\n",
         "mod stem_extra;\n",
     );
-    assert!(!integration_rs_cementing_path_attr_binds_mod_stem(
-        src, "stem"
-    ));
+    assert!(!integration_rs_cementing_path_attr_binds_mod_stem(src, "stem").unwrap());
 }
 
 #[test]
@@ -137,11 +137,13 @@ fn integration_rs_active_line_ignores_needle_inside_string_literal() {
     assert!(!integration_rs_active_line_contains(
         src,
         r#"#[path = "integration/cementing/decoy.rs"]"#,
-    ));
+    )
+    .unwrap());
     assert!(integration_rs_active_line_contains(
         src,
         r#"#[path = "integration/cementing/real.rs"]"#,
-    ));
+    )
+    .unwrap());
 }
 
 #[test]

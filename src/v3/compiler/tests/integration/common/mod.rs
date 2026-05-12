@@ -337,7 +337,8 @@ mod integration_rs_scan_tests {
         assert!(integration_rs_active_line_contains(
             src,
             r#"#[path = "integration/cementing/real.rs"]"#,
-        ));
+        )
+        .unwrap());
     }
 
     #[test]
@@ -350,7 +351,8 @@ mod integration_rs_scan_tests {
         assert!(integration_rs_active_line_contains(
             src,
             r#"#[path = "integration/cementing/real.rs"]"#,
-        ));
+        )
+        .unwrap());
     }
 
     #[test]
@@ -364,7 +366,8 @@ mod real;
         assert!(integration_rs_active_line_contains(
             src,
             r#"#[path = "integration/cementing/real.rs"]"#,
-        ));
+        )
+        .unwrap());
     }
 
     #[test]
