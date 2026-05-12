@@ -88,7 +88,6 @@ type EmissionTarget
   = YamlStatic
   | BinaryShim
   | PythonShim
-  | InlineGunbc
 
 fn project_github_actions(source: CIWorkflowDag, target: EmissionTarget?) -> Workflow
 ```
@@ -314,8 +313,6 @@ fn emit_workflow(source: CIWorkflowDag, projection_target: EmissionTarget?) -> W
       emit_binary_shim(workflow, source)
     PythonShim =>
       emit_python_shim(workflow, source)
-    InlineGunbc =>
-      emit_inline_gunbc(source)
   }
 ```
 
@@ -442,22 +439,23 @@ Acceptance contract:
 `PythonShim` is useful as a second shim target because it proves the target
 toggle is not secretly "Rust binary vs YAML" hard-coding.
 
-### 5.4 `InlineGunbc`
+### 5.4 Future Target: `InlineGunbc`
 
 `InlineGunbc` is a longer-term target where gunbc itself is the CI runtime
 orchestrator. GitHub Actions becomes a minimal host that invokes gunbc's
 workflow interpreter directly.
 
 This target is intentionally sketched only. It should not block Slice 4 or
-Slice 5. Its value is architectural: the `EmissionTarget` surface can express
-"workflow stays inside gunbc runtime" without inventing a second workflow
-model.
+Slice 5. It is not part of the initial `EmissionTarget` substrate enum. Its
+value is architectural: the target surface can later express "workflow stays
+inside gunbc runtime" without inventing a second workflow model.
 
 Acceptance contract before implementation:
 
-- No `InlineGunbc` emitter arm lands until a real runtime consumer exists.
-- The variant must not become a placeholder that accepts and discards workflow
-  semantics.
+- No `InlineGunbc` enum variant or emitter arm lands until a real runtime
+  consumer exists.
+- The future variant must not become a placeholder that accepts and discards
+  workflow semantics.
 
 ## 6. Affected-Set Integration
 
@@ -680,16 +678,15 @@ implementation:
    matrix JSON for GitHub fanout?
 3. What is the minimal verifier for GitHub Actions YAML in CI before a full
    GitHub workflow dry-run exists?
-4. Does `InlineGunbc` stay in the first carrier as a declared future variant,
-   or should it be added only when the runtime consumer lands?
+4. What is the acceptance bar for adding future `InlineGunbc` once the runtime
+   consumer exists?
 
 This canvas recommends:
 
 - optional field during migration, required at Slice 8 `ci_yml_dissolved`
 - in-process selected job/test execution first
 - syntax validation plus freshness check for YAML
-- keep `InlineGunbc` in the design, but do not land the variant in substrate
-  until a consumer exists
+- keep `InlineGunbc` design-only; add no enum variant until a consumer exists
 
 ## 13. Acceptance
 
