@@ -106,20 +106,34 @@ while IFS= read -r line; do
   fi
 done < <(workflow_files_nul | xargs -0 grep -nH "git diff --name-only" 2>/dev/null || true)
 
-# Locate the inventoried anchor specifically; if it's missing, the §3 row #1
-# fingerprint check above already reported it — here we just confirm count.
+# Independent anchor-host check: the §3 row #1 invariant says the inventoried
+# diff anchor LIVES IN ci.yml. The earlier PATH_REGEX_FILTER grep at site #1
+# pins a DIFFERENT literal (the docs-only allowlist), so a refactor that
+# removed the `git diff --name-only origin/main...HEAD` line but kept the
+# allowlist regex would slip past the earlier check. Enforce the anchor-host
+# invariant explicitly here so cursor 10271's failure modes are both closed.
 inventoried_present=0
 if grep -qF "$INVENTORIED_DIFF_ANCHOR" "$CI_YML" 2>/dev/null; then
   inventoried_present=1
 fi
+if (( inventoried_present == 0 )); then
+  fail "§3 row #1 anchor missing from $CI_YML:
+        expected literal: $INVENTORIED_DIFF_ANCHOR
+        per $INVENTORY_DOC §3 + §4 fail-closed contract, this anchor must
+        live in ci.yml until the BinaryShim runner replacement (post–Slice 5)
+        is wired. If you're landing the Slice 7 implementation PR, retire
+        this script as part of the dissolution receipt — do not just remove
+        the anchor."
+fi
 
+# Count invariant: actual_diff_count must equal expected_diff_count exactly.
+# Both directions fail-closed (per §4 + INVARIANTS P3): overflow = candidate
+# new bridge; underflow = inventoried bridge removed before replacement.
 if (( actual_diff_count > expected_diff_count )); then
   if (( ${#extra_locations[@]} == 0 )); then
     # Every overflow match still contains the inventoried anchor verbatim —
     # i.e., a DUPLICATE copy of the anchored invocation. Treat as a new
-    # bridge: the count exceeds baseline, so per the §4 / INVARIANTS P3
-    # fail-closed contract this MUST fail even though no "different" line
-    # is available to point at.
+    # bridge.
     fail "duplicate-anchor count overflow: found $actual_diff_count occurrences of
         'git diff --name-only' but expected $expected_diff_count. Every overflow
         line still matches the inventoried anchor verbatim, suggesting a copy
@@ -136,10 +150,14 @@ if (( actual_diff_count > expected_diff_count )); then
         (post–Slice 5)."
     done
   fi
-elif (( actual_diff_count < expected_diff_count )) && (( inventoried_present == 0 )); then
-  # Already covered by the row #1 fingerprint check; left as a defensive
-  # branch so the count-vs-anchor invariant is explicit.
-  :
+elif (( actual_diff_count < expected_diff_count )); then
+  fail "count underflow: found $actual_diff_count occurrence(s) of
+        'git diff --name-only' across all workflow files but expected
+        $expected_diff_count (the §3 row #1 inventoried anchor). The
+        inventoried bridge appears to have been removed before BinaryShim
+        replacement is wired. Per $INVENTORY_DOC §4 fail-closed contract,
+        do not just delete the anchor — retire this script as part of the
+        Slice 7 dissolution receipt."
 fi
 
 # ---- Drift detector: OTHER path-regex selection mechanisms -----------------
