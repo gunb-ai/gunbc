@@ -257,6 +257,35 @@ type ProcessEvent {
 // concrete process log names the same FreeMonoid structure directly.
 type ProcessEventLog = FreeMonoid<ProcessEvent>
 
+// 🟢 TERMINAL coproduct at Phase-1 scope — bucket drain state. Avoids using
+// `Timestamp?` for a state that callers branch on structurally.
+//
+// Practice 4 receipt:
+// - Classification: 🟢 TERMINAL. Drained and not-drained are the two states
+//   the ctrl closure guard distinguishes for buckets.
+// - Dissolution pattern rejected: nullable timestamp would reintroduce the
+//   optional-product shape this file avoids for guard decisions.
+// - Trigger: none for PR #1195 parity; richer drain receipts extend the
+//   drained arm payload.
+type BucketDrainState
+  = BucketNotDrained
+  | BucketDrained { drained_at: Timestamp }
+
+// 🟢 TERMINAL coproduct at Phase-1 scope — process closure state. Avoids
+// `closed_at: Timestamp?` beside every mode state.
+//
+// Practice 4 receipt:
+// - Classification: 🟢 TERMINAL. Open and closed are disjoint lifecycle
+//   states for the close guard.
+// - Dissolution pattern rejected: nullable timestamp permits code to treat
+//   "missing close timestamp" as data absence instead of an explicit open
+//   state.
+// - Trigger: none for PR #1195 parity; richer close receipts extend the
+//   closed arm payload.
+type ProcessCloseState
+  = ProcessOpen
+  | ProcessClosed { closed_at: Timestamp }
+
 // 🟢 TERMINAL coproduct at Phase-1 scope — mode-specific closure facts. This
 // avoids sibling nullable fields that admit impossible states, such as a leaf
 // with a bucket-drain timestamp or a bucket with child facts.
@@ -272,7 +301,7 @@ type ProcessEventLog = FreeMonoid<ProcessEvent>
 type ProcessNodeModeState
   = LeafState
   | CompositeState { open_children: List<ProcessNodeId> }
-  | BucketState { drained_at: Timestamp? }
+  | BucketState { drain: BucketDrainState }
   | UndeclaredState
 
 // 🟡 STAGED graph snapshot for closure projection. This is the minimum state
@@ -284,7 +313,7 @@ type ProcessNodeModeState
 type ProcessNodeState {
   id: ProcessNodeId
   mode: ProcessNodeModeState
-  closed_at: Timestamp?
+  close: ProcessCloseState
 }
 
 type ProcessGraph {
