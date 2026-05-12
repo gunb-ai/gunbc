@@ -34,15 +34,12 @@
 
 module gunbc.ci
 
-<<<<<<< HEAD
-=======
 import std.list { List }
 import gunbc.compiler {
   compiler_cycle, test_package,
   lint_command, test_command, ignored_test_command
 }
 
->>>>>>> origin/main
 // ── Ratchet kind ────────────────────────────────────────────────────
 
 // Direction of a ratchet gate. Down = monotonically decreasing (we
@@ -176,7 +173,6 @@ data ci_pipeline: CIPipeline = {
   ]
 }
 
-<<<<<<< HEAD
 data ci_workflow_dag: CIWorkflowDag = {
   name: "gunbc-ci",
   nodes: [
@@ -192,5 +188,3 @@ data ci_workflow_dag: CIWorkflowDag = {
     { from: "tests", to: "l1-ratchet" }
   ]
 }
-=======
->>>>>>> origin/main
