@@ -3253,6 +3253,8 @@ impl<'a> TestRunner<'a> {
                 claim.file_name
             ));
         };
+        let expected_pattern =
+            resolve_symbolic_cost_param_ordinals_for_bind(expected_pattern, bind);
 
         let computed = match symbolic_cost_of(&program_dag, &bind.value) {
             SymbolicCostLookup::Hit(cost) => cost,
@@ -5492,6 +5494,46 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
                 .collect(),
         ),
         SymbolicCost::UnknownCost { _0: s } => SymbolicCostEqPattern::Unknown(s.clone()),
+    }
+}
+
+fn resolve_symbolic_cost_param_ordinals_for_bind(
+    pattern: SymbolicCostEqPattern,
+    bind: &crate::dag::BindNode,
+) -> SymbolicCostEqPattern {
+    fn resolve(raw: u32, bind: &crate::dag::BindNode) -> u32 {
+        bind.params
+            .get(raw as usize)
+            .map(|port| port.raw())
+            .unwrap_or(raw)
+    }
+    match pattern {
+        SymbolicCostEqPattern::Linear { source_port_raw } => SymbolicCostEqPattern::Linear {
+            source_port_raw: resolve(source_port_raw, bind),
+        },
+        SymbolicCostEqPattern::Log { source_port_raw } => SymbolicCostEqPattern::Log {
+            source_port_raw: resolve(source_port_raw, bind),
+        },
+        SymbolicCostEqPattern::Polynomial {
+            source_port_raw,
+            degree_raw,
+        } => SymbolicCostEqPattern::Polynomial {
+            source_port_raw: resolve(source_port_raw, bind),
+            degree_raw,
+        },
+        SymbolicCostEqPattern::Product(terms) => SymbolicCostEqPattern::Product(
+            terms
+                .into_iter()
+                .map(|term| resolve_symbolic_cost_param_ordinals_for_bind(term, bind))
+                .collect(),
+        ),
+        SymbolicCostEqPattern::Sum(terms) => SymbolicCostEqPattern::Sum(
+            terms
+                .into_iter()
+                .map(|term| resolve_symbolic_cost_param_ordinals_for_bind(term, bind))
+                .collect(),
+        ),
+        other => other,
     }
 }
 
