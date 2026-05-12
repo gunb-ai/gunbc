@@ -1,5 +1,13 @@
 //! DB-8 — fixed-point ratchet driver (`docs/design-fixed-point-ratchet.md`).
 //!
+//! **R3 cross-read (P0 pin, no new pass/fail):** R3 program-plan §1.8 gate **#16**
+//! (`pb_self_compile_fixed_point`, T-FixedPoint) has a **strong** thesis horizon
+//! distinct from the R1 `verification.dag` claim of the same name — see
+//! `docs/r3-structure.md` §"T-FixedPoint" (two-horizon framing),
+//! `docs/briefs/r3-pb-t-fixedpoint-worker.md` (dispatch preconditions; future
+//! `pb_self_compile_fixed_point_strong`), and `docs/briefs/r3-wave1-pb2-fixedpoint-gate16-r3-horizon-worker.md`.
+//! History and CI posture for this binary: `docs/db-history/db-8.md`.
+//!
 //! Full cycle (emit → `rustc` → run → byte-diff) requires a v3-parseable
 //! `dsl/gunbc/compiler.dag` **and** an emitted CLI that can re-run emission on
 //! that file. Until Lane 3 Stage 3c, `compiler.dag` is a cycle meta-model that
