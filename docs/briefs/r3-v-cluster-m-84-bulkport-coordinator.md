@@ -1,8 +1,8 @@
-# R3 Cluster M Phase 3 — #84 Bulk-Port Coordinator Skeleton
+# R3 Cluster M Phase 3 — #84 Bulk-Port Coordinator Framework
 
-**Status:** SKELETON (per-class briefs authored as Phase 2 mid-flights). Coordinator-tier surface for Verification Mgr; not a worker dispatch artifact.
+**Status:** V2 COORDINATOR FRAMEWORK. Six per-class stubs exist; Coordinator finalizes live inventories and pilot/bulk splits immediately before worker dispatch.
 
-**Owner**: Verification Mgr (wise-bear-525 / gunbc#2075) — coordinator role per Director ratification gunbc#846 #issuecomment-4412309986 (Ask 3).
+**Owner**: Verification Mgr (`clever-tern-670`) — coordinator role per Director ratification gunbc#846 #issuecomment-4412309986 (Ask 3).
 
 **Authority**:
 - Phase 3 dispatch overlay: [`r3-cluster-m-dispatch-verification-bulkport-84-2026-05-09.md`](r3-cluster-m-dispatch-verification-bulkport-84-2026-05-09.md).
@@ -45,7 +45,23 @@ Per Phase 3 overlay §4 (estimated counts from velocity-walk audit §2.1):
 
 Each class is a parallel-dispatchable worker batch. Coordinator (this brief's owner) finalizes the class stubs as Phase 3 begins; spawns workers; tracks SG-0 census decrement per class. The six linked files are the authoritative per-class framework surfaces; this coordinator table tracks only status and class-level routing.
 
-### §2.1 Class-stub finalization rules
+### §2.1 Live SG-0 Classifier Bridge
+
+The transient Rust classifier in `src/v3/compiler/tests/integration/sg0_census_test.rs` currently uses seven buckets. This coordinator intentionally keeps six worker stubs from the ratified Cluster M queue; the bridge from live buckets to stubs is:
+
+| Live `TestsAsDataMigrationClass` bucket | Owning worker stub |
+|---|---|
+| `CementingV2Oracle` | Cementing-test family |
+| `PropertyBased` | Reflected-Dag structural assertion family for generator/quantifier claims; L4/L7/L5 skeleton for TC strict-fire/deferred Pattern-A entries |
+| `LensOutputEquality` | Generic DimensionReport / runner-discipline family unless the entry is a pure carrier-shape reflection, then Reflected-Dag |
+| `BoundaryHostProcess` | Boundary tests |
+| `CensusOrRatchet` | R1C-D/E wrappers for `r1c_*` rows; Reflected-Dag for SG/census/authority rows; Coordinator assigns outliers explicitly |
+| `BehavioralObservation` | Boundary tests when the observation is target/runtime behavior; Generic DimensionReport when it is runner-verdict behavior |
+| `CompileOrReject` | Boundary tests for milestone compile/reject contracts; L4/L7/L5 skeleton for Verification-corpus compile/reject claims |
+
+This bridge is dispatch guidance, not a second census. The live path list and classifier remain the source of truth until #84 reaches zero and both disappear.
+
+### §2.2 Class-stub finalization rules
 
 Before a class stub can move from STUB/DIRECTOR-SCAFFOLD to PRE-AUTH DISPATCH-READY, the Coordinator fills:
 - Complete live inventory from `EXPECTED_HAND_AUTHORED_TEST` at dispatch time.
@@ -60,7 +76,8 @@ Do not duplicate the live census count in these briefs. The only live count auth
 ## §3. Dispatch trigger
 
 Phase 3 dispatches from the current #87 landed pattern/dispatch receipt plus Phase 3 coordinator readiness:
-- #85 + #86 substrate carriers landed (Substrate Mgr canvas ratification + worker dispatch).
+- #86 `ProgramGenerator` / `ProgramShape` substrate carrier is `CONSUMER_LANDED + PASSING`.
+- #85 quantifier carriers are landed, but generated consumer wiring / `SuiteClaim` wrapper migration still controls full `CONSUMER_LANDED` status.
 - #87 cementing-test discipline is `CONSUMER_LANDED + PASSING` in `docs/r3-program-plan.md` row #87.
 - Coordinator completes live inventory, per-class finalization, and selected pilot/bulk split.
 
