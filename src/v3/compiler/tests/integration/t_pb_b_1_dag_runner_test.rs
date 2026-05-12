@@ -423,7 +423,7 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
 // separate ratchet; do not conflate the two in PR titles or census expectations.
 
 // R3 gate #87 — every `LensRegistryEntry` in `src/v3/compiler/regen.dag` has a
-// `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` harness evaluated here.
+// `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` harness evaluated here.
 const R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX: &str =
     "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_";
 const R3_GATE_87_CEMENTING_HARNESS_PATH_SUFFIX: &str = ".dag";
@@ -518,9 +518,9 @@ const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
 
 #[test]
 fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
-    // One `compile_to_dag` per `tests/dag/t_r3_gate_87_cementing_regen_<lens>.dag` harness — the
-    // on-disk file is the single authority for that row (INVARIANTS §P2); no duplicated copy in a
-    // bundle module.
+    // One `compile_to_dag` per `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<lens>.dag`
+    // harness — the on-disk file is the single authority for that row (INVARIANTS §P2); no
+    // duplicated copy in a bundle module.
     for (source, file, suite, claim_names) in R3_GATE_87_CEMENTING_REGEN_SUITES {
         let dag = lower(source, file);
         run_suite_all_pass_with_expected_claim_names(&dag, suite, claim_names);
