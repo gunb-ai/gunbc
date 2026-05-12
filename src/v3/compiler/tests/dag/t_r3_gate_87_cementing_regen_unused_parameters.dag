@@ -4,6 +4,9 @@
 // M1(2.8) opaque-body on `TestClaim` / carrier literals (same class as
 // `structural_resolution` + `List<UnresolvedArrowBody>`). Parity receipt:
 // `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_unused_parameters_rust_receipt_on_literal_program`.
+//
+// **Discipline:** `Compiles` is wiring-only — not unused-parameter lens output. Unrelated
+// predicates must not read as this lens under the row name.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_unused_parameters
 

@@ -2,6 +2,11 @@
 // Executable `enumerate_effects` receipt on a minimized program lives in
 // `r3_gate_87_lens_cementing_regen_receipts_test.rs` until a `LensOutputEquals` carrier
 // can freeze `EffectEnumerationReport` without walking the full bootstrap roster.
+//
+// **Discipline:** This claim stays `Compiles` on a trivial program — it only ratchets that the
+// harness module lowers through the runner table. Do **not** swap in unrelated predicates
+// (e.g. `PortHasState` on `let lit: Int = 7`): they would read as lens behavior but would not
+// exercise `effect_enumeration` (`TESTING.md` — test names must match what is proven).
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_effect_enumeration
 
