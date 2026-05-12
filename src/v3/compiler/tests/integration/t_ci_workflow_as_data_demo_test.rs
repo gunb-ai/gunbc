@@ -410,7 +410,8 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
         .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
 
     assert!(
-        demo.declaration_by_name("modeled_gunbc_ci_workflow_dag").is_none(),
+        demo.declaration_by_name("modeled_gunbc_ci_workflow_dag")
+            .is_none(),
         "bootstrap demo must not carry a mirror of ci_workflow_dag"
     );
     assert_eq!(
