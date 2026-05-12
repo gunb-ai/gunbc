@@ -72,7 +72,9 @@ fn main() -> ExitCode {
     let mut shown = 0usize;
 
     if filter.is_none() {
-        println!("(no --file filter — skipping per-bind complexity_of; pass --file <suffix> to dump)");
+        println!(
+            "(no --file filter — skipping per-bind complexity_of; pass --file <suffix> to dump)"
+        );
         return ExitCode::SUCCESS;
     }
     for node in dag.nodes() {
