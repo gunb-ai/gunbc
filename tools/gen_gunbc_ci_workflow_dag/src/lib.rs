@@ -65,14 +65,7 @@ fn emit_workflow(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let m = v.as_mapping().ok_or("workflow root must be mapping")?;
     reject_unknown_keys(
         m,
-        &[
-            "name",
-            "on",
-            "jobs",
-            "env",
-            "permissions",
-            "concurrency",
-        ],
+        &["name", "on", "jobs", "env", "permissions", "concurrency"],
         "workflow root",
     )?;
     let name = str_field(m, "name")?;
@@ -190,11 +183,7 @@ fn emit_concurrency(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
         return Ok("none".to_string());
     };
     let m = v.as_mapping().ok_or("concurrency mapping")?;
-    reject_unknown_keys(
-        m,
-        &["group", "cancel-in-progress"],
-        "workflow.concurrency",
-    )?;
+    reject_unknown_keys(m, &["group", "cancel-in-progress"], "workflow.concurrency")?;
     let group = str_field(m, "group")?;
     let cip = m.get(Value::String("cancel-in-progress".to_string()));
     let cancel = match cip {
@@ -268,6 +257,11 @@ fn emit_permissions(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
         return Ok("none".to_string());
     };
     let m = v.as_mapping().ok_or("permissions mapping")?;
+    reject_unknown_keys(
+        m,
+        &["contents", "pull-requests", "issues", "actions"],
+        "workflow.permissions",
+    )?;
     let contents = perm_level(m.get("contents"))?;
     let pull_requests = perm_level(m.get("pull-requests"))?;
     let issues = perm_level(m.get("issues"))?;
@@ -303,6 +297,23 @@ fn emit_jobs(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
 
 fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let m = v.as_mapping().ok_or("job mapping")?;
+    reject_unknown_keys(
+        m,
+        &[
+            "name",
+            "if",
+            "runs-on",
+            "timeout-minutes",
+            "steps",
+            "needs",
+            "env",
+            "outputs",
+            "strategy",
+            "continue-on-error",
+            "concurrency",
+        ],
+        &format!("job[{id}]"),
+    )?;
     let name = match m.get(Value::String("name".to_string())) {
         None => "none".to_string(),
         Some(Value::String(s)) => format!("Some {{ value: {} }}", dag_string(s)),
@@ -399,6 +410,41 @@ fn emit_steps(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
 
 fn emit_step(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let m = v.as_mapping().ok_or("step mapping")?;
+    let has_uses = m.get(Value::String("uses".to_string())).is_some();
+    let has_run = m.get(Value::String("run".to_string())).is_some();
+    if has_uses {
+        reject_unknown_keys(
+            m,
+            &[
+                "name",
+                "id",
+                "uses",
+                "with",
+                "env",
+                "if",
+                "continue-on-error",
+                "timeout-minutes",
+            ],
+            "uses step",
+        )?;
+    } else if has_run {
+        reject_unknown_keys(
+            m,
+            &[
+                "name",
+                "id",
+                "run",
+                "env",
+                "working-directory",
+                "if",
+                "continue-on-error",
+                "timeout-minutes",
+            ],
+            "run step",
+        )?;
+    } else {
+        return Err("step must have uses or run".into());
+    }
     let name = match m.get(Value::String("name".to_string())) {
         None => "none".to_string(),
         Some(Value::String(s)) => format!("Some {{ value: {} }}", dag_string(s)),
@@ -467,7 +513,7 @@ fn emit_step(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
             timeout_minutes
         ))
     } else {
-        Err("step must have uses or run".into())
+        unreachable!("emit_step: uses vs run validated at start")
     }
 }
 
