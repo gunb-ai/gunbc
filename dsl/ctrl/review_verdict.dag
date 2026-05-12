@@ -101,6 +101,14 @@ type FindingExtractionState
   | AmbiguousShaMarker
   | EmptyComment
 
+// Practice 4 receipt: terminal subset for parse attempts that did not produce
+// a report. Kept separate from FindingExtractionState so ParseDeferred cannot
+// carry the successful ParsedDiscreteFindings state.
+type ParseDeferredState
+  = DeferredCommentNotFound
+  | DeferredAmbiguousShaMarker
+  | DeferredEmptyComment
+
 type ReviewArtifact {
   artifact_id: NonEmptyStr
   provider: ReviewProvider
@@ -156,7 +164,7 @@ type ReviewVerdictParseRequest {
 
 type ReviewVerdictParseResult
   = ParsedReport { report: ReviewVerdictReport }
-  | ParseDeferred { state: FindingExtractionState, artifact: ReviewArtifact }
+  | ParseDeferred { state: ParseDeferredState, artifact: ReviewArtifact }
 
 fn is_approving_verdict(verdict: ReviewVerdict) -> Bool {
   match verdict {
