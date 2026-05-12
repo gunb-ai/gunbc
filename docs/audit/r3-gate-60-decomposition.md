@@ -40,78 +40,84 @@ What is already on `main`:
 | Width carriers `Word16/Word32/Word64` | `dsl/std/bit.dag:29-31` | (pre-R3) |
 | Grounding G2 primitive-row consumer evidence (`i32/i64/u64/f32/f64`) | `dsl/extdeps/languages/rust/primitives.dag` | #2570 |
 
+Additional substrate facts on `main` relevant to the 8-bit arm:
+
+| Substrate fact | Location | PR |
+|---|---|---|
+| `Byte` carrier (8-bit width unit) | `dsl/std/bit.dag:26` | (pre-R3) |
+| `Int8 = Compose<Int, MachineWidth<Byte>>` | `dsl/std/integer.dag:45` | landed |
+| `UInt8 = Compose<UInt, MachineWidth<Byte>>` (≡ `Nat<8>` via `UInt = Nat`) | `dsl/std/integer.dag:52` | landed |
+| Named dissolution trigger: `MachineWidth<WordN>` → `MachineWidth<N>` literal-Nat when parser lands | `dsl/std/integer.dag:71-78` | (in-substrate) |
+
 What is **not** on `main` (load-bearing for gate-60):
 
-1. `Word8` width carrier (`Nat<8>` evidence-pair requires it; `bit.dag`
-   defines `Byte` but not `Word8`).
-2. User-surface `Int<N>` / `Real<N>` / `Nat<N>` parser syntax that
-   desugars to `Compose<Algebra, MachineWidth<WordN>>`. Today, source
-   must write the substrate spelling (or use the `IntW32`-style
-   alias); parser-grammar surface is still substrate-bare.
-3. End-to-end demonstration that the user-surface 3-pair set lowers
+1. User-surface `Int<N>` / `Real<N>` / `Nat<N>` parser syntax that
+   desugars to `Compose<Algebra, MachineWidth<N>>` per Q-MC
+   sub-decision 3 ratified spelling (gunbc#828
+   #issuecomment-4385530115: *"`Int<64>` parses/elaborates as
+   `Compose<Int, MachineWidth<64>>` parametrically"*) — note
+   **literal-Nat `N`**, NOT `WordN` carrier. Current `Word16/32/64`
+   spelling in `dsl/std/integer.dag:45-56` is the pre-parser
+   workaround carrying its own dissolution trigger.
+2. End-to-end demonstration that the user-surface 3-pair set lowers
    through stage0 without invoking v2-fallback for type-resolution.
-4. v2-oracle parity on the same source program (Class 1 5-criteria
+3. v2-oracle parity on the same source program (Class 1 5-criteria
    final row per `docs/briefs/r3-substrate-s3-machine-constraint-carrier-worker.md:32-41`).
-5. Class-bridge enumeration receipt = 0 (§1.4 conjunctive rule).
+4. Class-bridge enumeration receipt = 0 (§1.4 conjunctive rule).
+5. Workaround dissolution: retire `IntW*` / `UIntW*` aliases and
+   collapse `MachineWidth<WordN>` slot-2 spellings to `MachineWidth<N>`
+   once parser lands, per the named dissolution trigger.
 
 ## Decomposition
 
-The five outstanding facts above map onto six slices. Slices A-D are
-substrate-lane (Substrate Mgr authority); E-F are demonstration/parity
-and route through T-Numeric-Construction + PB lanes.
+The four outstanding facts above map onto four slices, plus one
+workaround-dissolution follow-on. Slices C, D, and Z are substrate-lane
+(Substrate Mgr authority); E and F are demonstration / parity and route
+through T-Numeric-Construction + PB lanes.
 
-### Slice A — `Word8` width-carrier slice
+**Reviewer-corrected note (per BLOCKING findings 2026-05-12 on this
+PR).** Earlier drafts of this decomposition proposed adding a `Word8`
+record (Slice A) and a `Nat8` substrate alias (Slice B). Both are
+withdrawn:
 
-**Scope.** Add `type Word8 { bytes: List<Byte> }` to `dsl/std/bit.dag`
-(or equivalent unary-byte form per existing record convention). No
-parser change.
+- `dsl/std/bit.dag:26` already defines `Byte` as the 8-bit carrier;
+  introducing `Word8` would create parallel authority (INVARIANTS P1).
+- `Int8 = Compose<Int, MachineWidth<Byte>>` and
+  `UInt8 = Compose<UInt, MachineWidth<Byte>>` already exist at
+  `dsl/std/integer.dag:45,52`; with `UInt = Nat` (line 148),
+  `Nat<8>` substrate ≡ `UInt8`. No new substrate alias is needed.
 
-**Why load-bearing.** `Nat<8>` evidence-pair requires
-`MachineWidth<Word8>` as slot-2 of `Compose<Nat, MachineWidth<W>>`;
-`bit.dag` currently starts at `Word16`. Without `Word8`, the minimum
-existence-proof set cannot be spelled even in substrate form.
+The 8-bit arm is therefore parser-only work; Slice C is the entire
+substrate-side surface change.
 
-**Brief author.** Substrate Mgr (small enough to absorb into a worker
-brief alongside the Slice B substrate aliases below; combined PR is
-fine).
-
-**Owner role.** Substrate worker (no PB-tier dependency).
-
-**Gate signal.** Adds a unit-shape carrier; no §1.8 receipt of its own.
-Feeds B/C.
-
-### Slice B — Substrate aliases `Nat8` / `Real8`-pair completion
-
-**Scope.** Author `type Nat8 = Compose<Nat, MachineWidth<Word8>>` (and
-the corresponding `UInt8` alias if not already covered by
-`UIntW8`-shaped form) under `dsl/std/integer.dag`. No parser change.
-
-**Why load-bearing.** Completes the substrate-side evidence triple
-(`IntW64` / `Real64` / `Nat8`) used by Slice E for the minimum
-existence-proof demonstration.
-
-**Brief author.** Substrate Mgr; bundle with Slice A.
-
-**Owner role.** Substrate worker.
-
-**Gate signal.** Updates §1.8 row #18 receipt detail (no new gate).
-
-### Slice C — User-surface parser desugaring `T<N>` → `Compose<T, MachineWidth<WordN>>`
+### Slice C — User-surface parser desugaring `T<N>` → `Compose<T, MachineWidth<N>>`
 
 **Scope.** Implement the parser-grammar surface authored at
 `docs/briefs/r3-substrate-s3-phase-2-parser-grammar-worker.md`:
 user writes `Int<64>`, parser elaborates parametrically to
-`Compose<Int, MachineWidth<Word64>>`. Numeric literal `N` in the
-slot-2 position desugars to the matching `Word<N>` carrier from
-`dsl/std/bit.dag`.
+`Compose<Int, MachineWidth<64>>` per Q-MC sub-decision 3 ratified
+spelling (gunbc#828 #issuecomment-4385530115). Numeric literal `N`
+in the slot-2 position desugars to **literal-Nat `N`** as the
+`MachineWidth<…>` argument — NOT to a `Word<N>` carrier. The
+`MachineWidth<Word*>` slot-2 form currently used at
+`dsl/std/integer.dag:45-56` is the pre-parser workaround that
+dissolves under this slice (see Slice Z).
+
+For the `Nat<8>` arm: literal `8` maps to `MachineWidth<8>`; the
+existing `Byte` carrier is the substrate-side 8-bit grounding and
+remains under the hood at emission time, but is **not** the slot-2
+spelling the parser produces.
 
 **Why load-bearing.** This is the *parser-grammar* in the gate name.
-Substrate already carries the shape (Slice A/B); without parser
-desugaring, gate-60's "parser handles generic `Compose<...>`
-interaction syntax" predicate cannot be discharged.
+Substrate already carries the algebraic concepts and the
+`MachineWidth<bits>` carrier; without parser desugaring producing
+the ratified `MachineWidth<N>` literal-Nat slot-2 spelling, gate-60's
+"parser handles generic `Compose<...>` interaction syntax" predicate
+cannot be discharged without re-validating the workaround as the
+target.
 
 **Open design knob (do not silently pre-decide).** Whether numeric
-literal `64` in slot-2 desugars only when slot-1 is a known
+literal `N` in slot-2 desugars only when slot-1 is a known
 algebraic-concept carrier (`Int`/`Nat`/`Real`/`UInt`), or whether
 it desugars universally. Brief at
 `docs/briefs/r3-substrate-s3-phase-2-parser-grammar-worker.md`
@@ -119,7 +125,11 @@ preserves this as a clarifying question for Substrate Mgr at
 dispatch.
 
 **Brief author.** Already authored; status = draft, worker pin
-valiant-ant-72 (freed-pool post #1856).
+valiant-ant-72 (freed-pool post #1856). **Brief must be amended**
+to specify literal-Nat slot-2 spelling (not `Word<N>`) before
+dispatch — current Phase-2 brief text at lines 70-74 references
+`Compose<Int, MachineWidth<N>>` correctly; verify no residual
+`Word<N>` slot-2 wording before worker pickup.
 
 **Owner role.** Substrate worker. Touches v3-compiler parser
 (`src/v3/compiler/src/parse_generated.rs`) — operator BLOCKING risk
@@ -130,6 +140,32 @@ must include the grep-before-name discipline.
 **Gate signal.** Discharges criterion 2 of Class 1 5-criteria
 Pass (parser handles generic interaction syntax) — see
 `docs/briefs/r3-substrate-s3-machine-constraint-carrier-worker.md:32-41`.
+
+### Slice Z — Pre-parser workaround dissolution (`MachineWidth<WordN>` → `MachineWidth<N>`; retire `IntW*` / `UIntW*` aliases)
+
+**Scope.** Collapse `Int16/Int32/Int64/Int128` (and the `UInt*` /
+`Real*` family) from `Compose<…, MachineWidth<WordN>>` to
+`Compose<…, MachineWidth<N>>` literal-Nat spelling. Retire the
+historical `IntW32/64/128` and `UIntW32/64/128` aliases at
+`dsl/std/integer.dag:80-…` per the named dissolution trigger
+recorded at `dsl/std/integer.dag:71-78`.
+
+**Why load-bearing.** Without dissolution, the gate-60 receipt
+would Pass against a substrate that still carries two slot-2
+spellings — closure would be "concept faithfully modeled modulo a
+pre-parser scaffold", which is not faithful representation
+(INVARIANTS P2 dual-authority). The dissolution trigger is
+already in-substrate and is a one-shot drop once Slice C lands.
+
+**Brief author.** Substrate Mgr (small follow-on to Slice C; can
+bundle in the same PR if churn is manageable, but a separate PR is
+preferable to keep the parser-surface PR scope-tight).
+
+**Owner role.** Substrate worker.
+
+**Gate signal.** Required for gate-60 close per INVARIANTS P2; also
+discharges the pre-parser-scaffold callout at
+`dsl/std/integer.dag:71-78`.
 
 ### Slice D — Class-bridge enumeration zero receipt
 
@@ -156,10 +192,13 @@ close PR.
 
 **Scope.** Author a substrate integration test (model:
 `m1_substrate_test` / `m2_substrate_inhabitance_test` family) that:
-1. Parses source containing the three user-surface spellings.
-2. Verifies elaboration to `Compose<…, MachineWidth<Word…>>`.
+1. Parses source containing the three user-surface spellings
+   (`Int<64>` / `Real<64>` / `Nat<8>`).
+2. Verifies elaboration to `Compose<…, MachineWidth<N>>` literal-Nat
+   slot-2 spelling per Q-MC sub-decision 3 (NOT `MachineWidth<WordN>`).
 3. Lowers through stage0 to target Rust `i64` / `f64` / `u8` rows
-   from `dsl/extdeps/languages/rust/primitives.dag`.
+   from `dsl/extdeps/languages/rust/primitives.dag` (where `Byte`
+   is the in-substrate 8-bit grounding for the `u8` row).
 4. Confirms NO v2-refinement-syntax path is taken (per
    T-V2-Retirement supersession captured in
    `docs/briefs/r3-substrate-s3-phase-2-parser-grammar-worker.md:18-33`).
@@ -210,26 +249,24 @@ this collapses into Slice E. **Decision required.**
 ## Dependency graph
 
 ```
-A (Word8)        ─┐
-                  ├──► C (parser desugar) ──► D (class-bridge=0 receipt)
-B (Nat8 alias)   ─┘                       └─► E (existence-proof demo) ──► F (v2 parity)
+C (parser desugar, literal-Nat slot-2) ──► D (class-bridge=0 receipt)
+                                       └─► E (existence-proof demo) ──► F (v2 parity)
+                                       └─► Z (Word*-workaround dissolution)
 ```
 
-A + B are independent and can land in a single PR. C depends on
-A + B for the `Nat<8>` arm of the user-surface; the `Int<64>` /
-`Real<64>` arms could in principle land first (substrate already
-present), but bundling C against the full 3-pair surface avoids
-a second parser-touching PR. D and E both depend on C; D and E
-are independent of each other. F depends on E.
+Substrate carriers for all three arms (`Int<64>`, `Real<64>`, `Nat<8>`)
+are already on `main` — the 8-bit arm uses the existing `Byte` carrier
+via `UInt8 = Compose<UInt, MachineWidth<Byte>>` and `UInt = Nat`.
+Slice C is therefore the single entry-point; D, E, Z fan out from C.
+F depends on E. D and Z are independent of each other.
 
 ## Routing summary
 
 | Slice | Owner role | Mgr | Brief status | Notes |
 |---|---|---|---|---|
-| A | Substrate worker | Substrate Mgr | needs authoring (small) | bundle with B |
-| B | Substrate worker | Substrate Mgr | needs authoring (small) | bundle with A |
-| C | Substrate worker (parser) | Substrate Mgr | **AUTHORED** at `docs/briefs/r3-substrate-s3-phase-2-parser-grammar-worker.md` | ready to dispatch post-A/B |
+| C | Substrate worker (parser) | Substrate Mgr | **AUTHORED** at `docs/briefs/r3-substrate-s3-phase-2-parser-grammar-worker.md` | verify brief specifies literal-Nat slot-2, not `Word<N>`, before dispatch |
 | D | Verification worker | Substrate Mgr | needs authoring | small follow-on to C |
+| Z | Substrate worker | Substrate Mgr | needs authoring | retire `IntW*/UIntW*` aliases + `MachineWidth<WordN>` slot-2; one-shot |
 | E | T-Numeric-Construction worker | T-Numeric-Construction lane (or PM-routed) | needs authoring | demonstration brief |
 | F | PB worker | **PB Mgr (unfilled)** | needs authoring + role decision | escalate to PM, OR collapse into E |
 
@@ -265,7 +302,7 @@ are independent of each other. F depends on E.
 ## What this decomposition does NOT do
 
 - Author the slice briefs themselves (only Slice C is already
-  authored; A/B/D/E/F brief-authoring is the next step).
+  authored; D/Z/E/F brief-authoring is the next step).
 - Decide the parser design knob in Slice C.
 - Resolve the PB Mgr resourcing question.
 - Dispatch workers — dispatch follows brief authoring +
