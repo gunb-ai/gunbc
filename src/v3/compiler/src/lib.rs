@@ -5205,8 +5205,9 @@ pub(crate) mod variant_payload {
     mod tests {
         use super::{variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup};
         use crate::dag::{
-            AtomPayload, Dag, Declaration, DeclarationId, Field, SourceSpan, TypeConnective,
+            AtomPayload, Dag, Declaration, DeclarationId, Field, TypeConnective,
         };
+        use crate::diagnostics::SourceSpan;
 
         fn span() -> SourceSpan {
             SourceSpan::new("<variant-payload-cementing-test>", 0, 0)
@@ -5294,7 +5295,7 @@ pub(crate) mod variant_payload {
         #[test]
         fn variant_payload_shape_fails_closed_on_missing_or_non_product_declaration() {
             let mut dag = Dag::new();
-            let missing = dag.alloc_declaration_id();
+            let missing = DeclarationId::test_raw(u32::MAX);
             assert!(
                 matches!(
                     variant_payload_shape(&dag, &missing),
