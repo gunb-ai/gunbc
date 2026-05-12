@@ -86,7 +86,9 @@ These modules define what cloud APIs share — authentication schemes, endpoints
 credentials — without naming a specific provider.
 
 ```
-extdeps/cloud/cloud.dag  "What is a cloud provider?"
+extdeps/cloud/cloud.dag       "What is a cloud provider?"
+extdeps/transports/rest.dag   "What is an HTTP REST transport?"
+extdeps/transports/sql.dag    "What is a SQL database transport?"
 ```
 
 ```dag
@@ -568,6 +570,7 @@ Targets (28 modules):
 - `shell.dag` — cite POSIX or coreutils docs
 - `yaml.dag` — cite https://yaml.org/spec/1.2.2/
 - `tools/rust_toolchain.dag` — cite https://rust-lang.github.io/rustup/
+- `transports/sql.dag` — cite ISO SQL plus concrete prepared-statement docs
 
 ### P1: Fix GitHub modules (B/B- → A)
 
