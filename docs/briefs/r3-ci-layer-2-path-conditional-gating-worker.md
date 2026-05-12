@@ -16,7 +16,7 @@
 - **Polarity check**: carrier name is `skip_*`; CI consumer wires `if: skip_<group> != 'true'` (run when skip=false). Skip-form is canonical: NodeRef-empty OR dim-empty ⇒ unaffected ⇒ skip; both non-empty ⇒ affected ⇒ run. Set-intersection semantics per locked-design §2 union — NOT singular `.contains()` membership.
 - **Per-dimension structural target**: `docs/design-affected-set-lens.md` §2 (affected_set defined as union over `Set<Dimension>`) — every Layer 2 path-mapping entry MUST carry a `dimensions:` field of type `Set<Dimension>` (members drawn from `value | cost | complexity | effect | refinement`). Single-element sets like `{cost}` are valid for single-dimension groups; multi-dim consumers (e.g., LBP demonstration reading both `complexity` + `cost`) get expanded sets. Prevents schema divergence from future lens output AND silent-skip on multi-dim consumers when only the non-primary dim changes.
 - **Slow-test inventory sources** (per PM pre-stage at #828 c4425726922):
-  - (a) `scripts/slow-test-exemptions.txt` — 80 active entries (verified `grep -v "^#" scripts/slow-test-exemptions.txt | grep -v "^$" | wc -l` = 80 as of 2026-05-12; PM template citation at PR #2721 of "78" is stale by 2 entries) (curated >2s ratchet exemption list)
+  - (a) `scripts/slow-test-exemptions.txt` — curated >2s ratchet exemption list. **Mgr-finalization MUST recompute live count** via `grep -v "^#" scripts/slow-test-exemptions.txt | grep -v "^$" | wc -l` at finalization (count fluctuates per hot-fix arcs — e.g., #2723 added cuts; PM template citation at PR #2721 of "78" is historical and stale). Do not cite snapshot integers in this brief — they rot between authoring and Mgr-fill (cursor BLOCKING #9832 absorption 2026-05-12: prior in-brief fixed-count wording had already drifted by review time).
   - (b) `/tmp/v3-test-timings.log` — empirical per-test wall-time captured by every CI run via `--report-time` (consumed by `scripts/check-test-timeout.sh`, wired at `.github/workflows/ci.yml:405-424`)
   - (c) NEW per-group required-paths mapping (the deliverable; bridge-debt artifact)
 
@@ -111,7 +111,7 @@ Where:
 
 **Inventory derivation** (Mgr-fill from 3 sources):
 
-(a) **`scripts/slow-test-exemptions.txt`** — start with the **current live count** of active >2s entries (Mgr MUST re-run `grep -v '^#' scripts/slow-test-exemptions.txt | grep -v '^$' | wc -l` at finalization time; 80 at 2026-05-12T00:50Z but count grows over time; do NOT cite the stale "78" from PM template PR #2721 or any earlier reference). Each entry already has citation discipline; group by `_test.rs` file-area prefix. **Fail-closed completeness invariant** (per openai-pro BLOCKING #9779 absorption 2026-05-12): under-inventory is the fail-open shape — every active exemption MUST appear in either a per-group `required_paths_regex` row OR the harness/shared-infra full-run bucket. No exemption left unclassified.
+(a) **`scripts/slow-test-exemptions.txt`** — start with the **current live count** of active >2s entries (Mgr MUST re-run `grep -v '^#' scripts/slow-test-exemptions.txt | grep -v '^$' | wc -l` at finalization time; do NOT cite stale snapshot integers from this brief or any earlier reference — the count fluctuates per hot-fix arcs). Each entry already has citation discipline; group by `_test.rs` file-area prefix. **Fail-closed completeness invariant** (per openai-pro BLOCKING #9779 absorption 2026-05-12): under-inventory is the fail-open shape — every active exemption MUST appear in either a per-group `required_paths_regex` row OR the harness/shared-infra full-run bucket. No exemption left unclassified.
 
 (b) **`/tmp/v3-test-timings.log` empirical** — last N CI runs aggregated → top-K slowest groups by file-area. Cross-validates (a) and surfaces non-exempted slow tests.
 
@@ -127,7 +127,7 @@ Where:
 
 **Harness/test-selection-machinery arms** (per openai-pro P3 BLOCKING #9749 absorption): the regex includes the named harness-code class explicitly — `tests/integration/common/*` (shared test utilities), `sg0_census_test.rs` (census authority), `test_runner_test.rs` (runner framework), `t_pb_b_1_dag_runner_test.rs` (suite enumeration framework), and the integration test entry points. Worker MUST add any new harness-class file to this regex before merging the file. **A harness-class file MUST never appear in a per-group `required_paths_regex` — it always triggers full-run.**
 
-**Crate-local build metadata** (per openai-pro P3 BLOCKING review on PR #2725 absorption 2026-05-12): the regex MUST match `Cargo.toml`/`Cargo.lock`/`build.rs` at ANY depth, not just workspace-root. The project has crate-local manifests + build scripts (e.g., `src/v3/compiler/Cargo.toml`, `src/v3/compiler/build.rs` per `CODING.md:319`); a root-only anchored regex (`^Cargo\.(toml|lock)$`) would miss these and silently skip tests for crate-local manifest/build-script changes — fail-open boundary class P3 forbids. The `(.*/)?` non-capturing optional path prefix on those alternates above matches both root-level (e.g., `Cargo.lock`) AND any-depth crate-local (e.g., `src/v3/compiler/Cargo.toml`, `src/v3/compiler/build.rs`).
+**Crate-local build metadata** (per openai-pro P3 BLOCKING review on PR #2725 absorption 2026-05-12 — parity fix to #2719): the regex MUST match `Cargo.toml`/`Cargo.lock`/`build.rs` at ANY depth, not just workspace-root. The project has crate-local manifests + build scripts (e.g., `src/v3/compiler/Cargo.toml`, `src/v3/compiler/build.rs` per `CODING.md:319`); a root-only anchored regex (`^Cargo\.(toml|lock)$`) would miss these and silently skip tests for crate-local manifest/build-script changes — fail-open boundary class P3 forbids. The `(.*/)?` non-capturing optional path prefix on those alternates above matches both root-level (e.g., `Cargo.lock`) AND any-depth crate-local (e.g., `src/v3/compiler/Cargo.toml`, `src/v3/compiler/build.rs`).
 
 Equivalently in step output: `force_full_run = (any changed file ∈ shared-infrastructure regex)`; when `force_full_run = true`, all per-group `skip_*` outputs short-circuit to `false`. Composes with the `code=true|false` Layer 1 gate (docs-only PRs already skip everything via Layer 1; this constraint applies only to code PRs).
 
@@ -156,7 +156,7 @@ parser_grammar     | {refinement}        | ^(src/v3/parser/.*|src/v3/compiler/sr
 # test_pattern is libtest SUBSTRING filter — no globs; `cost_lens` matches every test name containing "cost_lens".
 ```
 
-**[Mgr-fill]**: full per-group table — exhaustive coverage of current `scripts/slow-test-exemptions.txt` entries (count grows; Mgr re-runs `grep -v "^#" ... | grep -v "^$" | wc -l` at finalization rather than relying on stale citations; 80 at 2026-05-12T00:50Z) grouped + empirical top-K from timings log + per-group required-paths regex tested against representative diffs. **Also required per Brian's BLOCKING #2 absorption**: each group entry must compute `testclaim_references: Set<NodeRef>` (union of TestClaim references across group's tests) for the canonical 2-step selection join post-dissolution. Bridge-tier proxy is `required_paths_regex`; post-dissolution proxy is `testclaim_references` populated from `tests/dag/*` TestClaim authorities.
+**[Mgr-fill]**: full per-group table — exhaustive coverage of current `scripts/slow-test-exemptions.txt` entries (count fluctuates per hot-fix arcs; Mgr re-runs `grep -v "^#" ... | grep -v "^$" | wc -l` at finalization rather than relying on stale snapshot integers in this brief) grouped + empirical top-K from timings log + per-group required-paths regex tested against representative diffs. **Also required per Brian's BLOCKING #2 absorption**: each group entry must compute `testclaim_references: Set<NodeRef>` (union of TestClaim references across group's tests) for the canonical 2-step selection join post-dissolution. Bridge-tier proxy is `required_paths_regex`; post-dissolution proxy is `testclaim_references` populated from `tests/dag/*` TestClaim authorities.
 
 ## §3. Per-dimensions structural target — `feedback_parallel_representation_debt` prevention (set semantics per locked-design §2)
 
@@ -207,7 +207,7 @@ This is the parallel-representation-debt prevention. If Layer 2's group-classifi
 
 **Hard constraint**: no group entry without a `dimensions:` field of type `Set<Dimension>` with members from the lens enum. Single-element sets like `{cost}` are valid for single-dim groups. Empty set is invalid. If a group doesn't fit any of the 5 dimensions cleanly, escalate to Coordinator — that's a substrate-shape question, not a Layer 2 design choice.
 
-**Polarity invariant** (per cursor APPROVE_WITH_COMMENTS on #2725 review #9815 2026-05-12 catching §3-vs-§4 dimensions-only residual + Brian BLOCKING #3 + codex BLOCKING #9XXX absorption): the carrier name is `skip_<group>`. CI consumer wires `if: skip_<group> != 'true'` (i.e., RUN when `skip` is false). **Post-dissolution, the dissolution formula is the CANONICAL 2-STEP JOIN per `docs/design-affected-set-lens.md:359` — BOTH NodeRef AND dimension intersections required**:
+**Polarity invariant** (per PM caught inversion 2026-05-11 via openai-pro RC #9721 + cursor APPROVE_WITH_COMMENTS on #2725 2026-05-12 catching dimensions-only residual): the carrier name is `skip_<group>`. CI consumer wires `if: skip_<group> != 'true'` (i.e., RUN when `skip` is false). **Post-dissolution, the dissolution formula is the CANONICAL 2-STEP JOIN per `docs/design-affected-set-lens.md:359` — BOTH NodeRef AND dimension intersections required**:
 
 ```
 run  = (group.testclaim_references ∩ lens.affected_node_refs) ≠ ∅
@@ -215,9 +215,11 @@ run  = (group.testclaim_references ∩ lens.affected_node_refs) ≠ ∅
 skip = ¬run = (refs ∩ nodes) = ∅  OR  (dims ∩ changed_dims) = ∅
 ```
 
-**The dimensions-only form `skip = (affected ∩ group.dimensions) = ∅` is INCOMPLETE** — silently drops the NodeRef-intersection step, violating Facts Flow Forward. Both inversion (`skip = (∩ ≠ ∅)`) and dimension-only collapse are fail-open bug patterns; reject in review.
+**The dimensions-only form `skip = (dims ∩ changed_dims) = ∅` (i.e., using ONLY the dimension intersection clause from the canonical conjunction) is INCOMPLETE** — it silently drops the NodeRef-intersection step `(refs ∩ nodes) = ∅`, violating Facts Flow Forward (catch #9 absorption). Both inversion (`skip = (∩ ≠ ∅)` instead of `= ∅`) and dimension-only collapse are fail-open bug patterns.
 
-**Bridge-tier note**: at bridge stage (pre-dissolution), per-group `skip_*` derives from `(changed-files ∩ required_paths_regex) = ∅` — path-side proxy for the canonical 2-step (over-approximates; bridge runs MORE tests than canonical; fail-closed-safe coarseness). Carrier-name-matches-contract: `skip_*` flag true when group is unaffected (both lens-join inputs empty post-dissolution; path-regex-empty bridge-tier).
+**Bridge-tier note**: at bridge stage (pre-dissolution), per-group `skip_*` derives from `(changed-files ∩ required_paths_regex) = ∅` — a path-side proxy for the canonical 2-step (over-approximates: bridge runs MORE tests than canonical because regex coverage > NodeRef precision). Bridge-tier skip-form remains canonical (empty intersection) but operates on a coarser carrier than post-dissolution.
+
+Any acceptance-criterion / YAML example / formula citation in this brief or its Mgr-fill output MUST use the canonical skip-form (empty intersection) AND, post-dissolution, the full 2-step conjunction — never invert + never collapse to dimensions-only.
 
 ## §4. Hard constraints
 
@@ -225,17 +227,8 @@ skip = ¬run = (refs ∩ nodes) = ∅  OR  (dims ∩ changed_dims) = ∅
 2. **STEP-level `if:` on `v3`, not separate jobs** — keeps `v3`'s `needs:` graph and required-check name stable. `self_host_ratchet` `if:` widening from PR #2718 remains unchanged.
 3. **No new `actions/cache` keys or workflow-tier infrastructure** — Layer 2 is path-regex + boolean output; nothing more.
 4. **Bridge-debt acknowledgment in every PR**: each PR landing a Layer 2 group must include in body: "Bridge-debt; lifecycle bounded by R4.B Introspect-lens saturation lane CI integration delivery (per `docs/design-affected-set-lens.md` §5). NOT R3 close-blocking. When R4.B CI integration lands, lens output replaces `required_paths_regex` column and bridge retires."
-5. **`dimensions: Set<Dimension>` + `testclaim_references: Set<NodeRef>` fields on every group entry** — non-empty subset of the lens enum per locked-design §2 union semantics + canonical 2-step join per `docs/design-affected-set-lens.md:359`. Single-element sets valid for single-dim groups; multi-dim consumers MUST list all dimensions they read. Substrate-shape questions on dimension assignment escalate.
-   **Polarity invariant** (per Brian BLOCKING #3 + codex BLOCKING #9XXX absorption 2026-05-12; rewriting to compose BOTH join steps): post-dissolution `skip_<group>` formula is the canonical 2-step:
-   ```
-   run  = (group.testclaim_references ∩ lens.affected_node_refs) ≠ ∅
-          AND (group.dimensions ∩ lens.changed_dimensions) ≠ ∅
-   skip = ¬run = (refs ∩ nodes) = ∅  OR  (dims ∩ changed_dims) = ∅
-   ```
-   **Two fail-open bug patterns to reject in review**:
-   - (a) **Inversion**: `skip = (∩ ≠ ∅)` instead of `= ∅` — silently skips AFFECTED groups
-   - (b) **Dimension-only collapse**: `skip = (dims ∩ dims) = ∅` dropping the NodeRef-intersection step — silently skips when refs disjoint but dims match, violating Facts Flow Forward per `docs/design-affected-set-lens.md:359` canonical algorithm
-   **Bridge-tier proxy** (pre-dissolution): `skip = (changed-files ∩ required_paths_regex) = ∅` over-approximates the canonical 2-step (runs MORE tests; fail-closed-safe direction; coarser than NodeRef-precise). Carrier name matches contract: `skip_*` flag is true when group is unaffected (BOTH lens-join inputs empty post-dissolution; path-regex-empty bridge-tier).
+5. **`dimensions: Set<Dimension>` field on every group entry** — non-empty subset of the lens enum per locked-design §2 union semantics. Single-element sets valid for single-dim groups; multi-dim consumers MUST list all dimensions they read. Substrate-shape questions on dimension assignment escalate.
+   **Polarity invariant** (post-cursor catch on #2725 review 2026-05-12): post-dissolution `run = (refs ∩ affected_node_refs) ≠ ∅ AND (dims ∩ affected_dimensions) ≠ ∅`; `skip = ¬run = either intersection ∅`. Bridge-tier proxy `skip = (changed-files ∩ required_paths_regex) = ∅` over-approximates canonical (runs more tests; fail-closed-safe). **Two fail-open bug patterns to reject in review**: (a) inversion `skip = (∩ ≠ ∅)` instead of `= ∅`; (b) dimension-only collapse `skip = (dims ∩ changed_dims) = ∅` (using ONLY the dimension intersection clause, dropping the NodeRef-intersection step from the canonical conjunction). Carrier name matches contract: `skip_*` flag is true when group is unaffected — i.e., **either** lens-join input is empty (`(refs ∩ nodes) = ∅` OR `(dims ∩ changed_dims) = ∅`). The "both lens-join inputs empty" framing is **stricter than canonical** and would itself be a fail-closed (run when canonical says skip) bug if implemented literally — reject in review.
 6. **No closure-allowed carve-outs**: Layer 2's lifetime is bounded by the affected-set lens dissolution. If a group can't be path-classified accurately, it stays in the `code=true` full-run bucket (no special carve).
 7. **Push events short-circuit to full-run** — `github.event_name == 'push'` bypasses ALL skip_* flags (run everything on main). Matches Layer 1.
 8. **Hand-Rust budget: zero**. Layer 2 lives entirely in `.github/workflows/ci.yml` + an optional path-mapping data file (e.g., `scripts/ci-path-classification.yaml` or inline in the workflow).
@@ -298,6 +291,7 @@ Cite the dissolution path in every Layer 2 PR body. When the gate lands, a singl
 
 - [ ] Complete per-group inventory (sources (a)+(b); table column (c)) — recommend PM pre-staged skeleton if/when available
 - [ ] Per-group `dimensions: Set<Dimension>` assignments validated against `docs/design-affected-set-lens.md` §2 union semantics — multi-dim consumers MUST list all dimensions they read (no silent-skip on non-primary dim changes)
+- [ ] **Per-group `testclaim_references: Set<NodeRef>` populated** (per Brian BLOCKING #2 absorption + codex non-blocking improvement #9817; required for canonical 2-step join post-dissolution; sourced from `tests/dag/*` TestClaim authorities at Mgr-fill time; P2 facts-flow-forward gate)
 - [ ] Per-group `required_paths_regex` tested against 3-5 representative recent PRs for false-positive/false-negative rate
 - [ ] Pilot wave selection (recommend `cost_lens` first per §6)
 - [ ] Coordination ack from PR #2718 author on `self_host_ratchet` `if:` interaction shape
