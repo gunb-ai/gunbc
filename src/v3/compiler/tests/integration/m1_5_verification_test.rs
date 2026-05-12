@@ -11,7 +11,8 @@ use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
 use crate::common::{
-    escape_v3_string_literal_content, run_on_larger_stack, symbolic_cost_as_v3_data_initializer,
+    assert_recursive_countdown_linear_semantics, escape_v3_string_literal_content,
+    run_on_larger_stack, symbolic_cost_as_v3_data_initializer,
 };
 
 fn compile_any(src: &str, file: &str) -> Dag {
@@ -841,6 +842,16 @@ fn symbolic_cost_expr_equals_countdown_demo_suite_passes() {
             "gate #40 program should compile cleanly: {:?}",
             program.diagnostics().iter().collect::<Vec<_>>()
         );
+
+        // Independent behavioral oracle for the recursive fixture (gate #78 / lane2d discipline):
+        // not derived from the `SymbolicCostExprEquals` roundtrip below — pins unary tail-recursion
+        // `LinearCost` normalization before we self-oracle `demo` through serialize→lower→runner.
+        let countdown_port = find_bind_value_port(&program, "countdown");
+        let countdown_cost = match symbolic_cost_of(&program, &countdown_port) {
+            SymbolicCostLookup::Hit(c) => c,
+            SymbolicCostLookup::Miss => panic!("symbolic_cost_of returned Miss for `countdown`"),
+        };
+        assert_recursive_countdown_linear_semantics(&countdown_cost);
 
         let demo_port = find_bind_value_port(&program, "demo");
         let demo_cost = match symbolic_cost_of(&program, &demo_port) {
