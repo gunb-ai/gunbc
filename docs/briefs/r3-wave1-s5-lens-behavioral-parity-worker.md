@@ -14,12 +14,14 @@ Closes gate #73 `lens_behavioral_parity_demonstration` — all 4 R3 lenses vs fr
 
 Demonstrate behavioral parity between each of the 4 R3 lenses and their frozen v2-oracle snapshot:
 
-1. **Cost lens** — `dsl/std/*cost*.dag` / `v2-oracle-cost-*` snapshot
-2. **Parallelism lens** — `dsl/std/*parallelism*.dag` / `v2-oracle-parallelism-*` snapshot (note: lands after S1 #81 walker port if not already in main)
-3. **(third lens — locate via `docs/v3-lens-capability-register.md`)**
-4. **(fourth lens — locate via register)**
+Per `docs/v3-lens-capability-register.md` (lens enumeration authority), the 4 R3 lenses with v2-oracle parity candidates are:
 
-Grep first: `docs/v3-lens-capability-register.md` is the authoritative lens enumeration. Verify exactly 4 R3 lenses + their frozen-oracle snapshot locations before authoring.
+1. **`src/v3/lenses/complexity.dag`** — COMPLETE per register; v2 counterpart `src/v2/complexity.dag` (5488L). Cementing receipt at `src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs` (frozen oracle while `.dag` TestClaims can't express `ComplexitySummary` / nested `SymbolicCost` directly).
+2. **`src/v3/lenses/cost.dag`** — COMPLETE for abstract `SymbolicCost` scope per register; v2 counterpart is `CostExpr` (embedded in v2 `complexity.dag`). Cementing receipt at `src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs`.
+3. **`src/v3/lenses/idempotency.dag`** — COMPLETE per register; lens consumes `std.effects::lane2_workflow_idempotency_report`. Verify cementing-receipt presence + frozen-oracle parity step before claiming gate #73 closure for this lens.
+4. **`src/v3/lenses/parallelism.dag`** — currently STUB (returns `LensSurfacePending` until Stage 2e walk lands). Gate #73 closure for this lens **depends on S1 #81 walker port landing first** (parallelism walker port from `src/v3/compiler/src/workflow_parallelism.rs` → `.dag`). If S1 hasn't merged when this brief dispatches, surface to warm-wolf-698: gate #73 may need to split into 3-lens-immediate + 1-lens-post-S1, or fully gate on S1 landing.
+
+Grep verification step: re-read `docs/v3-lens-capability-register.md` at HEAD before authoring — drift since 2026-05-12 may have promoted parallelism or other rows. Note: `cost_target_realization.dag` (TERMINAL / N/A behavioral) is **NOT** in scope for gate #73 since it has no v2 counterpart; same for `effect_enumeration.dag` (v3-native, PARTIAL) and `infer_helpers.dag` (N/A for parity).
 
 ### Acceptance pattern (`LensOutputEquals` receipt)
 
