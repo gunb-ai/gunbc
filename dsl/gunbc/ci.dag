@@ -24,11 +24,6 @@
 
 module gunbc.ci
 
-import gunbc.compiler {
-  compiler_cycle, test_package,
-  lint_command, test_command, ignored_test_command
-}
-
 // ── Ratchet kind ────────────────────────────────────────────────────
 
 // Direction of a ratchet gate. Down = monotonically decreasing (we
@@ -102,22 +97,22 @@ type CIWorkflowDag {
 }
 
 // ── Gates ───────────────────────────────────────────────────────────
-// Commands are derived from compiler.dag; commands use bare "cargo"
-// because CI runners always have cargo on PATH. For local dag run,
-// tools/*.dag workflows resolve the absolute path via extdeps.tools.
-// Sustainability test: changing package_name in compiler.dag updates
-// all gate commands automatically.
+// Commands use bare "cargo" because CI runners always have cargo on PATH. For
+// local dag run, tools/*.dag workflows resolve the absolute path via
+// extdeps.tools. Command literals are intentionally structural data here:
+// `data` rows must lower without opaque function-call bodies so this file can
+// serve as a fail-closed authority for CI topology inspection.
 
 data lint_gate: CIGate = {
   name: "Lint",
-  command: lint_command(cargo: "cargo"),
+  command: "cargo clippy --workspace -- -D warnings",
   blocking: true,
   source: LintGate
 }
 
 data test_gate: CIGate = {
   name: "Tests",
-  command: test_command(cargo: "cargo", package: test_package),
+  command: "cargo test -p v3-compiler",
   blocking: true,
   source: TestSuiteGate { test_name: "" }
 }
@@ -142,7 +137,7 @@ data l1_gate: CIGate = {
 
 data compile_gates_gate: CIGate = {
   name: "Compile Gates",
-  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "ci_"),
+  command: "cargo test -p v3-compiler ci_ -- --ignored --nocapture",
   blocking: true,
   source: FixedPointGate
 }
