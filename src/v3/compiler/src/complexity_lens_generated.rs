@@ -145,7 +145,33 @@ pub fn transform_summary(
 ) -> Lookup<ComplexitySummary> {
     match &(per_call_pattern_at(p0, *p2)) {
         None => compose_many_inputs(p1, p3),
-        Some(pattern) => recursive_transform_summary(p1, pattern, p3),
+        Some(pattern) => match &(per_call_descent_operand_port(p0, *p2)) {
+            None => complexity_when_descent_unknown(pattern),
+            Some(descent_port) => recursive_transform_summary(p1, pattern, descent_port, p3),
+        },
+    }
+}
+pub fn complexity_when_descent_unknown(p0: &CallPattern) -> Lookup<ComplexitySummary> {
+    match p0 {
+        CallPattern::SameArgumentCall => miss_complexity_summary_lookup(),
+        CallPattern::ArithmeticSubtractCall {
+            steps: _,
+            ring_param: _,
+        } => miss_complexity_summary_lookup(),
+        CallPattern::ArithmeticDivideCall {
+            divisor: _,
+            ring_param: _,
+        } => miss_complexity_summary_lookup(),
+        CallPattern::ChildAccessorCall { accessor: _ } => miss_complexity_summary_lookup(),
+        CallPattern::CollectionShrinkCall {
+            amount: _,
+            collection: _,
+        } => miss_complexity_summary_lookup(),
+        CallPattern::FoldBodyCall {
+            outer_collection: _,
+        } => miss_complexity_summary_lookup(),
+        CallPattern::ParserAdvanceCall { witness: _ } => miss_complexity_summary_lookup(),
+        CallPattern::WorklistDrainCall { element: _ } => miss_complexity_summary_lookup(),
     }
 }
 pub fn compose_many_inputs(p0: &[ComplexityEntry], p1: &[PortId]) -> Lookup<ComplexitySummary> {
@@ -156,16 +182,36 @@ pub fn compose_many_inputs(p0: &[ComplexityEntry], p1: &[PortId]) -> Lookup<Comp
         },
     )
 }
+pub fn compose_many_inputs_excluding_descent_operand(
+    p0: &[ComplexityEntry],
+    p1: &[PortId],
+    p2: &PortId,
+) -> Lookup<ComplexitySummary> {
+    (p1).iter().fold(
+        hit_complexity_summary_lookup(unit_summary()),
+        |__fold_acc, __fold_item| {
+            if ((*(__fold_item)) == (*(p2))) {
+                __fold_acc
+            } else {
+                combine_sequential(&__fold_acc, &(lookup_summary(p0, __fold_item)))
+            }
+        },
+    )
+}
 pub fn recursive_transform_summary(
     p0: &[ComplexityEntry],
     p1: &CallPattern,
-    p2: &[PortId],
+    p2: &PortId,
+    p3: &[PortId],
 ) -> Lookup<ComplexitySummary> {
-    match p2 {
+    match p3 {
         [] => miss_complexity_summary_lookup(),
         [__list_head, __list_tail @ ..] => combine_iterate(
-            &(summary_from_iter_bound(pattern_to_iter_bound(p1, __list_head))),
-            &(compose_many_inputs(p0, p2)),
+            &(summary_from_iter_bound(pattern_to_iter_bound(p1, p2))),
+            &(combine_sequential(
+                &(lookup_summary(p0, p2)),
+                &(compose_many_inputs_excluding_descent_operand(p0, p3, p2)),
+            )),
         ),
     }
 }

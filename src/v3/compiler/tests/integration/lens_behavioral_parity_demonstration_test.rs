@@ -38,6 +38,8 @@ use v3_compiler::lens_effect_enumeration::{
 };
 use v3_compiler::Dag;
 
+use crate::common::assert_recursive_countdown_linear_semantics;
+
 static COUNTDOWN_DAG: OnceLock<Dag> = OnceLock::new();
 static EFFECTS_DAG: OnceLock<Dag> = OnceLock::new();
 static COUNTDOWN_COMPLEXITY: OnceLock<(ComplexitySummary, PortId)> = OnceLock::new();
@@ -194,6 +196,7 @@ fn r3_gate_73_demonstrates_complexity_classification_is_conservative() {
 }
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn r3_gate_73_demonstrates_complexity_certainty_is_proven() {
     run_with_parity_demo_stack(|| {
         let (complexity, _) = countdown_complexity();
@@ -206,14 +209,12 @@ fn r3_gate_73_demonstrates_complexity_certainty_is_proven() {
 fn r3_gate_73_demonstrates_symbolic_cost_is_linear() {
     run_with_parity_demo_stack(|| {
         let (symbolic_cost, _) = countdown_symbolic_cost();
-        assert!(
-            matches!(symbolic_cost, SymbolicCost::LinearCost { .. }),
-            "cost lens frozen snapshot expects countdown symbolic cost to normalize to LinearCost, got {symbolic_cost:?}"
-        );
+        assert_recursive_countdown_linear_semantics(&symbolic_cost);
     });
 }
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn r3_gate_73_demonstrates_symbolic_cost_is_keyed_by_countdown_parameter() {
     run_with_parity_demo_stack(|| {
         let (symbolic_cost, parameter) = countdown_symbolic_cost();

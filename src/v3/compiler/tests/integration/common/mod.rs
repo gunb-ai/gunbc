@@ -28,7 +28,9 @@ pub mod cached_compile;
 pub mod determinism_fixtures;
 pub mod list_variant_tags;
 pub mod r1_gates_bridge;
+pub mod rust_comment_strip;
 pub mod substrate_receipts;
+pub mod symbolic_cost_countdown;
 
 pub use cached_compile::{
     cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
@@ -37,6 +39,8 @@ pub use list_variant_tags::find_list_empty_constructor_tag;
 pub use r1_gates_bridge::{
     assert_p0_host_sentinel_and_rest_gate_passes, assert_p0_repeat_string_correct_gate_passes,
 };
+pub use rust_comment_strip::strip_rust_comments;
+pub use symbolic_cost_countdown::assert_recursive_countdown_linear_semantics;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

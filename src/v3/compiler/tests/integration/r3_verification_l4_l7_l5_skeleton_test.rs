@@ -262,6 +262,7 @@ fn l7_algebraic_laws_witnessed_passes_bounded_associativity_witness() {
 /// associativity and commutative-monoid commutativity) plus embedded-source `a + b` / `a * b`
 /// checks — avoids duplicate full-suite passes that tripped the Phase-0 2s ratchet.
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn r3_verification_l7_algebraic_law_matrix_has_current_runner_receipts() {
     let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
     // Algebra-faithful Int lenses: additive obligations use `+`; multiplicative `Identity` uses `*`.

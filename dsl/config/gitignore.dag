@@ -104,7 +104,7 @@ data categories: List<GitignoreCategory> = [
     name: "Stage0 regeneration temp dirs",
     source: "bootstrap",
     items: [".regen-sources/", ".regen-output/", ".regen-generated-source-root/"],
-    rationale: "Created by scripts/regenerate-stage0.sh; cleaned up on exit",
+    rationale: "Historical v2 regen temp dirs (script retired); ephemeral if recreated locally",
     when_build_system: None
   },
   {

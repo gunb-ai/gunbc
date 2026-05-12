@@ -1,6 +1,6 @@
 # R2 Modeling Manager Brief
 
-**Status:** PROPOSAL (per [`docs/r2-structure.md`](../r2-structure.md), LIVE 2026-04-26 via PR #827; refreshed 2026-04-28 post-#1078 merge; Q1 asymmetric-bound-algebra LANDED via #1129 at [`docs/design-emission-model.md`](../design-emission-model.md) §"Q1 — `BoundDeclaration` substrate type" — int-lit item consumes the locked disposition). Eligible to spawn pre-R1-close per `r2-structure.md` Transition mechanics step 4 (no technical R1 dependency). NEW manager.
+**Status:** PROPOSAL (per [`docs/r2-structure.md`](../r2-structure.md), LIVE 2026-04-26 via PR #827; refreshed 2026-04-28 post-#1078 merge; Q1 asymmetric-bound-algebra **merged in PR #1129** at [`docs/design-emission-model.md`](../design-emission-model.md) §"Q1 — `BoundDeclaration` substrate type" — int-lit item consumes the locked disposition). Eligible to spawn pre-R1-close per `r2-structure.md` Transition mechanics step 4 (no technical R1 dependency). NEW manager.
 
 ## Orient before reading
 
@@ -17,7 +17,7 @@ R2's Goal 2 — **Modeling-faithfulness dissolution**. Three Tier-1 type-refinem
 | Item | Consumer of | Status (at brief authoring) |
 |---|---|---|
 | Surface int-literal magnitude at concept layer | T-Substrate cardinality subset (consuming PR-PreF Interval<D>) | AUTHORED — gated on producer readiness / scoped to range-facts consumer work. **Adjacent landing:** T-Cost-Dimension fail-closed symbolic-cost analysis (#1003) — DominateScanAcc conjunctive accumulator; relevant precedent for fail-closed semantics in this consumer. |
-| `Secret<T>` nominal-opaque graduation | T-Substrate nominal-opaque subset | AUTHORED — gated on producer readiness. **Producer side advanced:** NominalOpacity carrier PR #900; **fail-closed field-projection enforcement landed via #937** (NominalOpacityViolation diagnostic + production enforcement before field descent). Day-1 consumer migration: `dsl/std/types.dag` retire bare `Secret = String`; land `where only … may construct` semantics; integration test for unauthorized construction without bootstrap stamp. |
+| `Secret<T>` nominal-opaque graduation | T-Substrate nominal-opaque subset | AUTHORED — gated on producer readiness. **Producer side advanced:** NominalOpacity carrier **merged in PR #900**; **fail-closed field-projection enforcement merged in PR #937** (NominalOpacityViolation diagnostic + production enforcement before field descent). Day-1 consumer migration: `dsl/std/types.dag` retire bare `Secret = String`; land `where only … may construct` semantics; integration test for unauthorized construction without bootstrap stamp. |
 | `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement | T-Substrate parametric-algebra subset | AUTHORED — dispatchable immediately; producer audit closed substrate-side. |
 | Tokenizer charclass phase-2 | T-Substrate ValueBody-list/sum subset | AUTHORED — gated on producer readiness. **In flight:** scanner-order retype landed pre-cascade (commit `242c65d07` — `feat(v3): retype tokenizer charclass scanner order`). Reclassified R1→R2 per Surface Manager handoff 2026-04-24. |
 

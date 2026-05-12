@@ -8,16 +8,15 @@ Read these docs before working:
   it should attach to. See the concept DAG layers in MODELING.md.
 - `CODING.md` — Rust implementation style (Google C++-style, pure functions, data + free functions).
 - `TESTING.md` — test discipline (hermetic, behavior-driven, unit-first; mocks over full-pipeline compile).
-- `src/v2/DESIGN.md` — compiler design principles.
+- `docs/v3-spec.md` — v3 language surface and architectural context.
 
 ## Key Commands
 
 ```bash
-cargo test --workspace --exclude v2-compiler-tests  # hand-written tests
-cargo test -p v2-compiler-tests                     # v2 compiler tests
-cargo clippy --all-targets -- -D warnings           # lint
-cargo fmt --all --check                             # format check (also runs via pre-push hook)
-cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored  # stage0 diagnostic ratchet (0 diagnostics)
+cargo test --workspace                     # all workspace crates (hand-written + integration)
+cargo test -p v3-compiler                  # v3 compiler (library + integration binary)
+cargo clippy --all-targets -- -D warnings  # lint
+cargo fmt --all --check                    # format check (also runs via pre-push hook)
 ```
 
 ## One-time setup

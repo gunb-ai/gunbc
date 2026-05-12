@@ -581,8 +581,8 @@ mod tests {
     }
 
     /// Stratum B — width-distinct floats route via ApproximateField plus the
-    /// machine-width carrier. These rows are post-S8 Float coverage:
-    /// `Float32/Float64 = Compose<Ieee754Float, MachineWidth<Word*>>`.
+    /// machine-width carrier. These rows cover gate #18's Real<N> arm:
+    /// `Float32/Float64` alias `Real32/Real64`, each `Compose<Real, MachineWidth<Word*>>`.
     #[test]
     fn stratum_b_float_widths_route_correctly() {
         for (dag, expected, carrier) in [
