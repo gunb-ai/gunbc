@@ -70,6 +70,8 @@ Inventoried from `gh api repos/gunb-ai/ctrl/contents/` (2026-05-12). Major subsy
 - 3 existing partial .dag files in `workflows/` (review, branch_review, review_config)
 - 1 existing demo .dag at `research/market/viability/demos/agent-ctrl-session-dashboard/inbox_delivery_slice.dag` — **promote to substrate** (≈90% already there)
 
+**Staging discipline (post-codex Finding #4 2026-05-12T19:08Z)**: every "doable NOW" row below is **staged with an explicit dissolution trigger**, NOT authoritative-on-arrival. A landed `.dag` model is NOT yet substrate authority — the file is one half of the contract; the other half is a consumer that exercises it. Per Practice 4 dissolution-receipt discipline: every staged carrier has a named trigger that retires the staged state. For all Phase 1.5 modeling PRs the trigger is **"per-subsystem realization receipt + consumer parity"**: emission-target projection ✓ + parity-test ✓ + cut-over PR deletes TS file ✓. Until that trigger fires, the `.dag` file is 🟡 STAGED, not 🟢 AUTHORITY.
+
 ### Catalog (in priority order)
 
 | # | Subsystem | Source files | TS LOC | Model now? | Notes |
@@ -300,14 +302,16 @@ Each Phase 1.5 worker brief should declare:
 
 ## Acceptance gates
 1. Carriers + enums declared
-2. Practice 4 receipts on any open enum
-3. Cross-references to current ctrl/ TS authority
-4. Cost-of-change check: adding a new variant/operation touches 1 file
-5. Doc-only — no emission code
+2. **Practice 4 receipts on every enum/sum with ≥2 variants** (NOT just open enums — closed sums need dissolution analysis too, per codex Finding #5 2026-05-12T19:08Z). Each receipt names: (a) classification (🟢 TERMINAL / 🟡 STAGED / 🔴 NEEDS-DISSOLUTION), (b) dissolution pattern if non-terminal (fact-placement / variant-is-data / algebraic-form / dimensional), (c) trigger that fires dissolution.
+3. Cross-references to current ctrl/ TS authority files (the consumers being modeled)
+4. **Consumer receipt named**: identify the specific consumer (TS file or future emission target) whose parity/cut-over fires the "STAGED → AUTHORITY" trigger for this subsystem
+5. Cost-of-change check: adding a new variant/operation touches 1 file
+6. Doc-only — no emission code
 
 ## STOP / PING criteria
 - STOP if substrate-shape question requires re-evaluation of algebra carriers — surface to Substrate Mgr
 - STOP if subsystem semantics conflict with companion algebra — surface to project Director
+- STOP if a closed sum/enum encountered with no clear dissolution pattern (TERMINAL classification unjustified) — surface to project Director for ratification
 - PING project Director on PR-open
 ```
 

@@ -63,7 +63,7 @@ Reasons:
 
 ## §3. Mapping to existing gunbc primitives (grep-verified)
 
-Audit of `dsl/std/` (2026-05-12) found:
+**Audit scope correction (2026-05-12, post-codex Finding #1)**: prior version scoped audit to `dsl/std/` only and missed the v3 lens substrate. Corrected audit covers `dsl/std/` + `src/v3/std/` + `src/v3/lenses/`. The v3 substrate is the live home for many primitives I previously marked ABSENT.
 
 | Decomp-algebra concept | Gunbc primitive | Citation | Reuse status |
 |---|---|---|---|
@@ -73,16 +73,18 @@ Audit of `dsl/std/` (2026-05-12) found:
 | Closure projection `canCloseNode` | Projection function pattern (Slice 4 substrate) | `dsl/gunbc/ci.dag:29-32` documents shape; `dsl/gunbc/ci_emission.dag` not yet authored (Slice 4 in flight) | ✓ Pattern documented; concrete projection function pattern lands soon |
 | Cardinality (single/optional) | `Required \| Optional` | `dsl/std/constructors.dag:74-75` | ✓ Direct reuse |
 | Bounded multiplicity (0..N) | List<T> + SetCardinality (size primitive) | `dsl/std/termination.dag:198` (`SetCardinality`) | ◐ Partial — no `Bounded<min, max>` carrier yet |
-| Witness/Receipt | Ad-hoc String refs (`witness: String` field in 2 places) | `dsl/std/computation.dag:135,197`; `dsl/std/effects.dag:359` | ◐ Partial — no unified `Witness<T>` / `Receipt<T>` |
+| **Witness<C>** (Inhabits \| Violates) | First-class typed witness; the substrate is live in v3 | `src/v3/std/dimensions.dag:35` (`Witness<Carrier> = Inhabits(Carrier) \| Violates { reason, at }`) | ✓ **EXISTS — corrects prior audit miss**. Decomp-algebra Witness can reuse this carrier. |
+| OptionalDiagnostic | Optional break channel for `break_diagnostic` | `src/v3/std/dimensions.dag` (`OptionalDiagnostic = NoDiagnostic \| SomeDiagnostic`) | ✓ Reuse |
+| DimensionReport<C> | Aggregate result from analysis fold (pass/fail partition) | `src/v3/std/dimensions.dag` (`DimensionReport<Carrier> = DimensionOk { composed, witnesses } \| ...`) | ✓ Reuse (closure-decision shape candidate) |
 | Timestamp | Narrowed String (ISO 8601) | `dsl/std/types.dag:299` | ✓ Reuse |
 | Clock resource | `Clock` with `now()` | `dsl/std/resources.dag:83-95` | ✓ Reuse |
 | Algebraic structures | Magma / Semigroup / Monoid / Group / Ring / Field / FreeMonoid | `dsl/std/algebra.dag:99-320` | ✓ Reuse — closure rules can compose under appropriate structure |
 | Graph / edges | Field-based on Node; explicit `GraphEdge` in `CallGraph` | `dsl/std/node.dag` (children: List<Node>); `dsl/std/graph.dag:15-30` | ◐ Partial — no labeled edges (parent→child semantic relationship vs dependency vs constraint) |
-| Coproduct dissolution receipts | 🟡 MIXED / 🟢 TERMINAL emoji + dissolution-trigger blocks | `dsl/std/computation.dag:126,189,228,244`; `docs/v3-modeling-analysis.md:217-229` (ledger rule) | ✓ Direct reuse of pattern |
-| Effects model | `EffectShape` for idempotency; `IterationPrimitive` for computation | `dsl/std/effects.dag:71-76`; `dsl/std/computation.dag:246-249` | ✓ Reuse — algebra operations are EffectShape-class graph mutations |
-| **Audit log / EventLog<T>** | Domain-only at `dsl/gunbc/workflow/types.dag:327-335` (`AuditEntry`); no std/ primitive | — | **✗ GAP — needed for replay-as-truth** |
-| **Lens<A,B> type** | Informal usage only ("inhabitance lens", "affected-set lens"); no first-class carrier | `dsl/std/algebra.dag:179` (informal); `dsl/std/runtime/bin_shims/README.md` | **✗ GAP** |
-| Task / WorkItem / Workflow | Domain-specific types in `dsl/gunbc/workflow/types.dag` (`ImplementationTask`, `TrackedIssue`, `IssueLifecycleStage`, `StageOutcome`) | `dsl/gunbc/workflow/types.dag:46-194` | **OVERLAP — see §4** |
+| Coproduct dissolution receipts | 🟡 MIXED / 🟢 TERMINAL emoji + dissolution-trigger blocks | `dsl/std/computation.dag:126,189,228,244`; `docs/v3-modeling-analysis.md:217-229` (ledger rule); `src/v3/std/coproduct_projection.dag` (substrate dispatch for Practice 4) | ✓ Direct reuse of pattern |
+| Effects model | `EffectShape` for idempotency; `IterationPrimitive` for computation | `dsl/std/effects.dag:71-76`; `dsl/std/computation.dag:246-249`; `src/v3/std/effects.dag` (v3 expansion) | ✓ Reuse — algebra operations are EffectShape-class graph mutations |
+| **Lens<C>** (compositional analysis carrier) | 🟡 TRANSITIONAL 6-field shape (Director-locked); reuses Witness/OptionalDiagnostic/DimensionReport/Monoid | `src/v3/std/lens.dag` (`Lens<C> { name, read, sequential, branch, iterate, validate }`); `src/v3/lenses/` (~16 worked instances: complexity, cost, parallelism, idempotency, ...) | ✓ **EXISTS — corrects prior audit miss**. Decomposition-algebra closure/state projections fit this carrier shape. |
+| Audit log / EventLog<T> | Domain-only at `dsl/gunbc/workflow/types.dag:327-335` (`AuditEntry`); no std/ primitive | — | **✗ GAP — needed for replay-as-truth (see §5 Gap 1)** |
+| Task / WorkItem / Workflow | Domain-specific types in `dsl/gunbc/workflow/types.dag` (`ImplementationTask`, `TrackedIssue`, `IssueLifecycleStage`, `StageOutcome`) | `dsl/gunbc/workflow/types.dag:46-194` | **OVERLAP — see §4 (axis-conflation correction post-codex Finding #2)** |
 
 ---
 
@@ -103,24 +105,44 @@ These types pre-date the decomposition-algebra work and overlap with it. The key
 
 **Do the workflow types REPLACE the decomp-algebra carriers, EXTEND them, or DISSOLVE INTO them?**
 
-**Proposed answer**: **DISSOLVE INTO**.
+**Initial proposal**: DISSOLVE INTO decomp-algebra Mode + closure rules.
 
-`IssueLifecycleStage` is a 9-state lifecycle enum that should dissolve into the decomp-algebra's structural Mode + emergent closure rules. The decomp-algebra is MORE PRIMITIVE: it expresses the same semantics structurally rather than as labeled transitions. Specifically:
-- `Idea` / `Design` / `DesignReview` / `Accepted` → pre-decomposition modes (NULL or composite-with-no-children-yet)
-- `Implementing` → composite-with-open-children OR leaf-in-progress
-- `CodeReview` / `Testing` → composite-with-children-in-witness-collection
-- `Done` → closed_at set (canCloseNode passed)
-- `TerminalFailed` → closed_at set with failure witness (bucket-drained with `failure_note`)
+**CORRECTION (post-codex Finding #2 2026-05-12T19:08Z)**: the initial proposal **conflated two orthogonal axes**:
 
-`ImplementationTask.done: Bool` IS the leaf-Mode case. `TrackedIssue.stage` collapses into the projection `currentMode: NodeId → Mode`.
+1. **Decomposition axis** (Mode = Leaf / Composite / Bucket / NULL) — STRUCTURAL; describes how a node closes
+2. **Workflow phase axis** (Idea / Design / Implementing / CodeReview / Testing / Done) — TEMPORAL/PROCESS; describes where in the workflow lifecycle a node is
 
-`AuditEntry` becomes the per-event payload inside the new `EventLog<NodeOperation>` primitive (Gap 1 from §5).
+These are **orthogonal coordinates**. A Composite node can be in "Implementing" OR "CodeReview" phase. A Leaf node can be in "Design" OR "Done" phase. The naive collapse of stages to modes drops information that real consumers use (e.g., review-scheduler decides "trigger review at CodeReview stage transition" — that's not a Mode property).
 
-`StageOutcome.status` collapses into Operation outcome (already part of operation algebra).
+**Corrected dissolution shape — preserve both axes as structural coordinates** (per Practice 4 "dimensional" dissolution pattern; M-dimensional space hidden in flat N-variant enum):
 
-`Signal` (idempotent event) collapses into the audit-log-position model — idempotency-key becomes "log-position-or-higher matches."
+```
+type Node {
+  mode: Mode           // Leaf | Composite | Bucket | NULL  (decomposition axis)
+  phase: Phase         // workflow lifecycle axis
+  ...
+}
 
-This is a textbook coproduct-dissolution at C-checkpoint: `IssueLifecycleStage = Idea | Design | ... | Done` is a coordinate-flat encoding of a state-machine; the structural form is `Node { mode, closed_at?, ...children, audit_log }` where stage is derived. Per `feedback_checkpoint_dissolution_default.md`: at C-checkpoints, dissolution is default.
+type Phase
+  = Pre              // pre-decomposition: idea / design / design-review / accepted
+  | Active           // decomposition committed: implementing
+  | InReview         // composite-with-children-in-witness-collection: code-review / testing
+  | Closed           // canCloseNode passed: done / terminal-failed (with closure-witness)
+```
+
+`Phase` is itself an open enum subject to Practice 4 — variants will dissolve further as consumers prove out (e.g., `InReview` may split if review-vs-test diverge structurally).
+
+**ALTERNATIVE — prove every existing stage consumer dissolves**: enumerate every `ctrl/` site that reads `IssueLifecycleStage` and show its question is answerable from `(mode, phase, closure_witnesses)` instead of from raw stage. This is the rigorous dissolution proof; it's deferred to Phase 1.5 work and is the closure predicate for the workflow-types dissolution PR.
+
+**Until either proof lands**: workflow-types stay extant; decomp-algebra is co-located not replacing. The dissolution claim is **staged with trigger**: trigger = per-consumer enumeration proves no information loss.
+
+**Other workflow-type mappings** (unchanged from initial proposal):
+- `ImplementationTask.done: Bool` IS the leaf-Mode + Phase=Closed case
+- `AuditEntry` → per-event payload inside `EventLog<NodeOperation>` primitive (Gap 1 from §5)
+- `StageOutcome.status` → Operation outcome (already part of operation algebra)
+- `Signal` (idempotent event) → audit-log-position model; idempotency-key becomes "log-position-or-higher matches"
+
+Per `feedback_checkpoint_dissolution_default.md`: at C-checkpoints, dissolution is default — but dissolution requires structural-coordinate preservation, not lossy collapse.
 
 ---
 
@@ -212,9 +234,8 @@ type Evidence =
 
 ## §6. Operations as effects
 
-Six operations (`declare` / `decompose` / `drain` / `replan` / `escalate` / `pause`) are **graph mutations** on the typed node-graph.
+**Operations** (graph mutations on the typed node-graph):
 
-**Sketch**:
 ```
 type Operation =
     Declare { node: NodeId, mode: Mode, attestation: Witness }
@@ -223,12 +244,46 @@ type Operation =
   | Replan { node: NodeId, reason: Witness }
   | Escalate { from: NodeId, to_parent: NodeId, debt: Witness }
   | Pause { node: NodeId, reason: Witness }
-  | WitnessedOverride { rule: ClosureRule, witness: Witness }   // force: true
+  | Reopen { node: NodeId, witness: ReopenWitness }              // closed → open
+  | Regress { node: NodeId, retracted_child_ids: List<NodeId>, witness: RegressionWitness }   // decomposition retraction
+  | WitnessedOverride { rule: ClosureRule, witness: Witness }    // force: true
+```
+
+**Reopen + Regress added (post-codex Finding #3 2026-05-12T19:08Z)**: real workflows have closure-reversal cases:
+- PR merge reverted post-CI failure
+- Gate ratchet retroactively determined wrong
+- Subtree decomposition retracted (re-merge-into-parent)
+
+Without explicit `Reopen` / `Regress` operations, the monotonicity claim was unfounded. Each has explicit witness requirements:
+
+```
+type ReopenWitness {
+  reason: ReopenReason
+  witness: Witness   // why reopen is justified
+}
+
+type ReopenReason =
+    PostMergeRevert { revert_commit: Sha }
+  | RetroGateInvalidation { gate_id: GateId }
+  | OperatorIntervention { directive: String }
+
+type RegressionWitness {
+  reason: String
+  retracted_subtree_signature: String   // structural proof of what's being merged back
+  attestation: Witness
+}
 ```
 
 Each operation is a **pure function** `(EventLog<Operation>, Operation) → EventLog<Operation>` (append). Graph state is `state: EventLog → NodeGraph` (projection lens).
 
-Composition preserves invariants: `canCloseNode(state(log + op)) ≥ canCloseNode(state(log))` in stability sense (closure decisions never silently regress).
+**Closure-decision lattice — REPLACES prior monotonicity claim**: closure decisions are NOT monotonic across the full Operation set. They are monotonic only across `{Declare, Decompose, Drain, Pause, WitnessedOverride}` — the "forward-stable" subset. `Reopen` + `Regress` + `Replan` + `Escalate` explicitly RETRACT closure state with witnessed cause.
+
+The lattice over closure decisions:
+- `canCloseNode(state(log + forward_stable_op)) ≥ canCloseNode(state(log))` (preserved-or-improved)
+- `canCloseNode(state(log + Reopen{node, ...})) < canCloseNode(state(log))` IF the prior state had `node` closed (explicit regression with witness)
+- `canCloseNode(state(log + Regress{node, ...})) < canCloseNode(state(log))` similarly (decomposition retraction may reopen closure questions on the parent)
+
+This is `feedback_state_space_vs_behavioral_invariants.md` applied: the type captures the regression possibility explicitly. There is no silent regression — every closure-reversal carries a typed witness, and every consumer of `canCloseNode` sees the lattice value rather than "stable boolean."
 
 `WitnessedOverride` is the structurally-modeled `force: true` from PR #1195. It's a typed operation, not a special-case API flag.
 
