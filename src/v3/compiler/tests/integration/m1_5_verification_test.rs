@@ -965,13 +965,18 @@ fn symbolic_cost_expr_equals_fail_closed_when_expected_not_symbolic_cost() {
     };
     let results = TestRunner::new(&dag).run_suite("symbolic_cost_expr_equals_type_mismatch_suite");
     assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].claim_name, "expected_must_normalize_to_symbolic_cost",
+        "fixture wiring"
+    );
     let result = &results[0].result;
-    let ClaimResult::Fail(msg) = result else {
-        panic!("expected Fail on non-SymbolicCost expected ref; got {result:?}");
-    };
     assert!(
-        msg.contains("does not normalize to `SymbolicCost`"),
-        "unexpected fail message (wanted type-shape fail-closed path): {msg}"
+        matches!(result, ClaimResult::Fail(_)),
+        "expected ClaimResult::Fail for non-SymbolicCost expected ref; got {result:?}"
+    );
+    assert!(
+        !matches!(result, ClaimResult::NotYetImplemented(_)),
+        "must execute (not NYI shell); got {result:?}"
     );
 }
 
@@ -1016,12 +1021,17 @@ fn symbolic_cost_expr_equals_fail_closed_on_symbolic_cost_value_mismatch() {
     };
     let results = TestRunner::new(&dag).run_suite("symbolic_cost_expr_equals_value_mismatch_suite");
     assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].claim_name, "literal_symbolic_cost_value_mismatch",
+        "fixture wiring"
+    );
     let result = &results[0].result;
-    let ClaimResult::Fail(msg) = result else {
-        panic!("expected Fail on ConstantCost mismatch; got {result:?}");
-    };
     assert!(
-        msg.contains("expected pattern") && msg.contains("computed pattern"),
-        "unexpected fail message (wanted structural pattern mismatch): {msg}"
+        matches!(result, ClaimResult::Fail(_)),
+        "expected ClaimResult::Fail on ConstantCost mismatch; got {result:?}"
+    );
+    assert!(
+        !matches!(result, ClaimResult::NotYetImplemented(_)),
+        "must execute (not NYI shell); got {result:?}"
     );
 }

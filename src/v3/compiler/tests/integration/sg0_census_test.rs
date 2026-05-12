@@ -392,6 +392,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 gate #78 / E-P: shared countdown `SymbolicCost` oracle helper for cost-lens consumer
     // tests (`cost_lens_symbolic_consumer_test`, lane2 `lane2_stage_2d_symbolic_cost_test`).
     "src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs",
+    // R3 gates #40/#70: host-side `SymbolicCost` → v3 data-expression serializer for
+    // `SymbolicCostExprEquals` dynamic oracle fixtures (`m1_5_verification_test.rs`); stays
+    // until testgen/reflection can author the same `data …: SymbolicCost = …` literals without
+    // a Rust mirror of the algebra surface syntax.
+    "src/v3/compiler/tests/integration/common/symbolic_cost_verification_fixture.rs",
     // R3 gate #87: unit tests for `tests/integration.rs` wiring scanners (split from retired
     // `cementing_lens_registry_dispatch_test.rs`).
     "src/v3/compiler/tests/integration/common/wiring_scanner_test.rs",
