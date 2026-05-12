@@ -69,7 +69,10 @@ pub const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
         include_str!("../tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag"),
         "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag",
         "r3_gate_87_cementing_regen_cost_symbolic_suite",
-        &["cementing_regen_cost_symbolic"],
+        &[
+            "cementing_regen_cost_symbolic",
+            "cementing_regen_cost_symbolic_countdown",
+        ],
     ),
     (
         include_str!("../tests/dag/t_r3_gate_87_cementing_regen_cost_target_realization.dag"),
