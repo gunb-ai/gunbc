@@ -98,6 +98,10 @@ When Director authors new R3-close progress bars (per operator ask 2026-05-09), 
 
 This artifact replaces lane-completion-proxy tracking with **honest trajectory tracking** for the PB-0 closure thesis.
 
+## §8. Appendix — operator-tier hot-fix bookkeeping (Σ-orthogonal)
+
+**2026-05-12 (~01:22Z) — hot-fix housekeeping** (**Σ trajectory unchanged**): [PR **#2723** — `hot-fix: cut cold-v3 slow tests`](https://github.com/gunb-ai/gunbc/pull/2723) — operator-tier **`main`** merge per operator directive ([**gunbc#846** comment `4426395595`](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4426395595)). **Sixteen** integration tests routed through **`#[ignore]`** (**no `.rs` deletions**); `slow-test-exemptions.txt` rows tagged **`hot-fix-2026-05-12`**; **`TEST_TIMEOUT_MAX_EXEMPTIONS`** bookkeeping ratchet **`80→84`** (covers **four** newly ignored **`m1_5_*`**/`testgen` rows among the cut set). `EXPECTED_HAND_AUTHORED_*` **Σ unchanged at 169** (**50** NON_TEST **/** **117** TEST **/** **2** FRAG) verified at **`d98d1e04b`** (§2 count procedure vs `origin/main`). **Ratchet-down protocol** (Debt-Paydown / §1.8): each rebuild-session PR **removes one `hot-fix-2026-05-12` exemption row** and **`decrements`** the same **`TEST_TIMEOUT_MAX_EXEMPTIONS`** **in one commit/PR**. Conformance anchors: [**#2723** comment `4426470021`](https://github.com/gunb-ai/gunbc/pull/2723#issuecomment-4426470021); operator-tier merge-bypass precedent + overnight digest [**#828** comment `4426439325`](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4426439325) (infra surface classes **#2** parser-lag, etc.). **Companion event**: [PR **#2718** — `ci(layer1): skip v3 job on docs-only PRs via changes-filter`](https://github.com/gunb-ai/gunbc/pull/2718) merged **01:05:04Z** same cadence (**docs-only CI mitigation**).
+
 ---
 
 **End of tracker.**
