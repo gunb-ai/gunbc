@@ -3338,14 +3338,13 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        let expected_pattern =
-            match field_value_to_symbolic_cost_bind_param_expected_pattern(
-                self.dag,
-                &expected_field,
-            ) {
-                Ok(p) => p,
-                Err(msg) => return ClaimResult::Fail(msg),
-            };
+        let expected_pattern = match field_value_to_symbolic_cost_bind_param_expected_pattern(
+            self.dag,
+            &expected_field,
+        ) {
+            Ok(p) => p,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
         self.eval_symbolic_cost_expr_equals_pattern(
             claim,
             expected_pattern,
@@ -3387,6 +3386,34 @@ impl<'a> TestRunner<'a> {
         Err(format!(
             "SymbolicCostExprEquals `{field_label}` must reference a declaration of type \
              `SymbolicCost`; `{}` does not (declared type does not normalize to `SymbolicCost`).",
+            decl_display_name(decl_id, decl)
+        ))
+    }
+
+    fn validate_symbolic_cost_bind_param_expected_ref(
+        &self,
+        decl_id: DeclarationId,
+    ) -> Result<(), String> {
+        let expected_id = self
+            .dag
+            .declaration_by_name("SymbolicCostBindParamExpected")
+            .map(|decl| decl.id)
+            .ok_or_else(|| {
+                "SymbolicCostExprEqualsForBindParam: `SymbolicCostBindParamExpected` type not \
+                 found in bootstrap"
+                    .to_string()
+            })?;
+        let decl = self.dag.declaration(decl_id);
+        let candidate = match &decl.connective {
+            TypeConnective::Arrow { output, .. } => *output,
+            _ => decl_id,
+        };
+        if self.normalize_transparent_type(candidate) == expected_id {
+            return Ok(());
+        }
+        Err(format!(
+            "SymbolicCostExprEqualsForBindParam `expected` must reference a declaration of type \
+             `SymbolicCostBindParamExpected`; `{}` does not.",
             decl_display_name(decl_id, decl)
         ))
     }
@@ -5794,6 +5821,45 @@ fn field_value_to_symbolic_cost_eq_pattern(
         other => Err(format!(
             "SymbolicCostExprEquals: expected value must lower to a SymbolicCost variant; got {:?}",
             other
+        )),
+    }
+}
+
+fn field_value_to_symbolic_cost_bind_param_expected_pattern(
+    dag: &Dag,
+    fv: &FieldValue,
+) -> Result<SymbolicCostEqPattern, String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = fv
+    else {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: expected value must lower to a \
+             SymbolicCostBindParamExpected variant, got {fv:?}"
+        ));
+    };
+    if !payload.is_empty() {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: bind-param expected variants must have no \
+             payload, got {} slot(s)",
+            payload.len()
+        ));
+    }
+    let label = dag
+        .declaration(*constructor)
+        .name
+        .as_deref()
+        .ok_or_else(|| {
+            "SymbolicCostExprEqualsForBindParam: anonymous bind-param expected constructor"
+                .to_string()
+        })?;
+    match label {
+        "LinearCostForBindParam" => Ok(SymbolicCostEqPattern::Linear {
+            source_port: SymbolicCostPortPattern::ExpectedBindParam,
+        }),
+        other => Err(format!(
+            "SymbolicCostExprEqualsForBindParam: unsupported expected variant `{other}`"
         )),
     }
 }

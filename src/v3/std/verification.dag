@@ -136,7 +136,9 @@ type ProgramShape
     }
 
 type SymbolicCostBindParamExpected
-  = LinearCostForBindParam
+  = LinearCostForBindParam { var: BindParamSizeVariable }
+
+type BindParamSizeVariable {}
 
 type TestPredicate
   = Compiles
