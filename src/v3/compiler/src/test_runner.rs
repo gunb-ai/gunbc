@@ -3214,13 +3214,30 @@ impl<'a> TestRunner<'a> {
         let bind_name = match last_emit_rust_program_top_level_value_bind_name(&program_dag) {
             Ok(Some(name)) => name,
             Ok(None) => {
-                return ClaimResult::Fail(
-                    "SymbolicCostExprEquals: claim program has no top-level value bind — add at least \
-                     one top-level `let` / value declaration so the symbolic-cost lens has an output \
-                     port (same convention as emit-rust program-mode `main` per \
-                     `last_emit_rust_program_top_level_value_bind_name`)"
-                        .to_string(),
-                );
+                let bind_names: Vec<String> = program_dag
+                    .nodes()
+                    .iter()
+                    .filter_map(Behavior::as_bind)
+                    .filter(|bind| bind.span.file == claim.file_name)
+                    .map(|bind| bind.name.clone())
+                    .collect();
+                match bind_names.as_slice() {
+                    [name] => name.clone(),
+                    [] => {
+                        return ClaimResult::Fail(
+                            "SymbolicCostExprEquals: claim program has no top-level bind for the \
+                             symbolic-cost lens"
+                                .to_string(),
+                        );
+                    }
+                    names => {
+                        return ClaimResult::Fail(format!(
+                            "SymbolicCostExprEquals: claim program has no top-level value bind and \
+                             contains multiple function binds {names:?}; add a value bind or keep \
+                             the function-cost fixture to one bind"
+                        ));
+                    }
+                }
             }
             Err(err) => {
                 return ClaimResult::Fail(format!(
