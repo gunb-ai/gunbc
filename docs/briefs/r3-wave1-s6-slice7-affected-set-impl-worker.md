@@ -12,14 +12,32 @@
 
 1. **PR #2766 (Slice 7 pre-impl prequeue: harness contract + Layer 2 path-regex inventory ratchet) merged** — the post-merge canvas establishes the implementation contract. Merge = post-Director-ratification.
 
-## §1. Scope
+## §1. Scope — two-layer decomposition
 
-Implement the **BinaryShim affected-set selection** per the ratified Slice 7 canvas (`docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` in main, post-PR-#2766). Closes gate #103 `ci_uses_affected_set_selection`.
+Gate #103 `ci_uses_affected_set_selection` lands in **TWO sequenced PRs** per canvas §6-§7 staging (this layering surfaced by swift-wren-365 msg_29f68109 2026-05-12T22:09Z; earlier brief draft erroneously compressed both layers):
+
+### Layer 1 — Substrate prerequisite (PR #2798 in-flight by swift-wren-365)
+
+Pure closure + topo over `CIWorkflowDag` + `CiWorkflowDiff`:
+- Gate-id touch set computation
+- TouchAll upstream of selection
+- NO NodeRef × dimension `affected_set(Dag_before, Dag_after)` consumption (that's Layer 2)
+- NO TestClaim D(t)/Δ(t) mapping (that's Layer 2)
+- NO `.github/workflows/ci.yml` edits (that's Layer 2)
+- Substrate-only scope: gunbc_ci graph machinery that Layer 2's planner consumes
+
+Layer 1 lands first as standalone substrate; Layer 2 consumes the Layer 1 surface.
+
+### Layer 2 — BinaryShim consumer/runner (follow-on PR; depends on Slice 5 BinaryShim hook)
+
+Implement the **BinaryShim affected-set selection** per the ratified Slice 7 canvas (`docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` in main). Closes gate #103.
 
 **Authority chain** (corrected per codex BLOCKING review on PR #2782 sha b28cf884 — earlier draft of this brief mis-cited high-level T-WAD substrate-shape framing):
 - **Upstream lens authority**: **PR #2713** — affected-set lens substrate (already merged per scope docs); `docs/design-affected-set-lens.md` §2 defines `affected_set(Dag_before, Dag_after, dim)` per-dimension + aggregate
 - **Slice 7 canvas authority**: `docs/design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` (in main) — §1 BinaryShim consumption contract, §3 fail-closed policy, §4 selection-derivation algorithm, §5 path-regex removal invariant
 - **Implementation harness**: PR #2766's harness contract + Layer 2 path-regex inventory ratchet (in main)
+
+**Below applies to Layer 2 (BinaryShim consumer/runner PR). Layer 1 (gunbc_ci substrate, PR #2798) is in-flight under swift-wren-365 with narrower scope; don't graft Layer 2 onto it.**
 
 ### Phase A — Read the canvas + lens authorities
 
