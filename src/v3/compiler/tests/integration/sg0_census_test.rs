@@ -249,6 +249,10 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
     "src/v3/compiler/src/complexity_lattice.rs",
+    // R3 gate #87 / T-Tests-As-Data-Completeness: `CementingDispatchMatchesProjection` host
+    // evaluator for `tests/dag/cementing_dispatch.dag` (P5 consumer receipt; dissolves when
+    // predicate substrate owns the walk without host FS coupling).
+    "src/v3/compiler/src/cementing_dispatch.rs",
     "src/v3/compiler/src/cost_basis_declaration.rs",
     "src/v3/compiler/src/dag.rs",
     "src/v3/compiler/src/dag/builder.rs",
@@ -270,6 +274,10 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/enforced_lens_application.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
+    // R3 gate #87: `tests/integration.rs` wiring scanner shared by Band-C cementing dispatch
+    // (`cementing_dispatch.rs`) and integration tests (P5 receipt for host promotion from
+    // `tests/integration/common/mod.rs`).
+    "src/v3/compiler/src/integration_rs_wiring_scan.rs",
     "src/v3/compiler/src/lens_apply.rs",
     "src/v3/compiler/src/lens_t_las_carrier.rs",
     "src/v3/compiler/src/lib.rs",
@@ -358,6 +366,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // nested `SymbolicCost` expected values (M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA,
     // Gate73_ReportPredicateCarriers).
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
+    // R3 gate #87: provenance `origin_of` seam check (retired from `cementing_lens_registry_dispatch_test.rs`).
+    "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
     // R3 T-Lens-Behavioral-Parity gate #80 (`cost_lens_behaviorally_complete`):
     // Band-C cementing receipt for the standalone `cost_symbolic` lens COMPLETE
     // promotion. P5 deferral receipt: lane=T-Lens-Behavioral-Parity; concrete
@@ -383,6 +393,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 gate #78 / E-P: shared countdown `SymbolicCost` oracle helper for cost-lens consumer
     // tests (`cost_lens_symbolic_consumer_test`, lane2 `lane2_stage_2d_symbolic_cost_test`).
     "src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs",
+    // R3 gate #87: unit tests for `tests/integration.rs` wiring scanners (split from retired
+    // `cementing_lens_registry_dispatch_test.rs`).
+    "src/v3/compiler/tests/integration/common/wiring_scanner_test.rs",
     // R3 L6 carrier slice (PR #1842; Measure-carrier precedent at #1819,
     // Director Option 2 RATIFIED at
     // gunbc#828 #issuecomment-4377533390): slice-active ratchet for
