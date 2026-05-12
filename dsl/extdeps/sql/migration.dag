@@ -26,11 +26,17 @@ type SqlMigrationOperationKind
   | DropIndex
   | AddColumn
   | DropColumn
+  // YELLOW scaffold. This variant is only for dialect-specific DDL that cannot
+  // yet be represented by the bounded operation variants above. Consumers must
+  // carry the `dialect` field on `SqlMigrationStep`; dissolve this variant once
+  // the first ctrl migration projection identifies the missing structural
+  // operation kind and adds it here.
   | RawSqlStep
 
 type SqlMigrationStep {
   name: String
   operation: SqlMigrationOperationKind
+  dialect: String
   statement: String
   reversible: Bool
 }

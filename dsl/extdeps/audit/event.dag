@@ -39,11 +39,14 @@ type AuditEventField {
 }
 
 type AuditEventRecord {
-  event_type: String
+  id: String
+  source: String
+  specversion: String
+  type: String
   subject: String
   actor: AuditActor
   outcome: AuditOutcome
-  occurred_at: String
+  time: String
   fields: List<AuditEventField>
 }
 

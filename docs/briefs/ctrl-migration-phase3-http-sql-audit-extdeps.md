@@ -23,6 +23,7 @@ These are target contracts only. They do not claim runtime cut-over, framework c
 - Keep all three files staged until a subsystem projection consumes the target.
 - Do not mark a subsystem model authoritative until parity tests pass against current `ctrl/` TypeScript behavior.
 - Preserve transport layering: `extdeps.transports.rest` and `extdeps.transports.sql` remain execution/config transport authorities; these files model generated artifact shape.
+- SG-0/P5 receipt: `INVARIANTS.md` row `src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs` is the single hand-Rust receipt for this PR; it cites `ROADMAP.md` § **Nine lanes** row `T-PB-B` / `pb_rust_tests_outside_residual_zero` and lists the five `compile_to_dag` probes plus dissolution into `.dag`-native parse/authority coverage or a generated test harness.
 
 ## First Worker Slice
 
