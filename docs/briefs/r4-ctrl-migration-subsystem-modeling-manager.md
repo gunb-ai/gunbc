@@ -82,7 +82,7 @@ The throttle predicate is **defined by the receipt-trail ledger**, not restated 
 
 This Mgr **enforces** the gate by polling the ledger before authoring any new worker brief or spawning any new worker; Verification Mgr (`deep-badger-38`) **owns** the column semantics and the parity-flip evidence. If the predicate needs adjustment, the change lands in the ledger first; this brief defers verbatim.
 
-Operational meaning: the budget is **not a soft signal** — it is the structural answer to "parallel ≠ independent." Wave-1 PRs landing without their Phase-3 partner is acceptable (single trio converging); a fleet of 8 unmatched stagings is not.
+Operational meaning: the budget is **not a soft signal** — it is the structural answer to "parallel ≠ independent." A Phase 1.5 PR landing without **both** its Phase-3 emission target landed **and** the named parity-harness gate green is acceptable in isolation (single trio converging); a fleet of unmatched stagings (≥3 with `open_receipt_debt = true` per the ledger predicate above, which jointly requires `phase3_emission_landed ∧ parity_passed` to clear the debt) is not.
 
 ---
 
