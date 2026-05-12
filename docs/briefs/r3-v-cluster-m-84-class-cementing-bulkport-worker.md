@@ -21,7 +21,7 @@ Migrate the **cementing-test family** from hand-Rust integration tests into `.da
 
 Owned files/surfaces for Mgr inventory:
 - `src/v3/compiler/tests/integration/cementing/`
-- `cementing_lens_registry_dispatch_test.rs`
+- live gate-#87 dispatch surfaces: `src/v3/compiler/tests/dag/cementing_dispatch.dag` + `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs`
 - lens behavioral completion tests that assert v2-vs-v3 or expected-output parity
 - replacement `.dag` cementing claims under `src/v3/compiler/tests/dag/`
 - `EXPECTED_HAND_AUTHORED_TEST` rows for each migrated file
