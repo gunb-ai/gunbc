@@ -6,7 +6,7 @@
 
 **Scope inspected**: `dsl/std/*.dag`, `src/v2/tests/src/*.rs`, `dsl/extdeps/`, `THESIS.md`, `INVARIANTS.md`, `MODELING.md`, `ROADMAP.md`.
 
-**Convergence signal**: both reviews independently flagged tracked items (PRELUDE_BARE_RHS_ALIAS_IDENTS, hand-rolled BoundedLattice instances, dsl/std vs src/v3/std duplication, http_path mirror, build.rs priority list). Per `feedback_independent_cross_validation.md`, convergence on tracked findings is structural-fact signal — not noise.
+**Convergence signal**: both reviews independently flagged tracked items (PRELUDE_BARE_RHS_ALIAS_IDENTS, hand-rolled BoundedLattice instances, dsl/std vs src/v3/std duplication, http_path mirror, build.rs priority list). When two independent runs converge on already-tracked items, it raises confidence that the novel items from those same runs are real structural facts rather than analysis noise — but the novel items still need per-finding grep-verification at HEAD before any work-item ratification.
 
 **This doc enumerates the NOVEL findings only** (already-tracked items are owned by their existing ROADMAP rows; no re-tracking).
 
@@ -42,6 +42,10 @@ These three may invalidate "PASSING" gate claims and are worth Director-tier sig
 **Class**: P2 single-authority + P3 fail-closed; silent semantic ambiguity.
 
 **Source**: Review B #1.
+
+**Scope discrimination** (per codex inline #10376 BLOCKING reframing 2026-05-12T20:24Z):
+- **ALREADY TRACKED** (NOT this finding's scope): record-literal duplicate-field rejection at `src/v3/compiler/src/lower.rs:4937-5023` via `duplicate_record_field(...)` — ROADMAP row at `ROADMAP.md:514` owns this. Documented below as reference-only to make the gap visible (runtime-data side has the check).
+- **GENUINELY NOVEL** (this finding's actual scope): the **type-declaration side**, **variant-payload side**, and **sum-variant-label side** of the same M2/M7 single-authority discipline do NOT have analogous fail-closed checks. Three distinct sites; same class; not separately tracked.
 
 **Citations**:
 - `src/v3/compiler/parse_parser_body.txt:900-911` — `parse_record_fields` accepts duplicate record fields into a Vec with no duplicate check
@@ -209,6 +213,6 @@ These three may invalidate "PASSING" gate claims and are worth Director-tier sig
 
 ## Methodology note
 
-These findings are EXPLORATORY analyses — not blocking PR reviews — but the convergence between two independent gpt-5-5-pro runs on overlapping tracked items raises confidence in the novel ones. Per `feedback_independent_cross_validation.md`: independent cross-validation on adjacent substrate claims is structural fact.
+These findings are EXPLORATORY analyses — not blocking PR reviews — but the convergence between two independent gpt-5-5-pro runs on overlapping tracked items raises analytic confidence that the novel ones are real structural facts (not analysis noise). Confidence is a heuristic, not authority: each novel finding still needs per-citation grep-verify at HEAD before being absorbed as a work-item.
 
 Mgrs should grep-verify each citation at HEAD before authoring worker briefs (commit drift since 2026-05-12 cannot be assumed away).
