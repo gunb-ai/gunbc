@@ -194,8 +194,9 @@ type RegressionAttestation {
 // - Classification: 🟢 TERMINAL for the decomposition-algebra operation
 //   vocabulary. Each arm has distinct payload and closure effect.
 // - Dissolution pattern rejected: variants are not values of a single generic
-//   mutation; declare, decompose, drain, replan, escalate, pause, reopen,
-//   regress, and override have different repair paths and audit payloads.
+//   mutation; declare, decompose, drain, close, refused-close, replan,
+//   escalate, pause, reopen, regress, and override have different repair paths
+//   and audit payloads.
 // - Trigger: none for Phase 1. Adding a ctrl operation must extend this one
 //   file before REST/SQL/CLI projections can expose it.
 type ProcessOperation
@@ -206,11 +207,20 @@ type ProcessOperation
     }
   | DecomposeProcessNode {
       parent: ProcessNodeId
-      children: List<ProcessNodeId>
+      children: NonEmptyProcessNodeIds
       attestation: Attestation
     }
   | DrainProcessBucket {
       bucket: ProcessNodeId
+      attestation: Attestation
+    }
+  | CloseProcessNode {
+      node: ProcessNodeId
+      attestation: Attestation
+    }
+  | RefuseCloseProcessNode {
+      node: ProcessNodeId
+      refusal: ProcessClosureRefusal
       attestation: Attestation
     }
   | ReplanProcessNode {
@@ -232,7 +242,7 @@ type ProcessOperation
     }
   | RegressProcessSubtree {
       node: ProcessNodeId
-      retracted_child_ids: List<ProcessNodeId>
+      retracted_child_ids: NonEmptyProcessNodeIds
       regression: RegressionAttestation
     }
   | AttestedClosureOverride {
