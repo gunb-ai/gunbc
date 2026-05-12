@@ -9168,22 +9168,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             target: TransformTarget::Callable(DeclarationId(1282)),
             inputs: vec![PortId(968)],
             output: PortId(969),
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 27357, 27380),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 27202, 27225),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 27557, 27580),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(809),
             target: TransformTarget::Callable(DeclarationId(1283)),
             inputs: vec![PortId(970)],
             output: PortId(971),
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 27402, 27436),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 27247, 27281),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 27602, 27636),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(810),
@@ -9194,11 +9186,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(969),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Enumerated".to_string(),
-<<<<<<< HEAD
-                        span: SourceSpan::new("src/v3/std/verification.dag", 27340, 27353),
-=======
-                        span: SourceSpan::new("src/v3/std/verification.dag", 27185, 27198),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+                        span: SourceSpan::new("src/v3/std/verification.dag", 27540, 27553),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "c".to_string(),
@@ -9210,11 +9198,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                     output: PortId(971),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Quantified".to_string(),
-<<<<<<< HEAD
-                        span: SourceSpan::new("src/v3/std/verification.dag", 27385, 27398),
-=======
-                        span: SourceSpan::new("src/v3/std/verification.dag", 27230, 27243),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+                        span: SourceSpan::new("src/v3/std/verification.dag", 27585, 27598),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "q".to_string(),
@@ -9223,11 +9207,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(972),
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 27322, 27440),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 27167, 27285),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 27522, 27640),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -9235,11 +9215,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
             name: "obligation_for_suite_claim".to_string(),
             value: PortId(972),
             params: vec![PortId(967)],
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 27322, 27440),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 27167, 27285),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 27522, 27640),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -42179,11 +42155,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 24622, 24716),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 24467, 24561),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 24822, 24916),
         });
         declarations.push(Declaration {
             id: DeclarationId(1277),
@@ -42212,11 +42184,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 24718, 24821),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 24563, 24666),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 24918, 25021),
         });
         declarations.push(Declaration {
             id: DeclarationId(1278),
@@ -42241,11 +42209,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 25554, 25631),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 25399, 25476),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 25754, 25831),
         });
         declarations.push(Declaration {
             id: DeclarationId(1279),
@@ -42270,11 +42234,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 25633, 25693),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 25478, 25538),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 25833, 25893),
         });
         declarations.push(Declaration {
             id: DeclarationId(1280),
@@ -42299,11 +42259,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 25891, 25972),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 25736, 25817),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 26091, 26172),
         });
         declarations.push(Declaration {
             id: DeclarationId(1281),
@@ -42313,13 +42269,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(2226),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-<<<<<<< HEAD
-                    26414,
-                    26430,
-=======
-                    26259,
-                    26275,
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+                    26614,
+                    26630,
                 )),
             },
             type_params: vec![],
@@ -42330,11 +42281,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 26343, 26430),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 26188, 26275),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 26543, 26630),
         });
         declarations.push(Declaration {
             id: DeclarationId(1282),
@@ -42344,13 +42291,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1280),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-<<<<<<< HEAD
-                    26488,
-                    26573,
-=======
-                    26333,
-                    26418,
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+                    26688,
+                    26773,
                 )),
             },
             type_params: vec![],
@@ -42361,11 +42303,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 26432, 26573),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 26277, 26418),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 26632, 26773),
         });
         declarations.push(Declaration {
             id: DeclarationId(1283),
@@ -42375,13 +42313,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1280),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-<<<<<<< HEAD
-                    26880,
-                    26946,
-=======
-                    26725,
-                    26791,
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+                    27080,
+                    27146,
                 )),
             },
             type_params: vec![],
@@ -42392,11 +42325,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 26803, 26946),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 26648, 26791),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 27003, 27146),
         });
         declarations.push(Declaration {
             id: DeclarationId(1284),
@@ -42414,11 +42343,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 27251, 27440),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 27096, 27285),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 27451, 27640),
         });
         declarations.push(Declaration {
             id: DeclarationId(1285),
@@ -42428,13 +42353,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(2228),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-<<<<<<< HEAD
-                    27524,
-                    27569,
-=======
-                    27369,
-                    27414,
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+                    27724,
+                    27769,
                 )),
             },
             type_params: vec![],
@@ -42445,11 +42365,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 27442, 27569),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 27287, 27414),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 27642, 27769),
         });
         declarations.push(Declaration {
             id: DeclarationId(1286),
@@ -60784,11 +60700,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 26390, 26413),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 26235, 26258),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 26590, 26613),
         });
         declarations.push(Declaration {
             id: DeclarationId(2227),
@@ -60808,11 +60720,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 27482, 27498),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 27327, 27343),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 27682, 27698),
         });
         declarations.push(Declaration {
             id: DeclarationId(2228),
@@ -60832,11 +60740,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 27503, 27523),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 27348, 27368),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 27703, 27723),
         });
         declarations.push(Declaration {
             id: DeclarationId(2229),
@@ -62023,11 +61927,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 24643, 24672),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 24488, 24517),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 24843, 24872),
         });
         declarations.push(Declaration {
             id: DeclarationId(2290),
@@ -62046,11 +61946,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 24677, 24716),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 24522, 24561),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 24877, 24916),
         });
         declarations.push(Declaration {
             id: DeclarationId(2291),
@@ -62069,11 +61965,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 25574, 25595),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 25419, 25440),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 25774, 25795),
         });
         declarations.push(Declaration {
             id: DeclarationId(2292),
@@ -62092,11 +61984,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 25600, 25631),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 25445, 25476),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 25800, 25831),
         });
         declarations.push(Declaration {
             id: DeclarationId(2293),
@@ -62116,11 +62004,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 25675, 25691),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 25520, 25536),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 25875, 25891),
         });
         declarations.push(Declaration {
             id: DeclarationId(2294),
@@ -62140,11 +62024,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-<<<<<<< HEAD
-            span: SourceSpan::new("src/v3/std/verification.dag", 25947, 25970),
-=======
-            span: SourceSpan::new("src/v3/std/verification.dag", 25792, 25815),
->>>>>>> 47c9f9b49 (WIP: Gate-87 / lens_cementing_test_discipline_complete: land `cementing_dispa)
+            span: SourceSpan::new("src/v3/std/verification.dag", 26147, 26170),
         });
         declarations.push(Declaration {
             id: DeclarationId(2295),
