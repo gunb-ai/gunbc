@@ -245,6 +245,36 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
+- 2026-05-12 (R3 Cluster M #84 / PR #2716): **Deletion-guard — Brief D
+  compile-smoke shim retired after runner-backed TestClaim coverage.**
+  Receipts (1)–(3) re-verified green for the candidate surface:
+  `cargo test -p v3-compiler --test integration
+  t_pb_b_1_pipeline_smoke_suite_passes_through_runner`,
+  `t_pb_b_1_contract_diagnostic_smoke_suite_passes_through_runner`,
+  `t_pb_b_1_contract_port_cost_suite_passes_through_runner`, and
+  `r3_tests_as_data_demonstration_suite_passes_through_runner` all return
+  `ClaimResult::Pass` through `TestRunner`; `cargo test -p v3-compiler
+  --test integration sg0_census_test` confirms the SG-0 census shrink.
+  The deleted Rust file is `t_pb_b_brief_d_fixture_smoke_test.rs`; mapping:
+  - `t_pb_b_brief_d_pipeline_smoke_fixture_lowers_cleanly` →
+    `t_pb_b_1_dag_runner_test::r3_tests_as_data_demonstration_suite_passes_through_runner`
+    / suite `suite_tests_as_data_demonstration` / `TestClaim.name`
+    **`tests-as-data port of pipeline smoke fixture compiles`**.
+  - `t_pb_b_brief_d_contract_diagnostic_smoke_fixture_lowers_cleanly` →
+    `t_pb_b_1_dag_runner_test::t_pb_b_1_contract_diagnostic_smoke_suite_passes_through_runner`
+    / suite `suite_contract_diagnostic_negatives` / `TestClaim.name`
+    **`Bool annotation rejects Int literal`**.
+  - `t_pb_b_brief_d_contract_port_cost_smoke_fixture_lowers_cleanly` →
+    `t_pb_b_1_dag_runner_test::t_pb_b_1_contract_port_cost_suite_passes_through_runner`
+    / suite `suite_contract_port_and_cost` / `TestClaim.name`s
+    **`answer bind resolves`** and
+    **`answer bind has bounded cost witness (Eq 3)`**.
+  This sign-off is intentionally narrow: it retires only the compile-only
+  Brief D host shim because equivalent landed `.dag` suites are
+  runner-backed. It does not assert `pb_test_file_generated_from_dag` or
+  `pb_rust_tests_outside_residual_zero`, and it does not authorize deletion
+  of structural files such as `pipe_desugar.rs` or mixed files such as
+  `thesis_validation_test.rs` without a separate per-`#[test]` mapping entry.
 - 2026-04-26 (R1 shims / PR #899): **Deletion-guard — retired per-gate `#[test]`
   files and structural claim-name receipt.** The integration modules
   `r1_manual_claim_gate_test.rs` and `testgen_structural_coverage_gate_test.rs`
