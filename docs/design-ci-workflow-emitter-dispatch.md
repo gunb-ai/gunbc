@@ -1,7 +1,7 @@
 # CI Workflow Emitter Dispatch - Design Canvas
 
-**Status:** Design canvas for T-Workflow-As-Data FULL R3-close; narrowed after
-substrate-shape comparison PR #2749.
+**Status:** Design canvas for T-Workflow-As-Data FULL R3-close; consumes the
+placement decision from substrate-shape comparison PR #2749.
 **Authority:** Worker output for PR #2744 WI-1; substrate-shape comparison
 canvas PR #2749; final lane absorption proceeds through the T-WAD owner.
 **Scope:** Workflow emission target dispatch only. This document does not
@@ -68,14 +68,18 @@ This canvas composes existing documents and carriers:
 
 ## 3. Carrier Shape
 
-The carrier-placement question has three plausible answers:
+Placement authority lives in PR #2749, the canonical substrate-shape comparison
+canvas. This document consumes that ratified placement and authors the
+per-target emission semantics and acceptance contracts on top of it.
+
+PR #2749 evaluated the carrier-placement question:
 
 | Option | Shape | Result |
 |---|---|---|
 | A | Add `emission_target` to `extdeps.github.actions.Workflow` | Rejected after comparison-canvas review: violates extdeps fidelity by adding gunbc projection policy to a GitHub Actions platform carrier. |
 | B | Add `emission_target` to `gunbc.ci.CIPipeline` | Rejected for this gate: `CIPipeline` is gate-centric CI intent, while the target controls projection of the GitHub Actions workflow artifact. |
 | C | Add `WorkflowEmission { workflow, target }` wrapper | Rejected in wrapper form: preserves separation superficially but introduces an implicit join and duplicate authority. |
-| C-refined | Put `EmissionTarget` in gunbc namespace and pass it to `project_github_actions(ci_workflow_dag, target) -> Workflow` | **Recommended.** The target choice is modeled data, extdeps stays provider-faithful, and the emitted `Workflow` is derived from one source. |
+| C-refined | Put `EmissionTarget` in gunbc namespace and pass it to `project_github_actions(ci_workflow_dag, target) -> Workflow` | **Consumed here.** The target choice is invocation-time modeled data, extdeps stays provider-faithful, and the emitted `Workflow` is derived from one source. |
 
 The recommended substrate shape is a gunbc-owned enum plus projection function:
 
@@ -114,22 +118,12 @@ call must carry an explicit `EmissionTarget`. At that point
 fixtures only, and a ratchet should reject new authoritative projection calls
 that omit the target.
 
-### 3.1 Placement Evaluation
+### 3.1 Placement Evaluation Summary
 
 #### Option A: Field on `Workflow`
 
-This option was the initial WI-1 recommendation: put the target choice on
-`extdeps.github.actions.Workflow` so the emitter has one dispatch point.
-
-```
-emit_workflow(workflow) =
-  match normalize_target(workflow.emission_target) {
-    YamlStatic => emit_yaml_static(workflow)
-    BinaryShim => emit_binary_shim(workflow)
-    PythonShim => emit_python_shim(workflow)
-    InlineGunbc => emit_inline_gunbc(workflow)
-  }
-```
+This option is rejected. It would put the target choice on
+`extdeps.github.actions.Workflow`.
 
 The objection is that `dsl/extdeps/github/actions.dag` describes platform
 constraints, not gunbc CI policy. That objection is load-bearing:
@@ -209,10 +203,10 @@ parallel-representation debt:
   emitters read workflow fields
 
 The operator requirement is "modeled data," not "external wrapper." A field on
-the workflow was the first attempt to satisfy that requirement without a join,
-but extdeps fidelity rules it out. The refined answer is a gunbc-owned
-projection function parameter: the target is modeled data on the call, not an
-external wrapper around an already-authored provider workflow.
+the workflow would have satisfied that requirement without a join, but extdeps
+fidelity rules it out. The refined answer is a gunbc-owned projection function
+parameter: the target is modeled data on the call, not an external wrapper
+around an already-authored provider workflow.
 
 #### Option C-refined: Projection Parameter
 
@@ -225,8 +219,8 @@ data gunbc_ci_yml_workflow: Workflow =
 ```
 
 `CIWorkflowDag` is the single semantic source for the gunbc CI workflow.
-`project_github_actions` is the structural fold that reads that source and a
-gunbc-owned `EmissionTarget`, then produces the provider-faithful GitHub
+`project_github_actions` is the structural fold invoked with that source and
+the ratified emission-target input, then produces the provider-faithful GitHub
 Actions `Workflow` value. There is no independent hand-authored `Workflow`
 authority for the emitter to join against.
 
@@ -235,7 +229,7 @@ This keeps all three layers distinct:
 | Layer | Authority |
 |---|---|
 | CI semantics | `gunbc.ci` workflow/gate graph |
-| Emission choice | gunbc-owned `EmissionTarget` projection argument |
+| Emission choice | ratified gunbc-owned emission-target input |
 | Provider artifact | derived `extdeps.github.actions.Workflow` |
 
 The cost of adding a target remains bounded: add one `EmissionTarget` variant
