@@ -515,6 +515,41 @@ fn termination_lattice_rust_mirror_dissolved() {
 }
 
 #[test]
+fn tier3_computation_mirror_kernel_algebra_profile_substrate_authority() {
+    // Gate `tier3_computation_mirror_dissolved` (R3 §1.8 #2, T-Tier3-Dissolution) —
+    // slice receipt: `kernel_algebra_profile` must not be shadowed by a parallel
+    // hand-maintained type-name → profile table in Rust. `type_iteration_dimension`
+    // routes non-`Node` names through `BOOTSTRAPPED_DAG.kernel_algebra_profile`, which
+    // reads the lowered `data kernel_algebra_profile` map (see `Dag::kernel_algebra_profile`).
+    assert_eq!(
+        type_iteration_dimension("Node"),
+        Some(IterationDimension::TreeDescent)
+    );
+    assert_eq!(
+        type_iteration_dimension("Int"),
+        Some(IterationDimension::ArithmeticRepeat)
+    );
+    assert_eq!(
+        type_iteration_dimension("String"),
+        Some(IterationDimension::CollectionFold)
+    );
+    assert_eq!(type_iteration_dimension("Bool"), None);
+
+    let dag_rs = include_str!("../../src/dag.rs");
+    let start = dag_rs
+        .find("pub fn type_iteration_dimension")
+        .expect("expected `pub fn type_iteration_dimension` in dag.rs");
+    let window = dag_rs
+        .get(start..start + 1200)
+        .expect("type_iteration_dimension window");
+    assert!(
+        window.contains("BOOTSTRAPPED_DAG")
+            && window.contains(".kernel_algebra_profile(type_name)"),
+        "type_iteration_dimension must delegate through BOOTSTRAPPED_DAG.kernel_algebra_profile; window:\n{window}"
+    );
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_side_table_reads_recursive_call() {
     let dag = compile_to_dag(
         "\
