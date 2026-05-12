@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use v3_compiler::dag::{FieldValue, LiteralBits};
+use v3_compiler::dag::{FieldValue, LiteralBits, ValueBody};
 use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -273,6 +273,64 @@ data suite: TestSuite = {
     let dag = compile_clean(source, "test_runner_cost.dag");
     let results = TestRunner::new(&dag).run_suite("suite");
 
+    assert_eq!(results.len(), 1);
+    assert_all_pass(&results);
+}
+
+#[test]
+fn test_cost_dimension_landed_on_test_node() {
+    let source = r#"
+data claim_cost: TestClaim = {
+  name: "cost dimension node",
+  source: "let x: Int = 0",
+  file_name: "runner_cost_dimension.v3",
+  predicate: CostBounded("x", Eq, 0),
+  requires: []
+}
+
+data claim_cost_dimension: TestNodeCostDimension = {
+  node: { decl: claim_cost },
+  budget: { value: 2000 },
+  measured: { value: 17 }
+}
+
+data suite: TestSuite = {
+  name: "runner_cost_dimension",
+  claims: [Enumerated(claim_cost)]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_cost_dimension.dag");
+    let dimension = dag
+        .declarations()
+        .iter()
+        .find(|decl| decl.name.as_deref() == Some("claim_cost_dimension"))
+        .expect("test node cost dimension declaration should lower");
+    let fields = match dimension.value_body.as_ref() {
+        Some(ValueBody::Structural { fields }) => fields,
+        other => panic!("TestNodeCostDimension should lower structurally, got {other:?}"),
+    };
+
+    let budget = fields
+        .iter()
+        .find(|(label, _)| label == "budget")
+        .map(|(_, value)| value)
+        .expect("budget dimension field should be present");
+    let FieldValue::Record(budget_fields) = budget else {
+        panic!("budget should lower as a Dimension record, got {budget:?}");
+    };
+    assert!(
+        budget_fields.iter().any(|(label, value)| {
+            label == "value"
+                && matches!(
+                    value,
+                    FieldValue::Literal(LiteralBits::Int(bits))
+                    if bits == "2000"
+                )
+        }),
+        "budget Dimension<TestExecutionCost, Int> should retain its value field"
+    );
+
+    let results = TestRunner::new(&dag).run_suite("suite");
     assert_eq!(results.len(), 1);
     assert_all_pass(&results);
 }
