@@ -22,7 +22,13 @@ import extdeps.github.actions {
   checkout_action,
   setup_rust_action
 }
-import gunbc.ci { CIWorkflowDag, ci_workflow_dag }
+import gunbc.ci {
+  CIWorkflowDag,
+  compile_gates_gate,
+  lint_gate,
+  test_gate,
+  l1_gate
+}
 import v3.std.dimensions { Witness, OptionalDiagnostic, DimensionReport }
 import v3.std.diagnostics { Diagnostic }
 import v3.std.timing_lens {
@@ -85,8 +91,22 @@ data modeled_gunbc_ci_workflow: Workflow = Workflow {
 
 // Same CI intent as a provider-neutral DAG. The GitHub Actions transport below
 // projects the graph with `Job.needs`; the structural authority for gate
-// dependencies is `gunbc.ci.ci_workflow_dag`.
-data modeled_gunbc_ci_workflow_dag: CIWorkflowDag = ci_workflow_dag
+// dependencies is a provider-neutral node/edge graph, not YAML job ordering.
+data modeled_gunbc_ci_workflow_dag: CIWorkflowDag = {
+  name: "gunbc-ci",
+  nodes: [
+    { id: "compile-gates", gate: compile_gates_gate },
+    { id: "lint", gate: lint_gate },
+    { id: "tests", gate: test_gate },
+    { id: "l1-ratchet", gate: l1_gate }
+  ],
+  edges: [
+    { from: "compile-gates", to: "lint" },
+    { from: "compile-gates", to: "tests" },
+    { from: "lint", to: "l1-ratchet" },
+    { from: "tests", to: "l1-ratchet" }
+  ]
+}
 
 data modeled_gunbc_ci_workflow_transport: Workflow = Workflow {
   name: "gunbc-ci-dag-demo",

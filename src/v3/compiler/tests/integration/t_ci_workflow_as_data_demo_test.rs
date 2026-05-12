@@ -310,16 +310,21 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
         .expect("modeled_gunbc_ci_workflow_dag data must load from t_ci_workflow_as_data_demo.dag");
     dag.declaration_by_name("modeled_gunbc_ci_workflow_transport")
         .expect("modeled_gunbc_ci_workflow_transport data must load from t_ci_workflow_as_data_demo.dag");
-    dag.declaration_by_name("ci_workflow_dag")
-        .expect("gunbc.ci ci_workflow_dag data must load as the structural CI DAG authority");
+    let workflow_dag = dag
+        .declaration_by_name("modeled_gunbc_ci_workflow_dag")
+        .expect("modeled_gunbc_ci_workflow_dag data must load");
+    assert!(
+        matches!(workflow_dag.value_body, Some(ValueBody::Structural { .. })),
+        "modeled_gunbc_ci_workflow_dag must load as inspectable structural data"
+    );
 }
 
 #[test]
 fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
     let dag = demo_bootstrap_dag();
     let decl = dag
-        .declaration_by_name("ci_workflow_dag")
-        .expect("gunbc.ci ci_workflow_dag data must load");
+        .declaration_by_name("modeled_gunbc_ci_workflow_dag")
+        .expect("modeled_gunbc_ci_workflow_dag data must load");
     let Some(ValueBody::Structural { fields }) = &decl.value_body else {
         panic!(
             "ci_workflow_dag must lower as structural data, got {:?}",
