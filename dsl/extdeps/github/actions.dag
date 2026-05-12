@@ -8,8 +8,7 @@
 // Spec: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 //
 // Consumers:
-//   extdeps/github/ci.dag — `.github/workflows/ci.yml` as `Workflow` data (T-WAD R3)
-//   gunbc/ci.dag -- CI intent declarations (gate semantics; not Actions YAML)
+//   gunbc/ci.dag — compiler CI gates plus `.github/workflows/ci.yml` as `Workflow` data (T-WAD R3)
 
 module extdeps.github.actions
 
