@@ -57,11 +57,16 @@ type WorkflowRuntime = YamlStatic | BinaryShim | PythonShim | ...
 **`WorkflowRuntime` is an invocation-time parameter to the projection function in gunbc-substrate**, NOT a field on any carrier:
 
 ```dag
-// In dsl/gunbc/ci_emission.dag (NEW file, WI-2 lands it):
+// In dsl/gunbc/ci_emission.dag (NEW file, WI-2 lands the signature):
 project_github_actions: (CIWorkflowDag, WorkflowRuntime) -> Workflow
 
-// Invocation pin (canonical YAML-emission point for Slice 4):
-gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)
+// Invocation pin DEFERRED to Slice 4 (canonical CIWorkflowDag instance lands with Slice 4;
+// WI-2 landing the binding now would force placeholder-or-conversion authority creation —
+// P2 single-authority lockdown per WI-2 brief §3 + acceptance gate 5):
+//
+//   gunbc_ci_yml_workflow: Workflow = project_github_actions(<canonical_ci_workflow_dag>, YamlStatic)
+//
+// Slice 4 authors the canonical CIWorkflowDag instance AND this pinned binding together.
 ```
 
 - **Input domain**: `CIWorkflowDag` (PR #2736 carrier; gate-dependency-bearing semantic source — flat `CIPipeline` is INSUFFICIENT per warm-wolf-698 msg_27d99080)
@@ -146,7 +151,7 @@ Critical path (forward):
 
 Parallelizable (started 2026-05-12 — dispatched under PM):
   - WI-1 emitter-dispatch architecture canvas (worker still-heron-763)
-  - WI-2 new file dsl/gunbc/ci_emission.dag — declares WorkflowRuntime open enum + project_github_actions function signature + gunbc_ci_yml_workflow pinned-projection (worker cool-carp-720)
+  - WI-2 new file dsl/gunbc/ci_emission.dag — declares WorkflowRuntime open enum + Practice 4 receipt + project_github_actions function signature (DECLARATION + signature only; gunbc_ci_yml_workflow pinned-projection DEFERRED to Slice 4 per P2 single-authority lockdown — worker cool-carp-720)
 ```
 
 ## §5. Realistic R3-close timing
@@ -170,7 +175,7 @@ Assumes:
 - Independent of held substrate; Slice 1 LANDED
 
 **WI-2**: NEW file `dsl/gunbc/ci_emission.dag` — projection-function substrate scaffold (per (c-refined) shape)
-- Output: NEW file `dsl/gunbc/ci_emission.dag` declaring `WorkflowRuntime` open enum + `project_github_actions: (CIWorkflowDag, WorkflowRuntime) -> Workflow` function signature + `gunbc_ci_yml_workflow` pinned-projection data binding
+- Output: NEW file `dsl/gunbc/ci_emission.dag` declaring `WorkflowRuntime` open enum + Practice 4 coproduct-dissolution receipt + `project_github_actions: (CIWorkflowDag, WorkflowRuntime) -> Workflow` function signature with TODO-marked total-handling skeleton. The `gunbc_ci_yml_workflow` pinned-projection data binding is **DEFERRED to Slice 4** (P2 single-authority lockdown — canonical `CIWorkflowDag` instance lands with Slice 4, binding lands with the canonical instance; WI-2 brief §3 + acceptance gate 5).
 - Scope: DECLARATION + signature ONLY (per-arm projection bodies are Slice 4-5 owned by Substrate Mgr post-canvas-merge)
 - Worker: **cool-carp-720** (PM auto-spawn 2026-05-12 ~06:30Z)
 - Brief: `docs/briefs/r3-t-wad-full-r3-cidag-scaffold-worker.md`
@@ -203,7 +208,7 @@ PM-relay to warm-wolf-698 + Director co-sign at #828 if cross-tier confirmation 
 - `docs/briefs/r3-substrate-t-workflow-as-data-slice-1-worker.md` — Slice 1 substrate carrier brief (LANDED PR #2160)
 - `dsl/extdeps/github/actions.dag` — canonical platform carriers (`Workflow:21` `Job:110` `Step:147` `WorkflowSecret:102`)
 - `dsl/gunbc/ci.dag` — existing gate-centric CI intent declarations (PR #2371); WI-2 does NOT extend this file (per (c-refined) shape); CIPipeline is NOT used as projection input (flat without edge structure per warm-wolf-698 msg_27d99080)
-- `dsl/gunbc/ci_emission.dag` — NEW file WI-2 creates (projection-function substrate; WorkflowRuntime enum + project_github_actions signature + pinned-projection binding)
+- `dsl/gunbc/ci_emission.dag` — NEW file WI-2 creates (projection-function substrate; WorkflowRuntime enum + Practice 4 receipt + project_github_actions signature; `gunbc_ci_yml_workflow` pinned-projection DEFERRED to Slice 4 per P2 single-authority lockdown)
 - PR #2736 (neat-badger-30) — `CIWorkflowDag` carrier introduction; WI-2 sources projection input from this
 - `dsl/extdeps/cron_schedule_model.dag` — CronSchedule carrier (LANDED via PR #2169)
 - `docs/ci-pipeline-optimization.md` — pre-v3 historical optimization (background context; not active program)
