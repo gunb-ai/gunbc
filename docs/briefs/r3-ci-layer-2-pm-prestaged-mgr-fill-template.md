@@ -47,7 +47,7 @@ Every test-group entry below carries a `dimensions:` field that is a **Set<Dimen
 
 ```
 affected_set(Dag_before, Dag_after) =
-  ⋃ over dim in {Value, Cost, Complexity, Effect, Refinement}
+  ⋃ over dim in {Value, Cost, Complexity, Effect, Refinement, ...}  ← OPEN per §2; user-defined dims extend
     affected_set(Dag_before, Dag_after, dim)
 ```
 
