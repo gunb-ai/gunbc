@@ -1,242 +1,418 @@
-# Decomposition Algebra — small modeling project
+# Decomposition Algebra — ctrl/ migration scoping doc
 
-**Status**: DRAFT (2026-05-12). Authored to formalize the project-side replanning protocol the operator described. Iteration expected.
+**Status**: DRAFT (2026-05-12). Authored per operator directive: migrate ctrl/ processes into .dag substrate; algebra is authoritative, ctrl/ TS becomes projected emission.
 
-**Premise (operator-supplied)**: when you decompose a goal — `make a C compiler` = `½·frontend + ½·backend` — you are making an *algebraic claim* that the children jointly preserve the parent's meaning. When integration fails ("this isn't a C compiler"), you are in *contradiction*: by construction-of-parts you have it; by failing integration you don't. Resolution requires walking back the decomposition DAG to find where meaning was dropped.
+**Authority**: ctrl/ PRs #1192 / #1193 / #1195 / #1197 (decomposition-algebra series, stacked, all OPEN as of 2026-05-12T18:30Z). These four PRs land the algebra in TS; this doc proposes the .dag substrate that makes the algebra source-of-truth.
 
-This doc is the small modeling project: a procedure for the walk-back, a type sketch for the algebra (gunbc-lens-style), and a sketch of how dashboard comms (PM↔Mgr↔Worker) map onto the structure.
-
----
-
-## §1. The contradiction-trigger
-
-At any node `N` in a decomposition DAG, two algebraic claims hold simultaneously:
-
-- **A**: `N = Σ c_i · child_i(N)` — N's meaning is the sum of its children's meanings, with intersubjective shares `c_i` summing to 1.
-- **B**: `meaning(N)` is whatever the parties have agreed it is — the *external* claim, often verified by witnesses (integration tests, prose attestations, structural lenses).
-
-Walk-back fires when **A and B disagree at some node**:
-
-- **(a) Algebraic imbalance** — children don't cover the parent's meaning (`Σ child_meanings ⊊ parent_meaning`). Some part of `N` is unaccounted for.
-- **(b) Claim contradiction** — `N` is asserted to NOT hold its meaning, even though A says it should (the integration test fails; the reviewer says "this isn't X").
-
-Both surface the same root cause: the decomposition's algebra is broken at or above the trigger point.
+**Out of scope**: implementation of emission targets (HTTP REST / SQL migrations / audit-event emission). Those are Phase 3 — substrate-prerequisites that gate the ctrl/ replace. This doc is Phase 0 (readiness audit + integration sketch).
 
 ---
 
-## §2. Types (gunbc-lens sketch)
+## §1. Concept
 
-The algebra in gunbc-style types. These would eventually live in `dsl/std/` as a `MeaningDecomposition` lens analogous to the Cost lens (per `feedback_lenses_not_passes`: derivable from physics, no heuristics).
+The operator wants `ctrl/` (dashboard / planning / replanning) workflows expressed as projections of a typed .dag substrate, with pedantic algebra underneath and a friendly CLI on top (`dashboard-ops open-task` / `replan` / `close` / `archive` / `escalate` / `pause`). The decomposition algebra defined in ctrl PRs #1192-#1197 is the candidate substrate: nodes have a structural type (leaf / composite / bucket / NULL); closure is emergent for composites; replan is more-decomposition; buckets capture algebraic remainder.
 
-### 2.1 `Node`
+The .dag migration makes that algebra the **single authority**. The TS implementation in `ctrl/` becomes one emission target (REST handlers + SQL schema + CLI surface), but no longer authors the rules. Cost-of-change for a new Mode variant or Operation arm collapses to 1 file (the substrate). Per `feedback_lenses_not_passes.md`: the algebra is a lens over graph state, not a heuristic pass.
 
+---
+
+## §2. The ctrl/ algebra — concrete reference
+
+### §2.1 Schema (ctrl PR #1192)
+
+Adds to `nodes` table:
+- `mode TEXT CHECK IN ('leaf', 'composite', 'bucket')` (or NULL) — declared shape
+- `mode_declared_at`, `mode_declared_by_session_id` — audit fields
+- `bucket_drained_at`, `bucket_drained_by_session_id`, `bucket_drain_note` — drain receipt
+- `dashboard_migrations` row `decomposition_algebra.cutoff.v1` — cutoff timestamp; pre-cutoff rows grandfathered
+
+`NODE_MODES` exported as single authority; DB CHECK enforces at boundary.
+
+### §2.2 Operations (ctrl PR #1193)
+
+API endpoints:
+- `POST /api/nodes/:id/declare { mode, session_id? }`
+- `POST /api/nodes/:id/bucket/drain { note, session_id? }`
+- `POST /api/internal-work-items` (existing; now auto-flips parent to `composite` on first child via `autoFlipParentModeForChildAddition`)
+
+Pure helpers in `lib/dag_writes.mjs`:
+- `declareNodeMode` — idempotent on same value; refuses redeclare to different mode (caller must replan)
+- `drainBucket` — refuses non-bucket nodes + empty notes; mandatory witness string
+- `autoFlipParentModeForChildAddition` — "the act of authoring a child IS the declaration of the parent"
+
+`DecompositionError` with `code` field for HTTP status mapping.
+
+### §2.3 Closure rule (ctrl PR #1195)
+
+`canCloseNode(db, nodeId, { cutoff }) → { ok, reason }` — single source of truth.
+
+Reasons:
+- `NODE_NOT_FOUND`
+- `ALREADY_CLOSED` (idempotent path)
+- `MODE_NOT_DECLARED` (post-cutoff node with mode=NULL)
+- `BUCKET_NOT_DRAINED` (mode='bucket' without bucket_drained_at)
+- `COMPOSITE_HAS_OPEN_CHILDREN` (mode='composite' with ≥1 open blocks-child)
+
+`closeNode(db, nodeId, { closedAt, force, cutoff })` wraps the guard; `force: true` is operator override; `node_close_refused` events logged on refusal.
+
+### §2.4 Replan (ctrl PR #1197)
+
+`dashboard-ops replan` thin client authors a reconcile work-item under the caller's parent. No new schema; walk-back is operator-driven recursion through normal work-item flow. **Replan IS more decomposition, not a state revert** — the meta-work is itself work, expressed with the same primitives.
+
+---
+
+## §3. Mapping to existing gunbc primitives (grep-verified)
+
+Audit of `dsl/std/` (2026-05-12) found:
+
+| Decomp-algebra concept | Gunbc primitive | Citation | Reuse status |
+|---|---|---|---|
+| Node (work item) | Recursive type pattern; concrete `Node` is compiler-AST | `dsl/std/node.dag:55-196` | **Concept reuses; carrier needs new domain-specific declaration** (compiler Node is for AST, not work items) |
+| Mode (open enum) | Open enum + Practice 4 dissolution framework | `dsl/std/computation.dag:133,192,246` (`SizeBound` / `CallPattern` / `IterationPrimitive`) | ✓ Direct reuse of pattern |
+| Operation (closed sum) | Closed enum with payloads | `dsl/std/effects.dag:71-76` (`EffectShape`); `dsl/std/computation.dag:246-249` (`IterationPrimitive`) | ✓ Direct reuse of pattern |
+| Closure projection `canCloseNode` | Projection function pattern (Slice 4 substrate) | `dsl/gunbc/ci.dag:29-32` documents shape; `dsl/gunbc/ci_emission.dag` not yet authored (Slice 4 in flight) | ✓ Pattern documented; concrete projection function pattern lands soon |
+| Cardinality (single/optional) | `Required \| Optional` | `dsl/std/constructors.dag:74-75` | ✓ Direct reuse |
+| Bounded multiplicity (0..N) | List<T> + SetCardinality (size primitive) | `dsl/std/termination.dag:198` (`SetCardinality`) | ◐ Partial — no `Bounded<min, max>` carrier yet |
+| Witness/Receipt | Ad-hoc String refs (`witness: String` field in 2 places) | `dsl/std/computation.dag:135,197`; `dsl/std/effects.dag:359` | ◐ Partial — no unified `Witness<T>` / `Receipt<T>` |
+| Timestamp | Narrowed String (ISO 8601) | `dsl/std/types.dag:299` | ✓ Reuse |
+| Clock resource | `Clock` with `now()` | `dsl/std/resources.dag:83-95` | ✓ Reuse |
+| Algebraic structures | Magma / Semigroup / Monoid / Group / Ring / Field / FreeMonoid | `dsl/std/algebra.dag:99-320` | ✓ Reuse — closure rules can compose under appropriate structure |
+| Graph / edges | Field-based on Node; explicit `GraphEdge` in `CallGraph` | `dsl/std/node.dag` (children: List<Node>); `dsl/std/graph.dag:15-30` | ◐ Partial — no labeled edges (parent→child semantic relationship vs dependency vs constraint) |
+| Coproduct dissolution receipts | 🟡 MIXED / 🟢 TERMINAL emoji + dissolution-trigger blocks | `dsl/std/computation.dag:126,189,228,244`; `docs/v3-modeling-analysis.md:217-229` (ledger rule) | ✓ Direct reuse of pattern |
+| Effects model | `EffectShape` for idempotency; `IterationPrimitive` for computation | `dsl/std/effects.dag:71-76`; `dsl/std/computation.dag:246-249` | ✓ Reuse — algebra operations are EffectShape-class graph mutations |
+| **Audit log / EventLog<T>** | Domain-only at `dsl/gunbc/workflow/types.dag:327-335` (`AuditEntry`); no std/ primitive | — | **✗ GAP — needed for replay-as-truth** |
+| **Lens<A,B> type** | Informal usage only ("inhabitance lens", "affected-set lens"); no first-class carrier | `dsl/std/algebra.dag:179` (informal); `dsl/std/runtime/bin_shims/README.md` | **✗ GAP** |
+| Task / WorkItem / Workflow | Domain-specific types in `dsl/gunbc/workflow/types.dag` (`ImplementationTask`, `TrackedIssue`, `IssueLifecycleStage`, `StageOutcome`) | `dsl/gunbc/workflow/types.dag:46-194` | **OVERLAP — see §4** |
+
+---
+
+## §4. Workflow domain overlap — significant finding
+
+The audit surfaced an existing workflow type system in `dsl/gunbc/workflow/types.dag` (~340 lines, gunbc-domain):
+
+| Type | Lines | Decomp-algebra analog |
+|---|---|---|
+| `ImplementationTask { title, description, file_paths?, dependencies?, done: Bool }` | 106-112 | Leaf-mode Node |
+| `IssueLifecycleStage = Idea \| Design \| DesignReview \| Accepted \| Implementing \| CodeReview \| Testing \| Done \| TerminalFailed` | 46-54 | State-machine-residue parallel to Mode |
+| `TrackedIssue { id, title, body, stage, url?, author?, labels, created_at?, updated_at? }` | 57-67 | Composite Node with stage tag |
+| `StageOutcome { run_key, stage, status, payload?, error?, attempt_count, retry_budget_remaining, ... }` | 183-194 | Operation outcome / execution receipt |
+| `AuditEntry { timestamp, actor, action, entity_type, entity_id, before?, after? }` | 327-335 | Single audit-log event |
+| `Signal { signal_type, idempotency_key, payload, produced_at, consumed_at? }` | 245-250 | Idempotent operation event |
+
+These types pre-date the decomposition-algebra work and overlap with it. The key question for this scoping doc:
+
+**Do the workflow types REPLACE the decomp-algebra carriers, EXTEND them, or DISSOLVE INTO them?**
+
+**Proposed answer**: **DISSOLVE INTO**.
+
+`IssueLifecycleStage` is a 9-state lifecycle enum that should dissolve into the decomp-algebra's structural Mode + emergent closure rules. The decomp-algebra is MORE PRIMITIVE: it expresses the same semantics structurally rather than as labeled transitions. Specifically:
+- `Idea` / `Design` / `DesignReview` / `Accepted` → pre-decomposition modes (NULL or composite-with-no-children-yet)
+- `Implementing` → composite-with-open-children OR leaf-in-progress
+- `CodeReview` / `Testing` → composite-with-children-in-witness-collection
+- `Done` → closed_at set (canCloseNode passed)
+- `TerminalFailed` → closed_at set with failure witness (bucket-drained with `failure_note`)
+
+`ImplementationTask.done: Bool` IS the leaf-Mode case. `TrackedIssue.stage` collapses into the projection `currentMode: NodeId → Mode`.
+
+`AuditEntry` becomes the per-event payload inside the new `EventLog<NodeOperation>` primitive (Gap 1 from §5).
+
+`StageOutcome.status` collapses into Operation outcome (already part of operation algebra).
+
+`Signal` (idempotent event) collapses into the audit-log-position model — idempotency-key becomes "log-position-or-higher matches."
+
+This is a textbook coproduct-dissolution at C-checkpoint: `IssueLifecycleStage = Idea | Design | ... | Done` is a coordinate-flat encoding of a state-machine; the structural form is `Node { mode, closed_at?, ...children, audit_log }` where stage is derived. Per `feedback_checkpoint_dissolution_default.md`: at C-checkpoints, dissolution is default.
+
+---
+
+## §5. Four gaps as extension proposals
+
+### Gap 1 — EventLog<T> primitive
+
+**Need**: replay-as-truth model. Current node state is a projection over the audit log; closure is `canCloseNode(replay(log_at(now)))`.
+
+**Sketch**:
 ```
-type Node {
-  claim: Claim
-  decomposition: Decomposition?    // None = leaf
-  witnesses: List<Witness>
+type EventLog<T> {
+  events: List<TimestampedEvent<T>>
+  // List has monotonic timestamp invariant per event
+}
+
+type TimestampedEvent<T> {
+  position: MonotonicSeq   // strictly increasing
+  timestamp: Timestamp
+  payload: T
 }
 ```
 
-A node is the atomic unit of the DAG. Carries its agreed claim, optional decomposition into children, and witnesses supporting the claim.
+**Algebra**: `EventLog<T>` forms a `FreeMonoid<TimestampedEvent<T>>` under append (already in `dsl/std/algebra.dag:390`). Replay is `fold` (already in `IterationPrimitive`).
 
-### 2.2 `Claim` — intersubjective meaning
+**Consequences if landed**:
+- `node_close_refused` event in PR #1195 becomes structurally emitted via `EventLog<NodeOperation>`, not hand-implemented logging call
+- Stale-RC parser bug class **dissolves**: review-tally is `latest_per_provider_at_HEAD = fold(log, by_provider, take_latest_for_current_HEAD)`. Old-SHA RC is structurally not-at-HEAD.
+- Cutoff timestamp (PR #1192) becomes `log_position` instead of `dashboard_migrations.created_at`
 
+### Gap 2 — Lens<A,B> type
+
+**Need**: first-class "view-with-bidirectional-update" carrier. The algebra IS a lens over event-log → node-graph state. `canCloseNode` is a lens-projection.
+
+**Sketch**:
 ```
-type Claim {
-  text: String                     // prose statement: "a C compiler"
-  parties: Set<Party>              // who has attested this claim's meaning
-  evidence_for_match: List<Evidence>  // why the parties believe the claim holds
+type Lens<S, A> {
+  view: fn(S) -> A
+  update: fn(A, S) -> S
 }
 ```
 
-A claim is meaningful only relative to the parties that have attested to its meaning. The rock-vs-compiler case is a meta-failure: two parties hold different `meaning(Claim.text)`, so the claim's identity is itself contested. Decomposition can only proceed when the **root-asker** accepts the claim; other parties may trigger walk-back if their meaning of the claim diverges from the root-asker's.
+**Algebra**: lenses compose (`Lens<A,B>` × `Lens<B,C>` → `Lens<A,C>`). Already informal in gunbc; first-class type makes composition explicit.
 
-### 2.3 `Decomposition` — the algebraic statement
+**Consequences**:
+- "Affected-set lens" (PR #2713) gets a proper carrier
+- `currentMode: Lens<EventLog<NodeOperation>, Mode>` makes mode derived, not stored
+- "Mode field on node row" collapses into "Mode lens projection" — that's the structural dissolution receipt for `Mode` open enum
 
+### Gap 3 — Bounded multiplicity
+
+**Need**: bucket-mode wants "0..N children with semantic-remainder property." `Cardinality = Required | Optional` is too coarse.
+
+**Sketch**:
 ```
-type Decomposition {
-  parent: Node
-  children: List<Node>
-  shares: List<Share>              // c_i for each child; intersubjective; sum = 1
-  receipt: BalanceReceipt          // audit trail of "why we believe coverage"
-}
-
-type Share {
-  child_index: Int
-  coefficient: Rational            // c_i ∈ (0, 1]
-}
-
-type BalanceReceipt {
-  attesting_parties: Set<Party>
-  attestation_text: String         // "these N children cover all of P, per X/Y/Z"
-  witnesses: List<Witness>         // optional structural witnesses (integration tests, etc.)
+type Bounded<N: Nat> {
+  min: Nat
+  max: Optional<Nat>   // None = unbounded
+  current_count: Nat
 }
 ```
 
-The `shares` are NOT effort-weights or priority-weights. They are the parties' agreed structural shares: "this much of P's meaning is held by this child." Coefficients are intersubjective declarations, not measurements. They sum to 1 by construction.
+OR — reuse `SetCardinality` from `dsl/std/termination.dag:198` if it generalizes.
 
-### 2.4 `Witness` — evidence that a claim holds
+**Lower priority** than Gaps 1+2 — workable with current List<T> for now.
 
+### Gap 4 — Unified Witness/Receipt
+
+**Need**: drain witness, replan reason, escalate debt-string, operator-override attestation all share structure but are currently String fields.
+
+**Sketch**:
 ```
-type Witness =
-    IntegrationTest { name: String, passes: Bool }
-  | ProseAttestation { party: Party, text: String, timestamp: Timestamp }
-  | StructuralLens { lens_name: String, computation: LensComputation }
-```
-
-Three kinds, ordered by structural strength (`StructuralLens` strongest, `ProseAttestation` weakest). Gunbc-discipline preference: `StructuralLens > IntegrationTest > ProseAttestation`. Prose alone is the weakest receipt and most failure-prone.
-
-### 2.5 `WalkBackEvent` — the procedure encoded
-
-```
-type WalkBackEvent {
-  trigger_node: Node
-  trigger_kind: AlgebraicImbalance | ClaimContradiction
-  triggering_party: Party
-  visited_ancestors: List<Node>
-  resolution: WalkBackResolution
+type Witness {
+  author: SessionId
+  text: String
+  timestamp: Timestamp
+  evidence: List<Evidence>
 }
 
-type WalkBackResolution =
-    StableAncestor(Node)             // re-decompose subtree below this node
-  | RootContested(Node, Party)       // root claim itself disputed; escalate to root-asker
+type Evidence =
+    StructuralLens { lens_name, projection_result }
+  | IntegrationTest { name, passes: Bool }
+  | ProseAttestation { text }
 ```
+
+**Lower priority** — small extension, can land alongside Phase 1 substrate.
 
 ---
 
-## §3. Procedure: walk-back algorithm
+## §6. Operations as effects
 
+Six operations (`declare` / `decompose` / `drain` / `replan` / `escalate` / `pause`) are **graph mutations** on the typed node-graph.
+
+**Sketch**:
 ```
-function walk_back(trigger: Node, party: Party, kind: TriggerKind) -> WalkBackResolution:
-  current = trigger
-  visited = []
-
-  while not is_root(current):
-    parent = parent_of(current)
-    visited.append(parent)
-
-    # Algebraic check: do parent's children still sum to parent's claim?
-    if not children_balance(parent):
-      current = parent
-      continue
-
-    # Intersubjective check: does the triggering party still agree with parent's claim?
-    if not parties_agree(parent.claim, party):
-      current = parent
-      continue
-
-    # Both checks pass at parent — found the stable ancestor.
-    return StableAncestor(parent)
-
-  # Walked to root without finding stability.
-  return RootContested(current, party)
+type Operation =
+    Declare { node: NodeId, mode: Mode, attestation: Witness }
+  | Decompose { parent: NodeId, children: List<Node>, attestation: Witness }
+  | Drain { bucket: NodeId, witness: Witness }
+  | Replan { node: NodeId, reason: Witness }
+  | Escalate { from: NodeId, to_parent: NodeId, debt: Witness }
+  | Pause { node: NodeId, reason: Witness }
+  | WitnessedOverride { rule: ClosureRule, witness: Witness }   // force: true
 ```
 
-**Resolution (post-walk-back)**:
+Each operation is a **pure function** `(EventLog<Operation>, Operation) → EventLog<Operation>` (append). Graph state is `state: EventLog → NodeGraph` (projection lens).
 
-- **`StableAncestor(A)`**: A is the rebalance point. Re-decompose the subtree rooted at A with the new understanding. All affected parties must re-attest the new `Decomposition`. The children below A are invalidated until the new decomposition is in place.
-- **`RootContested(root, party)`**: the root claim's meaning is itself disputed. Surface to the root-asker (operator). Either (a) party adjusts their meaning to match the root-asker's, or (b) root-asker re-states the root claim. No work below the root can proceed until resolution.
+Composition preserves invariants: `canCloseNode(state(log + op)) ≥ canCloseNode(state(log))` in stability sense (closure decisions never silently regress).
+
+`WitnessedOverride` is the structurally-modeled `force: true` from PR #1195. It's a typed operation, not a special-case API flag.
 
 ---
 
-## §4. Worked example — PR #2745 misread (2026-05-12)
+## §7. Dissolution receipts
 
-Live case study. The walk-back protocol applied retroactively to a real recent contradiction.
+### `Mode = Leaf | Composite | Bucket | NULL` — 🟡 MIXED
 
-### 4.1 Decomposition DAG (implicit, as it stood)
+**Dissolution trigger**: when `Mode` becomes derivable from graph state.
 
-```
-Root: operator intent "T-WAD FULL R3-close" (per operator directive 2026-05-12)
-├── PM scope doc (PR #2744 §0 criteria 1-5)
-│   ├── Criterion 3: "WorkflowRuntime toggle — WorkflowRuntime + project_github_actions in gunbc-substrate"
-│   │   ├── §1.8 gate 99: workflow_runtime_open_enum_landed
-│   │   ├── §1.8 gate 100: project_github_actions_landed
-│   │   └── WI-2 brief: NEW file dsl/gunbc/ci_emission.dag declaring enum + signature + Practice 4 receipt
-│   │       └── cool-carp-720 worker → PR #2745
-│   └── ... (other criteria, omitted)
-└── ... (other Mgr lanes, omitted)
-```
+**Derivation candidates**:
+- `Leaf` = node has no children AND no decomposition declared
+- `Composite` = node has ≥1 child OR explicit composite declaration
+- `Bucket` = node has explicit `is_remainder` marker + bound drain rule
+- `NULL` = pre-cutoff (grandfathered; dissolves entirely when all grandfathered nodes close)
 
-Shares (operator-attested at root): `T-WAD = ⅖·Criterion1 + ⅕·Criterion2 + ⅕·Criterion3 + ⅒·Criterion4 + ⅒·Criterion5` (illustrative; actual shares are intersubjective).
+If Gap 2 (Lens<A,B>) lands, Mode collapses from stored field → lens projection. The `mode_declared_at` audit becomes a tag on the lens result (provenance, not state).
 
-### 4.2 The contradiction
+### `Operation = Declare | Decompose | ... | WitnessedOverride` — 🟢 TERMINAL
 
-At ~15:18Z, PM (deep-wolf-155) audited substrate state post-PR-#2745-merge and found:
-- WI-2 brief claim: PR #2745 will declare `WorkflowRuntime` enum + `project_github_actions` signature in `dsl/gunbc/ci_emission.dag`
-- Actual delivery: PR #2745 created `dsl/extdeps/github/ci.dag` (platform substrate for workflow file location, with Practice 4 receipts) + modifications to `actions.dag` + comment additions to `dsl/gunbc/ci.dag`. **`dsl/gunbc/ci_emission.dag` was never authored.**
+Closed sum over the friendly-CLI vocabulary; payload is structural. No dissolution proposed — each variant is structurally distinct (different effect shape per `EffectShape` mapping).
 
-**Trigger**: Claim contradiction at the cool-carp-720 PR #2745 node. Brief claim said deliverable X; reviewer-audit said delivery was Y; X ≠ Y.
+### `Witness` — 🟡 MIXED → 🟢 TERMINAL pending Evidence enum closure
 
-### 4.3 Walk-back trace
-
-```
-Start: PR #2745 node (claim: "delivers WI-2 substrate")
-  → Check parent (WI-2 brief node):
-       claim: "NEW file dsl/gunbc/ci_emission.dag with WorkflowRuntime + project_github_actions"
-       Does this claim still hold? YES (brief is unchanged; meaning intact)
-       Does PR #2745 (child) balance to this claim? NO (delivery ≠ brief)
-       → STABLE ANCESTOR found: WI-2 brief node.
-
-Resolution: re-decompose subtree below WI-2 brief. cool-carp-720 archived; original WI-2 scope is now first-in-queue for warm-wolf-698's lane (substrate reattempt).
-```
-
-### 4.4 What the procedure caught vs. what prose-driven workflow caught
-
-- Prose-driven (actual): PM made a *wrong claim* to Director ("gates 99 + 100 may close via PR #2745"); audited only after Director questioned; grep-discovered the gap; surfaced as PM execution error.
-- Procedure-driven (hypothetical): when PR #2745 closed, the algebra check at WI-2-brief-node would have flagged "children's deliverables (PR #2745's files) do not include the claimed `dsl/gunbc/ci_emission.dag`" — gap visible structurally without PM audit.
-
-The procedure surfaces the gap **at PR-close time**, not at audit-time. Saves the wrong-claim cycle.
-
-### 4.5 Cost of the procedure
-
-For this case, the algebra requires:
-- WI-2 brief node explicitly lists `dsl/gunbc/ci_emission.dag` as a delivery item
-- PR #2745 close-event triggers an algebra check: do delivered files cover the listed deliverables?
-- Mismatch raises a `WalkBackEvent` automatically
-
-This is structurally enforceable — file-list intersection is a `StructuralLens`. Strongest witness class.
+When `Evidence` enum (StructuralLens / IntegrationTest / ProseAttestation) is locked, Witness becomes terminal. Strength ordering applies: `StructuralLens > IntegrationTest > ProseAttestation`.
 
 ---
 
-## §5. Application sketch — dashboard comms as decomposition DAG
+## §8. Cost-of-change contract
 
-(High-level; iteration with operator expected.)
+**Adding a new Mode variant** (e.g. `Periodic`, `Replicated`) should touch **exactly 1 file**: `dsl/std/process_algebra.dag` (or wherever Phase 1 lands).
 
-The PM↔Mgr↔Worker dashboard messages we already exchange are *implicit walk-back signals*. Each is a triggering event for some `WalkBackEvent`. Examples:
+Derived emissions:
+- CLI vocabulary (`dashboard-ops open-task --periodic`) — derived from `Mode` enum projection
+- REST endpoint validation (`POST /api/nodes/:id/declare { mode: 'periodic' }`) — derived from `Mode` schema projection
+- SQL `CHECK IN (...)` constraint — derived from `Mode` enum coordinate dissolution
+- Audit-event variant — derived from `Operation` enum payload
 
-| Today (prose) | Decomposition-algebra mapping |
-|---|---|
-| Reviewer BLOCKING on PR | Trigger at PR node; claim contradiction or algebraic imbalance |
-| Worker STOP/PING to Mgr | Trigger at worker brief node; "I can't satisfy this claim" |
-| Mgr "scope mismatch" to PM | Trigger at scope doc node; "brief children don't sum to scope" |
-| PM correction to Director | Trigger at scope-doc-claim node, walks back to operator-intent root |
-| Operator BLOCKING on PR thread | Trigger anywhere; root-party walk-back authority |
+Verification approach: a test that asserts `count(Mode variants) = count(CLI declare flags) = count(SQL CHECK values) = count(REST schema enum values)`. If hand-edit required anywhere, cost-of-change > 1 — failure.
 
-If dashboard comms encoded the decomposition DAG explicitly, each message would carry:
-- The node it triggers on
-- The claim it disputes
-- The visited-ancestor trail (after walk-back resolves)
-
-This would let us **structurally trace** the cascade replanning across sessions, instead of relying on prose narratives. The dashboard's existing message log + work-item graph becomes the decomposition DAG.
+This is the same shape as `EmissionTarget = YamlStatic | BinaryShim` deciding `project_github_actions` arm dispatch in T-WAD substrate.
 
 ---
 
-## §6. Open questions for iteration
+## §9. Phase 1 substrate-file outline
 
-1. **Coefficient semantics** — confirmed by operator as balance-enforcers (not effort weights). But how strictly to enforce sum-to-1? Approximate (parties just declare shares ad-hoc) or hard (rational arithmetic checked)? Suggest hard for `StructuralLens` witnesses, approximate for `ProseAttestation`.
-2. **Claim equivalence** — when do two parties' interpretations of a claim count as "agreeing"? Same text suffices? Same evidence-for-match required? In gunbc terms, this is whether `Claim.text` is opaque-string (rejected per `feedback_opaque_strings_attract_heuristics`) or a structural composition over typed primitives.
-3. **Walk-back termination at root** — what does "root-asker" mean operationally? For our project: operator (briansrls). For substrate-level decompositions: the relevant Mgr / Director. Need to confirm the hierarchy explicitly.
-4. **Cost-of-rebalance** — the user noted that walk-back forces re-decomposition cascades. How does the algebra encode the *cost* of a rebalance? Cost lens analog: every `WalkBackEvent` has a cost = `Σ work_undone_below(stable_ancestor)`. This could become a `RebalanceCost` dimension parallel to `SymbolicCost`.
-5. **Implementation surface** — start as prose discipline in CLAUDE.md / a `feedback_decomposition_algebra` memory? Or skip straight to a `.dag` model in `dsl/std/`? Suggest prose discipline first to validate the procedure on N=3-5 real cases (PR #2745 + EmissionTarget rename + others); then formalize as `.dag` lens.
+`dsl/std/process_algebra.dag` (proposed; new file):
+
+```
+// Process algebra — workflow planning/replanning as composition of typed
+// operations on a node-graph. Source authority for ctrl/ planning state.
+//
+// Per feedback_lenses_not_passes.md: this substrate is a lens over event-log,
+// not a heuristic pass. Current state is a projection of the audit log; closure
+// is canCloseNode applied to the projection.
+
+// === Mode (open enum, Practice 4 MIXED) ===
+type Mode = Leaf | Composite | Bucket | NULL_TRANSITIONAL
+  // 🟡 MIXED — dissolution trigger: when Lens<EventLog, Mode> lands,
+  // Mode collapses from stored field → lens projection. NULL dissolves
+  // entirely when all grandfathered nodes (pre-cutoff) close.
+
+// === Witness ===
+type Witness {
+  author: SessionId
+  text: String
+  timestamp: Timestamp
+  evidence: List<Evidence>
+}
+
+type Evidence =                    // 🟡 MIXED — will become TERMINAL when locked
+    StructuralLens { lens_name: String }
+  | IntegrationTest { name: String, passes: Bool }
+  | ProseAttestation { text: String }
+
+// === Operation (closed sum, TERMINAL) ===
+type Operation =                   // 🟢 TERMINAL
+    Declare { node: NodeId, mode: Mode, attestation: Witness }
+  | Decompose { parent: NodeId, children: List<NodeId>, attestation: Witness }
+  | Drain { bucket: NodeId, witness: Witness }
+  | Replan { node: NodeId, reason: Witness }
+  | Escalate { from: NodeId, to_parent: NodeId, debt: Witness }
+  | Pause { node: NodeId, reason: Witness }
+  | WitnessedOverride { rule: ClosureRule, witness: Witness }
+
+// === EventLog<T> primitive (Gap 1) ===
+type EventLog<T> = FreeMonoid<TimestampedEvent<T>>
+
+type TimestampedEvent<T> {
+  position: MonotonicSeq
+  timestamp: Timestamp
+  payload: T
+}
+
+// === Closure rule (lens projection) ===
+type CloseDecision =
+    OK
+  | NotFound
+  | AlreadyClosed
+  | ModeNotDeclared
+  | BucketNotDrained
+  | CompositeHasOpenChildren
+
+projection canCloseNode(
+  graph: NodeGraph,
+  node_id: NodeId,
+  cutoff: Cutoff
+) -> CloseDecision
+
+// === Graph projection over event log ===
+projection state(log: EventLog<Operation>) -> NodeGraph
+
+projection currentMode(
+  graph: NodeGraph,
+  node_id: NodeId
+) -> Mode    // derived, not stored
+```
+
+This is ~50 lines of substrate. CLI / REST / SQL / audit emissions derive.
 
 ---
 
-## §7. Next step
+## §10. First-cut process to migrate
 
-Validate the procedure on more recent cases:
-- ✓ PR #2745 misread (§4 above)
-- TODO: EmissionTarget rename cascade — walk-back from operator BLOCKING at PR #2749 :666 (post-merge name collision) through SELF_HOSTING.md authority back to substrate-shape ratification
-- TODO: PR #2744 cascade BLOCKINGs (PythonShim asymmetry; dissolution sketch; absent option) — each is a walk-back trigger; algebra would have caught each at brief-authoring time
+**Recommendation: review-verdict-parser** (today's pain).
 
-If the procedure surfaces the gap structurally in all 3-5 cases, formalize as `.dag` lens + integrate into dashboard comms.
+**Why**:
+- 7 parser-class operator-tier surfaces in ~8h validated the cost of the heuristic-pass model (per `feedback_lenses_not_passes.md`)
+- Migration is well-bounded: define `ReviewVerdict = Approve | RequestChanges(findings) | Comment` at reviewer-output boundary; review-tally becomes `latest_per_provider_at_HEAD` lens over `EventLog<ReviewEvent>`
+- Self-validating: when parser-lag disappears, the substrate works
+
+**Alternative: the decomposition algebra itself** (the ctrl PRs #1192-#1197).
+
+- Larger scope (replaces an in-flight TS implementation)
+- But more strategic: every other ctrl/ migration consumes the algebra
+- Requires Phase 3 emission targets (HTTP REST + SQL) before cut-over
+
+**Suggested ordering**: review-verdict-parser FIRST (proves substrate emission patterns; small win), decomposition algebra SECOND (replaces the foundational TS-side implementation).
+
+---
+
+## §11. Open questions
+
+1. **Workflow types dissolution scope** — do we dissolve `IssueLifecycleStage` / `ImplementationTask` / `TrackedIssue` etc. fully into the decomp-algebra, or keep them as gunbc-domain refinements on top? Proposed: dissolve, with the existing types deprecated and removed once consumers migrate. Operator confirm.
+
+2. **Home placement** — `dsl/std/process_algebra.dag` (universal) vs `dsl/ctrl/process_algebra.dag` (application-specific). Operator confirmed compositional split: universal → `std/`. Confirmed.
+
+3. **Phase 2 CLI emission target** — Rust binary replaces bash `dashboard-ops`? Or stays as bash shim wrapping a generated client? Proposed: Rust binary (gunbc's strongest emission target), bash shim only for transition period.
+
+4. **Emission target priority** — HTTP REST first, SQL second, audit-event third? Or different order? Proposed: HTTP REST first (smallest), enables full Phase 4 cut-over without needing SQL emission yet (ctrl/ keeps SQL hand-authored short-term).
+
+5. **Force-override modeling** — `WitnessedOverride` as a structured Operation variant (this doc proposes) vs API flag (ctrl PR #1195 implements). Proposed: structured operation; eliminates the special-case "force: true" boolean flag.
+
+6. **Phase 1 substrate landing strategy** — single PR for `dsl/std/process_algebra.dag` skeleton (~50 lines), or stacked PRs per type (Mode → Operation → EventLog → projection)? Proposed: single bundled PR (algebra is one substrate; per `feedback_bundle_workstreams_per_pr.md`).
+
+---
+
+## §12. Cross-references
+
+- ctrl PRs #1192 / #1193 / #1195 / #1197 — decomposition-algebra implementation (TS-side authority until Phase 4 cut-over)
+- `dsl/std/algebra.dag:99-320` — algebraic structure precedent (Magma / Semigroup / Monoid / Group / Ring / Field / FreeMonoid)
+- `dsl/std/computation.dag:133,192,246` — open-enum + Practice 4 dissolution receipt patterns (`SizeBound` / `CallPattern` / `IterationPrimitive`)
+- `dsl/std/effects.dag:71-76` — `EffectShape` closed sum (precedent for `Operation` shape)
+- `dsl/std/node.dag:55-196` — compiler-AST Node (recursive-type discipline; carrier reuses pattern, not concrete type)
+- `dsl/std/graph.dag:15-30` — `GraphEdge` (precedent for labeled edge types if Gap 7 advances)
+- `dsl/gunbc/workflow/types.dag` — pre-existing workflow types (dissolution scope per §4)
+- `dsl/gunbc/ci.dag:29-32` — projection-function pattern (`project_github_actions`); concrete implementation in flight via Slice 4
+- `docs/v3-modeling-analysis.md:217-229` — Practice 4 dissolution-receipt ledger rule
+- `INVARIANTS.md` P1 (single-authority), P2 (illegal-states-unrepresentable), P5 (Pure Bootstrap)
+- `MODELING.md` M9 (DFS the concept DAG before defining)
+- Memory `feedback_lenses_not_passes.md` — lenses over physics, not heuristic passes
+- Memory `feedback_coproduct_dissolution.md` — 4 dissolution patterns
+- Memory `feedback_checkpoint_dissolution_default.md` — at C-checkpoints, dissolution is default
+- Memory `feedback_construction_over_ratchets.md` — model first, violations dissolve
+
+---
+
+## §13. Validation case study (retained from prior draft)
+
+The walk-back protocol applied retroactively to PR #2745 misread (2026-05-12) demonstrates the algebra catches contradictions structurally. See [previous draft §4 in git history at d534fd40d](../docs/design-decomposition-algebra.md) for the worked example; the key claim — algebra surfaces gap at PR-close time, not at audit-time — remains valid under the structural substrate proposed in this doc.
+
+The procedural walk-back algorithm (prior §3 of d534fd40d) becomes the `replan` operation in the structural substrate (§6). `WalkBackEvent` becomes a sequence of `Replan` operations in the event log. `StableAncestor` becomes the parent node where `Replan` was authored.
+
+---
+
+— Authored by deep-wolf-155 (PM) 2026-05-12 per operator directive for ctrl/ migration scoping. Replaces prior procedural draft (d534fd40d) with structural-integration shape; prior content retained as validation case study reference.
