@@ -60,7 +60,16 @@ Inventoried from `gh api repos/gunb-ai/ctrl/contents/` (2026-05-12). Major subsy
 
 ## §3. What can migrate NOW — comprehensive subsystem catalog
 
-**Strategy**: model **service contracts** (types + typed function signatures + pure helpers), NOT just types. Per `feedback_lenses_not_passes.md` + the existing demo `research/market/viability/demos/agent-ctrl-session-dashboard/inbox_delivery_slice.dag` (which proves: `service InboxDeliverySlice { fn ... }` shape is workable today even without emission). The contract becomes authority; emission targets later replace the TS execution but the contract is the source-of-truth from PR-merge.
+**Strategy**: model **service contracts** (types + typed function signatures + pure helpers), NOT just types. Per `feedback_lenses_not_passes.md` + the existing demo `research/market/viability/demos/agent-ctrl-session-dashboard/inbox_delivery_slice.dag` (which proves: `service InboxDeliverySlice { fn ... }` shape is workable today even without emission).
+
+**Authority claim correction (post-codex inline BLOCKING #4 2026-05-12T19:08Z)**: per INVARIANTS P2, **declarations alone are staging, not landed authority**. A merged `.dag` model is 🟡 STAGED, NOT 🟢 AUTHORITY. Authority requires a generated consumer or emission target that exercises the substrate — until then the .dag file is "proposed shape pending realization." This is consistent with the existing `feedback_no_textual_enforcement_bridges.md` discipline (textual claims of authority don't substitute for structural enforcement).
+
+**What "staged" means concretely for a Phase 1.5 PR**:
+- The `.dag` file lands as a structurally-checked, compiler-validated artifact (verifiable structure)
+- It is NOT yet substrate authority for runtime behavior — the TS implementation in `ctrl/` remains authoritative until cut-over
+- The dissolution trigger that retires the staged state and fires authority: **emission target lands + parity test passes + cut-over PR deletes the TS file** (the trio from §6 convergence)
+
+The phased framing (Phase 1.5 + Phase 3 + Phase 4 in parallel) explicitly times the staged→authority transition per subsystem; no subsystem becomes authoritative until its full trio converges.
 
 **Total audit** (2026-05-12 via gh API on `gunb-ai/ctrl`):
 - 237 .mjs files in `scripts/session-dashboard/` organized into ~16 subsystems
