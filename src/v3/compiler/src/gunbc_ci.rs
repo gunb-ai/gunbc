@@ -26,7 +26,12 @@ use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 /// Structural mirror of `CIGate.id` in `dsl/gunbc/ci.dag`.
 pub type CiGateId = String;
 
-/// Mirror of `CIGate { blocking, … }` fields needed for selection.
+/// Structural mirror of `CIGate` in `dsl/gunbc/ci.dag`.
+///
+/// [`select_affected_gates`] consults only [`CiGateMeta::id`]. [`CiGateMeta::blocking`] is carried
+/// for **carrier parity** with the DSL record so BinaryShim / dispatch wiring can map rows without
+/// a forked struct; merge-blocking vs advisory semantics stay **outside** this selection substrate
+/// until a consumer reads the field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CiGateMeta {
     pub id: CiGateId,
