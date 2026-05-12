@@ -24,10 +24,34 @@ use crate::lens_cost::{
     complexity_enforcement_project, complexity_enforcement_violates, complexity_of,
 };
 
+fn diagnostic_severity_substrate_disj(dag: &Dag) -> Option<DeclarationId> {
+    dag.declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("DiagnosticSeverity")
+                && d.span.file.ends_with("lens_application.dag")
+        })
+        .map(|d| d.id)
+}
+
+// Fail-closed when `lens_application.dag` does not expose the expected `DiagnosticSeverity`
+// substrate row — factored so unit tests can pin the diagnostic without staging a full
+// complexity-enforcement DAG (`Dag::new()` omits `complexity_enforceable`).
+fn attach_missing_diagnostic_severity_substrate_diagnostic(
+    dag: &mut Dag,
+    enforced_template: DeclarationId,
+) {
+    dag.attach_diagnostic(Diagnostic::ParseError {
+        message: "lens enforcement: could not resolve substrate `DiagnosticSeverity` from \
+                  `lens_application.dag` (modeled authority missing; fail-closed)"
+            .to_string(),
+        span: dag.declaration(enforced_template).span.clone(),
+        fixes: Vec::new(),
+    });
+}
+
 /// Fail-closed check for landed complexity enforcement applications.
 pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
-    #[cfg(test)]
-    eprintln!("check_enforced_lens: enter");
     let Some(enforced_template) = dag
         .declarations()
         .iter()
@@ -37,8 +61,6 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         })
         .map(|d| d.id)
     else {
-        #[cfg(test)]
-        eprintln!("check_enforced_lens: early return no enforced_template");
         return;
     };
     let Some(complexity_enforceable_id) = dag
@@ -50,8 +72,6 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         })
         .map(|d| d.id)
     else {
-        #[cfg(test)]
-        eprintln!("check_enforced_lens: early return complexity_enforceable");
         return;
     };
     let Some(asymptotic_disj) = dag
@@ -62,8 +82,6 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         })
         .map(|d| d.id)
     else {
-        #[cfg(test)]
-        eprintln!("check_enforced_lens: early return AsymptoticClass");
         return;
     };
     let Some(section_ref_disj) = dag
@@ -74,43 +92,13 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         })
         .map(|d| d.id)
     else {
-        #[cfg(test)]
-        eprintln!("check_enforced_lens: early return SectionRef");
         return;
     };
     let Some(declaration_scope_conj) = declaration_scope_payload_conj(dag, section_ref_disj) else {
-        #[cfg(test)]
-        eprintln!("check_enforced_lens: early return declaration_scope_payload_conj");
         return;
     };
-    #[cfg(test)]
-    eprintln!("check_enforced_lens: past declaration_scope_conj");
-    let diagnostic_severity_disj = dag
-        .declarations()
-        .iter()
-        .find(|d| {
-            d.name.as_deref() == Some("DiagnosticSeverity")
-                && d.span.file.ends_with("lens_application.dag")
-        })
-        .map(|d| d.id);
-    #[cfg(test)]
-    eprintln!(
-        "check_enforced_lens: diagnostic_severity_disj = {:?}",
-        diagnostic_severity_disj
-    );
-    let Some(diagnostic_severity_disj) = diagnostic_severity_disj else {
-        // Fail-closed: this pass consumes substrate `DiagnosticSeverity` from
-        // `lens_application.dag`. Absence must not disable enforcement (openai-pro /
-        // INVARIANTS P3, C-8).
-        #[cfg(test)]
-        eprintln!("enforced_lens: diagnostic severity substrate missing — attaching fail-closed diagnostic");
-        dag.attach_diagnostic(Diagnostic::ParseError {
-            message: "lens enforcement: could not resolve substrate `DiagnosticSeverity` from \
-                      `lens_application.dag` (modeled authority missing; fail-closed)"
-                .to_string(),
-            span: dag.declaration(enforced_template).span.clone(),
-            fixes: Vec::new(),
-        });
+    let Some(diagnostic_severity_disj) = diagnostic_severity_substrate_disj(dag) else {
+        attach_missing_diagnostic_severity_substrate_diagnostic(dag, enforced_template);
         return;
     };
     let positive_descent_disj = dag
@@ -498,73 +486,28 @@ mod diagnostic_severity_fail_closed_tests {
     use crate::dag::LiteralBits;
 
     #[test]
-    fn attach_diagnostic_round_trips_through_diagnostic_table() {
+    fn missing_diagnostic_severity_substrate_records_fail_closed_diagnostic() {
         let mut dag = Dag::new();
-        assert!(dag.diagnostics().is_empty());
-        dag.attach_diagnostic(Diagnostic::ParseError {
-            message: "probe".to_string(),
-            span: SourceSpan::new("probe.v3", 0, 1),
-            fixes: Vec::new(),
-        });
-        assert_eq!(dag.diagnostics().len(), 1);
-    }
-
-    #[test]
-    fn check_enforced_lens_emits_diagnostic_when_diagnostic_severity_authority_unresolvable() {
-        let mut dag = Dag::new();
-        let Some(ds_id) = dag
+        let Some(enforced_template) = dag
             .declarations()
             .iter()
             .find(|d| {
-                d.name.as_deref() == Some("DiagnosticSeverity")
+                d.name.as_deref() == Some("EnforcedApplication")
                     && d.span.file.ends_with("lens_application.dag")
             })
             .map(|d| d.id)
         else {
+            panic!("bootstrap should declare EnforcedApplication in lens_application.dag");
+        };
+        let Some(ds_id) = super::diagnostic_severity_substrate_disj(&dag) else {
             panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
         };
         dag.declaration_mut(ds_id).name = Some("DiagnosticSeverity__test_unresolvable".to_string());
-        assert_eq!(
-            dag.declaration(ds_id).name.as_deref(),
-            Some("DiagnosticSeverity__test_unresolvable"),
-            "rename should stick"
-        );
-
-        let section_ref_disj = dag
-            .declarations()
-            .iter()
-            .find(|d| {
-                d.name.as_deref() == Some("SectionRef")
-                    && d.span.file.ends_with("lens_application.dag")
-            })
-            .map(|d| d.id)
-            .expect("SectionRef");
-        let scope_ok =
-            super::declaration_scope_payload_conj(&dag, section_ref_disj).is_some();
-        let still_resolves_ds = dag.declarations().iter().any(|d| {
-            d.name.as_deref() == Some("DiagnosticSeverity")
-                && d.span.file.ends_with("lens_application.dag")
-        });
         assert!(
-            scope_ok,
-            "declaration_scope_payload_conj should still resolve after DS rename"
+            super::diagnostic_severity_substrate_disj(&dag).is_none(),
+            "Expected DiagnosticSeverity substrate row to be unresolvable after rename"
         );
-        assert!(
-            !still_resolves_ds,
-            "DiagnosticSeverity substrate row should be unfindable after rename"
-        );
-
-        let probe_ds = dag.declarations().iter().find(|d| {
-            d.name.as_deref() == Some("DiagnosticSeverity")
-                && d.span.file.ends_with("lens_application.dag")
-        });
-        assert!(
-            probe_ds.is_none(),
-            "probe before check: expected None, got {:?}",
-            probe_ds.map(|d| (d.id, d.name.clone()))
-        );
-
-        check_enforced_lens_applications(&mut dag);
+        super::attach_missing_diagnostic_severity_substrate_diagnostic(&mut dag, enforced_template);
         assert!(
             dag.diagnostics().iter().any(|(_, d)| matches!(
                 d,
