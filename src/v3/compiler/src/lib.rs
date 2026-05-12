@@ -5179,7 +5179,14 @@ pub mod lens_parallelism {
         include!("lens_parallelism_generated.rs");
     }
 
-    pub use generated::{analyze_parallelism, loop_iteration_parallel_emission_indicator};
+    pub use generated::analyze_parallelism;
+
+    pub fn loop_iteration_parallel_emission_indicator(
+        dag: &crate::dag::Dag,
+        workflow_root: crate::dag::NodeId,
+    ) -> i64 {
+        generated::loop_iteration_parallel_emission_indicator(dag, workflow_root)
+    }
 }
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,

@@ -125,7 +125,7 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
     }
 }
 
-pub fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -> i64 {
+pub(super) fn loop_iteration_parallel_emission_indicator(p0: &Dag, p1: NodeId) -> i64 {
     let Some(workflow) = p0.lane2_workflow_effect_at(&p1) else {
         return 0;
     };
