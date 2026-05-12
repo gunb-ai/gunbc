@@ -22,6 +22,7 @@
 module std.verification
 
 import std.serialization { DeclarationRef }
+import std.types { Milliseconds }
 
 // The predicate form of an assertion.
 // Each variant corresponds to a standard verification predicate
@@ -48,12 +49,12 @@ type TestClaim {
 // cost for the test node itself, so #102 can derive exemption status from
 // substrate instead of `scripts/slow-test-exemptions.txt`.
 //
-// Legacy dsl projection note: this tree does not carry the v3
-// `Dimension<Unit, Carrier>` substrate yet. The bootstrap-local v3 authority
-// (`src/v3/std/verification.dag`) is the convergence shape and wraps both
-// values as `Dimension<TestExecutionCost, Int>`; these `_ms` fields are the
-// older dsl projection of that same fact, not a parallel cost algebra.
-type TestExecutionCost {}
+// Legacy dsl projection note: this tree does not carry T-WAD's v3
+// `TimingBudget` / `TimingMeasurement` / `Nanoseconds` substrate yet.
+// The bootstrap-local v3 authority (`src/v3/std/verification.dag`) is the
+// convergence shape. These `_ms` fields use the existing branded
+// non-negative `Milliseconds` carrier as the older dsl projection of that
+// same timing fact, not a parallel cost algebra.
 
 type TestNodeRef {
   decl: DeclarationRef
@@ -61,8 +62,8 @@ type TestNodeRef {
 
 type TestNodeCostDimension {
   node: TestNodeRef
-  budget_ms: Int
-  measured_ms: Int
+  budget_ms: Milliseconds
+  measured_ms: Milliseconds
 }
 
 // A named test case — a conjunction of claims.

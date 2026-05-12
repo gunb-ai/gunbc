@@ -290,8 +290,8 @@ data claim_cost: TestClaim = {
 
 data claim_cost_dimension: TestNodeCostDimension = {
   node: { decl: claim_cost },
-  budget: { value: 2000 },
-  measured: { value: 17 }
+  budget: { max: { count: 2000000000 } },
+  measured: Observed { duration: { count: 17000000 } }
 }
 
 data suite: TestSuite = {
@@ -314,20 +314,28 @@ data suite: TestSuite = {
         .iter()
         .find(|(label, _)| label == "budget")
         .map(|(_, value)| value)
-        .expect("budget dimension field should be present");
+        .expect("budget timing field should be present");
     let FieldValue::Record(budget_fields) = budget else {
-        panic!("budget should lower as a Dimension record, got {budget:?}");
+        panic!("budget should lower as a TimingBudget record, got {budget:?}");
+    };
+    let max = budget_fields
+        .iter()
+        .find(|(label, _)| label == "max")
+        .map(|(_, value)| value)
+        .expect("TimingBudget.max should be present");
+    let FieldValue::Record(max_fields) = max else {
+        panic!("TimingBudget.max should lower as a Nanoseconds record, got {max:?}");
     };
     assert!(
-        budget_fields.iter().any(|(label, value)| {
-            label == "value"
+        max_fields.iter().any(|(label, value)| {
+            label == "count"
                 && matches!(
                     value,
                     FieldValue::Literal(LiteralBits::Int(bits))
-                    if bits == "2000"
+                    if bits == "2000000000"
                 )
         }),
-        "budget Dimension<TestExecutionCost, Int> should retain its value field"
+        "budget TimingBudget.max Nanoseconds should retain its count field"
     );
 
     let results = TestRunner::new(&dag).run_suite("suite");
