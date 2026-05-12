@@ -39,7 +39,7 @@ Each entry documents a finding initially enumerated as in-scope here but RETRACT
 **Companion docs**:
 - `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` — Cluster F (gates #81/#82/#83/#95)
 - `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md` — Cluster M (gates #84/#85/#86/#87 — **critical-path**)
-- `docs/briefs/r3-wave1-substrate-lane-retractions.md` — Substrate Mgr Wave-1 retraction audit-trail (S2/S4 detail)
+- `docs/briefs/r3-wave1-substrate-lane-retractions.md` — Substrate Mgr Wave-1 retraction audit-trail (S2/S4 detail; landing via PR #2782 fix-forward — not in tree until that PR merges). Until then, see PR #2782 review thread + codex BLOCKING #10431 + warm-wolf-698 internal-message msg_c6a5edde for the audit-trail content
 
 ---
 
