@@ -90,13 +90,13 @@ There is no stored `Status` value for §1.9 views. The Derived Status is always 
 Proposed §1.9 entry (post-(c-refined) canvas ratification per PR #2749; constituent gate-IDs reflect PM cascade renames including `ci_yml_deleted` → `ci_yml_hand_authority_dissolved`):
 
 ```
-| V1 | t_ci_wad_full_r3_close | T-CI-WAD | depends_on: #56, #<N1>, #<N2>, #<N3>, #<N4>, #<N5>, #<N6> | <DERIVED> | Brian-elevated to FULL R3-close scope 2026-05-12 per gunbc#846. Constituents: ci_workflow_modeled_as_dag + ci_yml_hand_authority_dissolved + emission_target_open_enum_landed + test_cost_dimension_landed + slow_test_exemptions_dissolved + project_github_actions_landed + ci_uses_affected_set_selection. |
+| V1 | t_ci_wad_full_r3_close | T-CI-WAD | depends_on: #56, #<N1>, #<N2>, #<N3>, #<N4>, #<N5>, #<N6> | <DERIVED> | Brian-elevated to FULL R3-close scope 2026-05-12 per gunbc#846. Constituents: ci_workflow_modeled_as_dag + ci_yml_hand_authority_dissolved + workflow_runtime_open_enum_landed + test_cost_dimension_landed + slow_test_exemptions_dissolved + project_github_actions_landed + ci_uses_affected_set_selection. |
 ```
 
 The 6 NEW constituent rows MUST be added to **§1.8** (not §1.9) with their canonical families per the existing §1.8 schema:
 
 - `ci_yml_hand_authority_dissolved` → state-check (PM cascade per PR #2744 commit 19a1d8dfc — file presence orthogonal to hand-authority dissolution)
-- `emission_target_open_enum_landed` → substrate-shape (gunbc-namespace per (c-refined))
+- `workflow_runtime_open_enum_landed` → substrate-shape (gunbc-namespace per (c-refined))
 - `test_cost_dimension_landed` → substrate-shape (verify row number against existing cost-dim work)
 - `slow_test_exemptions_dissolved` → state-check
 - `project_github_actions_landed` → substrate-shape (new; projection function in gunbc namespace per (c-refined))
