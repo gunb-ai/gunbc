@@ -20,6 +20,10 @@
 //! pulls in its sibling prerequisites (e.g. touching `lint` selects `l1-ratchet`, which
 //! forces `tests` because both parents are prerequisites of `l1-ratchet`). The returned
 //! order is a **topological sort** of that vertex set on the directed prerequisite subgraph.
+//!
+//! **Global carrier validity:** before expanding any touch seed, [`select_affected_gates`] requires
+//! the **entire** directed prerequisite graph on [`CiWorkflowDagInput::gates`] to be acyclic. A cycle
+//! confined to an unselected weak component must still fail closed (P3), not succeed in “narrow” mode.
 
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 
@@ -66,7 +70,7 @@ pub enum CiWorkflowDiff {
 
 // Practice 4 (coproduct checkpoint, `docs/modeling-discipline.md` §4):
 // 🟢 GREEN — terminal typed failure surface for [`select_affected_gates`]: malformed `CIWorkflowDag`
-// carrier vs non-acyclic directed prerequisites on the selected vertex set (no silent success).
+// carrier vs non-acyclic directed prerequisites (full roster graph and/or selected subset; no silent success).
 // Ledger: (1) fact placement — not split across consumers; this `Result` boundary owns the `Err`
 // coproduct. (2) variant-is-data — rejected; payloads differ structurally. (3) algebraic — not
 // `std/` refs. (4) dimensional — not one decomposed axis space; each variant is an irreducible
@@ -78,7 +82,9 @@ pub enum CiAffectedGatesError {
     DuplicateGateRosterId { id: CiGateId },
     /// `CIGateEdge` names a gate id not present in [`CiWorkflowDagInput::gates`] (violates single roster authority in `dsl/gunbc/ci.dag`).
     UnknownEdgeEndpoint { from: CiGateId, to: CiGateId },
-    /// The directed prerequisite subgraph on the selected vertex set is not a DAG (cycle or broken indegree accounting).
+    /// The directed prerequisite graph is not a DAG: either the **full** roster graph from
+    /// [`CiWorkflowDagInput::edges`] contains a cycle, or the selected vertex set’s induced subgraph
+    /// does (broken indegree accounting).
     NonAcyclicPrerequisiteGraph,
 }
 
@@ -97,8 +103,9 @@ pub enum CiAffectedGatesError {
 /// **Malformed carrier:** duplicate [`CiGateMeta::id`] values in [`CiWorkflowDagInput::gates`]
 /// yield [`CiAffectedGatesError::DuplicateGateRosterId`] (roster must be unique before any `HashSet`
 /// view so gates are not dropped silently). Any edge whose `from` or `to` is absent from that roster
-/// yields [`CiAffectedGatesError::UnknownEdgeEndpoint`]. A directed cycle on the selected prerequisite
-/// subgraph yields [`CiAffectedGatesError::NonAcyclicPrerequisiteGraph`] instead of fabricating a sort order.
+/// yields [`CiAffectedGatesError::UnknownEdgeEndpoint`]. Any directed cycle in the **full**
+/// prerequisite graph on the roster (not only the touch-selected component) yields
+/// [`CiAffectedGatesError::NonAcyclicPrerequisiteGraph`] instead of returning `Ok` in narrow mode.
 pub fn select_affected_gates(
     dag: &CiWorkflowDagInput,
     diff: &CiWorkflowDiff,
@@ -113,6 +120,10 @@ pub fn select_affected_gates(
             });
         }
     }
+
+    // Fail-closed on the whole carrier: a cycle in an unselected component must not yield `Ok`
+    // for a disjoint touch seed (codex / P3).
+    topo_sort_subset(dag, &known)?;
 
     let force_superset = match diff {
         CiWorkflowDiff::TouchAll => false,
@@ -378,6 +389,54 @@ mod tests {
         };
         assert_eq!(
             select_affected_gates(&dag, &CiWorkflowDiff::TouchAll),
+            Err(CiAffectedGatesError::NonAcyclicPrerequisiteGraph)
+        );
+    }
+
+    #[test]
+    fn select_affected_gates_rejects_global_cycle_even_when_touch_isolated() {
+        let dag = CiWorkflowDagInput {
+            gates: vec![
+                CiGateMeta {
+                    id: "a".into(),
+                    blocking: true,
+                },
+                CiGateMeta {
+                    id: "b".into(),
+                    blocking: true,
+                },
+                CiGateMeta {
+                    id: "c".into(),
+                    blocking: true,
+                },
+            ],
+            edges: vec![("a".into(), "b".into()), ("b".into(), "a".into())],
+        };
+        let diff = CiWorkflowDiff::TouchedGates(BTreeSet::from(["c".into()]));
+        assert_eq!(
+            select_affected_gates(&dag, &diff),
+            Err(CiAffectedGatesError::NonAcyclicPrerequisiteGraph)
+        );
+    }
+
+    #[test]
+    fn select_affected_gates_empty_touch_rejects_when_global_graph_has_cycle() {
+        let dag = CiWorkflowDagInput {
+            gates: vec![
+                CiGateMeta {
+                    id: "a".into(),
+                    blocking: true,
+                },
+                CiGateMeta {
+                    id: "b".into(),
+                    blocking: true,
+                },
+            ],
+            edges: vec![("a".into(), "b".into()), ("b".into(), "a".into())],
+        };
+        let diff = CiWorkflowDiff::TouchedGates(BTreeSet::new());
+        assert_eq!(
+            select_affected_gates(&dag, &diff),
             Err(CiAffectedGatesError::NonAcyclicPrerequisiteGraph)
         );
     }
