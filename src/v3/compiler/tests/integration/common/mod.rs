@@ -31,6 +31,7 @@ pub mod r1_gates_bridge;
 pub mod rust_comment_strip;
 pub mod substrate_receipts;
 pub mod symbolic_cost_countdown;
+pub mod symbolic_cost_verification_fixture;
 
 pub use cached_compile::{
     cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
@@ -41,6 +42,9 @@ pub use r1_gates_bridge::{
 };
 pub use rust_comment_strip::strip_rust_comments;
 pub use symbolic_cost_countdown::assert_recursive_countdown_linear_semantics;
+pub use symbolic_cost_verification_fixture::{
+    escape_v3_string_literal_content, symbolic_cost_as_v3_data_initializer,
+};
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
