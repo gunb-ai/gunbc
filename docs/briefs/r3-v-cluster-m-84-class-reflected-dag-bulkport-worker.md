@@ -18,6 +18,12 @@
 
 Migrate the **reflected-Dag structural assertion family** — Rust integration tests that observe structural facts (filename existence, std/ row authority, substrate carrier shape, bootstrap reflection) — to `.dag` TestClaim form so the assertion becomes data not code.
 
+Owned files/surfaces:
+- reflected/std/row-authority Rust tests under `src/v3/compiler/tests/integration/`
+- replacement `.dag` TestClaims under `src/v3/compiler/tests/dag/`
+- `ProgramGenerator` / `ProgramShape` / `QuantifiedTestClaim` / `SuiteClaim` consumers
+- `EXPECTED_HAND_AUTHORED_TEST` rows for each migrated file
+
 **Seed inventory (16 of estimated 25-30 entries; Mgr finalizes full list)** per Verification Mgr msg_755c3f43:
 
 Primary census comment blocks: `sg0_census_test.rs:370-378` (`cross_target_coverage_carrier_test`), `461-528` (lens/method/projection family), adjacent reflected/std rows at `622-632` + `659-667`.
@@ -76,6 +82,7 @@ Per Verification Mgr status pass (msg_755c3f43):
 
 The bulk-port PR-set is acceptable when:
 - `EXPECTED_HAND_AUTHORED_TEST` SG-0 census decreases by **N** (one per migrated entry; 25-30 for full class)
+- Same-PR SG-0 rule: each replacement `.dag` structural claim and census decrement land together.
 - Each migrated entry has a corresponding `.dag` `TestClaim` evaluating to the same Pass/Fail verdict as the original Rust assertion
 - Lane-Mgr (per-test-owning lane) signs off on behavioral fidelity in the PR
 - No new substrate carriers introduced
@@ -96,6 +103,7 @@ Escalate via dashboard-message to Verification Mgr if:
 - A `.dag` TestClaim cannot express the structural assertion (substrate gap)
 - A migration triggers behavioral drift (lane-Mgr signoff fails)
 - SG-0 census wouldn't decrease (net-zero or positive delta) — this means migration shape is wrong
+- The row resists cementing because a structural/compiler fix is required; route to D2 with the blocker named
 
 Do not push a workaround PR for any of these.
 
