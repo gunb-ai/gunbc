@@ -62,8 +62,10 @@ NEW file `dsl/gunbc/ci_emission.dag` declaring:
 Implement the `YamlStatic` arm body of `project_github_actions`:
 
 1. **Walk `CIWorkflowDag`** (the gate-dependency graph from PR #2736) — gates become Steps, edges become `Job.needs` ordering.
-2. **Emit a `Workflow` value** (the `extdeps.github.actions.Workflow` carrier) with:
-   - `name`, `on` triggers, jobs, env, permissions — derived from `CIWorkflowDag` content + structural defaults
+2. **Emit a `Workflow` value** (the `extdeps.github.actions.Workflow` carrier) — **strict single-authority derivation**: every `Workflow` / `Job` / `Step` field MUST come from a value present on the `CIWorkflowDag` input (or transitively reachable via an already-modeled `gunbc.ci.*` carrier such as `CIGate`). **No structural defaults, no fabricated values, no second source of truth.** If a target field on `Workflow` has no source in the input domain at authoring time:
+   - **STOP authoring.** Do NOT invent a default, hardcode a literal, or import a value from `.github/workflows/ci.yml`.
+   - Surface the carrier-gap to warm-wolf-698 (see §1 Phase B carrier-gap protocol below) — gap resolution is a hard prerequisite, not a side-channel.
+   - This applies in particular to: `name`, `on` triggers, `env`, `permissions`, and any per-`Job` / per-`Step` field whose value isn't carried by the input. **P2/P3 single-authority bar**: a `Workflow` value with any fabricated field violates INVARIANTS P2 (single authority) and P3 (no second source of truth) per codex review 10208 on PR #2762.
    - **18-site Expression-substrate consumption** per PR #2751 §5.5 (live canvas authority):
      - 17 string-container sites (Workflow.env, Job.name/if_condition/env/concurrency.group, RunStep.*, UsesStep.*, MatrixStrategy.dimensions/include/exclude)
      - 1 enum-extension site (Job.runner: RunnerSpec — scalar-expression case only via `ExpressionRunner { expr: Expression }`)
@@ -72,9 +74,12 @@ Implement the `YamlStatic` arm body of `project_github_actions`:
      - `DispatchInput.default` — carrier-split-BLOCKED per §6 Q#5
      - 9 typed-field HOLD sites — pending §6 Q#4 ratification
      - Array/object `runs-on` cases — pending §6 Q#6 carrier-split
-3. **Carrier-gap audit during authoring**: 4 candidate substrate-prereqs surfaced in WI-2 brief §Reference materials (Workflow.concurrency, PullRequestActivity.ReadyForReview, Push.paths-Optional, WorkflowPermissions.*-Optional). For each:
-   - If the gap is hit by the YamlStatic body emission, **DO NOT** land a substrate prereq in this PR — surface to warm-wolf-698 via internal message; substrate-prereq PRs are separate (bundle decision deferred).
-   - If the gap is NOT hit (the CIWorkflowDag instance for the current `.github/workflows/ci.yml` doesn't exercise that surface), note in PR body which gaps remain unaddressed.
+3. **Carrier-gap audit during authoring — STOP CONDITION**: 4 candidate substrate-prereqs are pre-surfaced in WI-2 brief §Reference materials (Workflow.concurrency, PullRequestActivity.ReadyForReview, Push.paths-Optional, WorkflowPermissions.*-Optional); additional gaps may surface during authoring. For each gap encountered:
+   - **STOP authoring this PR.** Do NOT continue the YamlStatic body with the gap unaddressed; do NOT land a substrate prereq inside this PR (separate substrate-prereq lane).
+   - Surface the gap to warm-wolf-698 via internal message: which carrier, which field, which CIWorkflowDag value source was missing, what `.github/workflows/ci.yml` semantics need it.
+   - **Wait for warm-wolf-698 resolution** — either (a) substrate-prereq PR lands in a separate lane and you rebase, (b) carrier-gap is judged out-of-scope-for-Slice-4 and the corresponding `.github/workflows/ci.yml` semantics get explicitly out-of-scoped + Slice 4 acceptance narrowed, or (c) brief is revised with explicit guidance.
+   - **Do NOT resume Slice 4 body authoring** until the gap is resolved by one of the three paths above. Continuing with a gap = fabricated authority = P2/P3 violation (codex review 10208).
+   - If the gap is NOT hit during authoring (the CIWorkflowDag instance for the current `.github/workflows/ci.yml` doesn't exercise that surface), explicitly note in PR body which pre-surfaced gaps remain unaddressed at landing time.
 4. **Acceptance**: deterministic YAML encoding **semantically equivalent** to current `.github/workflows/ci.yml`. Regression-guard byte-identity is to **fresh projection output**, NOT to legacy hand-authored YAML (internal byte-identity per PR #2744 / §3 Slice 4 framing). Field-ordering rules, indentation, list/scalar conventions: match current ci.yml.
 5. **BinaryShim arm body**: TODO-stubbed (Phase 5 lane handles).
 
