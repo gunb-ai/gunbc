@@ -2,7 +2,8 @@
 //!
 //! Structural acceptance for T-Workflow-As-Data Slice 2 timing-lens substrate
 //! (gunbc#1955): `TimingMeasurement`, `TimingObservationSet`,
-//! `WorkflowObservationAnchor`, and `TimingBudget` in `src/v3/std/timing_lens.dag`.
+//! `WorkflowObservationAnchor`, `TimingBudget`, and nominal `TimingLens` (`Lens<TimingMeasurement>`)
+//! in `src/v3/std/timing_lens.dag`.
 
 use std::collections::HashSet;
 
@@ -413,5 +414,41 @@ fn timing_measurement_iterate_fail_closed_on_observed_with_loop_bound() {
     assert!(
         !body.contains("Cardinality(_) => body") && !body.contains("Descent(_) => body"),
         "`timing_measurement_iterate` must not ignore `LoopBound` by returning `body` unchanged on `Observed`; got:\n{body}"
+    );
+}
+
+/// §1.8 gate #54 `timing_lens_carrier_landed`: `type TimingLens = Lens<TimingMeasurement>` is the
+/// substrate nominal for the parameterized lens surface (`docs/design-timing-lens.md` §1).
+#[test]
+fn timing_lens_carrier_landed_timing_lens_is_lens_instantiation() {
+    let dag = generated_full_bootstrap_dag();
+    let lens_template = dag
+        .declaration_by_name("Lens")
+        .expect("Lens template")
+        .id;
+    let timing_m = dag
+        .declaration_by_name("TimingMeasurement")
+        .expect("TimingMeasurement")
+        .id;
+    let timing_lens_ty = dag
+        .declaration_by_name("TimingLens")
+        .expect("TimingLens nominal")
+        .id;
+    let decl = dag.declaration(timing_lens_ty);
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &decl.connective
+    else {
+        panic!(
+            "TimingLens must be Lens<TimingMeasurement> instantiation, got {:?}",
+            decl.connective
+        );
+    };
+    assert_eq!(*template, lens_template, "TimingLens template");
+    assert_eq!(arguments.len(), 1, "Lens has one type parameter");
+    assert_eq!(
+        arguments[0].value, timing_m,
+        "TimingLens must instantiate Lens at TimingMeasurement"
     );
 }
