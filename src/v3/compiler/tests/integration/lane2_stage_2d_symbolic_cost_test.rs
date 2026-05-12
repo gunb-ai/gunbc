@@ -29,13 +29,18 @@ use v3_compiler::lens_cost_symbolic::{
 use crate::common::{assert_recursive_countdown_linear_semantics, cached_compile_to_dag};
 
 /// Shared `(source, file)` for the two recursive-countdown `budgeted_test!` bodies so
-/// `cached_compile_to_dag` amortizes cold bootstrap across sibling tests (Phase-0 ratchet).
+/// `cached_compile_to_dag` amortizes **duplicate** compile work when both tests run in one
+/// process. This is **not** a `TESTING.md` Phase-0 exemption dissolution receipt: the first
+/// caller still pays cold bootstrap, and libtest parallelism can inflate wall time — those
+/// tests stay listed in `scripts/slow-test-exemptions.txt` until a sole-filter
+/// `--report-time` ≤2000ms receipt exists (or gate #102 lands a structural cost ratchet).
 const LANE2D_COUNTDOWN_SOURCE: &str =
     "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)";
 const LANE2D_COUNTDOWN_FILE: &str = "lane2d_shared_countdown.v3";
 
-/// One compile for literal + scalar-op binds — avoids a second cold key for
-/// `transform_single_op_reports_constant` vs `value_reports_constant`.
+/// One compile for literal + scalar-op binds — avoids a second cold key when both tests run.
+/// Same caveat as the countdown shared-key pair: compile-cache sharing only; not a per-test wall
+/// ratchet receipt by itself.
 const LANE2D_LITERAL_AND_SCALAR_OP_SOURCE: &str = "let x = 1\nlet y = 1 + 2";
 const LANE2D_LITERAL_AND_SCALAR_OP_FILE: &str = "lane2d_literal_and_scalar_op.v3";
 
