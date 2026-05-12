@@ -51,7 +51,18 @@ Inventoried from `~/ctrl/research/market/viability/demos/c-compiler-in-dag/`:
 - `product.dag` — product type
 - `ssa_value.dag` — SSA value primitive
 
-**Promotion**: `dsl/extdeps/common/ir/` in gunbc per PLAN.md §"Bidirectional-extdeps reframe."
+**Promotion gate** (added per codex/operator BLOCKING 2026-05-12T20:19Z): wholesale move into `dsl/extdeps/common/ir/` risks parallel substrate for existing std primitives. Each of the 5 W0 files goes through a per-concept **M9 + extdeps-spec grounding gate** before promotion:
+
+1. **M9 DFS from `dsl/std/`** — for each primitive (bitvector / integer / array / product / ssa_value), DFS the existing std concept DAG. Where the concept already exists (`std.bit` / `std.integer` / `std.constructors.Product`), the W0 file MUST reuse-or-extend the std primitive rather than introduce a parallel carrier. Pure parallel-substrate promotion is forbidden.
+2. **Extdeps-spec citation** — for each primitive that is genuinely IR-domain (not reusable from std/), cite the external authority (e.g., LLVM IR language reference §"Type System" for bitvector / array; SSA spec for ssa_value) so the extdeps placement is grounded in an external-spec fact, not in research-folder convenience.
+3. **Decision matrix per file** (must be in the promotion PR description):
+   - `bitvector.dag` → likely **extend** `std.bit` (if std.bit covers single-bit only) or **reuse** if std.bit handles fixed-width. Spec: LLVM IR `iN` types.
+   - `integer.dag` → likely **reuse** `std.integer` (integer is a math primitive, not IR-specific). Spec: LLVM IR integer-types reference for any IR-specific narrowing.
+   - `array.dag` → **MUST preserve element cardinality** (LLVM array `[N x T]` is a fixed-size container; cardinality N is a load-bearing fact per INVARIANTS P2 facts-flow-forward). Concrete options: (1) reuse `FixedArray<T, N>` or `Vector<T, N>` if std has a cardinality-carrying container; (2) extend `List<T>` to carry an explicit cardinality field; (3) introduce a new cardinality-aware `LlvmArray<T, N>` carrier in std/ BEFORE the extdeps promotion lands. Plain `List<T>` reuse is **forbidden** — it drops the cardinality fact. M9 DFS must find or land the cardinality-carrying carrier first; promotion blocks until that substrate exists. Spec: LLVM IR array-type reference (`[N x T]` syntax).
+   - `product.dag` → **reuse** `std.constructors.Product` (existing M2 type-authority). Promotion is forbidden if it creates parallel Product carrier.
+   - `ssa_value.dag` → likely **new extdeps carrier** (SSA is genuinely IR-domain, no std equivalent). Spec: SSA-form references.
+
+Promotion destination is `dsl/extdeps/common/ir/` per PLAN.md §"Bidirectional-extdeps reframe" **only after** each file passes the gate above. Files failing the gate either dissolve into std reuse/extension PRs or get rescoped to extdeps-only IR-domain concepts.
 
 ### W4 — LLVM IR text emitter spike (DONE)
 `research/.../spike-llvm-ir/`:
@@ -243,7 +254,7 @@ Three sibling programs under PM:
 
 ## §8. What this plan does NOT do
 
-- Implement any compiler code (Phase A is doc-shape promotion only)
+- Implement any compiler runtime code in Phase A (Phase A promotes typed `.dag` substrate from `~/ctrl/research/.../demos/c-compiler-in-dag/` into `dsl/extdeps/{common,llvm,hardware}/` per §3 — real tree additions, ~6-9 PRs — but NO Rust runtime, NO parser/emitter execution paths, NO codegen invocation; those are Phase B / Phase C scope)
 - Override the existing PLAN.md A1-A10 locks (those stay authoritative for workstream content)
 - Commit to Interpretation (b) "LLVM entirely" — that's Phase D, operator-decision
 - Set hard timelines on Phase B (worker-weeks per workstream are estimates from PLAN.md; actual cadence depends on staffing)
