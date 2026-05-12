@@ -121,8 +121,9 @@ type CIWorkflowDag {
 // Commands are structural intent, not rendered shell text. Command rows name
 // gunbc.compiler renderers and package facts; live transports resolve those
 // names before rendering shell strings with resolved tools or CI's conventional
-// `cargo` on PATH. ROADMAP F12 tracks the broader typed command-record carrier
-// that can replace these symbolic references with typed declaration edges.
+// `cargo` on PATH. This is weaker than typed declaration edges because gate
+// authoring can misspell a renderer/package name; ROADMAP F12 tracks the typed
+// command-record carrier that replaces these symbolic references.
 // Empty strings mark fields that do not apply to a command kind; nullable
 // structural fields are not accepted by the current M1 data-body validator.
 

@@ -17,6 +17,7 @@
 //! This crate fails to build if the cited worker brief is removed from the worktree.
 
 use crate::common::find_list_empty_constructor_tag;
+use std::collections::HashSet;
 use v3_compiler::dag::{
     AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueNode,
 };
@@ -340,6 +341,17 @@ fn workflow_topology<'a>(
     (name, node_ids, edges)
 }
 
+fn workflow_gate_records<'a>(
+    dag: &'a v3_compiler::dag::Dag,
+    fields: &'a [(String, FieldValue)],
+) -> Vec<&'a [(String, FieldValue)]> {
+    let pipeline = structural_record_ref(dag, structural_field(fields, "pipeline"));
+    structural_list(structural_field(pipeline, "gates"))
+        .iter()
+        .map(|gate| structural_record_ref(dag, gate))
+        .collect()
+}
+
 fn structural_value_body<'a>(
     dag: &'a v3_compiler::dag::Dag,
     name: &str,
@@ -400,6 +412,68 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
             ("tests", "l1-ratchet"),
         ],
         "CI workflow dependencies must be modeled as provider-neutral DAG edges"
+    );
+
+    let node_id_set: HashSet<_> = node_ids.iter().copied().collect();
+    for (from, to) in edges {
+        assert!(
+            node_id_set.contains(from),
+            "CI workflow edge source `{from}` must reference a pipeline gate id"
+        );
+        assert!(
+            node_id_set.contains(to),
+            "CI workflow edge target `{to}` must reference a pipeline gate id"
+        );
+    }
+}
+
+#[test]
+fn ci_workflow_as_data_demo_pins_interim_command_shape() {
+    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    let fields = structural_value_body(&ci, "ci_workflow_dag");
+    let gate_records = workflow_gate_records(&ci, fields);
+
+    let mut commands = gate_records
+        .iter()
+        .map(|gate| {
+            let id = literal_string(structural_field(gate, "id"));
+            let command = structural_record(structural_field(gate, "command"));
+            (
+                id,
+                literal_string(structural_field(command, "kind")),
+                literal_string(structural_field(command, "renderer")),
+                literal_string(structural_field(command, "package")),
+                literal_string(structural_field(command, "test_name")),
+                literal_string(structural_field(command, "shell_command")),
+            )
+        })
+        .collect::<Vec<_>>();
+    commands.sort_by_key(|(id, ..)| *id);
+
+    assert_eq!(
+        commands,
+        vec![
+            (
+                "compile-gates",
+                "ignored-test",
+                "ignored_test_command",
+                "test_package",
+                "ci_",
+                ""
+            ),
+            (
+                "l1-ratchet",
+                "shell",
+                "",
+                "",
+                "",
+                "scripts/l1-ratchet.sh --check"
+            ),
+            ("lint", "lint", "lint_command", "", "", ""),
+            ("tests", "test", "test_command", "test_package", "", ""),
+        ],
+        "interim CICommand rows must keep impossible field combinations out of authored gate data"
     );
 }
 
