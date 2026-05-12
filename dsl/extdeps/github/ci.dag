@@ -18,14 +18,24 @@
 module extdeps.github.ci
 
 // Directory (repository-relative, forward slashes) where GitHub loads workflow definitions.
+// Single string authority for the tree root — do not add a parallel unconstrained
+// `path: String` carrier for the same fact (INVARIANTS P1/P2).
 data github_actions_workflows_dir: String = ".github/workflows"
 
-// Basename of a workflow file under `github_actions_workflows_dir` (e.g. "ci.yml").
-type GitHubActionsWorkflowBasename {
-  name: String
+// Workflow files under that directory must use `.yml` or `.yaml` (GitHub restriction).
+type GitHubActionsWorkflowExtension
+  = GitHubActionsWorkflowYml
+  | GitHubActionsWorkflowYaml
+
+// Filename stem (no `/`, no extension suffix). Projection joins:
+//   github_actions_workflows_dir + "/" + segment + (extension → ".yml" | ".yaml")
+type GitHubActionsWorkflowStem {
+  segment: String
 }
 
-// Full repository-relative path to a workflow definition (e.g. ".github/workflows/ci.yml").
+// Workflow file identity: composes only with `github_actions_workflows_dir` — no
+// unconstrained repository-relative path string as a second authority.
 type GitHubActionsWorkflowFileRef {
-  path: String
+  stem: GitHubActionsWorkflowStem
+  extension: GitHubActionsWorkflowExtension
 }
