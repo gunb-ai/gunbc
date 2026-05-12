@@ -21,7 +21,6 @@
 
 module std.verification
 
-import std.serialization { DeclarationRef }
 import std.types { Milliseconds }
 
 // The predicate form of an assertion.
@@ -59,20 +58,19 @@ type TestClaim {
 // `Nanoseconds` timing authority for the slow-test ratchet, then deletes or
 // rewires this dsl projection instead of extending it.
 
-type TestNodeRef {
-  decl: DeclarationRef
-}
-
-type TestNodeCostDimension {
-  node: TestNodeRef
-  budget_ms: Milliseconds
-  measured_ms: Milliseconds
-}
-
 // A named test case — a conjunction of claims.
 // All claims must hold for the test to pass.
 type TestCase {
   name: String
   claims: List<TestClaim>
   ignored: Bool
+}
+
+type TestNodeRef
+  = TestCaseNode(TestCase)
+
+type TestNodeCostDimension {
+  node: TestNodeRef
+  budget_ms: Milliseconds
+  measured_ms: Milliseconds
 }

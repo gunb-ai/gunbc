@@ -289,7 +289,7 @@ data claim_cost: TestClaim = {
 }
 
 data claim_cost_dimension: TestNodeCostDimension = {
-  node: { decl: claim_cost },
+  node: EnumeratedTestNode(claim_cost),
   budget: { max: { count: 2000000000 } },
   measured: Observed { duration: { count: 17000000 } }
 }
