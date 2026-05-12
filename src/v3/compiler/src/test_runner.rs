@@ -2562,8 +2562,9 @@ impl<'a> TestRunner<'a> {
                         "SymbolicCostExprEquals" => {
                             self.eval_symbolic_cost_expr_equals_shape(claim, &payload, None)
                         }
-                        "SymbolicCostExprEqualsForBindParam" => self
-                            .eval_symbolic_cost_expr_equals_for_bind_param(claim, &payload),
+                        "SymbolicCostExprEqualsForBindParam" => {
+                            self.eval_symbolic_cost_expr_equals_for_bind_param(claim, &payload)
+                        }
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
