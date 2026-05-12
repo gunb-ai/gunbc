@@ -17,7 +17,7 @@
 
 module ctrl.review_verdict
 
-import std.types { ContentHash, NonEmptyStr, Timestamp, Url }
+import std.types { ArtifactId, ContentHash, NonEmptyStr, Timestamp, Url }
 
 // Practice 4 receipt: terminal for the current provider coordinate.
 // Adding a provider is a new declaration row or ProviderOther value, not a
@@ -112,12 +112,15 @@ type ParseDeferredState
   | DeferredEmptyComment
 
 type ReviewArtifact {
-  artifact_id: NonEmptyStr
+  artifact_id: ArtifactId
   provider: ReviewProvider
   kind: ReviewArtifactKind
   repo: NonEmptyStr
   pr_number: Int
-  commit_sha: NonEmptyStr
+  // Source-native commit coordinate when the transport provides one. Issue
+  // comments and dashboard artifacts may omit it; Parse extracts successful
+  // head affiliation into ReviewVerdictReport.head_sha.
+  source_commit_sha: NonEmptyStr?
   source_url: Url?
   body_hash: ContentHash?
   body_text: String
@@ -132,7 +135,7 @@ type ReviewFinding {
   path: String?
   line: Int?
   body: String
-  source_artifact_id: NonEmptyStr
+  source_artifact_id: ArtifactId
 }
 
 type ReviewVerdictReport {
@@ -140,7 +143,7 @@ type ReviewVerdictReport {
   repo: NonEmptyStr
   pr_number: Int
   head_sha: NonEmptyStr
-  artifact_id: NonEmptyStr
+  artifact_id: ArtifactId
   verdict: ReviewVerdict
   extraction_state: ReportExtractionState
   findings: List<ReviewFinding>
@@ -154,7 +157,7 @@ type MergeReadinessTally {
   head_sha: NonEmptyStr
   // Non-authoritative lineage pointer only. ReviewVerdictReport values remain
   // the Tally service input; the tally output owns only derived verdict counts.
-  source_artifact_ids: List<NonEmptyStr>
+  source_artifact_ids: List<ArtifactId>
   approval_count: Int
   request_changes_count: Int
   blocking_finding_count: Int
