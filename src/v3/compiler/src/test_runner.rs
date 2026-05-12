@@ -2560,8 +2560,10 @@ impl<'a> TestRunner<'a> {
                             self.eval_binary_dimension_report_equals(claim, &payload)
                         }
                         "SymbolicCostExprEquals" => {
-                            self.eval_symbolic_cost_expr_equals_shape(claim, &payload)
+                            self.eval_symbolic_cost_expr_equals_shape(claim, &payload, None)
                         }
+                        "SymbolicCostExprEqualsForBindParam" => self
+                            .eval_symbolic_cost_expr_equals_for_bind_param(claim, &payload),
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
@@ -3157,6 +3159,7 @@ impl<'a> TestRunner<'a> {
         &self,
         claim: &TestClaimValue,
         payload: &[FieldValue],
+        expected_param_name: Option<&str>,
     ) -> ClaimResult {
         let [expected_fv] = payload else {
             return ClaimResult::Fail(format!(
@@ -3258,6 +3261,7 @@ impl<'a> TestRunner<'a> {
             bind,
             &claim.source,
             &claim.file_name,
+            expected_param_name,
         ) {
             Ok(pattern) => pattern,
             Err(msg) => return ClaimResult::Fail(msg),
@@ -3283,6 +3287,29 @@ impl<'a> TestRunner<'a> {
                 claim.file_name
             ))
         }
+    }
+
+    fn eval_symbolic_cost_expr_equals_for_bind_param(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [expected_fv, param_name_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEqualsForBindParam payload should be exactly two fields \
+                 (expected, param_name); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let param_name = match string_literal_field_value(param_name_fv) {
+            Ok(name) => name,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        self.eval_symbolic_cost_expr_equals_shape(
+            claim,
+            std::slice::from_ref(expected_fv),
+            Some(param_name.as_str()),
+        )
     }
 
     /// Boundary check that `decl_id` references a declaration whose declared

@@ -5509,7 +5509,7 @@ fn lower_structural_field_value(
                 return None;
             }
         }
-        for (label, _) in &expected_fields {
+        for (label, ty) in &expected_fields {
             if !fields.iter().any(|field| field.name == *label)
                 && !expected_fields
                     .iter()
@@ -5517,6 +5517,14 @@ fn lower_structural_field_value(
                     .is_some_and(|(_, ty)| {
                         is_at_most_one_type_with_subst(dag, *ty, &nested_subst, 0)
                     })
+                && !symbolic_cost_expected_size_variable_param_placeholder(
+                    dag,
+                    conj_id,
+                    label,
+                    *ty,
+                    &nested_subst,
+                    fields,
+                )
             {
                 report_declaration_error(
                     dag,
@@ -5828,7 +5836,6 @@ fn lower_scalar_literal_for_type(
     let int_decl_id = dag.declaration_by_name("Int").map(|d| d.id);
     let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
-    let port_id_decl_id = dag.declaration_by_name("PortId").map(|d| d.id);
     let type_ok = match &literal_bits {
         LiteralBits::Int(s) => {
             let Ok(int_value) = BigInt::from_str(s.as_str()) else {
@@ -5847,16 +5854,6 @@ fn lower_scalar_literal_for_type(
                     int_literal_fits_expected_type(dag, &int_value, expected_type),
                     Ok(Some(true))
                 )
-                // Modeled atomic-handle literal: structural data may write a
-                // raw `PortId` as an in-range nonnegative integer. This is not
-                // a general numeric-newtype coercion rule.
-                || port_id_decl_id
-                    .map(|id| {
-                        walks_to(dag, expected_type, id)
-                            && int_value >= BigInt::from(0)
-                            && int_value <= BigInt::from(u32::MAX)
-                    })
-                    .unwrap_or(false)
         }
         LiteralBits::Bool(_) => {
             bool_decl_id
@@ -5941,6 +5938,28 @@ fn optional_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Decl
         } if arguments.is_empty() => optional_element_type(dag, *template),
         _ => None,
     }
+}
+
+fn symbolic_cost_expected_size_variable_param_placeholder(
+    dag: &Dag,
+    record_decl_id: DeclarationId,
+    field_label: &str,
+    field_ty: DeclarationId,
+    subst: &LowerSubstStack,
+    fields: &[crate::parse::SurfaceRecordField],
+) -> bool {
+    if field_label != "source_port" || fields.iter().any(|field| field.name == "source_port") {
+        return false;
+    }
+    let Some(size_variable_id) = dag.declaration_by_name("SizeVariable").map(|decl| decl.id) else {
+        return false;
+    };
+    let Some(port_id) = dag.declaration_by_name("PortId").map(|decl| decl.id) else {
+        return false;
+    };
+    record_decl_id == size_variable_id
+        && resolve_decl_with_subst_lower(dag, field_ty, subst, 0)
+            .is_some_and(|resolved| walks_to(dag, resolved, port_id))
 }
 
 fn list_element_type_with_subst(

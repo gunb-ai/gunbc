@@ -11,7 +11,7 @@ import std.verification { SymbolicCostExprEquals, TestClaim, TestSuite }
 data gate87_symbolic_cost_expected: SymbolicCost = ConstantCost(0)
 
 data gate87_symbolic_cost_countdown_expected: SymbolicCost =
-  LinearCost({ source_port: 0, display_name: "n" })
+  LinearCost({})
 
 data cementing_regen_cost_symbolic_literal_claim: TestClaim = {
   name: "cementing_regen_cost_symbolic",
@@ -25,7 +25,7 @@ data cementing_regen_cost_symbolic_countdown_claim: TestClaim = {
   name: "cementing_regen_cost_symbolic_countdown",
   source: "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
   file_name: "r3_gate_87_symbolic_countdown.v3",
-  predicate: SymbolicCostExprEquals(gate87_symbolic_cost_countdown_expected),
+  predicate: SymbolicCostExprEqualsForBindParam(gate87_symbolic_cost_countdown_expected, "n"),
   requires: []
 }
 
