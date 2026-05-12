@@ -142,11 +142,20 @@ type AnthropicToolResultBlock
     }
   | AnthropicToolReferenceBlock { tool_name: String }
 
-// Honest residue: nested tool-result **payload** fidelity vs platform docs (citations
-// / documents). Paid rows on `rest_request_wire_serde_alignment_receipt` cover
-// coproduct discriminators + untagged tool_result.content dispatch — not full
-// OpenAPI parity for every nested block field.
+// Honest residue: nested tool-result **payload** fidelity vs generated SDK /
+// OpenAPI (per-arm coordinates, not the five-way discriminator). Paid rows on
+// `rest_request_wire_serde_alignment_receipt` cover coproduct discriminators +
+// untagged `tool_result.content` dispatch — not every nested field on each arm.
+// SDK witness (Stainless): `anthropic-sdk-python` `tool_result_block_param.Content`
+// arms `TextBlockParam` / `ImageBlockParam` / `ToolReferenceBlockParam` carry optional
+// `cache_control: CacheControlEphemeralParam`; `TextBlockParam` also carries optional
+// `citations`; `CacheControlEphemeralParam` includes optional `ttl` literal (`5m`|`1h`)
+// beyond our stringly `CacheControl.type` carrier — enumerate each omission below.
 data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<String> = [
+  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicTextBlock|missing:cache_control|missing:citations|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/text_block_param.py|trigger:model TextBlockParam cache_control + citations structurally on nested tool_result text rows",
+  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicImageBlock|missing:cache_control|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/image_block_param.py|trigger:model ImageBlockParam cache_control on nested tool_result image rows",
+  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicToolReferenceBlock|missing:cache_control|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/tool_reference_block_param.py|trigger:model ToolReferenceBlockParam cache_control on nested tool_result tool_reference rows",
+  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock|carrier:CacheControl|missing:ttl_literal_5m_1h|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/cache_control_ephemeral_param.py|trigger:align nested-block CacheControlBreakpoint carrier with CacheControlEphemeralParam (ttl) wherever cache_control appears on tool_result nested arms",
   "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicDocumentBlock|residue:plaintext_document_source_only|missing:non_text_document_sources|missing:title_context_citations_cache_control|spec:https://platform.claude.com/docs/en/build-with-claude/citations|trigger:model DocumentBlockParam document sources and citation-facing coordinates structurally",
   "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicSearchResultBlock|external_spec_watch:search_result_block_optional_fields|trigger:citations.cache_control_shape_drift_or_additional_optional_keys_from_OpenAPI"
 ]
