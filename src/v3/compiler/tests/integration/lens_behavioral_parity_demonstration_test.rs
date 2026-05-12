@@ -15,11 +15,10 @@
 //! when those rows can express this four-lens snapshot as `.dag` TestClaim data,
 //! delete this module and its `tests/integration.rs` registration.
 //!
-//! **Gate #84 / gunbc#2650:** migrating countdown symbolic-cost assertions to `.dag`
-//! `SymbolicCostExprEquals` remains blocked until user `tests/dag` modules can structurally
-//! lower `SizeVariable` with `display_name: String?` absent literals (M1(2.8); blocker token
-//! `M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA`). Report-shaped parity slices (`ComplexitySummary`,
-//! workflow parallelism, effect enumeration) track under `Gate73_ReportPredicateCarriers`.
+//! **Gate #84 / gunbc#2650:** countdown symbolic-cost assertions now live in the gate #87
+//! `cost_symbolic` `.dag` `SymbolicCostExprEquals` suite. Report-shaped parity slices
+//! (`ComplexitySummary`, workflow parallelism, effect enumeration) track under
+//! `Gate73_ReportPredicateCarriers`.
 
 use std::sync::OnceLock;
 

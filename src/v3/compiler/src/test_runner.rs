@@ -2561,7 +2561,10 @@ impl<'a> TestRunner<'a> {
                             self.eval_binary_dimension_report_equals(claim, &payload)
                         }
                         "SymbolicCostExprEquals" => {
-                            self.eval_symbolic_cost_expr_equals_shape(claim, &payload)
+                            self.eval_symbolic_cost_expr_equals_shape(claim, &payload, None)
+                        }
+                        "SymbolicCostExprEqualsForBindParam" => {
+                            self.eval_symbolic_cost_expr_equals_for_bind_param(claim, &payload)
                         }
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
@@ -3168,6 +3171,7 @@ impl<'a> TestRunner<'a> {
         &self,
         claim: &TestClaimValue,
         payload: &[FieldValue],
+        expected_param_index: Option<usize>,
     ) -> ClaimResult {
         let [expected_fv] = payload else {
             return ClaimResult::Fail(format!(
@@ -3204,7 +3208,15 @@ impl<'a> TestRunner<'a> {
                 Ok(p) => p,
                 Err(msg) => return ClaimResult::Fail(msg),
             };
+        self.eval_symbolic_cost_expr_equals_pattern(claim, expected_pattern, expected_param_index)
+    }
 
+    fn eval_symbolic_cost_expr_equals_pattern(
+        &self,
+        claim: &TestClaimValue,
+        expected_pattern: SymbolicCostEqPattern,
+        expected_param_index: Option<usize>,
+    ) -> ClaimResult {
         let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(dag) => dag,
             Err(CompileError::Semantic(dag)) => {
@@ -3225,13 +3237,31 @@ impl<'a> TestRunner<'a> {
         let bind_name = match last_emit_rust_program_top_level_value_bind_name(&program_dag) {
             Ok(Some(name)) => name,
             Ok(None) => {
-                return ClaimResult::Fail(
-                    "SymbolicCostExprEquals: claim program has no top-level value bind — add at least \
-                     one top-level `let` / value declaration so the symbolic-cost lens has an output \
-                     port (same convention as emit-rust program-mode `main` per \
-                     `last_emit_rust_program_top_level_value_bind_name`)"
-                        .to_string(),
-                );
+                let bind_names: Vec<String> = program_dag
+                    .nodes()
+                    .iter()
+                    .filter_map(Behavior::as_bind)
+                    .filter(|bind| bind.span.file == claim.file_name)
+                    .filter(|bind| !bind.name.starts_with("<refinement:"))
+                    .map(|bind| bind.name.clone())
+                    .collect();
+                match bind_names.as_slice() {
+                    [name] => name.clone(),
+                    [] => {
+                        return ClaimResult::Fail(
+                            "SymbolicCostExprEquals: claim program has no top-level bind for the \
+                             symbolic-cost lens"
+                                .to_string(),
+                        );
+                    }
+                    names => {
+                        return ClaimResult::Fail(format!(
+                            "SymbolicCostExprEquals: claim program has no top-level value bind and \
+                             contains multiple function binds {names:?}; add a value bind or keep \
+                             the function-cost fixture to one bind"
+                        ));
+                    }
+                }
             }
             Err(err) => {
                 return ClaimResult::Fail(format!(
@@ -3245,6 +3275,14 @@ impl<'a> TestRunner<'a> {
                 "SymbolicCostExprEquals: bind `{bind_name}` not found in `{}`",
                 claim.file_name
             ));
+        };
+        let expected_pattern = match resolve_symbolic_cost_param_refs_for_bind(
+            expected_pattern,
+            bind,
+            expected_param_index,
+        ) {
+            Ok(pattern) => pattern,
+            Err(msg) => return ClaimResult::Fail(msg),
         };
 
         let computed = match symbolic_cost_of(&program_dag, &bind.value) {
@@ -3267,6 +3305,56 @@ impl<'a> TestRunner<'a> {
                 claim.file_name
             ))
         }
+    }
+
+    fn eval_symbolic_cost_expr_equals_for_bind_param(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [expected_fv, param_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEqualsForBindParam payload should be exactly two fields \
+                 (expected, param); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let param_index = match bind_param_ref_index(param_fv) {
+            Ok(index) => index,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let expected_id = match self.resolve_declaration_ref_id(expected_fv, "expected") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let expected_decl = self.dag.declaration(expected_id);
+        let expected_name = decl_display_name(expected_id, expected_decl);
+        let Some(expected_body) = expected_decl.value_body.as_ref() else {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEqualsForBindParam: expected `{expected_name}` has no value body \
+                 to compare against"
+            ));
+        };
+        if let Err(reason) = self.validate_symbolic_cost_bind_param_expected_ref(expected_id) {
+            return ClaimResult::Fail(reason);
+        }
+        let expected_field = match field_value_from_value_body(self.dag, expected_body) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "SymbolicCostExprEqualsForBindParam: could not lower expected \
+                     `{expected_name}` to a structural value: {err:?}"
+                ));
+            }
+        };
+        let expected_pattern = match field_value_to_symbolic_cost_bind_param_expected_pattern(
+            self.dag,
+            &expected_field,
+        ) {
+            Ok(p) => p,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        self.eval_symbolic_cost_expr_equals_pattern(claim, expected_pattern, Some(param_index))
     }
 
     /// Boundary check that `decl_id` references a declaration whose declared
@@ -3303,6 +3391,34 @@ impl<'a> TestRunner<'a> {
         Err(format!(
             "SymbolicCostExprEquals `{field_label}` must reference a declaration of type \
              `SymbolicCost`; `{}` does not (declared type does not normalize to `SymbolicCost`).",
+            decl_display_name(decl_id, decl)
+        ))
+    }
+
+    fn validate_symbolic_cost_bind_param_expected_ref(
+        &self,
+        decl_id: DeclarationId,
+    ) -> Result<(), String> {
+        let expected_id = self
+            .dag
+            .declaration_by_name("SymbolicCostBindParamExpected")
+            .map(|decl| decl.id)
+            .ok_or_else(|| {
+                "SymbolicCostExprEqualsForBindParam: `SymbolicCostBindParamExpected` type not \
+                 found in bootstrap"
+                    .to_string()
+            })?;
+        let decl = self.dag.declaration(decl_id);
+        let candidate = match &decl.connective {
+            TypeConnective::Arrow { output, .. } => *output,
+            _ => decl_id,
+        };
+        if self.normalize_transparent_type(candidate) == expected_id {
+            return Ok(());
+        }
+        Err(format!(
+            "SymbolicCostExprEqualsForBindParam `expected` must reference a declaration of type \
+             `SymbolicCostBindParamExpected`; `{}` does not.",
             decl_display_name(decl_id, decl)
         ))
     }
@@ -5439,21 +5555,20 @@ fn field_value_for_symbolic_cost_expected(
 }
 
 /// Normalization for `SymbolicCost` equality across distinct compiled DAGs (`TestClaim.source` vs
-/// fixture graph). [`PortId`] values are compared via stable numeric encoding (`FieldValue` literal
-/// `Int`, same as lens reflection). Per `algebra.dag`, [`crate::dag::SizeVariable`] identity is
-/// **`source_port` only** — `display_name` is parsed for structural validity but **must not**
-/// participate in equality (same rule as `SizeVariable`'s `PartialEq` implementation).
+/// fixture graph). Expected `.dag` fixtures may leave `SizeVariable.source_port` unresolved only
+/// when the predicate carries an explicit selected bind parameter. Otherwise identity follows
+/// `algebra.dag` / [`crate::dag::SizeVariable`]: `source_port` only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SymbolicCostEqPattern {
     Constant(i64),
     Linear {
-        source_port_raw: u32,
+        source_port: SymbolicCostPortPattern,
     },
     Log {
-        source_port_raw: u32,
+        source_port: SymbolicCostPortPattern,
     },
     Polynomial {
-        source_port_raw: u32,
+        source_port: SymbolicCostPortPattern,
         degree_raw: i64,
     },
     Product(Vec<SymbolicCostEqPattern>),
@@ -5461,17 +5576,23 @@ enum SymbolicCostEqPattern {
     Unknown(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SymbolicCostPortPattern {
+    Raw(u32),
+    ExpectedBindParam,
+}
+
 fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
     match cost {
         SymbolicCost::ConstantCost { _0 } => SymbolicCostEqPattern::Constant(*_0),
         SymbolicCost::LinearCost { _0: sv } => SymbolicCostEqPattern::Linear {
-            source_port_raw: sv.source_port.raw(),
+            source_port: SymbolicCostPortPattern::Raw(sv.source_port.raw()),
         },
         SymbolicCost::LogCost { _0: sv } => SymbolicCostEqPattern::Log {
-            source_port_raw: sv.source_port.raw(),
+            source_port: SymbolicCostPortPattern::Raw(sv.source_port.raw()),
         },
         SymbolicCost::PolynomialCost { var, degree } => SymbolicCostEqPattern::Polynomial {
-            source_port_raw: var.source_port.raw(),
+            source_port: SymbolicCostPortPattern::Raw(var.source_port.raw()),
             degree_raw: degree.raw(),
         },
         SymbolicCost::ProductCost { _0: list } => SymbolicCostEqPattern::Product(
@@ -5486,6 +5607,80 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
         ),
         SymbolicCost::UnknownCost { _0: s } => SymbolicCostEqPattern::Unknown(s.clone()),
     }
+}
+
+fn resolve_symbolic_cost_param_refs_for_bind(
+    pattern: SymbolicCostEqPattern,
+    bind: &crate::dag::BindNode,
+    expected_param_index: Option<usize>,
+) -> Result<SymbolicCostEqPattern, String> {
+    fn resolve(
+        port: SymbolicCostPortPattern,
+        bind: &crate::dag::BindNode,
+        expected_param_index: Option<usize>,
+    ) -> Result<SymbolicCostPortPattern, String> {
+        match port {
+            SymbolicCostPortPattern::Raw(raw) => Ok(SymbolicCostPortPattern::Raw(raw)),
+            SymbolicCostPortPattern::ExpectedBindParam => {
+                let Some(param_index) = expected_param_index else {
+                    return Err(
+                        "SymbolicCostExprEquals: expected SymbolicCost contains an unresolved \
+                         SizeVariable.source_port; use SymbolicCostExprEqualsForBindParam to \
+                         provide the selected bind parameter"
+                            .to_string(),
+                    );
+                };
+                let port = bind_param_port_by_index(bind, param_index)?;
+                Ok(SymbolicCostPortPattern::Raw(port.raw()))
+            }
+        }
+    }
+    Ok(match pattern {
+        SymbolicCostEqPattern::Linear { source_port } => SymbolicCostEqPattern::Linear {
+            source_port: resolve(source_port, bind, expected_param_index)?,
+        },
+        SymbolicCostEqPattern::Log { source_port } => SymbolicCostEqPattern::Log {
+            source_port: resolve(source_port, bind, expected_param_index)?,
+        },
+        SymbolicCostEqPattern::Polynomial {
+            source_port,
+            degree_raw,
+        } => SymbolicCostEqPattern::Polynomial {
+            source_port: resolve(source_port, bind, expected_param_index)?,
+            degree_raw,
+        },
+        SymbolicCostEqPattern::Product(terms) => SymbolicCostEqPattern::Product(
+            terms
+                .into_iter()
+                .map(|term| {
+                    resolve_symbolic_cost_param_refs_for_bind(term, bind, expected_param_index)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        SymbolicCostEqPattern::Sum(terms) => SymbolicCostEqPattern::Sum(
+            terms
+                .into_iter()
+                .map(|term| {
+                    resolve_symbolic_cost_param_refs_for_bind(term, bind, expected_param_index)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        other => other,
+    })
+}
+
+fn bind_param_port_by_index(
+    bind: &crate::dag::BindNode,
+    param_index: usize,
+) -> Result<PortId, String> {
+    bind.params.get(param_index).copied().ok_or_else(|| {
+        format!(
+            "SymbolicCostExprEqualsForBindParam: function bind `{}` has no lowered parameter port \
+             at index {param_index}; parameter count is {}",
+            bind.name,
+            bind.params.len()
+        )
+    })
 }
 
 fn symbolic_cost_variant_label_for_constructor(dag: &Dag, ctor: DeclarationId) -> Option<String> {
@@ -5528,16 +5723,18 @@ fn field_value_to_symbolic_cost_eq_pattern(
                 }
                 "LinearCost" => {
                     let inner = single_payload(payload)?;
-                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
                     Ok(SymbolicCostEqPattern::Linear {
-                        source_port_raw,
+                        source_port,
                     })
                 }
                 "LogCost" => {
                     let inner = single_payload(payload)?;
-                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
                     Ok(SymbolicCostEqPattern::Log {
-                        source_port_raw,
+                        source_port,
                     })
                 }
                 "PolynomialCost" => {
@@ -5554,10 +5751,11 @@ fn field_value_to_symbolic_cost_eq_pattern(
                     let degree = field(fields, "degree").ok_or_else(|| {
                         "SymbolicCostExprEquals: PolynomialCost missing `degree` field".to_string()
                     })?;
-                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
                     let degree_raw = degree_raw_from_degree_at_least_two_field_value(dag, degree)?;
                     Ok(SymbolicCostEqPattern::Polynomial {
-                        source_port_raw,
+                        source_port,
                         degree_raw,
                     })
                 }
@@ -5587,6 +5785,117 @@ fn field_value_to_symbolic_cost_eq_pattern(
             other
         )),
     }
+}
+
+fn field_value_to_symbolic_cost_bind_param_expected_pattern(
+    dag: &Dag,
+    fv: &FieldValue,
+) -> Result<SymbolicCostEqPattern, String> {
+    if let FieldValue::Record(fields) = fv {
+        if fields.len() == 1 && fields[0].0 == "_" {
+            return field_value_to_symbolic_cost_bind_param_expected_pattern(dag, &fields[0].1);
+        }
+    }
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = fv
+    else {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: expected value must lower to a \
+             SymbolicCostBindParamExpected variant, got {fv:?}"
+        ));
+    };
+    let label_owned =
+        symbolic_cost_bind_param_expected_variant_label_for_constructor(dag, *constructor)
+            .ok_or_else(|| {
+                format!(
+                    "SymbolicCostExprEqualsForBindParam: constructor {constructor:?} is not a \
+             SymbolicCostBindParamExpected variant"
+                )
+            })?;
+    match label_owned.as_str() {
+        "LinearCostForBindParam" => {
+            parse_bind_param_size_variable_expected(
+                dag,
+                peel_single_underscore_record(single_payload(payload)?),
+            )?;
+            Ok(SymbolicCostEqPattern::Linear {
+                source_port: SymbolicCostPortPattern::ExpectedBindParam,
+            })
+        }
+        other => Err(format!(
+            "SymbolicCostExprEqualsForBindParam: unsupported expected variant `{other}`"
+        )),
+    }
+}
+
+fn peel_single_underscore_record(fv: &FieldValue) -> &FieldValue {
+    match fv {
+        FieldValue::Record(fields) if fields.len() == 1 && fields[0].0 == "_" => &fields[0].1,
+        other => other,
+    }
+}
+
+fn symbolic_cost_bind_param_expected_variant_label_for_constructor(
+    dag: &Dag,
+    ctor: DeclarationId,
+) -> Option<String> {
+    let expected = dag.declaration_by_name("SymbolicCostBindParamExpected")?;
+    let TypeConnective::Disj { variants } = &expected.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.ty == ctor)
+        .map(|v| v.label.clone())
+}
+
+fn parse_bind_param_size_variable_expected(dag: &Dag, fv: &FieldValue) -> Result<(), String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = fv
+    else {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: BindParamSizeVariable expected selected-bind-param \
+             variant, got {fv:?}"
+        ));
+    };
+    if !payload.is_empty() {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: SelectedBindParamSizeVariable takes no payload, \
+             got {} slot(s)",
+            payload.len()
+        ));
+    }
+    let Some(label) = bind_param_size_variable_variant_label_for_constructor(dag, *constructor)
+    else {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: constructor {constructor:?} is not a \
+             BindParamSizeVariable variant"
+        ));
+    };
+    if label != "SelectedBindParamSizeVariable" {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: unsupported BindParamSizeVariable variant `{label}`"
+        ));
+    }
+    Ok(())
+}
+
+fn bind_param_size_variable_variant_label_for_constructor(
+    dag: &Dag,
+    ctor: DeclarationId,
+) -> Option<String> {
+    let expected = dag.declaration_by_name("BindParamSizeVariable")?;
+    let TypeConnective::Disj { variants } = &expected.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.ty == ctor)
+        .map(|v| v.label.clone())
 }
 
 fn single_payload(payload: &[FieldValue]) -> Result<&FieldValue, String> {
@@ -5621,6 +5930,42 @@ fn one_string_payload(payload: &[FieldValue]) -> Result<String, String> {
     }
 }
 
+fn bind_param_ref_index(fv: &FieldValue) -> Result<usize, String> {
+    let FieldValue::Record(fields) = fv else {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: param must be a BindParamRef record, got {fv:?}"
+        ));
+    };
+    if fields.len() != 1 {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: BindParamRef only supports `index`, got {fields:?}"
+        ));
+    }
+    let index = field(fields, "index").ok_or_else(|| {
+        "SymbolicCostExprEqualsForBindParam: BindParamRef missing `index`".to_string()
+    })?;
+    match index {
+        FieldValue::Literal(LiteralBits::Int(s)) => {
+            let n = s.parse::<i64>().map_err(|_| {
+                format!(
+                    "SymbolicCostExprEqualsForBindParam: BindParamRef index is not a valid \
+                     integer: {s:?}"
+                )
+            })?;
+            usize::try_from(n).map_err(|_| {
+                format!(
+                    "SymbolicCostExprEqualsForBindParam: BindParamRef index must be non-negative, \
+                     got {n}"
+                )
+            })
+        }
+        other => Err(format!(
+            "SymbolicCostExprEqualsForBindParam: BindParamRef index must be an Int literal, got \
+             {other:?}"
+        )),
+    }
+}
+
 fn port_id_raw_field_value(fv: &FieldValue) -> Result<u32, String> {
     match fv {
         FieldValue::Literal(LiteralBits::Int(s)) => {
@@ -5647,19 +5992,20 @@ fn port_id_raw_field_value(fv: &FieldValue) -> Result<u32, String> {
 fn parse_size_variable_source_port_for_symbolic_cost_eq(
     dag: &Dag,
     fv: &FieldValue,
-) -> Result<u32, String> {
+) -> Result<SymbolicCostPortPattern, String> {
     let fields = record_fields(fv).ok_or_else(|| {
         format!(
             "SymbolicCostExprEquals: SizeVariable value must be a record, got {:?}",
             fv
         )
     })?;
-    let source_port_fv = field(fields, "source_port").ok_or_else(|| {
-        "SymbolicCostExprEquals: SizeVariable missing required field `source_port`".to_string()
-    })?;
-    let source_port_raw = port_id_raw_field_value(source_port_fv)?;
     let _ = optional_string_field_for_record(dag, fields, "display_name")?;
-    Ok(source_port_raw)
+    let Some(source_port_fv) = field(fields, "source_port") else {
+        return Ok(SymbolicCostPortPattern::ExpectedBindParam);
+    };
+    Ok(SymbolicCostPortPattern::Raw(port_id_raw_field_value(
+        source_port_fv,
+    )?))
 }
 
 fn optional_string_field_for_record(
