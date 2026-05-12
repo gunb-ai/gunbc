@@ -295,16 +295,31 @@ type RegressionAttestation {
 
 Each operation is a **pure function** `(EventLog<Operation>, Operation) → EventLog<Operation>` (append). Graph state is `state: EventLog → NodeGraph` (projection lens).
 
-**Closure-decision lattice — REPLACES prior monotonicity claim**: closure decisions are NOT monotonic across the full Operation set. They are monotonic only across `{Declare, Decompose, Drain, Pause, AttestedOverride}` — the "forward-stable" subset. `Reopen` + `Regress` + `Replan` + `Escalate` explicitly RETRACT closure state with witnessed cause.
+**Closure decisions are NOT monotonic** (post-codex inline BLOCKING #3 2026-05-12T19:08Z): the prior `canCloseNode(state(log + op)) ≥ canCloseNode(state(log))` claim was **false** even for the previously-proposed "forward-stable subset." Specifically:
 
-The lattice over closure decisions:
-- `canCloseNode(state(log + forward_stable_op)) ≥ canCloseNode(state(log))` (preserved-or-improved)
-- `canCloseNode(state(log + Reopen{node, ...})) < canCloseNode(state(log))` IF the prior state had `node` closed (explicit regression with witness)
-- `canCloseNode(state(log + Regress{node, ...})) < canCloseNode(state(log))` similarly (decomposition retraction may reopen closure questions on the parent)
+- **`Decompose`** adds children → if a parent was leaf-closeable before, decomposing it to a composite-with-open-children makes it `COMPOSITE_HAS_OPEN_CHILDREN` (closure retraction)
+- **`Replan`** authors a reconcile work-item under the caller's parent → parent gains a new open child → closure retracted on parent
+- **`Declare(node, Bucket)`** without drain → BUCKET_NOT_DRAINED state introduced (closure retraction vs unset)
+- **`Reopen`** / **`Regress`** / **`Escalate`** explicitly retract by design
 
-This is `feedback_state_space_vs_behavioral_invariants.md` applied: the type captures the regression possibility explicitly. There is no silent regression — every closure-reversal carries a typed witness, and every consumer of `canCloseNode` sees the lattice value rather than "stable boolean."
+No subset of Operation is universally monotonic in `canCloseNode`. Dropping the claim.
 
-`AttestedOverride` is the structurally-modeled `force: true` from PR #1195. It's a typed operation, not a special-case API flag.
+**Replacement framing — typed effects per Operation**: each Operation has explicit, type-signature-visible effects on closure-eligibility. Consumers of `canCloseNode` MUST NOT assume monotonicity across event-log composition. Per `feedback_state_space_vs_behavioral_invariants.md`: the type captures the effect explicitly; no behavioral assumption substitutes.
+
+Effects-per-operation classification:
+- `Declare(node, Leaf)` — neutral or improves (sets closure-required-mode; vacuously closeable if no children)
+- `Declare(node, Composite)` — neutral if no children; later children retract
+- `Declare(node, Bucket)` — retracts (introduces BUCKET_NOT_DRAINED requirement)
+- `Decompose(parent, children)` — retracts on parent (introduces COMPOSITE_HAS_OPEN_CHILDREN)
+- `Drain(bucket, attestation)` — improves (BUCKET_NOT_DRAINED → resolved)
+- `Replan` — retracts on caller's parent (adds reconcile child)
+- `Escalate` — retracts on parent (adds upward debt)
+- `Pause` — neutral on closure-eligibility (informational lifecycle state); orthogonal to canCloseNode reasons
+- `Reopen(node, ...)` — retracts (closed → open)
+- `Regress(node, ...)` — retracts on parent + possibly improves on retracted-child-ids
+- `AttestedOverride` — bypasses guard with audit-visible attestation (operator-tier escape hatch); per `feedback_parallel_representation_debt.md` it's the structurally-modeled `force: true` from PR #1195
+
+**No "lattice claim"** — closure decisions are derived per-state, not constrained by composition order. The operational invariant is: every closure-eligibility transition is witnessed by an explicit Operation; no silent transitions. That's the only invariant claim this doc makes.
 
 ---
 
