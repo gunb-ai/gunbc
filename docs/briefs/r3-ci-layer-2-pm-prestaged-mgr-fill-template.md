@@ -161,6 +161,14 @@ Equivalently: `run_<cluster> = ∃ row ∈ cluster : row affected`. Aggregating 
 
 **Path-mapping verification discipline** (load-bearing per codex BLOCKING on earlier revision): the `required_paths_regex` values below are **PM best-effort manual authoring** — they have NOT been verified against the live source tree at the cited inventory sha (`e9c8f9896`). Workers MUST validate each regex against the source tree at HEAD before implementing the CI gate. Any regex that does not match a path actually present in the tree, OR that a Mgr cannot quickly verify, MUST be replaced with `.*` (always-run) — the conservative fail-closed default. The `confidence` column indicates PM's subjective certainty per row; treat `low` rows as `.*` candidates first, `medium` as audit-then-decide, `high` as audit-but-likely-fine.
 
+**3-arm regex completeness invariant** (load-bearing per Director PR #2727 absorbing convergent Brian inline + codex BLOCKING on post-#2719 fail-open hole): each `required_paths_regex` MUST contain THREE arms — missing any arm is a fail-open boundary class P3 forbids:
+
+1. **Transitive `src/v3/*` source dependencies** — files the group's tests transitively depend on (typically `src/v3/lenses/*.dag` + `src/v3/compiler/src/lens_*.rs` etc.)
+2. **The group's OWN test source files** — `*_test.rs` paths under `src/v3/compiler/tests/integration/`. Without this arm, a PR that edits a slow test would be classified as "unaffected" by its own regex and silently skipped (the test edit IS the change-class the test MUST run on).
+3. **The group's `tests/dag/*.dag` TestClaim fixture paths** (where applicable) — `*.dag` files under `src/v3/compiler/tests/dag/` that the test consumes as canonical authority for what it asserts. Without this arm, a PR editing the fixture would skip the test that depends on it.
+
+**Audit note on existing rows**: most PM-authored rows in §3 below have arms (1) + (2) but DO NOT explicitly include arm (3) `tests/dag/*.dag` — Mgr-fill audit MUST add arm (3) where applicable for each row whose test reads from `src/v3/compiler/tests/dag/` (e.g., `t_pb_b_1_dag_runner_test` consumes `tests/dag/t_pb_b_1_*.dag`; `r1c_e_emit_gates_dag_test` consumes `tests/dag/r1c_e_emit_gates_omni.template.dag`; etc.). Inverse: tests that don't read from `tests/dag/*.dag` don't need arm (3). See Director PR #2727 for the canonical worker-brief framing this mirrors.
+
 | Cluster | test_pattern | dimensions | required_paths_regex | confidence | dissolution_note |
 |---|---|---|---|---|---|
 | A | `db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix` | `[Value]` | `^(dsl/extdeps/rust.*\.dag|src/v3/compiler/src/emit.*\.rs|src/v3/compiler/tests/integration/db8_.*\.rs)$` | high | gate ci_uses_provable_minimal_affected_set_selection lands → lens emits per-Node delta; consumer reads only Value |
@@ -250,6 +258,7 @@ Mgr-fill complete when:
 - [ ] Post-dissolution mapping verified: each row's per-row formula reads `(affected_dimensions ∩ row.dimensions) = ∅` (skip when intersection IS empty / nothing affected), NOT `≠ ∅`. The CI gate is `if: skip_<cluster> != 'true'` (run when skip is false); inverting the polarity silently skips affected tests.
 - [ ] **Cluster-level aggregation verified**: `skip_<cluster>` aggregates per-row results by conjunction (`∀ row : row-skip-empty`). NOT disjunction (`∃ row : row-skip-empty`). Disjunction silently skips affected rows when only one row is unaffected.
 - [ ] **Path regex validation against live source tree**: every concrete (non-`.*`) `required_paths_regex` validated against source tree at HEAD before CI implementation. Unverified entries replaced with `.*` per conservative default. Validation record kept (PR description or commit message citing the validation pass).
+- [ ] **3-arm regex completeness invariant** (per Director PR #2727): every concrete `required_paths_regex` includes (1) transitive `src/v3/*` deps + (2) OWN test source (`*_test.rs` under `src/v3/compiler/tests/integration/`) + (3) OWN `tests/dag/*.dag` fixture (where the test reads from there). Mgr-fill review REJECTS regexes missing arm (2) or (3) for tests that use them. Cross-link: Director worker brief #2719 (post-merge follow-up #2727) §2(c) for the canonical fail-open framing.
 
 ---
 
@@ -261,6 +270,8 @@ Mgr-fill complete when:
 - Any cluster's `required_paths_regex` requires depending on test-output (not just changed files) → STOP. That's the lens, not the bridge.
 - Any cluster aggregation tempted to use **disjunction** (`∃ row : row-skip-empty`) instead of **conjunction** (`∀ row : row-skip-empty`) → STOP. Disjunction silently skips affected rows; conjunction is load-bearing (codex BLOCKING on PR #2721 caught this gap; aggregation predicate now explicit at §3 + §4 + §5).
 - Any concrete `required_paths_regex` adopted without source-tree validation at HEAD → STOP and replace with `.*` per conservative fail-closed default. PM-best-effort regexes in §3 are NOT pre-validated; Mgr must validate before CI implementation (codex BLOCKING on PR #2721 caught this gap).
+- Any `required_paths_regex` missing the **OWN test-source arm** (`*_test.rs` under `src/v3/compiler/tests/integration/`) → STOP. A PR editing the test itself would silently skip it. (Per Director PR #2727 / Brian inline + codex BLOCKING convergent on post-#2719 fail-open hole.)
+- Any `required_paths_regex` missing the **OWN `tests/dag/*.dag` fixture arm** for a test that consumes TestClaim fixtures from there → STOP. A PR editing the fixture (canonical authority for what the test asserts) would silently skip it. Cross-check: if the test calls `t_pb_b_1_*.dag` / `t_r3_gate_87_cementing_regen_*.dag` / `r1c_e_emit_gates_omni.template.dag` / etc., the regex MUST cover the fixture path. (Same Director PR #2727 framing.)
 
 ---
 
