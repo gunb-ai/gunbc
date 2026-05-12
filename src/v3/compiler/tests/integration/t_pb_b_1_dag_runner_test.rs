@@ -15,7 +15,10 @@
 //! **R3 Cluster M #84 — R1C-D/E tests-as-data pilot:** R1C-D (`t_r1c_d_pb_census_gates.dag`)
 //! and R1C-E (`r1c_e_emit_gates.template.dag` + omni template) integration receipts
 //! live here with gate #74 (`t_r3_tests_as_data_demonstration.dag`), replacing dedicated
-//! `r1c_*_test.rs` shims (SG-0 hand-path shrink toward `every_rust_test_ports_to_dag_or_generated`).
+//! `r1c_*_test.rs` shims. **Accounting:** SG-0 progress for #2715 is the **−3** census paths
+//! plus `.dag`-native predicates — not gate #84 / facet-3 'zero hand-Rust tests' closure; see
+//! `sg0_census_test.rs` on `t_pb_b_1_dag_runner_test.rs` (remaining obligation cites ROADMAP
+//! T-PB-B until the test census is empty).
 //!
 //! R3 gate #87 `R3_GATE_87_CEMENTING_REGEN_SUITES` wiring: **INVARIANTS P5(b)** — merge-visible
 //! integration delta; see module doc on `r3_gate_87_lens_cementing_regen_receipts_test` (§P5(b)

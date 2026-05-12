@@ -539,9 +539,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolution trigger: R3 closes the named T-LensProducer-Retirement /
     // T-PB-B bulk-migration lanes and this R1-only acceptance wrapper retires.
     "src/v3/compiler/tests/integration/r1_release_acceptance_test.rs",
-    // R3 Cluster M #84 pilot: R1C-D + R1C-E runner receipts live in
-    // `t_pb_b_1_dag_runner_test.rs` (co-located with gate #74 / #87 harnesses);
-    // census-authority `.dag` is `tests/dag/t_r1c_d_pb_census_gates.dag`.
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
     // R3 §1.4 Class 2 / §1.8 row #61
@@ -630,6 +627,18 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
     "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
+    // T-PB-B-1 `tests/dag` runner table; gate #74 + #87 cementing regen suites; R3 Cluster M #84
+    // R1C-D/E runner receipts (co-located harness).
+    //
+    // **P5(b) / SG-0 accounting (#2715 pilot — not gate #84 closure):** the merge-visible
+    // receipt is **−3** paths removed from this list (deleted `r1c_*_gates*_test.rs` shims).
+    // R1C-D/E **predicates** live in `.dag` (`tests/dag/t_r1c_d_pb_census_gates.dag`,
+    // `r1c_e_emit_gates*.template.dag`); Rust here is runner-only (`compile_to_dag` +
+    // `TestRunner`), same structural class as gate #74 — consolidation must not be read as
+    // Pure Bootstrap / T-PB-B "zero hand-maintained Rust" progress. Gate #84 /
+    // `every_rust_test_ports_to_dag_or_generated` dissolution stays under ROADMAP T-PB-B +
+    // `docs/r3-structure.md` § T-Tests-As-Data-Completeness until `EXPECTED_HAND_AUTHORED_TEST`
+    // reaches zero.
     "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs",
     // TC1 substrate lens eta-equivalence (deferred / R2 research): integration for
