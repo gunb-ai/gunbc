@@ -99,7 +99,7 @@ Step = RunStep | UsesStep               // :147 — sum type
 
 **Why BinaryShim is the affected-set unlock**: Static YAML can't naturally express "compute affected-set at PR time, dispatch matrix dynamically." BinaryShim makes runtime decisions structural — binary reads git diff, computes `affected_set = ⋃ over dim of reachable(Δ, dim)`, dispatches matrix accordingly.
 
-**Open expression-substrate question — DEFERRED to canvas (NOT blocking this scope)**: GH Actions expression syntax modeling (`runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}` etc.) is a Slice 4-5 substrate-shape question routed to warm-wolf-698 canvas authority (PR #2751 — Expression 🟡 YELLOW recommendation; Director ratification pending). NOT a §1 gate.
+**Expression-substrate question — RATIFIED at canvas-tier (NOT blocking this scope)**: GH Actions expression syntax modeling (`runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}` etc.) is a Slice 4-5 substrate-shape question handled at warm-wolf-698 canvas authority (PR #2751 — Expression 🟡 YELLOW + single OpaqueString variant + three-condition dissolution trigger + 5-site uniform migration; **Director-ratified at msg_168005e1 2026-05-12**). Expression carrier introduction is a separate substrate-prereq PR authored by warm-wolf-698 post-#2751-merge (distinct from the 4 small extdeps-fidelity substrate-prereq PRs covering concurrency / ready_for_review / Push.paths / WorkflowPermissions). NOT a §1 gate.
 
 ## §3. Slice expansion
 

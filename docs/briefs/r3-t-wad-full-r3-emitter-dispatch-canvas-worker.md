@@ -39,7 +39,7 @@ Design the emitter-dispatch architecture for T-Workflow-As-Data FULL R3-close on
 
 5. **GH Actions expression-substrate consumption** — per Director ratification of PR #2751 (warm-wolf-698 expression-substrate canvas): canvas should reference the ratified `Expression = OpaqueString(String)` 🟡 YELLOW shape + 5-site uniform migration (RunnerSpec / Job.if_condition / ConcurrencySpec.group / Step.with[k] / Step.env[k]); YamlStatic emission = "emit Expression::OpaqueString variant verbatim to YAML"; BinaryShim/PythonShim = "evaluate Expression at runtime" (opaque-passthrough until dissolution fires).
 
-6. **Carrier reuse audit** — confirm existing `dsl/extdeps/github/actions.dag` carriers (concrete `Workflow` `:21` / `Job` `:110` / `Step` `:147`) + ratified Expression carrier (PR #2751) are sufficient for YamlStatic emitter; identify any per-target-body substrate gaps (4 small substrate-prereq PRs are tracked: `Workflow.concurrency` / `PullRequestActivity.ReadyForReview` / `Push.paths` Optional / `WorkflowPermissions.*` Optional — per WI-2 brief Propagated Substrate-Fidelity Concerns section + warm-wolf-698 carrier-gap inventory).
+6. **Carrier reuse audit** — confirm existing `dsl/extdeps/github/actions.dag` carriers (concrete `Workflow` `:21` / `Job` `:110` / `Step` `:147`) + ratified Expression carrier (PR #2751) are sufficient for YamlStatic emitter. **5 carrier gaps total** identified per WI-2 brief Propagated Substrate-Fidelity Concerns section + warm-wolf-698 inventory: **4 small extdeps-fidelity substrate-prereq PRs** (`Workflow.concurrency` / `PullRequestActivity.ReadyForReview` / `Push.paths` Optional / `WorkflowPermissions.*` Optional) PLUS **1 substrate-shape canvas + Expression carrier** for `RunnerSpec` expression-syntax (PR #2751 canvas RATIFIED at msg_168005e1; Expression carrier introduction is a separate substrate-prereq PR authored by warm-wolf-698 post-#2751-merge). The 5th gap is canvas-tier, not Slice-4-extdeps-fidelity.
 
 ## Reference materials
 
@@ -69,7 +69,7 @@ Design the emitter-dispatch architecture for T-Workflow-As-Data FULL R3-close on
 ## STOP / PING criteria
 
 - **STOP** if canvas reveals the (c-refined) shape doesn't actually compose with the existing emission pipeline — surface to warm-wolf-698 + Director for shape re-evaluation (would constitute substrate-shape re-ratification request)
-- **STOP** if per-target emission body shape requires substantive new substrate carriers beyond the 4 small substrate-prereq PRs already tracked — surface to Substrate Mgr warm-wolf-698
+- **STOP** if per-target emission body shape requires substantive new substrate carriers beyond the 5 already-tracked gaps (4 small substrate-prereq PRs + 1 Expression carrier via PR #2751 canvas) — surface to Substrate Mgr warm-wolf-698
 - **STOP** if the emitter-dispatch shape conflicts with `project_eliminate_emit_lang_files.md` consolidation thesis — surface; this canvas should EXTEND that thesis, not contradict
 - **STOP** if affected-set integration shape requires substantive negotiation with Verification Mgr clever-tern-670 — surface for cross-tier ratification (Slice 7 owner)
 - **PING** PM (deep-wolf-155) on PR-open for review-routing
