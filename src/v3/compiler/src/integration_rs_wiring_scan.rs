@@ -109,7 +109,7 @@ fn integration_rs_code_substring_positions(
     while i < bytes.len() {
         match state {
             IntegrationRsScan::Code => {
-                integration_rs_panic_on_raw_string(bytes, i);
+                integration_rs_reject_raw_string_in_code(bytes, i)?;
                 if bytes[i] == b'/' && i + 1 < bytes.len() {
                     if bytes[i + 1] == b'/' {
                         state = IntegrationRsScan::LineComment;
@@ -229,7 +229,7 @@ fn integration_rs_code_substring_positions(
             }
         }
     }
-    hits
+    Ok(hits)
 }
 
 /// Consume one outer `#[ … ]` attribute (handles quoted `"` regions and nested `[` `]`).
@@ -326,17 +326,20 @@ fn mod_decl_follows_cementing_path_tail(mut tail: &str, stem: &str) -> bool {
 /// This is stricter than substring checks for `#[path]` and `mod` separately — it
 /// rejects a mismatched `#[path]` on one module paired with a stray `mod <stem>;`
 /// elsewhere (`TESTING.md` Band-C dispatch).
-pub fn integration_rs_cementing_path_attr_binds_mod_stem(integration_rs: &str, stem: &str) -> bool {
+pub fn integration_rs_cementing_path_attr_binds_mod_stem(
+    integration_rs: &str,
+    stem: &str,
+) -> Result<bool, String> {
     let path_attr = format!(r#"#[path = "integration/cementing/{stem}.rs"]"#);
-    for pos in integration_rs_code_substring_positions(integration_rs, &path_attr) {
+    for pos in integration_rs_code_substring_positions(integration_rs, &path_attr)? {
         let Some(tail) = integration_rs.get(pos + path_attr.len()..) else {
             continue;
         };
         if mod_decl_follows_cementing_path_tail(tail, stem) {
-            return true;
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
 }
 
 /// True when `needle` appears in `integration_rs` **outside** Rust line comments
@@ -348,10 +351,9 @@ pub fn integration_rs_cementing_path_attr_binds_mod_stem(integration_rs: &str, s
 /// false-green on commented-out or string-embedded copies. Needles are ASCII
 /// (`#[path`, `mod foo`); the scan is byte-oriented on UTF-8 boundaries.
 ///
-/// **Not handled:** raw strings (`r#"…"#`), byte strings (`b"…"`, `br#"…"#`). If
-/// those appear in scanned source, extend `IntegrationRsScan` **or** the scan will
-/// **panic** when the raw/byte-string opener probe fires in `Code` (loud failure vs
-/// a silent false green).
-pub fn integration_rs_active_line_contains(integration_rs: &str, needle: &str) -> bool {
-    !integration_rs_code_substring_positions(integration_rs, needle).is_empty()
+/// **Not handled:** raw strings (`r#"…"#`), byte strings (`b"…"`, `br#"…"#`). If those appear in
+/// scanned **Code**, this returns `Err` with an explicit message (so `TestPredicate` callers can
+/// map to `ClaimResult::Fail`) until `IntegrationRsScan` is widened for those forms.
+pub fn integration_rs_active_line_contains(integration_rs: &str, needle: &str) -> Result<bool, String> {
+    Ok(!integration_rs_code_substring_positions(integration_rs, needle)?.is_empty())
 }

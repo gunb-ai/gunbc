@@ -70,10 +70,13 @@ mod real;
 }
 
 #[test]
-#[should_panic(expected = "raw/byte string literal")]
-fn integration_rs_active_line_contains_panics_on_raw_string_in_code() {
+fn integration_rs_active_line_contains_errors_on_raw_string_in_code() {
     let src = concat!("fn f() { r#\"", "hi", "\"#; }");
-    integration_rs_active_line_contains(src, "nope");
+    let err = integration_rs_active_line_contains(src, "nope").unwrap_err();
+    assert!(
+        err.contains("raw/byte string literal"),
+        "unexpected err: {err}"
+    );
 }
 
 #[test]
@@ -82,17 +85,13 @@ fn integration_rs_cementing_path_attr_binds_mod_accepts_multiline() {
         "#[path = \"integration/cementing/real.rs\"]\n",
         "mod real;\n",
     );
-    assert!(integration_rs_cementing_path_attr_binds_mod_stem(
-        src, "real"
-    ));
+    assert!(integration_rs_cementing_path_attr_binds_mod_stem(src, "real").unwrap());
 }
 
 #[test]
 fn integration_rs_cementing_path_attr_binds_mod_accepts_same_line() {
     let src = "#[path = \"integration/cementing/real.rs\"] mod real;\n";
-    assert!(integration_rs_cementing_path_attr_binds_mod_stem(
-        src, "real"
-    ));
+    assert!(integration_rs_cementing_path_attr_binds_mod_stem(src, "real").unwrap());
 }
 
 #[test]
@@ -102,9 +101,7 @@ fn integration_rs_cementing_path_attr_binds_mod_accepts_interleaved_attribute() 
         "#[allow(dead_code)]\n",
         "mod real;\n",
     );
-    assert!(integration_rs_cementing_path_attr_binds_mod_stem(
-        src, "real"
-    ));
+    assert!(integration_rs_cementing_path_attr_binds_mod_stem(src, "real").unwrap());
 }
 
 #[test]
