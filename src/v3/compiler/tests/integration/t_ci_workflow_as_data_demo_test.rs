@@ -23,11 +23,16 @@ use v3_compiler::dag::{
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
 };
-use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag};
+use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag, CompileError};
 
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
 const GUNBC_CI_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci.dag");
 const GUNBC_CI_FILE: &str = "dsl/gunbc/ci.dag";
+const GUNBC_CI_GITHUB_WORKFLOW_SOURCE: &str =
+    include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
+const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
+const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci_emission.dag");
+const GUNBC_CI_EMISSION_FILE: &str = "dsl/gunbc/ci_emission.dag";
 
 // P5 checkable receipt (parent gate #1956 / brief linkage — same pattern as `tc1_*_strict_fire_test`).
 const _: &str = include_str!(concat!(
@@ -508,7 +513,72 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
 }
 
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
+fn gunbc_ci_github_actions_workflow_authority_compiles() {
+    let dag = match compile_to_dag(
+        GUNBC_CI_GITHUB_WORKFLOW_SOURCE,
+        GUNBC_CI_GITHUB_WORKFLOW_FILE,
+    ) {
+        Ok(d) => d,
+        Err(CompileError::Semantic(d)) => panic!(
+            "compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {:?}",
+            d.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(e) => panic!("compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {e:?}"),
+    };
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+}
+
+/// Mechanical source gate: `.github/workflows/ci.yml` is the YAML authority; the committed
+/// `dsl/gunbc/ci_github_actions_workflow.dag` row must match the generator library output
+/// byte-for-byte (same implementation as the `gen_gunbc_ci_workflow_dag` binary).
+#[test]
+fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
+    use std::path::Path;
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let repo_root = repo_root
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("canonicalize repo root {}: {e}", repo_root.display()));
+    let ci_yml = repo_root.join(".github/workflows/ci.yml");
+    let dag_path = repo_root.join("dsl/gunbc/ci_github_actions_workflow.dag");
+    assert!(
+        ci_yml.is_file(),
+        "missing {} (repo root {})",
+        ci_yml.display(),
+        repo_root.display()
+    );
+
+    let yaml = std::fs::read_to_string(&ci_yml)
+        .unwrap_or_else(|e| panic!("read {}: {e}", ci_yml.display()));
+    let expected =
+        std::fs::read(&dag_path).unwrap_or_else(|e| panic!("read {}: {e}", dag_path.display()));
+
+    let fresh = gen_gunbc_ci_workflow_dag::emit_ci_github_actions_workflow_module(
+        ".github/workflows/ci.yml",
+        &yaml,
+    )
+    .unwrap_or_else(|e| panic!("emit_ci_github_actions_workflow_module: {e}"));
+
+    assert_eq!(
+        fresh.as_bytes(),
+        expected.as_slice(),
+        "`dsl/gunbc/ci_github_actions_workflow.dag` drifted from `.github/workflows/ci.yml`; regenerate with:\n  CTRL_BUILD_WRAP_CARGO=0 cargo run -q -p gen_gunbc_ci_workflow_dag -- .github/workflows/ci.yml > dsl/gunbc/ci_github_actions_workflow.dag"
+    );
+}
+
+#[test]
+fn gunbc_ci_emission_substrate_compiles() {
+    let dag = compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_EMISSION_FILE}: {err:?}"));
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+}
+
+#[test]
+// Deferred with explicit P5 anchor (not ad-hoc TBD): ROADMAP.md "Forward-Tracked Lane: T-Workflow-As-Data"
+// (~L57ff) + timing-lens / `WorkflowObservationAnchor` thread (~L75ff, `docs/design-timing-lens.md` section 2).
+// Dissolution: re-enable under default CI by amortizing this harness through `cached_compile_to_dag`
+// (`tests/integration/common/cached_compile.rs`) / OnceLock so cold v3 (~67m full-bootstrap + evaluator) stays bounded.
+#[ignore = "ROADMAP T-Workflow-As-Data lane + timing-lens anchor (ROADMAP.md ~L57, ~L75); cold v3 full-bootstrap+evaluator ~67m — dissolve via cached_compile_to_dag/OnceLock (tests/integration/common/cached_compile.rs); hot-fix 2026-05-12"]
 fn ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator() {
     let dag = demo_bootstrap_dag();
     assert!(
