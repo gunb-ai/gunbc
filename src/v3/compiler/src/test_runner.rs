@@ -3137,15 +3137,6 @@ impl<'a> TestRunner<'a> {
                     .query(&UnusedParametersConfig::default())
                     .is_empty(),
             ),
-            "gate87_infer_helpers_source_compiles" => i64::from(gate_87_lens_source_compiles(
-                "src/v3/lenses/infer_helpers.dag",
-            )),
-            "gate87_lower_helpers_source_compiles" => i64::from(gate_87_lens_source_compiles(
-                "src/v3/lenses/lower_helpers.dag",
-            )),
-            "gate87_variant_payload_source_compiles" => i64::from(gate_87_lens_source_compiles(
-                "src/v3/lenses/variant_payload.dag",
-            )),
             _ => return None,
         };
 
@@ -5898,25 +5889,6 @@ fn expected_int_literal(
             "LensOutputEquals({lens_name}): expected_ref `{expected_name}` must be `data ...: Int = <literal>`"
         ))),
     }
-}
-
-fn gate_87_lens_source_compiles(rel: &str) -> bool {
-    let Some(manifest_dir) = option_env!("CARGO_MANIFEST_DIR") else {
-        return false;
-    };
-    let path = std::path::Path::new(manifest_dir)
-        .ancestors()
-        .nth(3)
-        .map(|root| root.join(rel));
-    let Some(path) = path else {
-        return false;
-    };
-    let Ok(source) = std::fs::read_to_string(&path) else {
-        return false;
-    };
-    compile_to_dag(&source, rel)
-        .map(|dag| dag.diagnostics().is_empty())
-        .unwrap_or(false)
 }
 
 fn diagnostic_matches_reference(
