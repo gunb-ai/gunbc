@@ -22,7 +22,13 @@ module extdeps.github.ci
 // `path: String` carrier for the same fact (INVARIANTS P1/P2).
 data github_actions_workflows_dir: String = ".github/workflows"
 
-// Workflow files under that directory must use `.yml` or `.yaml` (GitHub restriction).
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟢 GREEN (terminal). GitHub allows exactly two filename suffixes for workflow definitions
+// under `.github/workflows/` (`.yml` / `.yaml`); variants are 1:1 with that closed surface.
+// Ledger (Patterns 1–4): (1) no per-consumer split — suffix is global to the file ref.
+// (2) variant-is-data rejected — the two suffixes are not labels on identical payloads; they
+// select distinct YAML parse entrypoints. (3) no std algebraic source. (4) not dimensional
+// beyond the single binary suffix axis already explicit in the two variants.
 type GitHubActionsWorkflowExtension
   = GitHubActionsWorkflowYml
   | GitHubActionsWorkflowYaml
