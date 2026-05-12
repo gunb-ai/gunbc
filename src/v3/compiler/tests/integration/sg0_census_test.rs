@@ -424,6 +424,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves into testgen authority when the testgen path covers
     // the dsl/extdeps loader surface.
     "src/v3/compiler/tests/integration/extdeps_rust_primitives_loader_test.rs",
+    // Ctrl-Migration Emission-Targets Phase 3 HTTP/SQL extdeps: narrow host-side
+    // parser receipt for `dsl/extdeps/transports/sql.dag`. Explicit P5 receipt lives
+    // in INVARIANTS.md § "SG-0 hand-authored integration test receipts"; dissolves
+    // when extdeps transport files are covered by a `.dag`-native parse/authority
+    // suite or generated test harness.
+    "src/v3/compiler/tests/integration/extdeps_sql_transport_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
     // Idempotency Lens<C> instance blocker ratchet (R2 Substrate): focused
     // hand-Rust receipt proving the actual idempotency lens instance must
