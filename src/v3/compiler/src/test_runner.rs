@@ -2485,7 +2485,11 @@ impl<'a> TestRunner<'a> {
                 claim_name: decl_label,
                 result: ClaimResult::NotYetImplemented(
                     "QuantifiedTestClaim runner evaluation NotYetImplemented \
-                     (gate #85 shape-only stub; eval lands with Verification follow-up)"
+                     (gate #85 substrate-only landing; quantifier evaluation deferred to \
+                     Cluster M Phase 2/3 per `docs/r3-structure.md` \
+                     §\"T-Tests-As-Data-Completeness\" — gate #87 cementing-test discipline \
+                     + gate #84 bulk-port lanes; tracking row at \
+                     `docs/r3-program-plan.md` §1.8 row #85)"
                         .to_string(),
                 ),
             },
