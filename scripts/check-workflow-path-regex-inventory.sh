@@ -68,20 +68,50 @@ if ! grep -E "^\s*if:.*needs\.changes\.outputs\.code" "$CI_YML" >/dev/null; then
 fi
 
 # ---- Drift detector: NEW authoritative path-regex selection ----------------
-# Heuristic: any other workflow file that runs `git diff --name-only` AND
-# emits an `outputs.<name>` boolean consumed by a job-level `if:` is a
-# candidate new bridge. We flag the first part (the diff invocation) outside
-# the inventoried file, since `outputs.*` consumption alone is also used for
-# legitimate non-selection plumbing (timestamps, refs, etc.).
-while IFS= read -r f; do
-  [[ "$f" == "$CI_YML" ]] && continue
-  if grep -nE "git diff --name-only" "$f" >/dev/null 2>&1; then
-    fail "new path-regex selection candidate in $f (uses 'git diff --name-only').
-        If this is genuinely orthogonal to affected-set selection, add it to
-        $INVENTORY_DOC §3 with rationale. Otherwise route selection through
-        the BinaryShim runner (post–Slice 5)."
+# Heuristic: count `git diff --name-only` invocations across ALL workflow
+# files. The inventory (§3) anchors a single expected occurrence — the
+# inventoried `changes:` job in ci.yml with the literal anchor
+# `origin/main...HEAD`. Any occurrence beyond that — whether in ci.yml itself
+# (e.g., the `changes:` job grows a second selector, or a new job adds its
+# own diff) OR in a sibling workflow file — is a candidate new path-regex
+# bridge that the inventory does not yet describe.
+#
+# This intentionally scans `ci.yml` as well as siblings so the inventoried
+# file is not free to grow un-inventoried selection (closes the fail-open
+# gap that the v1 of this script had).
+INVENTORIED_DIFF_ANCHOR="git diff --name-only origin/main...HEAD"
+expected_diff_count=1  # exactly the §3 row #1 invocation
+actual_diff_count=0
+extra_locations=()
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+  actual_diff_count=$((actual_diff_count + 1))
+  # Extract "file:lineno:content" from `grep -n` output across files.
+  if [[ "$line" != *"$INVENTORIED_DIFF_ANCHOR"* ]]; then
+    extra_locations+=("$line")
   fi
-done < <(git ls-files '.github/workflows/*.yml')
+done < <(git ls-files -z '.github/workflows/*.yml' | xargs -0 grep -nH "git diff --name-only" 2>/dev/null || true)
+
+# Locate the inventoried anchor specifically; if it's missing, the §3 row #1
+# fingerprint check above already reported it — here we just confirm count.
+inventoried_present=0
+if grep -qF "$INVENTORIED_DIFF_ANCHOR" "$CI_YML" 2>/dev/null; then
+  inventoried_present=1
+fi
+
+if (( actual_diff_count > expected_diff_count )); then
+  for loc in "${extra_locations[@]}"; do
+    fail "new path-regex selection candidate (un-inventoried 'git diff --name-only'): $loc
+        If this is genuinely orthogonal to affected-set selection, add it to
+        $INVENTORY_DOC §3 with rationale and bump 'expected_diff_count' in
+        this script. Otherwise route selection through the BinaryShim runner
+        (post–Slice 5)."
+  done
+elif (( actual_diff_count < expected_diff_count )) && (( inventoried_present == 0 )); then
+  # Already covered by the row #1 fingerprint check; left as a defensive
+  # branch so the count-vs-anchor invariant is explicit.
+  :
+fi
 
 if (( violations > 0 )); then
   note "$violations violation(s) — see messages above."

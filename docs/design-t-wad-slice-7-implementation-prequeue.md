@@ -77,11 +77,14 @@ The script `scripts/check-workflow-path-regex-inventory.sh` is a structural
 test that exits non-zero in any of:
 
 - **New authoritative selection** appears outside the inventoried sites. The
-  script's heuristic is anchored on (a) `git diff --name-only` invocations
-  inside any `.github/workflows/*.yml`, and (b) `if:` gates referring to
-  `outputs.code`-style booleans derived from path-regex jobs. New occurrences
-  → fail with a pointer to this document so the operator can either add to
-  inventory + canvas or remove the path.
+  script counts `git diff --name-only` invocations across **all**
+  `.github/workflows/*.yml` (explicitly including `ci.yml` itself, so the
+  inventoried file is not free to grow a second un-inventoried selector) and
+  compares against the expected baseline (currently `1`, the §3 row #1
+  invocation anchored at `origin/main...HEAD`). Any occurrence beyond the
+  inventoried anchor → fail with a pointer to this document so the operator
+  must either add to inventory + canvas (and bump `expected_diff_count` in
+  the script) or remove the new bridge.
 - **Inventory drift before replacement**: if either fingerprint listed in §3
   vanishes before Slice 7 implementation lands a structurally documented
   BinaryShim runner consuming PR #2713, the script fails. Rationale: silently
