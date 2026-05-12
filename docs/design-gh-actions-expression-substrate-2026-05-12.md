@@ -314,11 +314,29 @@ extensions.
 
 ## §6. Open questions surfaced (not pre-authored)
 
-1. **Sum-vs-alias declaration form.** Should `Expression` land as
-   `type Expression = OpaqueString(String)` (sum with one arm) or
-   `type Expression { value: String }` (record)? Either preserves the
-   structural pattern-match property; sum form is closer to the
-   dissolution target shape. Director call if both are admissible.
+1. **Declaration form — RESOLVED: sum, not record.** Earlier draft
+   framed this as "either preserves the structural pattern-match
+   property; Director call if both admissible." Operator BLOCKING on
+   PR #2751 at :258 (2026-05-12) corrected this: a record form
+   (`type Expression { value: String }`) does **not** preserve the
+   single-arm pattern-match obligation, and adding a second variant
+   later (a `Template` carrier per §4 dissolution) becomes a carrier-
+   shape change (record → sum), not a single-declaration edit. That
+   breaks both the Practice 4 single-edit dissolution path claimed
+   in §3 AND the consumer-side pattern-match property (record consumers
+   project to `.value` as a string, not pattern-match on a tag — so
+   the addition of `Template` would force every consumer to be
+   rewritten, not just the carrier).
+   
+   **Resolution**: `Expression` lands as a one-arm sum (`type Expression
+   = OpaqueString(String)`), not a record. Forces consumers through a
+   single-arm pattern match from day one; dissolution to add `Template`
+   is a single-line edit at the declaration site and a single new
+   pattern-match arm in each consumer. This was the substantive
+   ratification under (c) and is no longer a Director-tier open
+   question; it was implied by §3 reasoning point #4 ("Pre-empts the
+   type-alias trap") which applies equally to record-form aliases.
+
 2. **Migration sequencing across the seven sites.** Do all seven sites
    migrate to `Expression` in one PR (substrate-prereq PR before Slice 4)
    or incrementally (per-site as Slice 4 lands each emitter arm)?
