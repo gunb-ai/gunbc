@@ -16,7 +16,7 @@
 - **Polarity check**: carrier name is `skip_*`; CI consumer wires `if: skip_<group> != 'true'` (run when skip=false). Skip-form is canonical: NodeRef-empty OR dim-empty ⇒ unaffected ⇒ skip; both non-empty ⇒ affected ⇒ run. Set-intersection semantics per locked-design §2 union — NOT singular `.contains()` membership.
 - **Per-dimension structural target**: `docs/design-affected-set-lens.md` §2 (affected_set defined as union over `Set<Dimension>`) — every Layer 2 path-mapping entry MUST carry a `dimensions:` field of type `Set<Dimension>` (members drawn from `value | cost | complexity | effect | refinement`). Single-element sets like `{cost}` are valid for single-dimension groups; multi-dim consumers (e.g., LBP demonstration reading both `complexity` + `cost`) get expanded sets. Prevents schema divergence from future lens output AND silent-skip on multi-dim consumers when only the non-primary dim changes.
 - **Slow-test inventory sources** (per PM pre-stage at #828 c4425726922):
-  - (a) `scripts/slow-test-exemptions.txt` — 78 active entries (curated >2s ratchet exemption list)
+  - (a) `scripts/slow-test-exemptions.txt` — 80 active entries (verified `grep -v "^#" scripts/slow-test-exemptions.txt | grep -v "^$" | wc -l` = 80 as of 2026-05-12; PM template citation at PR #2721 of "78" is stale by 2 entries) (curated >2s ratchet exemption list)
   - (b) `/tmp/v3-test-timings.log` — empirical per-test wall-time captured by every CI run via `--report-time` (consumed by `scripts/check-test-timeout.sh`, wired at `.github/workflows/ci.yml:405-424`)
   - (c) NEW per-group required-paths mapping (the deliverable; bridge-debt artifact)
 
@@ -98,8 +98,10 @@ v3:
 Per-group mapping table (the deliverable):
 
 ```
-(group_name, dimensions, required_paths_regex, test_pattern)
+(group_name, dimensions, required_paths_regex, testclaim_references, test_pattern)
 ```
+
+**`testclaim_references` column added per Brian's BLOCKING #2 absorption 2026-05-12**: the canonical 2-step selection algorithm per `docs/design-affected-set-lens.md:359` requires `Set<NodeRef>` membership AND `Set<Dimension>` intersection. Dropping the NodeRef step (as my prior post-dissolution sketch did) silently violates Facts Flow Forward. Each group entry MUST compute a `testclaim_references: Set<NodeRef>` value (union of TestClaim references across the group's tests; sourced from `tests/dag/*` TestClaim authorities at Mgr-fill time). Bridge tier proxy is `required_paths_regex` (file-path-coarse); post-dissolution proxy is `testclaim_references` (NodeRef-precise).
 
 Where:
 - `group_name` — short identifier (e.g., `cost_lens`, `emit_target`, `parser_grammar`)
@@ -152,14 +154,17 @@ parser_grammar     | {refinement}        | ^(src/v3/parser/.*|src/v3/compiler/sr
 # test_pattern is libtest SUBSTRING filter — no globs; `cost_lens` matches every test name containing "cost_lens".
 ```
 
-**[Mgr-fill]**: full per-group table — exhaustive coverage of `scripts/slow-test-exemptions.txt` 78 entries grouped + empirical top-K from timings log + per-group required-paths regex tested against representative diffs.
+**[Mgr-fill]**: full per-group table — exhaustive coverage of current `scripts/slow-test-exemptions.txt` entries (count grows; Mgr re-runs `grep -v "^#" ... | grep -v "^$" | wc -l` at finalization rather than relying on stale citations; 80 at 2026-05-12T00:50Z) grouped + empirical top-K from timings log + per-group required-paths regex tested against representative diffs. **Also required per Brian's BLOCKING #2 absorption**: each group entry must compute `testclaim_references: Set<NodeRef>` (union of TestClaim references across group's tests) for the canonical 2-step selection join post-dissolution. Bridge-tier proxy is `required_paths_regex`; post-dissolution proxy is `testclaim_references` populated from `tests/dag/*` TestClaim authorities.
 
 ## §3. Per-dimensions structural target — `feedback_parallel_representation_debt` prevention (set semantics per locked-design §2)
 
 The Layer 2 path-mapping is bridge-debt by design. The dissolution is the affected-set Introspect-lens (canvas PR #2713 by `clever-tern-670`, locked-design `docs/design-affected-set-lens.md`). When the lens lands, the dissolution is:
 
 ```yaml
-# Post-dissolution (after ci_uses_provable_minimal_affected_set_selection gate)
+# Post-dissolution (after R4.B CI integration delivery per design-affected-set-lens.md §5)
+# NOTE per Brian's BLOCKING #1 absorption: no current ROADMAP gate name; R4.B is the
+# owning lane (wishlist status per design doc :3). Mgr re-cites a concrete gate ID
+# once R4.B ROADMAP authority lands the actual gate.
 changes:
   steps:
     - id: lens
@@ -167,15 +172,23 @@ changes:
         cargo run -p v3-compiler --bin affected_set_lens -- \
           --pr-diff origin/main...HEAD \
           --output /tmp/affected.json
+        # lens output: {affected_node_refs: Set<NodeRef>, affected_dimensions: Set<Dimension>, per_dim: {dim: Set<NodeRef>}}
     - id: classify
       run: |
-        # per-group skip_* derived from lens output, not path-regex.
-        # Set semantics per locked-design §2: skip iff (affected ∩ group.dimensions) is empty.
+        # Canonical 2-step selection per docs/design-affected-set-lens.md:359:
+        # 'intersect aggregate affected-set with TestClaim references; keep
+        # TestClaims whose asserted-dimensions intersect with changed-dimensions'.
+        # Per-group skip_* = NOT (NodeRef-intersection AND dim-intersection).
         for group in cost_lens emit_target parser_grammar ...; do
-          dims_json="${group_dimensions[$group]}"  # JSON array, e.g., '["cost"]' or '["complexity","cost"]'
-          # (affected_dimensions ∩ group.dimensions) ≠ ∅ → run; otherwise skip
-          if jq -e --argjson dims "$dims_json" \
-               '.affected_dimensions | any(. as $d | $dims | contains([$d]))' \
+          dims_json="${group_dimensions[$group]}"    # e.g., '["cost"]' or '["complexity","cost"]'
+          refs_json="${group_testclaim_refs[$group]}"  # Set<NodeRef> union over group's TestClaims
+          # run iff BOTH (refs ∩ affected_node_refs) ≠ ∅ AND (dims ∩ affected_dimensions) ≠ ∅
+          # skip = ¬run = either intersection is ∅
+          # (Brian BLOCKING #2 absorption: dimension-only check would silently drop NodeRef-step
+          # and violate Facts Flow Forward per design §5 canonical algorithm.)
+          if jq -e --argjson dims "$dims_json" --argjson refs "$refs_json" \
+               '(.affected_dimensions | any(. as $d | $dims | contains([$d])))
+                and (.affected_node_refs | any(. as $n | $refs | contains([$n])))' \
                /tmp/affected.json; then
             echo "skip_$group=false" >> $GITHUB_OUTPUT
           else
@@ -199,7 +212,7 @@ This is the parallel-representation-debt prevention. If Layer 2's group-classifi
 1. **Single source of truth for path classification** — the `changes` job (one job, one diff, one classifier). NO parallel `gunbc-quick` job; NO duplicate `git diff` invocation; NO per-group diff fork.
 2. **STEP-level `if:` on `v3`, not separate jobs** — keeps `v3`'s `needs:` graph and required-check name stable. `self_host_ratchet` `if:` widening from PR #2718 remains unchanged.
 3. **No new `actions/cache` keys or workflow-tier infrastructure** — Layer 2 is path-regex + boolean output; nothing more.
-4. **Bridge-debt acknowledgment in every PR**: each PR landing a Layer 2 group must include in body: "Bridge-debt; dissolves when `ci_uses_provable_minimal_affected_set_selection` gate lands and lens output replaces `required_paths_regex` column."
+4. **Bridge-debt acknowledgment in every PR**: each PR landing a Layer 2 group must include in body: "Bridge-debt; lifecycle bounded by R4.B Introspect-lens saturation lane CI integration delivery (per `docs/design-affected-set-lens.md` §5). NOT R3 close-blocking. When R4.B CI integration lands, lens output replaces `required_paths_regex` column and bridge retires."
 5. **`dimensions: Set<Dimension>` field on every group entry** — non-empty subset of the lens enum per locked-design §2 union semantics. Single-element sets valid for single-dim groups; multi-dim consumers MUST list all dimensions they read. Substrate-shape questions on dimension assignment escalate.
    **Polarity invariant**: `skip_<group> = (affected ∩ group.dimensions) = ∅` (skip when intersection EMPTY = unaffected). Run-equivalent: `run = (intersection ≠ ∅)`. Never invert — `skip = (∩ ≠ ∅)` is the canonical fail-open boolean-polarity bug pattern (silently skips affected groups). Carrier name matches contract: `skip_*` flag is true when group is unaffected.
 6. **No closure-allowed carve-outs**: Layer 2's lifetime is bounded by the affected-set lens dissolution. If a group can't be path-classified accurately, it stays in the `code=true` full-run bucket (no special carve).
@@ -252,8 +265,8 @@ Do not push a workaround PR for any of these.
 **This brief produces a bridge.** Per BridgeLedgerZero discipline + `feedback_bridge_debt_window_cadence`, every bridge has a named dissolution trigger:
 
 - **Bridge**: per-group `required_paths_regex` table (hand-authored, file-path-substring-based)
-- **Dissolution trigger**: gate `ci_uses_provable_minimal_affected_set_selection` lands ⇒ affected-set Introspect-lens output replaces `required_paths_regex` column
-- **Surviving artifact post-dissolution**: `(group_name, dimensions)` mapping — the `dimensions: Set<Dimension>` column remains as the lens consumer; only path-regex column retires
+- **Dissolution trigger** (R4-bounded per Brian BLOCKING #1 absorption): R4.B Introspect-lens saturation lane delivers CI integration per `docs/design-affected-set-lens.md` §5 ⇒ affected-set lens output replaces `required_paths_regex` column. **No current ROADMAP gate name exists** for this dissolution; the prior placeholder `ci_uses_provable_minimal_affected_set_selection` was Director-tier speculation and has been removed throughout this brief. Mgr re-cites concrete gate ID once R4.B authority lands one.
+- **Surviving artifact post-dissolution** (corrected per Brian's BLOCKING #2 absorption 2026-05-12): `(group_name, dimensions, testclaim_references)` mapping — BOTH `dimensions: Set<Dimension>` AND `testclaim_references: Set<NodeRef>` columns survive as lens consumers per the canonical 2-step selection join (`docs/design-affected-set-lens.md:359`). Only the `required_paths_regex` column retires; `testclaim_references` replaces it as the NodeRef-precise version of group-tests-membership. Surviving schema is 3 columns, not 2.
 
 Cite the dissolution path in every Layer 2 PR body. When the gate lands, a single follow-up PR retires the bridge and the brief is done.
 
