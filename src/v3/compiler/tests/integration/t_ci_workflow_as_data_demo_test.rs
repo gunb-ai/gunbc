@@ -514,7 +514,10 @@ fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
 
 #[test]
 fn gunbc_ci_github_actions_workflow_authority_compiles() {
-    let dag = match compile_to_dag(GUNBC_CI_GITHUB_WORKFLOW_SOURCE, GUNBC_CI_GITHUB_WORKFLOW_FILE) {
+    let dag = match compile_to_dag(
+        GUNBC_CI_GITHUB_WORKFLOW_SOURCE,
+        GUNBC_CI_GITHUB_WORKFLOW_FILE,
+    ) {
         Ok(d) => d,
         Err(CompileError::Semantic(d)) => panic!(
             "compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {:?}",
@@ -522,20 +525,15 @@ fn gunbc_ci_github_actions_workflow_authority_compiles() {
         ),
         Err(e) => panic!("compile {GUNBC_CI_GITHUB_WORKFLOW_FILE}: {e:?}"),
     };
-    assert!(
-        dag.diagnostics().is_empty(),
-        "{:?}",
-        dag.diagnostics()
-    );
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
 }
 
 /// Mechanical source gate: `.github/workflows/ci.yml` is the YAML authority; the committed
-/// `dsl/gunbc/ci_github_actions_workflow.dag` row must match `gen_gunbc_ci_workflow_dag` stdout
-/// byte-for-byte (no second drift authority).
+/// `dsl/gunbc/ci_github_actions_workflow.dag` row must match the generator library output
+/// byte-for-byte (same implementation as the `gen_gunbc_ci_workflow_dag` binary).
 #[test]
 fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
     use std::path::Path;
-    use std::process::Command;
 
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let repo_root = repo_root
@@ -550,25 +548,20 @@ fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
         repo_root.display()
     );
 
-    let expected = std::fs::read(&dag_path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", dag_path.display()));
+    let yaml = std::fs::read_to_string(&ci_yml)
+        .unwrap_or_else(|e| panic!("read {}: {e}", ci_yml.display()));
+    let expected =
+        std::fs::read(&dag_path).unwrap_or_else(|e| panic!("read {}: {e}", dag_path.display()));
 
-    let output = Command::new(env!("CARGO_BIN_EXE_gen_gunbc_ci_workflow_dag"))
-        .current_dir(&repo_root)
-        .arg(".github/workflows/ci.yml")
-        .output()
-        .expect("run gen_gunbc_ci_workflow_dag");
-
-    assert!(
-        output.status.success(),
-        "gen_gunbc_ci_workflow_dag failed:\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr),
-    );
+    let fresh = gen_gunbc_ci_workflow_dag::emit_ci_github_actions_workflow_module(
+        ".github/workflows/ci.yml",
+        &yaml,
+    )
+    .unwrap_or_else(|e| panic!("emit_ci_github_actions_workflow_module: {e}"));
 
     assert_eq!(
-        output.stdout,
-        expected,
+        fresh.as_bytes(),
+        expected.as_slice(),
         "`dsl/gunbc/ci_github_actions_workflow.dag` drifted from `.github/workflows/ci.yml`; regenerate with:\n  CTRL_BUILD_WRAP_CARGO=0 cargo run -q -p gen_gunbc_ci_workflow_dag -- .github/workflows/ci.yml > dsl/gunbc/ci_github_actions_workflow.dag"
     );
 }
@@ -577,11 +570,7 @@ fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
 fn gunbc_ci_emission_substrate_compiles() {
     let dag = compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE)
         .unwrap_or_else(|e| panic!("compile {GUNBC_CI_EMISSION_FILE}: {e:?}"));
-    assert!(
-        dag.diagnostics().is_empty(),
-        "{:?}",
-        dag.diagnostics()
-    );
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
 }
 
 #[test]
