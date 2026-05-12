@@ -613,6 +613,70 @@ a binding to the derived result; there is no separate hand-declared
 WI-2 substrate work to gunbc namespace under (c-refined) AND tightens it
 to single-authority projection-output binding.
 
+#### §7.3.1 `EmissionTarget` coproduct dissolution classification
+
+Per `docs/modeling-discipline.md` Practice 4: every coproduct with N ≥ 2
+variants must carry a 🟢/🟡/🔴 classification + ledger entry (GREEN) or
+named trigger (YELLOW). `EmissionTarget` has four variants and was
+proposed without classification in PR #2746 + this canvas's §7.3 draft —
+the canvas cannot ratify an unclassified sum.
+
+**Classification: 🟡 YELLOW (scaffold)**.
+
+**Reasoning** (walk through the four dissolution patterns):
+
+1. **Fact placement** — variants have empty payloads; there is no payload
+   to distribute to per-variant consumers. The variant tag itself selects
+   which projection-function branch runs. Pattern 1 does not apply.
+2. **Variant-is-data** — same structural shape (all empty), different
+   labels. Could potentially promote to `EmissionTarget { name: String }`,
+   but the modeling-discipline.md guardrail rules this out: "only valid
+   when the label space is closed and enumerable, not when it's free-form
+   string." A free-form `name: String` would dilute closed-set discipline.
+3. **Algebraic form** — variants do not trace to `std/` algebraic
+   operations (intro/elim, arithmetic). Pattern 3 does not apply.
+4. **Dimensional** — variants ARE points in a 2-or-3-dimensional space.
+   Probable dimensions:
+   - `target_language: { Yaml | Binary | Python | DirectGunbc }` — what
+     the emitter renders
+   - `requires_shim: Bool` — YamlStatic = no shim; BinaryShim / PythonShim
+     = thin YAML shim invoking other runtime; InlineGunbc = no separate
+     artifact (gunbc runtime is the orchestrator)
+   - `runtime_executes: { GhActions | GunbcBinary | Python | GunbcRuntime }`
+     — what actually runs the gates
+   Pattern 4 is the live dissolution path; at four variants the
+   dimensional structure is plausible but not yet forced.
+
+**Why YELLOW, not RED**: the dimensional structure (Pattern 4) is the
+likely terminal shape, but with only four variants and no consumer-side
+need to dispatch on a specific dimension yet (Slice 4 and Slice 5
+emitters dispatch on the variant tag), promoting to a dimensional record
+now would be premature — the second axis (`requires_shim`) is partially
+redundant with `target_language` at the current variant set. Dissolving
+prematurely without consumer-side pressure risks landing the wrong axes.
+
+**Why YELLOW, not GREEN**: GREEN requires "no richer source exists" plus
+a ledger of attempted-and-failed dissolution patterns. Pattern 4
+plausibly works; declaring GREEN would falsely close the door on a
+dissolution that's likely correct but premature.
+
+**Named dissolution trigger** (per YELLOW requirements): dissolve when
+EITHER (a) a fifth target lands that does not fit cleanly into the
+existing four-way axis (e.g., `RustShim`, `GoShim` would force the shim+
+language dimensions to be explicit), OR (b) a consumer of `EmissionTarget`
+emerges that needs to pattern-match on a single dimension rather than the
+full variant tag (e.g., an emitter that wants "render YAML regardless of
+shim presence"), OR (c) Slice 4/Slice 5 implementation surfaces an axis
+the canvas didn't predict. Any of those conditions forces the dimensional
+record shape; until then, the four-variant scaffold preserves the option
+to discover the right axes from real consumer pressure.
+
+**Ledger note**: this classification is canvas-level, not yet codified
+into the `.dag` declaration (which does not yet exist). The implementing
+PR (WI-2 re-brief per §5/§7.5 ask #4) MUST carry the same classification
++ trigger as a `// 🟡 YELLOW (scaffold)` comment on the `type
+EmissionTarget` declaration when it lands, citing this canvas's §7.3.1.
+
 ### §7.4 Comparison table revised
 
 Replacing the §2.4 row "Workflow-artifact authority":
