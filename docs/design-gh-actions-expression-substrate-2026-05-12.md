@@ -400,19 +400,36 @@ discipline expanded to substrate-shape audits.
 
 The 28 expression-capable sites split into three classes by HEAD-type:
 
-- **String-typed sites (18)**: fields already typed `String` / `String?` /
-  `Map<String, String>` at HEAD — `Workflow.env`,
+**Derivation discipline** (per codex BLOCKING review 10150 / sha a4f41d39):
+the three class lists below are **derived directly from the §5.5 audit
+table by HEAD-type column**, not hand-maintained separately. Every row in
+the §5.5 table with a `String` / `String?` / `Map<...,String>` /
+`List<Map<...,String>>` HEAD-type appears in the string-container class;
+every typed-non-string row appears in the typed-field-HOLD class; the
+single enum row appears in the enum-extension class. The lists are
+re-derived whenever a §5.5 row is added or removed (last re-derivation:
+2026-05-12T12:32Z; cross-check: 18 + 9 + 1 = 28 = §5.5 table total ✓).
+
+- **String-container sites (18)**: fields already typed `String` / `String?` /
+  `Map<String, String>` / `Map<String, List<String>>` / `List<Map<String, String>>`
+  at HEAD — `Workflow.env`,
   `Job.name`, `Job.if_condition`, `Job.env`, `Job.concurrency.group`,
   `RunStep.name`, `RunStep.run`, `RunStep.env`,
   `RunStep.working_directory`, `RunStep.if_condition`,
   `UsesStep.name`, `UsesStep.with`, `UsesStep.env`,
-  `UsesStep.if_condition`, `DispatchInput.default`. Migration shape under (c) is uniform:
-  every site → `Expression` / `Expression?` / `Map<String, Expression>`.
+  `UsesStep.if_condition`, `DispatchInput.default`,
+  `MatrixStrategy.dimensions`, `MatrixStrategy.include`,
+  `MatrixStrategy.exclude`. Migration shape under (c) is uniform:
+  every site → `Expression` / `Expression?` / `Map<String, Expression>` /
+  `Map<String, List<Expression>>` / `List<Map<String, Expression>>`
+  (the container shape is preserved; only leaf `String` values become
+  `Expression`).
 - **Typed-field sites (9)**: `Job.timeout_minutes: Int?`,
   `Job.continue_on_error: Bool`,
   `Job.concurrency.cancel_in_progress: Bool`,
   `RunStep.continue_on_error: Bool`, `RunStep.timeout_minutes: Int?`,
-  `UsesStep.continue_on_error: Bool`, `UsesStep.timeout_minutes: Int?`.
+  `UsesStep.continue_on_error: Bool`, `UsesStep.timeout_minutes: Int?`,
+  `MatrixStrategy.fail_fast: Bool`, `MatrixStrategy.max_parallel: Int?`.
   GH Actions string-coerces expressions at these sites at runtime.
   The shape that captures this (wrap vs `TypedOrExpression<T>` sum vs
   defer) is an **open Director-tier question** per §5.5.2 / §6 Q#4.
@@ -542,6 +559,41 @@ ci.yml usage, not the migration ceiling.
    (iii) defer typed-field migration until ci.yml uses expressions at
    those sites. Director-tier choice; substrate-shape implication for
    how gunbc models GH Actions' string-coerced expression semantics.
+5. **`DispatchInput` carrier collapses workflow_call vs workflow_dispatch
+   semantics** (codex BLOCKING review 10150 / sha a4f41d39).
+   `dsl/extdeps/github/actions.dag:54-60` declares one `DispatchInput`
+   used by both `WorkflowCall { inputs }` (`:46`) and `WorkflowDispatch
+   { inputs }` (`:45`), but GH Actions' context-availability for the
+   `inputs.<id>.default` expression differs by placement
+   (workflow_call exposes inputs/secrets; workflow_dispatch exposes
+   github/inputs/vars but not secrets). Migrating `DispatchInput.default`
+   to `Expression` uniformly is correct shape-wise (both placements admit
+   expressions), but the **expression-context-availability axis** is
+   collapsed. Question: split `DispatchInput` into
+   `WorkflowCallInput` / `WorkflowDispatchInput` siblings (with shared
+   prefix carrier for name/description/required/type), or keep the shared
+   carrier and document the placement-dependent context-availability as
+   an emission-time validation concern? Either way the migration to
+   `Expression` proceeds; the question is whether the carrier-split
+   sequences before or after the Slice 4 prereq PR.
+6. **`RunnerSpec` under-models `runs-on` grammar** (codex BLOCKING review
+   10150 / sha a4f41d39). GH Actions `runs-on` per
+   [workflow-syntax docs](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idruns-on)
+   admits three shapes — scalar string (`runs-on: ubuntu-latest`), array
+   of strings (`runs-on: [self-hosted, linux, x64]`), and object
+   (`runs-on: { group: my-group, labels: [...] }`) — plus expressions
+   at scalar, array-element, group, and label-element positions. Current
+   `RunnerSpec = HostedRunner { label: RunnerLabel } | SelfHosted { labels:
+   List<String> }` at `:121-126` flattens this grammar by inferring
+   hosted-vs-self-hosted from the label rather than modeling the array/
+   object surface directly. The §2 (c) sketch adds `ExpressionRunner
+   { expr: Expression }` for the scalar-expression case but does **not**
+   address array-element-expression or object-form/group expressions.
+   Question: model `runs-on` as a sum mirroring the platform grammar
+   (`RunsOnScalar(Expression)` / `RunsOnArray(List<Expression>)` /
+   `RunsOnGroup { group: Expression, labels: List<Expression> }`) before
+   or after the Slice 4 prereq PR? Pre-prereq carrier-split is the
+   cleaner shape but expands the Slice 4 substrate-prereq diff.
 
 ---
 
