@@ -65,11 +65,10 @@ The Phase 1 0c capture PR MUST cite which path it took in its description and (f
 
 ## 3. Mirror-group → bench-name mapping (authoritative names; reconcile `tier3_mirror_perf.rs` at the artifact's `captured_on.git_sha`)
 
-The four perf-budget claims in `tier3_mirror_dissolution_perf_within_budget` map to bench names from `src/v3/compiler/benches/tier3_mirror_perf.rs`:
+The active perf-budget claims in `tier3_mirror_dissolution_perf_within_budget` map to bench names from `src/v3/compiler/benches/tier3_mirror_perf.rs`. Retired mirror slices leave this mapping as their dissolution PRs delete the corresponding Phase 1 hand-Rust bench registrations.
 
 | Mirror slice | Per-mirror claim | Criterion bench name(s) (from `bench_function` arg) |
 |---|---|---|
-| termination | `tier3_termination_mirror_perf_within_budget` | `tier3_termination_merge_evidence` |
 | computation | `tier3_computation_mirror_perf_within_budget` | `tier3_computation_positive_descent_count` + `tier3_computation_lower_same_argument_call` |
 | induction | `tier3_induction_mirror_perf_within_budget` | `tier3_induction_type_iteration_dimension_miss` |
 | effect-carrier | `tier3_effect_carrier_mirror_perf_within_budget` | `tier3_effects_lane2_linear_read_chain` |
@@ -93,16 +92,6 @@ The committed baseline file lives at `src/v3/compiler/benches/tier3_baseline.jso
     "captured_at": "<RFC 3339 UTC timestamp>"
   },
   "mirror_groups": {
-    "termination": {
-      "claim": "tier3_termination_mirror_perf_within_budget",
-      "benches": [
-        {
-          "name": "tier3_termination_merge_evidence",
-          "median_ns": <integer>,
-          "p99_ns": <integer>
-        }
-      ]
-    },
     "computation": {
       "claim": "tier3_computation_mirror_perf_within_budget",
       "benches": [
@@ -134,7 +123,7 @@ The committed baseline file lives at `src/v3/compiler/benches/tier3_baseline.jso
   - **Bootstrap seed landing** (workflow YAML introduced in the same Phase-1 PR—`workflow_dispatch` not yet on `default`): **`host_id` MUST remain the truthful non-Ubicloud identifier**, with PR-body reconciliation naming **forward canonical authority** (`ubicloud-standard-2`) per §1. Replacing that seed via Ubicloud artifact follows **Director / PB-approved recapture** (worker brief) — **not** by silently rewriting `host_id`.
 - `git_sha` is the full 40-char SHA, not abbreviated.
 - **`captured_at`:** RFC 3339 UTC for when **`tier3_baseline.json`** was **finalized** (**`scripts/aggregate_tier3_baseline.py`** stamps aggregator wall clock—intentional audit receipt); it **need not** match any single **`cargo bench`** end instant. Bench execution spans live in archived **`criterion/`** bundles + workflow/job logs retained with the aggregate PR or artifact lineage.
-- `mirror_groups` keys MUST be exactly the four strings `termination`, `computation`, `induction`, `effect_carrier` — no others, no aliases. The Phase 2 gate uses these as join keys.
+- `mirror_groups` keys MUST be exactly the active, not-yet-retired mirror slices in §3 — no others, no aliases. The Phase 2 gate uses these as join keys. Retired slices are omitted rather than kept as empty groups.
 - `benches[].name` MUST exactly match a `bench_function` argument in `tier3_mirror_perf.rs` at the captured `git_sha`. CI validation rejects mismatches.
 
 ---
@@ -144,7 +133,7 @@ The committed baseline file lives at `src/v3/compiler/benches/tier3_baseline.jso
 Before the Phase 1 0c PR opens, the operator MUST run the following checks against the produced JSON:
 
 1. **Schema completeness:** every key in §4 is present; no extras; types match.
-2. **Bench-name exact match (fail-closed):** the distinct names listed in `mirror_groups[*].benches[].name` MUST equal exactly the §3 budgeted set — no missing names (every budgeted bench measured), no extra names (no out-of-budget bench in the JSON). That budgeted five-name set is `{tier3_termination_merge_evidence, tier3_computation_positive_descent_count, tier3_computation_lower_same_argument_call, tier3_induction_type_iteration_dimension_miss, tier3_effects_lane2_linear_read_chain}` (each appearing once across `mirror_groups`, matching `tier3_mirror_perf.rs` at this JSON file's own `captured_on.git_sha`). If a future bench is intentionally added to `tier3_mirror_perf.rs` but excluded from the budget, that exclusion MUST be a separate explicit allowlist row in §3 of this procedure document (with a receipt) and the JSON's bench-name set continues to equal the §3-budgeted set, not all bench-names registered in the bench file. Supersets are NOT permitted; subsets are NOT permitted.
+2. **Bench-name exact match (fail-closed):** the distinct names listed in `mirror_groups[*].benches[].name` MUST equal exactly the §3 budgeted set — no missing names (every budgeted bench measured), no extra names (no out-of-budget bench in the JSON). The current budgeted set is `{tier3_computation_positive_descent_count, tier3_computation_lower_same_argument_call, tier3_induction_type_iteration_dimension_miss, tier3_effects_lane2_linear_read_chain}` (each appearing once across `mirror_groups`, matching `tier3_mirror_perf.rs` at this JSON file's own `captured_on.git_sha`). If a future bench is intentionally added to `tier3_mirror_perf.rs` but excluded from the budget, that exclusion MUST be a separate explicit allowlist row in §3 of this procedure document (with a receipt) and the JSON's bench-name set continues to equal the §3-budgeted set, not all bench-names registered in the bench file. Supersets are NOT permitted; subsets are NOT permitted.
 3. **Sanity bands:** for each bench, `p99_ns >= median_ns` (criterion guarantees this; reject the JSON if violated as it indicates capture corruption).
 4. **Non-zero:** every `median_ns` and `p99_ns` is `> 0`. A zero indicates measurement failure (criterion below floor), not a real timing.
 5. **`host_id` coherence:** Either **`host_id == ubicloud-standard-2`** (standard captures) **or** the **`host_id` matches the bootstrap exception** (§1 / §4) with the Phase-1 PR documenting reconciliation—reject fabricated `ubicloud-standard-2` labels absent Ubicloud-backed runs / dishonest relabeling.
