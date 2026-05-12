@@ -574,7 +574,11 @@ fn gunbc_ci_emission_substrate_compiles() {
 }
 
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
+// Deferred with explicit P5 anchor (not ad-hoc TBD): ROADMAP.md "Forward-Tracked Lane: T-Workflow-As-Data"
+// (~L57ff) + timing-lens / `WorkflowObservationAnchor` thread (~L75ff, `docs/design-timing-lens.md` section 2).
+// Dissolution: re-enable under default CI by amortizing this harness through `cached_compile_to_dag`
+// (`tests/integration/common/cached_compile.rs`) / OnceLock so cold v3 (~67m full-bootstrap + evaluator) stays bounded.
+#[ignore = "ROADMAP T-Workflow-As-Data lane + timing-lens anchor (ROADMAP.md ~L57, ~L75); cold v3 full-bootstrap+evaluator ~67m — dissolve via cached_compile_to_dag/OnceLock (tests/integration/common/cached_compile.rs); hot-fix 2026-05-12"]
 fn ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator() {
     let dag = demo_bootstrap_dag();
     assert!(
