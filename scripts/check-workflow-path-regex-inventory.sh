@@ -100,13 +100,28 @@ if grep -qF "$INVENTORIED_DIFF_ANCHOR" "$CI_YML" 2>/dev/null; then
 fi
 
 if (( actual_diff_count > expected_diff_count )); then
-  for loc in "${extra_locations[@]}"; do
-    fail "new path-regex selection candidate (un-inventoried 'git diff --name-only'): $loc
+  if (( ${#extra_locations[@]} == 0 )); then
+    # Every overflow match still contains the inventoried anchor verbatim —
+    # i.e., a DUPLICATE copy of the anchored invocation. Treat as a new
+    # bridge: the count exceeds baseline, so per the §4 / INVARIANTS P3
+    # fail-closed contract this MUST fail even though no "different" line
+    # is available to point at.
+    fail "duplicate-anchor count overflow: found $actual_diff_count occurrences of
+        'git diff --name-only' but expected $expected_diff_count. Every overflow
+        line still matches the inventoried anchor verbatim, suggesting a copy
+        of the §3 row #1 invocation was added (same literal, second site).
+        Either route selection through the BinaryShim runner (post–Slice 5)
+        or, if event-orthogonal, document in $INVENTORY_DOC §3 and bump
+        'expected_diff_count' in this script."
+  else
+    for loc in "${extra_locations[@]}"; do
+      fail "new path-regex selection candidate (un-inventoried 'git diff --name-only'): $loc
         If this is genuinely orthogonal to affected-set selection, add it to
         $INVENTORY_DOC §3 with rationale and bump 'expected_diff_count' in
         this script. Otherwise route selection through the BinaryShim runner
         (post–Slice 5)."
-  done
+    done
+  fi
 elif (( actual_diff_count < expected_diff_count )) && (( inventoried_present == 0 )); then
   # Already covered by the row #1 fingerprint check; left as a defensive
   # branch so the count-vs-anchor invariant is explicit.
