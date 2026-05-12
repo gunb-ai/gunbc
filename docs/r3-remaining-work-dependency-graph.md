@@ -231,7 +231,7 @@ Current state (per `dashboard-ops graph deep-wolf-155`):
 
 **Operator (Brian) — Day 0**:
 1. Review + ratify this dispatch plan
-2. Confirm/spawn PB Mgr successor (no active session)
+2. Confirm **PB Mgr** lane authority: Wave-1 carrier is **nimble-crab-786** (PR #2781; pre-authored briefs in `docs/briefs/` per §5). Do **not** spawn a second PB Mgr while that session is active. Schedule a **successor** only on explicit handoff after #2781 merges/archives.
 3. Optionally fire reviewer-schedule for any PRs that need it (or trust auto-cycle)
 
 **PM (deep-wolf-155) — Day 1 immediately**:
@@ -256,8 +256,8 @@ Current state (per `dashboard-ops graph deep-wolf-155`):
 
 ## §9. Open questions for operator
 
-**Q-A**: PB Mgr successor — currently no active session. Spawn under Director (zesty-bear-812) for T-LP-Retirement + Tier3 + V2 + FixedPoint lanes?
-- Proposed: spawn via `dashboard-ops work-items create` under Director
+**Q-A**: PB Mgr **after nimble-crab-786 (PR #2781) handoff** — when that Wave-1 carrier merges/archives, should the next PB Mgr successor spawn under Director (zesty-bear-812) for remaining T-LP-Retirement + Tier3 + V2 + FixedPoint lanes?
+- Proposed: spawn via `dashboard-ops work-items create` under Director once the active PB Mgr session is explicitly closed (no duplicate PB Mgr merge surfaces).
 
 **Q-B**: Worker-spawn limits — Mgr capacity is +28 R3 budget. Should we cap aggressive parallelism somewhere (token cost, review-pipeline capacity, etc.)?
 - Proposed: spawn up to ~15 Wave-1; observe; scale if reviewer schedule absorbs
