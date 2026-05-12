@@ -47,6 +47,12 @@ type TestClaim {
 // `SymbolicCost`: the slow-test ratchet needs observed/budgeted wall-clock
 // cost for the test node itself, so #102 can derive exemption status from
 // substrate instead of `scripts/slow-test-exemptions.txt`.
+//
+// Legacy dsl projection note: this tree does not carry the v3
+// `Dimension<Unit, Carrier>` substrate yet. The bootstrap-local v3 authority
+// (`src/v3/std/verification.dag`) is the convergence shape and wraps both
+// values as `Dimension<TestExecutionCost, Int>`; these `_ms` fields are the
+// older dsl projection of that same fact, not a parallel cost algebra.
 type TestExecutionCost {}
 
 type TestNodeRef {
