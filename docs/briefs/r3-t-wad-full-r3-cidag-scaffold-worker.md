@@ -132,14 +132,61 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
 
 ## Propagated substrate-fidelity concerns (Slice 4-5 — Substrate Mgr canvas)
 
-The following concerns are flagged by briansrls BLOCKING inline reviews on PR #2744 (2026-05-12T06:58:55Z) against the EARLIER brief content (when scope was "compose full ci.yml against existing carriers"). The CURRENT brief scope (declaration-only) does NOT make these claims, but the underlying substrate-fidelity concerns propagate to Slice 4-5 per-arm projection body work and must be addressed by Substrate Mgr (warm-wolf-698) canvas-tier before YamlStatic / BinaryShim / PythonShim implementations land.
-
-1. **Concurrency carrier absence**: current `.github/workflows/ci.yml` uses top-level `concurrency:` field; `dsl/extdeps/github/actions.dag::Workflow` does NOT model `concurrency`. P1/P2 fidelity requires extension (e.g., `Workflow.concurrency: Concurrency?` with `Concurrency { group, cancel_in_progress }`).
-2. **`ready_for_review` PR activity absence**: current ci.yml uses `pull_request.types: [opened, synchronize, reopened, ready_for_review]`; `PullRequestActivity` enum in actions.dag may not carry `ready_for_review` arm. Audit + extend if missing.
-3. **Trigger fidelity — NO fabrication**: current ci.yml declares only `push` and `pull_request` triggers — NOT `schedule`. Slice 4 YamlStatic emitter MUST emit faithfully (push + PR only); `Schedule` trigger arm exists in the carrier but is NOT instantiated for current ci.yml. **No fabrication of triggers absent from source.**
-4. **Step body + action input completeness as MUST (not SHOULD / NICE-TO-HAVE)**: Slice 4 ci.yml-equivalent regeneration requires executable step bodies (`RunStep.run`, `RunStep.shell`, `RunStep.env`) and complete action references (`UsesStep.uses: ActionRef`, `UsesStep.with: Map<String, String>`) as MUST acceptance. P1 modeling faithfulness fails if these are partial.
-
 These concerns are NOT acceptance gates for THIS WI (declaration-only scope). They are propagated to Slice 4-5 canvas as MUST-address-before-per-arm-body-PRs.
+
+Authority: briansrls BLOCKING inline reviews on PR #2744 (2026-05-12T06:58:55Z) + codex BLOCKING scheduled review on cc82ec4c (2026-05-12T~07:14Z) flagged the audit as incomplete and requested "key-by-key inventory and STOP/reroute missing carriers before WI-2." This section provides the exhaustive top-level inventory.
+
+### Exhaustive top-level inventory (current ci.yml → actions.dag carriers)
+
+Verified 2026-05-12 against `.github/workflows/ci.yml` HEAD + `dsl/extdeps/github/actions.dag` HEAD:
+
+| ci.yml field | actions.dag carrier | Status |
+|---|---|---|
+| `name: ci` | `Workflow.name: String` | ✓ covered |
+| `on.push.branches: [main]` | `Push { branches: List<String>, paths: List<String> }` | ⚠ `Push.paths` REQUIRED in carrier; ci.yml omits — needs Optional |
+| `on.pull_request.branches: [main]` | `PullRequest { branches, types }` | ✓ covered |
+| `on.pull_request.types: [opened, synchronize, reopened, ready_for_review]` | `PullRequestActivity = Opened \| Synchronize \| Reopened \| Closed` | ⚠ **MISSING `ReadyForReview` arm** |
+| `permissions.contents: read` | `WorkflowPermissions.contents: PermissionLevel` | ✓ covered |
+| `permissions.pull-requests: read` | `WorkflowPermissions.pull_requests: PermissionLevel` | ✓ covered |
+| (ci.yml omits `permissions.issues`) | `WorkflowPermissions.issues: PermissionLevel` REQUIRED | ⚠ field required; ci.yml omits — needs Optional OR `PermUnset` arm |
+| (ci.yml omits `permissions.actions`) | `WorkflowPermissions.actions: PermissionLevel` REQUIRED | ⚠ same as issues |
+| `concurrency.group: <expr>` | NO `Workflow.concurrency` field — only `Job.concurrency: ConcurrencySpec?` | ⚠ **MISSING `Workflow.concurrency`** |
+| `concurrency.cancel-in-progress: true` | `ConcurrencySpec.cancel_in_progress: Bool` | (depends on adding `Workflow.concurrency`) |
+| `env.CARGO_TERM_COLOR: always` | `Workflow.env: Map<String, String>` | ✓ covered |
+| `env.RUSTFLAGS: -D warnings` | `Workflow.env: Map<String, String>` | ✓ covered |
+
+### Per-job inventory (representative — `fmt` job from ci.yml)
+
+| ci.yml field | actions.dag carrier | Status |
+|---|---|---|
+| `if: github.event.pull_request.draft != true` | `Job.if_condition: String?` (opaque expression string) | ✓ covered |
+| `runs-on: ${{ vars.CI_RUNNER \|\| 'ubuntu-latest' }}` | `Job.runner: RunnerSpec = HostedRunner { RunnerLabel } \| SelfHosted { labels }` | ⚠ **EXPRESSION-SYNTAX GAP** — `RunnerLabel` is enum literal only; cannot represent GH Actions expression `${{ vars.X \|\| 'fallback' }}` |
+| `timeout-minutes: 5` | `Job.timeout_minutes: Int?` | ✓ covered |
+| `steps: [...]` | `Job.steps: List<Step>` | covered (per-step shape ratified) |
+
+### Per-step inventory (representative — `actions/checkout@v4` step from ci.yml)
+
+| ci.yml field | actions.dag carrier | Status |
+|---|---|---|
+| `name: Checkout` | `UsesStep.name: String?` | ✓ covered |
+| `uses: actions/checkout@v4` | `UsesStep.uses: ActionRef { owner, repo, ref }` | ✓ covered |
+| `with: <map>` | `UsesStep.with: Map<String, String>` | ✓ covered |
+
+### 5 substantive carrier gaps requiring Slice 4 substrate-prereq PRs (cited in propagated concerns below)
+
+1. **`Workflow.concurrency` absence**: ci.yml uses top-level `concurrency:`; `dsl/extdeps/github/actions.dag::Workflow` does NOT model `concurrency` (only `Job.concurrency` exists). P1/P2 fidelity requires extension (`Workflow.concurrency: ConcurrencySpec?`).
+2. **`PullRequestActivity.ReadyForReview` arm absence**: ci.yml uses `types: [..., ready_for_review]`; carrier only has `Opened | Synchronize | Reopened | Closed`. Audit + extend.
+3. **`Push.paths` required-but-omitted**: carrier requires both `branches` and `paths`; ci.yml only declares `branches`. Make `paths` optional with default empty list OR document the existing-default semantic.
+4. **`WorkflowPermissions.issues/.actions` required-but-omitted**: carrier requires all 4 permission fields; ci.yml only declares `contents` + `pull-requests`. Either (a) make fields Optional, OR (b) introduce `PermUnset` arm to represent "no permission scope set" structurally.
+5. **`RunnerSpec` expression-syntax modeling**: ci.yml uses `runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}` — a GH Actions expression with fallback. Current `RunnerLabel` is enum literal only; cannot represent expression sites. Decide: (a) generalize `RunnerSpec` to allow opaque expression strings (parallel to `if_condition: String?`), (b) introduce expression-AST carrier covering all expression sites (`concurrency.group`, `if_condition`, `with` values, `env` values, `runner`), or (c) declare expression-string opaque for runner only as minimal-surface fix. Choice IS substrate-shape — Mgr canvas-tier decision.
+
+### Carry-forward authoring concerns (Slice 4 acceptance discipline)
+
+6. **Trigger fidelity — NO fabrication**: current ci.yml declares only `push` and `pull_request` triggers — NOT `schedule`. Slice 4 YamlStatic emitter MUST emit faithfully (push + PR only); `Schedule` trigger arm exists in the carrier but is NOT instantiated for current ci.yml. **No fabrication of triggers absent from source.**
+7. **Step body + action input completeness as MUST (not SHOULD / NICE-TO-HAVE)**: Slice 4 ci.yml-equivalent regeneration requires executable step bodies (`RunStep.run`, `RunStep.shell`, `RunStep.env`) and complete action references (`UsesStep.uses: ActionRef`, `UsesStep.with: Map<String, String>`) as MUST acceptance. P1 modeling faithfulness fails if these are partial.
+8. **Exhaustive inventory must extend per-job and per-step coverage**: this brief covers top-level + ONE representative job (`fmt`) + ONE representative step. Slice 4 canvas MUST inventory EVERY job (`fmt`, `ci`, `changes`, `v3`, `self_host_ratchet`, etc.) and EVERY step within each. STOP/reroute discipline applies per-job-per-step.
+
+These concerns will be encoded into the Slice 4 brief as MUST-address acceptance gates when Substrate Mgr (warm-wolf-698) authors post-canvas-merge.
 
 ---
 
