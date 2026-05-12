@@ -69,6 +69,8 @@ mod e_i_lane_induction_preflight_test;
 mod emission_provenance_lens_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
 mod extdeps_rust_primitives_loader_test;
+#[path = "integration/extdeps_sql_transport_test.rs"]
+mod extdeps_sql_transport_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
 #[path = "integration/idempotency_lens_instance_blocker_test.rs"]
