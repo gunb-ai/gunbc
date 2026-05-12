@@ -2460,6 +2460,19 @@ impl<'a> TestRunner<'a> {
                 )),
             };
         };
+        // Both `SuiteClaim` variants are single-argument coproduct arms
+        // (`Enumerated(TestClaim)` / `Quantified(QuantifiedTestClaim)`) — any
+        // other payload arity is ill-shaped and must fail closed at the
+        // boundary (INVARIANTS P3).
+        if payload.len() != 1 {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` `{label}` expects exactly 1 payload argument, got {}: {payload:?}",
+                    payload.len()
+                )),
+            };
+        }
         let Some(FieldValue::Reference(id)) = payload.first() else {
             return ClaimEvaluation {
                 claim_name: suite_name.to_string(),
