@@ -386,7 +386,7 @@ fn program_generator_authoring_surface_compiles_cleanly() {
     let src = r#"
 data parse_smoke_generator: List<ProgramShape> = []
 
-let generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
+data generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
 "#;
 
     let dag = compile_any(src, "program_generator_authoring_surface.v3");
@@ -397,15 +397,26 @@ let generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
     );
 
     assert_eq!(
-        bind_value_type_decl(&dag, "generator_ref"),
+        find_named(&dag, "generator_ref"),
         find_named(&dag, "ProgramGenerator")
+    );
+    assert_eq!(
+        dag.declaration(find_named(&dag, "generator_ref"))
+            .value_body
+            .as_ref(),
+        Some(&ValueBody::Structural {
+            fields: vec![(
+                String::from("generator"),
+                FieldValue::Reference(find_named(&dag, "parse_smoke_generator"))
+            )]
+        })
     );
 }
 
 #[test]
 fn program_generator_rejects_empty_declaration_ref_literal() {
     let src = r#"
-let generator_ref: ProgramGenerator = { generator: {  } }
+data generator_ref: ProgramGenerator = { generator: {  } }
 "#;
 
     let dag = compile_any(src, "program_generator_empty_ref.v3");
