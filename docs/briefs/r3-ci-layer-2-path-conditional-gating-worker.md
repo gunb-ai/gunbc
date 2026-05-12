@@ -122,10 +122,12 @@ Where:
 **Mechanism**: the `changes` job MUST gate ALL `skip_*` flags to `false` (force full-run) when any changed file matches the shared-infrastructure regex:
 
 ```
-^(\.github/.*|scripts/.*|Cargo\.(toml|lock)|rust-toolchain\.toml|\.cargo/.*|build\.rs|src/v3/compiler/tests/integration/common/.*|src/v3/compiler/tests/integration/sg0_census_test\.rs|src/v3/compiler/tests/integration/test_runner_test\.rs|src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test\.rs|src/v3/compiler/tests/integration/integration\.rs|src/v3/compiler/tests/integration\.rs)$
+^(\.github/.*|scripts/.*|(.*/)?Cargo\.(toml|lock)|rust-toolchain\.toml|\.cargo/.*|(.*/)?build\.rs|src/v3/compiler/tests/integration/common/.*|src/v3/compiler/tests/integration/sg0_census_test\.rs|src/v3/compiler/tests/integration/test_runner_test\.rs|src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test\.rs|src/v3/compiler/tests/integration/integration\.rs|src/v3/compiler/tests/integration\.rs)$
 ```
 
 **Harness/test-selection-machinery arms** (per openai-pro P3 BLOCKING #9749 absorption): the regex includes the named harness-code class explicitly — `tests/integration/common/*` (shared test utilities), `sg0_census_test.rs` (census authority), `test_runner_test.rs` (runner framework), `t_pb_b_1_dag_runner_test.rs` (suite enumeration framework), and the integration test entry points. Worker MUST add any new harness-class file to this regex before merging the file. **A harness-class file MUST never appear in a per-group `required_paths_regex` — it always triggers full-run.**
+
+**Crate-local build metadata** (per openai-pro P3 BLOCKING review on PR #2725 absorption 2026-05-12): the regex MUST match `Cargo.toml`/`Cargo.lock`/`build.rs` at ANY depth, not just workspace-root. The project has crate-local manifests + build scripts (e.g., `src/v3/compiler/Cargo.toml`, `src/v3/compiler/build.rs` per `CODING.md:319`); a root-only anchored regex (`^Cargo\.(toml|lock)$`) would miss these and silently skip tests for crate-local manifest/build-script changes — fail-open boundary class P3 forbids. The `(.*/)?` non-capturing optional path prefix on those alternates above matches both root-level (e.g., `Cargo.lock`) AND any-depth crate-local (e.g., `src/v3/compiler/Cargo.toml`, `src/v3/compiler/build.rs`).
 
 Equivalently in step output: `force_full_run = (any changed file ∈ shared-infrastructure regex)`; when `force_full_run = true`, all per-group `skip_*` outputs short-circuit to `false`. Composes with the `code=true|false` Layer 1 gate (docs-only PRs already skip everything via Layer 1; this constraint applies only to code PRs).
 
