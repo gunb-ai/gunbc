@@ -26,7 +26,8 @@ type Workflow {
   on: List<WorkflowTrigger>
   concurrency: ConcurrencySpec?
   jobs: List<Job>
-  env: Map<String, String>
+  // `none` models an absent top-level `env:` block in Actions YAML (no fabricated keys).
+  env: Map<String, String>?
   permissions: WorkflowPermissions?
 }
 
