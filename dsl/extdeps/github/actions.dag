@@ -24,7 +24,10 @@ type Workflow {
   jobs: List<Job>
   env: Map<String, String>
   permissions: WorkflowPermissions?
+  emission_target: EmissionTarget?
 }
+
+type EmissionTarget = YamlStatic | BinaryShim | PythonShim
 
 type WorkflowPermissions {
   contents: PermissionLevel

@@ -49,6 +49,7 @@ import extdeps.github.actions {
   WorkflowPermissions,
   PermRead,
   PermNone,
+  YamlStatic,
   Bash,
   ActionRef
 }
@@ -866,5 +867,6 @@ data gunbc_ci_yml_workflow: Workflow = Workflow {
     pull_requests: PermRead,
     issues: PermNone,
     actions: PermNone
-  }
+  },
+  emission_target: YamlStatic
 }

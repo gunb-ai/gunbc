@@ -17,6 +17,7 @@ import extdeps.github.actions {
   HostedRunner,
   UbuntuLatest,
   Push,
+  YamlStatic,
   checkout_action,
   setup_rust_action
 }
@@ -78,6 +79,7 @@ data modeled_gunbc_ci_workflow: Workflow = Workflow {
   },
   env: { WORKFLOW_LEVEL: "demo" },
   permissions: none,
+  emission_target: YamlStatic,
 }
 
 // Historical note: an earlier PB-1 receipt wrapped this predicate in `_ci_wad_nonlinear_timing_stub`

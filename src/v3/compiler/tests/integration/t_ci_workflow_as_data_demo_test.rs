@@ -279,6 +279,26 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
 }
 
 #[test]
+fn ci_workflow_as_data_pins_emission_target_surface() {
+    let dag = demo_bootstrap_dag();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "fixture diagnostics: {:?}",
+        dag.diagnostics()
+    );
+
+    let workflow = named_record_root(&dag, "Workflow");
+    conj_field_ty(&dag, workflow, "emission_target");
+
+    for variant in ["YamlStatic", "BinaryShim", "PythonShim"] {
+        disj_variant_constructor_id(&dag, "EmissionTarget", variant);
+    }
+
+    dag.declaration_by_name("gunbc_ci_yml_workflow")
+        .expect("full gunbc CI workflow data must load from dsl/gunbc/ci.dag");
+}
+
+#[test]
 #[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator() {
     let dag = demo_bootstrap_dag();
