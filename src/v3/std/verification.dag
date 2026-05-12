@@ -425,6 +425,23 @@ fn obligation_for_claim(c: TestClaim) -> TestObligation {
   TestObligation { claim_name: c.name, resources: claim_obligation_resources(c) }
 }
 
-fn materialize_test_obligations(claims: List<TestClaim>) -> List<TestObligation> {
-  map(claims, obligation_for_claim)
+// `QuantifiedTestClaim` projects onto the same obligation surface — `requires`
+// is the sole authority per design §2.2. Generator/quantifier shape is
+// orthogonal to the dependency-walk fact and never adds parallel edges.
+fn obligation_for_quantified_claim(q: QuantifiedTestClaim) -> TestObligation {
+  TestObligation { claim_name: q.name, resources: q.requires }
+}
+
+// SuiteClaim-level projection — dispatches the suite-entry coproduct onto the
+// shared `TestObligation` surface so `QuantifiedTestClaim.requires` flows
+// forward through the dependency-walk on equal footing with enumerated claims
+// (INVARIANTS P2 — facts flow forward through a single carrier).
+fn obligation_for_suite_claim(entry: SuiteClaim) -> TestObligation =
+  match entry {
+    Enumerated(c) => obligation_for_claim(c)
+    Quantified(q) => obligation_for_quantified_claim(q)
+  }
+
+fn materialize_test_obligations(claims: List<SuiteClaim>) -> List<TestObligation> {
+  map(claims, obligation_for_suite_claim)
 }
