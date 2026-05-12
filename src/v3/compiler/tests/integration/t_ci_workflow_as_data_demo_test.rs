@@ -339,8 +339,8 @@ fn workflow_topology<'a>(
     dag: &'a v3_compiler::dag::Dag,
     fields: &'a [(String, FieldValue)],
 ) -> (&'a str, Vec<&'a str>, Vec<(&'a str, &'a str)>) {
-    let name = literal_string(structural_field(fields, "name"));
     let pipeline = structural_record_ref(dag, structural_field(fields, "pipeline"));
+    let name = literal_string(structural_field(pipeline, "name"));
     let node_ids = structural_list(structural_field(pipeline, "gates"))
         .iter()
         .map(|gate| literal_string(structural_field(structural_record_ref(dag, gate), "id")))
@@ -413,7 +413,7 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
 
     assert_eq!(
         name, "gunbc-ci",
-        "modeled workflow DAG name must stay aligned with the CI pipeline"
+        "modeled workflow DAG name must derive from the CI pipeline"
     );
 
     assert_eq!(
