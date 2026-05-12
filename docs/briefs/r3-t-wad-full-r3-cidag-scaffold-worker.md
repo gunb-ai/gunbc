@@ -111,7 +111,18 @@ The projection function takes a `CIWorkflowDag` input. Two valid sourcing paths:
 - Dispatch-ready NOW (existing `dsl/extdeps/github/actions.dag::Workflow` + existing `dsl/gunbc/ci.dag::CIPipeline` suffice for declaration scope).
 - Slice 1 substrate LANDED (PR #2160) — `WorkflowSecret` + `CronSchedule` available; consumed downstream by Slice 4 emitter, not this WI.
 - Slice 3 demo LANDED (PR #2371) — `t_ci_workflow_as_data_demo.dag` exists; this WI extends scope from demo-of-evaluation into projection-substrate-declaration.
-- This WI lands the projection-function substrate; Slice 4 implements per-arm bodies; Slice 8 deletes hand-authored ci.yml.
+- This WI lands the projection-function substrate; Slice 4 implements per-arm bodies; Slice 8 dissolves hand-authority over `.github/workflows/ci.yml` (per renamed gate `ci_yml_hand_authority_dissolved` — see scope doc §1 fix 2026-05-12).
+
+## Propagated substrate-fidelity concerns (Slice 4-5 — Substrate Mgr canvas)
+
+The following concerns are flagged by briansrls BLOCKING inline reviews on PR #2744 (2026-05-12T06:58:55Z) against the EARLIER brief content (when scope was "compose full ci.yml against existing carriers"). The CURRENT brief scope (declaration-only) does NOT make these claims, but the underlying substrate-fidelity concerns propagate to Slice 4-5 per-arm projection body work and must be addressed by Substrate Mgr (warm-wolf-698) canvas-tier before YamlStatic / BinaryShim / PythonShim implementations land.
+
+1. **Concurrency carrier absence**: current `.github/workflows/ci.yml` uses top-level `concurrency:` field; `dsl/extdeps/github/actions.dag::Workflow` does NOT model `concurrency`. P1/P2 fidelity requires extension (e.g., `Workflow.concurrency: Concurrency?` with `Concurrency { group, cancel_in_progress }`).
+2. **`ready_for_review` PR activity absence**: current ci.yml uses `pull_request.types: [opened, synchronize, reopened, ready_for_review]`; `PullRequestActivity` enum in actions.dag may not carry `ready_for_review` arm. Audit + extend if missing.
+3. **Trigger fidelity — NO fabrication**: current ci.yml declares only `push` and `pull_request` triggers — NOT `schedule`. Slice 4 YamlStatic emitter MUST emit faithfully (push + PR only); `Schedule` trigger arm exists in the carrier but is NOT instantiated for current ci.yml. **No fabrication of triggers absent from source.**
+4. **Step body + action input completeness as MUST (not SHOULD / NICE-TO-HAVE)**: Slice 4 ci.yml-equivalent regeneration requires executable step bodies (`RunStep.run`, `RunStep.shell`, `RunStep.env`) and complete action references (`UsesStep.uses: ActionRef`, `UsesStep.with: Map<String, String>`) as MUST acceptance. P1 modeling faithfulness fails if these are partial.
+
+These concerns are NOT acceptance gates for THIS WI (declaration-only scope). They are propagated to Slice 4-5 canvas as MUST-address-before-per-arm-body-PRs.
 
 ---
 
