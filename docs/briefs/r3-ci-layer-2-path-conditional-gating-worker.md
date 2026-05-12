@@ -125,9 +125,11 @@ The shared-infrastructure regex MUST be hand-authored at the **changes job level
 
 **[Mgr-fill]**: validate the shared-infra regex against representative recent PRs that touched `.github/workflows/ci.yml` / `scripts/*` / `Cargo.lock` and confirm those PRs would have `force_full_run = true`.
 
-**Starting template — PM pre-staged Mgr-fill reference doc**: [`docs/briefs/r3-ci-layer-2-pm-prestaged-mgr-fill-template.md`](r3-ci-layer-2-pm-prestaged-mgr-fill-template.md) (landed via PR #2721; 220 lines).
+**Starting template — PM pre-staged Mgr-fill reference doc**: `docs/briefs/r3-ci-layer-2-pm-prestaged-mgr-fill-template.md` (open as **PR #2721** at https://github.com/gunb-ai/gunbc/pull/2721; **NOT yet landed on `main`** — verified via codex BLOCKING #9754 absorption 2026-05-12: `git ls-tree origin/main -- ...` returned no blob; file lives only on PR #2721's branch until merge). 220 lines.
 
-The PM template provides:
+**Authority caveat per codex P1/P2 catch**: this brief cites the template as the inventory data attachment, but the cited path will be unresolvable on a worker checkout of `main` until PR #2721 merges. Verification Mgr finalization MUST coordinate the merge sequencing: either (a) merge PR #2721 first so the template is on `main` before Mgr-fill starts, OR (b) read the template from PR #2721's branch (e.g., `gh pr view 2721 --repo gunb-ai/gunbc` or checking out `origin/<2721-branch>`) until it merges. Cross-link: PR #2721 author is PM (`deep-wolf-155`); merge coordination is PM-routable.
+
+The PM template provides (per PR #2721 review-state at sha `262f42d7d` — post fix):
 - **All 78 `scripts/slow-test-exemptions.txt` entries** grouped into 9 clusters (A–I) by module prefix
 - **`(test_pattern, dimensions, required_paths_regex)` skeleton table** with every row carrying a `dimensions:` field of type `Set<Dimension>` per locked-design §2 union semantics (PM template post-fix at `dedcf69a4`)
 - **Pilot recommendation: Cluster B** (Lane 2 Stage 2d symbolic cost — high confidence, single-element set `{cost}`, ~6 tests). Note: my §6 recommendation was `cost_lens` first — these converge; Cluster B IS the cost-lens family with singleton `{cost}` dimensions.
