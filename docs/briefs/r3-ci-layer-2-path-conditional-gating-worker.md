@@ -197,7 +197,7 @@ changes:
         done
 ```
 
-**The `(group_name, dimensions)` mapping survives the dissolution** — only the `required_paths_regex` column gets retired (replaced by lens-provided per-dimension affected-set). For this to work, **every Layer 2 path-mapping entry MUST have a `dimensions:` field of type `Set<Dimension>` with members from the lens enum exactly**.
+**The `(group_name, dimensions, testclaim_references)` mapping survives the dissolution** (corrected per Brian's BLOCKING #2 absorption + cursor internal-consistency catch 2026-05-12) — only the `required_paths_regex` column gets retired (replaced by `testclaim_references: Set<NodeRef>` as the NodeRef-precise version of group-tests-membership). **Both** `dimensions: Set<Dimension>` AND `testclaim_references: Set<NodeRef>` columns survive as lens consumers per the canonical 2-step selection join at `docs/design-affected-set-lens.md:359`. For this to work, **every Layer 2 path-mapping entry MUST have a `dimensions:` field of type `Set<Dimension>` AND a `testclaim_references:` field of type `Set<NodeRef>`, with members sourced from the lens enum + `tests/dag/*` TestClaim authorities exactly**.
 
 This is the parallel-representation-debt prevention. If Layer 2's group-classification diverges from the lens's dimension axis (e.g., Layer 2 groups by file-area but lens groups by dimension), dissolution becomes a schema-migration rather than a column-retirement.
 
@@ -255,7 +255,7 @@ Escalate via dashboard-message to Verification Mgr (`clever-tern-670`) if:
 - The `changes` job exceeds 3-minute cap once Layer 2 classification logic added (mechanism-shape question)
 - Required-paths regex authoring produces false-negatives (test skipped that should have run) in self-test — escalate to widen regex, NOT to disable group classification
 - `self_host_ratchet` `if:` widening breaks when interacting with per-step `if:` — coordinate with PR #2718 author for the predicate composition
-- Layer 2 dissolution shape (when affected-set lens lands) doesn't match the `(group_name, dimensions)` schema — substrate-shape question, escalate to Substrate Mgr coordinator
+- Layer 2 dissolution shape (when R4.B CI integration lands) doesn't match the `(group_name, dimensions, testclaim_references)` schema per canonical 2-step join — substrate-shape question, escalate to Substrate Mgr coordinator
 - A group consumer reads multi-dim but it's unclear which dimensions are load-bearing — escalate to Coordinator for dimension-set assignment (do NOT default to singleton `{primary}`; that's the fail-open shape PM caught in template review)
 
 Do not push a workaround PR for any of these.
