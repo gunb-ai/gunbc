@@ -10,7 +10,7 @@
 
 ## §0. What changes vs existing T-WAD plan
 
-**Existing scope** (per `r3-program-plan.md` §1.8 gate #56): `ci_workflow_modeled_as_dag` = "at least one workflow as `.dag` data executes through evaluator." Slice 3 demonstration; consumes Slices 1+2 substrate. **Slice 1 LANDED via PR #2160** (WorkflowSecret + CronExpression carriers). **Slice 3 demo LANDED via PR #2371** (`t_ci_workflow_as_data_demo.dag` + integration tests).
+**Existing scope** (per `r3-program-plan.md` §1.8 gate #56): `ci_workflow_modeled_as_dag` = "at least one workflow as `.dag` data executes through evaluator." Slice 3 demonstration; consumes Slices 1+2 substrate. **Slice 1 LANDED via PR #2160 + #2169** (`WorkflowSecret` + `CronSchedule` carriers — Slice 1 worker brief naming `CronExpression` was superseded by the landed `CronSchedule` model at `dsl/extdeps/cron_schedule_model.dag`; use `CronSchedule` as the grounded name). **Slice 3 demo LANDED via PR #2371** (`t_ci_workflow_as_data_demo.dag` + integration tests).
 
 **FULL R3-close scope** (operator-ratified 2026-05-12; Director-ratified gate-additive framing msg_5cbdad24):
 1. **ALL** CI workflow authored as `.dag` (not just one demo workflow) — extend `dsl/gunbc/ci.dag` to cover full `.github/workflows/ci.yml`
