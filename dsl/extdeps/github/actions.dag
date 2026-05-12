@@ -141,17 +141,28 @@ type Job {
 // and https://docs.github.com/en/actions/using-jobs/using-concurrency (mapping keys
 // `group`, `cancel-in-progress`, `queue`; expression-valued cancel-in-progress).
 
-// Boolean `cancel-in-progress:` literal, or a `${{ }}` expression that evaluates to
-// boolean (GitHub allows expression form with restricted contexts).
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟡 YELLOW (scaffold). Literal bool vs opaque `${{ }}` expression string mirrors GitHub's
+// surface union; richer source is a typed Actions boolean-expression carrier when/if
+// modeled structurally in this repo.
+// Named dissolution trigger: typed workflow-boolean expression substrate lands AND
+// `gunbc/ci_emission.dag` projection consumes it for `cancel-in-progress` mapping values.
 type CancelInProgressSpec
   = CancelInProgressBool { value: Bool }
   | CancelInProgressExpression { expression: String }
 
+// 🟢 GREEN (terminal). GitHub documents exactly two `queue:` keywords (`single`, `max`);
+// variants are 1:1 with that closed keyword pair.
+// Ledger (patterns 1–4): no cheaper dissolution — keywords are irreducible at YAML input.
 // `queue:` inside the mapping form. Omitted in YAML → GitHub default (`single`).
 // `max` allows a bounded pending queue; must not be combined with `cancel-in-progress: true`
 // (workflow validation rejects — structural emitter responsibility).
 type ConcurrencyQueueMode = ConcurrencyQueueSingle | ConcurrencyQueueMax
 
+// 🟡 YELLOW (scaffold). Scalar vs mapping mirrors GitHub's top-level `concurrency:` grammar
+// split; `ConcurrencyMapping` may grow when GitHub documents additional mapping keys.
+// Named dissolution trigger: GitHub adds documented concurrency mapping fields beyond
+// `group` / `cancel-in-progress` / `queue` OR emitter needs single-axis dimensional dispatch.
 type ConcurrencySpec
   = ConcurrencyScalar { group: String }
   | ConcurrencyMapping {
