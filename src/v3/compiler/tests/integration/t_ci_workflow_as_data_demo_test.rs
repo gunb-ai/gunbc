@@ -24,9 +24,11 @@ use v3_compiler::dag::{
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
 };
-use v3_compiler::generated_full_bootstrap_dag;
+use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag, CompileError};
 
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
+const GUNBC_CI_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci.dag");
+const GUNBC_CI_FILE: &str = "dsl/gunbc/ci.dag";
 
 // P5 checkable receipt (parent gate #1956 / brief linkage — same pattern as `tc1_*_strict_fire_test`).
 const _: &str = include_str!(concat!(
@@ -296,6 +298,41 @@ fn structural_list(value: &FieldValue) -> &[FieldValue] {
     items
 }
 
+fn workflow_topology(fields: &[(String, FieldValue)]) -> (&str, Vec<&str>, Vec<(&str, &str)>) {
+    let name = literal_string(structural_field(fields, "name"));
+    let node_ids = structural_list(structural_field(fields, "nodes"))
+        .iter()
+        .map(|node| literal_string(structural_field(structural_record(node), "id")))
+        .collect();
+    let edges = structural_list(structural_field(fields, "edges"))
+        .iter()
+        .map(|edge| {
+            let edge = structural_record(edge);
+            (
+                literal_string(structural_field(edge, "from")),
+                literal_string(structural_field(edge, "to")),
+            )
+        })
+        .collect();
+    (name, node_ids, edges)
+}
+
+fn structural_value_body<'a>(
+    dag: &'a v3_compiler::dag::Dag,
+    name: &str,
+) -> &'a [(String, FieldValue)] {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("{name} data must load"));
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "{name} must lower as structural data, got {:?}",
+            decl.value_body
+        );
+    };
+    fields
+}
+
 #[test]
 fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
     let dag = demo_bootstrap_dag();
@@ -322,42 +359,20 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
 #[test]
 fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
     let dag = demo_bootstrap_dag();
-    let decl = dag
-        .declaration_by_name("modeled_gunbc_ci_workflow_dag")
-        .expect("modeled_gunbc_ci_workflow_dag data must load");
-    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
-        panic!(
-            "ci_workflow_dag must lower as structural data, got {:?}",
-            decl.value_body
-        );
-    };
+    let fields = structural_value_body(&dag, "modeled_gunbc_ci_workflow_dag");
+    let (name, node_ids, edges) = workflow_topology(fields);
 
     assert_eq!(
-        literal_string(structural_field(fields, "name")),
-        "gunbc-ci",
+        name, "gunbc-ci",
         "modeled workflow DAG name must stay aligned with the CI pipeline"
     );
 
-    let node_ids: Vec<_> = structural_list(structural_field(fields, "nodes"))
-        .iter()
-        .map(|node| literal_string(structural_field(structural_record(node), "id")))
-        .collect();
     assert_eq!(
         node_ids,
         vec!["compile-gates", "lint", "tests", "l1-ratchet"],
         "CI workflow DAG must carry one node per structural gate"
     );
 
-    let edges: Vec<_> = structural_list(structural_field(fields, "edges"))
-        .iter()
-        .map(|edge| {
-            let edge = structural_record(edge);
-            (
-                literal_string(structural_field(edge, "from")),
-                literal_string(structural_field(edge, "to")),
-            )
-        })
-        .collect();
     assert_eq!(
         edges,
         vec![
@@ -367,6 +382,24 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
             ("tests", "l1-ratchet"),
         ],
         "CI workflow dependencies must be modeled as provider-neutral DAG edges"
+    );
+}
+
+#[test]
+fn ci_workflow_as_data_demo_matches_gunbc_ci_authority_topology() {
+    let demo = demo_bootstrap_dag();
+    let ci = match compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE) {
+        Ok(dag) | Err(CompileError::Semantic(dag)) => dag,
+        Err(err) => panic!("compile {GUNBC_CI_FILE}: {err:?}"),
+    };
+
+    assert_eq!(
+        workflow_topology(structural_value_body(
+            &demo,
+            "modeled_gunbc_ci_workflow_dag"
+        )),
+        workflow_topology(structural_value_body(&ci, "ci_workflow_dag")),
+        "demo bootstrap CI DAG must not drift from dsl/gunbc/ci.dag authority"
     );
 }
 
