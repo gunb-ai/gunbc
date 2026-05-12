@@ -32,10 +32,11 @@ What is already on `main`:
 |---|---|---|
 | `MachineWidth<bits>` carrier (phantom unary) | `dsl/std/machine_constraints.dag:45` | #1856 |
 | `Compose<Algebra, MachineConstraint> = Phantom` | `dsl/std/machine_constraints.dag:112` | #1856 |
-| `Int = AbelianGroup<GroupCompletion<Nat>>` algebraic concept | `dsl/std/integer.dag:147` | #1466 |
-| `UInt = Nat` canonical-instance form | `dsl/std/integer.dag:148` | #1818 |
+| `Int = AbelianGroup<GroupCompletion<Nat>>` algebraic concept | `dsl/std/integer.dag:123` | #1466 |
+| `UInt = Nat` canonical-instance form | `dsl/std/integer.dag:124` | #1818 |
 | `Real = ApproximateField<FieldOfFractions<Int>>` | `dsl/std/float.dag` | #2397 / #2409 |
-| `IntW32/64/128`, `UIntW32/64/128` (substrate aliases) | `dsl/std/integer.dag:46-56` | #2161 |
+| `Int8…Int128`, `UInt8…UInt128` (canonical fixed-width rows) | `dsl/std/integer.dag:45-56` | #2161 |
+| `IntW32/64/128`, `UIntW32/64/128` (historical substrate aliases) | `dsl/std/integer.dag:79-84` | (pre-#2161 hold-overs) |
 | `Real32/Real64` = `Compose<Real, MachineWidth<Word32\|Word64>>` | `dsl/std/float.dag` | #2570 |
 | Width carriers `Word16/Word32/Word64` | `dsl/std/bit.dag:29-31` | (pre-R3) |
 | Grounding G2 primitive-row consumer evidence (`i32/i64/u64/f32/f64`) | `dsl/extdeps/languages/rust/primitives.dag` | #2570 |
@@ -84,7 +85,7 @@ withdrawn:
   introducing `Word8` would create parallel authority (INVARIANTS P1).
 - `Int8 = Compose<Int, MachineWidth<Byte>>` and
   `UInt8 = Compose<UInt, MachineWidth<Byte>>` already exist at
-  `dsl/std/integer.dag:45,52`; with `UInt = Nat` (line 148),
+  `dsl/std/integer.dag:45,52`; with `UInt = Nat` (line 124),
   `Nat<8>` substrate ≡ `UInt8`. No new substrate alias is needed.
 
 The 8-bit arm is therefore parser-only work; Slice C is the entire
@@ -147,7 +148,7 @@ Pass (parser handles generic interaction syntax) — see
 `Real*` family) from `Compose<…, MachineWidth<WordN>>` to
 `Compose<…, MachineWidth<N>>` literal-Nat spelling. Retire the
 historical `IntW32/64/128` and `UIntW32/64/128` aliases at
-`dsl/std/integer.dag:80-…` per the named dissolution trigger
+`dsl/std/integer.dag:79-84` per the named dissolution trigger
 recorded at `dsl/std/integer.dag:71-78`.
 
 **Why load-bearing.** Without dissolution, the gate-60 receipt
