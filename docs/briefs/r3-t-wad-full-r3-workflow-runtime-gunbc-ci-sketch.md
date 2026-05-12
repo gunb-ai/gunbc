@@ -9,10 +9,14 @@ It must not carry gunbc CI emission policy. The CI projection choice lives in
 the `dsl/gunbc/` namespace and is supplied at projection invocation time.
 
 Terminology remains deliberately separate from Shape-A compiler target
-selection. `src/v3/SELF_HOSTING.md` says YAML is a Shape-B artifact produced by
-`.dag` programs, never a compiler `WorkflowRuntime` value. The ratified
-T-CI-WAD `WorkflowRuntime` below is a gunbc CI projection mode for workflow
-artifact generation, not a compiler target.
+selection. `src/v3/SELF_HOSTING.md:609` defines the Shape-A
+`type EmissionTarget { language: LanguageSpec, rendering: RenderingSpec? }`
+for compiler language targets (Rust/Python/Go/etc.); YAML is a Shape-B
+artifact produced by `.dag` programs, never a compiler `EmissionTarget`
+value. The ratified T-CI-WAD `WorkflowRuntime` below is a gunbc CI
+projection mode for workflow artifact generation, not a compiler target;
+the name was deliberately chosen to avoid the prior collision with
+Shape-A `EmissionTarget` per PR #2749 INVARIANTS P2 finding.
 
 **Coproduct classification**: 🟡 SCAFFOLD. The initial variants are the
 ratified projection modes needed for the T-CI-WAD sequence. Future variants are

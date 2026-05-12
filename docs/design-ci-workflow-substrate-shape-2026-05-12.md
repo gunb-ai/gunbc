@@ -818,6 +818,49 @@ all stand. Only the implicit framing that `WorkflowRuntime` named
 "compiler emission targets" is corrected — it names realization modes,
 several of which are Shape B (user-program rendering).
 
+#### §7.3.3 Carrier rename — `EmissionTarget` → `WorkflowRuntime`
+
+**Trigger** (operator BLOCKING on the unmerged PR #2749 branch at :666,
+2026-05-12T09:26:50Z; landed in main via cascade PR #2756):
+
+> Keeping the `EmissionTarget` name for CI realization modes creates a
+> second incompatible authority beside `src/v3/SELF_HOSTING.md`'s
+> Shape-A `EmissionTarget`, violating INVARIANTS P2 single-authority.
+
+**Verified**: `src/v3/SELF_HOSTING.md:609` declares the canonical
+Shape-A compiler-emission carrier:
+
+```dag
+type EmissionTarget {
+  language: LanguageSpec       // what's valid (required)
+  rendering: RenderingSpec?    // how to format (optional)
+}
+```
+
+That carrier is the authoritative `EmissionTarget` for Shape-A compiler
+emission targets (Rust/Python/Go/etc.). This canvas's original §7.3
+sketch used the same name for a fundamentally different carrier (CI
+realization-mode selector) — literal name collision. Per
+`INVARIANTS.md` P2 (Boundary Discipline), every fact lives in exactly
+one authoritative place, named once. §7.3.2's "keep the name, document
+the mapping" disposition is insufficient: no amount of framing-
+narrowing keeps a name available when another carrier already owns it.
+
+**Rename**: `EmissionTarget` → `WorkflowRuntime` throughout the canvas
++ cascade across PR #2744 (briefs) + PR #2745 (WI-2 impl) + PR #2750
+(ledger gate-IDs) + PR #2746-merged content (this PR #2756). Variant
+names + 23-site migration scope + 🟡 YELLOW classification +
+three-condition dissolution trigger + projection-function signature +
+gunbc-namespace placement all stand; only the sum-type name changed.
+
+**Director re-ratification anchor**: Director affirmed the rename via
+PM relay `msg_5dd7d82d` 2026-05-12: "Director ratification: AFFIRM the
+cascade-rename. gunbc-namespace EmissionTarget → WorkflowRuntime.
+SELF_HOSTING.md:609 stays untouched (pre-existing authority; Shape-A
+compiler emitter-composition). All 4 in-flight rename commits stand."
+This supersedes the original `msg_4f7f536d` ratification at the
+sum-type-name level only; all other ratified elements unchanged.
+
 ### §7.4 Comparison table revised
 
 Replacing the §2.4 row "Workflow-artifact authority":
