@@ -2447,28 +2447,82 @@ impl<'a> TestRunner<'a> {
         };
         claims
             .iter()
-            .map(|claim_ref| match claim_ref {
-                FieldValue::Reference(id) => {
-                    let decl = self.dag.declaration(*id);
-                    match TestClaimValue::from_declaration(decl) {
-                        Ok(claim) => self.run_claim(&claim),
-                        Err(reason) => ClaimEvaluation {
-                            claim_name: decl
-                                .name
-                                .clone()
-                                .unwrap_or_else(|| format!("Declaration#{}", id.raw())),
-                            result: ClaimResult::Fail(reason),
-                        },
-                    }
-                }
-                other => ClaimEvaluation {
-                    claim_name: suite_name.to_string(),
-                    result: ClaimResult::Fail(format!(
-                        "TestSuite `{suite_name}` claim entry is not a reference: {other:?}"
-                    )),
-                },
-            })
+            .map(|entry| self.run_suite_entry(suite_name, entry))
             .collect()
+    }
+
+    fn run_suite_entry(&self, suite_name: &str, entry: &FieldValue) -> ClaimEvaluation {
+        let Some((label, payload)) = self.variant_value(entry) else {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` claim entry is not a SuiteClaim variant: {entry:?}"
+                )),
+            };
+        };
+        // Both `SuiteClaim` variants are single-argument coproduct arms
+        // (`Enumerated(TestClaim)` / `Quantified(QuantifiedTestClaim)`) — any
+        // other payload arity is ill-shaped and must fail closed at the
+        // boundary (INVARIANTS P3).
+        if payload.len() != 1 {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` `{label}` expects exactly 1 payload argument, got {}: {payload:?}",
+                    payload.len()
+                )),
+            };
+        }
+        let Some(FieldValue::Reference(id)) = payload.first() else {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` `{label}` payload is not a reference: {payload:?}"
+                )),
+            };
+        };
+        let decl = self.dag.declaration(*id);
+        let decl_label = decl
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("Declaration#{}", id.raw()));
+        match label.as_str() {
+            "Enumerated" => match TestClaimValue::from_declaration(decl) {
+                Ok(claim) => self.run_claim(&claim),
+                Err(reason) => ClaimEvaluation {
+                    claim_name: decl_label,
+                    result: ClaimResult::Fail(reason),
+                },
+            },
+            "Quantified" => match validate_quantified_claim_shape(decl) {
+                Ok(quantified_name) => ClaimEvaluation {
+                    // Single-authority claim identity (P2): use the
+                    // modeled `QuantifiedTestClaim.name`, matching
+                    // `obligation_for_quantified_claim`'s projection so
+                    // obligation-walk and runner reporting agree.
+                    claim_name: quantified_name,
+                    result: ClaimResult::NotYetImplemented(
+                        "QuantifiedTestClaim runner evaluation NotYetImplemented \
+                         (gate #85 substrate-only landing; quantifier evaluation deferred to \
+                         Cluster M Phase 2/3 per `docs/r3-structure.md` \
+                         §\"T-Tests-As-Data-Completeness\" — gate #87 cementing-test discipline \
+                         + gate #84 bulk-port lanes; tracking row at \
+                         `docs/r3-program-plan.md` §1.8 row #85)"
+                            .to_string(),
+                    ),
+                },
+                Err(reason) => ClaimEvaluation {
+                    claim_name: decl_label,
+                    result: ClaimResult::Fail(reason),
+                },
+            },
+            other => ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` unknown SuiteClaim variant `{other}`"
+                )),
+            },
+        }
     }
 
     pub fn run_claim(&self, claim: &TestClaimValue) -> ClaimEvaluation {
@@ -5223,6 +5277,34 @@ impl TestClaimValue {
             requires,
         })
     }
+}
+
+// Structural boundary validator for `QuantifiedTestClaim` declarations
+// referenced by `Quantified(...)` suite entries. Evaluation is deferred per
+// gate #85 but the declaration shape must still fail-closed at the boundary
+// (INVARIANTS P3 / fail-closed): only declarations matching the substrate
+// shape (`name`/`generator`/`quantifier`/`predicate`/`requires`) are accepted
+// as deferred quantified claims. Returns the modeled `name` field on success.
+fn validate_quantified_claim_shape(decl: &Declaration) -> Result<String, String> {
+    let fields = structural_fields(decl)
+        .ok_or_else(|| "QuantifiedTestClaim declaration is not structural".to_string())?;
+    let name = string_field(fields, "name")?;
+    field(fields, "generator")
+        .ok_or_else(|| "QuantifiedTestClaim is missing `generator`".to_string())?;
+    field(fields, "quantifier")
+        .ok_or_else(|| "QuantifiedTestClaim is missing `quantifier`".to_string())?;
+    field(fields, "predicate")
+        .ok_or_else(|| "QuantifiedTestClaim is missing `predicate`".to_string())?;
+    match field(fields, "requires") {
+        Some(FieldValue::List(_)) => {}
+        Some(other) => {
+            return Err(format!(
+                "QuantifiedTestClaim `requires` is not a list: {other:?}"
+            ));
+        }
+        None => return Err("QuantifiedTestClaim is missing `requires`".to_string()),
+    }
+    Ok(name)
 }
 
 fn structural_fields(decl: &Declaration) -> Option<&[(String, FieldValue)]> {

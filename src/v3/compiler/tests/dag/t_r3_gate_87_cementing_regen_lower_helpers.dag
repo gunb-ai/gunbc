@@ -20,5 +20,5 @@ data cementing_regen_lower_helpers_claim: TestClaim = {
 
 data r3_gate_87_cementing_regen_lower_helpers_suite: TestSuite = {
   name: "r3-gate-87/cementing/regen/lower_helpers",
-  claims: [cementing_regen_lower_helpers_claim]
+  claims: [Enumerated(cementing_regen_lower_helpers_claim)]
 }

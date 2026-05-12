@@ -109,11 +109,11 @@ data pb_rust_tests_outside_residual_zero_deferred: TestClaim = {
 data r1_release_acceptance_suite: TestSuite = {
   name: "r1_release_acceptance_suite",
   claims: [
-    pb_hand_rust_at_shim_floor_deferred,
-    lens_producer_files_remaining_deferred,
-    pb_self_compile_fixed_point_strict,
-    pb_compiler_std_ratchet_zero_deferred,
-    pb_test_file_generated_from_dag_deferred,
-    pb_rust_tests_outside_residual_zero_deferred
+    Enumerated(pb_hand_rust_at_shim_floor_deferred),
+    Enumerated(lens_producer_files_remaining_deferred),
+    Enumerated(pb_self_compile_fixed_point_strict),
+    Enumerated(pb_compiler_std_ratchet_zero_deferred),
+    Enumerated(pb_test_file_generated_from_dag_deferred),
+    Enumerated(pb_rust_tests_outside_residual_zero_deferred)
   ]
 }

@@ -36,5 +36,5 @@ data perf_within_smoke_claim: TestClaim = {
 
 data perf_within_smoke_suite: TestSuite = {
   name: "perf_within_smoke_suite",
-  claims: [perf_within_smoke_claim]
+  claims: [Enumerated(perf_within_smoke_claim)]
 }
