@@ -552,24 +552,49 @@ items per ratification:
    `feedback_checkpoint_dissolution_default`.
 3. **Three-condition dissolution trigger**: RATIFIED. Trigger framing
    makes the dissolution path explicit.
-4. **Uniform migration** (`RunnerSpec.ExpressionRunner` variant /
-   `Job.if_condition` / `ConcurrencySpec.group` / `Step.with[k]` /
-   `Step.env[k]`): RATIFIED. Single-authority for expression substrate.
+4. **Uniform migration of all expression-capable fields in
+   `actions.dag`** (post-correction; see scope-evolution note below):
+   RATIFIED. Single-authority for expression substrate. The
+   implementing-PR scope per §7.5 ask #4 / Slice 4 brief covers the
+   §5.5 audit set: **16 sites in scope** (15 string-typed + 1
+   enum-extension `RunnerSpec.ExpressionRunner`). **7 typed-field
+   sites HOLD** pending §6 Q#4 Director ratification of the
+   wrap/sum/defer choice. Total expression-capable surface in
+   `actions.dag`: 23 sites; the (c) substrate-shape ratification covers
+   all 23 per the "single-authority for expression substrate" principle,
+   but the implementing-PR migrates 16 immediately + 7 deferred class
+   sequences as a follow-on after §6 Q#4 resolves.
 
-> **Site-count correction (2026-05-12T07:45:24Z)**: Director ratification
-> referenced a "5-site" framing. Operator BLOCKING review on PR #2751 at
-> §1 surfaced that `actions.dag` has **3** `if_condition` sites (`Job:117`,
-> `RunStep:154`, `UsesStep:163`) and **2** `env` sites (`RunStep:151`,
-> `UsesStep:162`), not the 1+1 the canvas tabulated. Actual migration
-> scope is **7 sites** total. This is a site-count correction, not a
-> substrate-shape correction — the (c) ratification covers all expression
-> sites in `actions.dag` uniformly per ratification point #4's
-> "single-authority for expression substrate" framing; leaving any
-> `if_condition` or `env` site un-migrated would violate P2 (hidden
-> parallel authority: one site typed, others opaque) and block P5
-> dissolution at the un-migrated sites. The 7-site scope is the
-> implementing-PR responsibility; the substrate decision itself is
-> unchanged. §1 + §2 + §6.2 updated to reflect the corrected count.
+> **Site-count correction evolution (cumulative)**: Director ratification
+> at 2026-05-12T07:39:44Z referenced a "5-site" framing. Three
+> subsequent BLOCKING reviews on PR #2751 expanded the audit:
+> 
+> 1. 2026-05-12T07:45:24Z (:34): `actions.dag` has 3× `if_condition` +
+>    2× `env` (not 1+1). Corrected 5 → 7 sites.
+> 2. 2026-05-12T09:12Z (:315) + codex (4f41aebb): inventory was
+>    ci.yml-keyed not actions.dag-schema-keyed. Audited actions.dag
+>    against GH Actions context-availability + workflow-syntax docs;
+>    corrected 7 → 22 sites via §5.5.
+> 3. 2026-05-12T10:12:15Z (:365): missed `Workflow.name` + `Job.name`.
+>    Corrected 22 → 24 sites.
+> 4. 2026-05-12T10:12:15Z (:381): `UsesStep.uses` is literal-only per
+>    GH workflow-syntax (no entry in context-availability table);
+>    removed. Corrected 24 → 23 sites.
+> 
+> Net audit set: 23 expression-capable sites in `actions.dag` (15
+> string-typed + 1 enum-extension + 7 typed-field-HOLD). This is a
+> cumulative site-count correction sequence, not substrate-shape
+> changes — the (c) ratification ("single-authority for expression
+> substrate") covers all 23 uniformly. Leaving any expression-capable
+> site (within the migrating class) un-migrated would violate P2
+> (hidden parallel authority: one site typed, others opaque) and block
+> P5 dissolution at the un-migrated sites. The typed-field class HOLD
+> is bounded with a named trigger (§6 Q#4) per Practice 4 YELLOW
+> discipline, not arbitrary deferral.
+> 
+> §1 + §2 + §5.5 + §6 + §7 ratification ask #4 all reflect the
+> corrected counts; §1/§2 retain the original 7-site ci.yml-keyed
+> framing as the minimum-proven-subset reference per §5.5.3.
 
 **Cascade implications** (per Director directive):
 
