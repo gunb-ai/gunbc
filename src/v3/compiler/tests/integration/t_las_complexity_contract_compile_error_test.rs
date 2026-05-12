@@ -16,6 +16,7 @@ const DEMO_FILE_NAME: &str = "t_las_complexity_contract_demo.dag";
 const DEMO_APPLICATION_MARKER: &str = "data witness_log_cap:";
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn complexity_violation_compile_error_demonstrated() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")

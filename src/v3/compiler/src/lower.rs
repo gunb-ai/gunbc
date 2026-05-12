@@ -337,20 +337,57 @@ pub(crate) fn lower_bodies_phase(
         if let SurfaceItem::Data {
             name,
             ty,
+            body: Some(SurfaceExpr::Lambda { .. }),
+            ..
+        } = item
+        {
+            initialize_data_declaration_type(name, ty, dag, symbols);
+        }
+    }
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        if let SurfaceItem::Data {
+            name,
+            ty,
             body,
             body_span,
             ..
         } = item
         {
-            lower_data_item(
-                name,
-                ty,
-                body.as_ref(),
-                body_span,
+            if matches!(body, Some(SurfaceExpr::Lambda { .. })) {
+                continue;
+            }
+            let mut data_ctx = DataLoweringContext {
                 dag,
                 symbols,
-                &pending_refined_function_refs,
-            );
+                pending_refined_function_refs: &pending_refined_function_refs,
+                invalid_data_lambda_cluster: None,
+            };
+            lower_data_item(name, ty, body.as_ref(), body_span, &mut data_ctx);
+        }
+    }
+    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        if let SurfaceItem::Data {
+            name,
+            ty,
+            body: Some(body @ SurfaceExpr::Lambda { .. }),
+            body_span,
+            ..
+        } = item
+        {
+            let mut data_ctx = DataLoweringContext {
+                dag,
+                symbols,
+                pending_refined_function_refs: &pending_refined_function_refs,
+                invalid_data_lambda_cluster: mutual_recursion.invalid_by_member.get(&symbols[name]),
+            };
+            lower_data_item(name, ty, Some(body), body_span, &mut data_ctx);
         }
     }
     // DB-11 (3a.3) phase-ordered refinement lowering. Runs AFTER the
@@ -361,7 +398,6 @@ pub(crate) fn lower_bodies_phase(
     lower_parameter_refinements_phase(dag, module, symbols, is_first);
     lower_type_alias_refinements_phase(dag, module, symbols, is_first);
     validate_scalar_data_refinements_phase(dag, module, symbols, is_first);
-    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
@@ -568,6 +604,52 @@ fn pending_refined_function_refs(
             _ => None,
         })
         .collect()
+}
+
+fn rejected_data_lambda_connective(
+    name: &str,
+    connective: TypeConnective,
+    diagnostic: Diagnostic,
+    span: &SourceSpan,
+    dag: &mut Dag,
+) -> TypeConnective {
+    let TypeConnective::Arrow { inputs, output, .. } = connective else {
+        return connective;
+    };
+    let bind_params: Vec<PortId> = inputs
+        .iter()
+        .map(|input| {
+            let port = dag.alloc_port(None);
+            if let Ok(shape) = declaration_to_port_shape(*input, dag, span) {
+                dag.set_port_type(port, shape);
+            }
+            port
+        })
+        .collect();
+    let err_port = dag.alloc_port(None);
+    dag.mark_unresolved(err_port, diagnostic);
+    let bind_id = dag.alloc_node_id();
+    dag.push_node(Behavior::Bind(BindNode {
+        id: bind_id,
+        name: name.to_string(),
+        value: err_port,
+        params: bind_params,
+        span: span.clone(),
+        lane2_workflow: None,
+        emit_participation: Some(BindEmitParticipation::UserCallable),
+    }));
+    let Some(body_id) = BindNodeId::from_bind_node(dag, bind_id) else {
+        return TypeConnective::Arrow {
+            inputs,
+            output,
+            body: ArrowBody::NoBody,
+        };
+    };
+    TypeConnective::Arrow {
+        inputs,
+        output,
+        body: ArrowBody::UserDefined(body_id),
+    }
 }
 
 /// DB-11 (3a.3): allocate the predicate `Declaration` for a `where`
@@ -3106,15 +3188,14 @@ fn lower_item(
             body_span,
             span: _,
         } => {
-            lower_data_item(
-                name,
-                ty,
-                body.as_ref(),
-                body_span,
+            let pending_refined_function_refs = HashSet::new();
+            let mut data_ctx = DataLoweringContext {
                 dag,
                 symbols,
-                &HashSet::new(),
-            );
+                pending_refined_function_refs: &pending_refined_function_refs,
+                invalid_data_lambda_cluster: None,
+            };
+            lower_data_item(name, ty, body.as_ref(), body_span, &mut data_ctx);
             scope
         }
         SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => {
@@ -4147,16 +4228,161 @@ fn resolve_template_for_type_parameters(
 /// (M2+ record/map/list literal parser extension), and the
 /// declaration carries both the declared type and the body span
 /// for future parser passes to consume.
+struct DataLoweringContext<'a> {
+    dag: &'a mut Dag,
+    symbols: &'a HashMap<String, DeclarationId>,
+    pending_refined_function_refs: &'a HashSet<DeclarationId>,
+    invalid_data_lambda_cluster: Option<&'a InvalidMutualCluster>,
+}
+
 fn lower_data_item(
     name: &str,
     ty: &SurfaceType,
     body: Option<&SurfaceExpr>,
     body_span: &SourceSpan,
+    ctx: &mut DataLoweringContext<'_>,
+) {
+    let decl_id = ctx.symbols[name];
+    let ty_decl_id = initialize_data_declaration_type(name, ty, ctx.dag, ctx.symbols);
+    // Attempt structural inhabitance checking if the body parsed
+    // as a record literal. Falls back to Unparsed on any failure
+    // (walk doesn't terminate at a Conj, missing field, extra
+    // field, value isn't a literal, type mismatch). Fail-closed
+    // paths attach a diagnostic via `report_declaration_error` so
+    // user-facing code sees the error.
+    // DB-10 (3a.2): `data x: T = v` bodies lower by shape:
+    //   - Lambda        → executable Arrow on the data declaration.
+    //   - Record literal → ValueBody::Structural (existing path).
+    //   - List literal   → ValueBody::List (top-level aggregate path).
+    //   - Scalar literal  → ValueBody::Scalar (new path, DB-10).
+    //   - Map literal     → ValueBody::Map (top-level string-keyed map path).
+    //   - Anything else   → ValueBody::Unparsed fallback.
+    let mut suppress_unparsed_scaffold = false;
+    let value_body = match body {
+        Some(SurfaceExpr::Lambda { params, body, span }) => {
+            if let Some(invalid_cluster) = ctx.invalid_data_lambda_cluster {
+                let diagnostic = Diagnostic::ResolveError {
+                    name: format!(
+                        "function-valued data `{name}` participates in an unbounded callable cycle {{{}}}; recursive data lambdas are rejected until they participate in the bounded recursion gate",
+                        invalid_cluster.members.join(", ")
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                };
+                let rejected = rejected_data_lambda_connective(
+                    name,
+                    ctx.dag.declaration(decl_id).connective.clone(),
+                    diagnostic.clone(),
+                    span,
+                    ctx.dag,
+                );
+                ctx.dag.declaration_mut(decl_id).connective = rejected;
+                report_declaration_error(ctx.dag, diagnostic);
+                None
+            } else {
+                let empty_scope = HashMap::new();
+                let empty_callable_scope = CallableScope::new();
+                let mut lambda_ctx = LambdaLoweringContext {
+                    dag: ctx.dag,
+                    scope: &empty_scope,
+                    callable_scope: &empty_callable_scope,
+                    symbols: ctx.symbols,
+                };
+                match lower_lambda_expr_to_arrow(params, body, span, ty_decl_id, &mut lambda_ctx) {
+                    Ok(connective) => {
+                        lambda_ctx.dag.declaration_mut(decl_id).connective = connective;
+                        suppress_unparsed_scaffold = true;
+                        None
+                    }
+                    Err(diag) => {
+                        let rejected = rejected_data_lambda_connective(
+                            name,
+                            lambda_ctx.dag.declaration(decl_id).connective.clone(),
+                            diag.clone(),
+                            span,
+                            lambda_ctx.dag,
+                        );
+                        lambda_ctx.dag.declaration_mut(decl_id).connective = rejected;
+                        report_declaration_error(lambda_ctx.dag, diag);
+                        None
+                    }
+                }
+            }
+        }
+        Some(SurfaceExpr::Record { fields, .. }) => lower_record_to_structural(
+            name,
+            fields,
+            ty_decl_id,
+            body_span,
+            ctx.symbols,
+            ctx.dag,
+            ctx.pending_refined_function_refs,
+        ),
+        Some(list_expr @ SurfaceExpr::List { .. }) => lower_list_to_structural(
+            name,
+            list_expr,
+            ty_decl_id,
+            ctx.symbols,
+            ctx.dag,
+            ctx.pending_refined_function_refs,
+        ),
+        Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
+            match lower_scalar_literal_for_type(lit_expr, ty_decl_id, ctx.dag) {
+                LowerScalarLiteralOutcome::Literal(bits) => {
+                    Some(crate::dag::ValueBody::Scalar(bits))
+                }
+                LowerScalarLiteralOutcome::NotApplicable => None,
+                LowerScalarLiteralOutcome::Reject(diag) => {
+                    suppress_unparsed_scaffold = true;
+                    report_declaration_error(ctx.dag, diag);
+                    None
+                }
+            }
+        }
+        Some(map_expr @ SurfaceExpr::Map { .. }) => lower_map_to_structural(
+            name,
+            map_expr,
+            ty_decl_id,
+            ctx.symbols,
+            ctx.dag,
+            ctx.pending_refined_function_refs,
+        ),
+        Some(SurfaceExpr::Call { target, args, .. }) => {
+            match (
+                dsl_std_render_repeat_string_decl_id(ctx.dag),
+                ctx.symbols.get(target),
+            ) {
+                (Some(canonical), Some(&callee)) if callee == canonical => {
+                    try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, ctx.dag)
+                }
+                _ => try_lower_symbolic_cost_constant_cost_data(
+                    target,
+                    args.as_slice(),
+                    ty_decl_id,
+                    ctx.dag,
+                    ctx.symbols.get(target).copied(),
+                ),
+            }
+        }
+        _ => None,
+    };
+    ctx.dag.declaration_mut(decl_id).value_body = match value_body {
+        Some(body) => Some(body),
+        None if suppress_unparsed_scaffold => None,
+        None => Some(crate::dag::ValueBody::Unparsed(body_span.clone())),
+    };
+}
+
+fn initialize_data_declaration_type(
+    name: &str,
+    ty: &SurfaceType,
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
-    pending_refined_function_refs: &HashSet<DeclarationId>,
-) {
+) -> DeclarationId {
     let decl_id = symbols[name];
+    if let Some(ty_decl_id) = dag.declaration(decl_id).meta_tag {
+        return ty_decl_id;
+    }
     let local: HashMap<String, DeclarationId> = HashMap::new();
     // Compute the declaration id of the type annotation (e.g.
     // Realization's DeclarationId for `data rust_int: Realization`)
@@ -4171,82 +4397,7 @@ fn lower_data_item(
     // find all declarations of a given meta-type.
     dag.declaration_mut(decl_id).meta_tag = Some(ty_decl_id);
     dag.declaration_mut(decl_id).connective = connective;
-    // Attempt structural inhabitance checking if the body parsed
-    // as a record literal. Falls back to Unparsed on any failure
-    // (walk doesn't terminate at a Conj, missing field, extra
-    // field, value isn't a literal, type mismatch). Fail-closed
-    // paths attach a diagnostic via `report_declaration_error` so
-    // user-facing code sees the error.
-    // DB-10 (3a.2): `data x: T = v` bodies lower by shape:
-    //   - Record literal → ValueBody::Structural (existing path).
-    //   - List literal   → ValueBody::List (top-level aggregate path).
-    //   - Scalar literal  → ValueBody::Scalar (new path, DB-10).
-    //   - Map literal     → ValueBody::Map (top-level string-keyed map path).
-    //   - Anything else   → ValueBody::Unparsed fallback.
-    let mut suppress_unparsed_scaffold = false;
-    let value_body = match body {
-        Some(SurfaceExpr::Record { fields, .. }) => lower_record_to_structural(
-            name,
-            fields,
-            ty_decl_id,
-            body_span,
-            symbols,
-            dag,
-            pending_refined_function_refs,
-        ),
-        Some(list_expr @ SurfaceExpr::List { .. }) => lower_list_to_structural(
-            name,
-            list_expr,
-            ty_decl_id,
-            symbols,
-            dag,
-            pending_refined_function_refs,
-        ),
-        Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
-            match lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag) {
-                LowerScalarLiteralOutcome::Literal(bits) => {
-                    Some(crate::dag::ValueBody::Scalar(bits))
-                }
-                LowerScalarLiteralOutcome::NotApplicable => None,
-                LowerScalarLiteralOutcome::Reject(diag) => {
-                    suppress_unparsed_scaffold = true;
-                    report_declaration_error(dag, diag);
-                    None
-                }
-            }
-        }
-        Some(map_expr @ SurfaceExpr::Map { .. }) => lower_map_to_structural(
-            name,
-            map_expr,
-            ty_decl_id,
-            symbols,
-            dag,
-            pending_refined_function_refs,
-        ),
-        Some(SurfaceExpr::Call { target, args, .. }) => {
-            match (
-                dsl_std_render_repeat_string_decl_id(dag),
-                symbols.get(target),
-            ) {
-                (Some(canonical), Some(&callee)) if callee == canonical => {
-                    try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, dag)
-                }
-                _ => try_lower_symbolic_cost_constant_cost_data(
-                    target,
-                    args.as_slice(),
-                    ty_decl_id,
-                    dag,
-                    symbols.get(target).copied(),
-                ),
-            }
-        }
-        _ => None,
-    };
-    dag.declaration_mut(decl_id).value_body = match value_body {
-        Some(body) => Some(body),
-        None if suppress_unparsed_scaffold => None,
-        None => Some(crate::dag::ValueBody::Unparsed(body_span.clone())),
-    };
+    ty_decl_id
 }
 
 /// Substrate fact for the R1C-B `repeat_string` data-body fold: only the declaration
@@ -6954,6 +7105,32 @@ fn lower_lambda_expr(
     expected_decl: DeclarationId,
     ctx: &mut LambdaLoweringContext<'_>,
 ) -> Result<DeclarationId, Diagnostic> {
+    let connective = lower_lambda_expr_to_arrow(params, body, span, expected_decl, ctx)?;
+    let lambda_decl_id = ctx.dag.alloc_declaration_id();
+    ctx.dag.push_declaration(Declaration {
+        id: lambda_decl_id,
+        name: None,
+        connective,
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span: span.clone(),
+    });
+    Ok(lambda_decl_id)
+}
+
+fn lower_lambda_expr_to_arrow(
+    params: &[String],
+    body: &SurfaceExpr,
+    span: &SourceSpan,
+    expected_decl: DeclarationId,
+    ctx: &mut LambdaLoweringContext<'_>,
+) -> Result<TypeConnective, Diagnostic> {
     let Some((expected_inputs, expected_output)) =
         declaration_callable_signature(ctx.dag, expected_decl, 0)
     else {
@@ -7040,29 +7217,14 @@ fn lower_lambda_expr(
         emit_participation: Some(BindEmitParticipation::UserCallable),
     }));
 
-    let lambda_decl_id = ctx.dag.alloc_declaration_id();
-    ctx.dag.push_declaration(Declaration {
-        id: lambda_decl_id,
-        name: None,
-        connective: TypeConnective::Arrow {
-            inputs: expected_inputs,
-            output: expected_output,
-            body: ArrowBody::UserDefined(
-                BindNodeId::from_bind_node(ctx.dag, bind_id)
-                    .expect("UserDefined Arrow body bind id must point at a Bind"),
-            ),
-        },
-        type_params: Vec::new(),
-        phantom_params: Vec::new(),
-        meta_tag: None,
-        specialization_parent: None,
-        inhabits: None,
-        value_body: None,
-        refinement: None,
-        nominal_opacity: None,
-        span: span.clone(),
-    });
-    Ok(lambda_decl_id)
+    Ok(TypeConnective::Arrow {
+        inputs: expected_inputs,
+        output: expected_output,
+        body: ArrowBody::UserDefined(
+            BindNodeId::from_bind_node(ctx.dag, bind_id)
+                .expect("UserDefined Arrow body bind id must point at a Bind"),
+        ),
+    })
 }
 
 fn resolve_callable_reference(
@@ -9635,6 +9797,14 @@ struct FunctionSurfaceInfo<'a> {
     body: &'a SurfaceExpr,
 }
 
+#[derive(Clone)]
+struct CallableSurfaceInfo<'a> {
+    name: &'a str,
+    body: &'a SurfaceExpr,
+    shadowed_names: Vec<String>,
+    is_data_lambda: bool,
+}
+
 /// `is_first` must parallel `items` (from [`collect_symbols`]). Only
 /// first-authority surface items participate — same filter as
 /// [`lower_bodies_phase`]'s body lowering loop — so duplicate `fn`
@@ -9649,29 +9819,66 @@ fn compute_mutually_recursive(
     debug_assert_eq!(items.len(), is_first.len());
     let mut order: Vec<DeclarationId> = Vec::new();
     let mut fn_infos: HashMap<DeclarationId, FunctionSurfaceInfo<'_>> = HashMap::new();
-    let mut function_symbols: HashMap<String, DeclarationId> = HashMap::new();
+    let mut callable_infos: HashMap<DeclarationId, CallableSurfaceInfo<'_>> = HashMap::new();
+    let mut callable_symbols: HashMap<String, DeclarationId> = HashMap::new();
     for (idx, item) in items.iter().enumerate() {
         if !is_first[idx] {
             continue;
         }
-        if let SurfaceItem::Fn {
-            name, params, body, ..
-        } = item
-        {
-            let Some(&decl_id) = symbols.get(name) else {
-                continue;
-            };
-            order.push(decl_id);
-            fn_infos.insert(
-                decl_id,
-                FunctionSurfaceInfo {
-                    name,
+        match item {
+            SurfaceItem::Fn {
+                name, params, body, ..
+            } => {
+                let Some(&decl_id) = symbols.get(name) else {
+                    continue;
+                };
+                order.push(decl_id);
+                fn_infos.insert(
                     decl_id,
-                    params,
-                    body,
-                },
-            );
-            function_symbols.insert(name.clone(), decl_id);
+                    FunctionSurfaceInfo {
+                        name,
+                        decl_id,
+                        params,
+                        body,
+                    },
+                );
+                callable_infos.insert(
+                    decl_id,
+                    CallableSurfaceInfo {
+                        name,
+                        body,
+                        shadowed_names: params.iter().map(|param| param.name.clone()).collect(),
+                        is_data_lambda: false,
+                    },
+                );
+                callable_symbols.insert(name.clone(), decl_id);
+            }
+            SurfaceItem::Data {
+                name,
+                body:
+                    Some(SurfaceExpr::Lambda {
+                        params,
+                        body: lambda_body,
+                        ..
+                    }),
+                ..
+            } => {
+                let Some(&decl_id) = symbols.get(name) else {
+                    continue;
+                };
+                order.push(decl_id);
+                callable_infos.insert(
+                    decl_id,
+                    CallableSurfaceInfo {
+                        name,
+                        body: lambda_body,
+                        shadowed_names: params.clone(),
+                        is_data_lambda: true,
+                    },
+                );
+                callable_symbols.insert(name.clone(), decl_id);
+            }
+            _ => {}
         }
     }
 
@@ -9682,15 +9889,14 @@ fn compute_mutually_recursive(
         .collect();
     let mut calls: HashMap<DeclarationId, Vec<DeclarationId>> = HashMap::new();
     for decl_id in &order {
-        let Some(info) = fn_infos.get(decl_id) else {
+        let Some(info) = callable_infos.get(decl_id) else {
             continue;
         };
         let mut callees = HashSet::new();
-        let mut shadowed: HashSet<String> =
-            info.params.iter().map(|param| param.name.clone()).collect();
+        let mut shadowed: HashSet<String> = info.shadowed_names.iter().cloned().collect();
         collect_recursive_callees(
             info.body,
-            &function_symbols,
+            &callable_symbols,
             dag,
             &mut shadowed,
             &mut callees,
@@ -9701,12 +9907,36 @@ fn compute_mutually_recursive(
     }
 
     let mut plans = MutualRecursionPlans::default();
-    for members in strongly_connected_components(&order, &calls)
-        .into_iter()
-        .filter(|component| component.len() > 1)
-    {
-        if let Some(per_member_positions) =
-            find_cluster_slot_assignment(&members, dag, &fn_infos, &function_symbols, &calls)
+    for members in strongly_connected_components(&order, &calls) {
+        let is_self_loop = members.len() == 1
+            && calls
+                .get(&members[0])
+                .is_some_and(|callees| callees.contains(&members[0]));
+        if members.len() == 1 && !is_self_loop {
+            continue;
+        }
+        let contains_data_lambda = members.iter().any(|member| {
+            callable_infos
+                .get(member)
+                .is_some_and(|info| info.is_data_lambda)
+        });
+        if members.len() == 1 && !contains_data_lambda {
+            continue;
+        }
+        if contains_data_lambda {
+            let invalid = InvalidMutualCluster {
+                members: members
+                    .iter()
+                    .filter_map(|member| {
+                        callable_infos.get(member).map(|info| info.name.to_string())
+                    })
+                    .collect(),
+            };
+            for member in members {
+                plans.invalid_by_member.insert(member, invalid.clone());
+            }
+        } else if let Some(per_member_positions) =
+            find_cluster_slot_assignment(&members, dag, &fn_infos, &callable_symbols, &calls)
         {
             let member_names: Vec<String> = members
                 .iter()
