@@ -278,6 +278,12 @@ data suite: TestSuite = {
 }
 
 #[test]
+// P5 receipt for R3 T-WAD gate #101 (`test_cost_dimension_landed`): until
+// #102 wires the slow-test ratchet to v3 timing data, this hand-written
+// integration test is the checkable lowering receipt for the new
+// `TestNodeCostDimension` substrate shape. It compiles the `.dag` row through
+// the real bootstrap stack, asserts the nested `TimingBudget` / `Nanoseconds`
+// structure, and runs the referenced `TestClaim` through `TestRunner`.
 fn test_cost_dimension_landed_on_test_node() {
     let source = r#"
 data claim_cost: TestClaim = {

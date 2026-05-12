@@ -404,6 +404,16 @@ type QuantifiedTestClaim {
 // fields reuse T-WAD's existing `TimingBudget` / `TimingMeasurement` authority
 // over `Nanoseconds`, so #102 can derive slow-test status without introducing
 // a parallel duration algebra.
+//
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — this coproduct intentionally mirrors
+// `SuiteClaim`'s enumerated/quantified axis at the cost-attachment boundary so
+// #102 can derive slow-test status for both concrete and generated test nodes
+// without reopening `TestNodeCostDimension`. It is not a second suite-entry
+// roster: `SuiteClaim` remains the ordered suite membership authority, while
+// `TestNodeRef` is only the typed subject edge for cost facts. Dissolution
+// trigger: when #102 wires the slow-test ratchet to the v3 timing authority,
+// collapse any unconsumed arm or reuse `SuiteClaim` directly if the ratchet only
+// needs suite-entry identity rather than a cost-fact subject role.
 type TestNodeRef
   = EnumeratedTestNode(TestClaim)
   | QuantifiedTestNode(QuantifiedTestClaim)
