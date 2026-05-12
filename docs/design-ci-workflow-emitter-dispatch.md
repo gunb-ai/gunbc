@@ -1,10 +1,9 @@
 # CI Workflow Emitter Dispatch - Design Canvas
 
-**Status:** Design canvas for T-Workflow-As-Data FULL R3-close;
-Director-ratified placement recommendation.
-**Authority:** Worker output for PR #2744 WI-1; Director ratification
-`msg_237bde05-5c74-4142-b829-ede3435b8b23`; final lane absorption proceeds
-through the T-WAD owner.
+**Status:** Design canvas for T-Workflow-As-Data FULL R3-close; narrowed after
+substrate-shape comparison PR #2749.
+**Authority:** Worker output for PR #2744 WI-1; substrate-shape comparison
+canvas PR #2749; final lane absorption proceeds through the T-WAD owner.
 **Scope:** Workflow emission target dispatch only. This document does not
 implement carriers or emitters.
 
@@ -25,9 +24,9 @@ Workflow data chooses its emission target.
 The build system does not choose a hidden emitter path.
 ```
 
-The field that selects the projection is part of the workflow substrate. The
-emitter reads that field and mechanically projects the same workflow data into
-one of several target artifacts:
+The modeled value that selects the projection is part of gunbc CI/emission
+substrate. The emitter reads that value and mechanically projects the same
+workflow data into one of several target artifacts:
 
 - `YamlStatic`: a complete `.github/workflows/ci.yml`
 - `BinaryShim`: a thin YAML shim that invokes a compiled gunbc CI binary
@@ -73,12 +72,12 @@ The carrier-placement question has three plausible answers:
 
 | Option | Shape | Result |
 |---|---|---|
-| A | Add `emission_target` to `extdeps.github.actions.Workflow` | **Recommended and Director-ratified.** One canonical workflow value carries the projection target. |
-| B | Add `emission_target` to `gunbc.ci.CIPipeline` | Rejected for this gate: `CIPipeline` is gate-centric CI intent, while the target controls emission of the GitHub Actions workflow artifact itself. |
-| C | Add `WorkflowEmission { workflow, target }` wrapper | Rejected: preserves separation superficially but introduces an implicit join and duplicate authority. |
+| A | Add `emission_target` to `extdeps.github.actions.Workflow` | Rejected after comparison-canvas review: violates extdeps fidelity by adding gunbc projection policy to a GitHub Actions platform carrier. |
+| B | Add `emission_target` to `gunbc.ci.CIPipeline` | Rejected for this gate: `CIPipeline` is gate-centric CI intent, while the target controls projection of the GitHub Actions workflow artifact. |
+| C | Add `WorkflowEmission { workflow, target }` wrapper | Rejected in wrapper form: preserves separation superficially but introduces an implicit join and duplicate authority. |
+| C-refined | Put `EmissionTarget` in gunbc namespace and pass it to `project_github_actions(ci_workflow_dag, target) -> Workflow` | **Recommended.** The target choice is modeled data, extdeps stays provider-faithful, and the emitted `Workflow` is derived from one source. |
 
-The recommended substrate shape is a field on the existing concrete
-`Workflow` carrier:
+The recommended substrate shape is a gunbc-owned enum plus projection function:
 
 ```dag
 type EmissionTarget
@@ -87,14 +86,7 @@ type EmissionTarget
   | PythonShim
   | InlineGunbc
 
-type Workflow {
-  name: String
-  on: List<WorkflowTrigger>
-  jobs: List<Job>
-  env: Map<String, String>
-  permissions: WorkflowPermissions?
-  emission_target: EmissionTarget?
-}
+fn project_github_actions(source: CIWorkflowDag, target: EmissionTarget?) -> Workflow
 ```
 
 `EmissionTarget` is a normal `.dag` sum type. It is "open" only in the same
@@ -102,33 +94,32 @@ operational sense as other R3 extension surfaces: new variants are added to
 this single authority when a real consumer lands. A new variant must not create
 a sibling workflow carrier.
 
-The field is optional to preserve migration compatibility:
+The projection argument is optional to preserve migration compatibility:
 
 ```
-normalize_target(workflow.emission_target) =
-  YamlStatic if emission_target is none
+normalize_target(target) =
+  YamlStatic if target is none
   the contained target otherwise
 ```
 
-This lets existing workflow declarations remain valid before Slice 4 lands the
-carrier edit. The final carrier should still carry the field explicitly once
-the emitter consumes it.
+This lets existing projection call sites remain valid before Slice 4 lands the
+enum and emitter consumers. The final authored projection call should still
+carry the target explicitly once the emitter consumes it.
 
 Optionality is migration-only. The retirement trigger is Slice 8
 `ci_yml_dissolved`: once hand-authored `.github/workflows/ci.yml` is gone and
-the workflow artifact is emitted from `.dag`, every authoritative workflow
-declaration must carry an explicit `emission_target`. At that point
+the workflow artifact is emitted from `.dag`, every authoritative projection
+call must carry an explicit `EmissionTarget`. At that point
 `normalize_target(none) = YamlStatic` becomes a compatibility reader for older
-fixtures only, and a ratchet should reject new authoritative workflow
-declarations that omit the field.
+fixtures only, and a ratchet should reject new authoritative projection calls
+that omit the target.
 
 ### 3.1 Placement Evaluation
 
 #### Option A: Field on `Workflow`
 
-The target choice is a property of the workflow artifact, not of a job, step,
-repository setting, or CI runner. Putting the field on `Workflow` gives the
-emitter exactly one dispatch point:
+This option was the initial WI-1 recommendation: put the target choice on
+`extdeps.github.actions.Workflow` so the emitter has one dispatch point.
 
 ```
 emit_workflow(workflow) =
@@ -141,9 +132,9 @@ emit_workflow(workflow) =
 ```
 
 The objection is that `dsl/extdeps/github/actions.dag` describes platform
-constraints, not gunbc CI policy. That separation is correct, but
-`emission_target` is not deciding which CI gates exist or when they run. It is
-declaring which artifact shape realizes the same GitHub Actions workflow.
+constraints, not gunbc CI policy. That objection is load-bearing:
+`EmissionTarget` is not a GitHub Actions provider fact and must not become a
+field rendered into, or normalized as part of, the provider `Workflow` type.
 
 The workflow carrier already describes a provider artifact:
 
@@ -153,25 +144,9 @@ Job      -> GitHub Actions job
 Step     -> GitHub Actions step
 ```
 
-Adding the target field to `Workflow` keeps cost-of-change low: a new workflow
-emitter target is one enum extension plus the corresponding emitter consumer.
-It does not require a second carrier or a coherence relation between platform
-workflow data and CI-intent data.
-
-This option is ratified by Director message
-`msg_237bde05-5c74-4142-b829-ede3435b8b23`: extend existing
-`extdeps.github.actions.Workflow` with `EmissionTarget?`; `None` defaults to
-`YamlStatic` during migration.
-
-Extdeps-fidelity disposition: `EmissionTarget` must not be documented or
-implemented as a GitHub Actions provider fact. GitHub does not have an
-`emission_target` workflow key. The field is a gunbc-authored projection fact
-attached to the canonical workflow artifact carrier so the emitter has one
-source of truth. If implementation needs a namespace distinction, the enum and
-consumer helpers can live in gunbc-owned modules, but the authoritative value
-is still carried by the `Workflow` declaration rather than by a sibling join
-carrier. This is the Director-disposed P1 tradeoff: preserve platform-field
-fidelity in rendering while avoiding a second workflow representation.
+The platform carrier should remain provider-faithful. The target choice belongs
+to the gunbc projection call that produces a `Workflow`, not to the extdeps
+`Workflow` value itself.
 
 #### Option B: Field on `CIPipeline`
 
@@ -234,7 +209,37 @@ parallel-representation debt:
   emitters read workflow fields
 
 The operator requirement is "modeled data," not "external wrapper." A field on
-the workflow satisfies the requirement without a join.
+the workflow was the first attempt to satisfy that requirement without a join,
+but extdeps fidelity rules it out. The refined answer is a gunbc-owned
+projection function parameter: the target is modeled data on the call, not an
+external wrapper around an already-authored provider workflow.
+
+#### Option C-refined: Projection Parameter
+
+The refined recommendation is:
+
+```dag
+data ci_workflow_dag: CIWorkflowDag = ...
+data gunbc_ci_yml_workflow: Workflow =
+  project_github_actions(ci_workflow_dag, YamlStatic)
+```
+
+`CIWorkflowDag` is the single semantic source for the gunbc CI workflow.
+`project_github_actions` is the structural fold that reads that source and a
+gunbc-owned `EmissionTarget`, then produces the provider-faithful GitHub
+Actions `Workflow` value. There is no independent hand-authored `Workflow`
+authority for the emitter to join against.
+
+This keeps all three layers distinct:
+
+| Layer | Authority |
+|---|---|
+| CI semantics | `gunbc.ci` workflow/gate graph |
+| Emission choice | gunbc-owned `EmissionTarget` projection argument |
+| Provider artifact | derived `extdeps.github.actions.Workflow` |
+
+The cost of adding a target remains bounded: add one `EmissionTarget` variant
+and one projection consumer. The extdeps carrier remains unchanged.
 
 ### 3.2 Carrier Reuse Audit
 
@@ -285,7 +290,8 @@ it for Slice 4 or Slice 5.
 The workflow emitter has one structural responsibility:
 
 ```
-(Workflow data, GitHub Actions platform facts, target language/runtime facts)
+(CI workflow graph, EmissionTarget, GitHub Actions platform facts,
+ target language/runtime facts)
   -> emitted workflow artifact(s)
 ```
 
@@ -304,23 +310,24 @@ The dispatch steps are:
 Pseudocode:
 
 ```dag
-fn emit_workflow(w: Workflow) -> WorkflowEmissionResult =
-  let target = normalize_target(w.emission_target)
+fn emit_workflow(source: CIWorkflowDag, projection_target: EmissionTarget?) -> WorkflowEmissionResult =
+  let target = normalize_target(projection_target)
+  let workflow = project_github_actions(source, target)
   match target {
     YamlStatic =>
-      emit_yaml_static(w)
+      emit_yaml_static(workflow)
     BinaryShim =>
-      emit_binary_shim(w)
+      emit_binary_shim(workflow, source)
     PythonShim =>
-      emit_python_shim(w)
+      emit_python_shim(workflow, source)
     InlineGunbc =>
-      emit_inline_gunbc(w)
+      emit_inline_gunbc(source)
   }
 ```
 
 The `match` is not an engine decision. It is the mechanical projection of an
-authored field. Each arm must consume the same `Workflow` carrier, not a
-target-private copy of workflow data.
+authored projection argument. Each arm must consume the same CI workflow source
+and the derived provider `Workflow`, not a target-private copy of workflow data.
 
 ## 5. Target Semantics
 
@@ -597,7 +604,7 @@ This canvas keeps Slice 4 and Slice 5 small:
 
 | Slice | Dependency |
 |---|---|
-| Slice 4: field + `YamlStatic` | existing `Workflow` carrier plus `EmissionTarget?` field |
+| Slice 4: projection + `YamlStatic` | gunbc-owned `EmissionTarget` plus `project_github_actions(..., YamlStatic)` |
 | Slice 5: `BinaryShim` | Slice 4 target dispatch plus compiled runner surface |
 | Slice 7: affected-set CI | Slice 5 plus affected-set lens |
 | Slice 8: `ci.yml` deletion | Slice 4-7 accepted |
@@ -614,14 +621,16 @@ is shaped to consume affected-set receipts when they become available.
 ### Phase A: Ratify Shape
 
 - Land this canvas.
-- Ratify `EmissionTarget` field placement on `Workflow`.
-- Ratify `YamlStatic` default for absent target.
+- Ratify `EmissionTarget` placement in gunbc namespace as the projection
+  argument to `project_github_actions`.
+- Ratify `YamlStatic` default for absent projection target during migration.
 
 ### Phase B: Static Parity
 
-- Add `EmissionTarget` to `dsl/extdeps/github/actions.dag`.
-- Model current CI in `ci.dag`.
-- Emit `.github/workflows/ci.yml` from `ci.dag`.
+- Add `EmissionTarget` to gunbc CI/emission substrate, not to extdeps.
+- Model current CI in `dsl/gunbc/ci.dag` as the semantic source.
+- Emit `.github/workflows/ci.yml` from
+  `project_github_actions(ci_workflow_dag, YamlStatic)`.
 - Keep the checked-in YAML as a generated artifact with freshness checking.
 
 ### Phase C: Shim Runtime
@@ -644,9 +653,9 @@ is shaped to consume affected-set receipts when they become available.
 - Replace hand-authored `.github/workflows/ci.yml` with emitted static artifact
   or thin shim.
 - Add a ratchet that rejects manual workflow policy edits outside `ci.dag`.
-- Add a ratchet that rejects missing `emission_target` on authoritative
-  workflow declarations; the optional field remains only for historical
-  fixture compatibility.
+- Add a ratchet that rejects missing projection target on authoritative
+  projection calls; the optional target remains only for historical fixture
+  compatibility.
 - Mark `ci_yml_dissolved` passing only when the source of truth is `.dag`.
 
 ## 11. Ratchets
@@ -655,7 +664,7 @@ Recommended ratchets:
 
 | Ratchet | Purpose |
 |---|---|
-| `workflow_emission_target_field_consumed` | `Workflow.emission_target` is read by the workflow emitter. |
+| `workflow_emission_target_consumed` | `EmissionTarget` is read by the workflow projection/emitter. |
 | `workflow_yaml_static_fresh` | emitted YAML matches checked-in artifact while static artifact remains checked in. |
 | `workflow_binary_shim_is_thin` | shim YAML contains only bootstrap/checkout/setup/invoke steps. |
 | `workflow_no_path_regex_policy` | no durable CI selection policy remains in YAML path regexes after affected-set lands. |
@@ -671,7 +680,7 @@ The following questions should be answered by ratification, not by worker
 implementation:
 
 1. Should `EmissionTarget` be optional during the migration or required
-   immediately with every existing workflow updated in one PR?
+   immediately with every projection call updated in one PR?
 2. Should `BinaryShim` first run jobs in-process, or should it emit dynamic
    matrix JSON for GitHub fanout?
 3. What is the minimal verifier for GitHub Actions YAML in CI before a full
@@ -691,7 +700,8 @@ This canvas recommends:
 
 This design is ready for downstream implementation when:
 
-- `EmissionTarget` lives on `Workflow`, with `YamlStatic` default for absence.
+- `EmissionTarget` lives in gunbc namespace as a projection argument, with
+  `YamlStatic` default for absence during migration.
 - `YamlStatic`, `BinaryShim`, and `PythonShim` have explicit semantics and
   acceptance contracts.
 - Affected-set integration is assigned to shim runtime targets and remains
