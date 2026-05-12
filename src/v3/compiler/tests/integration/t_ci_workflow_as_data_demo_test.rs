@@ -23,7 +23,7 @@ use v3_compiler::dag::{
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
 };
-use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag, CompileError};
+use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag};
 
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
 const GUNBC_CI_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci.dag");
@@ -351,10 +351,8 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
 
 #[test]
 fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
-    let ci = match compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE) {
-        Ok(dag) | Err(CompileError::Semantic(dag)) => dag,
-        Err(err) => panic!("compile {GUNBC_CI_FILE}: {err:?}"),
-    };
+    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
     let fields = structural_value_body(&ci, "ci_workflow_dag");
     let (name, node_ids, edges) = workflow_topology(fields);
 
@@ -384,10 +382,8 @@ fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
 #[test]
 fn ci_workflow_as_data_demo_uses_only_gunbc_ci_authority_topology() {
     let demo = demo_bootstrap_dag();
-    let ci = match compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE) {
-        Ok(dag) | Err(CompileError::Semantic(dag)) => dag,
-        Err(err) => panic!("compile {GUNBC_CI_FILE}: {err:?}"),
-    };
+    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
+        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
 
     assert_eq!(
         demo.declaration_by_name("modeled_gunbc_ci_workflow_dag")
