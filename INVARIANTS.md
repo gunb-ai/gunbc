@@ -337,6 +337,15 @@ Per **Dispatch-Discipline Mechanisms (b)** above, each **new** path added to `EX
 | `src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs` | **ROADMAP:** `ROADMAP.md` — Post-merge debt bullet **v3 lens capability honesty pass** (cementing-test discipline per `regen.dag`; see `docs/v3-lens-capability-register.md`). **Dissolution:** remove when `origin_of` provenance seam checks for gate-#87 regen harnesses live as `.dag` `TestClaim` obligations alongside `tests/dag/cementing_dispatch.dag` (no Rust mirror of the dispatch projection from `std.verification`'s `lens_capability_register_rows`). **Interim ratchet:** narrow slice split from the retired `cementing_lens_registry_dispatch_test.rs` monolith. |
 | `src/v3/compiler/tests/integration/common/wiring_scanner_test.rs` | **ROADMAP:** same **v3 lens capability honesty pass** bullet — Band-C `tests/integration.rs` `#[path]` wiring is enforced by `integration_rs_wiring_scan.rs` + `cementing_dispatch.rs`. **Dissolution:** remove when `integration.rs` wiring can be validated structurally for cementing modules without line scanners. **Interim ratchet:** unit tests for helpers promoted from the retired `cementing_lens_registry_dispatch_test.rs` monolith. |
 
+### SG-0 hand-authored compiler non-test paths (`src/v3/compiler/src/`)
+
+Per **Dispatch-Discipline Mechanisms (b)**, each path in `EXPECTED_HAND_AUTHORED_NON_TEST` inside `src/v3/compiler/tests/integration/sg0_census_test.rs` must carry a matching dissolution-bearing receipt **in the same PR** as the census line. The following rows are the planning home-of-record for Band-C gate #87 seams that are not integration-test binaries.
+
+| Path | Receipt |
+|------|---------|
+| `src/v3/compiler/src/cementing_dispatch.rs` | **ROADMAP:** `ROADMAP.md` — **v3 lens capability honesty pass** (same posture as `wiring_scanner_test.rs`). **Dissolution (host scan):** reflected wiring facts at the runner edge so dispatch does not read `tests/integration.rs` from disk. **Dissolution (receipt expansion):** move the `expected_cementing_receipt_triples` projection bridge out of Rust into structural `.dag` data keyed from the register ∩ `regen.dag` projection (single roster authority). **Interim ratchet:** `CementingDispatchMatchesProjection` + closed `CementingBandCReceiptKind` in `tests/dag/cementing_dispatch.dag`. |
+| `src/v3/compiler/src/integration_rs_wiring_scan.rs` | **ROADMAP:** same **v3 lens capability honesty pass** bullet as `wiring_scanner_test.rs`. **Dissolution:** remove when `tests/integration.rs` cementing `#[path]` / `mod` wiring can be validated structurally (no line scanner). **Interim ratchet:** `Err` (not panic) on raw/byte string openers in **Code** so `CementingDispatchMatchesProjection` surfaces `ClaimResult::Fail`. |
+
 ---
 
 ## Appendix: ID index

@@ -375,7 +375,8 @@ mod real;
         assert!(!integration_rs_active_line_contains(
             concat!("let _ = b'#';", "\n"),
             "#",
-        ));
+        )
+        .unwrap());
         assert!(integration_rs_active_line_contains(
             concat!(
                 "let _ = b'#';",
@@ -383,6 +384,7 @@ mod real;
                 "mod real;\n",
             ),
             "#[path",
-        ));
+        )
+        .unwrap());
     }
 }
