@@ -355,14 +355,16 @@ expression-capable fields in actions.dag carriers (audited 2026-05-12):
 | `UsesStep` | `continue_on_error: Bool` | Bool | ✓ |
 | `UsesStep` | `timeout_minutes: Int?` | Int? | ✓ |
 
-Total expression-capable surface: **24 fields** across `Workflow`, `Job`,
-`RunStep`, `UsesStep`, `ConcurrencySpec`, `RunnerSpec`. The 7-site
-enumeration was keyed to ci.yml usage, not actions.dag schema —
-under-modeling the platform surface by 17 sites.
+Total expression-capable surface: **23 fields** across `Workflow`, `Job`,
+`RunStep`, `UsesStep`, `ConcurrencySpec`, `RunnerSpec` (post-correction:
+`UsesStep.uses` removed per :381 operator BLOCKING; literal-only per GH
+Actions workflow-syntax). The 7-site enumeration was keyed to ci.yml
+usage, not actions.dag schema — under-modeling the platform surface by
+16 sites.
 
 ### §5.5.1 Migration rule (revised — string-typed sites only; typed-field sites HOLD per §5.5.2)
 
-The 24 expression-capable sites split into three classes by HEAD-type:
+The 23 expression-capable sites split into three classes by HEAD-type:
 
 - **String-typed sites (15)**: fields already typed `String` / `String?` /
   `Map<String, String>` at HEAD — `Workflow.name`, `Workflow.env`,
@@ -381,17 +383,24 @@ The 24 expression-capable sites split into three classes by HEAD-type:
   The shape that captures this (wrap vs `TypedOrExpression<T>` sum vs
   defer) is an **open Director-tier question** per §5.5.2 / §6 Q#4.
   **HOLD migration** until §6 Q#4 ratifies.
-- **Enum-extension sites (2)**: `Job.runner: RunnerSpec` and
-  `UsesStep.uses: ActionRef`. Migration adds a new variant
-  (`ExpressionRunner { expr: Expression }`, `ExpressionActionRef { expr: Expression }`)
-  to the existing sum/struct rather than swapping the type. Per §2
-  (c) sketch for `RunnerSpec`; `UsesStep.uses` extension is symmetric.
-  These 2 sites are in scope for the §7.5 ask #4 prereq PR alongside
-  the 15 string-typed sites — same uniform-string-expression class
-  at the substrate level (each adds an `Expression`-carrying variant).
+- **Enum-extension sites (1)**: `Job.runner: RunnerSpec`. Migration adds
+  a new variant (`ExpressionRunner { expr: Expression }`) to the existing
+  sum rather than swapping the type. Per §2 (c) sketch for `RunnerSpec`.
+  This site is in scope for the §7.5 ask #4 prereq PR alongside the
+  15 string-typed sites — same uniform-string-expression class at the
+  substrate level (the variant carries `Expression`).
+
+  **Note**: `UsesStep.uses: ActionRef` was previously listed here as a
+  second enum-extension site (with a proposed `ExpressionActionRef`
+  variant) but is **removed** per operator BLOCKING at PR #2751 :381
+  (2026-05-12T10:12:15Z): GH Actions workflow-syntax treats `uses:` as
+  a literal action location (no entry in the context-availability
+  table at `jobs.<job_id>.steps.uses`); modeling it as
+  expression-capable would invent platform capability and violate
+  INVARIANTS P1 modeling faithfulness.
 
 Total in-scope for the substrate-prereq PR under §7.5 ask #4 / Slice 4
-brief: **15 string-typed + 2 enum-extension = 17 sites**. The 7
+brief: **15 string-typed + 1 enum-extension = 16 sites**. The 7
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -414,7 +423,7 @@ create the contradiction codex REQUEST_CHANGES review 10083 flagged
 ("ALL 22 migrate" + "typed shape unresolved" cannot both hold).
 
 **Implementing-PR scope**: §7.5 ask #4 / Slice 4 brief migrates the
-15 string-typed + 2 enum-extension sites (17 total) uniformly. The 7
+15 string-typed + 1 enum-extension sites (16 total) uniformly. The 7
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -447,7 +456,7 @@ This canvas does not pre-author the choice (per §6 framing); routing to
 
 The §1 table and §2 (a/b/c) code sketches retain their 7-site framing as
 the ci.yml-keyed reference set, with §5.5 as the actions.dag-keyed audit
-extending to 24 sites. The substrate-shape ratification covers the
+extending to 23 sites. The substrate-shape ratification covers the
 expanded scope per §5.5.1 migration rule (all expression-capable fields);
 the §1/§2 7-site enumeration is the minimum subset proven by current
 ci.yml usage, not the migration ceiling.
@@ -479,7 +488,7 @@ ci.yml usage, not the migration ceiling.
    question; it was implied by §3 reasoning point #4 ("Pre-empts the
    type-alias trap") which applies equally to record-form aliases.
 
-2. **Migration sequencing across the 24 expression-capable fields**
+2. **Migration sequencing across the 23 expression-capable fields**
    (revised from "seven sites" per §5.5 audit). Do all sites migrate
    to `Expression` in one PR (substrate-prereq PR before Slice 4) or
    incrementally? Recommendation: one PR (cohesive substrate change;
