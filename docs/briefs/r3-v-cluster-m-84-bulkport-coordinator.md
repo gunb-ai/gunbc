@@ -16,6 +16,12 @@
 
 Verification Mgr coordinates centrally; lane Mgrs review their own ported tests for behavioral fidelity (signoff, not authoring). Reasoning per Phase 3 overlay §2: avoids per-lane TestClaim-authoring learning curve; concentrates testgen-capability development in one place.
 
+## §0.1 V2 / D2 ownership split
+
+V2 owns SG-0 test rows that are cementable as `.dag` `TestClaim` or generated target-language test artifacts under #87 Phase 3 / #84. A concrete V2 migration PR must include the corresponding `EXPECTED_HAND_AUTHORED_TEST` decrement in the same PR as the replacement artifact.
+
+D2 owns slow-test residuals, exemption/trajectory accounting, and SG-0 rows that resist cementing because they require structural/compiler fixes. Do not silently move resistant rows into V2 class scope. If D2 later unblocks a resistant row, it hands back to V2 with the blocker named.
+
 ## §1. Strict-zero close-condition (cite-and-execute)
 
 Per Director Ask 4 ratification:
@@ -30,20 +36,33 @@ Per Phase 3 overlay §4 (estimated counts from velocity-walk audit §2.1):
 
 | Class | Approx count | Worker brief filename | Status |
 |---|---|---|---|
-| Cementing-test family (post-#87 pattern) | ~20-25 | `r3-v-cluster-m-84-class-cementing-bulkport-worker.md` | TBD-author when #87 first-receipt lands |
-| Reflected-Dag structural assertion family | ~25-30 | `r3-v-cluster-m-84-class-reflected-dag-bulkport-worker.md` | TBD-author when #86 ProgramGenerator carrier lands |
-| Generic DimensionReport / runner-discipline family | ~20-25 | `r3-v-cluster-m-84-class-generic-dimreport-bulkport-worker.md` | TBD-author when #87 pattern + runner extensions stable |
-| Boundary tests (m1_*, m2_*, etc.) | ~10 | `r3-v-cluster-m-84-class-boundary-bulkport-worker.md` | TBD-author per testgen-coverage discipline |
-| R1C-D / R1C-E wrappers | ~3 | `r3-v-cluster-m-84-class-r1c-de-bulkport-worker.md` | May be eligible NOW; pre-Phase-2 dispatch candidate |
-| L4/L7/L5 skeleton | ~5 | `r3-v-cluster-m-84-class-l4-l7-l5-bulkport-worker.md` | Verification Cluster G overlap; may bundle |
+| Cementing-test family (post-#87 pattern) | ~20-25 | `r3-v-cluster-m-84-class-cementing-bulkport-worker.md` | STUB; #87 pattern/dispatch receipt landed; Mgr finalizes live inventory + pilot/bulk split |
+| Reflected-Dag structural assertion family | ~25-30 | `r3-v-cluster-m-84-class-reflected-dag-bulkport-worker.md` | DIRECTOR-SCAFFOLD; Mgr inventory + pilot selection pending |
+| Generic DimensionReport / runner-discipline family | ~20-25 | `r3-v-cluster-m-84-class-generic-dimreport-bulkport-worker.md` | DIRECTOR-SCAFFOLD; Mgr inventory + framework-entry decision pending |
+| Boundary tests (m1_*, m2_*, etc.) | ~10 | `r3-v-cluster-m-84-class-boundary-bulkport-worker.md` | STUB; Mgr maps per boundary milestone owner |
+| R1C-D / R1C-E wrappers | ~3 | `r3-v-cluster-m-84-class-r1c-de-bulkport-worker.md` | STUB; pilot brief exists and can feed final class dispatch |
+| L4/L7/L5 skeleton | ~5 | `r3-v-cluster-m-84-class-l4-l7-l5-bulkport-worker.md` | STUB; coordinate with Verification Cluster G Pattern-A owner |
 
-Each class is a parallel-dispatchable worker batch. Coordinator (this brief's owner) authors per-class briefs as Phase 3 begins; spawns workers; tracks SG-0 census decrement per class.
+Each class is a parallel-dispatchable worker batch. Coordinator (this brief's owner) finalizes the class stubs as Phase 3 begins; spawns workers; tracks SG-0 census decrement per class. The six linked files are the authoritative per-class framework surfaces; this coordinator table tracks only status and class-level routing.
+
+### §2.1 Class-stub finalization rules
+
+Before a class stub can move from STUB/DIRECTOR-SCAFFOLD to PRE-AUTH DISPATCH-READY, the Coordinator fills:
+- Complete live inventory from `EXPECTED_HAND_AUTHORED_TEST` at dispatch time.
+- Per-entry migration shape: `.dag` TestClaim, generated target-language test, or STOP-and-PING substrate gap.
+- First pilot target(s) and bulk-wave split.
+- Lane-Mgr signoff owner(s) for behavioral fidelity.
+- SG-0 decrement expectation and the exact census-removal rule.
+- D2/V2 disposition for any row that resists cementing, with the blocker named.
+
+Do not duplicate the live census count in these briefs. The only live count authority remains `src/v3/compiler/tests/integration/sg0_census_test.rs`.
 
 ## §3. Dispatch trigger
 
-Phase 3 dispatches **on Phase 1 + Phase 2 lock**:
+Phase 3 dispatches from the current #87 landed pattern/dispatch receipt plus Phase 3 coordinator readiness:
 - #85 + #86 substrate carriers landed (Substrate Mgr canvas ratification + worker dispatch).
-- #87 cementing-test discipline pattern landed (Phase 2 first-migration receipt).
+- #87 cementing-test discipline is `CONSUMER_LANDED + PASSING` in `docs/r3-program-plan.md` row #87.
+- Coordinator completes live inventory, per-class finalization, and selected pilot/bulk split.
 
 R1C-D/R1C-E wrappers may be eligible NOW (pre-Phase-1) as a pre-Phase-2 sanity dispatch — surface to Director when reviewing this skeleton.
 
