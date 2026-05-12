@@ -654,6 +654,13 @@ carrier. The projection function takes it as a parameter:
 
 ```dag
 // in dsl/gunbc/ci.dag (or dsl/gunbc/ci_emission.dag — placement open)
+//
+// 🟡 YELLOW (scaffold) — per modeling-discipline.md Practice 4.
+// See §7.3.1 for the classification reasoning + three-condition
+// named dissolution trigger ((a) fifth target breaks four-way axis,
+// (b) consumer needs single-dimension pattern-match, (c) Slice 4/5
+// surfaces unpredicted axis). Likely dissolution path: Pattern 4
+// (Dimensional) over { target_language, requires_shim, runtime_executes }.
 type EmissionTarget
   = YamlStatic
   | BinaryShim
