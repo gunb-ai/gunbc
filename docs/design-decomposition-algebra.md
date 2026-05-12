@@ -173,24 +173,18 @@ type TimestampedEvent<T> {
 - Stale-RC parser bug class **dissolves**: review-tally is `latest_per_provider_at_HEAD = fold(log, by_provider, take_latest_for_current_HEAD)`. Old-SHA RC is structurally not-at-HEAD.
 - Cutoff timestamp (PR #1192) becomes `log_position` instead of `dashboard_migrations.created_at`
 
-### Gap 2 — Lens<A,B> type
+### Gap 2 — RETRACTED (post-codex inline BLOCKING 2026-05-12T19:08Z)
 
-**Need**: first-class "view-with-bidirectional-update" carrier. The algebra IS a lens over event-log → node-graph state. `canCloseNode` is a lens-projection.
+**Original proposal**: introduce `Lens<S, A> { view, update }` as new bidirectional state-projection carrier.
 
-**Sketch**:
-```
-type Lens<S, A> {
-  view: fn(S) -> A
-  update: fn(A, S) -> S
-}
-```
+**Retracted because**: `src/v3/std/lens.dag` already declares a Director-locked `Lens<C>` substrate (6-field shape: name / read / sequential / branch / iterate / validate). Introducing a separate `Lens<S, A>` creates parallel authority — violates INVARIANTS P2 (single-authority) + MODELING.md M9 (DFS the concept DAG before defining).
 
-**Algebra**: lenses compose (`Lens<A,B>` × `Lens<B,C>` → `Lens<A,C>`). Already informal in gunbc; first-class type makes composition explicit.
+**Corrected approach**: state-projection in decomp-algebra reuses existing substrate. Specifically:
+- Mode-as-projection = `fold` over `FreeMonoid<TimestampedEvent<Operation>>` (FreeMonoid already in `dsl/std/algebra.dag:390`); no Lens carrier needed for one-way projection
+- Closure-decision = `canCloseNode` as a typed projection function (pattern per `dsl/gunbc/ci.dag:29-32` `project_github_actions` shape)
+- If the v3 Lens<C> 6-field shape (read / sequential / branch / iterate / validate) fits a future ctrl-domain analysis, reuse-as-instantiation; substrate-parameterization is a downstream concern, not this canvas
 
-**Consequences**:
-- "Affected-set lens" (PR #2713) gets a proper carrier
-- `currentMode: Lens<EventLog<NodeOperation>, Mode>` makes mode derived, not stored
-- "Mode field on node row" collapses into "Mode lens projection" — that's the structural dissolution receipt for `Mode` open enum
+**Open question**: if decomposition-algebra surfaces a genuine bidirectional-update use case that doesn't fit v3 Lens<C> (which is fold-only over DAG-with-behaviors), surface to Substrate Mgr for shape audit. Until then, no new lens carrier proposed.
 
 ### Gap 3 — Bounded multiplicity
 
@@ -209,26 +203,32 @@ OR — reuse `SetCardinality` from `dsl/std/termination.dag:198` if it generaliz
 
 **Lower priority** than Gaps 1+2 — workable with current List<T> for now.
 
-### Gap 4 — Unified Witness/Receipt
+### Gap 4 — Attestation carrier (RENAMED from "Witness" to avoid v3 collision)
 
-**Need**: drain witness, replan reason, escalate debt-string, operator-override attestation all share structure but are currently String fields.
+**Carrier-name collision audit** (post-codex inline BLOCKING 2026-05-12T19:08Z): v3 substrate already has `Witness<Carrier> = Inhabits(Carrier) | Violates { reason, at }` at `src/v3/std/dimensions.dag:35`. That carrier is per-Behavior cost-basis-inhabitance proof — STRUCTURALLY DISTINCT from decomp-algebra's human-attestation-of-intent (drain note, replan reason, escalate debt-string, operator-override).
+
+**Per `feedback_self_hosting_md_authority_audit_before_substrate_naming.md`**: same-name carriers across namespaces invite confusion. Rename decomp-algebra's "Witness" to **`Attestation`** to preserve namespace clarity.
+
+**Need**: typed attestation record for human-authored intent attached to Operation events.
 
 **Sketch**:
 ```
-type Witness {
+type Attestation {
   author: SessionId
   text: String
   timestamp: Timestamp
-  evidence: List<Evidence>
+  evidence: List<AttestationEvidence>
 }
 
-type Evidence =
-    StructuralLens { lens_name, projection_result }
-  | IntegrationTest { name, passes: Bool }
-  | ProseAttestation { text }
+type AttestationEvidence =                 // 🟡 MIXED — will become TERMINAL when locked
+    StructuralLensReceipt { lens_name: String }   // reuses v3 Lens<C> instance result
+  | IntegrationTest { name: String, passes: Bool }
+  | ProseAttestation { text: String }
 ```
 
-**Lower priority** — small extension, can land alongside Phase 1 substrate.
+**Reuse**: where decomp-algebra carriers reference v3 substrate (e.g. an `AttestationEvidence::StructuralLensReceipt` whose lens-instance is a real `Lens<C>` from `src/v3/lenses/`), the existing `Witness<C>` carrier is the inhabitance proof — `Attestation` and v3 `Witness<C>` compose; they don't conflict.
+
+**Lower priority** — small extension, can land alongside Phase 1 substrate. The `Witness` → `Attestation` rename cascade across §6/§9/§13 in this doc applied below.
 
 ---
 
@@ -238,16 +238,18 @@ type Evidence =
 
 ```
 type Operation =
-    Declare { node: NodeId, mode: Mode, attestation: Witness }
-  | Decompose { parent: NodeId, children: List<Node>, attestation: Witness }
-  | Drain { bucket: NodeId, witness: Witness }
-  | Replan { node: NodeId, reason: Witness }
-  | Escalate { from: NodeId, to_parent: NodeId, debt: Witness }
-  | Pause { node: NodeId, reason: Witness }
-  | Reopen { node: NodeId, witness: ReopenWitness }              // closed → open
-  | Regress { node: NodeId, retracted_child_ids: List<NodeId>, witness: RegressionWitness }   // decomposition retraction
-  | WitnessedOverride { rule: ClosureRule, witness: Witness }    // force: true
+    Declare { node: NodeId, mode: Mode, attestation: Attestation }
+  | Decompose { parent: NodeId, children: List<Node>, attestation: Attestation }
+  | Drain { bucket: NodeId, attestation: Attestation }
+  | Replan { node: NodeId, reason: Attestation }
+  | Escalate { from: NodeId, to_parent: NodeId, debt: Attestation }
+  | Pause { node: NodeId, reason: Attestation }
+  | Reopen { node: NodeId, reopen: ReopenAttestation }            // closed → open
+  | Regress { node: NodeId, retracted_child_ids: List<NodeId>, regression: RegressionAttestation }
+  | AttestedOverride { rule: ClosureRule, attestation: Attestation }   // force: true
 ```
+
+(Renamed: `AttestedOverride` → `AttestedOverride` to match the `Attestation` carrier naming; per Gap 4 carrier-rename.)
 
 **Reopen + Regress added (post-codex Finding #3 2026-05-12T19:08Z)**: real workflows have closure-reversal cases:
 - PR merge reverted post-CI failure
@@ -257,9 +259,9 @@ type Operation =
 Without explicit `Reopen` / `Regress` operations, the monotonicity claim was unfounded. Each has explicit witness requirements:
 
 ```
-type ReopenWitness {
+type ReopenAttestation {
   reason: ReopenReason
-  witness: Witness   // why reopen is justified
+  attestation: Attestation   // why reopen is justified
 }
 
 type ReopenReason =
@@ -267,16 +269,16 @@ type ReopenReason =
   | RetroGateInvalidation { gate_id: GateId }
   | OperatorIntervention { directive: String }
 
-type RegressionWitness {
+type RegressionAttestation {
   reason: String
   retracted_subtree_signature: String   // structural proof of what's being merged back
-  attestation: Witness
+  attestation: Attestation
 }
 ```
 
 Each operation is a **pure function** `(EventLog<Operation>, Operation) → EventLog<Operation>` (append). Graph state is `state: EventLog → NodeGraph` (projection lens).
 
-**Closure-decision lattice — REPLACES prior monotonicity claim**: closure decisions are NOT monotonic across the full Operation set. They are monotonic only across `{Declare, Decompose, Drain, Pause, WitnessedOverride}` — the "forward-stable" subset. `Reopen` + `Regress` + `Replan` + `Escalate` explicitly RETRACT closure state with witnessed cause.
+**Closure-decision lattice — REPLACES prior monotonicity claim**: closure decisions are NOT monotonic across the full Operation set. They are monotonic only across `{Declare, Decompose, Drain, Pause, AttestedOverride}` — the "forward-stable" subset. `Reopen` + `Regress` + `Replan` + `Escalate` explicitly RETRACT closure state with witnessed cause.
 
 The lattice over closure decisions:
 - `canCloseNode(state(log + forward_stable_op)) ≥ canCloseNode(state(log))` (preserved-or-improved)
@@ -285,7 +287,7 @@ The lattice over closure decisions:
 
 This is `feedback_state_space_vs_behavioral_invariants.md` applied: the type captures the regression possibility explicitly. There is no silent regression — every closure-reversal carries a typed witness, and every consumer of `canCloseNode` sees the lattice value rather than "stable boolean."
 
-`WitnessedOverride` is the structurally-modeled `force: true` from PR #1195. It's a typed operation, not a special-case API flag.
+`AttestedOverride` is the structurally-modeled `force: true` from PR #1195. It's a typed operation, not a special-case API flag.
 
 ---
 
@@ -301,15 +303,15 @@ This is `feedback_state_space_vs_behavioral_invariants.md` applied: the type cap
 - `Bucket` = node has explicit `is_remainder` marker + bound drain rule
 - `NULL` = pre-cutoff (grandfathered; dissolves entirely when all grandfathered nodes close)
 
-If Gap 2 (Lens<A,B>) lands, Mode collapses from stored field → lens projection. The `mode_declared_at` audit becomes a tag on the lens result (provenance, not state).
+Mode dissolution trigger: when `currentMode: EventLog<Operation> → Mode` projection function lands (a `fold` over `FreeMonoid<TimestampedEvent<Operation>>` per Gap 2 retraction), Mode collapses from stored field → derived projection. The `mode_declared_at` audit becomes a tag on the fold result (provenance, not state). No new lens carrier needed — reuses existing FreeMonoid + fold substrate.
 
-### `Operation = Declare | Decompose | ... | WitnessedOverride` — 🟢 TERMINAL
+### `Operation = Declare | Decompose | ... | AttestedOverride` — 🟢 TERMINAL
 
 Closed sum over the friendly-CLI vocabulary; payload is structural. No dissolution proposed — each variant is structurally distinct (different effect shape per `EffectShape` mapping).
 
-### `Witness` — 🟡 MIXED → 🟢 TERMINAL pending Evidence enum closure
+### `Attestation` — 🟡 MIXED → 🟢 TERMINAL pending AttestationEvidence enum closure
 
-When `Evidence` enum (StructuralLens / IntegrationTest / ProseAttestation) is locked, Witness becomes terminal. Strength ordering applies: `StructuralLens > IntegrationTest > ProseAttestation`.
+When `AttestationEvidence` enum (StructuralLensReceipt / IntegrationTest / ProseAttestation) is locked, `Attestation` becomes terminal. Strength ordering: `StructuralLensReceipt > IntegrationTest > ProseAttestation`. Distinct from v3 `Witness<C>` (`src/v3/std/dimensions.dag:35`) — `Attestation` is human-intent attestation; `Witness<C>` is per-Behavior inhabitance proof. They compose: a `StructuralLensReceipt` may reference a `Lens<C>` instance whose result is a `Witness<C>` chain.
 
 ---
 
@@ -343,32 +345,34 @@ This is the same shape as `EmissionTarget = YamlStatic | BinaryShim` deciding `p
 
 // === Mode (open enum, Practice 4 MIXED) ===
 type Mode = Leaf | Composite | Bucket | NULL_TRANSITIONAL
-  // 🟡 MIXED — dissolution trigger: when Lens<EventLog, Mode> lands,
+  // 🟡 MIXED — dissolution trigger: when `currentMode` projection function lands,
   // Mode collapses from stored field → lens projection. NULL dissolves
   // entirely when all grandfathered nodes (pre-cutoff) close.
 
 // === Witness ===
-type Witness {
+// `Attestation` is the decomp-algebra attestation carrier (renamed from
+// "Witness" to avoid collision with v3.std.dimensions::Witness<C>).
+type Attestation {
   author: SessionId
   text: String
   timestamp: Timestamp
-  evidence: List<Evidence>
+  evidence: List<AttestationEvidence>
 }
 
-type Evidence =                    // 🟡 MIXED — will become TERMINAL when locked
-    StructuralLens { lens_name: String }
+type AttestationEvidence =          // 🟡 MIXED — will become TERMINAL when locked
+    StructuralLensReceipt { lens_name: String }   // refs v3 Lens<C> instance result
   | IntegrationTest { name: String, passes: Bool }
   | ProseAttestation { text: String }
 
 // === Operation (closed sum, TERMINAL) ===
 type Operation =                   // 🟢 TERMINAL
-    Declare { node: NodeId, mode: Mode, attestation: Witness }
-  | Decompose { parent: NodeId, children: List<NodeId>, attestation: Witness }
-  | Drain { bucket: NodeId, witness: Witness }
-  | Replan { node: NodeId, reason: Witness }
-  | Escalate { from: NodeId, to_parent: NodeId, debt: Witness }
-  | Pause { node: NodeId, reason: Witness }
-  | WitnessedOverride { rule: ClosureRule, witness: Witness }
+    Declare { node: NodeId, mode: Mode, attestation: Attestation }
+  | Decompose { parent: NodeId, children: List<NodeId>, attestation: Attestation }
+  | Drain { bucket: NodeId, attestation: Attestation }
+  | Replan { node: NodeId, reason: Attestation }
+  | Escalate { from: NodeId, to_parent: NodeId, debt: Attestation }
+  | Pause { node: NodeId, reason: Attestation }
+  | AttestedOverride { rule: ClosureRule, attestation: Attestation }
 
 // === EventLog<T> primitive (Gap 1) ===
 type EventLog<T> = FreeMonoid<TimestampedEvent<T>>
@@ -436,7 +440,7 @@ This is ~50 lines of substrate. CLI / REST / SQL / audit emissions derive.
 
 4. **Emission target priority** — HTTP REST first, SQL second, audit-event third? Or different order? Proposed: HTTP REST first (smallest), enables full Phase 4 cut-over without needing SQL emission yet (ctrl/ keeps SQL hand-authored short-term).
 
-5. **Force-override modeling** — `WitnessedOverride` as a structured Operation variant (this doc proposes) vs API flag (ctrl PR #1195 implements). Proposed: structured operation; eliminates the special-case "force: true" boolean flag.
+5. **Force-override modeling** — `AttestedOverride` as a structured Operation variant (this doc proposes) vs API flag (ctrl PR #1195 implements). Proposed: structured operation; eliminates the special-case "force: true" boolean flag.
 
 6. **Phase 1 substrate landing strategy** — single PR for `dsl/std/process_algebra.dag` skeleton (~50 lines), or stacked PRs per type (Mode → Operation → EventLog → projection)? Proposed: single bundled PR (algebra is one substrate; per `feedback_bundle_workstreams_per_pr.md`).
 
@@ -490,7 +494,7 @@ The structural algebra proposed in this doc would have caught the PR #2745 misre
 - `WalkBackEvent` → sequence of `Replan` operations in the event log
 - `StableAncestor` → parent node where `Replan` was authored
 - `RootContested` → `Escalate` operation routed to root-asker (operator)
-- `force: true` resolution path → `WitnessedOverride` operation
+- `force: true` resolution path → `AttestedOverride` operation
 
 ---
 
