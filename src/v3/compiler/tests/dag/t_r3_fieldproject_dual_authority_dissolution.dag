@@ -16,5 +16,5 @@ data field_project_resolves_single_authority: TestClaim = {
 
 data suite_fieldproject_dual_authority_dissolution: TestSuite = {
   name: "r3/fieldproject-dual-authority-dissolution",
-  claims: [field_project_resolves_single_authority]
+  claims: [Enumerated(field_project_resolves_single_authority)]
 }

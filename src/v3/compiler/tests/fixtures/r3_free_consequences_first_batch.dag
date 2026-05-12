@@ -128,10 +128,10 @@ data auto_memoization_no_caching_for_one_shot: TestClaim = {
 data r3_free_consequences_first_batch_suite: TestSuite = {
   name: "r3_free_consequences_first_batch_suite",
   claims: [
-    auto_parallelism_independent_binds_emit_parallel,
-    auto_parallelism_dependent_binds_pending_lens_fail_closed,
-    auto_parallelism_branch_arms_serialize,
-    auto_memoization_repeated_pure_call_cached,
-    auto_memoization_no_caching_for_one_shot
+    Enumerated(auto_parallelism_independent_binds_emit_parallel),
+    Enumerated(auto_parallelism_dependent_binds_pending_lens_fail_closed),
+    Enumerated(auto_parallelism_branch_arms_serialize),
+    Enumerated(auto_memoization_repeated_pure_call_cached),
+    Enumerated(auto_memoization_no_caching_for_one_shot)
   ]
 }

@@ -60,7 +60,7 @@ data evaluator_cross_target_equivalence_harness_primitives_differential_scaffold
 data r2_evaluator_cross_target_equivalence_harness_primitives_suite: TestSuite = {
   name: "r2_evaluator_cross_target_equivalence_harness_primitives_suite",
   claims: [
-    evaluator_cross_target_equivalence_harness_primitives_landed,
-    evaluator_cross_target_equivalence_harness_primitives_differential_scaffold
+    Enumerated(evaluator_cross_target_equivalence_harness_primitives_landed),
+    Enumerated(evaluator_cross_target_equivalence_harness_primitives_differential_scaffold)
   ]
 }

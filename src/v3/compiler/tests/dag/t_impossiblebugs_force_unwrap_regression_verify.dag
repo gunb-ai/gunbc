@@ -18,5 +18,5 @@ data force_unwrap_absent_resolve_error: TestClaim = {
 
 data suite_force_unwrap_regression_verify: TestSuite = {
   name: "t-impossiblebugs/unhandled-diagnostic-paths/force-unwrap-regression-verify",
-  claims: [force_unwrap_absent_resolve_error]
+  claims: [Enumerated(force_unwrap_absent_resolve_error)]
 }
