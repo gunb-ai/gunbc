@@ -163,6 +163,16 @@ This option is ratified by Director message
 `extdeps.github.actions.Workflow` with `EmissionTarget?`; `None` defaults to
 `YamlStatic` during migration.
 
+Extdeps-fidelity disposition: `EmissionTarget` must not be documented or
+implemented as a GitHub Actions provider fact. GitHub does not have an
+`emission_target` workflow key. The field is a gunbc-authored projection fact
+attached to the canonical workflow artifact carrier so the emitter has one
+source of truth. If implementation needs a namespace distinction, the enum and
+consumer helpers can live in gunbc-owned modules, but the authoritative value
+is still carried by the `Workflow` declaration rather than by a sibling join
+carrier. This is the Director-disposed P1 tradeoff: preserve platform-field
+fidelity in rendering while avoiding a second workflow representation.
+
 #### Option B: Field on `CIPipeline`
 
 `dsl/gunbc/ci.dag` already carries CI-intent declarations:
