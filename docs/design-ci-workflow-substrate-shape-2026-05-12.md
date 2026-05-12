@@ -398,7 +398,7 @@ framing narrows.
 
 The Director-ratified gate-additions (per PM relay `msg_93e14076`):
 
-- `workflow_workflow_runtime_toggle_proven` (substrate-shape) — Slice 4 + Slice 5
+- `workflow_runtime_toggle_proven` (substrate-shape) — Slice 4 + Slice 5
 - `ci_yml_dissolved` (state-check) — Slice 8
 - `ci_uses_affected_set_selection` (state-check) — Slice 7 (Verification Mgr lane)
 - `test_cost_dimension_landed` (substrate-shape + state-check) — Slice 6 (Debt-Paydown Mgr lane)
@@ -427,18 +427,18 @@ Under option (c) the lane-absorbed gate-set sequences as:
   option (b) carriers into option (c)'s hybrid. **Without it, (c) reduces to
   dual-authority (a)+(b) coexistence.**
 - Whether the projection function is itself a new §1.8 gate or part of
-  `workflow_workflow_runtime_toggle_proven` acceptance is a Director call;
+  `workflow_runtime_toggle_proven` acceptance is a Director call;
   this canvas surfaces the question without selecting.
 
 **S2 — Slice 4 (YamlStatic emitter)**
 - Implements emitter consuming `project_github_actions(ci_workflow_dag, YamlStatic)` → ci.yml-equivalent artifact
 - Acceptance: emitter output structurally equivalent to current `.github/workflows/ci.yml` (workflow-semantics, not byte equality — per PR #2746 §2)
-- Half of `workflow_workflow_runtime_toggle_proven` (one target proven)
+- Half of `workflow_runtime_toggle_proven` (one target proven)
 
 **S3 — Slice 5 (BinaryShim emitter)**
 - Implements emitter consuming `project_github_actions(ci_workflow_dag, BinaryShim)` → thin YAML shim invoking compiled gunbc CI binary
 - Acceptance: BinaryShim output executes the same `CIWorkflowDag` gates that YamlStatic would
-- Completes `workflow_workflow_runtime_toggle_proven` (toggle proven across two targets from same `CIWorkflowDag`)
+- Completes `workflow_runtime_toggle_proven` (toggle proven across two targets from same `CIWorkflowDag`)
 
 **S4 — Slice 8 (ci.yml dissolution)**
 - Delete hand-authored `.github/workflows/ci.yml`; replace with emitted artifact (Slice 4 YamlStatic output) or BinaryShim (Slice 5 output)
@@ -518,7 +518,7 @@ CIWorkflowDag → Workflow`).**
    pinned `Workflow` value, not a bare `gunbc_ci_yml_workflow` value at
    `gunbc.ci`. Or hold PR #2745 closure pending S1 brief.
 5. **Decide whether S1 (projection function) is a new §1.8 gate** or part
-   of `workflow_workflow_runtime_toggle_proven` acceptance.
+   of `workflow_runtime_toggle_proven` acceptance.
 
 **If Director rejects (c)** in favor of (a) or (b): the dual-authority
 condition at HEAD remains and needs separate retraction work. Under (a),
