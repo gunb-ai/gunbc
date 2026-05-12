@@ -164,8 +164,8 @@ type ClosureEligibilityEffect
 // 🟡 STAGED record — a typed effect summary is projected per operation. The
 // `external_effect` field reuses the layer-local `std.effects.OperationEffect`
 // authority instead of importing v3 workflow carriers into `dsl/std`. This row
-// is derived by `process_operation_effect`; it is not an authored sibling field
-// on `ProcessOperation` arms.
+// is reserved for the future generated effect projection; it is not an authored
+// sibling field on `ProcessOperation` arms.
 //
 // Dissolution trigger: when ctrl HTTP/SQL/audit emission consumes this file,
 // operation effect rows are generated from each `ProcessOperation` arm and
@@ -338,20 +338,10 @@ type ProcessGraph {
   nodes: List<ProcessNodeEntry>
 }
 
-// Projection signatures. Bodies wait for emission/parity work; declaring the
-// signature here fixes the substrate boundary that ctrl projections consume.
-fn current_process_mode(_graph: ProcessGraph, _node: ProcessNodeId) -> ProcessModeProjection {
-  host process_algebra_current_mode
-}
-
-fn process_operation_effect(_operation: ProcessOperation) -> ProcessOperationEffect {
-  host process_algebra_operation_effect
-}
-
-fn can_close_process_node(
-  _graph: ProcessGraph,
-  _node: ProcessNodeId,
-  _cutoff: Timestamp
-) -> ProcessClosureDecision {
-  host process_algebra_can_close_node
-}
+// Projection surfaces intentionally remain comments in this Phase-1 substrate:
+// current_process_mode(ProcessGraph, ProcessNodeId) -> ProcessModeProjection,
+// process_operation_effect(ProcessOperation) -> ProcessOperationEffect, and
+// can_close_process_node(ProcessGraph, ProcessNodeId, Timestamp) ->
+// ProcessClosureDecision. They become declared functions in the PR that also
+// lands an emission/parity consumer, so this file does not introduce unused host
+// boundaries.
