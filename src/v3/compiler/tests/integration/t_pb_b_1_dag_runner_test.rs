@@ -12,6 +12,14 @@
 //! `TestClaim.source` is orthogonal). Still
 //! **not** a `pb_*` gate and still not a Rust-deletion signal.
 //!
+//! **R3 Cluster M #84 — R1C-D/E tests-as-data pilot:** R1C-D (`t_r1c_d_pb_census_gates.dag`)
+//! and R1C-E (`r1c_e_emit_gates.template.dag` + omni template) integration receipts
+//! live here with gate #74 (`t_r3_tests_as_data_demonstration.dag`), replacing dedicated
+//! `r1c_*_test.rs` shims. **Accounting:** SG-0 progress for #2715 is the **−3** census paths
+//! plus `.dag`-native predicates — not gate #84 / facet-3 'zero hand-Rust tests' closure; see
+//! `sg0_census_test.rs` on `t_pb_b_1_dag_runner_test.rs` (remaining obligation cites ROADMAP
+//! T-PB-B until the test census is empty).
+//!
 //! R3 gate #87 `R3_GATE_87_CEMENTING_REGEN_SUITES` wiring: **INVARIANTS P5(b)** — merge-visible
 //! integration delta; see module doc on `r3_gate_87_lens_cementing_regen_receipts_test` (§P5(b)
 //! checkable receipt = **PR #2639 description**, not inferred deletes).
@@ -23,7 +31,7 @@ use v3_compiler::dag::Dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
-fn lower(source: &'static str, file: &'static str) -> Dag {
+fn lower(source: &str, file: &str) -> Dag {
     // `compile_to_dag` returns `Ok` iff the module diagnostic table is empty
     // (`lib.rs` — any semantic issue is `Err(Semantic(dag))` with non-empty
     // diagnostics). The retired `t_pb_b_1_tests_dag_smoke_test` required the
@@ -87,6 +95,43 @@ fn run_suite_all_pass_with_expected_claim_names(
         !results.is_empty() && results.iter().all(|r| r.result == ClaimResult::Pass),
         "suite `{suite_name}`: expected every claim to pass, got {results:?}"
     );
+}
+
+/// R1C-D receipt: six PB census claims must dispatch to wired evaluators (no `NotYetImplemented`)
+/// and evaluate to structural `Pass` or `Fail` — same acceptance as the former
+/// `r1c_d_pb_census_gates_test` shim (`docs/briefs/r1-closure-manager.md` §R1C-D).
+fn run_suite_r1c_d_pb_census_receipt(dag: &Dag, suite_name: &str) {
+    const EXPECTED_CLAIM_NAMES: &[&str] = &[
+        "pb_hand_rust_at_shim_floor",
+        "lens_producer_files_remaining",
+        "pb_self_compile_fixed_point",
+        "pb_compiler_std_ratchet_zero",
+        "pb_test_file_generated_from_dag",
+        "pb_rust_tests_outside_residual_zero",
+    ];
+    let results = TestRunner::new(dag).run_suite(suite_name);
+    let actual_names: Vec<&str> = results.iter().map(|r| r.claim_name.as_str()).collect();
+    assert_eq!(
+        actual_names, EXPECTED_CLAIM_NAMES,
+        "suite `{suite_name}`: claim order must match the declared deliverable list"
+    );
+    let unimplemented: Vec<_> = results
+        .iter()
+        .filter(|r| matches!(r.result, ClaimResult::NotYetImplemented(_)))
+        .collect();
+    assert!(
+        unimplemented.is_empty(),
+        "PB census predicates must dispatch to wired evaluators, not `NotYetImplemented`. Offenders:\n{unimplemented:#?}"
+    );
+    for result in &results {
+        match &result.result {
+            ClaimResult::Pass | ClaimResult::Fail(_) => {}
+            other => panic!(
+                "PB census claim `{}` must evaluate to Pass or Fail, got {:?}",
+                result.claim_name, other
+            ),
+        }
+    }
 }
 
 #[test]
@@ -167,6 +212,100 @@ fn r3_tests_as_data_demonstration_suite_passes_through_runner() {
         &dag,
         "suite_tests_as_data_demonstration",
         &["tests-as-data port of pipeline smoke fixture compiles"],
+    );
+}
+
+const R1C_D_PB_CENSUS_GATES_PATH: &str = "src/v3/compiler/tests/dag/t_r1c_d_pb_census_gates.dag";
+const R1C_D_PB_CENSUS_SUITE: &str = "r1_pb_census_gates_suite";
+
+/// R1C-D integration receipt: the six PB census gates are `TestClaim` + predicate **data** in
+/// `t_r1c_d_pb_census_gates.dag` (path: `R1C_D_PB_CENSUS_GATES_PATH`), not in this Rust body. This
+/// `#[test]` only lowers the module and runs the suite through `TestRunner` (runner-only, same
+/// class as gate #74). **P5(b):** merge-visible SG-0 receipt is **−3** deleted census paths; **not**
+/// gate #84 / facet-3 closure — see `sg0_census_test.rs` on this file's `EXPECTED_HAND_AUTHORED_TEST`
+/// line and the module doc above.
+#[test]
+fn r1c_d_pb_census_gates_suite_evaluates_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_r1c_d_pb_census_gates.dag"),
+        R1C_D_PB_CENSUS_GATES_PATH,
+    );
+    run_suite_r1c_d_pb_census_receipt(&dag, R1C_D_PB_CENSUS_SUITE);
+}
+
+const R1C_E_EMIT_GATES_TEMPLATE: &str = include_str!("../dag/r1c_e_emit_gates.template.dag");
+const R1C_E_EMIT_GATES_TEMPLATE_PATH: &str =
+    "src/v3/compiler/tests/dag/r1c_e_emit_gates.template.dag";
+const R1C_E_EMIT_GATES_BIN_PATH: &str = env!("CARGO_BIN_EXE_r1c_e_emit_gates");
+const R1C_E_BIN_PLACEHOLDER: &str = "__R1C_E_BIN__";
+
+fn substituted_r1c_e_emit_gates_source() -> String {
+    assert!(
+        R1C_E_EMIT_GATES_TEMPLATE.contains(R1C_E_BIN_PLACEHOLDER),
+        "template must contain `{R1C_E_BIN_PLACEHOLDER}` placeholder for bin substitution \
+         (see manager guidance, #973): {R1C_E_EMIT_GATES_TEMPLATE_PATH}"
+    );
+    R1C_E_EMIT_GATES_TEMPLATE.replace(R1C_E_BIN_PLACEHOLDER, R1C_E_EMIT_GATES_BIN_PATH)
+}
+
+/// R1C-E: emit-gate claims live in `r1c_e_emit_gates.template.dag` (host path substituted in
+/// `substituted_r1c_e_emit_gates_source`). Runner-only wiring; same P5(b) / #84 accounting as
+/// `r1c_d_pb_census_gates_suite_evaluates_through_runner`.
+#[test]
+fn r1c_e_emit_gates_suite_passes_through_runner() {
+    let source = substituted_r1c_e_emit_gates_source();
+    let dag = lower(&source, R1C_E_EMIT_GATES_TEMPLATE_PATH);
+
+    let results = TestRunner::new(&dag).run_suite("r1c_e_emit_gates_suite");
+    assert!(
+        !results.is_empty(),
+        "suite `r1c_e_emit_gates_suite` should contain at least one claim"
+    );
+    let failures: Vec<_> = results
+        .iter()
+        .filter(|r| r.result != ClaimResult::Pass)
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "r1c_e_emit_gates_suite: {} claim(s) did not Pass:\n{:#?}",
+        failures.len(),
+        failures
+    );
+}
+
+const R1C_E_OMNI_TEMPLATE: &str = include_str!("../dag/r1c_e_emit_gates_omni.template.dag");
+const R1C_E_OMNI_TEMPLATE_PATH: &str =
+    "src/v3/compiler/tests/dag/r1c_e_emit_gates_omni.template.dag";
+
+fn substituted_r1c_e_emit_gates_omni_source() -> String {
+    assert!(
+        R1C_E_OMNI_TEMPLATE.contains(R1C_E_BIN_PLACEHOLDER),
+        "omni template must contain `{R1C_E_BIN_PLACEHOLDER}`: {R1C_E_OMNI_TEMPLATE_PATH}"
+    );
+    R1C_E_OMNI_TEMPLATE.replace(R1C_E_BIN_PLACEHOLDER, R1C_E_EMIT_GATES_BIN_PATH)
+}
+
+/// Multi-target omni emit claim — requires **go** and **python3** on `PATH` (ignored in default CI).
+#[test]
+#[ignore]
+fn r1c_e_emit_gates_omni_suite_passes() {
+    let source = substituted_r1c_e_emit_gates_omni_source();
+    let dag = lower(&source, R1C_E_OMNI_TEMPLATE_PATH);
+
+    let results = TestRunner::new(&dag).run_suite("r1c_e_emit_gates_omni_suite");
+    assert!(
+        !results.is_empty(),
+        "suite `r1c_e_emit_gates_omni_suite` should have claims"
+    );
+    let failures: Vec<_> = results
+        .iter()
+        .filter(|r| r.result != ClaimResult::Pass)
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "r1c_e_emit_gates_omni_suite: {} claim(s) did not Pass:\n{:#?}",
+        failures.len(),
+        failures
     );
 }
 

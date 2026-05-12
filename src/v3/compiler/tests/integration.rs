@@ -167,12 +167,6 @@ mod pipe_desugar;
 mod prereq_x_call_on_field_access_ratchet_test;
 #[path = "integration/r1_release_acceptance_test.rs"]
 mod r1_release_acceptance_test;
-#[path = "integration/r1c_d_pb_census_gates_test.rs"]
-mod r1c_d_pb_census_gates_test;
-#[path = "integration/r1c_e_emit_gates_dag_test.rs"]
-mod r1c_e_emit_gates_dag_test;
-#[path = "integration/r1c_e_emit_gates_omni_dag_test.rs"]
-mod r1c_e_emit_gates_omni_dag_test;
 #[path = "integration/r2_b5_loop_construction_closure_test.rs"]
 mod r2_b5_loop_construction_closure_test;
 #[path = "integration/r3_class_2_function_valued_data_test.rs"]
