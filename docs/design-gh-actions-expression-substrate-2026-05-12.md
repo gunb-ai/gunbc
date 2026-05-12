@@ -478,9 +478,12 @@ items per ratification:
   Actions expressions are platform-provided value-shapes, not gunbc
   emission policy → extdeps placement respects the discriminator
   (`feedback_extdeps_header_discriminator_before_field_placement`).
-- No conflict with (c-refined) PR #2749 ratification: `EmissionTarget`
-  axis = gunbc emission policy (gunbc namespace); `Expression` axis = GH
-  Actions value-language (extdeps namespace). Orthogonal axes.
+- No conflict with (c-refined) PR #2749 ratification: `WorkflowRuntime`
+  axis (renamed from `EmissionTarget` per PR #2749 §7.3.3 P2 name-
+  collision fix; `src/v3/SELF_HOSTING.md:609` owns the Shape-A
+  `EmissionTarget` name) = gunbc CI realization-mode policy (gunbc
+  namespace); `Expression` axis = GH Actions value-language (extdeps
+  namespace). Orthogonal axes.
 - Authority audit clean: only `Job.if_condition: String?` precedent;
   canvas extends uniformly; no sibling carrier; no naming collision.
 - YELLOW classification justified per Practice 4 — §3 + §4 name the
