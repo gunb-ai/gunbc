@@ -5096,7 +5096,19 @@ fn lower_structural_field_value(
 ) -> Option<crate::dag::FieldValue> {
     if let Some(marker_id) = dag.declaration_by_name("DeclarationRef").map(|d| d.id) {
         if walks_to(dag, expected_type, marker_id) {
-            let decl_id = resolve_field_value_as_declaration_ref(expr, symbols, dag)?;
+            let Some(decl_id) = resolve_field_value_as_declaration_ref(expr, symbols, dag) else {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` must be a DeclarationRef edge; use an identifier or dotted path, not a record literal"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+                return None;
+            };
             if let Some(cat) = category {
                 if let Err(reason) =
                     validate_realization_field_target(dag, cat, field_label, decl_id)
