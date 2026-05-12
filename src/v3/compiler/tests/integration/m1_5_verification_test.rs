@@ -384,7 +384,9 @@ let suite: TestSuite = {
 #[test]
 fn program_generator_authoring_surface_compiles_cleanly() {
     let src = r#"
-let generator_ref: ProgramGenerator = { generator: {  } }
+data parse_smoke_generator: List<ProgramShape> = []
+
+let generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
 "#;
 
     let dag = compile_any(src, "program_generator_authoring_surface.v3");
@@ -397,6 +399,22 @@ let generator_ref: ProgramGenerator = { generator: {  } }
     assert_eq!(
         bind_value_type_decl(&dag, "generator_ref"),
         find_named(&dag, "ProgramGenerator")
+    );
+}
+
+#[test]
+fn program_generator_rejects_empty_declaration_ref_literal() {
+    let src = r#"
+let generator_ref: ProgramGenerator = { generator: {  } }
+"#;
+
+    let dag = compile_any(src, "program_generator_empty_ref.v3");
+    assert!(
+        dag.diagnostics().iter().any(|diagnostic| {
+            format!("{diagnostic:?}").contains("must be a DeclarationRef edge")
+        }),
+        "empty DeclarationRef literal should fail-closed for ProgramGenerator.generator, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
     );
 }
 
