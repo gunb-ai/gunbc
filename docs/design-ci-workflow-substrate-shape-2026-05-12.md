@@ -501,7 +501,9 @@ Both rejections cost more substrate churn than (c) ratification.
 > emission/runtime choice into the GitHub Actions platform model, violating
 > extdeps fidelity and INVARIANTS P1.
 
-**Discriminator** (verbatim, `dsl/extdeps/github/actions.dag:1-12` header):
+**Discriminator** (verbatim, `dsl/extdeps/github/actions.dag:1-12` header;
+memorialized as `feedback_extdeps_header_discriminator_before_field_placement`
+per Director, 2026-05-12):
 > Models the GitHub Actions CI/CD platform as external dependency facts...
 > These are platform constraints — what GH Actions provides and requires —
 > not CI logic (that lives in `gunbc/ci.dag`).
