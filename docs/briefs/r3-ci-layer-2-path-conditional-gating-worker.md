@@ -111,7 +111,7 @@ Where:
 
 **Inventory derivation** (Mgr-fill from 3 sources):
 
-(a) **`scripts/slow-test-exemptions.txt`** — start with the 78 active >2s entries. Each entry already has citation discipline; group by `_test.rs` file-area prefix.
+(a) **`scripts/slow-test-exemptions.txt`** — start with the **current live count** of active >2s entries (Mgr MUST re-run `grep -v '^#' scripts/slow-test-exemptions.txt | grep -v '^$' | wc -l` at finalization time; 80 at 2026-05-12T00:50Z but count grows over time; do NOT cite the stale "78" from PM template PR #2721 or any earlier reference). Each entry already has citation discipline; group by `_test.rs` file-area prefix. **Fail-closed completeness invariant** (per openai-pro BLOCKING #9779 absorption 2026-05-12): under-inventory is the fail-open shape — every active exemption MUST appear in either a per-group `required_paths_regex` row OR the harness/shared-infra full-run bucket. No exemption left unclassified.
 
 (b) **`/tmp/v3-test-timings.log` empirical** — last N CI runs aggregated → top-K slowest groups by file-area. Cross-validates (a) and surfaces non-exempted slow tests.
 
@@ -138,7 +138,7 @@ The shared-infrastructure regex MUST be hand-authored at the **changes job level
 **Authority caveat per codex P1/P2 catch**: this brief cites the template as the inventory data attachment, but the cited path will be unresolvable on a worker checkout of `main` until PR #2721 merges. Verification Mgr finalization MUST coordinate the merge sequencing: either (a) merge PR #2721 first so the template is on `main` before Mgr-fill starts, OR (b) read the template from PR #2721's branch (e.g., `gh pr view 2721 --repo gunb-ai/gunbc` or checking out `origin/<2721-branch>`) until it merges. Cross-link: PR #2721 author is PM (`deep-wolf-155`); merge coordination is PM-routable.
 
 The PM template provides (per PR #2721 review-state at sha `262f42d7d` — post fix):
-- **All 78 `scripts/slow-test-exemptions.txt` entries** grouped into 9 clusters (A–I) by module prefix
+- **PM-grouped `scripts/slow-test-exemptions.txt` entries** (PM template snapshot was 78 entries at template authoring time; live count grows — Mgr re-verifies via `wc -l` at finalization, NOT this stale historical reference) grouped into 9 clusters (A–I) by module prefix. The 9-cluster taxonomy survives even as new entries land; Mgr maps new entries to existing clusters or escalates if a new cluster surface emerges.
 - **`(test_pattern, dimensions, required_paths_regex)` skeleton table** with every row carrying a `dimensions:` field of type `Set<Dimension>` per locked-design §2 union semantics (PM template post-fix at `dedcf69a4`)
 - **Pilot recommendation: Cluster B** (Lane 2 Stage 2d symbolic cost — high confidence, single-element set `{cost}`, ~6 tests). Note: my §6 recommendation was `cost_lens` first — these converge; Cluster B IS the cost-lens family with singleton `{cost}` dimensions.
 - **12 `[Mgr-fill]` placeholders** marking where consumer-tracing exceeded PM bandwidth (substrate-lens deps, R3-V L4/L7, R1C-E `.dag` wrapper, free-consequences cross-target). These are the Mgr-tier sub-classification decisions.
