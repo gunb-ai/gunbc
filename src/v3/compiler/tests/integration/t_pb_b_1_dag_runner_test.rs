@@ -28,7 +28,7 @@ use std::collections::BTreeSet;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
-use v3_compiler::test_runner::{ClaimResult, TestRunner};
+use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
 fn lower(source: &str, file: &str) -> Dag {
@@ -95,6 +95,14 @@ fn run_suite_all_pass_with_expected_claim_names(
         !results.is_empty() && results.iter().all(|r| r.result == ClaimResult::Pass),
         "suite `{suite_name}`: expected every claim to pass, got {results:?}"
     );
+}
+
+fn claim_value_by_decl_name(dag: &Dag, declaration_name: &str) -> TestClaimValue {
+    let decl = dag
+        .declaration_by_name(declaration_name)
+        .unwrap_or_else(|| panic!("expected TestClaim declaration `{declaration_name}`"));
+    TestClaimValue::from_declaration(decl)
+        .unwrap_or_else(|reason| panic!("`{declaration_name}` should lower as TestClaim: {reason}"))
 }
 
 /// R1C-D receipt: six PB census claims must dispatch to wired evaluators (no `NotYetImplemented`)
@@ -212,6 +220,22 @@ fn r3_tests_as_data_demonstration_suite_passes_through_runner() {
         &dag,
         "suite_tests_as_data_demonstration",
         &["tests-as-data port of pipeline smoke fixture compiles"],
+    );
+
+    let baseline = lower(
+        include_str!("../dag/t_pb_b_1_pipeline_smoke.dag"),
+        "src/v3/compiler/tests/dag/t_pb_b_1_pipeline_smoke.dag",
+    );
+    let baseline_claim = claim_value_by_decl_name(&baseline, "claim_pipe_unary_compiles");
+    let demonstration_claim =
+        claim_value_by_decl_name(&dag, "claim_tests_as_data_pipeline_smoke_compiles");
+    assert_eq!(
+        demonstration_claim.source, baseline_claim.source,
+        "gate #74 demonstration claim must stay byte-aligned with the pipeline-smoke subject"
+    );
+    assert_eq!(
+        demonstration_claim.file_name, baseline_claim.file_name,
+        "gate #74 demonstration claim must keep the same subject file authority"
     );
 }
 
