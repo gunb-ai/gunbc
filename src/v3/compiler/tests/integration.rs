@@ -53,8 +53,6 @@ mod bridge_ledger_carrier_test;
 mod bridge_lower_helpers_patch_zero_residual_test;
 #[path = "integration/canonical_lens_bridge_ratchet_test.rs"]
 mod canonical_lens_bridge_ratchet_test;
-#[path = "integration/common/wiring_scanner_test.rs"]
-mod wiring_scanner_test;
 #[path = "integration/cementing/cementing_provenance_origin_integration_test.rs"]
 mod cementing_provenance_origin_integration_test;
 #[path = "integration/cementing/complexity_lens_behavioral_completion.rs"]
@@ -243,6 +241,8 @@ mod timing_lens_substrate_carrier_test;
 mod v2_oracle_no_remaining_test_consumers_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
+#[path = "integration/common/wiring_scanner_test.rs"]
+mod wiring_scanner_test;
 #[path = "integration/workflow_root_port_test.rs"]
 mod workflow_root_port_test;
 

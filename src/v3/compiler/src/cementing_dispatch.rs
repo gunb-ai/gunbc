@@ -14,10 +14,7 @@ use std::path::Path as FsPath;
 use crate::dag::{Dag, FieldValue, LiteralBits, ValueBody};
 use crate::integration_rs_wiring_scan::integration_rs_cementing_path_attr_binds_mod_stem;
 
-fn record_field<'a>(
-    fields: &'a [(String, FieldValue)],
-    label: &str,
-) -> Option<&'a FieldValue> {
+fn record_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> Option<&'a FieldValue> {
     fields
         .iter()
         .find(|(candidate, _)| candidate == label)
@@ -39,7 +36,10 @@ fn record_fields(value: &FieldValue) -> Option<&[(String, FieldValue)]> {
     }
 }
 
-fn resolve_declaration_ref_id(value: &FieldValue, field_label: &str) -> Result<crate::dag::DeclarationId, String> {
+fn resolve_declaration_ref_id(
+    value: &FieldValue,
+    field_label: &str,
+) -> Result<crate::dag::DeclarationId, String> {
     match value {
         FieldValue::Reference(id) => Ok(*id),
         FieldValue::Record(fields) if fields.is_empty() => Err(format!(
@@ -100,14 +100,19 @@ fn read_lens_registry_name_lens_file_pairs(dag: &Dag) -> Result<Vec<(String, Str
     Ok(pairs)
 }
 
-fn cementing_dispatch_two_refs(payload: &[FieldValue]) -> Result<(&FieldValue, &FieldValue), String> {
+fn cementing_dispatch_two_refs(
+    payload: &[FieldValue],
+) -> Result<(&FieldValue, &FieldValue), String> {
     match payload {
         [a, b] => Ok((a, b)),
         [FieldValue::Record(fields)] => {
-            let a = record_field(fields, "capability_register")
-                .ok_or_else(|| "CementingDispatchMatchesProjection record missing `capability_register`".to_string())?;
-            let b = record_field(fields, "cementing_receipts")
-                .ok_or_else(|| "CementingDispatchMatchesProjection record missing `cementing_receipts`".to_string())?;
+            let a = record_field(fields, "capability_register").ok_or_else(|| {
+                "CementingDispatchMatchesProjection record missing `capability_register`"
+                    .to_string()
+            })?;
+            let b = record_field(fields, "cementing_receipts").ok_or_else(|| {
+                "CementingDispatchMatchesProjection record missing `cementing_receipts`".to_string()
+            })?;
             Ok((a, b))
         }
         _ => Err(format!(
@@ -133,28 +138,12 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
         ));
     }
 
-    let (reg_ref, recv_ref) = match cementing_dispatch_two_refs(payload) {
-        Ok(v) => v,
-        Err(reason) => return Err(reason),
-    };
+    let (reg_ref, recv_ref) = cementing_dispatch_two_refs(payload)?;
+    let reg_id = resolve_declaration_ref_id(reg_ref, "capability_register")?;
+    let recv_id = resolve_declaration_ref_id(recv_ref, "cementing_receipts")?;
 
-    let reg_id = match resolve_declaration_ref_id(reg_ref, "capability_register") {
-        Ok(id) => id,
-        Err(reason) => return Err(reason),
-    };
-    let recv_id = match resolve_declaration_ref_id(recv_ref, "cementing_receipts") {
-        Ok(id) => id,
-        Err(reason) => return Err(reason),
-    };
-
-    let capability_rows = match list_items_of_declaration(dag, reg_id, "capability_register") {
-        Ok(v) => v,
-        Err(reason) => return Err(reason),
-    };
-    let receipt_rows = match list_items_of_declaration(dag, recv_id, "cementing_receipts") {
-        Ok(v) => v,
-        Err(reason) => return Err(reason),
-    };
+    let capability_rows = list_items_of_declaration(dag, reg_id, "capability_register")?;
+    let receipt_rows = list_items_of_declaration(dag, recv_id, "cementing_receipts")?;
 
     let mut basenames = BTreeSet::new();
     for row in &capability_rows {
@@ -163,35 +152,20 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                 "capability_register list: expected record row, got {row:?}"
             ));
         };
-        let lens_basename = match string_field(fields, "lens_basename") {
-            Ok(s) => s,
-            Err(reason) => return Err(reason),
-        };
-        let behavioral = match string_field(fields, "behavioral") {
-            Ok(s) => s,
-            Err(reason) => return Err(reason),
-        };
-        let v2 = match string_field(fields, "v2_counterpart") {
-            Ok(s) => s,
-            Err(reason) => return Err(reason),
-        };
+        let lens_basename = string_field(fields, "lens_basename")?;
+        let behavioral = string_field(fields, "behavioral")?;
+        let v2 = string_field(fields, "v2_counterpart")?;
         if behavioral == "Complete" && v2 == "RealV2" {
             basenames.insert(lens_basename);
         }
     }
 
-    let registry_pairs = match read_lens_registry_name_lens_file_pairs(dag) {
-        Ok(v) => v,
-        Err(reason) => return Err(reason),
-    };
+    let registry_pairs = read_lens_registry_name_lens_file_pairs(dag)?;
 
     let mut expected_registry_names = BTreeSet::new();
     let mut matched_basenames = BTreeSet::new();
     for (name, lens_file) in &registry_pairs {
-        let Some(basename) = FsPath::new(lens_file)
-            .file_name()
-            .and_then(|s| s.to_str())
-        else {
+        let Some(basename) = FsPath::new(lens_file).file_name().and_then(|s| s.to_str()) else {
             return Err(format!(
                 "registry entry `{name}` has lens_file without basename: {lens_file}"
             ));
@@ -221,32 +195,15 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                 "cementing_receipts list: expected record row, got {row:?}"
             ));
         };
-        let registry_name = match string_field(fields, "registry_name") {
-            Ok(s) => s,
-            Err(reason) => return Err(reason),
-        };
-        let module_stem = match string_field(fields, "module_stem") {
-            Ok(s) => s,
-            Err(reason) => return Err(reason),
-        };
-        let kind_val = match record_field(fields, "kind") {
-            Some(v) => v,
-            None => return Err("cementing receipt row missing `kind`".to_string()),
-        };
-        let kind_str = match kind_val {
-            FieldValue::Literal(LiteralBits::String(s)) => s.as_str(),
-            other => {
-                return Err(format!(
-                    "cementing receipt `kind` must be a string literal (`dag` or `temporary-rust`), got {other:?}"
-                ));
-            }
-        };
+        let registry_name = string_field(fields, "registry_name")?;
+        let module_stem = string_field(fields, "module_stem")?;
+        let kind_str = string_field(fields, "kind")?;
         if kind_str != "dag" && kind_str != "temporary-rust" {
             return Err(format!(
                 "cementing receipt `kind` must be `dag` or `temporary-rust`, got `{kind_str}`"
             ));
         }
-        let triple = (registry_name.clone(), module_stem.clone(), kind_str.to_string());
+        let triple = (registry_name.clone(), module_stem.clone(), kind_str.clone());
         if !receipt_triples.insert(triple.clone()) {
             return Err(format!(
                 "cementing_receipts contains duplicate receipt identity {triple:?}; each \
@@ -256,10 +213,10 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
         declared_names.insert(registry_name.clone());
         match registry_name.as_str() {
             "cost" => {
-                cost_receipts.insert((module_stem.clone(), kind_str.to_string()));
+                cost_receipts.insert((module_stem.clone(), kind_str.clone()));
             }
             "cost_symbolic" => {
-                cost_symbolic_receipts.insert((module_stem.clone(), kind_str.to_string()));
+                cost_symbolic_receipts.insert((module_stem.clone(), kind_str.clone()));
             }
             _ => {}
         }
@@ -273,7 +230,10 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
     }
 
     let expected_cost = BTreeSet::from([
-        ("t_r3_gate_87_cementing_regen_cost".to_string(), "dag".to_string()),
+        (
+            "t_r3_gate_87_cementing_regen_cost".to_string(),
+            "dag".to_string(),
+        ),
         (
             "complexity_lens_behavioral_completion".to_string(),
             "temporary-rust".to_string(),
@@ -345,7 +305,8 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                         path.display()
                     ));
                 }
-                if !integration_rs_cementing_path_attr_binds_mod_stem(&integration_rs, &module_stem) {
+                if !integration_rs_cementing_path_attr_binds_mod_stem(&integration_rs, &module_stem)
+                {
                     let expected = format!(r#"#[path = "integration/cementing/{module_stem}.rs"]"#);
                     return Err(format!(
                         "registry lens `{registry_name}` lists temporary Rust cementing stem `{module_stem}` but \

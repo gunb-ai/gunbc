@@ -104,11 +104,9 @@ pub fn find_current_rlib(crate_name: &str) -> PathBuf {
         .expect("compiled rlib for current crate")
 }
 
-
 pub use v3_compiler::integration_rs_wiring_scan::{
     integration_rs_active_line_contains, integration_rs_cementing_path_attr_binds_mod_stem,
 };
-
 
 /// Harness for spawning rustc against generated-Rust harnesses.
 /// Holds the per-test-binary scratch root and a counter so parallel

@@ -3,6 +3,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
     NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
@@ -14,7 +15,6 @@ use crate::emit::{emit_go_text, emit_python_text, last_emit_go_program_top_level
 use crate::evaluator::{
     evaluate_body, EvalError, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
 };
-use crate::cementing_dispatch;
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
