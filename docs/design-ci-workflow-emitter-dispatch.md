@@ -114,6 +114,14 @@ This lets existing workflow declarations remain valid before Slice 4 lands the
 carrier edit. The final carrier should still carry the field explicitly once
 the emitter consumes it.
 
+Optionality is migration-only. The retirement trigger is Slice 8
+`ci_yml_dissolved`: once hand-authored `.github/workflows/ci.yml` is gone and
+the workflow artifact is emitted from `.dag`, every authoritative workflow
+declaration must carry an explicit `emission_target`. At that point
+`normalize_target(none) = YamlStatic` becomes a compatibility reader for older
+fixtures only, and a ratchet should reject new authoritative workflow
+declarations that omit the field.
+
 ### 3.1 Placement Evaluation
 
 #### Option A: Field on `Workflow`
@@ -626,6 +634,9 @@ is shaped to consume affected-set receipts when they become available.
 - Replace hand-authored `.github/workflows/ci.yml` with emitted static artifact
   or thin shim.
 - Add a ratchet that rejects manual workflow policy edits outside `ci.dag`.
+- Add a ratchet that rejects missing `emission_target` on authoritative
+  workflow declarations; the optional field remains only for historical
+  fixture compatibility.
 - Mark `ci_yml_dissolved` passing only when the source of truth is `.dag`.
 
 ## 11. Ratchets
@@ -660,7 +671,7 @@ implementation:
 
 This canvas recommends:
 
-- optional field during migration, required after Slice 8
+- optional field during migration, required at Slice 8 `ci_yml_dissolved`
 - in-process selected job/test execution first
 - syntax validation plus freshness check for YAML
 - keep `InlineGunbc` in the design, but do not land the variant in substrate
