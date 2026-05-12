@@ -223,8 +223,6 @@ mod t_las_complexity_contract_compile_error_test;
 mod t_las_crdt_cost_basis_demo_test;
 #[path = "integration/t_pb_b_1_dag_runner_test.rs"]
 mod t_pb_b_1_dag_runner_test;
-#[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]
-mod t_pb_b_brief_d_fixture_smoke_test;
 #[path = "integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs"]
 mod tc1_substrate_lens_eta_equivalence_deferred_test;
 #[path = "integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs"]

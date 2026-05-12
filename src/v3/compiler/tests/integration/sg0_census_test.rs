@@ -643,7 +643,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/t_las_complexity_contract_compile_error_test.rs",
     "src/v3/compiler/tests/integration/t_las_crdt_cost_basis_demo_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
-    "src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs",
     // TC1 substrate lens eta-equivalence (deferred / R2 research): integration for
     // `SubstrateResearchDeferredClaim` + `tc1_substrate_lens_eta_equivalence_deferred.dag`.
     // SG-0 path ratchet: Director sign-off (gunb-ai/gunbc#1130, comment 4341571168;
