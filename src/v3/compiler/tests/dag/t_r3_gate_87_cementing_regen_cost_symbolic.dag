@@ -11,7 +11,7 @@ import std.verification { SymbolicCostExprEquals, TestClaim, TestSuite }
 data gate87_symbolic_cost_expected: SymbolicCost = ConstantCost(0)
 
 data gate87_symbolic_cost_countdown_expected: SymbolicCost =
-  LinearCost({ source_port: 0 })
+  LinearCost({ source_port: 0, display_name: "n" })
 
 data cementing_regen_cost_symbolic_literal_claim: TestClaim = {
   name: "cementing_regen_cost_symbolic",

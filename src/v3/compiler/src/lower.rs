@@ -4440,12 +4440,14 @@ fn symbolic_cost_expr_uses_canonical_constructors(
 ) -> bool {
     match expr {
         SurfaceExpr::Call { target, args, span } => {
-            if !symbolic_cost_constructor_spelling_is_canonical(data_name, target, span, symbols, dag)
-            {
+            if !symbolic_cost_constructor_spelling_is_canonical(
+                data_name, target, span, symbols, dag,
+            ) {
                 return false;
             }
-            args.iter()
-                .all(|arg| symbolic_cost_expr_uses_canonical_constructors(data_name, arg, symbols, dag))
+            args.iter().all(|arg| {
+                symbolic_cost_expr_uses_canonical_constructors(data_name, arg, symbols, dag)
+            })
         }
         SurfaceExpr::VariantRecord {
             target,
@@ -4462,9 +4464,11 @@ fn symbolic_cost_expr_uses_canonical_constructors(
                     )
                 })
         }
-        SurfaceExpr::Operator { args, .. } | SurfaceExpr::PathCall { args, .. } => args
-            .iter()
-            .all(|arg| symbolic_cost_expr_uses_canonical_constructors(data_name, arg, symbols, dag)),
+        SurfaceExpr::Operator { args, .. } | SurfaceExpr::PathCall { args, .. } => {
+            args.iter().all(|arg| {
+                symbolic_cost_expr_uses_canonical_constructors(data_name, arg, symbols, dag)
+            })
+        }
         SurfaceExpr::Lambda { body, .. } => {
             symbolic_cost_expr_uses_canonical_constructors(data_name, body, symbols, dag)
         }
@@ -4493,15 +4497,17 @@ fn symbolic_cost_expr_uses_canonical_constructors(
         } => {
             symbolic_cost_expr_uses_canonical_constructors(data_name, scrutinee, symbols, dag)
                 && arms.iter().all(|arm| {
-                    symbolic_cost_expr_uses_canonical_constructors(data_name, &arm.body, symbols, dag)
+                    symbolic_cost_expr_uses_canonical_constructors(
+                        data_name, &arm.body, symbols, dag,
+                    )
                 })
         }
         SurfaceExpr::Record { fields, .. } => fields.iter().all(|field| {
             symbolic_cost_expr_uses_canonical_constructors(data_name, &field.value, symbols, dag)
         }),
-        SurfaceExpr::List { elements, .. } => elements
-            .iter()
-            .all(|element| symbolic_cost_expr_uses_canonical_constructors(data_name, element, symbols, dag)),
+        SurfaceExpr::List { elements, .. } => elements.iter().all(|element| {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, element, symbols, dag)
+        }),
         SurfaceExpr::Map { entries, .. } => entries.iter().all(|entry| {
             symbolic_cost_expr_uses_canonical_constructors(data_name, &entry.value, symbols, dag)
         }),
@@ -5835,6 +5841,8 @@ fn lower_scalar_literal_for_type(
             int_decl_id
                 .map(|id| walks_to(dag, expected_type, id))
                 .unwrap_or(false)
+                || optional_element_type(dag, expected_type)
+                    .is_some_and(|element| walks_to(dag, element, int_decl_id.unwrap_or(element)))
                 || matches!(
                     int_literal_fits_expected_type(dag, &int_value, expected_type),
                     Ok(Some(true))
@@ -5850,12 +5858,21 @@ fn lower_scalar_literal_for_type(
                     })
                     .unwrap_or(false)
         }
-        LiteralBits::Bool(_) => bool_decl_id
-            .map(|id| walks_to(dag, expected_type, id))
-            .unwrap_or(false),
-        LiteralBits::String(_) => string_decl_id
-            .map(|id| walks_to(dag, expected_type, id))
-            .unwrap_or(false),
+        LiteralBits::Bool(_) => {
+            bool_decl_id
+                .map(|id| walks_to(dag, expected_type, id))
+                .unwrap_or(false)
+                || optional_element_type(dag, expected_type)
+                    .is_some_and(|element| walks_to(dag, element, bool_decl_id.unwrap_or(element)))
+        }
+        LiteralBits::String(_) => {
+            string_decl_id
+                .map(|id| walks_to(dag, expected_type, id))
+                .unwrap_or(false)
+                || optional_element_type(dag, expected_type).is_some_and(|element| {
+                    walks_to(dag, element, string_decl_id.unwrap_or(element))
+                })
+        }
     };
     if type_ok {
         let span = surface_expr_span(expr).clone();
@@ -5905,6 +5922,23 @@ fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declarat
         } if *template == list_id && arguments.len() == 1 => Some(arguments[0].value),
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => list_element_type(dag, *next),
+        _ => None,
+    }
+}
+
+fn optional_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<DeclarationId> {
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Cardinality(payload) if payload.bound() == CardinalityBound::AtMostOne => {
+            Some(payload.element())
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            optional_element_type(dag, *next)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.is_empty() => optional_element_type(dag, *template),
         _ => None,
     }
 }

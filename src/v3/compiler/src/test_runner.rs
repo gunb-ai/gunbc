@@ -5514,59 +5514,95 @@ fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
 fn resolve_symbolic_cost_param_refs_for_bind(
     pattern: SymbolicCostEqPattern,
     bind: &crate::dag::BindNode,
+    source: &str,
+    file_name: &str,
 ) -> Result<SymbolicCostEqPattern, String> {
     fn resolve(
         port: SymbolicCostPortPattern,
         bind: &crate::dag::BindNode,
+        source: &str,
+        file_name: &str,
     ) -> Result<SymbolicCostPortPattern, String> {
         match port {
             SymbolicCostPortPattern::Raw(raw) => Ok(SymbolicCostPortPattern::Raw(raw)),
             SymbolicCostPortPattern::BindParamName(name) => {
-                let Some((slot, _)) = bind.params.iter().enumerate().find(|(_, port)| {
-                    // Parameter names are encoded on the lowered refined parameter
-                    // declaration where available; the gate #87 fixture uses the
-                    // single-parameter case, so this explicit display-name reference
-                    // selects the only bind parameter fail-closed by name.
-                    bind.params.len() == 1 && name == "n" && **port == bind.params[0]
-                }) else {
-                    return Err(format!(
-                        "SymbolicCostExprEquals: expected SizeVariable.display_name `{name}` \
-                         to reference a bind parameter on `{}`",
-                        bind.name
-                    ));
-                };
-                let port = bind.params.get(slot).expect("slot from enumerate");
+                let port = bind_param_port_by_source_name(bind, source, file_name, &name)?;
                 Ok(SymbolicCostPortPattern::Raw(port.raw()))
             }
         }
     }
     Ok(match pattern {
         SymbolicCostEqPattern::Linear { source_port } => SymbolicCostEqPattern::Linear {
-            source_port: resolve(source_port, bind)?,
+            source_port: resolve(source_port, bind, source, file_name)?,
         },
         SymbolicCostEqPattern::Log { source_port } => SymbolicCostEqPattern::Log {
-            source_port: resolve(source_port, bind)?,
+            source_port: resolve(source_port, bind, source, file_name)?,
         },
         SymbolicCostEqPattern::Polynomial {
             source_port,
             degree_raw,
         } => SymbolicCostEqPattern::Polynomial {
-            source_port: resolve(source_port, bind)?,
+            source_port: resolve(source_port, bind, source, file_name)?,
             degree_raw,
         },
         SymbolicCostEqPattern::Product(terms) => SymbolicCostEqPattern::Product(
             terms
                 .into_iter()
-                .map(|term| resolve_symbolic_cost_param_refs_for_bind(term, bind))
+                .map(|term| {
+                    resolve_symbolic_cost_param_refs_for_bind(term, bind, source, file_name)
+                })
                 .collect::<Result<Vec<_>, _>>()?,
         ),
         SymbolicCostEqPattern::Sum(terms) => SymbolicCostEqPattern::Sum(
             terms
                 .into_iter()
-                .map(|term| resolve_symbolic_cost_param_refs_for_bind(term, bind))
+                .map(|term| {
+                    resolve_symbolic_cost_param_refs_for_bind(term, bind, source, file_name)
+                })
                 .collect::<Result<Vec<_>, _>>()?,
         ),
         other => other,
+    })
+}
+
+fn bind_param_port_by_source_name(
+    bind: &crate::dag::BindNode,
+    source: &str,
+    file_name: &str,
+    param_name: &str,
+) -> Result<PortId, String> {
+    let tokens = crate::tokenize::tokenize(source, file_name).map_err(|diag| {
+        format!("SymbolicCostExprEquals: could not tokenize claim source for param ref: {diag:?}")
+    })?;
+    let surface = crate::parse::parse(&tokens, file_name).map_err(|diag| {
+        format!("SymbolicCostExprEquals: could not parse claim source for param ref: {diag:?}")
+    })?;
+    let Some(params) = surface.items.iter().find_map(|item| match item {
+        crate::parse::SurfaceItem::Fn { name, params, .. } if name == &bind.name => Some(params),
+        _ => None,
+    }) else {
+        return Err(format!(
+            "SymbolicCostExprEquals: expected SizeVariable.display_name `{param_name}` \
+             to reference a parameter on function bind `{}`",
+            bind.name
+        ));
+    };
+    let Some((slot, _)) = params
+        .iter()
+        .enumerate()
+        .find(|(_, param)| param.name == param_name)
+    else {
+        return Err(format!(
+            "SymbolicCostExprEquals: function bind `{}` has no parameter named `{param_name}`",
+            bind.name
+        ));
+    };
+    bind.params.get(slot).copied().ok_or_else(|| {
+        format!(
+            "SymbolicCostExprEquals: function bind `{}` parameter `{param_name}` has no lowered \
+             port at slot {slot}",
+            bind.name
+        )
     })
 }
 
@@ -5610,16 +5646,18 @@ fn field_value_to_symbolic_cost_eq_pattern(
                 }
                 "LinearCost" => {
                     let inner = single_payload(payload)?;
-                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
                     Ok(SymbolicCostEqPattern::Linear {
-                        source_port_raw,
+                        source_port,
                     })
                 }
                 "LogCost" => {
                     let inner = single_payload(payload)?;
-                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, inner)?;
                     Ok(SymbolicCostEqPattern::Log {
-                        source_port_raw,
+                        source_port,
                     })
                 }
                 "PolynomialCost" => {
@@ -5636,10 +5674,11 @@ fn field_value_to_symbolic_cost_eq_pattern(
                     let degree = field(fields, "degree").ok_or_else(|| {
                         "SymbolicCostExprEquals: PolynomialCost missing `degree` field".to_string()
                     })?;
-                    let source_port_raw = parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
+                    let source_port =
+                        parse_size_variable_source_port_for_symbolic_cost_eq(dag, var)?;
                     let degree_raw = degree_raw_from_degree_at_least_two_field_value(dag, degree)?;
                     Ok(SymbolicCostEqPattern::Polynomial {
-                        source_port_raw,
+                        source_port,
                         degree_raw,
                     })
                 }
@@ -5729,7 +5768,7 @@ fn port_id_raw_field_value(fv: &FieldValue) -> Result<u32, String> {
 fn parse_size_variable_source_port_for_symbolic_cost_eq(
     dag: &Dag,
     fv: &FieldValue,
-) -> Result<u32, String> {
+) -> Result<SymbolicCostPortPattern, String> {
     let fields = record_fields(fv).ok_or_else(|| {
         format!(
             "SymbolicCostExprEquals: SizeVariable value must be a record, got {:?}",
@@ -5740,8 +5779,11 @@ fn parse_size_variable_source_port_for_symbolic_cost_eq(
         "SymbolicCostExprEquals: SizeVariable missing required field `source_port`".to_string()
     })?;
     let source_port_raw = port_id_raw_field_value(source_port_fv)?;
-    let _ = optional_string_field_for_record(dag, fields, "display_name")?;
-    Ok(source_port_raw)
+    if let Some(param_name) = optional_string_field_for_record(dag, fields, "display_name")? {
+        Ok(SymbolicCostPortPattern::BindParamName(param_name))
+    } else {
+        Ok(SymbolicCostPortPattern::Raw(source_port_raw))
+    }
 }
 
 fn optional_string_field_for_record(
