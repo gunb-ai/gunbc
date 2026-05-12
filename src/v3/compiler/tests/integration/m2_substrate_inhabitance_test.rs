@@ -536,16 +536,34 @@ fn tier3_computation_mirror_kernel_algebra_profile_substrate_authority() {
     assert_eq!(type_iteration_dimension("Bool"), None);
 
     let dag_rs = include_str!("../../src/dag.rs");
-    let start = dag_rs
-        .find("pub fn type_iteration_dimension")
-        .expect("expected `pub fn type_iteration_dimension` in dag.rs");
-    let window = dag_rs
-        .get(start..start + 1200)
-        .expect("type_iteration_dimension window");
+    let fn_needle = "pub fn type_iteration_dimension";
+    let fn_start = dag_rs
+        .find(fn_needle)
+        .unwrap_or_else(|| panic!("expected `{fn_needle}` in dag.rs"));
+    let brace_start = dag_rs[fn_start..]
+        .find('{')
+        .map(|rel| fn_start + rel)
+        .expect("opening brace for type_iteration_dimension");
+    let mut depth = 0u32;
+    let mut fn_end = None;
+    for (idx, ch) in dag_rs[brace_start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    fn_end = Some(brace_start + idx + ch.len_utf8());
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let fn_end = fn_end.expect("unterminated type_iteration_dimension");
+    let fn_slice = &dag_rs[fn_start..fn_end];
     assert!(
-        window.contains("BOOTSTRAPPED_DAG")
-            && window.contains(".kernel_algebra_profile(type_name)"),
-        "type_iteration_dimension must delegate through BOOTSTRAPPED_DAG.kernel_algebra_profile; window:\n{window}"
+        fn_slice.contains("BOOTSTRAPPED_DAG") && fn_slice.contains(".kernel_algebra_profile(type_name)"),
+        "type_iteration_dimension must delegate through BOOTSTRAPPED_DAG.kernel_algebra_profile; got:\n{fn_slice}"
     );
 }
 
