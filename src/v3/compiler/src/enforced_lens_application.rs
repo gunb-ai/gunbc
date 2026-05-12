@@ -80,6 +80,16 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         })
         .map(|d| d.id)
     else {
+        // Fail-closed: this pass consumes substrate `DiagnosticSeverity` from
+        // `lens_application.dag`. Absence must not disable enforcement (openai-pro /
+        // INVARIANTS P3, C-8).
+        dag.attach_diagnostic(Diagnostic::ParseError {
+            message: "lens enforcement: could not resolve substrate `DiagnosticSeverity` from \
+                      `lens_application.dag` (modeled authority missing; fail-closed)"
+                .to_string(),
+            span: dag.declaration(enforced_template).span.clone(),
+            fixes: Vec::new(),
+        });
         return;
     };
     let positive_descent_disj = dag
@@ -458,6 +468,106 @@ fn decode_positive_descent_variant(
             })
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_severity_fail_closed_tests {
+    use super::*;
+    use crate::dag::LiteralBits;
+
+    #[test]
+    fn check_enforced_lens_emits_diagnostic_when_diagnostic_severity_authority_unresolvable() {
+        let mut dag = Dag::new();
+        let Some(ds_id) = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                d.name.as_deref() == Some("DiagnosticSeverity")
+                    && d.span.file.ends_with("lens_application.dag")
+            })
+            .map(|d| d.id)
+        else {
+            panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
+        };
+        dag.declaration_mut(ds_id).span.file = "not_lens_application.dag".to_string();
+        check_enforced_lens_applications(&mut dag);
+        assert!(
+            dag.diagnostics().iter().any(|(_, d)| matches!(
+                d,
+                Diagnostic::ParseError { message, .. }
+                    if message.contains("could not resolve substrate `DiagnosticSeverity`")
+            )),
+            "expected fail-closed diagnostic, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn enforced_violation_diagnostic_rejects_non_error_severity_constructor() {
+        let dag = Dag::new();
+        let Some(ds_disj) = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                d.name.as_deref() == Some("DiagnosticSeverity")
+                    && d.span.file.ends_with("lens_application.dag")
+            })
+            .map(|d| d.id)
+        else {
+            panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
+        };
+        let wrong_ctor = dag
+            .bool_runtime_variant_id(true)
+            .expect("bootstrap True variant");
+        let span = SourceSpan::new("t.v3", 0, 1);
+        let diag = enforced_violation_diagnostic(
+            &dag,
+            ds_disj,
+            &FieldValue::Variant {
+                constructor: wrong_ctor,
+                payload: Vec::new(),
+            },
+            "violation".to_string(),
+            span.clone(),
+        );
+        let Diagnostic::ParseError { message, .. } = diag else {
+            panic!("expected ParseError, got {diag:?}");
+        };
+        assert!(
+            message.contains("must be `Error`"),
+            "unexpected message: {message}"
+        );
+    }
+
+    #[test]
+    fn enforced_violation_diagnostic_rejects_non_variant_severity_value() {
+        let dag = Dag::new();
+        let Some(ds_disj) = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                d.name.as_deref() == Some("DiagnosticSeverity")
+                    && d.span.file.ends_with("lens_application.dag")
+            })
+            .map(|d| d.id)
+        else {
+            panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
+        };
+        let diag = enforced_violation_diagnostic(
+            &dag,
+            ds_disj,
+            &FieldValue::Literal(LiteralBits::Int("0".to_string())),
+            "violation".to_string(),
+            SourceSpan::new("t.v3", 0, 1),
+        );
+        let Diagnostic::ParseError { message, .. } = diag else {
+            panic!("expected ParseError, got {diag:?}");
+        };
+        assert!(
+            message.contains("must be a `DiagnosticSeverity` variant value"),
+            "unexpected message: {message}"
+        );
     }
 }
 
