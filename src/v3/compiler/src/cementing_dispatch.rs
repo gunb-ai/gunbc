@@ -31,7 +31,11 @@ fn string_field(fields: &[(String, FieldValue)], label: &str) -> Result<String, 
     }
 }
 
-fn nullary_sum_variant_label(dag: &Dag, value: &FieldValue, field_label: &str) -> Result<String, String> {
+fn nullary_sum_variant_label(
+    dag: &Dag,
+    value: &FieldValue,
+    field_label: &str,
+) -> Result<String, String> {
     let FieldValue::Variant {
         constructor,
         payload,
@@ -78,9 +82,9 @@ fn validate_lens_capability_behavioral_status(label: &str) -> Result<(), String>
 
 fn validate_lens_capability_v2_counterpart(label: &str) -> Result<(), String> {
     match label {
-        "LensCapabilityV2RealV2" | "LensCapabilityV2NoneV3Native" | "LensCapabilityV2NotApplicable" => {
-            Ok(())
-        }
+        "LensCapabilityV2RealV2"
+        | "LensCapabilityV2NoneV3Native"
+        | "LensCapabilityV2NotApplicable" => Ok(()),
         other => Err(format!(
             "capability_register `v2_counterpart`: unknown variant `{other}` — add it to \
              `std.verification` `LensCapabilityV2Counterpart` before using it here."
@@ -233,7 +237,9 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
         validate_lens_capability_behavioral_status(&behavioral_label)?;
         let v2_label = nullary_sum_variant_label(dag, v2, "v2_counterpart")?;
         validate_lens_capability_v2_counterpart(&v2_label)?;
-        if behavioral_label == "LensCapabilityBehavioralComplete" && v2_label == "LensCapabilityV2RealV2" {
+        if behavioral_label == "LensCapabilityBehavioralComplete"
+            && v2_label == "LensCapabilityV2RealV2"
+        {
             basenames.insert(lens_basename);
         }
     }

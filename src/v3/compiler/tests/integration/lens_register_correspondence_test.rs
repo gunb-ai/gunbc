@@ -107,7 +107,9 @@ fn regen_lens_file_basenames() -> BTreeSet<String> {
 /// `## Capability table` section — any future table elsewhere in the
 /// document (examples, migration notes, appendix) must not produce a
 /// false pass when the capability row itself is missing. Uses the
-/// same `|`-split discipline as `cementing_dispatch.dag` and the markdown register table,
+/// same `|`-split discipline as the markdown capability table and the
+/// `lens_basename` column in `src/v3/std/verification.dag`'s
+/// `lens_capability_register_rows`,
 /// but with no behavioral/v2-column filters — any row mentioning a
 /// `.dag` lens inside the capability section counts here.
 const CAPABILITY_TABLE_HEADING: &str = "## Capability table";

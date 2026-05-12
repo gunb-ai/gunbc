@@ -31,7 +31,8 @@ import std.types { FilePath, NonEmptyStr }
 // a concrete v2 counterpart, add a matching behavioral cementing
 // module under `src/v3/compiler/tests/integration/cementing/`, wire it
 // in `tests/integration.rs` via `#[path = "integration/cementing/<stem>.rs"]`,
-// and extend `src/v3/compiler/tests/dag/cementing_dispatch.dag` in the same PR
+// extend `src/v3/std/verification.dag` (`data lens_capability_register_rows`) and
+// `src/v3/compiler/tests/dag/cementing_dispatch.dag` (receipt list) in the same PR
 // (runner receipt: `t_pb_b_1_dag_runner_test::cementing_dispatch_suite_passes_through_runner`).
 // See `TESTING.md` ("Cementing tests (Band C — lens subsumption)").
 
