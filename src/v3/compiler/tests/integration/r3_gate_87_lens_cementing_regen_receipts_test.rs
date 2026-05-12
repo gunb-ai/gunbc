@@ -20,6 +20,13 @@
 //! Registry `name` inventory is cross-checked against
 //! `t_pb_b_1_dag_runner_test::r3_gate_87_cementing_regen_lens_names_for_runner_table` (derived from
 //! `R3_GATE_87_CEMENTING_REGEN_SUITES` paths — single authority, no parallel hand list).
+//!
+//! **Cementing-test discipline ratchet (`TESTING.md` §4 "One claim per test"):** every new
+//! `#[test]` / `data foo: TestClaim` in this lane makes **one** structural claim; cross-suite
+//! drive tests assert `ClaimResult` by shape (`== ClaimResult::Pass` or `matches!(_, Pass)`),
+//! never by stringified message. When porting any Rust receipt below to a `.dag` `TestClaim`,
+//! the same PR removes its row from `sg0_census_test::EXPECTED_HAND_AUTHORED_TEST` — no
+//! parallel cementing inventory is allowed to track the Rust→`.dag` migration separately.
 //! Per `INVARIANTS.md` §P5(b), the **single checkable net paydown receipt** (delete path, SG-0
 //! census shrink with counts, or cited `ROADMAP.md` deferral) must live in **PR #2639’s
 //! description**; module comments must not assert deletes for paths that never existed on
@@ -168,17 +175,12 @@ fn r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row
         "r3_gate_87_cost_target_realization_receipt.v3",
     )
     .expect("compile");
-    let meta = type_realization_meta(&dag);
-    assert!(
-        meta.is_some(),
+    let resolved_name = type_realization_meta(&dag).and_then(|d| d.name);
+    assert_eq!(
+        resolved_name.as_deref(),
+        Some("TypeRealization"),
         "type_realization_meta must resolve the substrate `TypeRealization` declaration \
          (declaration_by_name contract used by cost_target_realization.dag)"
-    );
-    assert_eq!(
-        meta.unwrap().name.as_deref(),
-        Some("TypeRealization"),
-        "cost_target_realization meta lookup must return the named realization row, not \
-         another declaration"
     );
 }
 
