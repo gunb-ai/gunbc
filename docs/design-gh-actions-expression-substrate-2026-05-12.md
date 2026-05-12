@@ -17,7 +17,10 @@ expression-AST decision is an extdeps-fidelity question (modeling what GH
 Actions provides), not a gunbc-policy decision.
 
 **Scope:** Decide how `dsl/extdeps/github/actions.dag` models GitHub Actions
-expression syntax (`${{ ... }}`) at the five identified expression sites.
+expression syntax (`${{ ... }}`) at the seven identified expression sites
+(`Job.if_condition`, `RunStep.if_condition`, `UsesStep.if_condition`,
+`RunnerSpec`, `ConcurrencySpec.group`, `Step.with[k]` on `UsesStep`,
+and `env[k]` on both `RunStep`/`UsesStep` — see §1 table).
 Out-of-scope: gunbc-side evaluator implementation; provider-neutral
 expression carriers beyond GH Actions (deferred until a second CI provider
 lands).
@@ -34,13 +37,16 @@ falling back to opaque strings:
 |---|---|---|
 | Runner selection | `runs-on: ${{ vars.CI_RUNNER \|\| ubuntu-latest }}` | `RunnerSpec = HostedRunner \| SelfHosted` — enum literal only |
 | Concurrency group | `concurrency.group: ${{ github.workflow }}-...` | `ConcurrencySpec.group: String` — opaque |
-| `if` condition | `if: github.event.pull_request.draft != true` | `Job.if_condition: String?` — opaque (existing precedent) |
+| `if` condition (3 sites) | `if: github.event.pull_request.draft != true` | `Job.if_condition: String?` (`:117`), `RunStep.if_condition: String?` (`:154`), `UsesStep.if_condition: String?` (`:163`) — opaque (existing precedent at 3 sites) |
 | Action input | `with: { ref: ${{ github.event.pull_request.head.sha }} }` | `Step.with: Map<String, String>` — opaque per value |
-| Env value | `env: { TOKEN: ${{ secrets.X }} }` | `Step.env: Map<String, String>` — opaque per value |
+| Env value (2 sites) | `env: { TOKEN: ${{ secrets.X }} }` | `RunStep.env: Map<String, String>` (`:151`), `UsesStep.env: Map<String, String>` (`:162`) — opaque per value at 2 sites |
 
-The five sites currently form a hidden parallel authority: at each site, an
-expression *could* live behind a string, and gunbc has no structural way to
-know which strings are expressions versus literals.
+The **seven** expression sites (3× `if_condition` on `Job`/`RunStep`/`UsesStep`;
+`RunnerSpec`; `ConcurrencySpec.group`; `Step.with[k]` on `UsesStep`;
+2× `env` on `RunStep`/`UsesStep`) currently form a hidden parallel
+authority: at each site, an expression *could* live behind a string, and
+gunbc has no structural way to know which strings are expressions versus
+literals.
 
 **Extdeps-fidelity finding** (per the
 `feedback_extdeps_header_discriminator_before_field_placement` discriminator):
@@ -65,7 +71,7 @@ type Expression
   | ...
 ```
 
-All five expression sites consume `Expression`. Cost-of-change after
+All seven expression sites consume `Expression`. Cost-of-change after
 introduction: low — new expression-bearing GH Actions field costs one type
 swap. **Up-front authoring cost is high**: full GH Actions expression grammar
 must be modeled (operators, precedence, contexts: `github.*`, `vars.*`,
@@ -75,10 +81,12 @@ must be modeled (operators, precedence, contexts: `github.*`, `vars.*`,
 
 ### Option (b) — String-opaque per-site (extend per field as needed)
 
-Keep `Job.if_condition: String?` precedent; extend `RunnerSpec` to admit
-`Expression(String)` arm; `Step.with[k]` / `env[k]` / `ConcurrencySpec.group`
-stay String. Cost-of-change: **linear** with each new expression-bearing
-field — every new site needs its own carrier extension.
+Keep `Job.if_condition: String?` / `RunStep.if_condition` /
+`UsesStep.if_condition` precedent; extend `RunnerSpec` to admit
+`Expression(String)` arm; `Step.with[k]` / `RunStep.env[k]` /
+`UsesStep.env[k]` / `ConcurrencySpec.group` stay String. Cost-of-change:
+**linear** with each new expression-bearing field — every new site needs
+its own carrier extension.
 
 ### Option (c) — `Expression` sum type with single initial variant + 🟡 YELLOW classification
 
@@ -93,7 +101,7 @@ type Expression
   = OpaqueString(String)
 ```
 
-All five sites migrate to `Expression`:
+All seven sites migrate to `Expression`:
 
 ```dag
 type RunnerSpec
@@ -112,17 +120,25 @@ type ConcurrencySpec {
   cancel_in_progress: Bool,
 }
 
-type Step {
-  ...
-  with: Map<String, Expression>,  // was: Map<String, String>
-  env: Map<String, Expression>,   // was: Map<String, String>
-  ...
-}
+type Step
+  = RunStep {
+      ...
+      env: Map<String, Expression>,    // was: Map<String, String>
+      if_condition: Expression?,        // was: String?
+      ...
+    }
+  | UsesStep {
+      ...
+      with: Map<String, Expression>,    // was: Map<String, String>
+      env: Map<String, Expression>,     // was: Map<String, String>
+      if_condition: Expression?,        // was: String?
+      ...
+    }
 ```
 
 Cost-of-change post-introduction: **low at every site** (new
 expression-bearing field carries `Expression`). Cost of dissolution from
-scaffold to typed AST: **single carrier edit + 5 site-already-migrated**
+scaffold to typed AST: **single carrier edit + 7 sites-already-migrated**
 (versus option (b) where each site has its own carrier surface to
 re-flatten).
 
@@ -145,11 +161,17 @@ re-flatten).
 
 **Reasoning**:
 
-1. **Single-authority preserved without premature commitment.** All five
+1. **Single-authority preserved without premature commitment.** All seven
    expression sites name the same substrate concept (`Expression`); no
-   future consumer has to discover that `Job.if_condition` and
-   `Step.with[k]` were both "expressions" at different sites — the type
-   says so.
+   future consumer has to discover that `Job.if_condition`,
+   `RunStep.if_condition`, `UsesStep.if_condition`, and `Step.with[k]`
+   were all "expressions" at different sites — the type says so. This
+   directly addresses the P2/P5 hidden-parallel-authority pattern: if
+   `Job.if_condition` adopts `Expression` while `RunStep.if_condition`
+   and `UsesStep.if_condition` remain `String?`, the "what is an
+   expression" fact lives in two places (typed at one site, opaque
+   string at two others), violating P2 and leaving P5 dissolution
+   blocked at the un-migrated sites.
 2. **Cost-of-change is correct for the current consumer set.** YamlStatic
    emit (Slice 4) is the only ratified consumer per `(c-refined)` in PR #2749;
    it needs to render expressions verbatim. `Expression::OpaqueString`
@@ -202,7 +224,7 @@ expression substrate is needed — at which point the per-provider scaffold
 shape forces the question of common AST.
 
 Until one of (a)/(b)/(c) fires, `Expression` remains a single-variant
-sum type and the substrate cost is one carrier name + five
+sum type and the substrate cost is one carrier name + seven
 site-already-migrated.
 
 ---
@@ -239,7 +261,7 @@ Under option (c):
 - Slice 4 (YamlStatic emitter) emit logic: pattern-match on `Expression`,
   unwrap `OpaqueString(s)` to `s`, emit `s` verbatim. Single-arm
   pattern match; trivial.
-- Slice 4 acceptance gate: emitter output for the five expression-site
+- Slice 4 acceptance gate: emitter output for the seven expression-site
   fields must match current ci.yml byte-for-byte (per the
   feedback_extdeps_header_discriminator_before_field_placement carry-
   forward acceptance gates from PR #2744).
@@ -261,7 +283,7 @@ extensions.
    `type Expression { value: String }` (record)? Either preserves the
    structural pattern-match property; sum form is closer to the
    dissolution target shape. Director call if both are admissible.
-2. **Migration sequencing across the five sites.** Do all five sites
+2. **Migration sequencing across the seven sites.** Do all seven sites
    migrate to `Expression` in one PR (substrate-prereq PR before Slice 4)
    or incrementally (per-site as Slice 4 lands each emitter arm)?
    Recommendation: one PR (cohesive substrate change; per
@@ -314,9 +336,24 @@ items per ratification:
    `feedback_checkpoint_dissolution_default`.
 3. **Three-condition dissolution trigger**: RATIFIED. Trigger framing
    makes the dissolution path explicit.
-4. **5-site uniform migration** (`RunnerSpec.ExpressionRunner` variant /
+4. **Uniform migration** (`RunnerSpec.ExpressionRunner` variant /
    `Job.if_condition` / `ConcurrencySpec.group` / `Step.with[k]` /
    `Step.env[k]`): RATIFIED. Single-authority for expression substrate.
+
+> **Site-count correction (2026-05-12T07:45:24Z)**: Director ratification
+> referenced a "5-site" framing. Operator BLOCKING review on PR #2751 at
+> §1 surfaced that `actions.dag` has **3** `if_condition` sites (`Job:117`,
+> `RunStep:154`, `UsesStep:163`) and **2** `env` sites (`RunStep:151`,
+> `UsesStep:162`), not the 1+1 the canvas tabulated. Actual migration
+> scope is **7 sites** total. This is a site-count correction, not a
+> substrate-shape correction — the (c) ratification covers all expression
+> sites in `actions.dag` uniformly per ratification point #4's
+> "single-authority for expression substrate" framing; leaving any
+> `if_condition` or `env` site un-migrated would violate P2 (hidden
+> parallel authority: one site typed, others opaque) and block P5
+> dissolution at the un-migrated sites. The 7-site scope is the
+> implementing-PR responsibility; the substrate decision itself is
+> unchanged. §1 + §2 + §6.2 updated to reflect the corrected count.
 
 **Cascade implications** (per Director directive):
 
