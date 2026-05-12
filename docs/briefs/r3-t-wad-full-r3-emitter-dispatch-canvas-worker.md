@@ -28,7 +28,7 @@ Design the emitter-dispatch architecture for T-Workflow-As-Data FULL R3-close on
 1. **Per-target emission semantics** (the substantive canvas surface):
    - **YamlStatic** (Slice 4 deliverable): body of `project_github_actions(ci_workflow_dag, YamlStatic)` walks `CIWorkflowDag` (PR #2736) and emits a `Workflow` value whose deterministic YAML encoding is **semantically equivalent** to current `.github/workflows/ci.yml` (same triggers / jobs / steps / runners / conditions / permissions / matrix as consumed by GitHub Actions); one-time migration rewrites committed file to canonical encoding (non-semantic facts — comments, whitespace, key ordering — discarded per P1: `Workflow` is single authority for CI semantics; load-bearing comments must migrate into substrate as modeled facts, not into parallel byte-authority); regression-guard gate compares on-disk artifact byte-wise to fresh projection output (internal byte-identity: projection-output ↔ committed-artifact, NOT external: substrate ↔ legacy hand-authored content); regenerated on workflow edit; consumer is GH Actions runner directly.
    - **BinaryShim** (Slice 5): body of `project_github_actions(ci_workflow_dag, BinaryShim)` emits a Workflow value pointing to a compiled binary (Rust target) entry-point + thin shim YAML (≤10 lines invoking binary); binary reads diff at PR-time, computes affected-set, dispatches matrix dynamically. Slice 7 affected-set integration consumes.
-   - **PythonShim** (Future; sketch only): same shim model, Python runtime substrate (Python target emit pattern reused).
+   - **PythonShim** (DESIGN-ONLY per briansrls BLOCKING on PR #2744 2026-05-12T10:46:59Z; held out of initial enum until real consumer exists): same shim model, Python runtime substrate (Python target emit pattern reused); sketch only — NO enum variant or emitter arm lands until a real runtime consumer exists (symmetric treatment with InlineGunbc per INVARIANTS P5 / Pure Bootstrap).
    - **InlineGunbc** (DESIGN-ONLY per codex BLOCKING #9970 + PR #2746 §5.4; held out of initial enum until real consumer exists): gunbc-as-runtime-orchestrator longer-term option; sketch only — NO enum variant or emitter arm lands until a real runtime consumer exists.
 
 2. **Emitter dispatch composition** — how per-arm projection bodies compose with existing `05_emit_rust.dag` / `_python.dag` / `_go.dag` consolidation thesis (per memory `project_eliminate_emit_lang_files.md`); how the projection function's pinned invocation (`gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)`) flows into the existing emission pipeline.
@@ -58,8 +58,8 @@ Design the emitter-dispatch architecture for T-Workflow-As-Data FULL R3-close on
 ## Acceptance gates
 
 1. Canvas authored at `docs/design-ci-workflow-emitter-dispatch.md` per scope §1-6 above
-2. Each per-target emitter arm (`YamlStatic`, `BinaryShim`, `PythonShim`) has explicit emission semantics + acceptance contract
-3. `InlineGunbc` documented as DESIGN-ONLY future target with explicit "no enum variant / emitter arm lands until real runtime consumer exists" exclusion rule
+2. Each per-target emitter arm in the initial enum (`YamlStatic`, `BinaryShim`) has explicit emission semantics + acceptance contract
+3. `PythonShim` AND `InlineGunbc` documented as DESIGN-ONLY future targets with explicit "no enum variant / emitter arm lands until real runtime consumer exists" exclusion rule (symmetric treatment per INVARIANTS P5)
 4. Substrate-shape placement is NOT re-evaluated — (c-refined) shape is consumed as given; canvas explicitly cites PR #2749 §7 as placement authority
 5. Cross-references to `design-affected-set-lens.md` §5 (CI integration sketch) explicit — canvas resolves the "CI integration deferred" placeholder
 6. Cross-references to PR #2751 (Expression substrate) for expression-site emission contracts

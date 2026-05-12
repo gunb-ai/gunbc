@@ -19,11 +19,10 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
    ```
    WorkflowRuntime = YamlStatic
                   | BinaryShim
-                  | PythonShim
                   | ...           // open enum — additional targets land when real consumers exist
    ```
 
-   Each arm is a tag indicating the emission strategy. **Initial set: 3 arms** (`YamlStatic`, `BinaryShim`, `PythonShim`). **`InlineGunbc` is DESIGN-ONLY** per PR #2746 §5.4 + WI-1 brief discipline + openai-pro BLOCKING on PR #2744 (2026-05-12 ~07:55Z) — NO `InlineGunbc` enum variant or emitter arm lands until a real runtime consumer exists. Open-enum discipline: the projection function must total-handle the declared arms; unknown arms compile-fail (per fail-closed discipline `feedback_fail_closed_discipline`); future arms (including `InlineGunbc`) land via separate substrate-prereq PRs paired with their consumers.
+   Each arm is a tag indicating the emission strategy. **Initial set: 2 arms** (`YamlStatic`, `BinaryShim`) — both have concrete consumer-paired slices (Slice 4 / Slice 5). **`PythonShim` AND `InlineGunbc` are DESIGN-ONLY** held out of the initial enum until real runtime consumers exist. Per INVARIANTS P5 / Pure Bootstrap discipline + sibling WI-1 brief framing (PythonShim "Future; sketch only" — no concrete Slice consumer in scope) + PR #2746 §5.4 (InlineGunbc) + openai-pro BLOCKING on PR #2744 (2026-05-12 ~07:55Z) for InlineGunbc + briansrls BLOCKING on PR #2744 (2026-05-12T10:46:59Z) for PythonShim asymmetry: NO enum variant or emitter arm lands without a concrete consumer-paired slice. Open-enum discipline: the projection function must total-handle the declared arms; unknown arms compile-fail (per fail-closed discipline `feedback_fail_closed_discipline`); future arms (`PythonShim`, `InlineGunbc`, and any others) land via separate substrate-prereq PRs paired with their consumers.
 
 2. **`project_github_actions` projection function declaration**:
 
@@ -74,7 +73,7 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
 
 **DO**:
 - Create NEW file `dsl/gunbc/ci_emission.dag` (the projection-substrate file).
-- Declare `WorkflowRuntime` open enum with **3** named arms (`YamlStatic`, `BinaryShim`, `PythonShim`) + open marker. **`InlineGunbc` is DESIGN-ONLY** — do NOT add as enum arm (per WI-1 brief §scope + PR #2746 §5.4 + openai-pro BLOCKING on PR #2744).
+- Declare `WorkflowRuntime` open enum with **2** named arms (`YamlStatic`, `BinaryShim`) + open marker. **`PythonShim` AND `InlineGunbc` are DESIGN-ONLY** — do NOT add either as enum arm (PythonShim per briansrls BLOCKING on PR #2744 2026-05-12T10:46:59Z; InlineGunbc per WI-1 brief §scope + PR #2746 §5.4 + openai-pro BLOCKING on PR #2744). Both land via separate substrate-prereq PRs paired with their concrete runtime consumers.
 - Declare `project_github_actions` function signature with TODO-marked total-handling skeleton.
 - Author Practice 4 coproduct-dissolution receipt for `WorkflowRuntime` (🟡 YELLOW classification + named dissolution trigger + coordinate-dissolution sketch per WI-1 brief discipline; see acceptance gate 3).
 - Reference existing `Workflow` carrier from `dsl/extdeps/github/actions.dag` as the codomain type.
@@ -95,7 +94,7 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
 ## Acceptance gates
 
 1. New file `dsl/gunbc/ci_emission.dag` exists with valid `.dag` syntax per existing v3 parser.
-2. `WorkflowRuntime` open enum declared with **3** named arms (`YamlStatic`, `BinaryShim`, `PythonShim`) + open-enum marker. **NO `InlineGunbc` arm** — DESIGN-ONLY future target per PR #2746 §5.4; lands via separate substrate-prereq PR paired with consumer.
+2. `WorkflowRuntime` open enum declared with **2** named arms (`YamlStatic`, `BinaryShim`) + open-enum marker. **NEITHER `PythonShim` NOR `InlineGunbc` arms** — both DESIGN-ONLY future targets (PythonShim per briansrls BLOCKING on PR #2744 2026-05-12T10:46:59Z; InlineGunbc per PR #2746 §5.4); each lands via separate substrate-prereq PR paired with its concrete runtime consumer per INVARIANTS P5.
 3. **Practice 4 coproduct-dissolution receipt for `WorkflowRuntime`** (consistent with WI-1 brief discipline; per `feedback_coproduct_dissolution` + `modeling-discipline.md` Practice 4; addresses briansrls BLOCKING c#3224878313 on PR #2744 2026-05-12T08:30:15Z):
    - Receipt classification: **🟡 YELLOW scaffold** (flat enum with named dimensions noted: artifact-shape `StaticYaml` vs `ThinShim` × runner-realization `CompiledBinary` vs `EmittedPython`)
    - Named dissolution trigger: first additional shim runtime OR first need to share runner metadata across shim targets

@@ -15,7 +15,7 @@
 **FULL R3-close scope** (operator-ratified 2026-05-12; Director-ratified gate-additive framing msg_5cbdad24):
 1. **ALL** CI workflow authored as `.dag` (not just one demo workflow) — `.github/workflows/ci.yml` content sourced from gunbc-substrate via projection function `project_github_actions(ci_workflow_dag, target) → Workflow`; WI-2 lands the projection-substrate (new file `dsl/gunbc/ci_emission.dag`); Slice 4-5 implements per-arm projection bodies that walk `CIWorkflowDag` (PR #2736) + emit the chosen target.
 2. **Hand-authored `ci.yml` AUTHORITY DISSOLVED** — `.github/workflows/ci.yml` content authored by gunbc emission (not hand-edited); file present as full-emit artifact (YamlStatic) OR thin-shim entry-point (BinaryShim / PythonShim) OR absent (some workflow runtimes); regression-guard test prevents hand-authored re-introduction. **Per briansrls BLOCKING #PR2744 2026-05-12**: NOT file deletion — P5 / Pure Bootstrap dissolves authority; YamlStatic and shim targets STILL require some `.github/workflows/ci.yml` artifact for GH Actions trigger discovery.
-3. **WorkflowRuntime toggle** — same `CIWorkflowDag` (PR #2736 carrier) projects through `project_github_actions(ci_workflow_dag, target)` to multiple target shapes (YamlStatic, BinaryShim, PythonShim, …; `InlineGunbc` is DESIGN-ONLY future target per PR #2746 §5.4, NOT in initial enum); `WorkflowRuntime` is invocation-time projection parameter (modeled data), NOT carrier-time field. Substrate-shape LOCKED per (c-refined) ratification — see §2 for full treatment.
+3. **WorkflowRuntime toggle** — same `CIWorkflowDag` (PR #2736 carrier) projects through `project_github_actions(ci_workflow_dag, target)` to multiple target shapes (initial enum: `YamlStatic | BinaryShim | ...`; `PythonShim` AND `InlineGunbc` are DESIGN-ONLY future targets per INVARIANTS P5 — held out of initial enum until real consumers exist; PythonShim per briansrls BLOCKING 2026-05-12T10:46:59Z, InlineGunbc per PR #2746 §5.4); `WorkflowRuntime` is invocation-time projection parameter (modeled data), NOT carrier-time field. Substrate-shape LOCKED per (c-refined) ratification — see §2 for full treatment.
 4. **Affected-set integration** — Layer 2 path-regex bridge (PR #2718/#2721/#2727) dissolved; CI selection consumes affected-set lens output (PR #2713 ✓ merged)
 5. **Cost dimension on test nodes** — `slow-test-exemptions.txt` dissolved; slow-test ratchet derives from Cost dimension structurally
 
@@ -37,7 +37,7 @@
 |---|---|---|---|
 | **#56** (unchanged) | demonstration | T-WAD | At least one workflow as `.dag` data executes through evaluator (existing scope — promotable when PR #2371 demo + integration is gate-PASSING) |
 | **NEW: `ci_yml_hand_authority_dissolved`** | state-check | T-WAD | `.github/workflows/ci.yml` is no longer hand-authored CI logic — file is either (a) absent (some workflow runtimes may not require a `.github/workflows/` artifact), (b) committed-emission-artifact byte-identical to `project_github_actions(ci_workflow_dag, target)` output with regression-guard test (YamlStatic), or (c) thin-shim entry-point invoking the emitted binary/python (BinaryShim / PythonShim); in NO case is it hand-edited CI logic. Regression guard test prevents hand-authored re-introduction. **Per briansrls BLOCKING #PR2744 inline review 2026-05-12T06:58:55Z**: deleting hand-maintenance ≠ deleting executable artifact; P5 / Pure Bootstrap dissolves authority, not file presence. |
-| **NEW: `workflow_runtime_open_enum_landed`** | substrate-shape | T-WAD | `WorkflowRuntime` sum-type with 3 initial arms (`YamlStatic \| BinaryShim \| PythonShim \| ...`) declared in gunbc namespace as open enum; `InlineGunbc` is DESIGN-ONLY per PR #2746 §5.4 — lands via separate substrate-prereq PR paired with a runtime consumer |
+| **NEW: `workflow_runtime_open_enum_landed`** | substrate-shape | T-WAD | `WorkflowRuntime` sum-type with **2 initial arms** (`YamlStatic \| BinaryShim \| ...`) declared in gunbc namespace as open enum; `PythonShim` AND `InlineGunbc` are DESIGN-ONLY per INVARIANTS P5 (PythonShim per briansrls BLOCKING 2026-05-12T10:46:59Z; InlineGunbc per PR #2746 §5.4) — both land via separate substrate-prereq PRs paired with their runtime consumers |
 | **NEW: `project_github_actions_landed`** | substrate-shape | T-WAD | `project_github_actions: (CIWorkflowDag, WorkflowRuntime) → Workflow` projection function declared in gunbc namespace; consumes `extdeps.github.actions.Workflow` as output type; per (c-refined) substrate-shape per PR #2749 §7 |
 | **NEW: `test_cost_dimension_landed`** | substrate-shape | T-WAD + Debt-Paydown | `Cost` dimension declared on test nodes (substrate-shape only — splits from state-check sibling below) |
 | **NEW: `slow_test_exemptions_dissolved`** | state-check | T-WAD + Debt-Paydown | `scripts/slow-test-exemptions.txt` deleted; slow-test ratchet derives from `Cost` dimension structurally (state-check sibling of `test_cost_dimension_landed` per kernel-modeling discipline split) |
@@ -48,8 +48,9 @@
 **`WorkflowRuntime` as modeled data** (open enum, same shape as `Dimension`):
 
 ```dag
-type WorkflowRuntime = YamlStatic | BinaryShim | PythonShim | ...
-// InlineGunbc DESIGN-ONLY per PR #2746 §5.4 — NOT in initial enum; lands when runtime consumer exists
+type WorkflowRuntime = YamlStatic | BinaryShim | ...
+// PythonShim DESIGN-ONLY per briansrls BLOCKING 2026-05-12T10:46:59Z — NOT in initial enum; lands when Python runtime consumer exists
+// InlineGunbc DESIGN-ONLY per PR #2746 §5.4 — NOT in initial enum; lands when gunbc-runtime consumer exists
 ```
 
 **Substrate-shape RATIFIED** (per PR #2749 §7 + Director msg_237bde05 + msg_f9fd669e — (c-refined) shape; was option (c) wrapper, refined to projection-function):
@@ -100,7 +101,7 @@ Step = RunStep | UsesStep               // :147 — sum type
 **Emitter dispatch** (parallel to `05_emit_*.dag` consolidation thesis per `project_eliminate_emit_lang_files.md`):
 
 - Slice 4-5 emitter consumes the **pinned-projection invocation** `gunbc_ci_yml_workflow = project_github_actions(ci_workflow_dag, YamlStatic)` (or other `target` for BinaryShim / PythonShim / etc.)
-- Per-arm projection bodies (Slice 4 = YamlStatic, Slice 5 = BinaryShim, future = PythonShim) walk `CIWorkflowDag` + emit the chosen target. `InlineGunbc` is DESIGN-ONLY (not in initial enum) per PR #2746 §5.4
+- Per-arm projection bodies (Slice 4 = YamlStatic, Slice 5 = BinaryShim) walk `CIWorkflowDag` + emit the chosen target. **`PythonShim` AND `InlineGunbc` are DESIGN-ONLY** (not in initial enum) — PythonShim per briansrls BLOCKING 2026-05-12T10:46:59Z, InlineGunbc per PR #2746 §5.4; each lands via separate substrate-prereq PR paired with its concrete runtime consumer per INVARIANTS P5
 - Same `ci_workflow_dag` value across all targets at workflow level; the emission STRATEGY is invocation-time
 - A/B comparison is apples-to-apples (call `project_github_actions(ci_workflow_dag, BinaryShim)` vs `project_github_actions(ci_workflow_dag, YamlStatic)`)
 
