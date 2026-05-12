@@ -36,7 +36,7 @@ NEW file `dsl/gunbc/ci_emission.dag` declaring:
    ```
    func project_github_actions(ci_workflow_dag: CIWorkflowDag, runtime: WorkflowRuntime) -> extdeps.github.actions.Workflow
    ```
-   Per-arm bodies in Phase B (YamlStatic only; BinaryShim TODO-stubbed).
+   Per-arm bodies in Phase B (YamlStatic only; BinaryShim + PythonShim TODO-stubbed).
 
 3. **Practice 4 receipt at declaration site** — 🟡 YELLOW classification with sum-of-tagged-coordinates carrier (NOT Cartesian product). Reference shape from PR #2744 commit `e6d302352` / WI-1 canvas §3:
    ```
@@ -44,9 +44,10 @@ NEW file `dsl/gunbc/ci_emission.dag` declaring:
    // sum-of-tagged-coordinates carrier shape (NOT Cartesian product
    // of (EmissionArtifactShape × ShimRunnerKind)):
    //   Static(EmissionArtifactShape) | Shim { runner: ShimRunnerKind }
-   // Dissolution triggers: (a) 5th arm pressure (3 in-flight: PythonShim,
-   // InlineGunbc, ...); (b) per-arm body axis discovery during Slice
-   // 4/5 implementation; (c) consumer-side dimension extraction.
+   // Dissolution triggers: (a) 4th arm pressure (InlineGunbc design-only
+   // pending real runtime consumer per emitter-dispatch canvas §5.4);
+   // (b) per-arm body axis discovery during Slice 4/5 implementation;
+   // (c) consumer-side dimension extraction.
    ```
 
 4. **NO pinned `gunbc_ci_yml_workflow` binding** at this stage. Pinning is DEFERRED per WI-2 brief §3 until the canonical `CIWorkflowDag` instance lands with the Slice 4 projection-arm body — which is in this same PR (Phase B), so pinning **may** land here if Phase B succeeds. If pinning lands, declare it in `dsl/gunbc/ci_emission.dag` with explicit reference to the input `CIWorkflowDag` instance.
@@ -81,7 +82,7 @@ Implement the `YamlStatic` arm body of `project_github_actions`:
    - **Do NOT resume Slice 4 body authoring** until the gap is resolved by one of the three paths above. Continuing with a gap = fabricated authority = P2/P3 violation (codex review 10208).
    - If the gap is NOT hit during authoring (the CIWorkflowDag instance for the current `.github/workflows/ci.yml` doesn't exercise that surface), explicitly note in PR body which pre-surfaced gaps remain unaddressed at landing time.
 4. **Acceptance**: deterministic YAML encoding **semantically equivalent** to current `.github/workflows/ci.yml`. Regression-guard byte-identity is to **fresh projection output**, NOT to legacy hand-authored YAML (internal byte-identity per PR #2744 / §3 Slice 4 framing). Field-ordering rules, indentation, list/scalar conventions: match current ci.yml.
-5. **BinaryShim arm body**: TODO-stubbed (Phase 5 lane handles).
+5. **BinaryShim + PythonShim arm bodies**: TODO-stubbed (Phase 5 BinaryShim lane handles BinaryShim; PythonShim body lands in a separate worker post-BinaryShim per emitter-dispatch canvas §5.3).
 
 **Closes gates**: NONE for Phase B in isolation. Phase B is **enabling deliverable** for Slice 8 gate `ci_yml_hand_authority_dissolved` (gate 98) — Slice 8 owns the actual closure via artifact-swap with regression-guard.
 
@@ -104,7 +105,7 @@ Slice 4 YamlStatic projection-arm body lands as enabling substrate for Slice 8 g
 PR body must cite:
 - PR #2751 §5.5 as 18-site Expression-substrate authority (NOT the WI-1 brief's stale "5-site" framing)
 - PR #2744 commit e6d302352 as Practice 4 sum-of-tagged-coordinates precedent
-- PR #2744 cascade commits 338a83fd3 / 89a84583d as 2-arm DESIGN-ONLY discipline
+- `docs/design-ci-workflow-emitter-dispatch.md:126` (in main) as 3-arm `WorkflowRuntime = YamlStatic | BinaryShim | PythonShim` ratified scope; §5.4 keeps `InlineGunbc` design-only pending real runtime consumer
 - PR #2736 as input-domain carrier source
 
 ---
