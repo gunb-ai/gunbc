@@ -5709,6 +5709,7 @@ fn lower_scalar_literal_for_type(
     let int_decl_id = dag.declaration_by_name("Int").map(|d| d.id);
     let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
+    let port_id_decl_id = dag.declaration_by_name("PortId").map(|d| d.id);
     let type_ok = match &literal_bits {
         LiteralBits::Int(s) => {
             let Ok(int_value) = BigInt::from_str(s.as_str()) else {
@@ -5725,6 +5726,13 @@ fn lower_scalar_literal_for_type(
                     int_literal_fits_expected_type(dag, &int_value, expected_type),
                     Ok(Some(true))
                 )
+                || port_id_decl_id
+                    .map(|id| {
+                        walks_to(dag, expected_type, id)
+                            && int_value >= BigInt::from(0)
+                            && int_value <= BigInt::from(u32::MAX)
+                    })
+                    .unwrap_or(false)
         }
         LiteralBits::Bool(_) => bool_decl_id
             .map(|id| walks_to(dag, expected_type, id))
