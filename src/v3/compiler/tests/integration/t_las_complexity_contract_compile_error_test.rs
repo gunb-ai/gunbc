@@ -8,15 +8,13 @@
 use std::fs;
 use std::path::PathBuf;
 
-use v3_compiler::compile_to_dag;
-use v3_compiler::CompileError;
+use crate::common::{cached_compile_outcome, CachedCompileOutcome};
 
 const DEMO_REL_PATH: &str = "src/v3/compiler/tests/fixtures/t_las_complexity_contract_demo.dag";
 const DEMO_FILE_NAME: &str = "t_las_complexity_contract_demo.dag";
 const DEMO_APPLICATION_MARKER: &str = "data witness_log_cap:";
 
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn complexity_violation_compile_error_demonstrated() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")
@@ -27,11 +25,13 @@ fn complexity_violation_compile_error_demonstrated() {
         .name("t-las-complexity-demo-compile".into())
         .stack_size(64 * 1024 * 1024)
         .spawn(move || {
-            let err = compile_to_dag(&source, DEMO_FILE_NAME).expect_err(
-                "recursive-descent witness asymptotic class exceeds ClassConstant - compile must fail",
-            );
-            let CompileError::Semantic(dag) = err else {
-                panic!("expected Semantic(Dag) after violation, got {err:?}");
+            let CachedCompileOutcome::Semantic(dag) =
+                cached_compile_outcome(&source, DEMO_FILE_NAME)
+            else {
+                panic!(
+                    "recursive-descent witness asymptotic class exceeds ClassConstant - \
+                     compile must fail"
+                );
             };
             let receipts: Vec<_> = dag
                 .diagnostics()
