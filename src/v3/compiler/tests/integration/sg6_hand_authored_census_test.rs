@@ -59,7 +59,6 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use crate::common::integration_rs_cementing_path_attr_binds_mod_stem;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::emit_rust::emit_rust_module;
@@ -476,21 +475,25 @@ fn sg6_lens_registry_names_resolve_to_singleton_entry() {
     }
 }
 
-// Band-C cementing: `cementing_lens_registry_dispatch_test.rs` cannot assert its own
-// `#[path = ...]` wiring from inside the module — if the `mod` line is deleted, the
-// whole subtree is dropped before any in-module test runs. SG-6 owns integration
-// harness glue checks; this ratchet lives here so CI stays honest.
+// Band-C cementing: `cementing_dispatch.dag` is exercised through
+// `t_pb_b_1_dag_runner_test::cementing_dispatch_suite_passes_through_runner`. SG-6 owns
+// integration harness glue checks; this ratchet lives here so CI stays honest when the
+// runner wiring drifts.
 #[test]
-fn sg6_cementing_lens_registry_dispatch_module_is_wired_in_integration_rs() {
-    let path = manifest_dir().join("tests").join("integration.rs");
+fn sg6_cementing_dispatch_dag_is_wired_in_runner_receipt() {
+    let path = manifest_dir()
+        .join("tests")
+        .join("integration")
+        .join("t_pb_b_1_dag_runner_test.rs");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     assert!(
-        integration_rs_cementing_path_attr_binds_mod_stem(
-            &text,
-            "cementing_lens_registry_dispatch_test",
-        ),
-        "{} must bind `#[path = \"integration/cementing/cementing_lens_registry_dispatch_test.rs\"]` \
-         to `mod cementing_lens_registry_dispatch_test;` as one item (Band-C dispatch).",
+        text.contains("cementing_dispatch.dag"),
+        "{} must reference `cementing_dispatch.dag` so the Band-C dispatch suite stays wired through the PB-B-1 runner receipt.",
+        path.display(),
+    );
+    assert!(
+        text.contains("cementing_dispatch_suite"),
+        "{} must reference suite name `cementing_dispatch_suite` alongside the `.dag` include.",
         path.display(),
     );
 }
