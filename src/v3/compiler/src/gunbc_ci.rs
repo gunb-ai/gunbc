@@ -147,9 +147,7 @@ fn validate_unique_gate_roster(dag: &CiWorkflowDagInput) -> Result<(), CiAffecte
     let mut seen: HashSet<&str> = HashSet::new();
     for g in &dag.gates {
         if !seen.insert(g.id.as_str()) {
-            return Err(CiAffectedGatesError::DuplicateGateRosterId {
-                id: g.id.clone(),
-            });
+            return Err(CiAffectedGatesError::DuplicateGateRosterId { id: g.id.clone() });
         }
     }
     Ok(())
@@ -347,9 +345,7 @@ mod tests {
         };
         assert_eq!(
             select_affected_gates(&dag, &CiWorkflowDiff::TouchAll),
-            Err(CiAffectedGatesError::DuplicateGateRosterId {
-                id: "dup".into(),
-            })
+            Err(CiAffectedGatesError::DuplicateGateRosterId { id: "dup".into() })
         );
     }
 
