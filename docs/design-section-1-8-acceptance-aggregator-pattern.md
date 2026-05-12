@@ -38,14 +38,38 @@ Add ONE new column to the existing §1.8 table:
 
 ### Derivation rule (machine-checkable invariant)
 
+Live §1.8 uses more status values than the abstract 3-value lattice. The derivation rule operates over a coerced status space:
+
+**Coercion table — live §1.8 Status → lattice Status** (applied before meet):
+
+| Live status | Coerced lattice status | Reason |
+|---|---|---|
+| `PASSING` | `PASSING` | identity |
+| `SATISFIED-BY-CONSTRUCTION` | `PASSING` | gate is closed by structural construction; no executable receipt needed; functionally identical to PASSING for closure arithmetic |
+| `CONSUMER_LANDED` | `CONSUMER_LANDED` | identity |
+| `INTEGRATION_RECEIPT (partial — ε-slice)` (or any `_partial`-suffixed bracketed form) | `CONSUMER_LANDED` | partial-receipt forms close to `CONSUMER_LANDED` per §1.7 corpus-quantified rule (slice receipts ≠ PASSING) |
+| `R3-LOAD-BEARING` | **REJECTED — see precondition rule below** | this is scope-metadata ("in R3, not R4-carved"), NOT a closure-progress status; cells with this value must be reframed to expose closure-progress status before aggregator applies |
+| `DECLARED` (and `DECLARED through R3` variants) | `DECLARED` | identity |
+| `HELD-CANVAS-DEFERRED` | **EXCLUDED — see exclusion rule below** | gate is moved past R3 close; not load-bearing for R3-close arithmetic; MUST NOT appear in any aggregator's `depends_on:` |
+| `DEFERRED` (post-R3) | **EXCLUDED** | same as above — post-R3 work; not in aggregator scope |
+
+**Precondition rule (aggregator-readiness)**: An aggregator row can be added ONLY IF every constituent's live Status coerces cleanly into `{DECLARED, CONSUMER_LANDED, PASSING}`. Constituent rows whose Status cell is purely scope-metadata (`R3-LOAD-BEARING` standing alone) are NOT aggregator-ready; their closure-progress status must be inlined into the cell (e.g., `R3-LOAD-BEARING — DECLARED` or `R3-LOAD-BEARING — CONSUMER_LANDED`) so the coercion table can resolve them, OR the row must be split such that scope-metadata and closure-progress are separated columns/rows.
+
+**Exclusion rule**: `DEFERRED` and `HELD-CANVAS-DEFERRED` constituents MUST NOT appear in any aggregator's `depends_on:` list. These gates are explicitly removed from R3-close arithmetic per §1.5 (e.g., `97 enumerated − 1 canvas-deferred {#11} = 96 R3-load-bearing`); including them in an aggregator pollutes the lattice-meet with values the §1.8 ledger has already excluded.
+
 For every row where `Family == acceptance-aggregator`:
 
 1. Parse `depends_on:` as a list of row-IDs.
-2. For each row-ID, look up the constituent's `Status`.
-3. Compute the lattice meet: any `DECLARED` → `DECLARED`; otherwise any `CONSUMER_LANDED` → `CONSUMER_LANDED`; else `PASSING`.
-4. Assert: aggregator row's `Status` == meet. If mismatch, the ledger is inconsistent — this is a structural ratchet (analogous to the per-row invariants in §1.7).
+2. For each row-ID, look up the constituent's `Status` cell.
+3. Apply the coercion table to obtain a value in `{DECLARED, CONSUMER_LANDED, PASSING}`.
+4. If any constituent's Status fails the precondition rule (purely scope-metadata, e.g., bare `R3-LOAD-BEARING`), the aggregator row is INVALID — fail-close with "constituent #N not aggregator-ready: closure-progress status must be inlined".
+5. If any constituent is marked `DEFERRED` or `HELD-CANVAS-DEFERRED`, the aggregator row is INVALID — fail-close with "constituent #N is post-R3-excluded; not eligible for aggregator depends_on:".
+6. Otherwise compute the lattice meet over the coerced values: any `DECLARED` → `DECLARED`; otherwise any `CONSUMER_LANDED` → `CONSUMER_LANDED`; else `PASSING`.
+7. Assert: aggregator row's `Status` == meet. If mismatch, the ledger is inconsistent — this is a structural ratchet (analogous to per-row invariants in §1.7).
 
 **Why not allow hand-set status**: aggregator rows that drift from their constituents create the "duplicate authority" class openai-pro 2026-05-06 PAUSE_AND_REGROUP flagged. The derivation rule preserves "single canonical view" property.
+
+**Why this is INVARIANTS P2-clean**: the coercion table + precondition + exclusion rules are themselves a single derivation authority; the aggregator's Status is a pure function of constituent Status values under those rules. There is no parallel authority for closure progress — every fact still lives in exactly one §1.8 row.
 
 ## Pilot row — T-CI-WAD FULL R3-close
 
