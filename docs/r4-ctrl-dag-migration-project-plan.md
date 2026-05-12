@@ -56,31 +56,61 @@ Inventoried from `gh api repos/gunb-ai/ctrl/contents/` (2026-05-12). Major subsy
 
 ---
 
-## §3. What can migrate NOW (Phase 1.5 catalog)
+## §3. What can migrate NOW — comprehensive subsystem catalog
 
-**Phase 1.5** = type-only .dag modeling of each ctrl/ subsystem, no emission targets required. Substrate-tier work; each PR is doc-only. Lands in `dsl/ctrl/*.dag` in gunbc OR `~/ctrl/workflows/*.dag` (TBD per §11 Q-A).
+**Strategy**: model **service contracts** (types + typed function signatures + pure helpers), NOT just types. Per `feedback_lenses_not_passes.md` + the existing demo `research/market/viability/demos/agent-ctrl-session-dashboard/inbox_delivery_slice.dag` (which proves: `service InboxDeliverySlice { fn ... }` shape is workable today even without emission). The contract becomes authority; emission targets later replace the TS execution but the contract is the source-of-truth from PR-merge.
 
-**Doable NOW, gated only on operator dispatch**:
+**Total audit** (2026-05-12 via gh API on `gunb-ai/ctrl`):
+- 237 .mjs files in `scripts/session-dashboard/` organized into ~16 subsystems
+- ~20 .mjs files in `scripts/chatgpt-reviewer/` (browser-based review automation)
+- 3 .mjs files in `scripts/api-reviewer/` (CLI-based review backends)
+- 29 design docs in `scripts/session-dashboard/*.md` (constitutional + per-subsystem)
+- 3 existing partial .dag files in `workflows/` (review, branch_review, review_config)
+- 1 existing demo .dag at `research/market/viability/demos/agent-ctrl-session-dashboard/inbox_delivery_slice.dag` — **promote to substrate** (≈90% already there)
 
-1. **Review verdict** — `review_verdict.dag`: typed `ReviewVerdict = Approve | RequestChanges(findings) | Comment`; `ReviewEvent { provider, sha, verdict, timestamp }`; `latest_per_provider_at_HEAD` lens. Replaces today's text-scrape parser. **First migration target** (small + self-validating).
+### Catalog (in priority order)
 
-2. **Decomposition algebra (consumer-side)** — `dsl/std/process_algebra.dag` + `dsl/ctrl/work_item.dag`. Phase 1 substrate from companion scope doc §9. Lands `Mode` open enum + `Operation` closed sum + `EventLog<T>` primitive + `canCloseNode` projection. Authoritative for ctrl PRs #1192-#1197 semantics.
+| # | Subsystem | Source files | TS LOC | Model now? | Notes |
+|---|---|---|---|---|---|
+| 1 | **Review verdict** | `findings_extract.mjs`, `findings_parser.mjs`, `findings_store.mjs`, `findings_triage.mjs`, `review_subprocess_runner.mjs`, `pr_feedback_format.mjs`, `api-reviewer/*` (3 files) | ~2000 | ✓ NOW | Today's pain; in flight per operator (Q-D) |
+| 2 | **Decomposition algebra (work-item)** | `dag_api.mjs`, `lib/dag_writes.mjs`, `lib/dag_schema.mjs` (per ctrl PRs #1192-#1197) | ~800 | ✓ NOW + Phase 1 | Algebra substrate from companion §9 |
+| 3 | **Inbox delivery** | `inbox_policies.mjs`, `inbox_schema.mjs` + `INBOX_DESIGN.md` | ~600 | ✓ NOW | **DEMO EXISTS** at research/.../inbox_delivery_slice.dag — promote |
+| 4 | **Control plane messages** | `control_plane_messages.mjs`, `control_plane_inject.mjs`, `send_eligibility.mjs` + 3 `CONTROL_PLANE_*.md` | ~1500 | ✓ NOW | Dashboard-message routing + sender-marker discipline |
+| 5 | **Session lifecycle** | `sessions_schema.mjs`, `watcher.mjs`, `container_runtime.mjs`, `runtime_tmux.mjs`, `runtime_helpers.mjs` + `SESSION_LIFECYCLE.md`, `CONTAINER_LIFECYCLE.md` | ~2500 | ✓ NOW | Spawn/idle/archive emergence |
+| 6 | **Review pipeline (extended)** | extend existing `workflows/review.dag` + `review_scheduler.mjs`, `reviews_schema.mjs` + `REVIEWS_DESIGN.md`, `REVIEW_POSTING_UNIFICATION_DESIGN.md` | ~1800 | ✓ NOW | Promote existing .dag; consumes #1 |
+| 7 | **Pools (capacity / billing / dispatch)** | `pools_api.mjs`, `pools_billing.mjs`, `pools_dispatch.mjs`, `pools_schedule.mjs`, `pools_schema.mjs`, `pools_validate.mjs`, `pools_writes.mjs` | ~2000 | ✓ NOW | Big subsystem; 7-file group |
+| 8 | **PR digests** | `pr_attached_urls.mjs`, `pr_ci_digest.mjs`, `pr_conflict_digest.mjs`, `pr_merge_ready_digest.mjs`, `pr_rest_fallback.mjs` | ~1200 | ✓ NOW | Pure-function-heavy; easy candidates |
+| 9 | **Scheduler** | `scheduler.mjs`, `review_scheduler.mjs` + `SCHEDULER_RESILIENCE_DESIGN.md` | ~1000 | ✓ NOW | Decision contract pure; trigger execution gated |
+| 10 | **Work-advancement prompts** | `work_advancement_prompts.mjs` | ~400 | ✓ NOW | Template construction = pure functions |
+| 11 | **Analyses pipeline** | `analyses_api.mjs`, `analyses_sync.mjs`, `analyses_sync_targets.mjs`, `analyses_table.mjs` | ~1500 | ✓ NOW | Sync + table queries |
+| 12 | **CI integration** | `ci.mjs` | ~500 | ✓ NOW | Poll + gate decisions pure |
+| 13 | **chatgpt-reviewer (browser automation)** | `scripts/chatgpt-reviewer/*` ~20 files | ~3000 | ◐ PARTIAL NOW | Browser automation = side-effectful; model CONTRACT today, execution deferred |
+| 14 | **api-reviewer (CLI backends)** | `scripts/api-reviewer/*` 3 files | ~600 | ✓ NOW | Backend selection + invocation contract |
+| 15 | **Server / HTTP routes** | `server.mjs` | ~2000 | ◐ PARTIAL NOW | Route TABLE doable today; handler bodies gated on Phase 3 HTTP emission |
+| 16 | **Utility helpers** | `disk_pressure.mjs`, `effort_picker.mjs`, `parse_int_env.mjs`, `transcript_excerpt.mjs` | ~400 | ✓ NOW (fold) | Small; fold into consuming subsystems rather than standalone |
 
-3. **DAG API (work-item HTTP layer)** — `work_item_api.dag`: `POST /api/internal-work-items` shape, idempotency-key, parent-binding, mode-flip. Mirrors PR #1193's `dag_writes.mjs` helpers.
+**Total TS LOC under audit**: ~21,800 lines across 16 subsystems. Realistic to model all 16 in 3-4 weeks of parallel worker dispatch (Phase 1.5).
 
-4. **Session lifecycle** — `session_lifecycle.dag`: spawn / idle / working / done / archived states; auto-archive grace; manager-grace-elapsed reason; remote-node vs local. Consumes decomposition algebra (a session IS a node in the work-item graph).
+### Independent NOW (no Phase 1 dependency)
 
-5. **Inbox** — `inbox.dag`: message-routing primitive; recipient discrimination; identity-inbox vs session-inbox. Per `feedback_auto_spawn_creates_separate_inbox.md`.
+Items **3, 5, 8, 10, 11, 12, 14, 16** can dispatch immediately as Phase 1.5 work without waiting for Phase 1 algebra substrate. ~8 parallel workers feasible.
 
-6. **Dashboard messaging** — `messaging.dag`: `Message { sender_session_id, recipient, body, priority, created_at, delivered_at }`; sender-marker discipline (`— sent from <session-id>` footer); HTTP 22 fallback. Per `feedback_sent_from_marker_on_pr_replies.md` + `feedback_dashboard_message_backtick_escape.md`.
+Items **2, 4, 6, 7, 9, 13, 15** consume the algebra substrate or have non-trivial cross-dependencies; dispatch after Phase 1 lands or Phase 1.5 first-wave validates the pattern.
 
-7. **Reviews API + posting** — `reviews.dag`: review pipeline; provider/sha/verdict tally; merge_criteria projection. Consumes (1) review_verdict.
+Item **1** (review verdict) is already in flight per operator directive.
 
-8. **PR-review workflow extension** — extend existing `workflows/review.dag` with new substrate; promote pure-helpers to typed projections; add `uses` once compiler supports it (or work around for now per the existing comment).
+### Subsystems that GATE on emission targets (Phase 3+)
 
-**Parallelism**: items 1, 3, 4, 5, 6 are independent — can dispatch 5 workers in parallel. Item 2 is the algebra substrate (Phase 1 from companion doc). Item 7 consumes item 1. Item 8 consumes item 2 + item 7.
+| Concern | Why gated |
+|---|---|
+| HTTP route handlers | Need `dsl/extdeps/http/server.dag` for actual server replacement |
+| SQL schema + migrations | Need `dsl/extdeps/sql/migration.dag` for migration emission |
+| Audit event persistence | Need `dsl/extdeps/audit/event.dag` for event-log emission |
+| Browser DOM automation | Need `dsl/extdeps/browser/dom.dag` for Puppeteer-class emission |
+| Cron / launchd / hooks | OS-level scheduling — need shell/cron emission |
+| Provider authentication | Auth + secret handling — separate Phase 3 concern |
 
-**Effort estimate per item**: 1-2 days of worker time for the modeling pass (no implementation; doc + types + projections). Roughly 1 PR per item.
+Each is a distinct R4-class extdeps workstream. None are blocking for Phase 1.5 modeling.
 
 ---
 
@@ -181,25 +211,38 @@ Once operator spawns the Ctrl-Migration Director:
   - Emission-Targets Mgr deferred to Day-N when Phase 1 nears landing
 - Substrate Mgr authors brief for `dsl/std/process_algebra.dag` Phase 1 substrate
 
-**Day 2-5** (parallel):
+**Day 2-5** (parallel) — first wave of Phase 1.5 (independent items, no Phase 1 dependency):
 - Substrate Mgr's worker drafts Phase 1 substrate PR
-- Subsystem-Modeling Mgr authors first-wave briefs:
-  - Worker A: `review_verdict.dag` (item 1 from §3 — first migration target)
-  - Worker B: `work_item_api.dag` (item 3)
-  - Worker C: `session_lifecycle.dag` (item 4)
-  - Worker D: `inbox.dag` (item 5)
-  - Worker E: `messaging.dag` (item 6)
-- 5 workers dispatched in parallel; each lands one PR
+- Subsystem-Modeling Mgr authors 8 first-wave briefs from §3 catalog rows:
+  - Worker A: `dsl/ctrl/inbox.dag` (catalog #3 — **promote existing demo**)
+  - Worker B: `dsl/ctrl/session_lifecycle.dag` (catalog #5)
+  - Worker C: `dsl/ctrl/pr_digests.dag` (catalog #8 — pure-function-heavy, easy)
+  - Worker D: `dsl/ctrl/work_prompts.dag` (catalog #10 — small)
+  - Worker E: `dsl/ctrl/analyses.dag` (catalog #11)
+  - Worker F: `dsl/ctrl/ci.dag` (catalog #12)
+  - Worker G: `dsl/ctrl/api_reviewer.dag` (catalog #14)
+  - Worker H: utility-helper consolidation (catalog #16 — fold into consumers)
+- 8 workers dispatched in parallel; each lands one PR (bundled by subsystem per §11 Q-H)
 
-**Day 6-14**:
-- First-wave PRs cycle reviews + land
-- Phase 1 substrate lands
-- Second-wave items (2, 7, 8 from §3) dispatch
-- Emission-Targets Mgr spawned; Phase 3 design briefs author
+**Day 6-10** — second wave (consumes Phase 1 algebra substrate):
+- Phase 1 algebra substrate lands (`dsl/std/process_algebra.dag`)
+- Dispatch next 6 subsystem briefs:
+  - Worker I: `dsl/ctrl/work_item.dag` (catalog #2 — algebra-consumer)
+  - Worker J: `dsl/ctrl/messaging.dag` (catalog #4 — control plane)
+  - Worker K: `dsl/ctrl/review_pipeline.dag` (catalog #6 — extends `workflows/review.dag`)
+  - Worker L: `dsl/ctrl/pools.dag` (catalog #7 — big 7-file group)
+  - Worker M: `dsl/ctrl/scheduler.dag` (catalog #9)
+  - Worker N: `dsl/ctrl/chatgpt_reviewer.dag` (catalog #13 — partial; contract today, browser-execution deferred)
+- Review verdict (catalog #1) parallel-tracked under operator's existing text-parsing fix work; merges in as a co-authority once both stabilize.
+
+**Day 11-14**:
+- First + second wave PRs cycle reviews + land
+- Verification Mgr framework brief (parity-test scaffolding for Phase 4)
+- Emission-Targets Mgr spawned; Phase 3 design briefs author for HTTP/SQL/audit extdeps
 
 **Day 15+**:
-- Phase 3 emission target PRs land sequentially
-- Phase 4 cut-over begins per-subsystem
+- Phase 3 emission target PRs land sequentially (HTTP first per §4 ordering)
+- Phase 4 cut-over begins per-subsystem (review verdict first as proven minimum)
 
 ---
 
@@ -288,23 +331,22 @@ Each Phase 1.5 worker brief should declare:
 
 ## §11. Open questions for operator
 
-**Q-A: `.dag` file placement for ctrl-domain models** — gunbc-side (`dsl/ctrl/*.dag` in gunbc repo) or ctrl-side (`~/ctrl/workflows/*.dag` in ctrl repo)?
-- Pros gunbc-side: single substrate authority in one place; gunbc compiler emits ctrl/ artifacts; centralizes the .dag toolchain
-- Pros ctrl-side: keeps ctrl/ self-contained; respects existing `workflows/*.dag` precedent; ctrl team owns their substrate
-- Proposed: gunbc-side for universal primitives (`dsl/std/process_algebra.dag`); ctrl-side for application-specific (`~/ctrl/workflows/<subsystem>.dag`), extending existing `workflows/review.dag` precedent
+**Q-A — RESOLVED (operator 2026-05-12T~18:55Z)**: `.dag` file placement is **gunbc-side**. `dsl/ctrl/*.dag` lives in gunbc as application/tool substrate (parallel to existing `dsl/gunbc/*` application-level types). Universal primitives go to `dsl/std/`. The 3 existing partial `workflows/*.dag` files in ctrl repo eventually migrate to gunbc-side too.
+
+**Q-D — RESOLVED (operator 2026-05-12T~18:55Z)**: review-verdict-parser migration is **already in flight** per operator (text-parsing fix in progress). Phase 1.5 dispatch order is no longer the question; the operator directive is "audit ALL session-dashboard work + migrate real functionality ASAP." See §3 comprehensive catalog (16 subsystems).
+
+---
+
+### Remaining open questions
 
 **Q-B: Director-tier session shape** — single Director or operator-acting-as-director?
 - Single Director (proposed): one session owns the program; ratifies + delegates
 - Operator-acting (alternative): operator directly spawns Mgrs; saves one tier
-- Proposed: single Director if program runs > 1 week; operator-acting if scope tightens
+- Proposed: single Director given scope (16 subsystems = > 1 week program)
 
-**Q-C: Workflow-types dissolution scope** (also in companion doc §4 + §11.1) — dissolve `dsl/gunbc/workflow/types.dag` into the decomp-algebra, or extend?
+**Q-C: Workflow-types dissolution scope** (also in companion doc §4) — dissolve `dsl/gunbc/workflow/types.dag` into the decomp-algebra, or extend?
 - Proposed: dissolve; existing types become structural projections over decomp-algebra
-- Operator confirm — has substantial downstream impact
-
-**Q-D: First migration target** — review-verdict-parser first (small, today's pain) or decomposition-algebra-itself first (foundational, in-flight)?
-- Proposed: review-verdict-parser first (proves the approach), decomp-algebra second (replaces foundational TS)
-- Operator confirm — affects worker dispatch order
+- Operator confirm — has substantial downstream impact on gunbc R3-close work
 
 **Q-E: Existing ctrl PRs #1192-#1197 disposition** — let them land in TS (treat as the "current authority" the migration will eventually replace), or hold pending substrate landing?
 - Proposed: let them land in TS; they are the current authority; the migration eventually projects-from-substrate to replace them
@@ -313,6 +355,13 @@ Each Phase 1.5 worker brief should declare:
 **Q-F: Cross-Director coordination** — how do `zesty-bear-812` (gunbc R3-close) and the new Ctrl-Migration Director coordinate when their work touches the same substrate?
 - Proposed: cross-tier coordination via operator-relay (operator routes signals between Directors); substrate-shape conflicts get operator ratification
 - Operator confirm — sets the inter-program protocol
+
+**Q-G (new): Service-contract authority claim** — when `dsl/ctrl/<subsystem>.dag` lands, does it become "future authority" (TS still authoritative until Phase 4 cut-over) or "co-authority" (both must agree)?
+- Proposed: future-authority during Phase 1.5/2; co-authority during Phase 3 emission landing; substrate-authority post-Phase 4 cut-over
+- This avoids parallel-authority debt while preserving the migration runway
+
+**Q-H (new): Per-subsystem PR cadence** — bundle related subsystems (e.g., all 4 `findings_*` files → one PR) or one PR per .mjs file?
+- Proposed: bundle by subsystem (catalog row) per `feedback_bundle_workstreams_per_pr.md`; ~16 PRs total for Phase 1.5
 
 ---
 
