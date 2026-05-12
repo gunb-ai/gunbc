@@ -492,33 +492,13 @@ const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
     ),
 ];
 
-/// Stable claim `name` order for `t_r3_gate_87_cementing_regen_bundle.dag` (must match
-/// `R3_GATE_87_CEMENTING_REGEN_SUITES` lens order — inventory ratchet still keys off per-lens paths).
-const R3_GATE_87_CEMENTING_BUNDLE_CLAIM_NAMES: &[&str] = &[
-    "cementing_regen_cost",
-    "cementing_regen_cost_symbolic",
-    "cementing_regen_cost_target_realization",
-    "cementing_regen_effect_enumeration",
-    "cementing_regen_infer_helpers",
-    "cementing_regen_lower_helpers",
-    "cementing_regen_provenance",
-    "cementing_regen_structural_resolution",
-    "cementing_regen_unused_parameters",
-    "cementing_regen_variant_payload",
-];
-
 #[test]
 fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
-    // Single `compile_to_dag` for all regen harness claims (see bundle module doc). Per-lens
-    // `tests/dag/t_r3_gate_87_cementing_regen_*.dag` files remain the edit surface + inventory
-    // authority (`R3_GATE_87_CEMENTING_REGEN_SUITES` path list).
-    let dag = lower(
-        include_str!("../dag/t_r3_gate_87_cementing_regen_bundle.dag"),
-        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_bundle.dag",
-    );
-    run_suite_all_pass_with_expected_claim_names(
-        &dag,
-        "r3_gate_87_cementing_regen_bundle_suite",
-        R3_GATE_87_CEMENTING_BUNDLE_CLAIM_NAMES,
-    );
+    // One `compile_to_dag` per `tests/dag/t_r3_gate_87_cementing_regen_<lens>.dag` harness — the
+    // on-disk file is the single authority for that row (INVARIANTS §P2); no duplicated copy in a
+    // bundle module.
+    for (source, file, suite, claim_names) in R3_GATE_87_CEMENTING_REGEN_SUITES {
+        let dag = lower(source, file);
+        run_suite_all_pass_with_expected_claim_names(&dag, suite, claim_names);
+    }
 }
