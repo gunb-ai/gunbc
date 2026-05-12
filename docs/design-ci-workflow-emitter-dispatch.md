@@ -112,6 +112,31 @@ field to `YamlStatic`, but it must return a fully explicit `EmissionTarget`
 before calling `project_github_actions`. That keeps `YamlStatic` and "omitted"
 from becoming two authoritative encodings of the same decision.
 
+Practice 4 coproduct receipt for the initial enum:
+
+| Receipt | Classification | Disposition |
+|---|---|---|
+| `EmissionTarget = YamlStatic | BinaryShim | PythonShim` | 🟡 YELLOW scaffold | The variants currently encode two dimensions: artifact shape (`StaticYaml` vs thin shim) and runner realization (`compiled binary` vs emitted Python). Keep the flat enum only as the Slice 4/5 dispatch surface while there are exactly three concrete consumers. |
+
+The named dissolution trigger is the first additional shim runtime or the first
+need to share runner metadata across shim targets. At that point the enum must
+dissolve into coordinates equivalent to:
+
+```dag
+type EmissionArtifactShape = StaticYaml | ThinShim
+type ShimRunnerKind = CompiledBinary | EmittedPython
+
+type EmissionTarget =
+  Static(EmissionArtifactShape)
+  | Shim { runner: ShimRunnerKind }
+```
+
+The exact spelling can change with implementation, but the factoring cannot:
+static-vs-shim artifact shape and runner realization are separate facts once a
+fourth target would otherwise duplicate shim structure. That prevents
+`BinaryShim`, `PythonShim`, and future shim variants from becoming a growing
+parallel taxonomy.
+
 ### 3.1 Placement Evaluation Summary
 
 #### Option A: Field on `Workflow`
