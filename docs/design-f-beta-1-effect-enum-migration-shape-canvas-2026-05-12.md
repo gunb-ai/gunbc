@@ -56,16 +56,20 @@ Per the §3.2 + §6.2 authority above, the F-β.1 migration shape is:
 
 This is **option (c-trivial)** in the substrate-shape question: the canvas does not propose alternative carrier shapes because the pre-existing authority already locked the shape. The canvas's job here is **ratification routing**, not shape-selection.
 
-## §2. Sub-phase decomposition (F-β.2 implementation)
+## §2. Internal phase decomposition (F-β.2 implementation — ONE atomic PR)
 
-Per Cluster-F plan, F-β.2 lands in 4 sub-phases (post-ratification):
+Per `docs/design-effect-enumeration-resource-threading.md` §6 (atomic-migration shape, no bridge) + `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` §1.3 ("atomic migration per design §6.2 (single-PR shippable)"): **F-β.2 lands in a single coordinated PR. No sub-phase may merge independently.** The phases below are internal authoring structure, not independently dispatchable workers.
 
-1. **F-β.2a — resource-threading.** Thread the resource set through arrow signatures of every `Callable` referenced by an `Operation`. Per-callable, isolated, parallelizable.
-2. **F-β.2b — metadata retirement.** Retire `OperationEffect` declaration at `src/v3/std/effects.dag:421` + `DeriveOpEffectResult` at `:431`. `derive_op_effect` function dissolves.
-3. **F-β.2c — lens body update.** Replace `OperationEffect`-keyed lens reads with `Operation.callable.signature.resource_set` reads. Maintains lens-behavioral-parity.
-4. **F-β.2d — `CompositionVerdict.BrokenBy` reshape.** `first_breaker: ElementRef<OperationEffect>` → `ElementRef<Operation>` per §4.1 table.
+The earlier draft of this canvas (pre-codex-BLOCKING-PR-#2782 fix-forward) framed these as 4 separately-dispatchable workers; that violated the locked atomic-migration receipt. Corrected: one worker authors all 4 phases inside one PR, lands or holds atomically.
 
-Each sub-phase is dispatchable as a separate worker; **F-β.2a is the only parallel-across-callables phase**, the rest sequence.
+Internal phases (single-PR authoring sequence):
+
+1. **F-β.2-internal-a — resource-threading.** Thread the resource set through arrow signatures of every `Callable` referenced by an `Operation`.
+2. **F-β.2-internal-b — metadata retirement.** Retire `OperationEffect` declaration at `src/v3/std/effects.dag:421` + `DeriveOpEffectResult` at `:431`. `derive_op_effect` function dissolves.
+3. **F-β.2-internal-c — lens body update.** Replace `OperationEffect`-keyed lens reads with `Operation.callable.signature.resource_set` reads. Maintains lens-behavioral-parity.
+4. **F-β.2-internal-d — `CompositionVerdict.BrokenBy` reshape.** `first_breaker: ElementRef<OperationEffect>` → `ElementRef<Operation>` per §4.1 table of `design-effect-enumeration-resource-threading.md`.
+
+All four phases must be present + green in the single F-β.2 PR. The PR body should enumerate the four-phase internal structure (so reviewers can audit each phase) but the merge unit is the whole PR.
 
 ## §3. Practice 4 (coproduct dissolution) discipline
 
@@ -90,8 +94,7 @@ The canvas does not surface open questions because §3.2 + §6.2 authority alrea
 
 Director ratification on:
 - (a) Adopt §3.2 thread-through-signature shape verbatim for F-β.1
-- (b) F-β.2 sub-phase decomposition (4-phase per §2 above)
-- (c) F-β.2a parallel-across-callables / F-β.2b-d sequential
+- (b) F-β.2 as ONE atomic PR per `design-effect-enumeration-resource-threading.md` §6.2 + `r3-cluster-f-sequencing-plan-2026-05-09.md` §1.3 — the four internal phases (per §2 above) are authoring structure, not independently dispatchable; no sub-phase merges separately
 
 On ratification, gate #82 closes. F-β.2 sub-phase brief authoring follows (Wave-2 lane).
 
