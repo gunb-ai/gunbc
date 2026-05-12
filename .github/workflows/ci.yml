@@ -187,9 +187,11 @@ jobs:
   # counts as a code change and runs the full v3 job.
   #
   # **Dissolution trigger**: gate `ci_uses_provable_minimal_affected_set_selection`
-  # (R3 close-blocking, see `docs/design-affected-set-lens.md` §5). Once the
-  # affected-set lens computes provable minimal test sets, this coarse filter
-  # is replaced by the structural lens output. Delete this job + `needs:
+  # (**R4.B full delivery** per `docs/design-affected-set-lens.md` §5 "CI integration
+  # sketch (deferred to R4 full delivery)"; the affected-set lens prototype is
+  # pre-R3-close at gunbc#2699 but CI integration is R4-scoped). Once the lens
+  # computes provable minimal test sets AND the CI integration lands, this coarse
+  # filter is replaced by the structural lens output. Delete this job + `needs:
   # [changes]` on `v3` at that point.
   #
   # Note on branch protection: when `v3` skips (docs-only), `self_host_ratchet`
