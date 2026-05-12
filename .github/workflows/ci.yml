@@ -254,12 +254,15 @@ jobs:
     needs: [changes]
     # Heavy compute (cargo release builds, full v3 test suite at the
     # 4000s transitional budget + clippy + lens gates). 2-core ubuntu-latest blows
-    # the 60min cap reliably. Run the heavy job on the gunb-ci ephemeral
-    # GCE Spot runner pool: each queued job gets one n2d-standard-8 VM,
-    # the VM registers as an ephemeral GitHub runner, runs one job, then
-    # self-deletes. Spot preemption is acceptable here; the companion
-    # ci-spot-rerun workflow retries failed jobs while `run_attempt < 4` (four attempts).
-    runs-on: [self-hosted, linux, x64, gunbc-ci]
+    # the 60min cap reliably. Run the heavy job on a dedicated `gunbc-v3` runner
+    # pool: each queued job gets one n2-standard-8 on-demand VM, the VM registers
+    # as an ephemeral GitHub runner, runs one job, then self-deletes. Splitting
+    # this from the `gunbc-ci` pool (used by the short `ci` job above) was
+    # required to prevent label-overlap races: when both jobs shared the same
+    # `gunbc-ci` label, GitHub would sometimes assign a VM spawned for v3 to ci
+    # instead (since ci is older in the queue), the ephemeral runner would
+    # complete ci, the VM would self-delete, and v3 would be orphaned forever.
+    runs-on: [self-hosted, linux, x64, gunbc-v3]
     # Full suite is transitionally capped at 4000s (~67m), plus lane2d gate, prebuild,
     # two clippy passes, regen-fresh compile check, and L-7/L-8 shell gates. A 60m job cap
     # cancels mid-suite on cold/cache-miss runners (observed: Actions "maximum execution time
