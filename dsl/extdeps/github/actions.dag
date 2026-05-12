@@ -8,7 +8,7 @@
 // Spec: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 //
 // Consumers:
-//   gunbc/ci.dag — compiler CI gates plus `.github/workflows/ci.yml` as `Workflow` data (T-WAD R3)
+//   gunbc/ci.dag -- CI intent declarations that compile against these types
 
 module extdeps.github.actions
 
@@ -24,10 +24,7 @@ type Workflow {
   jobs: List<Job>
   env: Map<String, String>
   permissions: WorkflowPermissions?
-  emission_target: EmissionTarget?
 }
-
-type EmissionTarget = YamlStatic | BinaryShim | PythonShim
 
 type WorkflowPermissions {
   contents: PermissionLevel

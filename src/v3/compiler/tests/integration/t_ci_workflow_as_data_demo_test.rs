@@ -33,11 +33,6 @@ const _: &str = include_str!(concat!(
     "/../../../docs/briefs/r3-substrate-t-workflow-as-data-slice-1-worker.md"
 ));
 
-const GUNBC_CI_DAG: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../dsl/gunbc/ci.dag"
-));
-
 fn demo_bootstrap_dag() -> v3_compiler::dag::Dag {
     generated_full_bootstrap_dag()
 }
@@ -281,32 +276,6 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
     );
     dag.declaration_by_name("modeled_gunbc_ci_workflow")
         .expect("modeled_gunbc_ci_workflow data must load from t_ci_workflow_as_data_demo.dag");
-}
-
-#[test]
-fn ci_workflow_as_data_pins_emission_target_surface() {
-    let dag = demo_bootstrap_dag();
-    assert!(
-        dag.diagnostics().is_empty(),
-        "fixture diagnostics: {:?}",
-        dag.diagnostics()
-    );
-
-    let workflow = named_record_root(&dag, "Workflow");
-    conj_field_ty(&dag, workflow, "emission_target");
-
-    for variant in ["YamlStatic", "BinaryShim", "PythonShim"] {
-        disj_variant_constructor_id(&dag, "EmissionTarget", variant);
-    }
-
-    assert!(
-        GUNBC_CI_DAG.contains("data gunbc_ci_yml_workflow: Workflow = Workflow"),
-        "full gunbc CI workflow data must be authored in dsl/gunbc/ci.dag"
-    );
-    assert!(
-        GUNBC_CI_DAG.contains("emission_target: YamlStatic"),
-        "full gunbc CI workflow data must carry an explicit emission target"
-    );
 }
 
 #[test]
