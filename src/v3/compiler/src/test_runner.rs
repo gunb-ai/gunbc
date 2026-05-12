@@ -3219,6 +3219,7 @@ impl<'a> TestRunner<'a> {
                     .iter()
                     .filter_map(Behavior::as_bind)
                     .filter(|bind| bind.span.file == claim.file_name)
+                    .filter(|bind| !bind.name.starts_with("<refinement:"))
                     .map(|bind| bind.name.clone())
                     .collect();
                 match bind_names.as_slice() {
