@@ -30,20 +30,21 @@ Two paragraphs of pre-existing substrate authority bound this canvas:
 
 ### §6.2 (existing authority) — Atomic-migration feasibility
 
-> "**`Operation` already exists.** `src/v3/std/services.dag:122` declares the carrier with `callable: CallableRef + inputs: Map + endpoint: RestEndpointBinding` — exactly what §3.2 needs. **No new substrate type.** The PR-β..ω lineage in `services.dag:9-14` is the dispatch frame for the per-extdep population work."
+> "**`Operation` already exists.** `src/v3/std/services.dag:121` declares the carrier with `callable: CallableRef + inputs: Map + endpoint: RestEndpointBinding` — exactly what §3.2 needs. **No new substrate type.** The PR-β..ω lineage in `services.dag:9-14` is the dispatch frame for the per-extdep population work."
 >
 > — `docs/design-effect-enumeration-resource-threading.md` §6.2
 
-**Audit grep receipt** (2026-05-12T20:18Z):
+**Audit grep receipt** (2026-05-12T20:35Z; corrected per cursor APPROVE_WITH_COMMENTS review 10384 — anchored pattern, real output):
 ```
+$ grep -n "^type Operation {" src/v3/std/services.dag
+121:type Operation {
 $ grep -nE "^type Operation|callable: CallableRef|inputs:.*InputField" src/v3/std/services.dag
-122:type Operation {
-123:  callable: CallableRef
-124:  inputs:   Map<String, InputField>
-125:  endpoint: RestEndpointBinding
-126:}
+102:// identity (`callable: CallableRef`) plus its REST realization +
+121:type Operation {
+122:  callable: CallableRef
+123:  inputs:   Map<String, InputField>
 ```
-Carrier present at line 122 with the declared shape. §3.2 + §6.2 audit-citations are verifiable against current main.
+Carrier present at line 121 with declared shape. Line 102 is a header-comment substring match (noise; not a structural match). §3.2 + §6.2 audit-citations are verifiable against current main.
 
 ---
 
@@ -51,7 +52,7 @@ Carrier present at line 122 with the declared shape. §3.2 + §6.2 audit-citatio
 
 Per the §3.2 + §6.2 authority above, the F-β.1 migration shape is:
 
-**Adopt the §3.2 thread-through-signature shape verbatim.** No new top-level carrier. The existing `Operation` carrier at `services.dag:122` is the pinning surface; resource sets are read off the arrow signature on the referenced `CallableRef`.
+**Adopt the §3.2 thread-through-signature shape verbatim.** No new top-level carrier. The existing `Operation` carrier at `services.dag:121` is the pinning surface; resource sets are read off the arrow signature on the referenced `CallableRef`.
 
 This is **option (c-trivial)** in the substrate-shape question: the canvas does not propose alternative carrier shapes because the pre-existing authority already locked the shape. The canvas's job here is **ratification routing**, not shape-selection.
 
