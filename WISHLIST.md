@@ -79,7 +79,7 @@ R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), R4.C (low-lev
 
 **Open questions**:
 - Symmetric extdeps: how much extra detail does ingest need vs emit? (Surfaced as work; not blocker.)
-- Scope: all 3 emission targets (Rust/Python/Go), or one as proof-of-concept first? Different first-target choices have different costs (Rust = hardest test of architecture; Python = biggest user-experience win).
+- Scope: all 5 emission targets (Rust/Python/Go/C/C++), or one as proof-of-concept first? Different first-target choices have different costs (Rust = hardest test of architecture among managed/safe-typed languages; C/C++ = hardest "real-codebase" test + richest ABI surface; Python = biggest user-experience win).
 - Information loss: ingest may not be lossless (Python's dynamic dispatch ≠ Rust's static dispatch); what's the contract for "we ingested your code well enough"?
 
 ### R4.B — Introspect-lens saturation + tooling-consumer adapters (user-facing: "queries-as-data")
@@ -106,7 +106,7 @@ R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), R4.C (low-lev
 
 ### R4.C — Low-level emission targets
 
-**Wish (operator 2026-05-12)**: extend the emission projection set to include **machine code**, **assembly**, and **LLVM IR text** as native emission targets — same Lens<C> shape as the existing Rust / Python / Go target codegen, just at lower levels in the toolchain stack.
+**Wish (operator 2026-05-12)**: extend the emission projection set to include **machine code**, **assembly**, and **LLVM IR text** as native emission targets — same emission-pipeline shape as the existing Rust / Python / Go target codegen (per `docs/design-emission-model.md`), just at lower levels in the toolchain stack. **Not** a `Lens<C>` instance — emission lives outside the lens framework per `docs/design-emission-model.md:958` ("T-Verification-L4-L7-Direct is NOT a `Lens<C>` instance — it's a runtime equivalence check that compares emit-target output vs .dag eval result; the lens framework's `read: (Dag, Behavior) → Witness<C>` cannot read emitted target artifacts") + `:1106-1111` (per-projection-class table distinguishing structural-fold from runtime-equivalence properties — including the **Faithful** row at `:1106`). The per-Behavior input shape of `Lens<C>` is defined in `docs/design-lens-framework.md:343` ("`read: (Dag, Behavior) → Witness<C>` — typed per-Behavior failure channel"); emission targets are corpus-driven projection through the emission pipeline. Lenses *about* emission outputs (`Lens<FaithfulnessVerdict>`, `Lens<PerformanceVerdict>`, structural-`Lens<MinimalityVerdict>` per `design-emission-model.md:1106-1111`) are folds over substrate facts characterizing emission; they are not the emission projection itself.
 
 **Orthogonal-to-LLVM framing** (explicit): gunbc is **NOT built on LLVM** and is **NOT competing with LLVM**. The substrate is gunbc-native; the projection to LLVM IR is an **interop output**, not an internal dependency. (The dropped `docs/r4-c-compiler-and-llvm-in-dag-program-plan.md` was about IMPORTING LLVM IR + C as substrate via bidirectional extdeps — multi-month effort, currently out of scope per operator 2026-05-12. R4.C is the much narrower wish: emit LLVM IR text as one more target alongside Rust / Python / Go, no ingestion / no LLVM-as-internal-engine claim.)
 
@@ -135,7 +135,10 @@ R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), R4.C (low-lev
 
 **Proof shape (per projection class)** — what "faithful" means concretely:
 
-1. **Emission projections** (target language / LLVM IR / machine code / assembly / etc.) — faithfulness = **cross-target consistency**: emitted code in language T1 produces the same observable behavior as emitted code in language T2, for the same LHS. This is the existing R3 free-consequences-demonstration lane (gates #43-#52) generalized to all R4 emission targets. Cementing pattern: frozen-oracle parity per gate #87.
+1. **Emission projections** (target language / LLVM IR / machine code / assembly / etc.) — faithfulness has **two structural requirements** (per `THESIS.md:178-180` Tier 3 + `docs/design-emission-model.md:406-408`):
+    - **L4 emit/eval match** (LHS↔RHS faithfulness; load-bearing): emitted target output executes equivalently to `.dag` evaluation of the same LHS. Without L4, multiple targets could agree (L5) while all being unfaithful to the LHS substrate. L4 is the primary faithfulness gate. Lane: `T-Verification-L4-L7-Direct` corpus-driven runtime harness.
+    - **L5 cross-target consistency** (inter-RHS faithfulness): emitted code in language T1 produces the same observable behavior as emitted code in language T2, for the same LHS. R3 free-consequences-demonstration lane (gates #43-#52) generalized to all R4 emission targets. Lane: `T-Verification-L5-Corpus` corpus-driven equivalence check.
+    Cementing pattern for both: frozen-oracle parity per gate #87. L4 catches "all targets agree but diverge from LHS"; L5 catches "targets disagree". Both required for full emission faithfulness.
 
 2. **Ingestion projections** (parse target → substrate) — faithfulness = **round-trip identity**: `parse(emit(x)) ≡ x` for the substrate (up to substrate-equivalence; not byte-level). This is the R4.A architectural falsifier. If any extdep has emission-only assumptions, the round-trip breaks.
 
