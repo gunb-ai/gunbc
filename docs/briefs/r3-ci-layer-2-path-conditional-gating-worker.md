@@ -70,11 +70,19 @@ v3:
     - <fmt + clippy — always run when v3 runs>
     - name: cost-lens integration
       if: ${{ needs.changes.outputs.skip_cost_lens != 'true' }}
-      run: cargo test -p v3-compiler --test integration cost_lens_*
+      run: cargo test -p v3-compiler --test integration cost_lens
     - name: emit-target integration
       if: ${{ needs.changes.outputs.skip_emit_target != 'true' }}
-      run: cargo test -p v3-compiler --test integration *_emit_*
+      run: cargo test -p v3-compiler --test integration emit
     # ... per-group test invocations
+    # IMPORTANT (per openai-pro P3 BLOCKING #9749 absorption): the positional
+    # argument to `cargo test` after `--test integration` is libtest's
+    # test-name SUBSTRING filter, NOT a glob. `cost_lens` matches all tests
+    # whose name CONTAINS "cost_lens"; `cost_lens_*` would be treated as a
+    # literal substring (with the `*`) and match zero tests — silent skip.
+    # NEVER use shell-glob syntax (`*`, `?`, etc.) in the positional filter.
+    # If precision beyond substring is needed, use `--exact` with the
+    # specific test name OR script-side enumeration via cargo metadata.
 ```
 
 **Job-level `code` flag retained**: docs-only PRs still skip the entire `v3` job (~67min → 0min). Layer 2 makes the granularity finer for code PRs whose changed-paths affect only some groups.
@@ -91,7 +99,7 @@ Where:
 - `group_name` — short identifier (e.g., `cost_lens`, `emit_target`, `parser_grammar`)
 - `dimensions: Set<Dimension>` — non-empty subset of `{value, cost, complexity, effect, refinement}` per `docs/design-affected-set-lens.md` §2 union semantics. Single-element sets `{cost}` are valid for single-dim groups; multi-dim consumers MUST list all dimensions they read (e.g., LBP demonstration: `{complexity, cost}`). Empty set is invalid — escalate per §7.
 - `required_paths_regex` — regex over changed file paths; if no changed file matches, skip this group
-- `test_pattern` — `cargo test` arg pattern selecting the group's tests
+- `test_pattern` — `cargo test` positional **test-name substring filter** (NOT a glob; libtest's filter is substring-based per `cargo test --help`). Example: `cost_lens` matches all tests whose name contains the literal substring "cost_lens". **Never use shell-glob syntax** (`*`, `?`) in this field — those characters would be treated as literal substring characters and silently match zero tests (fail-open per openai-pro P3 BLOCKING #9749). If precision beyond substring is needed, use `--exact` with the specific test name or enumerate via cargo metadata.
 
 **Inventory derivation** (Mgr-fill from 3 sources):
 
@@ -106,8 +114,10 @@ Where:
 **Mechanism**: the `changes` job MUST gate ALL `skip_*` flags to `false` (force full-run) when any changed file matches the shared-infrastructure regex:
 
 ```
-^(\.github/.*|scripts/.*|Cargo\.(toml|lock)|rust-toolchain\.toml|\.cargo/.*|build\.rs)$
+^(\.github/.*|scripts/.*|Cargo\.(toml|lock)|rust-toolchain\.toml|\.cargo/.*|build\.rs|src/v3/compiler/tests/integration/common/.*|src/v3/compiler/tests/integration/sg0_census_test\.rs|src/v3/compiler/tests/integration/test_runner_test\.rs|src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test\.rs|src/v3/compiler/tests/integration/integration\.rs|src/v3/compiler/tests/integration\.rs)$
 ```
+
+**Harness/test-selection-machinery arms** (per openai-pro P3 BLOCKING #9749 absorption): the regex includes the named harness-code class explicitly — `tests/integration/common/*` (shared test utilities), `sg0_census_test.rs` (census authority), `test_runner_test.rs` (runner framework), `t_pb_b_1_dag_runner_test.rs` (suite enumeration framework), and the integration test entry points. Worker MUST add any new harness-class file to this regex before merging the file. **A harness-class file MUST never appear in a per-group `required_paths_regex` — it always triggers full-run.**
 
 Equivalently in step output: `force_full_run = (any changed file ∈ shared-infrastructure regex)`; when `force_full_run = true`, all per-group `skip_*` outputs short-circuit to `false`. Composes with the `code=true|false` Layer 1 gate (docs-only PRs already skip everything via Layer 1; this constraint applies only to code PRs).
 
@@ -125,12 +135,13 @@ The PM template provides:
 
 Inline sketch (illustrative — defer to the PM template for the actual starting inventory). Note `dimensions` column is `Set<Dimension>`; singletons shown as `{cost}`, multi-dim consumers as `{complexity, cost}`:
 ```
-cost_lens          | {cost}              | ^(src/v3/lenses/cost\.dag|src/v3/std/algebra\.dag|src/v3/compiler/src/lens_cost_.*\.rs)$       | cost_lens_*
-complexity_lens    | {complexity}        | ^(src/v3/lenses/complexity\.dag|src/v3/compiler/src/lens_complexity_.*\.rs)$                    | complexity_lens_*
-lbp_demonstration  | {complexity, cost}  | ^(src/v3/lenses/(cost|complexity)\.dag|src/v3/compiler/src/.*lbp.*\.rs)$                       | lbp_*  # multi-dim
-emit_target        | {effect}            | ^(src/v3/extdeps/.*|src/v3/compiler/src/emit/.*|src/v3/compiler/src/omni_shape_.*\.rs)$          | emit_target_*
-parser_grammar     | {refinement}        | ^(src/v3/parser/.*|src/v3/compiler/src/parser.*\.rs|src/v3/compiler/src/lower.*\.rs)$            | parser_grammar_*
+cost_lens          | {cost}              | ^(src/v3/lenses/cost\.dag|src/v3/std/algebra\.dag|src/v3/compiler/src/lens_cost_.*\.rs)$       | cost_lens
+complexity_lens    | {complexity}        | ^(src/v3/lenses/complexity\.dag|src/v3/compiler/src/lens_complexity_.*\.rs)$                    | complexity_lens
+lbp_demonstration  | {complexity, cost}  | ^(src/v3/lenses/(cost|complexity)\.dag|src/v3/compiler/src/.*lbp.*\.rs)$                       | lbp  # multi-dim
+emit_target        | {effect}            | ^(src/v3/extdeps/.*|src/v3/compiler/src/emit/.*|src/v3/compiler/src/omni_shape_.*\.rs)$          | emit
+parser_grammar     | {refinement}        | ^(src/v3/parser/.*|src/v3/compiler/src/parser.*\.rs|src/v3/compiler/src/lower.*\.rs)$            | parser
 # ... etc per Mgr-fill
+# test_pattern is libtest SUBSTRING filter — no globs; `cost_lens` matches every test name containing "cost_lens".
 ```
 
 **[Mgr-fill]**: full per-group table — exhaustive coverage of `scripts/slow-test-exemptions.txt` 78 entries grouped + empirical top-K from timings log + per-group required-paths regex tested against representative diffs.
