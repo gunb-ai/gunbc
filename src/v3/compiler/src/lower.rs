@@ -4149,6 +4149,26 @@ fn lower_data_item(
             ctx.dag,
             ctx.pending_refined_function_refs,
         ),
+        Some(variant_expr @ SurfaceExpr::VariantRecord { .. }) => {
+            try_lower_symbolic_cost_bind_param_expected_structural_data(
+                name,
+                variant_expr,
+                ty_decl_id,
+                ctx.symbols,
+                ctx.dag,
+                ctx.pending_refined_function_refs,
+            )
+            .or_else(|| {
+                try_lower_symbolic_cost_structural_data(
+                    name,
+                    variant_expr,
+                    ty_decl_id,
+                    ctx.symbols,
+                    ctx.dag,
+                    ctx.pending_refined_function_refs,
+                )
+            })
+        }
         Some(SurfaceExpr::Call { target, args, .. }) => {
             match (
                 dsl_std_render_repeat_string_decl_id(ctx.dag),
@@ -4422,6 +4442,36 @@ fn try_lower_symbolic_cost_structural_data(
         return None;
     }
     if !symbolic_cost_expr_uses_canonical_constructors(name, expr, symbols, dag) {
+        return None;
+    }
+    let span = surface_expr_span(expr);
+    let fv = lower_structural_field_value(
+        name,
+        "_",
+        expr,
+        ty_decl_id,
+        &LowerSubstStack::default(),
+        symbols,
+        dag,
+        None,
+        span,
+        pending_refined_function_refs,
+    )?;
+    Some(crate::dag::ValueBody::Structural {
+        fields: vec![("_".to_string(), fv)],
+    })
+}
+
+fn try_lower_symbolic_cost_bind_param_expected_structural_data(
+    name: &str,
+    expr: &SurfaceExpr,
+    ty_decl_id: DeclarationId,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+    pending_refined_function_refs: &HashSet<DeclarationId>,
+) -> Option<crate::dag::ValueBody> {
+    let expected_id = dag.declaration_by_name("SymbolicCostBindParamExpected")?.id;
+    if ty_decl_id != expected_id {
         return None;
     }
     let span = surface_expr_span(expr);

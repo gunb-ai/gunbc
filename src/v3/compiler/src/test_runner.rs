@@ -5829,6 +5829,11 @@ fn field_value_to_symbolic_cost_bind_param_expected_pattern(
     dag: &Dag,
     fv: &FieldValue,
 ) -> Result<SymbolicCostEqPattern, String> {
+    if let FieldValue::Record(fields) = fv {
+        if fields.len() == 1 && fields[0].0 == "_" {
+            return field_value_to_symbolic_cost_bind_param_expected_pattern(dag, &fields[0].1);
+        }
+    }
     let FieldValue::Variant {
         constructor,
         payload,
@@ -5839,24 +5844,24 @@ fn field_value_to_symbolic_cost_bind_param_expected_pattern(
              SymbolicCostBindParamExpected variant, got {fv:?}"
         ));
     };
-    let label = dag
-        .declaration(*constructor)
-        .name
-        .as_deref()
-        .ok_or_else(|| {
-            "SymbolicCostExprEqualsForBindParam: anonymous bind-param expected constructor"
-                .to_string()
-        })?;
-    match label {
+    let label_owned =
+        symbolic_cost_bind_param_expected_variant_label_for_constructor(dag, *constructor)
+            .ok_or_else(|| {
+                format!(
+                    "SymbolicCostExprEqualsForBindParam: constructor {constructor:?} is not a \
+             SymbolicCostBindParamExpected variant"
+                )
+            })?;
+    match label_owned.as_str() {
         "LinearCostForBindParam" => {
-            let record = single_payload(payload)?;
-            let fields = record_fields(record).ok_or_else(|| {
+            let record = peel_single_underscore_record(single_payload(payload)?);
+            let _ = record_fields(record).ok_or_else(|| {
                 format!(
                     "SymbolicCostExprEqualsForBindParam: LinearCostForBindParam payload must be \
                      a record, got {record:?}"
                 )
             })?;
-            let var = field(fields, "var").ok_or_else(|| {
+            let var = find_first_field_through_expected_value(record, "var").ok_or_else(|| {
                 "SymbolicCostExprEqualsForBindParam: LinearCostForBindParam missing `var`"
                     .to_string()
             })?;
@@ -5869,6 +5874,47 @@ fn field_value_to_symbolic_cost_bind_param_expected_pattern(
             "SymbolicCostExprEqualsForBindParam: unsupported expected variant `{other}`"
         )),
     }
+}
+
+fn peel_single_underscore_record(fv: &FieldValue) -> &FieldValue {
+    match fv {
+        FieldValue::Record(fields) if fields.len() == 1 && fields[0].0 == "_" => &fields[0].1,
+        other => other,
+    }
+}
+
+fn find_first_field_through_expected_value<'a>(
+    fv: &'a FieldValue,
+    key: &str,
+) -> Option<&'a FieldValue> {
+    match fv {
+        FieldValue::Record(fields) => field(fields, key).or_else(|| {
+            fields
+                .iter()
+                .find_map(|(_, inner)| find_first_field_through_expected_value(inner, key))
+        }),
+        FieldValue::Variant { payload, .. } => payload
+            .iter()
+            .find_map(|inner| find_first_field_through_expected_value(inner, key)),
+        FieldValue::List(items) => items
+            .iter()
+            .find_map(|inner| find_first_field_through_expected_value(inner, key)),
+        FieldValue::Literal(_) | FieldValue::Map(_) => None,
+    }
+}
+
+fn symbolic_cost_bind_param_expected_variant_label_for_constructor(
+    dag: &Dag,
+    ctor: DeclarationId,
+) -> Option<String> {
+    let expected = dag.declaration_by_name("SymbolicCostBindParamExpected")?;
+    let TypeConnective::Disj { variants } = &expected.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.ty == ctor)
+        .map(|v| v.label.clone())
 }
 
 fn parse_bind_param_size_variable_expected(dag: &Dag, fv: &FieldValue) -> Result<(), String> {
