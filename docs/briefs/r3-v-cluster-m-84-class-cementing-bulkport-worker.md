@@ -60,7 +60,7 @@ Escalate if the entry requires a new predicate, if the lens is not behaviorally 
 
 **Mgr-finalization checklist:**
 - [ ] Complete live inventory.
-- [ ] Mark each entry DifferentialEquals vs LensOutputEquals vs substrate-gap.
+- [ ] Mark each entry as `DifferentialEquals`, `LensOutputEquals`, `SymbolicCostExprEquals`, `Compiles` plus paired receipt, or D2-routed blocker.
 - [ ] Select 1-3 pilot entries.
 - [ ] Confirm selected pilot/bulk split against the landed #87 pattern.
 
