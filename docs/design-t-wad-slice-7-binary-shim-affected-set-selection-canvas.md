@@ -1,7 +1,7 @@
 # T-WAD Slice 7 — Affected-set selection via `BinaryShim` (gate `ci_uses_affected_set_selection`, program row 103)
 
 **Status:** Verification-lane design canvas (implementation **not** in this PR).  
-**PR:** [gunbc#2760](https://github.com/gunb-ai/gunbc/pull/2760) is **draft** while the canvas is iterated; dashboard auto-reviews/CI gates skip draft until **ready**. When the branch is complete, opt into GitHub auto-coverage: `gh pr ready 2760 --repo gunb-ai/gunbc`.  
+**PR:** [gunbc#2760](https://github.com/gunb-ai/gunbc/pull/2760) ships as **draft** while the canvas is iterated; dashboard **auto**-reviews / CI gates skip draft until **ready** (manual dashboard triggers still run). When the canvas is complete and you want GitHub auto-coverage: `gh pr ready 2760 --repo gunb-ai/gunbc`.  
 **Authority:** `docs/r3-structure.md` (gate `ci_uses_affected_set_selection`), `docs/r3-program-plan.md` row 103, `docs/r3-t-workflow-as-data-full-r3-close-scope.md` §0–§1, PR #2744 WI / FULL R3-close scope context, `docs/design-ci-workflow-emitter-dispatch.md`, `docs/design-affected-set-lens.md`.  
 **Parent emitter canvas:** `docs/design-ci-workflow-emitter-dispatch.md` §5.2, §6 (this document **specializes** Slice 7; it does not reopen (c-refined) placement or `WorkflowRuntime` shape).  
 **Upstream lens:** PR #2713 (affected-set lens substrate; merged per scope docs).  
