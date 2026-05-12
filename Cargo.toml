@@ -4,6 +4,8 @@ exclude = [".stage1"]
 members = [
     # v3 compiler — M0: hand-written substrate skeleton
     "src/v3/compiler",
+    # T-WAD Slice 4 — regenerate `dsl/gunbc/ci_github_actions_workflow.dag` from `.github/workflows/ci.yml`
+    "tools/gen_gunbc_ci_workflow_dag",
     # T-Ground-Pilot probe — bounded inhabitance-search routing pilot
     # for the Rust target. Sibling crate so the probe lifecycle is
     # isolated and the v3-compiler SG-0 ratchet is untouched.
@@ -33,6 +35,7 @@ license = "MIT"
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
+serde_yaml = "0.9"
 thiserror = "1.0"
 toml = "0.8"
 proptest = "=1.4.0"
