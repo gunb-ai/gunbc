@@ -137,12 +137,26 @@ artifact. The relation between them is a **projection function**
 layer (per `docs/design-emission-model.md`: "coercion = emission", structural
 projection only).
 
-**WI-2 (PR #2745) scope under (c)**: the `gunbc_ci_yml_workflow` carrier WI-2
-adds to `dsl/gunbc/ci.dag` becomes the **declared projection result** —
-a `Workflow` value that the emitter validates against `project_github_actions(ci_workflow_dag)`
-for clean-emission equivalence (per `docs/design-clean-emission-contract.md`).
-The projection function is the substrate fact; the declared `Workflow` value
-is a pinned target for emission to drive toward.
+**WI-2 (PR #2745) scope under (c)**: there is **no** separately-declared
+`Workflow` value in the modeled authority surface. The only `Workflow` value
+that exists is the **output of the projection function** —
+`project_github_actions(ci_workflow_dag, target)` — derived structurally
+from a single source. Earlier framings of this canvas referring to a
+"pinned `Workflow` value the projection is validated against" are retracted
+(see §8 retraction); they would have re-introduced a second authority for
+the workflow artifact (one derived, one hand-declared) — exactly the dual-
+authority condition this canvas was supposed to dissolve.
+
+WI-2's existing draft (`gunbc_ci_yml_workflow` in `dsl/gunbc/ci.dag`) is
+re-scoped under (c) / (c-refined) to **either** (i) the projection-function
+declaration itself, **or** (ii) the projection-function invocation result
+bound to a name (`data gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)`).
+Both are single-authority shapes: the name is a binding to the derived
+result, not an independent declaration. A regression test that compares
+the emitted YAML byte-for-byte against a checked-in fixture is a test
+artifact (lives in `tests/`, not `dsl/`) and is explicitly **not** part of
+the modeled authority surface — it is a receipt of past projection output
+for drift detection, not a fact the emitter reads.
 
 ---
 
@@ -347,11 +361,12 @@ Under option (c) the lane-absorbed gate-set sequences as:
   carrier landing (`CIWorkflowDag` only; no actions.dag deletion implied)
 - PR #2745 (WI-2 cool-carp-720) scope **changes** under (c): the existing
   draft adds a `gunbc_ci_yml_workflow` value to `dsl/gunbc/ci.dag` directly.
-  Under (c), this value should live as the **declared projection result** at
-  whichever module owns the projection invocation, not as a bare value in
-  `gunbc.ci`. Re-brief WI-2 to author the projection function +
-  pinned-target value (or hold WI-2 until projection-function placement
-  decision lands).
+  Under (c), the only `Workflow` value in modeled authority is the
+  projection-function output — i.e., `data gunbc_ci_yml_workflow: Workflow =
+  project_github_actions(ci_workflow_dag, YamlStatic)`. The name is a
+  binding to the derived result, not an independent declaration. Re-brief
+  WI-2 to author the projection function + its bound invocation result
+  (or hold WI-2 until projection-function placement decision lands).
 
 **S1 — Projection function (new sub-slice; not yet in Director-ratified gate-set)**
 - New brief: `project_github_actions: CIWorkflowDag → Workflow` lives at
@@ -418,9 +433,11 @@ CIWorkflowDag → Workflow`).**
    the projection function reads it.
 5. (c) makes WI-2 scope (PR #2745) coherent: rather than adding
    `gunbc_ci_yml_workflow` as a bare value in `gunbc.ci` (the current
-   draft's shape), WI-2 authors the projection function + pinned
-   `Workflow` value the projection is validated against. This is closer
-   to the substrate-shape work the WI-2 brief intended.
+   draft's shape), WI-2 authors the projection function + a single bound
+   invocation result (`data gunbc_ci_yml_workflow: Workflow =
+   project_github_actions(...)`). The name binds to the derived result; no
+   separate hand-declared `Workflow` value exists in modeled authority.
+   This is closer to the substrate-shape work the WI-2 brief intended.
 
 **Director ratification ask**:
 
@@ -570,13 +587,15 @@ fn project_github_actions(
 `extdeps.github.actions.Workflow` is **unmodified** — no `emission_target`
 field added. The platform model stays bounded to platform facts.
 
-The pinned `Workflow` value WI-2 was authoring at PR #2745 (the structural
-mirror of ci.yml) lives in **gunbc namespace** (e.g., `data
-gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag,
-YamlStatic)` or an equivalent pinned-value form), not in
-`dsl/extdeps/github/ci.dag` (the path PR #2745 currently uses, which is
-also extdeps-bounded). This re-routes WI-2 substrate work to gunbc
-namespace under (c-refined).
+The `Workflow` value WI-2 was authoring at PR #2745 (the structural mirror
+of ci.yml) is, under (c-refined), the **bound result of the projection
+function** — `data gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)`
+— living in **gunbc namespace**, not in `dsl/extdeps/github/ci.dag` (the
+path PR #2745 currently uses, which is also extdeps-bounded). The name is
+a binding to the derived result; there is no separate hand-declared
+`Workflow` value as modeled authority (see §8 retraction). This re-routes
+WI-2 substrate work to gunbc namespace under (c-refined) AND tightens it
+to single-authority projection-output binding.
 
 ### §7.4 Comparison table revised
 
@@ -595,8 +614,10 @@ Replacing the §2.4 row "Workflow-artifact authority":
 
 **Adopt option (c-refined): `EmissionTarget` lives in `gunbc/ci.dag` as a
 parameter to `project_github_actions(ci_workflow_dag, target) → Workflow`;
-`extdeps.github.actions.Workflow` stays unmodified; pinned `Workflow`
-values for emission-validation live in gunbc namespace.**
+`extdeps.github.actions.Workflow` stays unmodified; the only `Workflow`
+values in modeled authority are bindings to the projection function's
+output (e.g., `data gunbc_ci_yml_workflow: Workflow = project_github_actions(...)`).
+No separately-declared `Workflow` value exists as modeled authority.**
 
 **Ratification asks revised** (supersedes §5):
 
@@ -663,10 +684,63 @@ gate-centric carrier extension).
 
 ---
 
+## §8. Retraction — pinned `Workflow` as separate authority (2026-05-12 ~06:57Z)
+
+**Trigger**: codex/codex-default REQUEST_CHANGES on PR #2749
+(`/api/reviews/9970/artifacts/stdout.log`) flagged option (c) as written:
+
+> The option (c) design reintroduces a second authority for the GitHub
+> Actions artifact by proposing both a projection function
+> `CIWorkflowDag → Workflow` and a hand-declared `Workflow` value that
+> emission "validates against" as a pinned target. That conflicts with
+> `INVARIANTS.md` P2 / `docs/modeling-discipline.md` Practice 5: the
+> workflow artifact fact would now live in two places, with coherence
+> enforced behaviorally by comparison instead of structurally by
+> deriving the artifact from one source.
+
+**Finding accepted**. Earlier framings in §1 (option (c) intro), §4 (S0,
+S1), §5 ratification ask #4, §7.3, and §7.5 referred to a "pinned
+`Workflow` value the projection is validated against" as a substrate
+fact. That formulation creates exactly the P2 dual-authority condition
+this canvas was supposed to dissolve: one `Workflow` value derived from
+`project_github_actions`, another hand-declared, with coherence enforced
+by behavioral comparison rather than structural derivation.
+
+**Retracted framing**: any sentence implying that WI-2 (or any future
+work) authors a hand-declared `Workflow` value as **modeled authority**
+which the projection output is compared against.
+
+**Replacement framing** (already applied in-place to §1, §4 S0, §5
+ask #5, §7.3, §7.5):
+
+- The only `Workflow` value in modeled authority is the **output of
+  `project_github_actions(ci_workflow_dag, target)`**, structurally
+  derived from a single source.
+- WI-2's existing `gunbc_ci_yml_workflow` draft is re-scoped to a **name
+  binding to the derived result** — `data gunbc_ci_yml_workflow:
+  Workflow = project_github_actions(ci_workflow_dag, YamlStatic)`. The
+  name binds to the derived result; it is not an independent
+  declaration.
+- A byte-level regression fixture comparing emitted YAML against a
+  checked-in expected-output file is a **test artifact** (lives in
+  `tests/`, not `dsl/`); it is a receipt of past projection output for
+  drift detection, **not** part of the modeled authority surface, and
+  not consumed by emission.
+
+The §2 / §7 layering argument is unchanged: gate-dependency lives at
+`gunbc.ci.CIWorkflowDag`; transport platform model lives at
+`extdeps.github.actions.Workflow`; emission policy
+(`EmissionTarget` + `project_github_actions`) lives in gunbc namespace;
+the workflow artifact is derived by the projection function from a
+single source.
+
+---
+
 **Authored by**: warm-wolf-698 (R3 Substrate Mgr) per Director (zesty-bear-812)
 canvas-authoring directive 2026-05-12 ~06:50Z via PM (deep-wolf-155) relay
 `msg_a945b141`. §7 addendum 2026-05-12 ~06:54Z per BLOCKING relay
-`msg_31090356`.
+`msg_31090356`. §8 retraction 2026-05-12 ~06:57Z per codex
+REQUEST_CHANGES on PR #2749 (review 9970).
 
 **Canvas readiness for Director ratification**: SURFACED with §7 INVARIANTS
 P1 addendum revising recommendation to **option (c-refined)**: `EmissionTarget`
