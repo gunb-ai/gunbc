@@ -44,9 +44,21 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
    // pr_ci_digest, pr_conflict_digest, pr_merge_ready_digest, pr_rest_fallback}.mjs
    //
    // STAGED → AUTHORITY trigger (single event under INVARIANTS P2/P5): the
-   // ctrl PR cut-over deleting the 5 .mjs files. Trio convergence below is
-   // the gating precondition that authorizes cut-over dispatch — it is NOT
-   // itself the authority flip:
+   // ctrl PR cut-over deleting ONLY the .mjs files whose functions are
+   // fully modeled in this brief's narrowed scope — i.e. pr_attached_urls.mjs
+   // and pr_rest_fallback.mjs (fully covered), and the portions of
+   // pr_merge_ready_digest.mjs that derive from existing PullRequest/
+   // PullReview fields only. Files / function-bodies depending on CI,
+   // conflict, or mergeability source facts (pr_ci_digest.mjs,
+   // pr_conflict_digest.mjs, the CI/conflict branches inside
+   // pr_merge_ready_digest.mjs) stay TS-authoritative until the follow-up
+   // Phase 1.5 PR models render_ci_digest / render_conflict_digest and the
+   // corresponding ctrl-side cut-over PR fires. The cut-over PR MUST NOT
+   // delete .mjs functions that have no .dag substrate replacement —
+   // doing so would flip authority for unmodeled functions and violate
+   // INVARIANTS P1/P2 (operator BLOCKING fix 2026-05-12 at worker brief :47).
+   // Trio convergence below is the gating precondition that authorizes
+   // cut-over dispatch — it is NOT itself the authority flip:
    //   (a) digest source-fact authority (consuming dsl/extdeps/github/pulls.dag PullRequest
    //       as fetched source-of-record; if a narrow GitHub-domain digest-summary record
    //       is needed, lands at dsl/extdeps/github/pull_digest.dag importing pulls.dag —
