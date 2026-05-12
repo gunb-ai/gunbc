@@ -20,7 +20,7 @@ artifact or a thin shim.
 The load-bearing design choice is:
 
 ```
-Workflow data chooses its emission target.
+CI workflow data is projected through a modeled emission target.
 The build system does not choose a hidden emitter path.
 ```
 
@@ -404,8 +404,8 @@ Runtime semantics:
 
 Acceptance contract:
 
-- Same `Workflow` declaration is the input to both `YamlStatic` and
-  `BinaryShim`.
+- Same CI workflow source and projection target surface are the input to both
+  `YamlStatic` and `BinaryShim`; the provider `Workflow` is derived.
 - The binary reads affected-set output as structural data, not as file-path
   regexes.
 - When affected-set computation is unavailable, unknown, or diagnostic-bearing,
@@ -519,7 +519,7 @@ The runtime must include a candidate when any of the following is true:
 - the lens lacks a proof receipt for an exclusion
 - `Dag_before` or `Dag_after` cannot be constructed
 - a TestClaim does not declare the dimensions it asserts
-- the workflow declaration references a job not mapped to a test/workflow node
+- the CI workflow source references a job not mapped to a test/workflow node
 
 This is the same discipline as the affected-set design: no silent exclusions.
 CI may run too much; it must not skip a structurally affected check.
@@ -560,8 +560,9 @@ data workflow_emission_target_toggle_proven: TestClaim = ...
 data workflow_target_semantics_equivalent: TestClaim = ...
 ```
 
-The first proves both emitters execute from the same `Workflow` input. The
-second proves semantic equivalence on representative event fixtures.
+The first proves both emitters execute from the same CI workflow source and
+modeled projection target surface. The second proves semantic equivalence on
+representative event fixtures.
 
 Suggested fixtures:
 
@@ -707,7 +708,8 @@ This design is ready for downstream implementation when:
 - Affected-set integration is assigned to shim runtime targets and remains
   fail-closed.
 - Equivalence is defined as workflow-semantics equivalence, not byte equality.
-- No new workflow-data carrier duplicates `Workflow`.
+- No independent provider `Workflow` declaration duplicates the derived
+  projection output.
 - No new matrix carrier is required for Slice 4 or Slice 5.
 
 ---
