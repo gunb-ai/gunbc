@@ -490,7 +490,9 @@ mod diagnostic_severity_fail_closed_tests {
         else {
             panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
         };
-        dag.declaration_mut(ds_id).span.file = "not_lens_application.dag".to_string();
+        // Must not end with `lens_application.dag` — e.g. `not_lens_application.dag` *does* end
+        // with that suffix and would still resolve.
+        dag.declaration_mut(ds_id).span.file = "src/v3/std/lens.dag".to_string();
         check_enforced_lens_applications(&mut dag);
         assert!(
             dag.diagnostics().iter().any(|(_, d)| matches!(
