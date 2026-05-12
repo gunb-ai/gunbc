@@ -473,10 +473,203 @@ Both rejections cost more substrate churn than (c) ratification.
 
 ---
 
+## §7. Addendum — INVARIANTS P1 BLOCKING reframes (c) (2026-05-12 ~06:54Z)
+
+**Trigger**: BLOCKING inline review on PR #2746 at
+`docs/design-ci-workflow-emitter-dispatch.md:360` from briansrls
+2026-05-12T06:44:13Z (comment c#4427988541), relayed by PM
+`msg_31090356`:
+
+> Adding `EmissionTarget` to `dsl/extdeps/github/actions.dag` puts a gunbc
+> emission/runtime choice into the GitHub Actions platform model, violating
+> extdeps fidelity and INVARIANTS P1.
+
+**Discriminator** (verbatim, `dsl/extdeps/github/actions.dag:1-12` header):
+> Models the GitHub Actions CI/CD platform as external dependency facts...
+> These are platform constraints — what GH Actions provides and requires —
+> not CI logic (that lives in `gunbc/ci.dag`).
+
+### §7.1 Argument acceptance
+
+The BLOCKING finding is **structurally correct**. The extdeps fidelity
+boundary is explicit at the file header: `extdeps.github.actions` models
+**platform facts** (what the runtime consumes); `gunbc/ci.dag` models **CI
+logic** (what gunbc emits/dispatches). `EmissionTarget` (`YamlStatic |
+BinaryShim | PythonShim | InlineGunbc`) is a gunbc emission-policy fact —
+the runtime does not consume "emission target"; it consumes whatever YAML
+or shim ends up at `.github/workflows/ci.yml`. The selection between
+projection shapes is a gunbc decision about which artifact gunbc renders.
+
+Per `INVARIANTS.md` P1 (single authority): emission-policy authority belongs
+to `gunbc/ci.dag` (single authority), **not** `extdeps.github.actions` (which
+holds platform authority). Placing `emission_target` on
+`extdeps.github.actions.Workflow` creates a dual-authority condition where
+the extdeps file holds a gunbc-policy fact alongside its platform facts.
+
+PR #2746 canvas §3.1 explicitly weighed and rejected the parallel objection
+("`extdeps.github.actions` describes platform constraints, not gunbc CI
+policy"), but the rebuttal — "the workflow carrier already describes a
+provider artifact" — **conflates** two distinct things:
+
+- **The platform Workflow value** — what GH Actions consumes (jobs, steps,
+  triggers, permissions, runners). This IS a platform fact and correctly
+  lives in extdeps.
+- **The emitted artifact shape** — `.github/workflows/ci.yml` vs a shim
+  invoking a compiled binary vs a Python runner. The SELECTION between
+  these is a gunbc emission-policy decision.
+
+The platform Workflow is the runtime's input contract. The emission-target
+choice is gunbc's output contract for which artifact realizes that input
+contract. These are different authorities on different sides of the
+runtime/emitter boundary.
+
+### §7.2 Implications for §1–§6
+
+This addendum **disqualifies** §1 option (b) AS-AUTHORED and **partially
+invalidates** §1 option (c) as authored above:
+
+- **Option (b) — `EmissionTarget` on `actions.Workflow`**: DISQUALIFIED per
+  §7.1. The substrate-decision in PR #2746 stands as a SHAPE (sum type
+  needed; sibling wrapper still rejected for the same join-cost reason),
+  but the PLACEMENT moves out of extdeps.
+- **Option (c) — hybrid retaining `Workflow.emission_target`**: PARTIALLY
+  INVALIDATED. The two-layer concept-layering argument (semantic source at
+  `gunbc.ci.CIWorkflowDag` + transport at `extdeps.github.actions.Workflow`)
+  REMAINS CORRECT. The `EmissionTarget` placement on the transport carrier
+  is what fails P1.
+
+The §2 four-axis comparison conclusions REMAIN VALID for the layering
+question: only a hybrid satisfies single-authority per layer + concept
+layering simultaneously. What changes is **where `EmissionTarget` lives**
+within the hybrid.
+
+### §7.3 Refined option (c) — "(c-refined)"
+
+`EmissionTarget` lives in **`gunbc/ci.dag`** (gunbc namespace; emission-
+policy authority) as a sum type. It is **not** a field on any extdeps
+carrier. The projection function takes it as a parameter:
+
+```dag
+// in dsl/gunbc/ci.dag (or dsl/gunbc/ci_emission.dag — placement open)
+type EmissionTarget
+  = YamlStatic
+  | BinaryShim
+  | PythonShim
+  | InlineGunbc
+
+// project_github_actions: CIWorkflowDag x EmissionTarget -> Workflow
+//   Pure structural projection (per docs/design-emission-model.md):
+//   reads gate-dependency DAG + target selector, emits actions.Workflow
+//   value that the emitter renders to the chosen artifact shape.
+fn project_github_actions(
+  ci_workflow_dag: CIWorkflowDag,
+  target: EmissionTarget,
+) -> Workflow
+```
+
+`extdeps.github.actions.Workflow` is **unmodified** — no `emission_target`
+field added. The platform model stays bounded to platform facts.
+
+The pinned `Workflow` value WI-2 was authoring at PR #2745 (the structural
+mirror of ci.yml) lives in **gunbc namespace** (e.g., `data
+gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag,
+YamlStatic)` or an equivalent pinned-value form), not in
+`dsl/extdeps/github/ci.dag` (the path PR #2745 currently uses, which is
+also extdeps-bounded). This re-routes WI-2 substrate work to gunbc
+namespace under (c-refined).
+
+### §7.4 Comparison table revised
+
+Replacing the §2.4 row "Workflow-artifact authority":
+
+| Axis | (a) | (b) AS-AUTHORED | (c) AS-AUTHORED | **(c-refined)** |
+|---|---|---|---|---|
+| Gate-dependency authority | ✓ `CIWorkflowDag` | ✗ implicit `Job.needs` | ✓ `CIWorkflowDag` | ✓ `CIWorkflowDag` |
+| Workflow-artifact authority | ✗ unmodeled | ✓ `Workflow` (platform-coupled emission-policy) | ✓ `Workflow` (same) | ✓ `Workflow` (platform-pure) + projection-fn in gunbc |
+| Emission-target carrier | ✗ build-system implicit | ✗ on extdeps (P1 violation) | ✗ on extdeps (P1 violation) | ✓ `gunbc.ci.EmissionTarget` (gunbc-namespace) |
+| INVARIANTS P1 (single authority) | ✗ dual-authority unresolved | ✗ extdeps holds gunbc-policy fact | ✗ extdeps holds gunbc-policy fact | ✓ each authority single-sourced |
+| Extdeps fidelity (file header :1-12) | n/a | ✗ violated | ✗ violated | ✓ preserved |
+| Sufficient for FULL R3-close | no | no | no (P1) | **yes** |
+
+### §7.5 Revised recommendation
+
+**Adopt option (c-refined): `EmissionTarget` lives in `gunbc/ci.dag` as a
+parameter to `project_github_actions(ci_workflow_dag, target) → Workflow`;
+`extdeps.github.actions.Workflow` stays unmodified; pinned `Workflow`
+values for emission-validation live in gunbc namespace.**
+
+**Ratification asks revised** (supersedes §5):
+
+1. **Ratify (c-refined)** as gate #56 substrate-shape under T-CI-WAD program-tag.
+2. **PR #2746 disposition changes from "merge with framing-narrowing
+   addendum" to "substantive substrate retraction"**: the `EmissionTarget?
+   on actions.Workflow` field placement is withdrawn. PR #2746 canvas
+   §3.1 reasoning narrows to "`EmissionTarget` substrate-decision
+   (sum-type, not sibling-wrapper) is correct; placement moves from
+   extdeps to gunbc namespace per INVARIANTS P1". Suggest PR #2746
+   authors a §7 addendum mirroring this canvas's §7 + revises §3.1/§3
+   accordingly, OR PR #2746 is held while (c-refined) is implemented as a
+   replacement canvas. Director call.
+3. **PR #2736 body correction still required** per §5.3 (independent of §7;
+   the body/diff mismatch is orthogonal to the P1 finding).
+4. **PR #2745 (WI-2) re-brief under (c-refined)**: relocate
+   `gunbc_ci_yml_workflow` from `dsl/extdeps/github/ci.dag` to a gunbc-
+   namespace module (e.g., `dsl/gunbc/ci_emission.dag`); add the
+   projection function declaration; pinned `Workflow` value is the
+   projection invocation result. This change is larger than §5.4 implied.
+5. **Decide S1 (projection function) gate status** per §5.5 — unchanged.
+
+**Pre-canvas Director ratification reconciliation**: Director ratified PR
+#2746's substrate shape at `msg_237bde05` before this BLOCKING finding
+surfaced. Per `feedback_pre_compaction_framings_self_supersede` and the
+broader operator-canvas-supersedes-prior-Director-ratification pattern
+when an INVARIANTS violation is identified: this canvas's (c-refined)
+recommendation supersedes the pre-canvas Director ratification. Director
+ratifies the surfaced shape (per
+`feedback_substrate_shape_belongs_in_mgr_canvas`), not the pre-surfaced
+shape.
+
+### §7.6 Why (c-refined) is not PM's "(b)" or "(c)" in `msg_31090356`
+
+PM relay `msg_31090356` proposed:
+- PM (b) — `EmissionTarget` on `gunbc.ci.CIPipeline`
+- PM (c) — Hybrid wrapper `WorkflowEmission { workflow: actions.Workflow, target }` in gunbc namespace
+
+(c-refined) is neither:
+
+- **vs PM (b)**: putting `EmissionTarget` on `CIPipeline` couples emission-
+  policy to the gate-list carrier. The same join-cost problem WI-1 canvas
+  §3 Option B already flagged applies — `CIPipeline` is gate-centric, not
+  emission-artifact-centric. PM (b) trades one P1 problem for a different
+  M9 concept-layering problem.
+- **vs PM (c)**: a `WorkflowEmission { workflow, target }` wrapper IS the
+  sibling-wrapper PR #2746 §3 Option C explicitly rejected — preserves
+  separation superficially but introduces an implicit join (which
+  `Workflow` corresponds to which emission target) and a duplicate
+  authority surface.
+
+(c-refined) instead expresses the emission-target choice **at the
+projection invocation**, not as a field on any carrier. This is the
+shape `docs/design-emission-model.md` prescribes: emission is structural
+projection; the projection function reads target spec + source; there is
+no carrier-level "this Workflow is targeted at X" fact because emission
+choice is a property of the emit-call, not a property of the value.
+
+The `EmissionTarget` sum-type itself lives in gunbc namespace (as a
+named type usable anywhere gunbc CI logic needs to reference emission
+targets), but no `EmissionTarget` **field** lives on any existing
+carrier. This eliminates both P1 (no extdeps modification) and M9 (no
+gate-centric carrier extension).
+
+---
+
 **Authored by**: warm-wolf-698 (R3 Substrate Mgr) per Director (zesty-bear-812)
 canvas-authoring directive 2026-05-12 ~06:50Z via PM (deep-wolf-155) relay
-`msg_a945b141`.
+`msg_a945b141`. §7 addendum 2026-05-12 ~06:54Z per BLOCKING relay
+`msg_31090356`.
 
-**Canvas readiness for Director ratification**: SURFACED. Director ratifies
-(c) | (a) | (b) | alternative shape; Mgr proceeds with downstream brief
-authoring per ratified shape.
+**Canvas readiness for Director ratification**: SURFACED with §7 INVARIANTS
+P1 addendum revising recommendation to **option (c-refined)**: `EmissionTarget`
+as projection-function parameter in gunbc namespace; `extdeps.github.actions.Workflow`
+unmodified. Director ratifies surfaced shape; Mgr proceeds with downstream
+brief authoring per ratified shape.
