@@ -45,8 +45,10 @@ type TestClaim {
 // Test execution cost is a first-class structural fact attached to a
 // modeled test node. This deliberately does not reuse compiler-internal
 // `SymbolicCost`: the slow-test ratchet needs observed/budgeted wall-clock
-// cost for the test node itself, so #102 can derive exemption status from
-// substrate instead of `scripts/slow-test-exemptions.txt`.
+// cost for the test node itself, so #102 can derive ratchet policy from substrate
+// facts rather than ad hoc unstructured rows (CI carries
+// `scripts/test-node-wall-clock-ratchet.jsonl` as the JSONL warn manifest until
+// the runner projects budgets from `.dag` data).
 //
 // Legacy dsl projection note: this tree does not carry T-WAD's v3
 // `TimingBudget` / `TimingMeasurement` / `Nanoseconds` substrate yet.
