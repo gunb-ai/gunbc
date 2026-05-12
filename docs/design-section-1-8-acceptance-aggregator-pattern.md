@@ -76,11 +76,11 @@ For every row where `Family == acceptance-aggregator`:
 Proposed row to add to §1.8 (pending warm-wolf-698 canvas ratification of substrate-shape options (i)/(ii)/(iii) for gate #56; the AGGREGATOR ROW is shape-stable regardless of which substrate option wins, since the constituent gate-IDs are unchanged):
 
 ```
-| 9X | t_ci_wad_full_r3_close | acceptance-aggregator | T-CI-WAD | <derived> | depends_on: #56, #<NEW1>, #<NEW2>, #<NEW3>, #<NEW4>. Constituents: ci_workflow_modeled_as_dag + ci_yml_deleted + workflow_emission_target_open_enum_landed + test_cost_dimension_landed + slow_test_exemptions_dissolved. Closes when all 5 PASSING per lattice-meet derivation rule. Brian-elevated to FULL R3-close scope 2026-05-12 per operator directive at gunbc#846. |
+| 9X | t_ci_wad_full_r3_close | acceptance-aggregator | T-CI-WAD | <derived> | depends_on: #56, #<NEW1>, #<NEW2>, #<NEW3>, #<NEW4>. Constituents: ci_workflow_modeled_as_dag + ci_yml_hand_authority_dissolved + workflow_emission_target_open_enum_landed + test_cost_dimension_landed + slow_test_exemptions_dissolved. Closes when all 5 PASSING per lattice-meet derivation rule. Brian-elevated to FULL R3-close scope 2026-05-12 per operator directive at gunbc#846. |
 ```
 
 The 4 NEW constituent rows MUST be added separately to §1.8 with their own families:
-- `ci_yml_deleted` → state-check
+- `ci_yml_hand_authority_dissolved` → state-check
 - `workflow_emission_target_open_enum_landed` → substrate-shape (carrier-shape per WI-1 canvas ratification)
 - `test_cost_dimension_landed` → substrate-shape (already exists as cost-dim work; verify row number)
 - `slow_test_exemptions_dissolved` → state-check
