@@ -1,16 +1,23 @@
 //! `tests/integration.rs` wiring scanner (Band-C cementing dispatch).
 //!
-//! SG-0 / INVARIANTS P5: this module is hand-authored Rust under `src/v3/compiler/src/` —
-//! keep `EXPECTED_HAND_AUTHORED_NON_TEST` in `tests/integration/sg0_census_test.rs` in
-//! lockstep when adding or retiring paths here.
+//! SG-0 / INVARIANTS P5: hand-authored Rust under `src/v3/compiler/src/` — keep
+//! `EXPECTED_HAND_AUTHORED_NON_TEST` in `tests/integration/sg0_census_test.rs` in lockstep
+//! when adding or retiring paths here.
+//!
+//! **ROADMAP / dissolution:** same **v3 lens capability honesty pass** row as
+//! `src/v3/compiler/tests/integration/common/wiring_scanner_test.rs` in `INVARIANTS.md` § SG-0 —
+//! Band-C `#[path]` / `mod` wiring is enforced without `syn` until reflected integration facts exist.
+//! **Dissolution:** remove this scanner when `tests/integration.rs` cementing module wiring can be
+//! validated structurally (no line-oriented scan). Raw/byte string openers in **Code** return
+//! `Err` so `CementingDispatchMatchesProjection` surfaces a claim failure instead of aborting the runner.
 //!
 //! Lives in the compiler crate so `test_runner` can validate
 //! `#[path = "integration/cementing/<stem>.rs"]` + `mod <stem>;` pairings without
 //! duplicating the scanner across test binaries.
 
 /// `true` when `bytes[i..]` opens a `b"…"`, `br#"…"#`, `r#"…"#`, or `r"…"` literal in
-/// Rust source. The wiring scanner does not model these — fail loud if they appear
-/// in `Code` so Band-C ratchets cannot silently mis-scan `tests/integration.rs`.
+/// Rust source. The wiring scanner does not model these — return an error if they appear
+/// in `Code` so Band-C ratchets surface `ClaimResult::Fail` instead of aborting.
 fn code_opens_raw_or_byte_string_literal(bytes: &[u8], i: usize) -> bool {
     match bytes.get(i) {
         Some(b'b') => {
@@ -72,24 +79,28 @@ enum IntegrationRsScan {
     CharLiteral,
 }
 
-fn integration_rs_panic_on_raw_string(bytes: &[u8], i: usize) {
+fn integration_rs_reject_raw_string_in_code(bytes: &[u8], i: usize) -> Result<(), String> {
     if code_opens_raw_or_byte_string_literal(bytes, i) {
-        panic!(
+        return Err(format!(
             "integration_rs wiring scan: raw/byte string literal at byte offset {i} \
              (e.g. r\"…\", r#\"…\"#, b\"…\", br#\"…\"#). Extend IntegrationRsScan before scanning this file."
-        );
+        ));
     }
+    Ok(())
 }
 
 /// Byte offsets of `needle` in `integration_rs` that occur in **Code** (outside
 /// `//`, `/* */`, `"…"` strings, `b'…'` byte literals, and `'…'` character literals).
 /// Lifetimes and labels (`'a`, `'static`) are skipped without entering string/literal
 /// states. See [`integration_rs_active_line_contains`].
-fn integration_rs_code_substring_positions(integration_rs: &str, needle: &str) -> Vec<usize> {
+fn integration_rs_code_substring_positions(
+    integration_rs: &str,
+    needle: &str,
+) -> Result<Vec<usize>, String> {
     let mut hits = Vec::new();
     if needle.is_empty() {
         hits.push(0);
-        return hits;
+        return Ok(hits);
     }
     let bytes = integration_rs.as_bytes();
     let mut i = 0usize;

@@ -13,6 +13,12 @@
 //! once per predicate evaluation (see `std::fs::read_to_string` below). Dissolution: consume
 //! reflected wiring facts at the runner edge so Band-C dispatch does not depend on crate layout
 //! + host FS for this check.
+//!
+//! **Interim projection bridge:** `expected_cementing_receipt_triples` is a fail-closed Rust match
+//! from `(registry_name, regen lens_file basename)` to the canonical receipt triples the
+//! `cementing_band_c_v2_complete_receipts` list must equal. Dissolution: move that expansion into
+//! `.dag` data (fixture or `std.verification`) so the predicate reads a single structural receipt
+//! roster keyed off the register ∩ `regen.dag` projection, with no parallel Rust roster.
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::Path as FsPath;
@@ -41,7 +47,10 @@ fn disj_variants(
     type_name: &str,
 ) -> Result<Vec<(String, crate::dag::DeclarationId)>, String> {
     let sum_decl = dag.declaration_by_name(type_name).ok_or_else(|| {
-        format!("bootstrap missing `{type_name}` (expected `std.verification` lens capability sum)")
+        format!(
+            "merged DAG missing nullary sum `{type_name}` — expected `std.verification` for lens \
+             capability axes, or `tests/dag/cementing_dispatch.dag` for `CementingBandCReceiptKind`"
+        )
     })?;
     let TypeConnective::Disj { variants } = &sum_decl.connective else {
         return Err(format!("`{type_name}` must be a Disj coproduct"));
@@ -274,15 +283,22 @@ fn v2_cementing_basenames_from_capability_rows(
             "LensCapabilityStructuralStatus",
             structural,
             "structural",
+            "capability_register row",
         )?;
         let behavioral_label = decode_nullary_sum_variant(
             dag,
             "LensCapabilityBehavioralStatus",
             behavioral,
             "behavioral",
+            "capability_register row",
         )?;
-        let v2_label =
-            decode_nullary_sum_variant(dag, "LensCapabilityV2Counterpart", v2, "v2_counterpart")?;
+        let v2_label = decode_nullary_sum_variant(
+            dag,
+            "LensCapabilityV2Counterpart",
+            v2,
+            "v2_counterpart",
+            "capability_register row",
+        )?;
         if behavioral_label == "LensCapabilityBehavioralComplete"
             && v2_label == "LensCapabilityV2RealV2"
         {
@@ -390,13 +406,17 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
         };
         let registry_name = string_field(fields, "registry_name")?;
         let module_stem = string_field(fields, "module_stem")?;
-        let kind_str = string_field(fields, "kind")?;
-        if kind_str != "dag" && kind_str != "temporary-rust" {
-            return Err(format!(
-                "cementing receipt `kind` must be `dag` or `temporary-rust`, got `{kind_str}`"
-            ));
-        }
-        let triple = (registry_name.clone(), module_stem.clone(), kind_str.clone());
+        let kind_field = record_field(fields, "kind").ok_or_else(|| {
+            "cementing receipt row: missing `kind` field (expected `CementingBandCReceiptKind` \
+             variant)"
+                .to_string()
+        })?;
+        let kind_str = decode_cementing_band_c_receipt_kind(dag, kind_field, "kind")?;
+        let triple = (
+            registry_name.clone(),
+            module_stem.clone(),
+            kind_str.to_string(),
+        );
         if !receipt_triples.insert(triple.clone()) {
             return Err(format!(
                 "cementing_receipts contains duplicate receipt identity {triple:?}; each \
@@ -433,8 +453,13 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
         };
         let registry_name = string_field(fields, "registry_name")?;
         let module_stem = string_field(fields, "module_stem")?;
-        let kind_str = string_field(fields, "kind")?;
-        match kind_str.as_str() {
+        let kind_field = record_field(fields, "kind").ok_or_else(|| {
+            "cementing receipt row: missing `kind` field (expected `CementingBandCReceiptKind` \
+             variant)"
+                .to_string()
+        })?;
+        let kind_str = decode_cementing_band_c_receipt_kind(dag, kind_field, "kind")?;
+        match kind_str {
             "dag" => {
                 if !pb_b1_gate87_dag_stems.contains(&module_stem) {
                     return Err(format!(
@@ -469,7 +494,7 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                         path.display()
                     ));
                 }
-                if !integration_rs_cementing_path_attr_binds_mod_stem(&integration_rs, &module_stem)
+                if !integration_rs_cementing_path_attr_binds_mod_stem(&integration_rs, &module_stem)?
                 {
                     let expected = format!(r#"#[path = "integration/cementing/{module_stem}.rs"]"#);
                     return Err(format!(
@@ -479,10 +504,11 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                     ));
                 }
             }
-            other => {
-                return Err(format!(
-                    "cementing receipt kind `{other}` is not supported for on-disk validation"
-                ));
+            _ => {
+                return Err(
+                    "cementing receipt `kind`: internal error — wire tag not `dag` or `temporary-rust`"
+                        .to_string(),
+                );
             }
         }
     }
