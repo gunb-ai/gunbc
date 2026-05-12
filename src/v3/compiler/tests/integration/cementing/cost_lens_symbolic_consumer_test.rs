@@ -3,10 +3,11 @@
 //! Band-C cementing for the generated `symbolic_cost_of` consumer in
 //! `src/v3/lenses/cost.dag` (`regen_lens` → `lens_cost_symbolic_generated.rs`).
 //!
-//! This is the same-PR temporary Rust receipt for the gate #80 promotion of
-//! `cost_symbolic` to COMPLETE. It pins the exported generated lens on
-//! compile-backed fixtures and checks that `analyze_symbolic_cost_dimension`
-//! composes the same carrier returned by `symbolic_cost_of`.
+//! Residual gate #78 Rust receipt for the generated symbolic-cost consumer.
+//! Gate #80 Band-C cementing for `cost_symbolic` now lives in
+//! `tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag`; this module
+//! keeps the remaining host-wrapper / `per_call_pattern_at` checks that are not
+//! the COMPLETE-row cementing authority.
 //!
 //! Frozen v2-projection contract for the abstract cost scope:
 //! - leaf literal cost projects to `SymbolicCost::ConstantCost(0)`;
@@ -15,10 +16,6 @@
 //!
 //! The live v2 oracle is intentionally not invoked here; R3 consumes reviewed
 //! frozen projections so v2-oracle retirement does not regain a test consumer.
-//!
-//! Temporary Rust receipt: `.dag` `TestClaim` data cannot yet express the
-//! nested `SymbolicCost` / `SizeVariable` expected values asserted here
-//! (`M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA`).
 //!
 //! Gate **#78** (`e_p_sub_value_relation_per_call_landed`): integration tests pin **`symbolic_cost_of`**
 //! on unary countdown fixtures with **`assert_recursive_countdown_linear_semantics`** (linear-family).

@@ -140,8 +140,8 @@ const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[CementingReceipt] = &[
     },
     CementingReceipt {
         registry_name: "cost_symbolic",
-        stem: "cost_lens_symbolic_consumer_test",
-        kind: CementingReceiptKind::TemporaryRustModule,
+        stem: "t_r3_gate_87_cementing_regen_cost_symbolic",
+        kind: CementingReceiptKind::DagHarness,
     },
 ];
 
@@ -550,18 +550,22 @@ fn cementing_cost_receipt_pair_stays_explicit_until_complexity_summary_claim_lan
 }
 
 #[test]
-fn cementing_cost_symbolic_receipt_stays_explicit_until_symbolic_cost_claim_lands() {
+fn cementing_cost_symbolic_receipt_is_dag_claim_after_symbolic_cost_data_lands() {
     let cost_symbolic_receipts: BTreeSet<(&str, &str)> = CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
         .iter()
         .filter(|receipt| receipt.registry_name == "cost_symbolic")
         .map(|receipt| (receipt.stem, receipt.kind.as_str()))
         .collect();
 
-    let expected = BTreeSet::from([("cost_lens_symbolic_consumer_test", "temporary-rust")]);
+    let expected = BTreeSet::from([(
+        "t_r3_gate_87_cementing_regen_cost_symbolic",
+        "dag",
+    )]);
     assert_eq!(
         cost_symbolic_receipts, expected,
-        "`cost_symbolic` must keep an explicit Band-C receipt while `.dag` TestClaims \
-         cannot express nested `SymbolicCost` / `SizeVariable` expected values."
+        "`cost_symbolic` Band-C coverage is carried by the gate #87 `.dag` \
+         `SymbolicCostExprEquals` claims, including the recursive countdown \
+         `SizeVariable` carrier."
     );
 }
 
