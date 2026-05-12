@@ -5,7 +5,7 @@ per PR #2751 comment (Director session `msg_168005e1` to PM deep-wolf-155).
 Option **(c)** is the ratified substrate-shape: `Expression` sum-type at
 `dsl/extdeps/github/actions.dag` with single `OpaqueString(String)`
 variant + 🟡 YELLOW classification + three-condition dissolution trigger
-(§3). **Migration scope (post-§5.5 audit)**: 19 in-scope sites (18 string-typed
+(§3). **Migration scope (post-§5.5 audit)**: 18 in-scope sites (17 string-container
 + 1 enum-extension `Job.runner`) migrate uniformly in the §7.5 ask #4 prereq
 PR; 9 typed-field sites HOLD pending §6 Q#4 (wrap vs `TypedOrExpression<T>`
 sum vs defer). Total expression-capable surface: 28 fields per §5.5
@@ -143,7 +143,7 @@ type Step
 
 Cost-of-change post-introduction: **low at every site** (new
 expression-bearing field carries `Expression`). Cost of dissolution from
-scaffold to typed AST: **single carrier edit + 19 sites-already-migrated** (post-§5.5 audit; 9 typed-field sites add to this count once §6 Q#4 resolves)
+scaffold to typed AST: **single carrier edit + 18 sites-already-migrated** (post-§5.5 audit; 9 typed-field sites add once §6 Q#4 resolves; 1 carrier-split-blocked site adds once §6 Q#5 lands)
 (versus option (b) where each site has its own carrier surface to
 re-flatten).
 
@@ -408,16 +408,17 @@ the §5.5 table with a `String` / `String?` / `Map<...,String>` /
 every typed-non-string row appears in the typed-field-HOLD class; the
 single enum row appears in the enum-extension class. The lists are
 re-derived whenever a §5.5 row is added or removed (last re-derivation:
-2026-05-12T12:32Z; cross-check: 18 + 9 + 1 = 28 = §5.5 table total ✓).
+2026-05-12T12:32:10Z; cross-check: 17 string-container + 9 typed-field-HOLD
++ 1 enum-extension + 1 carrier-split-blocked = 28 = §5.5 table total ✓).
 
-- **String-container sites (18)**: fields already typed `String` / `String?` /
+- **String-container sites (17)**: fields already typed `String` / `String?` /
   `Map<String, String>` / `Map<String, List<String>>` / `List<Map<String, String>>`
   at HEAD — `Workflow.env`,
   `Job.name`, `Job.if_condition`, `Job.env`, `Job.concurrency.group`,
   `RunStep.name`, `RunStep.run`, `RunStep.env`,
   `RunStep.working_directory`, `RunStep.if_condition`,
   `UsesStep.name`, `UsesStep.with`, `UsesStep.env`,
-  `UsesStep.if_condition`, `DispatchInput.default`,
+  `UsesStep.if_condition`,
   `MatrixStrategy.dimensions`, `MatrixStrategy.include`,
   `MatrixStrategy.exclude`. Migration shape under (c) is uniform:
   every site → `Expression` / `Expression?` / `Map<String, Expression>` /
@@ -438,7 +439,7 @@ re-derived whenever a §5.5 row is added or removed (last re-derivation:
   a new variant (`ExpressionRunner { expr: Expression }`) to the existing
   sum rather than swapping the type. Per §2 (c) sketch for `RunnerSpec`.
   This site is in scope for the §7.5 ask #4 prereq PR alongside the
-  17 string-typed sites — same uniform-string-expression class at the
+  17 string-container sites — same uniform-string-expression class at the
   substrate level (the variant carries `Expression`).
 
   **Note**: `UsesStep.uses: ActionRef` was previously listed here as a
@@ -450,10 +451,26 @@ re-derived whenever a §5.5 row is added or removed (last re-derivation:
   expression-capable would invent platform capability and violate
   INVARIANTS P1 modeling faithfulness.
 
+- **Carrier-split-blocked sites (1)**: `DispatchInput.default`. The
+  shared `DispatchInput` carrier (`dsl/extdeps/github/actions.dag:54-60`)
+  is used by both `WorkflowCall.inputs` (`:46`) and
+  `WorkflowDispatch.inputs` (`:45`), but GH Actions context-availability
+  marks `on.workflow_call.inputs.<id>.default` as expression-capable
+  and `on.workflow_dispatch.inputs.<id>.default` as **literal-only**.
+  Migrating the shared `default: String?` field to `Expression?` would
+  invent workflow_dispatch capability (P1 violation). Resolution:
+  carrier-split per §6 Q#5 (`WorkflowCallInput` / `WorkflowDispatchInput`
+  siblings) precedes any migration of the `default` field; post-split,
+  `WorkflowCallInput.default` enters the string-container class and
+  `WorkflowDispatchInput.default` stays literal. Operator BLOCKING
+  at :369 (2026-05-12T12:32:10Z) surfaced the dual-placement asymmetry.
+
 Total in-scope for the substrate-prereq PR under §7.5 ask #4 / Slice 4
-brief: **18 string-typed + 1 enum-extension = 19 sites**. The 9
+brief: **17 string-container + 1 enum-extension = 18 sites**. The 9
 typed-field sites sequence as a follow-on substrate-prereq PR after
-§6 Q#4 Director ratification resolves the wrap/sum/defer choice.
+§6 Q#4 Director ratification resolves the wrap/sum/defer choice. The
+1 carrier-split-blocked site (`DispatchInput.default`) sequences after
+§6 Q#5 carrier-split lands.
 
 **Why uniform-not-partial within the string-typed class**: leaving any
 string-typed expression-capable field as opaque `String` while migrating
@@ -474,7 +491,7 @@ create the contradiction codex REQUEST_CHANGES review 10083 flagged
 ("ALL 22 migrate" + "typed shape unresolved" cannot both hold).
 
 **Implementing-PR scope**: §7.5 ask #4 / Slice 4 brief migrates the
-18 string-typed + 1 enum-extension sites (19 total — see §5.5 audit)  uniformly. The 9
+17 string-container + 1 enum-extension sites (18 total — see §5.5 audit, post §6 Q#5 carrier-split-blocked carve-out)  uniformly. The 9
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -566,10 +583,14 @@ ci.yml usage, not the migration ceiling.
    { inputs }` (`:45`), but GH Actions' context-availability for the
    `inputs.<id>.default` expression differs by placement
    (workflow_call exposes inputs/secrets; workflow_dispatch exposes
-   github/inputs/vars but not secrets). Migrating `DispatchInput.default`
-   to `Expression` uniformly is correct shape-wise (both placements admit
-   expressions), but the **expression-context-availability axis** is
-   collapsed. Question: split `DispatchInput` into
+   github/inputs/vars but not secrets). **Sharper finding** (operator
+   BLOCKING at :369 2026-05-12T12:32:10Z): per the GH context-availability
+   table, **only `on.workflow_call.inputs.<id>.default` is
+   expression-capable**; `on.workflow_dispatch.inputs.<id>.default` is
+   literal-only. Migrating the shared `DispatchInput.default` uniformly
+   would invent workflow_dispatch capability (P1 violation), so migration
+   is **BLOCKED** on carrier-split, not merely sequenced relative to it.
+   Question: split `DispatchInput` into
    `WorkflowCallInput` / `WorkflowDispatchInput` siblings (with shared
    prefix carrier for name/description/required/type), or keep the shared
    carrier and document the placement-dependent context-availability as
@@ -642,13 +663,13 @@ items per ratification:
    `actions.dag`** (post-correction; see scope-evolution note below):
    RATIFIED. Single-authority for expression substrate. The
    implementing-PR scope per §7.5 ask #4 / Slice 4 brief covers the
-   §5.5 audit set: **19 sites in scope** (18 string-typed + 1
+   §5.5 audit set: **18 sites in scope** (17 string-container + 1
    enum-extension `RunnerSpec.ExpressionRunner`). **9 typed-field
    sites HOLD** pending §6 Q#4 Director ratification of the
    wrap/sum/defer choice. Total expression-capable surface in
    `actions.dag`: 28 sites; the (c) substrate-shape ratification covers
    all 28 per the "single-authority for expression substrate" principle,
-   but the implementing-PR migrates 19 immediately + 9 deferred class
+   but the implementing-PR migrates 18 immediately + 9 typed-field deferred + 1 carrier-split-blocked class
    sequences as a follow-on after §6 Q#4 resolves.
 
 > **Site-count correction evolution (cumulative)**: Director ratification
