@@ -49,6 +49,7 @@ type PullRequestActivity
   = Opened
   | Synchronize
   | Reopened
+  | ReadyForReview
   | Closed
 
 type DispatchInput {
@@ -113,7 +114,10 @@ type Job {
   runner: RunnerSpec
   steps: List<Step>
   needs: List<String>
-  env: Map<String, String>
+  // `none` models an absent `env:` block in Actions YAML (no fabricated keys).
+  env: Map<String, String>?
+  // Job outputs: map output name -> expression string (e.g. `${{ steps.id.outputs.k }}`).
+  outputs: Map<String, String>?
   if_condition: String?
   strategy: MatrixStrategy?
   timeout_minutes: Int?
@@ -147,9 +151,10 @@ type RunnerLabel
 type Step
   = RunStep {
       name: String?,
+      id: String?,
       run: String,
       shell: ShellType,
-      env: Map<String, String>,
+      env: Map<String, String>?
       working_directory: String?,
       if_condition: String?,
       continue_on_error: Bool,
@@ -157,9 +162,10 @@ type Step
     }
   | UsesStep {
       name: String?,
+      id: String?,
       uses: ActionRef,
       with: Map<String, String>,
-      env: Map<String, String>,
+      env: Map<String, String>?
       if_condition: String?,
       continue_on_error: Bool,
       timeout_minutes: Int?
