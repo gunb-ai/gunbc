@@ -2571,6 +2571,9 @@ impl<'a> TestRunner<'a> {
                         }
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
                         "BridgeLedgerZero" => self.eval_bridge_ledger_zero(claim, &payload),
+                        "TestCostDimensionDeclared" => {
+                            self.eval_test_cost_dimension_declared(claim, &payload)
+                        }
                         "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
                         "ReleaseDeferredClaim" => {
                             self.eval_release_deferred_claim_shape(claim, &payload)

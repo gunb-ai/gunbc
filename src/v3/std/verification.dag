@@ -19,6 +19,7 @@ module std.verification
 import std.list { List, map }
 import std.types { FilePath, NonEmptyStr }
 import v3.std.substrate { ComparisonOp }
+import v3.std.dimensions { Dimension }
 import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.resources { ResourceReference }
 import v3.std.bridge_ledger { BridgeLedgerRef }
@@ -131,6 +132,17 @@ type ProgramShape
       source: String
       file_name: String
     }
+
+// T-WAD FULL R3 gate #101 (`test_cost_dimension_landed`): test nodes carry
+// their own `Cost` dimension so the slow-test ratchet can consume structural
+// data instead of a side file. This is distinct from the compiler's
+// `SymbolicCost` lens over target programs.
+type TestCost
+
+type TestNode {
+  claim: TestClaim
+  cost: Dimension<TestCost, Int>
+}
 
 type TestPredicate
   = Compiles
@@ -347,6 +359,14 @@ type TestPredicate
   // `DeclarationRef` retires the wrapper class.
   | BridgeLedgerZero {
       ledger: BridgeLedgerRef
+    }
+  // 🟢 TERMINAL at T-WAD Slice 8 substrate-shape scope. The referenced
+  // declaration must be a `TestNode` with a declared `cost:
+  // Dimension<TestCost, Int>` value. The runner validates shape only; policy
+  // over high-cost / slow-test thresholds belongs to sibling gate
+  // `slow_test_exemptions_dissolved`.
+  | TestCostDimensionDeclared {
+      node_ref: DeclarationRef
     }
 
 // Structural runner input role for predicates whose input is the compiled
