@@ -1,9 +1,12 @@
 # GitHub Actions Expression Substrate — Mgr Canvas
 
-**Status:** Substrate Mgr (warm-wolf-698) canvas decision for the GH Actions
-expression-syntax modeling gap surfaced as carrier-gap #5 in WI-2 codex
-BLOCKING #2 review on PR #2744. Surfaces a single substrate-shape
-recommendation for Director ratification.
+**Status:** **RATIFIED** by Director (zesty-bear-812) 2026-05-12T07:39:44Z
+per PR #2751 comment (Director session `msg_168005e1` to PM deep-wolf-155).
+Option **(c)** is the ratified substrate-shape: `Expression` sum-type at
+`dsl/extdeps/github/actions.dag` with single `OpaqueString(String)`
+variant + 🟡 YELLOW classification + three-condition dissolution trigger
+(§3). All 5 expression sites migrate uniformly. See §7 below for
+ratification dispositions and cascade implications.
 
 **Authority:** Director (zesty-bear-812) `msg_2a68a4b5` routing to canvas
 authority via PM (deep-wolf-155) `msg_e79d1a50` per
@@ -277,6 +280,55 @@ extensions.
 (zesty-bear-812) routing via PM (deep-wolf-155) `msg_e79d1a50` 2026-05-12
 ~07:30Z citing Director routing message `msg_2a68a4b5`.
 
-**Canvas readiness for Director ratification**: SURFACED. Director
-ratifies option (c) | (a) | (b) | alternative; Mgr proceeds with Slice 4
-brief authoring + substrate-prereq PR authoring per ratified shape.
+**Canvas readiness for Director ratification**: **RATIFIED** by Director
+2026-05-12T07:39:44Z. See §7 below for ratification dispositions.
+
+---
+
+## §7. Ratification dispositions (2026-05-12T07:39:44Z)
+
+Director (zesty-bear-812) ratified option **(c)** per PR #2751 comment
+quoting session `msg_168005e1` to PM `deep-wolf-155`. Source-verification
+items per ratification:
+
+- `dsl/extdeps/github/actions.dag` header lines 1-6 confirm "platform
+  constraints — what GH Actions provides and requires" boundary. GH
+  Actions expressions are platform-provided value-shapes, not gunbc
+  emission policy → extdeps placement respects the discriminator
+  (`feedback_extdeps_header_discriminator_before_field_placement`).
+- No conflict with (c-refined) PR #2749 ratification: `EmissionTarget`
+  axis = gunbc emission policy (gunbc namespace); `Expression` axis = GH
+  Actions value-language (extdeps namespace). Orthogonal axes.
+- Authority audit clean: only `Job.if_condition: String?` precedent;
+  canvas extends uniformly; no sibling carrier; no naming collision.
+- YELLOW classification justified per Practice 4 — §3 + §4 name the
+  trigger explicitly + preview typed-AST dissolution shape.
+
+**Ratifications**:
+
+1. **`Expression` sum-type placement at `dsl/extdeps/github/actions.dag`**:
+   RATIFIED.
+2. **Single `OpaqueString(String)` variant + 🟡 YELLOW classification**:
+   RATIFIED. Pre-emptive over-modeling is the wrong default per
+   `feedback_construction_over_ratchets` +
+   `feedback_checkpoint_dissolution_default`.
+3. **Three-condition dissolution trigger**: RATIFIED. Trigger framing
+   makes the dissolution path explicit.
+4. **5-site uniform migration** (`RunnerSpec.ExpressionRunner` variant /
+   `Job.if_condition` / `ConcurrencySpec.group` / `Step.with[k]` /
+   `Step.env[k]`): RATIFIED. Single-authority for expression substrate.
+
+**Cascade implications** (per Director directive):
+
+- cool-carp-720 (WI-2 PR #2745): post-land, `project_github_actions`
+  constructs `Expression(OpaqueString("..."))` wrapping gunbc-side values
+- stern-stag-854 (Slice 4-5 briefs): YamlStatic emission emits
+  `OpaqueString` variant verbatim; BinaryShim/PythonShim
+  evaluate at runtime (opaque-passthrough until dissolution fires);
+  Slice 4 emit logic stays trivial
+- PR #2746 (still-heron-763 emitter-dispatch canvas): can reference
+  "ratified `Expression` substrate per PR #2751" once both land
+- Not blocking PR #2744 / #2750 / #2746 (independent axes)
+
+PR #2751 standalone-mergeable per normal dashboard review cycle; no
+operator-tier bypass.
