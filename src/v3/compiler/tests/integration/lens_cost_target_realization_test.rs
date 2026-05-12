@@ -31,6 +31,8 @@ use v3_compiler::realization_cost::{
     RealizationCostCategory, RealizationCostKey, RealizationCostTable,
 };
 
+use crate::common::assert_recursive_countdown_linear_semantics;
+
 fn run_with_cost_target_realization_stack(f: impl FnOnce() + Send + 'static) {
     std::thread::Builder::new()
         .name("cost-target-realization-test".to_string())
@@ -362,10 +364,7 @@ let demo: Int = countdown(3) + 1
             SymbolicCostLookup::Hit(c) => c,
             SymbolicCostLookup::Miss => panic!("symbolic_cost_of Miss for `countdown`"),
         };
-        assert!(
-            mentions_linear(&algebra_cost),
-            "recursive countdown should expose an observable linear cost bound, got {algebra_cost:?}"
-        );
+        assert_recursive_countdown_linear_semantics(&algebra_cost);
 
         let type_cost = table
             .cost(&RealizationCostKey::Type(int_decl))
