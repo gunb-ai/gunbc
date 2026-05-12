@@ -142,7 +142,7 @@ type ReviewVerdictReport {
   provider: ReviewProvider
   repo: NonEmptyStr
   pr_number: Int
-  head_sha: NonEmptyStr
+  head_sha: CommitSha
   artifact_id: ArtifactId
   verdict: ReviewVerdict
   extraction_state: ReportExtractionState
@@ -154,7 +154,7 @@ type ReviewVerdictReport {
 type MergeReadinessTally {
   repo: NonEmptyStr
   pr_number: Int
-  head_sha: NonEmptyStr
+  head_sha: CommitSha
   // Non-authoritative lineage pointer only. ReviewVerdictReport values remain
   // the Tally service input; the tally output owns only derived verdict counts.
   source_artifact_ids: List<ArtifactId>
@@ -166,7 +166,7 @@ type MergeReadinessTally {
 
 type ReviewVerdictParseRequest {
   artifact: ReviewArtifact
-  expected_head_sha: NonEmptyStr
+  expected_head_sha: CommitSha
 }
 
 // Practice 4 receipt: staged boundary result. ParsedReport and ParseDeferred
@@ -226,7 +226,7 @@ service ctrl.ReviewVerdicts {
     input {
       repo: NonEmptyStr
       pr_number: Int
-      head_sha: NonEmptyStr
+      head_sha: CommitSha
       reports: List<ReviewVerdictReport>
       mergeable_clean: Bool
     }
