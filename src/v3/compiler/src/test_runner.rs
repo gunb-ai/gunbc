@@ -3,6 +3,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
     NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
@@ -2572,6 +2573,16 @@ impl<'a> TestRunner<'a> {
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
                         "BridgeLedgerZero" => self.eval_bridge_ledger_zero(claim, &payload),
                         "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
+                        "CementingDispatchMatchesProjection" => {
+                            match cementing_dispatch::evaluate_cementing_dispatch_projection(
+                                self.dag,
+                                claim.declaration_file.as_str(),
+                                &payload,
+                            ) {
+                                Ok(()) => ClaimResult::Pass,
+                                Err(reason) => ClaimResult::Fail(reason),
+                            }
+                        }
                         "ReleaseDeferredClaim" => {
                             self.eval_release_deferred_claim_shape(claim, &payload)
                         }
