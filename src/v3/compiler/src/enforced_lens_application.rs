@@ -26,6 +26,8 @@ use crate::lens_cost::{
 
 /// Fail-closed check for landed complexity enforcement applications.
 pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
+    #[cfg(test)]
+    eprintln!("check_enforced_lens: enter");
     let Some(enforced_template) = dag
         .declarations()
         .iter()
@@ -35,6 +37,8 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         })
         .map(|d| d.id)
     else {
+        #[cfg(test)]
+        eprintln!("check_enforced_lens: early return no enforced_template");
         return;
     };
     let Some(complexity_enforceable_id) = dag
@@ -46,6 +50,8 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         })
         .map(|d| d.id)
     else {
+        #[cfg(test)]
+        eprintln!("check_enforced_lens: early return complexity_enforceable");
         return;
     };
     let Some(asymptotic_disj) = dag
@@ -56,6 +62,8 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         })
         .map(|d| d.id)
     else {
+        #[cfg(test)]
+        eprintln!("check_enforced_lens: early return AsymptoticClass");
         return;
     };
     let Some(section_ref_disj) = dag
@@ -66,11 +74,17 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         })
         .map(|d| d.id)
     else {
+        #[cfg(test)]
+        eprintln!("check_enforced_lens: early return SectionRef");
         return;
     };
     let Some(declaration_scope_conj) = declaration_scope_payload_conj(dag, section_ref_disj) else {
+        #[cfg(test)]
+        eprintln!("check_enforced_lens: early return declaration_scope_payload_conj");
         return;
     };
+    #[cfg(test)]
+    eprintln!("check_enforced_lens: past declaration_scope_conj");
     let diagnostic_severity_disj = dag
         .declarations()
         .iter()
@@ -80,12 +94,10 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         })
         .map(|d| d.id);
     #[cfg(test)]
-    if std::env::var_os("ENFORCED_LENS_DEBUG").is_some() {
-        eprintln!(
-            "check_enforced_lens: diagnostic_severity_disj = {:?}",
-            diagnostic_severity_disj
-        );
-    }
+    eprintln!(
+        "check_enforced_lens: diagnostic_severity_disj = {:?}",
+        diagnostic_severity_disj
+    );
     let Some(diagnostic_severity_disj) = diagnostic_severity_disj else {
         // Fail-closed: this pass consumes substrate `DiagnosticSeverity` from
         // `lens_application.dag`. Absence must not disable enforcement (openai-pro /
