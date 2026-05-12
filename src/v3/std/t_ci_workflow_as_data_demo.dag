@@ -13,9 +13,7 @@ import extdeps.github.actions {
   Workflow,
   Job,
   Step,
-  RunStep,
   UsesStep,
-  Bash,
   HostedRunner,
   UbuntuLatest,
   Push,
@@ -98,9 +96,10 @@ data modeled_gunbc_ci_workflow: Workflow = Workflow {
   permissions: none,
 }
 
-// Same CI intent as a provider-neutral DAG. The GitHub Actions transport below
-// projects the graph with `Job.needs`; the structural authority for gate
-// dependencies is a provider-neutral node/edge graph, not YAML job ordering.
+// Same CI intent as a provider-neutral DAG. This is intentionally not paired
+// with a hand-authored GitHub Actions transport in this receipt: until a real
+// projection function exists, the provider-neutral graph is the single modeled
+// authority for gate dependency shape.
 data modeled_gunbc_ci_workflow_dag: ModeledCIWorkflowDag = {
   name: "gunbc-ci",
   nodes: [
@@ -115,139 +114,6 @@ data modeled_gunbc_ci_workflow_dag: ModeledCIWorkflowDag = {
     { from: "lint", to: "l1-ratchet" },
     { from: "tests", to: "l1-ratchet" }
   ]
-}
-
-data modeled_gunbc_ci_workflow_transport: Workflow = Workflow {
-  name: "gunbc-ci-dag-demo",
-  on: Cons {
-    head: Push { branches: Empty, paths: Empty },
-    tail: Empty,
-  },
-  jobs: Cons {
-    head: Job {
-      id: "compile-gates",
-      name: none,
-      runner: HostedRunner { label: UbuntuLatest },
-      steps: Cons {
-        head: UsesStep {
-          name: none,
-          uses: checkout_action,
-          with: { fetch_depth: "1" },
-          env: { DEMO_CI: "1" },
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none,
-        },
-        tail: Cons {
-          head: RunStep {
-            name: none,
-            run: "cargo test -p v3-compiler ci_ -- --ignored",
-            shell: Bash,
-            env: { DEMO_CI: "1" },
-            working_directory: none,
-            if_condition: none,
-            continue_on_error: false,
-            timeout_minutes: none,
-          },
-          tail: Empty,
-        },
-      },
-      needs: Empty,
-      env: { CI: "demo" },
-      if_condition: none,
-      strategy: none,
-      timeout_minutes: none,
-      continue_on_error: false,
-      concurrency: none,
-    },
-    tail: Cons {
-      head: Job {
-        id: "lint",
-        name: none,
-        runner: HostedRunner { label: UbuntuLatest },
-        steps: Cons {
-          head: RunStep {
-            name: none,
-            run: "cargo clippy --all-targets -- -D warnings",
-            shell: Bash,
-            env: { DEMO_CI: "1" },
-            working_directory: none,
-            if_condition: none,
-            continue_on_error: false,
-            timeout_minutes: none,
-          },
-          tail: Empty,
-        },
-        needs: Cons { head: "compile-gates", tail: Empty },
-        env: { CI: "demo" },
-        if_condition: none,
-        strategy: none,
-        timeout_minutes: none,
-        continue_on_error: false,
-        concurrency: none,
-      },
-      tail: Cons {
-        head: Job {
-          id: "tests",
-          name: none,
-          runner: HostedRunner { label: UbuntuLatest },
-          steps: Cons {
-            head: RunStep {
-              name: none,
-              run: "cargo test --workspace --exclude v2-compiler-tests",
-              shell: Bash,
-              env: { DEMO_CI: "1" },
-              working_directory: none,
-              if_condition: none,
-              continue_on_error: false,
-              timeout_minutes: none,
-            },
-            tail: Empty,
-          },
-          needs: Cons { head: "compile-gates", tail: Empty },
-          env: { CI: "demo" },
-          if_condition: none,
-          strategy: none,
-          timeout_minutes: none,
-          continue_on_error: false,
-          concurrency: none,
-        },
-        tail: Cons {
-          head: Job {
-            id: "l1-ratchet",
-            name: none,
-            runner: HostedRunner { label: UbuntuLatest },
-            steps: Cons {
-              head: RunStep {
-                name: none,
-                run: "scripts/l1-ratchet.sh --check",
-                shell: Bash,
-                env: { DEMO_CI: "1" },
-                working_directory: none,
-                if_condition: none,
-                continue_on_error: false,
-                timeout_minutes: none,
-              },
-              tail: Empty,
-            },
-            needs: Cons {
-              head: "lint",
-              tail: Cons { head: "tests", tail: Empty },
-            },
-            env: { CI: "demo" },
-            if_condition: none,
-            strategy: none,
-            timeout_minutes: none,
-            continue_on_error: false,
-            concurrency: none,
-          },
-          tail: Empty,
-        },
-      },
-    },
-  },
-  env: { WORKFLOW_LEVEL: "demo" },
-  permissions: none,
 }
 
 // Historical note: an earlier PB-1 receipt wrapped this predicate in `_ci_wad_nonlinear_timing_stub`
