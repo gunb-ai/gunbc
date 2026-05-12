@@ -7,7 +7,13 @@
 
 use v3_compiler::dag::{DegreeAtLeastTwo, NonSingletonList, SymbolicCost};
 
-/// Escape a UTF-8 string for embedding inside a v3 double-quoted `TestClaim.source` literal.
+/// Escape UTF-8 for embedding inside a v3 double-quoted string (e.g. `TestClaim.source`).
+///
+/// **Authority:** `src/v3/compiler/tokenize.dag` `StringEscapeSpec` rows — only `\\`, `\"`,
+/// `\n`, `\r`, and `\t` are decoded by the generated tokenizer. There is no `\u{…}` / hex escape
+/// surface; emitting unsupported escapes would **silently rewrite** source relative to what the
+/// lexer accepts (INVARIANTS P3 fail-closed). Callers must keep fixture text within this set or
+/// panic here forces an explicit fix.
 pub fn escape_v3_string_literal_content(s: &str) -> String {
     let mut out = String::new();
     for ch in s.chars() {
@@ -18,8 +24,12 @@ pub fn escape_v3_string_literal_content(s: &str) -> String {
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
             c if c < ' ' => {
-                use std::fmt::Write as _;
-                let _ = write!(&mut out, "\\u{{{:04x}}}", c as u32);
+                panic!(
+                    "escape_v3_string_literal_content: unsupported C0 control U+{:04X} — \
+                     v3 `StringEscapeSpec` only supports \\\\, \\\", \\n, \\r, and \\t \
+                     (see `src/v3/compiler/tokenize.dag`); rewrite fixture source or extend the tokenizer",
+                    c as u32
+                );
             }
             c => out.push(c),
         }
@@ -130,5 +140,20 @@ mod symbolic_cost_verification_fixture_tests {
         };
         let expected = format!("LinearCost(unnamed_size_variable(PortId({})))", p.raw());
         assert_eq!(symbolic_cost_as_v3_data_initializer(&c), expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported C0 control U+000B")]
+    fn escape_rejects_vertical_tab_not_in_string_escape_spec() {
+        escape_v3_string_literal_content("a\u{000b}b");
+    }
+
+    #[test]
+    fn escape_roundtrips_newline_for_gate40_fixture_shape() {
+        assert_eq!(
+            escape_v3_string_literal_content("a\nb"),
+            "a\\nb",
+            "newline must use tokenizer-backed \\n escape only"
+        );
     }
 }
