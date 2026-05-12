@@ -391,10 +391,16 @@ type QuantifiedTestClaim {
   requires: List<ResourceReference>
 }
 
-// Ordered suite-entry carrier (gate #85 CONSUMER_LANDED wrapper migration).
-// Existing enumerated fixtures wrap each claim reference in `Enumerated(...)`;
-// quantified claims land as `Quantified(QuantifiedTestClaim)`. Preserves
-// reporting/dependency order without parallel enumerated/quantified lists.
+// **🟢 TERMINAL — SuiteClaim.** Closed two-variant coproduct exhausting the
+// structurally meaningful suite-entry shapes: an existing single-source
+// `TestClaim` (`Enumerated`) and a generator-driven property-based family
+// (`Quantified(QuantifiedTestClaim)`). One ordered carrier preserves reporting
+// and dependency order without parallel enumerated/quantified lists (gate #85
+// CONSUMER_LANDED wrapper migration; per design `docs/design-tests-as-data-completeness.md`
+// §2.2). New suite-entry shapes are new variants on this sum, not new carriers
+// or parallel fields; richer quantifier vocabularies attach by extending
+// `Quantifier` or by adding fields on `QuantifiedTestClaim`, not by widening
+// `SuiteClaim`.
 type SuiteClaim
   = Enumerated(TestClaim)
   | Quantified(QuantifiedTestClaim)
