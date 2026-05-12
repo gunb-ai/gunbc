@@ -135,7 +135,6 @@ type ProgramShape
       file_name: String
     }
 
-<<<<<<< HEAD
 type SymbolicCostBindParamExpected
   = LinearCostForBindParam { var: BindParamSizeVariable }
 
@@ -146,7 +145,6 @@ type BindParamRef {
   index: Int
 }
 
-=======
 // R3 T-Tests-As-Data-Completeness / gate #87 — canonical v3 lens capability register
 // (`docs/design-tests-as-data-completeness.md` §8.3). Status axes are closed coproducts
 // (not strings): misspellings are type errors at fixture load, and the runner rejects any
@@ -256,7 +254,6 @@ data lens_capability_register_rows: List<LensCapabilityRegisterRow> = [
   }
 ]
 
->>>>>>> origin/main
 type TestPredicate
   = Compiles
   | FailsWithDiagnostic(DiagnosticReference)
