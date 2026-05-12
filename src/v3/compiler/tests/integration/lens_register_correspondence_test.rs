@@ -15,6 +15,14 @@
 //! basenames (regen entries absent from the register) and the
 //! registry-visible set, so the fix is a single register edit.
 //!
+//! **Band-C v2 cementing (mechanical doc ↔ structural register).** The
+//! markdown `## Capability table` rows that read `BEHAVIORALLY COMPLETE` with a
+//! real v2 counterpart (not v3-native / bare `N/A`) must match the projection
+//! from `std.verification` `lens_capability_register_rows` (`LensCapabilityBehavioralComplete`
+//! + `LensCapabilityV2RealV2`). This preserves the retired
+//! `cementing_lens_registry_dispatch_test` ratchet without reintroducing a second
+//! register body in `cementing_dispatch.dag`.
+//!
 //! Directionality is the one written into the register's Discipline
 //! section — regen → register is required; extra register rows are
 //! allowed. `idempotency.dag` and `parallelism.dag` are the current
@@ -27,6 +35,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use v3_compiler::cementing_dispatch;
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 
 const R3_LENS_BEHAVIORAL_PARITY_SCOPE: &[&str] = &[
