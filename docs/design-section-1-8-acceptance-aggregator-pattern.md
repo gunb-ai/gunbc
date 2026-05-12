@@ -91,12 +91,12 @@ This pilot ratifies the pattern; PM consumes the template for the §9 update to 
 
 Same row-class generalizes to sibling clusters at low cost:
 
-- **Cluster M** (T-Tests-As-Data-Completeness) — aggregator over §1.8 #84/#85/#86/#87 (per `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md` 3-phase plan)
-- **Cluster F** (T-Lens-Behavioral-Parity) — aggregator over the 4-lens parity rows (complexity + cost + parallelism + effect_enumeration) per Director carve-promotion 2026-05-09
-- **Cluster K** — aggregator scope TBD per `docs/audit/r3-cluster-analysis-2026-05-09.md` §2
-- **T-V2-Retirement** — aggregator over v2 retirement constituent gates
+- **Cluster M** (T-Tests-As-Data-Completeness) — aggregator over §1.8 #84/#85/#86/#87 (per `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md` 3-phase plan); aggregator-ready once constituents' Status cells are coerce-able
+- **Cluster F** (T-Lens-Behavioral-Parity) — candidate aggregator over the 4-lens parity rows (#79 complexity, #80 cost, #81 parallelism, #82 effect_enumeration) per Director carve-promotion 2026-05-09. **NOT aggregator-ready at HEAD**: rows #81 and #82 carry bare `R3-LOAD-BEARING` as scope-metadata in the Status cell (not a closure-progress status), and gate #95 / #83 use the same pattern; these rows fail the precondition rule. **Precondition for Cluster F pilot**: rework the affected Status cells to inline closure-progress (e.g., `R3-LOAD-BEARING — DECLARED`) so the coercion table resolves them. Until then, cite Cluster F as a *post-precondition-fix* candidate, not an immediate consumer.
+- **Cluster K** — aggregator scope TBD per `docs/audit/r3-cluster-analysis-2026-05-09.md` §2; precondition check required at pilot time
+- **T-V2-Retirement** — aggregator over v2 retirement constituent gates; precondition check required at pilot time
 
-PM-tier consumes per cluster on a rolling basis; no big-bang migration required.
+PM-tier consumes per cluster on a rolling basis; no big-bang migration required. Each pilot MUST run the precondition + exclusion rules over its candidate constituents before adding the aggregator row.
 
 ## Reviewer-rubric notes
 
