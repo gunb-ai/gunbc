@@ -1,6 +1,6 @@
 // lenses.parallelism — Lane 2 Stage 2e parallel composition safety.
 //
-// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE.
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PARTIAL.
 // See docs/v3-lens-capability-register.md.
 //
 // Port authority: retired hand-Rust Stage 2e bridge (2026-05-12), specifically:
@@ -13,6 +13,10 @@
 //
 // The breaker witness deliberately uses branch-order flattening, matching the
 // retired Rust bridge and `WorkflowEffect::operation_at`.
+//
+// Behavioral completion trigger: add typed pairwise-noncommute evidence to
+// `WorkflowParallelismReport` / `ParallelismUnsupportedDetail`, then route the
+// computed left/right `OperationEffect` witnesses through that public payload.
 
 module lenses.parallelism
 
@@ -44,12 +48,13 @@ type LinearBranchesLookup
   | NonLinearBranchFound
 
 type NonCommutingPairLookup
-  // 🟢 TERMINAL helper coproduct. The operation pair is internal search
+  // 🟡 SCAFFOLD helper coproduct. The operation pair is internal search
   // evidence used only to decide the closed `PairwiseNonCommute` class; the
   // exported report contract remains `ParallelismUnsupportedDetail { kind,
-  // downstream_stage, reason }` from `std.effects`. Dissolution into a public
-  // pair-evidence payload is intentionally deferred until that report contract
-  // grows a typed evidence field instead of overloading the free-text reason.
+  // downstream_stage, reason }` from `std.effects`. Dissolution trigger:
+  // when `WorkflowParallelismReport` grows typed non-commute evidence, remove
+  // this private carrier and carry the left/right operations through that
+  // public report payload instead of overloading the free-text reason.
   = NonCommutingPairFound { left: OperationEffect, right: OperationEffect }
   | AllPairsCommute
 
