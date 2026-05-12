@@ -26,6 +26,7 @@ import std.types {
 import std.substrate { Dag, Behavior, LoopBound, NodeId }
 import v3.std.diagnostics { Diagnostic, CompilerDiagnosticKind, Correction }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
+import v3.std.lens { Lens }
 import v3.std.workflows { behavior_spine }
 
 // DB-11 `FilePath` witness for this module (same narrowing discipline as
@@ -119,6 +120,11 @@ type TimingObservationEntry {
 type TimingBudget {
   max: Nanoseconds
 }
+
+// §1.8 / r3-program-plan `timing_lens_carrier_landed`: nominal `Lens<C>` surface at
+// `C = TimingMeasurement` (see `docs/design-timing-lens.md` §1). Hooks below remain
+// scaffold until `data … : TimingLens` rows are admissible under E6-G1 policy.
+type TimingLens = Lens<TimingMeasurement>
 
 fn timing_measurement_unobserved() -> TimingMeasurement =
   Unobserved
