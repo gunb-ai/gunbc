@@ -310,16 +310,32 @@ type ProcessNodeModeState
   | CompositeState { open_children: List<ProcessNodeId> }
   | BucketState { drain: BucketDrainState }
 
+// 🟢 TERMINAL coproduct at Phase-1 scope — whether an existing process node has
+// a declared mode yet. This preserves the ctrl distinction between "node not
+// found" and "node exists but has no declaration" without making undeclared a
+// stored mode.
+//
+// Practice 4 receipt:
+// - Classification: 🟢 TERMINAL for the closure guard snapshot. Missing
+//   declaration and declared-mode facts have different repair paths.
+// - Dissolution pattern applied: fact placement. The missing-declaration state
+//   is stored as declaration absence; `ProcessNodeModeState` remains only the
+//   declared mode facts.
+// - Trigger: none for PR #1195 parity; richer declaration provenance extends
+//   the declared arm payload.
+type ProcessNodeDeclarationState
+  = ProcessModeMissing
+  | ProcessModeDeclared(ProcessNodeModeState)
+
 // 🟡 STAGED node facts for closure projection. Identity is carried by the
 // graph entry below, not by this closure-fact row, so mode/close facts cannot
-// treat ProcessNodeId as another mutable sibling field. Undeclared/cutoff
-// nodes are represented by `ProcessModeProjection` and refusal facts, not by
-// storing a fourth mode here.
+// treat ProcessNodeId as another mutable sibling field. Missing mode declaration
+// is represented as declaration absence, not by storing a fourth mode here.
 //
 // Dissolution trigger: when `state(log: ProcessEventLog)` is emitted, this
 // snapshot is generated from the event log and no longer hand-authored.
 type ProcessNodeFacts {
-  mode: ProcessNodeModeState
+  declaration: ProcessNodeDeclarationState
   close: ProcessCloseState
 }
 
