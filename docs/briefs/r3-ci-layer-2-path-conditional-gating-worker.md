@@ -213,8 +213,17 @@ This is the parallel-representation-debt prevention. If Layer 2's group-classifi
 2. **STEP-level `if:` on `v3`, not separate jobs** — keeps `v3`'s `needs:` graph and required-check name stable. `self_host_ratchet` `if:` widening from PR #2718 remains unchanged.
 3. **No new `actions/cache` keys or workflow-tier infrastructure** — Layer 2 is path-regex + boolean output; nothing more.
 4. **Bridge-debt acknowledgment in every PR**: each PR landing a Layer 2 group must include in body: "Bridge-debt; lifecycle bounded by R4.B Introspect-lens saturation lane CI integration delivery (per `docs/design-affected-set-lens.md` §5). NOT R3 close-blocking. When R4.B CI integration lands, lens output replaces `required_paths_regex` column and bridge retires."
-5. **`dimensions: Set<Dimension>` field on every group entry** — non-empty subset of the lens enum per locked-design §2 union semantics. Single-element sets valid for single-dim groups; multi-dim consumers MUST list all dimensions they read. Substrate-shape questions on dimension assignment escalate.
-   **Polarity invariant**: `skip_<group> = (affected ∩ group.dimensions) = ∅` (skip when intersection EMPTY = unaffected). Run-equivalent: `run = (intersection ≠ ∅)`. Never invert — `skip = (∩ ≠ ∅)` is the canonical fail-open boolean-polarity bug pattern (silently skips affected groups). Carrier name matches contract: `skip_*` flag is true when group is unaffected.
+5. **`dimensions: Set<Dimension>` + `testclaim_references: Set<NodeRef>` fields on every group entry** — non-empty subset of the lens enum per locked-design §2 union semantics + canonical 2-step join per `docs/design-affected-set-lens.md:359`. Single-element sets valid for single-dim groups; multi-dim consumers MUST list all dimensions they read. Substrate-shape questions on dimension assignment escalate.
+   **Polarity invariant** (per Brian BLOCKING #3 + codex BLOCKING #9XXX absorption 2026-05-12; rewriting to compose BOTH join steps): post-dissolution `skip_<group>` formula is the canonical 2-step:
+   ```
+   run  = (group.testclaim_references ∩ lens.affected_node_refs) ≠ ∅
+          AND (group.dimensions ∩ lens.changed_dimensions) ≠ ∅
+   skip = ¬run = (refs ∩ nodes) = ∅  OR  (dims ∩ changed_dims) = ∅
+   ```
+   **Two fail-open bug patterns to reject in review**:
+   - (a) **Inversion**: `skip = (∩ ≠ ∅)` instead of `= ∅` — silently skips AFFECTED groups
+   - (b) **Dimension-only collapse**: `skip = (dims ∩ dims) = ∅` dropping the NodeRef-intersection step — silently skips when refs disjoint but dims match, violating Facts Flow Forward per `docs/design-affected-set-lens.md:359` canonical algorithm
+   **Bridge-tier proxy** (pre-dissolution): `skip = (changed-files ∩ required_paths_regex) = ∅` over-approximates the canonical 2-step (runs MORE tests; fail-closed-safe direction; coarser than NodeRef-precise). Carrier name matches contract: `skip_*` flag is true when group is unaffected (BOTH lens-join inputs empty post-dissolution; path-regex-empty bridge-tier).
 6. **No closure-allowed carve-outs**: Layer 2's lifetime is bounded by the affected-set lens dissolution. If a group can't be path-classified accurately, it stays in the `code=true` full-run bucket (no special carve).
 7. **Push events short-circuit to full-run** — `github.event_name == 'push'` bypasses ALL skip_* flags (run everything on main). Matches Layer 1.
 8. **Hand-Rust budget: zero**. Layer 2 lives entirely in `.github/workflows/ci.yml` + an optional path-mapping data file (e.g., `scripts/ci-path-classification.yaml` or inline in the workflow).
