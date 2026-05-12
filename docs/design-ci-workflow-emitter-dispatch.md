@@ -220,7 +220,7 @@ data gunbc_ci_yml_workflow: Workflow =
 
 `CIWorkflowDag` is the single semantic source for the gunbc CI workflow.
 `project_github_actions` is the structural fold invoked with that source and
-the ratified emission-target input, then produces the provider-faithful GitHub
+the emission target argument, then produces the provider-faithful GitHub
 Actions `Workflow` value. There is no independent hand-authored `Workflow`
 authority for the emitter to join against.
 
@@ -229,7 +229,7 @@ This keeps all three layers distinct:
 | Layer | Authority |
 |---|---|
 | CI semantics | `gunbc.ci` workflow/gate graph |
-| Emission choice | ratified gunbc-owned emission-target input |
+| Emission choice | invocation-time `EmissionTarget` argument |
 | Provider artifact | derived `extdeps.github.actions.Workflow` |
 
 The cost of adding a target remains bounded: add one `EmissionTarget` variant
