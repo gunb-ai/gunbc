@@ -100,12 +100,12 @@ data compiler_nerd_parallelism_lens_output: TestClaim = {
 data fixture_compiler_nerd_canonical: TestSuite = {
   name: "fixture_compiler_nerd_canonical",
   claims: [
-    compiler_nerd_complexity_compiles,
-    compiler_nerd_ownership_compiles,
-    compiler_nerd_parallelism_compiles,
-    compiler_nerd_complexity_lens_output,
-    compiler_nerd_ownership_lens_output,
-    compiler_nerd_parallelism_lens_output
+    Enumerated(compiler_nerd_complexity_compiles),
+    Enumerated(compiler_nerd_ownership_compiles),
+    Enumerated(compiler_nerd_parallelism_compiles),
+    Enumerated(compiler_nerd_complexity_lens_output),
+    Enumerated(compiler_nerd_ownership_lens_output),
+    Enumerated(compiler_nerd_parallelism_lens_output)
   ]
 }
 
@@ -171,12 +171,12 @@ data integration_testgen_runner_output: TestClaim = {
 data fixture_integration_canonical: TestSuite = {
   name: "fixture_integration_canonical",
   claims: [
-    integration_effects_compiles,
-    integration_idempotency_compiles,
-    integration_testgen_compiles,
-    integration_effects_lens_output,
-    integration_type_drift_lens_output,
-    integration_testgen_runner_output
+    Enumerated(integration_effects_compiles),
+    Enumerated(integration_idempotency_compiles),
+    Enumerated(integration_testgen_compiles),
+    Enumerated(integration_effects_lens_output),
+    Enumerated(integration_type_drift_lens_output),
+    Enumerated(integration_testgen_runner_output)
   ]
 }
 
@@ -216,8 +216,8 @@ data impossible_bug_idempotency_violation: TestClaim = {
 data impossible_bug_class_suite_r1: TestSuite = {
   name: "impossible_bug_class_suite_r1",
   claims: [
-    impossible_bug_type_drift,
-    impossible_bug_idempotency_violation
+    Enumerated(impossible_bug_type_drift),
+    Enumerated(impossible_bug_idempotency_violation)
   ]
 }
 
@@ -233,7 +233,7 @@ data t_demo_structural_cost_obligation_gate: TestClaim = {
 
 data t_demo_structural_cost_obligation_suite: TestSuite = {
   name: "t_demo_structural_cost_obligation_suite",
-  claims: [t_demo_structural_cost_obligation_gate]
+  claims: [Enumerated(t_demo_structural_cost_obligation_gate)]
 }
 
 // T-Demo `demo_user_authored_lens_rejects_violating_program` — operationalizes
@@ -265,5 +265,5 @@ data demo_user_authored_lens_rejects_violating_program_gate: TestClaim = {
 
 data demo_user_authored_lens_rejects_violating_program_suite: TestSuite = {
   name: "demo_user_authored_lens_rejects_violating_program_suite",
-  claims: [demo_user_authored_lens_rejects_violating_program_gate]
+  claims: [Enumerated(demo_user_authored_lens_rejects_violating_program_gate)]
 }

@@ -77,5 +77,5 @@ data tc1_eta_equivalence_executable_claim: TestClaim = {
 
 data tc1_substrate_lens_eta_equivalence_strict_fire_suite: TestSuite = {
   name: "tc1_substrate_lens_eta_equivalence_strict_fire_suite",
-  claims: [tc1_eta_equivalence_executable_claim]
+  claims: [Enumerated(tc1_eta_equivalence_executable_claim)]
 }

@@ -22,5 +22,5 @@ data v3_self_host_demonstration_claim: TestClaim = {
 
 data suite_v3_self_host_demonstration: TestSuite = {
   name: "r3/v3-self-host-demonstration",
-  claims: [v3_self_host_demonstration_claim]
+  claims: [Enumerated(v3_self_host_demonstration_claim)]
 }

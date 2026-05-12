@@ -18,5 +18,5 @@ data nested_optional_flatten_compile_error: TestClaim = {
 
 data suite_nested_optional_flatten_class_close: TestSuite = {
   name: "t-impossiblebugs/nested-optional-flatten/class-close",
-  claims: [nested_optional_flatten_compile_error]
+  claims: [Enumerated(nested_optional_flatten_compile_error)]
 }

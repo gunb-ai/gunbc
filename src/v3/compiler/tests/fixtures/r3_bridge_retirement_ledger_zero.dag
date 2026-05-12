@@ -21,5 +21,5 @@ data bridge_retirement_ledger_zero: TestClaim = {
 
 data r3_bridge_retirement_ledger_zero_suite: TestSuite = {
   name: "r3_bridge_retirement_ledger_zero_suite",
-  claims: [bridge_retirement_ledger_zero]
+  claims: [Enumerated(bridge_retirement_ledger_zero)]
 }

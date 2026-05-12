@@ -29,5 +29,5 @@ data tier3_dissolution_demonstration_executes: TestClaim = {
 
 data suite_tier3_dissolution_demonstration: TestSuite = {
   name: "r3/tier3-dissolution-demonstration",
-  claims: [tier3_dissolution_demonstration_executes]
+  claims: [Enumerated(tier3_dissolution_demonstration_executes)]
 }
