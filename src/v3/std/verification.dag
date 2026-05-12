@@ -135,6 +135,16 @@ type ProgramShape
       file_name: String
     }
 
+type SymbolicCostBindParamExpected
+  = LinearCostForBindParam { var: BindParamSizeVariable }
+
+type BindParamSizeVariable
+  = SelectedBindParamSizeVariable
+
+type BindParamRef {
+  index: Int
+}
+
 // R3 T-Tests-As-Data-Completeness / gate #87 — canonical v3 lens capability register
 // (`docs/design-tests-as-data-completeness.md` §8.3). Status axes are closed coproducts
 // (not strings): misspellings are type errors at fixture load, and the runner rejects any
@@ -352,6 +362,10 @@ type TestPredicate
   // predicate envelope.
   | SymbolicCostExprEquals {
       expected: DeclarationRef
+    }
+  | SymbolicCostExprEqualsForBindParam {
+      expected: DeclarationRef
+      param: BindParamRef
     }
   // **🟢 TERMINAL at T-Tier3 P1 substrate scope.** Compare a measured
   // `PerfBaselineMeasurement` declaration against a declared baseline
