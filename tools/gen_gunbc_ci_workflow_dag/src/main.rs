@@ -204,20 +204,33 @@ fn emit_concurrency(v: Option<&Value>) -> Result<String, Box<dyn std::error::Err
 }
 
 fn emit_env_map(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
-    match v {
-        None => Ok("none".to_string()),
-        Some(e) => Ok(format!("Some {{ value: {} }}", emit_string_map(e)?)),
-    }
+    emit_optional_string_map(v)
 }
 
-/// Inline `Map<String, String>` literal (also valid nested inside `Workflow { ... }`
-/// after `parse_primary` map-literal lookahead; see `parse_parser_body.txt`).
-fn emit_string_map(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
+/// Optional `Map<String, String>?`: absent YAML, empty `{}`, and `none` are equivalent for
+/// GitHub Actions env / outputs / `with` (no fabricated map entries; `{}` is not a structural
+/// map literal in user `data` bodies per M1(2.8)).
+fn emit_optional_string_map(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
+    let Some(v) = v else {
+        return Ok("none".to_string());
+    };
+    let m = v
+        .as_mapping()
+        .ok_or("optional string map must be a YAML mapping")?;
+    if m.is_empty() {
+        return Ok("none".to_string());
+    }
+    Ok(format!(
+        "Some {{ value: {} }}",
+        string_map_literal_body(v)?
+    ))
+}
+
+/// Non-empty inline `Map<String, String>` literal (see `parse_primary` map-literal lookahead).
+fn string_map_literal_body(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let m = v.as_mapping().ok_or("map")?;
     if m.is_empty() {
-        // `{}` parses as an empty record, not a map; `empty_map()` is not structurally
-        // lowerable in user `data` bodies (M1(2.8)). GitHub ignores unknown `with` keys.
-        return Ok(r#"{ "__gunbc_ci_gen_unused__": "" }"#.to_string());
+        return Err("internal: string_map_literal_body on empty map".into());
     }
     let mut inner = String::new();
     for (k, val) in m {
@@ -290,14 +303,8 @@ fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     let runner = emit_runs_on(m.get("runs-on").ok_or("runs-on")?)?;
     let steps = emit_steps(m.get("steps").ok_or("steps")?)?;
     let needs = emit_needs_list(m.get("needs"))?;
-    let env = match m.get(Value::String("env".to_string())) {
-        None => "none".to_string(),
-        Some(e) => format!("Some {{ value: {} }}", emit_string_map(e)?),
-    };
-    let outputs = match m.get(Value::String("outputs".to_string())) {
-        None => "none".to_string(),
-        Some(o) => format!("Some {{ value: {} }}", emit_string_map(o)?),
-    };
+    let env = emit_optional_string_map(m.get(Value::String("env".to_string())))?;
+    let outputs = emit_optional_string_map(m.get(Value::String("outputs".to_string())))?;
     let if_condition = match m.get(Value::String("if".to_string())) {
         None => "none".to_string(),
         Some(i) => format!("Some {{ value: {} }}", yaml_scalar_to_dag_string(i)?),
@@ -420,14 +427,8 @@ fn emit_step(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     if let Some(uses) = m.get(Value::String("uses".to_string())) {
         let uses_s = uses.as_str().ok_or("uses string")?;
         let ar = emit_action_ref(uses_s)?;
-        let with = match m.get(Value::String("with".to_string())) {
-            None => emit_string_map(&Value::Mapping(serde_yaml::Mapping::new()))?,
-            Some(w) => emit_string_map(w)?,
-        };
-        let env = match m.get(Value::String("env".to_string())) {
-            None => "none".to_string(),
-            Some(e) => format!("Some {{ value: {} }}", emit_string_map(e)?),
-        };
+        let with = emit_optional_string_map(m.get(Value::String("with".to_string())))?;
+        let env = emit_optional_string_map(m.get(Value::String("env".to_string())))?;
         Ok(format!(
             "UsesStep {{\n          name: {},\n          id: {},\n          uses: {},\n          with: {},\n          env: {},\n          if_condition: {},\n          continue_on_error: {},\n          timeout_minutes: {}\n        }}",
             name,
@@ -441,10 +442,7 @@ fn emit_step(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
         ))
     } else if let Some(run) = m.get(Value::String("run".to_string())) {
         let run_s = run.as_str().ok_or("run string")?;
-        let env = match m.get(Value::String("env".to_string())) {
-            None => "none".to_string(),
-            Some(e) => format!("Some {{ value: {} }}", emit_string_map(e)?),
-        };
+        let env = emit_optional_string_map(m.get(Value::String("env".to_string())))?;
         let wd = match m.get(Value::String("working-directory".to_string())) {
             None => "none".to_string(),
             Some(w) => format!("Some {{ value: {} }}", yaml_scalar_to_dag_string(w)?),

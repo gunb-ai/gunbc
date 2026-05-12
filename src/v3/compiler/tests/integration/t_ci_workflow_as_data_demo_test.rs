@@ -529,6 +529,50 @@ fn gunbc_ci_github_actions_workflow_authority_compiles() {
     );
 }
 
+/// Mechanical source gate: `.github/workflows/ci.yml` is the YAML authority; the committed
+/// `dsl/gunbc/ci_github_actions_workflow.dag` row must match `gen_gunbc_ci_workflow_dag` stdout
+/// byte-for-byte (no second drift authority).
+#[test]
+fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
+    use std::path::Path;
+    use std::process::Command;
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let repo_root = repo_root
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("canonicalize repo root {}: {e}", repo_root.display()));
+    let ci_yml = repo_root.join(".github/workflows/ci.yml");
+    let dag_path = repo_root.join("dsl/gunbc/ci_github_actions_workflow.dag");
+    assert!(
+        ci_yml.is_file(),
+        "missing {} (repo root {})",
+        ci_yml.display(),
+        repo_root.display()
+    );
+
+    let expected = std::fs::read(&dag_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", dag_path.display()));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_gen_gunbc_ci_workflow_dag"))
+        .current_dir(&repo_root)
+        .arg(".github/workflows/ci.yml")
+        .output()
+        .expect("run gen_gunbc_ci_workflow_dag");
+
+    assert!(
+        output.status.success(),
+        "gen_gunbc_ci_workflow_dag failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    assert_eq!(
+        output.stdout,
+        expected,
+        "`dsl/gunbc/ci_github_actions_workflow.dag` drifted from `.github/workflows/ci.yml`; regenerate with:\n  CTRL_BUILD_WRAP_CARGO=0 cargo run -q -p gen_gunbc_ci_workflow_dag -- .github/workflows/ci.yml > dsl/gunbc/ci_github_actions_workflow.dag"
+    );
+}
+
 #[test]
 fn gunbc_ci_emission_substrate_compiles() {
     let dag = compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE)
