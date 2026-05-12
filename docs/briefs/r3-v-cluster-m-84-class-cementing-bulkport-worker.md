@@ -6,6 +6,7 @@
 
 **Authority (cite-and-execute):**
 - Phase 3 coordinator: [`r3-v-cluster-m-84-bulkport-coordinator.md`](r3-v-cluster-m-84-bulkport-coordinator.md) §2 row "Cementing-test family"
+- Landed cementing pattern synthesis: [`r3-cementing-discipline-pattern-2026-05-12.md`](r3-cementing-discipline-pattern-2026-05-12.md) — 6-class predicate-taxonomy reference this worker enumerates against
 - Phase 2 pattern brief: [`r3-v-cluster-m-87-cementing-worker.md`](r3-v-cluster-m-87-cementing-worker.md)
 - Locked design: [`docs/design-tests-as-data-completeness.md`](../design-tests-as-data-completeness.md) §5 cementing discipline + §C5 predicate-class table
 - Standing testing discipline: [`TESTING.md`](../../TESTING.md) Band C cementing tests
@@ -29,7 +30,7 @@ Owned files/surfaces for Mgr inventory:
 
 ## §1. Migration Pattern
 
-Use the #87 pattern exactly:
+Use the landed cementing pattern synthesis exactly:
 - v2 counterpart exists: `DifferentialEquals`
 - v3-native expected output: `LensOutputEquals`
 - landed #87 dispatch receipt confirms the `regen.dag` registry corpus has matching `.dag` receipts
