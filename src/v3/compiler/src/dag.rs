@@ -119,10 +119,6 @@ mod computation {
         Forever,
     }
 
-    pub fn tree_size_bound(param: String) -> SizeBound {
-        SizeBound::TreeSize { param }
-    }
-
     /// 🟡 SCAFFOLD — `CallPattern` coproduct (`docs/modeling-discipline.md` §4).
     ///
     /// Authority: `src/v3/std/computation.dag`. Peano shrink payloads are proof-grade (terminal
@@ -270,17 +266,16 @@ mod computation {
         )
     }
 
-    /// Signed `Int` top iterate count (`i64::MAX`) for [`SizeBound::Forever`] / `repeat(max_int)`.
-    pub fn forever_iteration_bound() -> i64 {
-        i64::MAX
-    }
-
     /// `None` when `bound` is not constant (`ExplicitCount*` / `Forever` only).
+    ///
+    /// `Forever` materializes as signed-`Int` top (`i64::MAX`) per `std.computation`
+    /// `repeat(max_int)`; the prior `forever_iteration_bound()` Rust mirror was retired
+    /// (Tier3 gate #2 narrow slice — see `tier3_computation_mirror_trivial_constructors_dissolved`).
     pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
         match bound {
             SizeBound::ExplicitCountZero => Some(0),
             SizeBound::ExplicitCountPositive { steps } => Some(positive_descent_count(steps)),
-            SizeBound::Forever => Some(forever_iteration_bound()),
+            SizeBound::Forever => Some(i64::MAX),
             _ => None,
         }
     }
@@ -339,10 +334,9 @@ mod effects;
 mod ports;
 
 pub use computation::{
-    algebra_profile_to_dimension, constant_bound_value, forever_iteration_bound, is_constant_bound,
-    lower_call_pattern, size_bound_param, tree_size_bound, type_iteration_dimension,
-    AlgebraProfile, CallPattern, IterationDimension, IterationPrimitive, LoweringTarget,
-    ShrinkFactor, SizeBound,
+    algebra_profile_to_dimension, constant_bound_value, is_constant_bound, lower_call_pattern,
+    size_bound_param, type_iteration_dimension, AlgebraProfile, CallPattern, IterationDimension,
+    IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
 };
 
 pub use effects::{
