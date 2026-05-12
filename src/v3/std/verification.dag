@@ -135,6 +135,115 @@ type ProgramShape
       file_name: String
     }
 
+// R3 T-Tests-As-Data-Completeness / gate #87 — canonical v3 lens capability register
+// (`docs/design-tests-as-data-completeness.md` §8.3). Status axes are closed coproducts
+// (not strings): misspellings are type errors at fixture load, and the runner rejects any
+// unexpected constructor id. `src/v3/compiler/tests/dag/cementing_dispatch.dag` imports
+// `lens_capability_register_rows` as the sole structural register body; prose in
+// `docs/v3-lens-capability-register.md` is a human mirror, not a second authority.
+type LensCapabilityStructuralStatus
+  = LensCapabilityStructuralTerminal
+  | LensCapabilityStructuralPartial
+
+type LensCapabilityBehavioralStatus
+  = LensCapabilityBehavioralComplete
+  | LensCapabilityBehavioralPartial
+  | LensCapabilityBehavioralStub
+  | LensCapabilityBehavioralNA
+
+type LensCapabilityV2Counterpart
+  = LensCapabilityV2RealV2
+  | LensCapabilityV2NoneV3Native
+  | LensCapabilityV2NotApplicable
+
+type LensCapabilityRegisterRow {
+  lens_basename: String
+  structural: LensCapabilityStructuralStatus
+  behavioral: LensCapabilityBehavioralStatus
+  v2_counterpart: LensCapabilityV2Counterpart
+}
+
+data lens_capability_register_rows: List<LensCapabilityRegisterRow> = [
+  {
+    lens_basename: "complexity.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralComplete
+    v2_counterpart: LensCapabilityV2RealV2
+  },
+  {
+    lens_basename: "cost.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralComplete
+    v2_counterpart: LensCapabilityV2RealV2
+  },
+  {
+    lens_basename: "cost_target_realization.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralNA
+    v2_counterpart: LensCapabilityV2NoneV3Native
+  },
+  {
+    lens_basename: "effect_enumeration.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralPartial
+    v2_counterpart: LensCapabilityV2NoneV3Native
+  },
+  {
+    lens_basename: "idempotency.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralComplete
+    v2_counterpart: LensCapabilityV2NoneV3Native
+  },
+  {
+    lens_basename: "parallelism.dag"
+    structural: LensCapabilityStructuralPartial
+    behavioral: LensCapabilityBehavioralStub
+    v2_counterpart: LensCapabilityV2NoneV3Native
+  },
+  {
+    lens_basename: "provenance.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralComplete
+    v2_counterpart: LensCapabilityV2NoneV3Native
+  },
+  {
+    lens_basename: "unused_parameters.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralComplete
+    v2_counterpart: LensCapabilityV2NoneV3Native
+  },
+  {
+    lens_basename: "variant_payload.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralComplete
+    v2_counterpart: LensCapabilityV2NoneV3Native
+  },
+  {
+    lens_basename: "structural_resolution.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralComplete
+    v2_counterpart: LensCapabilityV2NoneV3Native
+  },
+  {
+    lens_basename: "infer_helpers.dag"
+    structural: LensCapabilityStructuralPartial
+    behavioral: LensCapabilityBehavioralNA
+    v2_counterpart: LensCapabilityV2NotApplicable
+  },
+  {
+    lens_basename: "lower_helpers.dag"
+    structural: LensCapabilityStructuralPartial
+    behavioral: LensCapabilityBehavioralNA
+    v2_counterpart: LensCapabilityV2NotApplicable
+  },
+  {
+    lens_basename: "named_function_count.dag"
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralNA
+    v2_counterpart: LensCapabilityV2NotApplicable
+  }
+]
+
 type TestPredicate
   = Compiles
   | FailsWithDiagnostic(DiagnosticReference)
@@ -303,6 +412,24 @@ type TestPredicate
       authority: DeclarationRef
       generated_paths: List<Path>
     }
+  // **🟢 TERMINAL — Band-C cementing dispatch.** The runner fail-closes unless the
+  // `TestClaim` is declared in `src/v3/compiler/tests/dag/cementing_dispatch.dag`.
+  // Payload names two `DeclarationRef` edges: `capability_register` (a `List` of
+  // `LensCapabilityRegisterRow` values — canonical `data lens_capability_register_rows`
+  // in this module) and `cementing_receipts` (the Band-C receipt list in the suite
+  // fixture). Evaluation projects bootstrap `LensRegistryEntry` (`regen.dag`) rows
+  // whose `lens_file` basename appears in the register slice with behavioral axis
+  // `LensCapabilityBehavioralComplete` and v2 axis `LensCapabilityV2RealV2`, expands
+  // each matched pair to the closed roster of `(registry_name, module_stem, kind)`
+  // receipts, then asserts the `cementing_receipts` list matches that expansion
+  // **exactly** (set equality on receipt triples, not merely registry-name keys), that
+  // receipt triples are unique, and each receipt's on-disk harness exists (`tests/dag/<stem>.dag` vs
+  // `integration/cementing/<stem>.rs` + `tests/integration.rs` wiring for temporary Rust
+  // receipts). See `cementing_dispatch::evaluate_cementing_dispatch_projection`.
+  | CementingDispatchMatchesProjection {
+      capability_register: DeclarationRef
+      cementing_receipts: DeclarationRef
+    }
   // **🟡 Scaffold — ReleaseDeferredClaim.** R1 release-acceptance concession
   // marker. Use only in release-acceptance fixtures with explicit Director
   // sign-off; this is not a generic escape hatch for arbitrary `TestSuite`s.
@@ -396,14 +523,18 @@ type QuantifiedTestClaim {
 
 // R3 T-Workflow-As-Data gate #101 (`test_cost_dimension_landed`).
 //
-// Test execution cost is the timing substrate projected onto a test node,
-// not a side table in `scripts/slow-test-exemptions.txt` and not a
-// verification-local scalar dimension. `TestNodeRef` is a closed test-typed
-// edge: only modeled `TestClaim` / `QuantifiedTestClaim` nodes can inhabit it,
-// so arbitrary declarations cannot masquerade as test nodes. The budget/report
-// fields reuse T-WAD's existing `TimingBudget` / `TimingMeasurement` authority
-// over `Nanoseconds`, so #102 can derive slow-test status without introducing
-// a parallel duration algebra.
+// Test execution cost is the timing substrate projected onto a test node in
+// the modeled graph (`TestNodeCostDimension` on `TestNodeRef`) — not a
+// verification-local scalar dimension. CI still carries warn-only rows in
+// `scripts/test-node-wall-clock-ratchet.jsonl` as an **interim shell manifest**
+// (same libtest tokens; structured JSONL) until gate #102 wires the ratchet to
+// substrate timing facts; that file is scaffolding, not the modeled authority.
+// `TestNodeRef` is a closed test-typed edge: only modeled `TestClaim` /
+// `QuantifiedTestClaim` nodes can inhabit it, so arbitrary declarations cannot
+// masquerade as test nodes. The budget/report fields reuse T-WAD's existing
+// `TimingBudget` / `TimingMeasurement` authority over `Nanoseconds`, so #102
+// can derive slow-test **policy** from those facts once the runner consumes
+// them instead of the side manifest (no parallel duration algebra here).
 //
 // PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD — this coproduct intentionally mirrors
 // `SuiteClaim`'s enumerated/quantified axis at the cost-attachment boundary so

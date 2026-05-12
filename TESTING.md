@@ -152,6 +152,26 @@ test takes >2s locally (cold bootstrap aside), the suite is
 drifting into heavy-integration territory. See
 `feedback_test_timeout_2s`.
 
+### Phase-0 per-test wall clock (CI)
+
+The v3 CI job tees libtest `--report-time` output and
+`scripts/check-test-timeout.sh` enforces `TEST_TIMEOUT_MS` (default
+2000 ms). **Warn-only backlog** is the checked-in manifest
+**`scripts/test-node-wall-clock-ratchet.jsonl`**: one JSON object per
+line, `{"test":"<libtest token>","policy":"warn"}`. That file is an
+**interim shell bridge** (P5 scaffold): same libtest name tokens the
+substrate will eventually attach `TestNodeCostDimension` facts to (R3
+gate **#101**, `src/v3/std/verification.dag`), but **today the script
+reads the JSONL directly** — it is not yet a projection from modeled
+test-node timing facts. Retiring `scripts/slow-test-exemptions.txt`
+drops the free-form table plus the `TEST_TIMEOUT_MAX_EXEMPTIONS`
+row-count ratchet and tightens fail-closed behavior; it does **not** by
+itself satisfy gate **#102** `slow_test_exemptions_dissolved` as “no
+side manifest” under `INVARIANTS.md` P5. Unknown tests over budget **fail
+closed**. Any `#[test]` that must **warn** instead of **fail** when over
+budget needs a manifest row in the **same PR** as the policy intent.
+Override: **`TEST_TIMEOUT_MANIFEST`**.
+
 ## Mocks and dependency injection
 
 Prefer passing `&Dag` / `&dyn Lens` / etc. over globals. Prefer
@@ -371,21 +391,23 @@ shape; it must name the missing carrier/substrate blocker and stay in
 `COMPLETE` with v2 parity is not complete until the matching
 cementing receipt exists: a `.dag` harness by default, or a
 temporary Rust module only when the published carrier shape has a
-named blocker as described above. Extend
-`CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` in
-`tests/integration/cementing/cementing_lens_registry_dispatch_test.rs`
-when the register row is upgraded; the test
-`cementing_escalation_slice_matches_capability_register` derives the
-required registry `name` keys from `docs/v3-lens-capability-register.md`
-plus `regen.dag` and asserts the slice matches **exactly** (the slice
-is a projection, not a parallel inventory). The test
-`cementing_test_claims_exist_for_escalated_v2_complete_registry_claims`
-then requires each listed receipt to resolve to its declared on-disk
-shape: `tests/dag/<stem>.dag` for `DagHarness`, or
-`tests/integration/cementing/<stem>.rs` plus a live `tests/integration.rs`
-`#[path = "integration/cementing/<stem>.rs"]` binding for
-`TemporaryRustModule`. An unwired or missing receipt cannot satisfy the
-ratchet.
+named blocker as described above. The canonical capability table is
+`data lens_capability_register_rows` in `src/v3/std/verification.dag`
+(`docs/design-tests-as-data-completeness.md` §8.3); keep it aligned with
+this section and `docs/v3-lens-capability-register.md` (prose mirror).
+Band-C receipts live in `src/v3/compiler/tests/dag/cementing_dispatch.dag`
+(`cementing_band_c_v2_complete_receipts`); `CementingDispatchMatchesProjection`
+joins those two lists (runner receipt:
+`t_pb_b_1_dag_runner_test::cementing_dispatch_suite_passes_through_runner`).
+Whenever a new gate-#87 `tests/dag/t_r3_gate_87_cementing_regen_*.dag` harness
+lands, extend `R3_GATE_87_CEMENTING_REGEN_SUITES` in
+`src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs` so PB-B-1
+continues to execute it (same table the predicate consults for `.dag`
+receipt stems). Temporary Rust cementing modules live under
+`tests/integration/cementing/` with a live `tests/integration.rs`
+`#[path = "integration/cementing/<stem>.rs"]` binding; `.dag` receipts use
+`tests/dag/<stem>.dag`. Drift between `regen.dag`, those on-disk artifacts,
+`verification.dag`, and `cementing_dispatch.dag` fails the structural predicate.
 
 **Anti-scope.** This section is not a mandate to prove full lens
 equivalence for every `.dag` file, and it does not require new
