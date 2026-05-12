@@ -312,6 +312,104 @@ extensions.
 
 ---
 
+## §5.5 Inventory completeness — audit against actions.dag schema + GH Actions docs
+
+**Trigger**: codex BLOCKING review on PR #2751 sha 4f41aebb (2026-05-12
+~09:12Z) + operator BLOCKING inline at :315 (same timestamp):
+
+> The site inventory is keyed to selected ci.yml examples instead of the
+> official GitHub Actions context-availability/workflow-syntax tables
+> plus every carrier in actions.dag → audit all expression-capable
+> workflow keys and either migrate them uniformly or explicitly stage a
+> bounded, triggered partial migration.
+
+**Finding accepted as substantive scope correction.** Per
+[GH Actions context availability](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts)
++ [workflow-syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax),
+expression-capable fields in actions.dag carriers (audited 2026-05-12):
+
+| Carrier | Field | Type at HEAD | Expression-capable per GH Actions docs |
+|---|---|---|---|
+| `Workflow` | `env: Map<String, String>` | Map values | ✓ values |
+| `Job` | `if_condition: String?` | String? | ✓ (already in 7-site) |
+| `Job` | `env: Map<String, String>` | Map values | ✓ values |
+| `Job` | `runner: RunnerSpec` | enum | ✓ via new `ExpressionRunner` (in 7-site) |
+| `Job` | `timeout_minutes: Int?` | Int? | ✓ (string-coerced to int) |
+| `Job` | `continue_on_error: Bool` | Bool | ✓ (string-coerced to bool) |
+| `Job` | `concurrency.group: String` | String | ✓ (already in 7-site via ConcurrencySpec) |
+| `Job` | `concurrency.cancel_in_progress: Bool` | Bool | ✓ (string-coerced to bool) |
+| `RunStep` | `name: String?` | String? | ✓ |
+| `RunStep` | `run: String` | String | ✓ |
+| `RunStep` | `env: Map<String, String>` | Map values | ✓ (already in 7-site) |
+| `RunStep` | `working_directory: String?` | String? | ✓ |
+| `RunStep` | `if_condition: String?` | String? | ✓ (already in 7-site) |
+| `RunStep` | `continue_on_error: Bool` | Bool | ✓ |
+| `RunStep` | `timeout_minutes: Int?` | Int? | ✓ |
+| `UsesStep` | `name: String?` | String? | ✓ |
+| `UsesStep` | `uses: ActionRef` | ActionRef | ✓ |
+| `UsesStep` | `with: Map<String, String>` | Map values | ✓ (already in 7-site) |
+| `UsesStep` | `env: Map<String, String>` | Map values | ✓ (already in 7-site) |
+| `UsesStep` | `if_condition: String?` | String? | ✓ (already in 7-site) |
+| `UsesStep` | `continue_on_error: Bool` | Bool | ✓ |
+| `UsesStep` | `timeout_minutes: Int?` | Int? | ✓ |
+
+Total expression-capable surface: **22 fields** across `Workflow`, `Job`,
+`RunStep`, `UsesStep`, `ConcurrencySpec`, `RunnerSpec`. The 7-site
+enumeration was keyed to ci.yml usage, not actions.dag schema —
+under-modeling the platform surface by 15 sites.
+
+### §5.5.1 Migration rule (revised)
+
+**ALL expression-capable fields in actions.dag carriers migrate to
+`Expression`** under (c). The 22 enumerated sites in the table above
+are the audit set; the implementing PR (per §7.5 ask #4 / Slice 4
+brief) must verify against the current `dsl/extdeps/github/actions.dag`
+HEAD + GH Actions context-availability docs and migrate any additional
+expression-capable fields surfaced.
+
+**Why uniform-not-partial**: leaving any expression-capable field as
+opaque `String` / `Bool` / `Int` while migrating others creates the
+exact hidden-parallel-authority pattern the operator BLOCKING flags —
+P2/P5 violation by structural split. Either gunbc structurally
+recognizes "this field can carry a GH Actions expression" via
+`Expression`, or it doesn't; per-field opt-in produces drift.
+
+### §5.5.2 Typed-field expression semantics (new §6 question)
+
+`timeout_minutes: Int?`, `continue_on_error: Bool`, and
+`concurrency.cancel_in_progress: Bool` are **typed** fields where GH
+Actions coerces expression output to the typed value. Two candidate
+shapes for typed fields:
+
+(i) **Wrap**: `timeout_minutes: Expression?` — expression
+content evaluates to a numeric string at runtime; gunbc emitter renders
+verbatim; gunbc evaluator (Slice 5+) parses to Int. Loses the typed
+literal case (must wrap `5` as `Expression(OpaqueString("5"))`).
+
+(ii) **Sum**: `timeout_minutes: TypedOrExpression<Int>?` where
+`TypedOrExpression<T> = Literal(T) | Expression(Expression)`. Preserves
+typed literals; cost: one extra carrier per typed expression-capable
+field.
+
+(iii) **Defer**: keep `Int?`/`Bool` literal-only for now; add `Expression`
+variant in implementing PR if ci.yml actually uses expressions at those
+sites. **Risk**: future ci.yml authoring that adds an expression at
+`timeout-minutes` requires retroactive substrate work.
+
+This canvas does not pre-author the choice (per §6 framing); routing to
+§6 question #4 below for Director.
+
+### §5.5.3 7-site framing retained as §1/§2 reference
+
+The §1 table and §2 (a/b/c) code sketches retain their 7-site framing as
+the ci.yml-keyed reference set, with §5.5 as the actions.dag-keyed audit
+extending to 22 sites. The substrate-shape ratification covers the
+expanded scope per §5.5.1 migration rule (all expression-capable fields);
+the §1/§2 7-site enumeration is the minimum subset proven by current
+ci.yml usage, not the migration ceiling.
+
+---
+
 ## §6. Open questions surfaced (not pre-authored)
 
 1. **Declaration form — RESOLVED: sum, not record.** Earlier draft
