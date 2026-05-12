@@ -85,7 +85,7 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 - **104 enumerated** (the full set; all R4 carves dissolved per Director ratification 2026-05-09; +6 T-WAD FULL R3 gates 2026-05-12 + 1 Miss-class dissolution gate 2026-05-12)
 - **103 R3-thesis-load-bearing** = `104 − 1` (only canvas-deferral subtracted; gate #11 TC1 V1 strict-fire per Director (a)-disposition 2026-05-09)
 
-**No R4 carves at R3 close** per Director ratification 2026-05-09 c#4412330468 — gates #81/#82/#95 (formerly R4-carved as C1/C2/C3) are PROMOTED-IN-R3 as lens-producer-retirement work folded into Cluster F. The prior "94 post-R4-carve" intermediate count is superseded; forward-looking R3 close target is 102 (no carves; only #11 canvas-deferral subtracted; +6 T-WAD FULL R3 gates 2026-05-12).
+**No R4 carves at R3 close** per Director ratification 2026-05-09 c#4412330468 — gates #81/#82/#95 (formerly R4-carved as C1/C2/C3) are PROMOTED-IN-R3 as lens-producer-retirement work folded into Cluster F. The prior "94 post-R4-carve" intermediate count is superseded; forward-looking R3 close target is 103 (no carves; only #11 canvas-deferral subtracted; +6 T-WAD FULL R3 gates 2026-05-12).
 
 Composition: existing R3 lane gates across 18 lanes (`T-Tier3-Dissolution` 4, `T-LensProducer-Retirement` 4, `T-V-L4-L7-Direct` 2 + 4 NEW Pattern-A executable + 1 ValueBody isomorphism = 7, `T-V-L5-Corpus` 1, `T-FixedPoint` 1, `T-Numeric-Construction` 8, `T-Omni-Shape-B` 4, `T-Anthropic-Wire` 2, `T-Bridge-Retirement` 6, `T-CostLens-Composition` 3 + 1 NEW = 4, `T-V2-Retirement` 2, `T-Free-Consequences-Demonstration` 10, `T-E-P-Producer-Broadening` 3, `T-Lens-Behavioral-Parity` 5, `T-Tests-As-Data-Completeness` 4, `T-Lens-Application-Surface` 8, `T-Workflow-As-Data` 4 + **6 NEW T-WAD FULL R3 (#98–#103)** = 10, `T-Lens-Self-Application` 3) = 86 lane gates; **+ Gate #97** (`method_template_projection_emit_shim_retirement_coherence`, R2-Grounding-Rust / Gunbc **#1982**) = **87** lane-aligned gate rows; plus 5 substrate-gap-class gates + 10 demonstration gates + 1 PR-anticipation-discipline gate = 16 gates added 2026-05-06. Total: 87 + 16 + 1 = **104** across 18 lanes + 1 standing program.
 **Gate-count canonicalization (per Director audit 2026-05-09 — ask 9, refined post-openai-pro REQUEST_CHANGES on PR #2361; updated 2026-05-12 — T-WAD FULL R3 elevation +6 gates per Director (b) ledger-sync disposition msg_2a68a4b5 + Miss-class dissolution +1 gate per Director ratification msg_915aa2c1)**:
@@ -111,7 +111,7 @@ R3 closes when **all 103 R3-load-bearing §1.8 gates** pass + zero tracked-debt 
 - **Lane `.dag` TestClaim gates (104 enumerated; 103 R3-load-bearing post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12 — only #11 canvas-deferred)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
 - **`r3_debt_paydown_zero_remaining`**: standing-program ledger predicate — no tracked ROADMAP debt rows survive R3 close (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" + §1.5 tracked-debt inclusion list).
 
-Both must hold for R3 close. "**102** R3-load-bearing gates green" (post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12; equivalently: all §1.8 rows except canvas-deferred #11) alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
+Both must hold for R3 close. "**103** R3-load-bearing gates green" (post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12; equivalently: all §1.8 rows except canvas-deferred #11) alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
 
 **Tracked-debt inclusion list for `r3_debt_paydown_zero_remaining`** (per Director poke-hole 2026-05-06 finding 3.1; closes definition gap):
 
@@ -332,7 +332,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 **Plus standing-program ledger predicate** (NOT a lane gate; separate Pass surface per §1):
 - `r3_debt_paydown_zero_remaining` — no tracked-debt rows survive R3 close (per §1.5 inclusion list); ROADMAP `Post-merge debt` rows + sweep §1 Class A/B/C/F/G entries + §10 RED escalations.
 
-**R3 close = ALL R3-load-bearing §1.8 lane gates GREEN (102 load-bearing post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12; only #11 canvas-deferred — §1.5) + `r3_debt_paydown_zero_remaining` GREEN** (per §1 Two distinct Pass surfaces).
+**R3 close = ALL R3-load-bearing §1.8 lane gates GREEN (103 load-bearing post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12; only #11 canvas-deferred — §1.5) + `r3_debt_paydown_zero_remaining` GREEN** (per §1 Two distinct Pass surfaces).
 
 **Authoritative source per gate**: `r3-structure.md` §"Acceptance" carries the Pass-condition body for each row above. This ledger is the consolidated index — body lives in canonical archive.
 
@@ -621,7 +621,7 @@ Pattern A executable (4-family cluster — see §1.1):
    - Remaining families (RustDagIsomorphism / SymbolicCostExprEquals / BridgeLedgerZero / Free-Consequences)
      have separate unblock paths per §2.1
 
-R3 close = **R3-load-bearing §1.8 gates GREEN** (**102** load-bearing post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12; only #11 canvas-deferred — §1.5) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt-rows-remaining (per §1 two-Pass-surfaces clarification; both must hold)
+R3 close = **R3-load-bearing §1.8 gates GREEN** (**103** load-bearing post-carve-promotion 2026-05-09 + T-WAD FULL R3 elevation 2026-05-12; only #11 canvas-deferred — §1.5) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt-rows-remaining (per §1 two-Pass-surfaces clarification; both must hold)
 ```
 
 **Edges added in §6 graph per Director poke-hole 2026-05-06**:
