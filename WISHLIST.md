@@ -79,7 +79,7 @@ R4.A (omni-ingestion), R4.B (queries-as-data via Introspect lens), R4.C (low-lev
 
 **Open questions**:
 - Symmetric extdeps: how much extra detail does ingest need vs emit? (Surfaced as work; not blocker.)
-- Scope: all 3 emission targets (Rust/Python/Go), or one as proof-of-concept first? Different first-target choices have different costs (Rust = hardest test of architecture; Python = biggest user-experience win).
+- Scope: all 5 emission targets (Rust/Python/Go/C/C++), or one as proof-of-concept first? Different first-target choices have different costs (Rust = hardest test of architecture among managed/safe-typed languages; C/C++ = hardest "real-codebase" test + richest ABI surface; Python = biggest user-experience win).
 - Information loss: ingest may not be lossless (Python's dynamic dispatch ≠ Rust's static dispatch); what's the contract for "we ingested your code well enough"?
 
 ### R4.B — Introspect-lens saturation + tooling-consumer adapters (user-facing: "queries-as-data")
