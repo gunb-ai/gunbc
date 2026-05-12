@@ -230,7 +230,8 @@ fn field_map(fields: &[(String, FieldValue)]) -> HashMap<&str, &FieldValue> {
 /// Routes an enforce-mode **budget violation** through `EnforcedApplication.diagnostic_severity`.
 ///
 /// Substrate policy (C-8): only `DiagnosticSeverity::Error` is a valid steady-state choice; unknown
-/// constructors or malformed values fail closed with an explanatory diagnostic.
+/// constructors, non-nullary `Error` payload, or malformed values fail closed with an explanatory
+/// diagnostic.
 fn enforced_violation_diagnostic(
     dag: &Dag,
     diagnostic_severity_disj: DeclarationId,
@@ -255,7 +256,11 @@ fn enforced_violation_diagnostic(
             fixes: Vec::new(),
         };
     };
-    let FieldValue::Variant { constructor, .. } = severity_val else {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = severity_val
+    else {
         return Diagnostic::ParseError {
             message: "lens enforcement: `diagnostic_severity` must be a `DiagnosticSeverity` \
                       variant value"
@@ -268,6 +273,16 @@ fn enforced_violation_diagnostic(
         return Diagnostic::ParseError {
             message: "lens enforcement: `diagnostic_severity` on `EnforcedApplication` must be \
                       `Error` (INVARIANTS C-8; fail-closed discipline)"
+                .to_string(),
+            span,
+            fixes: Vec::new(),
+        };
+    }
+    // `lens_application.dag`: `type DiagnosticSeverity = Error` — the lone variant is nullary.
+    if !payload.is_empty() {
+        return Diagnostic::ParseError {
+            message: "lens enforcement: `DiagnosticSeverity::Error` must be nullary (INVARIANTS \
+                      P1; malformed variant payload)"
                 .to_string(),
             span,
             fixes: Vec::new(),
@@ -483,7 +498,7 @@ fn decode_positive_descent_variant(
 #[cfg(test)]
 mod diagnostic_severity_fail_closed_tests {
     use super::*;
-    use crate::dag::LiteralBits;
+    use crate::dag::{LiteralBits, TypeConnective};
 
     #[test]
     fn missing_diagnostic_severity_substrate_records_fail_closed_diagnostic() {
@@ -582,6 +597,47 @@ mod diagnostic_severity_fail_closed_tests {
         };
         assert!(
             message.contains("must be a `DiagnosticSeverity` variant value"),
+            "unexpected message: {message}"
+        );
+    }
+
+    #[test]
+    fn enforced_violation_diagnostic_rejects_error_severity_with_non_nullary_payload() {
+        let dag = Dag::new();
+        let Some(ds_disj) = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                d.name.as_deref() == Some("DiagnosticSeverity")
+                    && d.span.file.ends_with("lens_application.dag")
+            })
+            .map(|d| d.id)
+        else {
+            panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
+        };
+        let TypeConnective::Disj { variants } = &dag.declaration(ds_disj).connective else {
+            panic!("bootstrap DiagnosticSeverity should be a sum type");
+        };
+        let error_ctor = variants
+            .iter()
+            .find(|v| v.label == "Error")
+            .map(|v| v.ty)
+            .expect("bootstrap DiagnosticSeverity should have Error variant");
+        let diag = enforced_violation_diagnostic(
+            &dag,
+            ds_disj,
+            &FieldValue::Variant {
+                constructor: error_ctor,
+                payload: vec![FieldValue::Literal(LiteralBits::Int("0".to_string()))],
+            },
+            "violation".to_string(),
+            SourceSpan::new("t.v3", 0, 1),
+        );
+        let Diagnostic::ParseError { message, .. } = diag else {
+            panic!("expected ParseError, got {diag:?}");
+        };
+        assert!(
+            message.contains("must be nullary"),
             "unexpected message: {message}"
         );
     }
