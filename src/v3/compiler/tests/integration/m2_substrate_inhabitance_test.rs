@@ -2,13 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
-    join_evidence, literal_bits_int, lower_call_pattern, map_evidence_merge_at, merge_evidence,
-    optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
-    positive_amount_from_i64, promote_to_strict, size_bound_param, tree_size_bound,
-    type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
-    CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
-    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    algebra_profile_to_dimension, constant_bound_value, is_constant_bound, literal_bits_int,
+    lower_call_pattern, per_call_descent_evidence, per_call_pattern_at, positive_amount_from_i64,
+    size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile, ArrowBody,
+    AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval,
+    IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
     PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
     TypeConnective, ValueBody,
 };
@@ -493,48 +491,27 @@ fn termination_lattice_functions_preserve_std_body_spans() {
 }
 
 #[test]
-fn termination_lattice_rust_mirror_matches_dag_authority() {
-    use DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
-
-    assert_eq!(evidence_rank(Strict), 2);
-    assert_eq!(evidence_rank(NonIncreasing), 1);
-    assert_eq!(evidence_rank(DescentUnknown), 0);
-
-    for evidence in [Strict, NonIncreasing, DescentUnknown] {
-        assert_eq!(merge_evidence(Strict, evidence), evidence);
-        assert_eq!(merge_evidence(evidence, Strict), evidence);
-        assert_eq!(join_evidence(DescentUnknown, evidence), evidence);
-        assert_eq!(join_evidence(evidence, DescentUnknown), evidence);
+fn termination_lattice_rust_mirror_dissolved() {
+    // Gate `tier3_termination_mirror_dissolved` (R3 DAG gate #1,
+    // T-Tier3-Dissolution): the public hand-Rust lattice operations no
+    // longer live in `dag.rs`. The declarations in `std.termination.dag`
+    // remain the authority and their bootstrap body spans stay pinned by
+    // `termination_lattice_functions_preserve_std_body_spans`.
+    let dag_rs = include_str!("../../src/dag.rs");
+    for forbidden in [
+        "pub fn evidence_rank",
+        "pub fn merge_evidence",
+        "pub fn join_evidence",
+        "pub fn promote_to_strict",
+        "pub fn optional_evidence_meet",
+        "pub fn map_evidence_merge_at",
+    ] {
+        assert!(
+            !dag_rs.contains(forbidden),
+            "`dag.rs` must not export termination lattice mirror helper `{forbidden}`; \
+             `src/v3/std/termination.dag` is the authority"
+        );
     }
-
-    assert_eq!(merge_evidence(Strict, Strict), Strict);
-    assert_eq!(merge_evidence(Strict, NonIncreasing), NonIncreasing);
-    assert_eq!(merge_evidence(NonIncreasing, NonIncreasing), NonIncreasing);
-    assert_eq!(
-        merge_evidence(NonIncreasing, DescentUnknown),
-        DescentUnknown
-    );
-
-    assert_eq!(join_evidence(NonIncreasing, Strict), Strict);
-    assert_eq!(join_evidence(NonIncreasing, NonIncreasing), NonIncreasing);
-    assert_eq!(join_evidence(Strict, DescentUnknown), Strict);
-
-    assert_eq!(promote_to_strict(NonIncreasing), NonIncreasing);
-    assert_eq!(promote_to_strict(Strict), Strict);
-    assert_eq!(promote_to_strict(DescentUnknown), DescentUnknown);
-
-    assert_eq!(optional_evidence_meet(None, Some(Strict)), Some(Strict));
-    assert_eq!(
-        optional_evidence_meet(Some(Strict), Some(NonIncreasing)),
-        Some(NonIncreasing)
-    );
-
-    let mut base = HashMap::new();
-    base.insert(String::from("n"), Strict);
-    let merged = map_evidence_merge_at(base, String::from("n"), NonIncreasing);
-    assert_eq!(merged.get("n"), Some(&NonIncreasing));
-    let inserted = map_evidence_merge_at(merged, String::from("m"), Strict);
-    assert_eq!(inserted.get("m"), Some(&Strict));
 }
 
 #[test]
