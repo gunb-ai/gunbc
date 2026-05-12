@@ -2,13 +2,12 @@
 // `cementing_lens_registry_dispatch_test.rs` ratchet (R3 T-Tests-As-Data-Completeness
 // gate #87 / `lens_cementing_test_discipline_complete`).
 //
-// Single structural authority for lens capability rows (projection input) plus the
-// Band-C receipt list. The runner predicate `CementingDispatchMatchesProjection`
-// joins `lens_capability_register_rows` against bootstrap `LensRegistryEntry` rows
-// from `regen.dag` and asserts receipt coverage + on-disk harness artifacts.
+// Canonical lens capability rows live in `std.verification` as `lens_capability_register_rows`
+// (`docs/design-tests-as-data-completeness.md` §8.3). This module declares only the
+// Band-C receipt list plus the `TestClaim` / `TestSuite` that wire
+// `CementingDispatchMatchesProjection` against that authority + `regen.dag`.
 //
-// Human-readable prose mirror: `docs/v3-lens-capability-register.md` (update both
-// together when a lens row changes).
+// Human-readable mirror: `docs/v3-lens-capability-register.md` (not a second authority).
 
 module v3.compiler.tests.cementing_dispatch
 
@@ -16,18 +15,8 @@ import std.list { List }
 import std.verification {
   CementingDispatchMatchesProjection,
   TestClaim,
-  TestSuite
-}
-
-// --- Capability projection (mirrors docs/v3-lens-capability-register.md §table) ---
-// `structural` / `behavioral` / `v2_counterpart` are plain strings so the runner does not
-// depend on anonymous sum-variant constructor ids in fixture-local lowering.
-
-type LensCapabilityRegisterRow {
-  lens_basename: String
-  structural: String
-  behavioral: String
-  v2_counterpart: String
+  TestSuite,
+  lens_capability_register_rows
 }
 
 type CementingBandCReceipt {
@@ -37,87 +26,6 @@ type CementingBandCReceipt {
   // `temporary-rust` = `tests/integration/cementing/<module_stem>.rs` + `integration.rs` wiring.
   kind: String
 }
-
-data lens_capability_register_rows: List<LensCapabilityRegisterRow> = [
-  {
-    lens_basename: "complexity.dag"
-    structural: "Terminal"
-    behavioral: "Complete"
-    v2_counterpart: "RealV2"
-  },
-  {
-    lens_basename: "cost.dag"
-    structural: "Terminal"
-    behavioral: "Complete"
-    v2_counterpart: "RealV2"
-  },
-  {
-    lens_basename: "cost_target_realization.dag"
-    structural: "Terminal"
-    behavioral: "BehavioralNA"
-    v2_counterpart: "NoneV3Native"
-  },
-  {
-    lens_basename: "effect_enumeration.dag"
-    structural: "Terminal"
-    behavioral: "Partial"
-    v2_counterpart: "NoneV3Native"
-  },
-  {
-    lens_basename: "idempotency.dag"
-    structural: "Terminal"
-    behavioral: "Complete"
-    v2_counterpart: "NoneV3Native"
-  },
-  {
-    lens_basename: "parallelism.dag"
-    structural: "Partial"
-    behavioral: "Stub"
-    v2_counterpart: "NoneV3Native"
-  },
-  {
-    lens_basename: "provenance.dag"
-    structural: "Terminal"
-    behavioral: "Complete"
-    v2_counterpart: "NoneV3Native"
-  },
-  {
-    lens_basename: "unused_parameters.dag"
-    structural: "Terminal"
-    behavioral: "Complete"
-    v2_counterpart: "NoneV3Native"
-  },
-  {
-    lens_basename: "variant_payload.dag"
-    structural: "Terminal"
-    behavioral: "Complete"
-    v2_counterpart: "NoneV3Native"
-  },
-  {
-    lens_basename: "structural_resolution.dag"
-    structural: "Terminal"
-    behavioral: "Complete"
-    v2_counterpart: "NoneV3Native"
-  },
-  {
-    lens_basename: "infer_helpers.dag"
-    structural: "Partial"
-    behavioral: "BehavioralNA"
-    v2_counterpart: "NotApplicable"
-  },
-  {
-    lens_basename: "lower_helpers.dag"
-    structural: "Partial"
-    behavioral: "BehavioralNA"
-    v2_counterpart: "NotApplicable"
-  },
-  {
-    lens_basename: "named_function_count.dag"
-    structural: "Terminal"
-    behavioral: "BehavioralNA"
-    v2_counterpart: "NotApplicable"
-  }
-]
 
 data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
   {

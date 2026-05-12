@@ -391,11 +391,13 @@ shape; it must name the missing carrier/substrate blocker and stay in
 `COMPLETE` with v2 parity is not complete until the matching
 cementing receipt exists: a `.dag` harness by default, or a
 temporary Rust module only when the published carrier shape has a
-named blocker as described above. Keep the Band-C dispatch slice in
-`src/v3/compiler/tests/dag/cementing_dispatch.dag` aligned with this
-section and `docs/v3-lens-capability-register.md`: `lens_capability_register_rows`
-plus `cementing_band_c_v2_complete_receipts` are what
-`CementingDispatchMatchesProjection` evaluates (runner receipt:
+named blocker as described above. The canonical capability table is
+`data lens_capability_register_rows` in `src/v3/std/verification.dag`
+(`docs/design-tests-as-data-completeness.md` §8.3); keep it aligned with
+this section and `docs/v3-lens-capability-register.md` (prose mirror).
+Band-C receipts live in `src/v3/compiler/tests/dag/cementing_dispatch.dag`
+(`cementing_band_c_v2_complete_receipts`); `CementingDispatchMatchesProjection`
+joins those two lists (runner receipt:
 `t_pb_b_1_dag_runner_test::cementing_dispatch_suite_passes_through_runner`).
 Whenever a new gate-#87 `tests/dag/t_r3_gate_87_cementing_regen_*.dag` harness
 lands, extend `R3_GATE_87_CEMENTING_REGEN_SUITES` in
@@ -405,7 +407,7 @@ receipt stems). Temporary Rust cementing modules live under
 `tests/integration/cementing/` with a live `tests/integration.rs`
 `#[path = "integration/cementing/<stem>.rs"]` binding; `.dag` receipts use
 `tests/dag/<stem>.dag`. Drift between `regen.dag`, those on-disk artifacts,
-and `cementing_dispatch.dag` fails the structural predicate.
+`verification.dag`, and `cementing_dispatch.dag` fails the structural predicate.
 
 **Anti-scope.** This section is not a mandate to prove full lens
 equivalence for every `.dag` file, and it does not require new

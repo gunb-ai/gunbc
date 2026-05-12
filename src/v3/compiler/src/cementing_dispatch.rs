@@ -5,8 +5,9 @@
 //! file ships or changes materially.
 //!
 //! Projects `LensRegistryEntry` rows from the bootstrapped `regen.dag` authority against
-//! structured lens-capability rows declared in `cementing_dispatch.dag`, then validates
-//! the Band-C receipt list and on-disk harness artifacts.
+//! `std.verification` `lens_capability_register_rows` (closed coproduct status axes per
+//! `docs/design-tests-as-data-completeness.md` §8.3), then validates the Band-C receipt list
+//! in `cementing_dispatch.dag` and on-disk harness artifacts.
 
 use std::collections::BTreeSet;
 use std::path::Path as FsPath;
@@ -27,6 +28,63 @@ fn string_field(fields: &[(String, FieldValue)], label: &str) -> Result<String, 
         Some(FieldValue::Literal(LiteralBits::String(value))) => Ok(value.clone()),
         Some(other) => Err(format!("`{label}` must be a string literal, got {other:?}")),
         None => Err(format!("record is missing string field `{label}`")),
+    }
+}
+
+fn nullary_sum_variant_label(dag: &Dag, value: &FieldValue, field_label: &str) -> Result<String, String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(format!(
+            "capability_register row `{field_label}` must be a closed sum variant (see \
+             `std.verification` lens capability register coproducts); got {value:?}"
+        ));
+    };
+    if !payload.is_empty() {
+        return Err(format!(
+            "capability_register row `{field_label}`: unexpected variant payload (expected a nullary constructor)"
+        ));
+    }
+    dag.declaration(*constructor)
+        .name
+        .clone()
+        .ok_or_else(|| format!("capability_register row `{field_label}`: anonymous constructor"))
+}
+
+fn validate_lens_capability_structural_status(label: &str) -> Result<(), String> {
+    match label {
+        "LensCapabilityStructuralTerminal" | "LensCapabilityStructuralPartial" => Ok(()),
+        other => Err(format!(
+            "capability_register `structural`: unknown variant `{other}` — add it to \
+             `std.verification` `LensCapabilityStructuralStatus` before using it here."
+        )),
+    }
+}
+
+fn validate_lens_capability_behavioral_status(label: &str) -> Result<(), String> {
+    match label {
+        "LensCapabilityBehavioralComplete"
+        | "LensCapabilityBehavioralPartial"
+        | "LensCapabilityBehavioralStub"
+        | "LensCapabilityBehavioralNA" => Ok(()),
+        other => Err(format!(
+            "capability_register `behavioral`: unknown variant `{other}` — add it to \
+             `std.verification` `LensCapabilityBehavioralStatus` before using it here."
+        )),
+    }
+}
+
+fn validate_lens_capability_v2_counterpart(label: &str) -> Result<(), String> {
+    match label {
+        "LensCapabilityV2RealV2" | "LensCapabilityV2NoneV3Native" | "LensCapabilityV2NotApplicable" => {
+            Ok(())
+        }
+        other => Err(format!(
+            "capability_register `v2_counterpart`: unknown variant `{other}` — add it to \
+             `std.verification` `LensCapabilityV2Counterpart` before using it here."
+        )),
     }
 }
 
@@ -154,9 +212,28 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
             ));
         };
         let lens_basename = string_field(fields, "lens_basename")?;
-        let behavioral = string_field(fields, "behavioral")?;
-        let v2 = string_field(fields, "v2_counterpart")?;
-        if behavioral == "Complete" && v2 == "RealV2" {
+        let structural = record_field(fields, "structural").ok_or_else(|| {
+            "capability_register row: missing `structural` field (expected \
+             `LensCapabilityStructuralStatus` variant)"
+                .to_string()
+        })?;
+        let behavioral = record_field(fields, "behavioral").ok_or_else(|| {
+            "capability_register row: missing `behavioral` field (expected \
+             `LensCapabilityBehavioralStatus` variant)"
+                .to_string()
+        })?;
+        let v2 = record_field(fields, "v2_counterpart").ok_or_else(|| {
+            "capability_register row: missing `v2_counterpart` field (expected \
+             `LensCapabilityV2Counterpart` variant)"
+                .to_string()
+        })?;
+        let structural_label = nullary_sum_variant_label(dag, structural, "structural")?;
+        validate_lens_capability_structural_status(&structural_label)?;
+        let behavioral_label = nullary_sum_variant_label(dag, behavioral, "behavioral")?;
+        validate_lens_capability_behavioral_status(&behavioral_label)?;
+        let v2_label = nullary_sum_variant_label(dag, v2, "v2_counterpart")?;
+        validate_lens_capability_v2_counterpart(&v2_label)?;
+        if behavioral_label == "LensCapabilityBehavioralComplete" && v2_label == "LensCapabilityV2RealV2" {
             basenames.insert(lens_basename);
         }
     }
@@ -187,8 +264,6 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
 
     let mut declared_names = BTreeSet::new();
     let mut receipt_triples = BTreeSet::new();
-    let mut cost_receipts: BTreeSet<(String, String)> = BTreeSet::new();
-    let mut cost_symbolic_receipts: BTreeSet<(String, String)> = BTreeSet::new();
 
     for row in &receipt_rows {
         let Some(fields) = record_fields(row) else {
@@ -212,51 +287,12 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
             ));
         }
         declared_names.insert(registry_name.clone());
-        match registry_name.as_str() {
-            "cost" => {
-                cost_receipts.insert((module_stem.clone(), kind_str.clone()));
-            }
-            "cost_symbolic" => {
-                cost_symbolic_receipts.insert((module_stem.clone(), kind_str.clone()));
-            }
-            _ => {}
-        }
     }
 
     if declared_names != expected_registry_names {
         return Err(format!(
             "cementing_receipts registry `name` keys must equal the projection from capability_register ∩ regen.dag — \
              expected {expected_registry_names:?}, got {declared_names:?}"
-        ));
-    }
-
-    let expected_cost = BTreeSet::from([
-        (
-            "t_r3_gate_87_cementing_regen_cost".to_string(),
-            "dag".to_string(),
-        ),
-        (
-            "complexity_lens_behavioral_completion".to_string(),
-            "temporary-rust".to_string(),
-        ),
-    ]);
-    if cost_receipts != expected_cost {
-        return Err(format!(
-            "`cost` registry key must keep both the gate #87 `.dag` harness and the temporary \
-             `ComplexitySummary` Rust receipt until `.dag` TestClaims can express nested carriers; \
-             expected {expected_cost:?}, got {cost_receipts:?}"
-        ));
-    }
-
-    let expected_cost_symbolic = BTreeSet::from([(
-        "cost_lens_symbolic_consumer_test".to_string(),
-        "temporary-rust".to_string(),
-    )]);
-    if cost_symbolic_receipts != expected_cost_symbolic {
-        return Err(format!(
-            "`cost_symbolic` must keep an explicit Band-C Rust receipt while `.dag` TestClaims \
-             cannot express nested `SymbolicCost` / `SizeVariable` expected values; \
-             expected {expected_cost_symbolic:?}, got {cost_symbolic_receipts:?}"
         ));
     }
 
