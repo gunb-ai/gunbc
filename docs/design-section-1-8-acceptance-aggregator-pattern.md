@@ -1,44 +1,55 @@
-# §1.8 Acceptance-Aggregator Pattern (Pilot)
+# §1.9 Acceptance-Aggregator Views (Pilot)
 
-**Status**: PILOT scaffold (Director-authored 2026-05-12 per Brian exploratory + PM-confirmed cadence message)
+**Status**: PILOT scaffold (Director-authored 2026-05-12 per Brian exploratory + PM-confirmed cadence message). REVISED 2026-05-12 per codex REQUEST_CHANGES /api/reviews/9982 on PR #2748 — aggregators relocated OUT of §1.8 into a new §1.9 section to preserve §1.8's "canonical closure-authority ledger" single-authority semantics per INVARIANTS P2.
 
-**Purpose**: Add an explicit row-class to `docs/r3-program-plan.md` §1.8 for **meta-program clusters** whose closure is the conjunction of multiple constituent gate-IDs already present in the ledger. Resolves the "viz gap" where cluster-level programs (Cluster M = T-Tests-As-Data-Completeness, Cluster F = T-LP-Retirement parity, T-CI-WAD = ci.yml WAD program) have disparate constituent blockers but no single ledger row representing the cluster as a whole.
+**Purpose**: Provide a derived **view layer** over `docs/r3-program-plan.md` §1.8 that surfaces cluster-tier meta-program closure progress as the lattice-meet of constituent §1.8 rows. Resolves the "viz gap" where cluster-level programs (Cluster M = T-Tests-As-Data-Completeness, Cluster F = T-LP-Retirement parity, T-CI-WAD = ci.yml WAD program) have disparate constituent blockers but no single rendering of the cluster as a whole.
+
+## INVARIANTS P2 framing — why a SEPARATE section, not §1.8 rows
+
+§1.8 is the **canonical closure-authority ledger**. Its row count is the live `97 enumerated / 96 R3-load-bearing` arithmetic per §1.5. Each row is a closure obligation with its own Status, Family, Owner Lane, and §1.7 corpus-quantified rules.
+
+An earlier draft (PR #2748 commit 62e47bfde and prior) proposed adding aggregator rows DIRECTLY to §1.8 with a new `acceptance-aggregator` family value and a `depends_on:` column. codex review /api/reviews/9982 correctly identified two P2 violations in that shape:
+
+1. **Two closure objects for the same fact**: putting aggregator rows in §1.8 alongside their constituents means the same closure progress is now represented in (N constituents + 1 aggregator) rows. Even with "derived, never hand-set" prose discipline, the row shape doesn't structurally prevent treatment as a closure obligation.
+2. **Side taxonomy inside the canonical ledger**: an in-§1.8 aggregator row needs special rules ("does not participate in §1.7 corpus rules", "Status is derived not hand-set") that diverge from the canonical row semantics. A canonical ledger row should not need a side taxonomy to explain why its closure logic differs.
+
+**The structural fix** (this revision):
+
+- Aggregators live in **§1.9 of `docs/r3-program-plan.md`** as a SEPARATE table (this doc specifies its shape; PM authors the actual §1.9 section)
+- Aggregator entries use a DISTINCT ID namespace: `V1, V2, V3, ...` (or `agg-1, agg-2, ...`) — explicitly **NOT** numeric §1.8 row IDs
+- The `97 enumerated / 96 R3-load-bearing` §1.5 arithmetic is computed exclusively over §1.8; §1.9 entries do not appear in that arithmetic and do not constitute closure obligations
+- §1.9 entries reference §1.8 row numbers via `depends_on:` (foreign-key style); the §1.8 rows themselves are unmodified by this pilot
+
+This preserves §1.8's single-authority semantics. §1.9 is a derived view; queries that ask "how many R3 closure gates exist?" still parse §1.8 only and ignore §1.9 entirely.
 
 ## Structural shape (kernel-compatible)
 
-Per `feedback_compiler_is_dag_processor` the compiler knows only `Node / Conj / Disj / Cardinality / Bit`. An acceptance-aggregator is structurally:
+Per `feedback_compiler_is_dag_processor` the compiler knows only `Node / Conj / Disj / Cardinality / Bit`. An acceptance-aggregator view is structurally:
 
 ```
-AcceptanceAggregator<cluster> = Conj<gate_id_1, gate_id_2, ..., gate_id_N>
+AcceptanceAggregator<cluster> = Conj<§1.8_row_id_1, §1.8_row_id_2, ..., §1.8_row_id_N>
 ```
 
-The aggregator's `Status` is the meet of constituent statuses under the lattice:
+The view's `Derived Status` is the lattice-meet of constituent Status values under the lattice `DECLARED < CONSUMER_LANDED < PASSING` (after coercion; see §"Derivation rule" below).
 
-```
-DECLARED < CONSUMER_LANDED < PASSING
-```
+This is the same shape used informally in §1.5 cluster-rollup prose; the pilot lifts it to a typed table form for dashboard/visualizer consumption.
 
-PASSING iff every constituent is PASSING. Any DECLARED makes the meet DECLARED.
+## §1.9 table shape
 
-This is the SAME shape used informally in §1.5 cluster-rollup notes; this pilot lifts it to a first-class §1.8 row so dashboards/visualizers can render the cluster without parsing prose.
+The §1.9 table sits in `docs/r3-program-plan.md` after the §1.8 ledger and before §2. Its columns are intentionally NOT the same as §1.8's, to make the visual distinction obvious:
 
-## Row-class additions to §1.8
+| Column | Notes |
+|---|---|
+| **View ID** | `V1, V2, ...` (or `agg-1, agg-2, ...`) — DISTINCT from §1.8's numeric `#` namespace |
+| **View Name** | cluster-tier program-tag (e.g., `t_ci_wad_full_r3_close`, `cluster_m_tests_as_data_completeness`) |
+| **Cluster Lane** | the cluster's owner lane (e.g., T-CI-WAD, T-Tests-As-Data-Completeness) |
+| **`depends_on:`** | comma-separated list of §1.8 row-IDs the view derives from (e.g., `#56, #84, #85, #86, #87`) |
+| **Derived Status** | computed at read time per the derivation rule below; never hand-set; rendered as `<DERIVED>` in committed text since the value rots between authoring and consumption per `feedback_no_snapshot_integers_in_briefs` |
+| **Notes** | one-line description of the cluster + brief context |
 
-Add ONE new column to the existing §1.8 table:
+### Derivation rule (machine-checkable spec)
 
-| Column | Existing or NEW | Notes |
-|---|---|---|
-| # | existing | numeric row id (continues from 1..N) |
-| Gate ID | existing | for aggregator rows, the cluster-tier program-tag (e.g., `t_ci_wad_full_r3_close`, `cluster_m_tests_as_data_completeness`) |
-| Family | existing — extended | NEW family value: `acceptance-aggregator` (alongside `substrate-shape` / `state-check` / `demonstration` / etc.) |
-| Owner Lane | existing | the cluster-tier lane (e.g., T-CI-WAD, T-Tests-As-Data-Completeness) |
-| Status | existing | derived from `depends_on:` meet; **MUST be computed from constituents, never hand-set** |
-| **`depends_on:`** | **NEW** | comma-separated list of constituent §1.8 row-IDs (numeric `#` references, e.g., `#56, #84, #85, #86, #87`) |
-| Notes | existing | one-line description + the meet-evaluation rule citation |
-
-### Derivation rule (machine-checkable invariant)
-
-Live §1.8 uses more status values than the abstract 3-value lattice. The derivation rule operates over a coerced status space:
+Live §1.8 uses more status values than the abstract 3-value lattice. The derivation operates over a coerced status space:
 
 **Coercion table — live §1.8 Status → lattice Status** (applied before meet):
 
@@ -48,67 +59,68 @@ Live §1.8 uses more status values than the abstract 3-value lattice. The deriva
 | `SATISFIED-BY-CONSTRUCTION` | `PASSING` | gate is closed by structural construction; no executable receipt needed; functionally identical to PASSING for closure arithmetic |
 | `CONSUMER_LANDED` | `CONSUMER_LANDED` | identity |
 | `INTEGRATION_RECEIPT (partial — ε-slice)` (or any `_partial`-suffixed bracketed form) | `CONSUMER_LANDED` | partial-receipt forms close to `CONSUMER_LANDED` per §1.7 corpus-quantified rule (slice receipts ≠ PASSING) |
-| `R3-LOAD-BEARING` | **REJECTED — see precondition rule below** | this is scope-metadata ("in R3, not R4-carved"), NOT a closure-progress status; cells with this value must be reframed to expose closure-progress status before aggregator applies |
+| `R3-LOAD-BEARING` | **REJECTED — see precondition rule below** | this is scope-metadata ("in R3, not R4-carved"), NOT a closure-progress status; cells with this value must be reframed to expose closure-progress status before view-membership applies |
 | `DECLARED` (and `DECLARED through R3` variants) | `DECLARED` | identity |
-| `HELD-CANVAS-DEFERRED` | **EXCLUDED — see exclusion rule below** | gate is moved past R3 close; not load-bearing for R3-close arithmetic; MUST NOT appear in any aggregator's `depends_on:` |
-| `DEFERRED` (post-R3) | **EXCLUDED** | same as above — post-R3 work; not in aggregator scope |
+| `HELD-CANVAS-DEFERRED` | **EXCLUDED — see exclusion rule below** | gate is moved past R3 close; not load-bearing for R3-close arithmetic; MUST NOT appear in any view's `depends_on:` |
+| `DEFERRED` (post-R3) | **EXCLUDED** | same as above — post-R3 work; not in view scope |
 
-**Precondition rule (aggregator-readiness)**: An aggregator row can be added ONLY IF every constituent's live Status coerces cleanly into `{DECLARED, CONSUMER_LANDED, PASSING}`. Constituent rows whose Status cell is purely scope-metadata (`R3-LOAD-BEARING` standing alone) are NOT aggregator-ready; their closure-progress status must be inlined into the cell (e.g., `R3-LOAD-BEARING — DECLARED` or `R3-LOAD-BEARING — CONSUMER_LANDED`) so the coercion table can resolve them, OR the row must be split such that scope-metadata and closure-progress are separated columns/rows.
+**Precondition rule (view-readiness)**: A §1.9 view can be added ONLY IF every constituent's live §1.8 Status coerces cleanly into `{DECLARED, CONSUMER_LANDED, PASSING}`. Constituent rows whose Status cell is purely scope-metadata (`R3-LOAD-BEARING` standing alone) are NOT view-ready; their closure-progress status must be inlined into the §1.8 cell (e.g., `R3-LOAD-BEARING — DECLARED`) so the coercion table can resolve them, OR the §1.8 row must be split such that scope-metadata and closure-progress are separated columns/rows.
 
-**Exclusion rule**: `DEFERRED` and `HELD-CANVAS-DEFERRED` constituents MUST NOT appear in any aggregator's `depends_on:` list. These gates are explicitly removed from R3-close arithmetic per §1.5 (e.g., `97 enumerated − 1 canvas-deferred {#11} = 96 R3-load-bearing`); including them in an aggregator pollutes the lattice-meet with values the §1.8 ledger has already excluded.
+**Exclusion rule**: `DEFERRED` and `HELD-CANVAS-DEFERRED` constituents MUST NOT appear in any view's `depends_on:` list. These gates are explicitly removed from R3-close arithmetic per §1.5 (e.g., `97 enumerated − 1 canvas-deferred {#11} = 96 R3-load-bearing`); including them in a view pollutes the lattice-meet with values §1.8 has already excluded from honest-close arithmetic.
 
-For every row where `Family == acceptance-aggregator`:
+**Derivation algorithm** (consumed by dashboards, visualizers, and reviewer-rubric checkers):
 
-1. Parse `depends_on:` as a list of row-IDs.
-2. For each row-ID, look up the constituent's `Status` cell.
+1. Parse the view's `depends_on:` as a list of §1.8 row-IDs.
+2. For each row-ID, look up the §1.8 row's `Status` cell.
 3. Apply the coercion table to obtain a value in `{DECLARED, CONSUMER_LANDED, PASSING}`.
-4. If any constituent's Status fails the precondition rule (purely scope-metadata, e.g., bare `R3-LOAD-BEARING`), the aggregator row is INVALID — fail-close with "constituent #N not aggregator-ready: closure-progress status must be inlined".
-5. If any constituent is marked `DEFERRED` or `HELD-CANVAS-DEFERRED`, the aggregator row is INVALID — fail-close with "constituent #N is post-R3-excluded; not eligible for aggregator depends_on:".
-6. Otherwise compute the lattice meet over the coerced values: any `DECLARED` → `DECLARED`; otherwise any `CONSUMER_LANDED` → `CONSUMER_LANDED`; else `PASSING`.
-7. Assert: aggregator row's `Status` == meet. If mismatch, the ledger is inconsistent — this is a structural ratchet (analogous to per-row invariants in §1.7).
+4. If any constituent's Status fails the precondition rule (purely scope-metadata, e.g., bare `R3-LOAD-BEARING`), the view is INVALID — fail-close with "constituent #N not view-ready: closure-progress status must be inlined in §1.8".
+5. If any constituent is marked `DEFERRED` or `HELD-CANVAS-DEFERRED`, the view is INVALID — fail-close with "constituent #N is post-R3-excluded; not eligible for view depends_on:".
+6. Otherwise compute the lattice-meet over coerced values: any `DECLARED` → `DECLARED`; otherwise any `CONSUMER_LANDED` → `CONSUMER_LANDED`; else `PASSING`. This is the view's `Derived Status` at the moment of evaluation.
 
-**Why not allow hand-set status**: aggregator rows that drift from their constituents create the "duplicate authority" class openai-pro 2026-05-06 PAUSE_AND_REGROUP flagged. The derivation rule preserves "single canonical view" property.
+There is no stored `Status` value for §1.9 views. The Derived Status is always computed at read time.
 
-**Why this is INVARIANTS P2-clean**: the coercion table + precondition + exclusion rules are themselves a single derivation authority; the aggregator's Status is a pure function of constituent Status values under those rules. There is no parallel authority for closure progress — every fact still lives in exactly one §1.8 row.
+## Pilot view — T-CI-WAD FULL R3-close
 
-## Pilot row — T-CI-WAD FULL R3-close
-
-Proposed row to add to §1.8 (pending warm-wolf-698 canvas ratification of substrate-shape options (i)/(ii)/(iii) for gate #56; the AGGREGATOR ROW is shape-stable regardless of which substrate option wins, since the constituent gate-IDs are unchanged):
+Proposed §1.9 entry (post-(c-refined) canvas ratification per PR #2749; constituent gate-IDs reflect PM cascade renames including `ci_yml_deleted` → `ci_yml_hand_authority_dissolved`):
 
 ```
-| 9X | t_ci_wad_full_r3_close | acceptance-aggregator | T-CI-WAD | <derived> | depends_on: #56, #<NEW1>, #<NEW2>, #<NEW3>, #<NEW4>. Constituents: ci_workflow_modeled_as_dag + ci_yml_hand_authority_dissolved + workflow_emission_target_open_enum_landed + test_cost_dimension_landed + slow_test_exemptions_dissolved. Closes when all 5 PASSING per lattice-meet derivation rule. Brian-elevated to FULL R3-close scope 2026-05-12 per operator directive at gunbc#846. |
+| V1 | t_ci_wad_full_r3_close | T-CI-WAD | depends_on: #56, #<N1>, #<N2>, #<N3>, #<N4>, #<N5>, #<N6> | <DERIVED> | Brian-elevated to FULL R3-close scope 2026-05-12 per gunbc#846. Constituents: ci_workflow_modeled_as_dag + ci_yml_hand_authority_dissolved + emission_target_open_enum_landed + test_cost_dimension_landed + slow_test_exemptions_dissolved + project_github_actions_landed + ci_uses_affected_set_selection. |
 ```
 
-The 4 NEW constituent rows MUST be added separately to §1.8 with their own families:
-- `ci_yml_hand_authority_dissolved` → state-check
-- `workflow_emission_target_open_enum_landed` → substrate-shape (carrier-shape per WI-1 canvas ratification)
-- `test_cost_dimension_landed` → substrate-shape (already exists as cost-dim work; verify row number)
+The 6 NEW constituent rows MUST be added to **§1.8** (not §1.9) with their canonical families per the existing §1.8 schema:
+
+- `ci_yml_hand_authority_dissolved` → state-check (PM cascade per PR #2744 commit 19a1d8dfc — file presence orthogonal to hand-authority dissolution)
+- `emission_target_open_enum_landed` → substrate-shape (gunbc-namespace per (c-refined))
+- `test_cost_dimension_landed` → substrate-shape (verify row number against existing cost-dim work)
 - `slow_test_exemptions_dissolved` → state-check
+- `project_github_actions_landed` → substrate-shape (new; projection function in gunbc namespace per (c-refined))
+- `ci_uses_affected_set_selection` → state-check (T-WAD + T-Verification cross-tier; PR #2713 affected-set lens consumed by BinaryShim emitter; Layer 2 path-regex bridge dissolved)
 
-This pilot ratifies the pattern; PM consumes the template for the §9 update to `docs/scope-t-ci-wad-full-r3.md` (PR #2744) when warm-wolf-698 canvas ratifies the substrate shape.
+These 6 NEW §1.8 rows participate in the canonical arithmetic (close-gate counts shift accordingly per §1.5). The §1.9 V1 entry is a **derived rendering**, not a 7th closure obligation.
 
-## Candidate consumers post-pilot
+## Candidate §1.9 entries post-pilot
 
-Same row-class generalizes to sibling clusters at low cost:
+Same view pattern generalizes to sibling clusters at low cost. Each candidate MUST pass the precondition + exclusion rules over its §1.8 constituents before being added to §1.9:
 
-- **Cluster M** (T-Tests-As-Data-Completeness) — aggregator over §1.8 #84/#85/#86/#87 (per `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md` 3-phase plan); aggregator-ready once constituents' Status cells are coerce-able
-- **Cluster F** (T-Lens-Behavioral-Parity) — candidate aggregator over the 4-lens parity rows (#79 complexity, #80 cost, #81 parallelism, #82 effect_enumeration) per Director carve-promotion 2026-05-09. **NOT aggregator-ready at HEAD**: rows #81 and #82 carry bare `R3-LOAD-BEARING` as scope-metadata in the Status cell (not a closure-progress status), and gate #95 / #83 use the same pattern; these rows fail the precondition rule. **Precondition for Cluster F pilot**: rework the affected Status cells to inline closure-progress (e.g., `R3-LOAD-BEARING — DECLARED`) so the coercion table resolves them. Until then, cite Cluster F as a *post-precondition-fix* candidate, not an immediate consumer.
-- **Cluster K** — aggregator scope TBD per `docs/audit/r3-cluster-analysis-2026-05-09.md` §2; precondition check required at pilot time
-- **T-V2-Retirement** — aggregator over v2 retirement constituent gates; precondition check required at pilot time
+- **Cluster M** (T-Tests-As-Data-Completeness) — view over §1.8 #84/#85/#86/#87 (per `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md` 3-phase plan); view-ready once constituents' Status cells coerce cleanly
+- **Cluster F** (T-Lens-Behavioral-Parity) — candidate view over the 4-lens parity rows (#79 complexity, #80 cost, #81 parallelism, #82 effect_enumeration). **NOT view-ready at HEAD**: §1.8 rows #81 and #82 (and #83, #95) carry bare `R3-LOAD-BEARING` as scope-metadata in the Status cell (not closure-progress); these rows fail the precondition. **Pre-pilot fix required**: §1.8 cells for #81/#82/#83/#95 must inline closure-progress (e.g., `R3-LOAD-BEARING — DECLARED`) before the Cluster F view can be added.
+- **Cluster K** — view scope TBD per `docs/audit/r3-cluster-analysis-2026-05-09.md` §2; precondition check required at pilot time
+- **T-V2-Retirement** — view over v2 retirement constituent gates; precondition check required at pilot time
 
-PM-tier consumes per cluster on a rolling basis; no big-bang migration required. Each pilot MUST run the precondition + exclusion rules over its candidate constituents before adding the aggregator row.
+PM-tier consumes per cluster on a rolling basis; no big-bang migration required.
 
 ## Reviewer-rubric notes
 
-If a reviewer (cursor/codex/openai-pro) catches an aggregator row with `Status` inconsistent with its `depends_on:` meet, that is a structural ratchet violation (analogous to a "Documentation Describes Live State" §INVARIANTS finding). Cite the derivation rule above as the authority for the fail-closed verdict.
+If a reviewer (cursor/codex/openai-pro) catches a §1.9 view whose stored "Derived Status" diverges from the meet of its current §1.8 constituents, that is a discipline violation — the column MUST be rendered as `<DERIVED>` (or computed live by a tooling layer), never stored as a snapshot value.
 
-The aggregator row's purpose is **visualization + dashboard rendering**, NOT a separate closure obligation. The honest-close arithmetic (97 enumerated → 96 R3-load-bearing per §1.5 carve-out math) is unchanged: aggregators consume existing rows without inflating the count. Each aggregator row is a "view" over its constituents, not a new gate.
+If a reviewer catches a §1.9 view referencing a §1.8 row with a `DEFERRED` / `HELD-CANVAS-DEFERRED` / bare-scope-metadata Status, that is a precondition or exclusion violation per the derivation rule above. Fail-closed with a citation.
+
+§1.9 views are **visualization + dashboard rendering**, NOT closure obligations. The honest-close arithmetic (`97 enumerated → 96 R3-load-bearing` per §1.5 carve-out math) is exclusively over §1.8 and is unchanged by any addition or removal of §1.9 entries.
 
 ## Cross-references
 
-- `feedback_compiler_is_dag_processor` — Conj is one of the 5 kernel types; aggregator pattern is kernel-compatible
-- `feedback_substrate_principle_audit` — 6-question audit; aggregator passes because the constituents already exist (no new carrier)
-- `feedback_parallel_representation_debt` — aggregators MUST be derived, never duplicated; the derivation rule prevents parallel-authority
-- `feedback_no_snapshot_integers_in_briefs` — aggregator's `Status` is computed at read time from constituents; never bake snapshot status
-- §1.7 corpus-quantified-rule taxonomy — aggregator rows do NOT participate in §1.7 corpus rules; they are pure meet projections
-- §1.8 "Status vs Notes (corpus gates)" boilerplate — aggregator rows clarify Status derivation in their Notes column with the citation `<lattice-meet of depends_on:>`
+- `feedback_compiler_is_dag_processor` — Conj is one of the 5 kernel types; aggregator view pattern is kernel-compatible
+- `feedback_substrate_principle_audit` — 6-question audit; this pattern passes because it introduces no new substrate carrier
+- `feedback_parallel_representation_debt` — views MUST be derived, never duplicated; the §1.9-vs-§1.8 separation + Derived-Status discipline prevents parallel-authority
+- `feedback_no_snapshot_integers_in_briefs` — Derived Status is computed at read time; never bake snapshot status in committed text (use `<DERIVED>` placeholder)
+- `feedback_audit_adjacent_authority_first` — audit §1.8 + §1.5 + §1.7 authority before authoring §1.9 entries; cite existing parents instead of restating
