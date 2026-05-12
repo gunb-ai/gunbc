@@ -5502,6 +5502,12 @@ fn resolve_symbolic_cost_param_ordinals_for_bind(
     bind: &crate::dag::BindNode,
 ) -> SymbolicCostEqPattern {
     fn resolve(raw: u32, bind: &crate::dag::BindNode) -> u32 {
+        // Gate #87 `.dag` expected values author `SizeVariable.source_port`
+        // as a bind-parameter ordinal because raw `PortId`s are allocated
+        // after bootstrap/test-harness declarations and are not stable source
+        // data. Out-of-range values remain literal raw `PortId`s so older
+        // shape-only fixtures still fail by ordinary equality rather than by
+        // this adapter.
         bind.params
             .get(raw as usize)
             .map(|port| port.raw())

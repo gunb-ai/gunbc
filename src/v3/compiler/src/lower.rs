@@ -5732,6 +5732,9 @@ fn lower_scalar_literal_for_type(
                     int_literal_fits_expected_type(dag, &int_value, expected_type),
                     Ok(Some(true))
                 )
+                // Modeled atomic-handle literal: structural data may write a
+                // raw `PortId` as an in-range nonnegative integer. This is not
+                // a general numeric-newtype coercion rule.
                 || port_id_decl_id
                     .map(|id| {
                         walks_to(dag, expected_type, id)
