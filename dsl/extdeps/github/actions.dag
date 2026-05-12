@@ -176,6 +176,18 @@ type ConcurrencySpec
 // -- Runners ----------------------------------------------------------
 // The execution environment for a job.
 
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟢 GREEN (terminal). `HostedRunner` + `RunnerLabel` are a closed scaffold set aligned with
+// GitHub's documented hosted runner images for this repo's first-draft model.
+// Ledger (patterns 1–4): no cheaper dissolution for the label enum itself — expanding the
+// closed set is a deliberate taxonomy change when GitHub documents new hosted targets.
+// 🟡 YELLOW (scaffold). `SelfHosted` carries arbitrary label strings as GitHub accepts for
+// self-hosted runner label matching; dissolution: typed runner-label substrate OR emission
+// narrows to a closed vocabulary where the compiler owns runner topology.
+// 🟡 YELLOW (scaffold). `RunsOnExpression` mirrors GitHub's expression-valued `runs-on:` form;
+// the opaque string is faithful YAML surface syntax, not a typed Actions expression carrier.
+// Named dissolution trigger: typed Actions string-expression substrate for `runs-on:` AND
+// `gunbc/ci_emission.dag` projection consumes it for emitted workflow YAML.
 type RunnerSpec
   = HostedRunner { label: RunnerLabel }
   | SelfHosted { labels: List<String> }
