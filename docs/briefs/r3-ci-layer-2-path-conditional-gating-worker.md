@@ -101,6 +101,20 @@ Where:
 
 (c) **NEW per-group required-paths mapping** — for each group, hand-author the required-paths regex by examining which `src/v3/*` files the group's tests transitively depend on. This is the bridge-debt artifact; dissolves when the affected-set lens lands.
 
+**Shared-infrastructure full-run fail-closed bucket** (per codex P3 BLOCKING finding 2026-05-12 review #9744): per-group regexes by themselves are NOT sufficient — a PR that changes shared test infrastructure or selection machinery OUTSIDE `src/v3/*` (e.g., `.github/workflows/ci.yml`, `scripts/*`, harness code, `Cargo.toml`/`Cargo.lock`, `rust-toolchain.toml`, `.cargo/config.toml`) would be classified as "unaffected" for every per-group regex and silently skip tests whose behavior actually changed. That's the fail-open boundary class P3 forbids.
+
+**Mechanism**: the `changes` job MUST gate ALL `skip_*` flags to `false` (force full-run) when any changed file matches the shared-infrastructure regex:
+
+```
+^(\.github/.*|scripts/.*|Cargo\.(toml|lock)|rust-toolchain\.toml|\.cargo/.*|build\.rs)$
+```
+
+Equivalently in step output: `force_full_run = (any changed file ∈ shared-infrastructure regex)`; when `force_full_run = true`, all per-group `skip_*` outputs short-circuit to `false`. Composes with the `code=true|false` Layer 1 gate (docs-only PRs already skip everything via Layer 1; this constraint applies only to code PRs).
+
+The shared-infrastructure regex MUST be hand-authored at the **changes job level**, not delegated to per-group regexes — every group entry's regex covers ONLY its own `src/v3/*` deps; the full-run trigger is the join-point that catches inter-group / cross-cutting changes. This is fail-closed by construction: a missing per-group regex entry doesn't matter when shared-infra changes; everything runs.
+
+**[Mgr-fill]**: validate the shared-infra regex against representative recent PRs that touched `.github/workflows/ci.yml` / `scripts/*` / `Cargo.lock` and confirm those PRs would have `force_full_run = true`.
+
 **Starting template — PM pre-staged Mgr-fill reference doc**: [`docs/briefs/r3-ci-layer-2-pm-prestaged-mgr-fill-template.md`](r3-ci-layer-2-pm-prestaged-mgr-fill-template.md) (landed via PR #2721; 220 lines).
 
 The PM template provides:
@@ -172,6 +186,7 @@ This is the parallel-representation-debt prevention. If Layer 2's group-classifi
 6. **No closure-allowed carve-outs**: Layer 2's lifetime is bounded by the affected-set lens dissolution. If a group can't be path-classified accurately, it stays in the `code=true` full-run bucket (no special carve).
 7. **Push events short-circuit to full-run** — `github.event_name == 'push'` bypasses ALL skip_* flags (run everything on main). Matches Layer 1.
 8. **Hand-Rust budget: zero**. Layer 2 lives entirely in `.github/workflows/ci.yml` + an optional path-mapping data file (e.g., `scripts/ci-path-classification.yaml` or inline in the workflow).
+9. **Shared-infrastructure full-run fail-closed bucket** (P3 invariant; per codex BLOCKING #9744 absorption). Per §2 mechanism: `force_full_run = (any changed file matches shared-infra regex)` short-circuits all per-group `skip_*` to `false`. The regex covers at minimum `.github/*`, `scripts/*`, `Cargo.{toml,lock}`, `rust-toolchain.toml`, `.cargo/*`, `build.rs`. Per-group regexes cover ONLY their own `src/v3/*` deps; the full-run trigger is the join-point that catches inter-group / cross-cutting changes. **Never collapse the full-run trigger into per-group regexes** — that's the structural fail-open shape.
 
 ## §5. Acceptance
 
@@ -182,7 +197,8 @@ The Layer 2 PR-set is acceptable when:
 - Per-group path-mapping table cites all 3 inventory sources (a)(b)(c)
 - Every group entry has `dimensions: Set<Dimension>` field (non-empty subset of `docs/design-affected-set-lens.md` §2 enum); set semantics preserve multi-dim consumer fidelity per locked-design union
 - **Polarity check passes**: every YAML / formula / acceptance-text reference to the dissolution formula uses canonical skip-form `skip = (∩ = ∅)` or equivalent run-form `run = (∩ ≠ ∅)`. Inverted form `skip = (∩ ≠ ∅)` is the fail-open bug pattern; reject in review.
-- Self-test: a docs-only PR still triggers Layer 1 (entire `v3` skip — `code=false`); a code PR touching only `src/v3/lenses/cost.dag` triggers ONLY the cost-related test groups (cost-dimension groups run; other-dimension groups skip); a `push` to main runs everything
+- **Shared-infrastructure full-run check passes** (P3 fail-closed): `force_full_run = (any changed file matches shared-infra regex)` is implemented at the `changes` job level; when true, all `skip_*` outputs short-circuit to `false`. Self-test: a PR touching ONLY `.github/workflows/ci.yml` or `Cargo.lock` or `scripts/check-test-timeout.sh` MUST run all test groups (not just the ones whose `src/v3/*` regexes coincidentally match).
+- Self-test (4 cases): (a) docs-only PR triggers Layer 1 (entire `v3` skip — `code=false`); (b) a code PR touching only `src/v3/lenses/cost.dag` triggers ONLY the cost-related test groups (cost-dimension groups run; other-dimension groups skip); (c) a code PR touching only `.github/workflows/ci.yml` triggers ALL test groups via `force_full_run` (P3 fail-closed for shared infra); (d) a `push` to main runs everything
 - PR body explicitly states bridge-debt + dissolution trigger
 - `self_host_ratchet` required-check name remains green via existing PR #2718 `if:` widening
 - No new hand-Rust files; no SG-0 census changes
