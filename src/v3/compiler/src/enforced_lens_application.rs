@@ -1,14 +1,5 @@
 //! Enforced lens applications (`EnforcedApplication` from `lens_application.dag`).
 //!
-//! Gate #91 (`enforce_violation_routing_landed`): budget-violation diagnostics are
-//! routed through the authored `diagnostic_severity` field — today the single
-//! substrate variant `DiagnosticSeverity::Error` maps to [`Diagnostic::ParseError`]
-//! (compile-fail / fail-closed), per `lens_application.dag`, design §3, and
-//! INVARIANTS C-8.
-//!
-//! Future extra `DiagnosticSeverity` constructors stay fail-closed at this consumer until
-//! an intentional substrate + routing co-update assigns their `Diagnostic::*` shape.
-//!
 //! Gate #92 (`complexity_violation_compile_error_demonstrated`): when a program
 //! authors `EnforcedApplication<ComplexitySummary, AsymptoticClass>` referencing
 //! `complexity_enforceable`, infer checks the named section using the **same**
@@ -26,32 +17,6 @@ use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost::{
     complexity_enforcement_project, complexity_enforcement_violates, complexity_of,
 };
-
-fn diagnostic_severity_substrate_disj(dag: &Dag) -> Option<DeclarationId> {
-    dag.declarations()
-        .iter()
-        .find(|d| {
-            d.name.as_deref() == Some("DiagnosticSeverity")
-                && d.span.file.ends_with("lens_application.dag")
-        })
-        .map(|d| d.id)
-}
-
-// Fail-closed when `lens_application.dag` does not expose the expected `DiagnosticSeverity`
-// substrate row — factored so unit tests can pin the diagnostic without staging a full
-// complexity-enforcement DAG (`Dag::new()` omits `complexity_enforceable`).
-fn attach_missing_diagnostic_severity_substrate_diagnostic(
-    dag: &mut Dag,
-    enforced_template: DeclarationId,
-) {
-    dag.attach_diagnostic(Diagnostic::ParseError {
-        message: "lens enforcement: could not resolve substrate `DiagnosticSeverity` from \
-                  `lens_application.dag` (modeled authority missing; fail-closed)"
-            .to_string(),
-        span: dag.declaration(enforced_template).span.clone(),
-        fixes: Vec::new(),
-    });
-}
 
 /// Fail-closed check for landed complexity enforcement applications.
 pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
@@ -98,10 +63,6 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         return;
     };
     let Some(declaration_scope_conj) = declaration_scope_payload_conj(dag, section_ref_disj) else {
-        return;
-    };
-    let Some(diagnostic_severity_disj) = diagnostic_severity_substrate_disj(dag) else {
-        attach_missing_diagnostic_severity_substrate_diagnostic(dag, enforced_template);
         return;
     };
     let positive_descent_disj = dag
@@ -194,31 +155,15 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
         if !complexity_enforcement_violates(&budget_class, &observed) {
             continue;
         }
-        let severity_val = match fm.get("diagnostic_severity") {
-            Some(v) => *v,
-            _ => {
-                violations.push(Diagnostic::ParseError {
-                    message:
-                        "lens enforcement: `EnforcedApplication` missing `diagnostic_severity`"
-                            .to_string(),
-                    span: decl.span.clone(),
-                    fixes: Vec::new(),
-                });
-                continue;
-            }
-        };
-        let violation_message = format!(
-            "lens enforcement violation: complexity budget {budget_class:?} exceeded \
-             by observed class {observed:?} (declared `EnforcedApplication` at {})",
-            decl.name.as_deref().unwrap_or("?")
-        );
-        violations.push(enforced_violation_diagnostic(
-            dag,
-            diagnostic_severity_disj,
-            severity_val,
-            violation_message,
+        violations.push(Diagnostic::ParseError {
+            message: format!(
+                "lens enforcement violation: complexity budget {budget_class:?} exceeded \
+                 by observed class {observed:?} (declared `EnforcedApplication` at {})",
+                decl.name.as_deref().unwrap_or("?")
+            ),
             span,
-        ));
+            fixes: Vec::new(),
+        });
     }
 
     for diagnostic in violations {
@@ -228,74 +173,6 @@ pub(crate) fn check_enforced_lens_applications(dag: &mut Dag) {
 
 fn field_map(fields: &[(String, FieldValue)]) -> HashMap<&str, &FieldValue> {
     fields.iter().map(|(k, v)| (k.as_str(), v)).collect()
-}
-
-/// Routes an enforce-mode **budget violation** through `EnforcedApplication.diagnostic_severity`.
-///
-/// Substrate policy (C-8): only `DiagnosticSeverity::Error` is a valid steady-state choice; unknown
-/// constructors, non-nullary `Error` payload, or malformed values fail closed with an explanatory
-/// diagnostic.
-fn enforced_violation_diagnostic(
-    dag: &Dag,
-    diagnostic_severity_disj: DeclarationId,
-    severity_val: &FieldValue,
-    violation_message: String,
-    span: SourceSpan,
-) -> Diagnostic {
-    let TypeConnective::Disj { variants } = &dag.declaration(diagnostic_severity_disj).connective
-    else {
-        return Diagnostic::ParseError {
-            message: "lens enforcement: internal error (DiagnosticSeverity is not a sum type)"
-                .to_string(),
-            span,
-            fixes: Vec::new(),
-        };
-    };
-    let Some(error_ctor) = variants.iter().find(|v| v.label == "Error").map(|v| v.ty) else {
-        return Diagnostic::ParseError {
-            message: "lens enforcement: internal error (DiagnosticSeverity lacks `Error` variant)"
-                .to_string(),
-            span,
-            fixes: Vec::new(),
-        };
-    };
-    let FieldValue::Variant {
-        constructor,
-        payload,
-    } = severity_val
-    else {
-        return Diagnostic::ParseError {
-            message: "lens enforcement: `diagnostic_severity` must be a `DiagnosticSeverity` \
-                      variant value"
-                .to_string(),
-            span,
-            fixes: Vec::new(),
-        };
-    };
-    if *constructor != error_ctor {
-        return Diagnostic::ParseError {
-            message: "lens enforcement: `diagnostic_severity` on `EnforcedApplication` must be \
-                      `Error` (INVARIANTS C-8; fail-closed discipline)"
-                .to_string(),
-            span,
-            fixes: Vec::new(),
-        };
-    }
-    // `lens_application.dag`: `type DiagnosticSeverity = Error` — the lone variant is nullary.
-    if !payload.is_empty() {
-        return Diagnostic::ParseError {
-            message: "lens enforcement: `DiagnosticSeverity::Error` must be nullary (INVARIANTS \
-                      P1; malformed variant payload)"
-                .to_string(),
-            span,
-            fixes: Vec::new(),
-        };
-    }
-    Diagnostic::ParseError {
-        message: violation_message,
-        span,
-        fixes: Vec::new(),
-    }
 }
 
 fn matches_enforced_application_instantiation(
@@ -495,145 +372,6 @@ fn decode_positive_descent_variant(
             })
         }
         _ => None,
-    }
-}
-
-#[cfg(test)]
-mod diagnostic_severity_fail_closed_tests {
-    use super::*;
-    use crate::dag::{LiteralBits, TypeConnective};
-    use crate::diagnostics::Diagnostic;
-
-    fn assert_parse_error_at(diag: Diagnostic, expected_span: &SourceSpan) {
-        match diag {
-            Diagnostic::ParseError { span, fixes, .. } => {
-                assert_eq!(&span, expected_span);
-                assert!(fixes.is_empty());
-            }
-            other => panic!("expected ParseError, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn missing_diagnostic_severity_substrate_records_fail_closed_diagnostic() {
-        let mut dag = Dag::new();
-        let Some(enforced_template) = dag
-            .declarations()
-            .iter()
-            .find(|d| {
-                d.name.as_deref() == Some("EnforcedApplication")
-                    && d.span.file.ends_with("lens_application.dag")
-            })
-            .map(|d| d.id)
-        else {
-            panic!("bootstrap should declare EnforcedApplication in lens_application.dag");
-        };
-        let expected_span = dag.declaration(enforced_template).span.clone();
-        let Some(ds_id) = super::diagnostic_severity_substrate_disj(&dag) else {
-            panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
-        };
-        dag.declaration_mut(ds_id).name = Some("DiagnosticSeverity__test_unresolvable".to_string());
-        assert!(
-            super::diagnostic_severity_substrate_disj(&dag).is_none(),
-            "Expected DiagnosticSeverity substrate row to be unresolvable after rename"
-        );
-        super::attach_missing_diagnostic_severity_substrate_diagnostic(&mut dag, enforced_template);
-        let mut it = dag.diagnostics().iter();
-        let (_, d) = it.next().expect("fail-closed diagnostic");
-        assert!(it.next().is_none(), "expected exactly one diagnostic");
-        assert_parse_error_at(d.clone(), &expected_span);
-    }
-
-    #[test]
-    fn enforced_violation_diagnostic_rejects_non_error_severity_constructor() {
-        let dag = Dag::new();
-        let Some(ds_disj) = dag
-            .declarations()
-            .iter()
-            .find(|d| {
-                d.name.as_deref() == Some("DiagnosticSeverity")
-                    && d.span.file.ends_with("lens_application.dag")
-            })
-            .map(|d| d.id)
-        else {
-            panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
-        };
-        let wrong_ctor = dag
-            .bool_runtime_variant_id(true)
-            .expect("bootstrap True variant");
-        let expected_span = SourceSpan::new("t.v3", 0, 1);
-        let diag = enforced_violation_diagnostic(
-            &dag,
-            ds_disj,
-            &FieldValue::Variant {
-                constructor: wrong_ctor,
-                payload: Vec::new(),
-            },
-            "violation".to_string(),
-            expected_span.clone(),
-        );
-        assert_parse_error_at(diag, &expected_span);
-    }
-
-    #[test]
-    fn enforced_violation_diagnostic_rejects_non_variant_severity_value() {
-        let dag = Dag::new();
-        let Some(ds_disj) = dag
-            .declarations()
-            .iter()
-            .find(|d| {
-                d.name.as_deref() == Some("DiagnosticSeverity")
-                    && d.span.file.ends_with("lens_application.dag")
-            })
-            .map(|d| d.id)
-        else {
-            panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
-        };
-        let expected_span = SourceSpan::new("t.v3", 0, 1);
-        let diag = enforced_violation_diagnostic(
-            &dag,
-            ds_disj,
-            &FieldValue::Literal(LiteralBits::Int("0".to_string())),
-            "violation".to_string(),
-            expected_span.clone(),
-        );
-        assert_parse_error_at(diag, &expected_span);
-    }
-
-    #[test]
-    fn enforced_violation_diagnostic_rejects_error_severity_with_non_nullary_payload() {
-        let dag = Dag::new();
-        let Some(ds_disj) = dag
-            .declarations()
-            .iter()
-            .find(|d| {
-                d.name.as_deref() == Some("DiagnosticSeverity")
-                    && d.span.file.ends_with("lens_application.dag")
-            })
-            .map(|d| d.id)
-        else {
-            panic!("bootstrap should declare DiagnosticSeverity in lens_application.dag");
-        };
-        let TypeConnective::Disj { variants } = &dag.declaration(ds_disj).connective else {
-            panic!("bootstrap DiagnosticSeverity should be a sum type");
-        };
-        let error_ctor = variants
-            .iter()
-            .find(|v| v.label == "Error")
-            .map(|v| v.ty)
-            .expect("bootstrap DiagnosticSeverity should have Error variant");
-        let expected_span = SourceSpan::new("t.v3", 0, 1);
-        let diag = enforced_violation_diagnostic(
-            &dag,
-            ds_disj,
-            &FieldValue::Variant {
-                constructor: error_ctor,
-                payload: vec![FieldValue::Literal(LiteralBits::Int("0".to_string()))],
-            },
-            "violation".to_string(),
-            expected_span.clone(),
-        );
-        assert_parse_error_at(diag, &expected_span);
     }
 }
 
