@@ -611,6 +611,7 @@ name = "v3-compiler"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "gen_gunbc_ci_workflow_dag",
  "libc",
  "num-bigint",
  "serde",
