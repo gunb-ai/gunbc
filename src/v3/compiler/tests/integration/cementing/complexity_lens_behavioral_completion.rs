@@ -7,10 +7,9 @@
 //! below are the structural expectations this slice must preserve while widening
 //! the v3 surface from `Lookup<Int>` to `Lookup<ComplexitySummary>`.
 //!
-//! Temporary Rust receipt: `.dag` `TestClaim` data cannot yet express the
-//! published `ComplexitySummary` / nested `SymbolicCost` carrier literals needed
-//! for this Band-C assertion (blocker:
-//! `M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA`, `Gate73_ReportPredicateCarriers`).
+//! Temporary Rust receipt: `.dag` `TestClaim` predicates cannot yet consume the
+//! published `ComplexitySummary` report carrier needed for this Band-C assertion
+//! (blocker: `Gate73_ReportPredicateCarriers`).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{AsymptoticClass, Behavior, PortId, SymbolicCost};
