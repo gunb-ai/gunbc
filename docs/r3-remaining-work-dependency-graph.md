@@ -4,9 +4,42 @@
 
 **Authority**: §1.8 Canonical R3 Closure Ledger at `docs/r3-program-plan.md:225-500` + lane structure at `docs/r3-structure.md` + Cluster F + Cluster M sequencing plans.
 
+---
+
+## ⚠️ CONSUMER DISCIPLINE — READ BEFORE DISPATCHING FROM THIS DOC
+
+This doc is an **authoring-time snapshot** of §1.8 ledger state at **2026-05-12T~17:30Z**. Gate Status values rot between authoring + consumption per `feedback_thesis_gate_state_drift.md`. Consumers (Mgrs forming Wave-1/2/3 work-item scope, briefs citing gate-status, anyone touching §5 worker enumeration) **MUST grep `docs/r3-program-plan.md` §1.8 row Status field at HEAD before forming dispatch scope** — the Status field can transition (DECLARED → CONSUMER_LANDED → PASSING) at any merge between authoring (this doc) and consumption (your dispatch).
+
+**Why this discipline matters**: 4 retractions in the first Wave-1 fan-out alone (see §retractions below) — each driven by Mgrs/PMs trusting authoring-time enumeration over current §1.8 status. The discipline-layered defense (worker-grep + Mgr-grep + reviewer-BLOCKING) caught all 4, but each costs Mgr-tier audit cycles + delayed dispatch.
+
+**Authoritative grep targets** for pre-dispatch verification:
+- `docs/r3-program-plan.md` §1.8 row Status field (canonical gate status)
+- `docs/history/roadmap-active-deferrals.md` (already-tracked deferrals with explicit dissolution triggers — distinct from the ROADMAP.md "active work" framing)
+- `docs/r3-structure.md` lane-owner column (who owns the gate; cross-Mgr ownership routes through PM bridge)
+- The PR history for any cited gate (`gh pr list --search "<gate_id> in:title"`)
+
+**When in doubt**, the §1.8 ledger entry beats this dep-graph's §3/§4/§5 enumeration. If they conflict, §1.8 is right.
+
+---
+
+## §retractions — authoring-time-vs-HEAD drift catches (live ledger)
+
+Each entry documents a finding initially enumerated as in-scope here but RETRACTED post-grep-verify against canonical authority. New retractions append. If list grows past ~5-7 items, this doc should be **regenerated against current §1.8** rather than further patched.
+
+**2026-05-12 — V1 (`#87` Phase 2 cementing-discipline pattern brief)**: RETRACTED. Gate was already CONSUMER_LANDED + PASSING at authoring time (PR #2639 + PR #2757 landed the regen cementing harness + `LensOutputEquals` / frozen-oracle witnesses; PR #2287 V1 TC1 first slice merged 2026-05-10). Enumerated as Phase-2-pending in §5 Wave-1 Verification queue. **Caught**: `royal-wolf-47` worker-grep pre-spawn (Verification Mgr `clever-tern-670` archived V1 with no PR; Phase-3 carry-forward remains in V2 #84 coordinator).
+
+**2026-05-12 — F6 (`build.rs` bootstrap priority list)**: RETRACTED from `docs/audit/r3-gpt-5-5-pro-cross-review-findings-2026-05-12.md` novel-finding list. Already tracked at `docs/history/roadmap-active-deferrals.md:172` with explicit dissolution trigger ("termination analysis grows a type-readiness signal so `structural_binding_info_for_variant` can succeed regardless of file order") + yellow-flag threshold ("whenever a third std file joins the priority list"). **Caught**: operator + codex BLOCKING on PR #2787 (two-reviewer convergence). Disposition: deferrals-doc owns trigger; no parallel Wave-2 brief.
+
+**2026-05-12 — S2 (`#85` + `#86` substrate carriers, bundled)**: RETRACTED from Substrate Wave-1 queue. `#85` already landed via PR #2647; `#86` CONSUMER_LANDED + PASSING. Remaining work is consumer-side V-lane, not Substrate scope. **Caught**: codex BLOCKING #10431 on PR #2782 (Substrate Wave-1 brief dispatch). Disposition: Substrate Mgr `warm-wolf-698` fix-forward removed S2 from queue; consumer-side work routes through Verification.
+
+**2026-05-12 — S4 (`#36` `bridge_retirement_ledger_zero`)**: RETRACTED from Substrate Wave-1 queue. Verification-owned per Director `zesty-bear-812` 2026-04-28 distribute-work-centralize-ledger discipline; bridge-retirement-ledger ratchets are Verification-tier, not Substrate-tier. **Caught**: codex BLOCKING #10431 on PR #2782 (same review as S2). Disposition: Substrate Mgr fix-forward removed S4 from queue; gate stays in Verification Mgr scope.
+
+---
+
 **Companion docs**:
 - `docs/audit/r3-cluster-f-sequencing-plan-2026-05-09.md` — Cluster F (gates #81/#82/#83/#95)
 - `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md` — Cluster M (gates #84/#85/#86/#87 — **critical-path**)
+- `docs/briefs/r3-wave1-substrate-lane-retractions.md` — Substrate Mgr Wave-1 retraction audit-trail (S2/S4 detail; landing via PR #2782 fix-forward — not in tree until that PR merges). Until then, see PR #2782 review thread + codex BLOCKING #10431 + warm-wolf-698 internal-message msg_c6a5edde for the audit-trail content
 
 ---
 
