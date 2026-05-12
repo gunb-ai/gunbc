@@ -14,12 +14,12 @@
 //! placeholders with per-file dissolution triggers in their `.dag` harness comments.
 //!
 //! **INVARIANTS P5(b):** Against `origin/main...HEAD`, gate-#87 work is **merge-visible** as this
-//! module (two new `mod` lines in `tests/integration.rs`), `t_pb_b_1_dag_runner_test`’s
-//! `R3_GATE_87_CEMENTING_REGEN_SUITES`, and the `tests/dag/t_r3_gate_87_cementing_regen_*.dag`
+//! module (two new `mod` lines in `tests/integration.rs`), `r3_gate_87_cementing_regen_runner_suites`
+//! + `t_pb_b_1_dag_runner_test` wiring, and the `tests/dag/t_r3_gate_87_cementing_regen_*.dag`
 //! harness files — reviewers can confirm with `git diff origin/main...HEAD --stat` / path grep.
 //! Registry `name` inventory is cross-checked against
-//! `t_pb_b_1_dag_runner_test::r3_gate_87_cementing_regen_lens_names_for_runner_table` (derived from
-//! `R3_GATE_87_CEMENTING_REGEN_SUITES` paths — single authority, no parallel hand list).
+//! `r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table`
+//! (derived from `R3_GATE_87_CEMENTING_REGEN_SUITES` paths — single authority, no parallel hand list).
 //!
 //! **Cementing-test discipline ratchet (`TESTING.md` §4 "One claim per test"):** every new
 //! `#[test]` / `data foo: TestClaim` in this lane makes **one** structural claim; cross-suite
@@ -39,7 +39,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use crate::t_pb_b_1_dag_runner_test::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};

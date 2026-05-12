@@ -304,6 +304,9 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/r1c_e_gates.rs",
     // R3 T-Free-Consequences: authored comment → `lane2_workflow` staging until lowering owns it.
     "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
+    // R3 gate #87: PB-B-1 runner table + `cementing_dispatch` shared inventory for
+    // `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (INVARIANTS P2 single authority).
+    "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
