@@ -1,13 +1,19 @@
 # CI Workflow Substrate Shape — Mgr Comparison Canvas
 
-**Status:** Substrate Mgr (warm-wolf-698) comparison canvas for gate #56
-`ci_workflow_modeled_as_dag` under T-WAD FULL R3-close elevation. Surfaces
-substrate-shape options + recommendation for Director ratification.
+**Status:** **RATIFIED** by Director (zesty-bear-812) 2026-05-12T07:04:18Z
+per PR #2749 comment (Director session msg_4f7f536d to PM deep-wolf-155).
+Option **(c-refined)** is the ratified substrate-shape for gate #56
+`ci_workflow_modeled_as_dag` under T-WAD FULL R3-close: `EmissionTarget`
+sum (🟡 YELLOW per §7.3.1) in gunbc namespace; `project_github_actions:
+(CIWorkflowDag, EmissionTarget) → Workflow` in gunbc; `extdeps.github.actions.Workflow`
+unmodified; `Workflow` values strictly derived as projection outputs.
+Ratification asks #1, #2, #3, #4, #5 dispositioned (see §9).
 
 **Authority:** PM relay `msg_a945b141` (deep-wolf-155) routing Director
 substrate-shape question per `feedback_substrate_shape_belongs_in_mgr_canvas`
 discipline; Director (zesty-bear-812) `msg_34e9a381` refused to pre-author
 (a)/(b)/(c) selection and routed canvas authoring to this lane.
+Ratification authority: Director `msg_4f7f536d` 2026-05-12T07:04:18Z.
 
 **Scope:** Compare three substrate-shape approaches to gate #56 + identify
 WI-1 (PR #2746) assumption breakages + Slice 4/5/8 sequencing implications.
@@ -823,8 +829,53 @@ canvas-authoring directive 2026-05-12 ~06:50Z via PM (deep-wolf-155) relay
 `msg_31090356`. §8 retraction 2026-05-12 ~06:57Z per codex
 REQUEST_CHANGES on PR #2749 (review 9970).
 
-**Canvas readiness for Director ratification**: SURFACED with §7 INVARIANTS
-P1 addendum revising recommendation to **option (c-refined)**: `EmissionTarget`
-as projection-function parameter in gunbc namespace; `extdeps.github.actions.Workflow`
-unmodified. Director ratifies surfaced shape; Mgr proceeds with downstream
-brief authoring per ratified shape.
+**Canvas readiness for Director ratification**: **RATIFIED** by Director
+2026-05-12T07:04:18Z. See §9 below for ratification dispositions.
+
+---
+
+## §9. Ratification dispositions (2026-05-12T07:04:18Z)
+
+Director (zesty-bear-812) ratified option **(c-refined)** per PR #2749
+comment quoting session `msg_4f7f536d` to PM `deep-wolf-155`. Asks
+dispositioned:
+
+1. **(c-refined) substrate-shape — RATIFIED**. `EmissionTarget` sum
+   (🟡 YELLOW per §7.3.1) in gunbc namespace; `project_github_actions:
+   (CIWorkflowDag, EmissionTarget) → Workflow` in gunbc namespace;
+   `extdeps.github.actions.Workflow` unmodified; `Workflow` values
+   strictly derived as projection outputs.
+2. **PR #2746 disposition — AMEND**. still-heron-763 strikes §3.1
+   placement claim, adds scope-narrowing sentence ("Placement authority
+   lives in PR #2749; this doc consumes the ratified (c-refined)
+   placement."), reframes §3+ to use the projection function as
+   placement-agnostic referent. Per-target acceptance contracts content
+   (YamlStatic/BinaryShim/PythonShim semantic differences) STANDS.
+3. **PR #2736 body correction — SATISFIED** (landed prior; neat-badger-30).
+4. **PR #2745 WI-2 re-brief — SCOPE EXPANSION APPROVED**. PM authors
+   with module-relocation to gunbc namespace + projection-function
+   declaration + derived-binding form.
+5. **S1 projection function gate — NEW §1.8 GATE**:
+   `project_github_actions_landed` (substrate-shape family) — discrete
+   from Slice 5 (`ci_yml_deleted`, state-check). Per kernel-modeling
+   discipline (Conj over discrete constituents) + PR #2748 aggregator-
+   pattern semantics. Aggregator pilot row (PR #2748) revises T-CI-WAD
+   `depends_on:` from #56 + 4 NEW to **#56 + 5 NEW** to include this
+   gate.
+
+**Memorialized discipline**:
+`feedback_extdeps_header_discriminator_before_field_placement` —
+grep `dsl/extdeps/<provider>/*.dag` headers for "platform constraints
+— not CI logic" boundary BEFORE ratifying any field/variant placement;
+CI-runtime/emission-policy fields belong in `dsl/gunbc/`. Director
+attributed this rule to the warm-wolf-698 §7 + §8 self-correction
+trajectory across two canvas iterations.
+
+**Downstream cascade** (per Director directive):
+1. warm-wolf-698 closes canvas as RATIFIED + cross-links from new §1.8
+   ledger entries (this §9 + canvas merge)
+2. PM relays asks #2-#5 to still-heron-763 + cool-carp-720; authors
+   PR #2744 §9 + aggregator-row revision on PR #2748
+3. stern-stag-854 Slice 4 brief authoring resumes against
+   gunbc-namespace carriers once amend + implementation lands
+4. PR #2736 merge sequencing under warm-wolf-698 + PM lane coordination
