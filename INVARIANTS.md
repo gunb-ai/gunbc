@@ -326,6 +326,14 @@ A scaffold (hand-maintained generated file, interim API surface, staged declarat
 - **DB-4: Clean-Emission Behavior Is A Declared Contract With Real Consumers** — same by-construction framing as E-5
 - **Engineering Standards** — long-form receipts
 
+### SG-0 hand-authored integration test receipts
+
+Per **Dispatch-Discipline Mechanisms (b)** above, each **new** path added to `EXPECTED_HAND_AUTHORED_TEST` in `src/v3/compiler/tests/integration/sg0_census_test.rs` must register **exactly one** checkable receipt here **in the same PR** as the census line (planning artifact home-of-record for P5).
+
+| Path | Receipt |
+|------|---------|
+| `src/v3/compiler/tests/integration/anthropic_tool_result_wire_demo_test.rs` | **ROADMAP:** `ROADMAP.md` § **PR #901 (merged)** — third bullet (`anthropic_tool_result_full_content_surface`, PR #2711 nested tool-result wire) **and** § **LLM service flattening** (`rest_request_wire_serde_alignment`, nested Anthropic tool-result contracts). **Dissolution:** remove this file when Messages tool-result nested serde is emitted **only** from `dsl/extdeps/llm/anthropic.dag` `CoproductWireContract` authorities (no hand-maintained `Serialize` mirror). **Interim ratchet:** `tool_result_wire_demo_projection_is_locked_to_modeled_dag_surface` pins demo field/variant shapes to `generated_full_bootstrap_dag()`. **Residual:** `structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads` in `dsl/extdeps/llm/anthropic.dag`. |
+
 ---
 
 ## Appendix: ID index

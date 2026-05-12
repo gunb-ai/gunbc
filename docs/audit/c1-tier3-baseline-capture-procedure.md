@@ -1,33 +1,29 @@
 # C1 — Phase 1 0c Baseline Capture Procedure & Schema
 
-**Status:** PROPOSAL (audit/procedure only). Authored 2026-05-01 (silent-boar-29) per Director dispatch via cool-stag-230 (R3 PB).
+**Status:** PROPOSAL + **Phase-1 executable addendum** (R-7 baseline may land on `main`). Original shell 2026-05-01 (silent-boar-29); canonical host **R-3 = `ubicloud-standard-2`** ratified in `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md` (2026-05-08).
 **Parent:** `docs/briefs/r3-pb-tier3-perf-budget-worker.md` (PR #1331), `docs/audit/c1-tier3-perf-budget-readiness-matrix.md` (PR #1358), `src/v3/compiler/benches/tier3_mirror_perf.rs` (PR #1362, merged).
 **Authority basis:** worker brief §"Phase 1 deliverables" item 0c + §"Dependencies" item 5 + readiness matrix §1 row R-3.
-**Scope:** docs-only procedure + schema specification for the eventual Phase 1 0c `tier3_baseline.json` capture. **No baseline JSON committed. No fake or local-machine timing data. No code. No CI wiring. No Phase 2 work.**
+**Scope:** Schema + capture commands + validation for `tier3_baseline.json`. **Phase-1 PRs that freeze R-7 commit** `src/v3/compiler/benches/tier3_baseline.json` alongside honest metadata (§4–§5). **Phase-2** perf predicate / substrate wiring stays out of scope here.
 
-This artifact captures everything that *can* be specified without a canonical bench host being designated; the actual capture is gated on R-3 (PB Manager canonical CI machine) per the readiness matrix STOP-A.
+Executable landing forbids **fabricated** provenance (`host_id` must match the machine that executed the benches — **never** mint `ubicloud-standard-2` unless those runs happened on that label). A narrow **bootstrap** path is defined in §4 / §5 when the Ubicloud workflow is not dispatchable yet; it still uses **truthful** `host_id`.
 
 ---
 
-## 1. STOP condition for capture (R-3 not met)
-
-Per `docs/audit/c1-tier3-perf-budget-readiness-matrix.md` §1:
-
-| Prerequisite | State at HEAD `f66334729` | Authority needed |
-|---|---|---|
-| R-3 — canonical CI machine designated for baseline capture | **NOT MET** — no signal in `docs/r3-structure.md`, `docs/briefs/r3-pb-tier3-perf-budget-worker.md`, or recent CI changes naming the bench host. | PB Manager designate; Substrate Manager if CI-infra cross-cut. |
+## 1. Canonical host R-3 (baseline capture)
 
 Worker brief §"Discipline / baseline noise concerns" (line 108) is explicit: *"Phase 1 capture and Phase 2 measurement should run on the same canonical CI machine to keep comparison meaningful (hardware-stable). If CI infrastructure varies, escalate to Substrate Mgr."*
 
-**Per dispatch constraint:** "No fake or local-machine baseline JSON unless the canonical-host authority is explicitly satisfied." This procedure document is therefore the bounded preparatory artifact — schema + commands + validation specification authored once, executed once, by the operator who owns the canonical host.
+**R-3 designation (ratified):** **`ubicloud-standard-2`** — see `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md` §5.1 + worker dispatch at gunbc **#828**. **Standard case:** `cargo bench` capture for a committed baseline SHOULD run on that label (via `.github/workflows/tier3-baseline-capture.yml` once the workflow exists on `default`) so `captured_on.host_id` records `ubicloud-standard-2`.
 
-**Concrete next-unblock shape:** PB Manager authors a one-line addition to `docs/r3-structure.md` (or a sibling brief) of the form:
+**Bootstrap sequencing exception (single authority, P2):** the *first* committed `tier3_baseline.json` may land in the **same PR** that introduces the Ubicloud `workflow_dispatch` workflow, before `gh workflow run` is available against `default`. In that narrow case the capture runs on the **actual** operator/session machine, `captured_on.host_id` is **that honest identifier** (not `ubicloud-standard-2`), and the Phase-1 PR MUST reconcile provenance in its description (**no retroactive `host_id` relabel**).
 
-> *Canonical bench host for C1 Phase 1 0c: `<host-identifier>` (e.g., the CI runner labeled `bench-canonical-1`, or a named workspace machine). Phase 1 0c capture and all Phase 2 perf measurements MUST run on this host; deviation requires Director sign-off and a re-capture of the baseline.*
+This exception **does not** relax the worker brief §"Discipline" **same-machine comparison** discipline for substantive perf gates—it only unlocks early **presence** of a JSON artifact and the forwarded workflow YAML. **`R-7` authority is split:**
+- **`R‑7.presence`** (grep / sequencing / STOP triage needing a tracked `tier3_baseline.json` path): satisfied by merging any honest-schema JSON at `src/v3/compiler/benches/tier3_baseline.json`.
+- **`R‑7.canonical coherence`** (**mirror dissolution slices + Phase‑2 canonical measurement** pairing `PerfWithinBaseline`/budget claims against timings collected on **`ubicloud-standard-2`**): **NOT satisfied** solely by a non‑Ubicloud bootstrap seed—the committed JSON **MUST either** record `captured_on.host_id == ubicloud-standard-2` captured via `.github/workflows/tier3-baseline-capture.yml` (landed artifact → PR replacing baseline rows/metadata) **or** bear a **Director / PB-published waiver receipt** affirming dissolution may proceed temporarily against bootstrap numbers (fail-closed if neither).
 
-Once that line lands, this procedure is executable as written.
+**Operational default:** after this workflow YAML reaches `default`, operators run **`workflow_dispatch`**, copy the **`tier3-baseline-json`** artifact into‑tree (**same PR stack or immediate follow‑up PR**) so `host_id` + medians authoritative for dissolution work match **Ubicloud**, unless Director waives coherence.
 
----
+**Director / PB** sign-off gates any waiver-class shortcut; speculative “eventually recapture” without an explicit STOP decision is insufficient for **`R‑7.canonical coherence`** clearance.
 
 ## 2. Capture command
 
@@ -54,7 +50,7 @@ cargo bench --bench tier3_mirror_perf -p v3-compiler
 - `median_ns` in `tier3_baseline.json` = **median of the N per-run medians** (median-of-medians).
 - `p99_ns` = **max p99 across the N runs** (conservative pin; absorbs run-to-run tail variance).
 - Per-run medians and p99s are computed via the path-(a) extraction helper at §2.1 from each run's `target/criterion/<bench>/new/sample.json`.
-- The capture PR commits the extraction helper + per-run intermediate JSONs (or a single combined file recording the N samples) alongside the final `tier3_baseline.json` so the multi-run aggregation is reproducible / auditable.
+- The capture landing commits **`scripts/aggregate_tier3_baseline.py`** (bundle aggregation + stamping) + the final **`tier3_baseline.json`**. Bundled per-run **`criterion/`** subtrees SHOULD live either **in-repo** alongside the merge (**bootstrap / audited local sequencing**) **or** as **retained Actions artifacts** when capture runs via **`.github/workflows/tier3-baseline-capture.yml`** (preferred once dispatchable on `default`); do not silently drop reproducibility anchors for the **`N`** runs that fed the median-of-medians / max-p99 policy.
 
 ### 2.1 p99 source — explicit
 
@@ -67,7 +63,7 @@ The Phase 1 0c capture PR MUST cite which path it took in its description and (f
 
 ---
 
-## 3. Mirror-group → bench-name mapping (verified at HEAD `f66334729`)
+## 3. Mirror-group → bench-name mapping (authoritative names; reconcile `tier3_mirror_perf.rs` at the artifact's `captured_on.git_sha`)
 
 The four perf-budget claims in `tier3_mirror_dissolution_perf_within_budget` map to bench names from `src/v3/compiler/benches/tier3_mirror_perf.rs`:
 
@@ -133,8 +129,11 @@ The committed baseline file lives at `src/v3/compiler/benches/tier3_baseline.jso
 **Field rules:**
 
 - `median_ns` and `p99_ns` are **strictly positive integers** in nanoseconds (> 0; matches §5 rule 4). `median_ns` is the `point_estimate` for the median field of `target/criterion/<bench>/new/estimates.json`, rounded to the nearest nanosecond. `p99_ns` is **derived per §2.1** from `target/criterion/<bench>/new/sample.json` raw per-iteration timings (Criterion 0.5's `estimates.json` has no p99 field); use path (a) extraction helper or path (b) Gaussian approximation as documented there. Do not commit decimal/float timings — round both fields to integer nanoseconds before writing the JSON to avoid floating-point platform variance.
-- `host_id` is required and must match the canonical host designated under R-3. CI rejects edits to `tier3_baseline.json` whose `host_id` differs from the recorded canonical host without an accompanying Director approval receipt.
+- **`host_id` (P2 honesty):** required; MUST identify the machine that executed the benches—**never** spoof `ubicloud-standard-2` unless those runs actually occurred on that label.
+  - **Standard commits:** SHOULD use **`ubicloud-standard-2`** (captured via `.github/workflows/tier3-baseline-capture.yml` once dispatchable).
+  - **Bootstrap seed landing** (workflow YAML introduced in the same Phase-1 PR—`workflow_dispatch` not yet on `default`): **`host_id` MUST remain the truthful non-Ubicloud identifier**, with PR-body reconciliation naming **forward canonical authority** (`ubicloud-standard-2`) per §1. Replacing that seed via Ubicloud artifact follows **Director / PB-approved recapture** (worker brief) — **not** by silently rewriting `host_id`.
 - `git_sha` is the full 40-char SHA, not abbreviated.
+- **`captured_at`:** RFC 3339 UTC for when **`tier3_baseline.json`** was **finalized** (**`scripts/aggregate_tier3_baseline.py`** stamps aggregator wall clock—intentional audit receipt); it **need not** match any single **`cargo bench`** end instant. Bench execution spans live in archived **`criterion/`** bundles + workflow/job logs retained with the aggregate PR or artifact lineage.
 - `mirror_groups` keys MUST be exactly the four strings `termination`, `computation`, `induction`, `effect_carrier` — no others, no aliases. The Phase 2 gate uses these as join keys.
 - `benches[].name` MUST exactly match a `bench_function` argument in `tier3_mirror_perf.rs` at the captured `git_sha`. CI validation rejects mismatches.
 
@@ -145,43 +144,38 @@ The committed baseline file lives at `src/v3/compiler/benches/tier3_baseline.jso
 Before the Phase 1 0c PR opens, the operator MUST run the following checks against the produced JSON:
 
 1. **Schema completeness:** every key in §4 is present; no extras; types match.
-2. **Bench-name exact match (fail-closed):** the set of bench-names listed in `mirror_groups[*].benches[].name` MUST equal exactly the budgeted bench-name set defined in §3 — no missing names (every budgeted bench measured), no extra names (no out-of-budget bench in the JSON). Concretely at HEAD `f66334729` the required set is exactly `{tier3_termination_merge_evidence, tier3_computation_positive_descent_count, tier3_computation_lower_same_argument_call, tier3_induction_type_iteration_dimension_miss, tier3_effects_lane2_linear_read_chain}` (5 names). If a future bench is intentionally added to `tier3_mirror_perf.rs` but excluded from the budget, that exclusion MUST be a separate explicit allowlist row in §3 of this procedure document (with a receipt) and the JSON's bench-name set continues to equal the §3-budgeted set, not all bench-names registered in the bench file. Supersets are NOT permitted; subsets are NOT permitted.
+2. **Bench-name exact match (fail-closed):** the distinct names listed in `mirror_groups[*].benches[].name` MUST equal exactly the §3 budgeted set — no missing names (every budgeted bench measured), no extra names (no out-of-budget bench in the JSON). That budgeted five-name set is `{tier3_termination_merge_evidence, tier3_computation_positive_descent_count, tier3_computation_lower_same_argument_call, tier3_induction_type_iteration_dimension_miss, tier3_effects_lane2_linear_read_chain}` (each appearing once across `mirror_groups`, matching `tier3_mirror_perf.rs` at this JSON file's own `captured_on.git_sha`). If a future bench is intentionally added to `tier3_mirror_perf.rs` but excluded from the budget, that exclusion MUST be a separate explicit allowlist row in §3 of this procedure document (with a receipt) and the JSON's bench-name set continues to equal the §3-budgeted set, not all bench-names registered in the bench file. Supersets are NOT permitted; subsets are NOT permitted.
 3. **Sanity bands:** for each bench, `p99_ns >= median_ns` (criterion guarantees this; reject the JSON if violated as it indicates capture corruption).
 4. **Non-zero:** every `median_ns` and `p99_ns` is `> 0`. A zero indicates measurement failure (criterion below floor), not a real timing.
-5. **Host stability:** `captured_on.host_id` matches the R-3 canonical host string; reject if not.
+5. **`host_id` coherence:** Either **`host_id == ubicloud-standard-2`** (standard captures) **or** the **`host_id` matches the bootstrap exception** (§1 / §4) with the Phase-1 PR documenting reconciliation—reject fabricated `ubicloud-standard-2` labels absent Ubicloud-backed runs / dishonest relabeling.
 6. **Sample size receipt:** the operator's PR description includes the criterion sample size used (default 100) and the effective measurement budget (criterion's reported `target_time` × `sample_size`). If non-default, justify in the PR body.
 
 These rules are spec; their enforcement is a Phase 2 capture-side concern (the Phase 2 PR adds a reader + the structural-acceptance predicate per worker brief §"Acceptance gate" path (a) `PerfWithinBaseline` or path (b) `ExecuteCommand`).
 
 ---
 
-## 6. What this PR explicitly does NOT do
+## 6. What this procedure does **not** cover (by design)
 
-- ❌ Commit any `tier3_baseline.json` (real or placeholder) to the repo. Per dispatch constraint and worker brief STOP condition: capture is gated on R-3.
-- ❌ Add a `criterion_main!` change, alter `tier3_mirror_perf.rs`, or extend the bench surface. Bench file is single-authority for the measurement targets; this doc only specifies how to read its output.
-- ❌ Add CI wiring. Phase 1 capture is one-shot; no repeating CI job is appropriate until Phase 2's `PerfWithinBaseline` predicate is authored.
-- ❌ Author the `PerfWithinBaseline` substrate predicate. That is a Substrate Manager call (worker brief §"Acceptance gate"), gated separately.
-- ❌ Capture timing data on a non-canonical machine and commit it as `tier3_baseline.json`. Worker brief §"Discipline" forbids this; dispatch constraint reaffirms it.
-- ❌ Add new hand-authored Rust files. (No SG-0 entry needed for a docs-only PR.)
+- ❌ **Fabricate provenance** for `tier3_baseline.json` (including forging `host_id` or timing rows).
+- ❌ **Silent** “local seed” without PR reconciliation when `host_id` is not `ubicloud-standard-2` (bootstrap path requires §1 / §4 honesty + description).
+- ❌ Author the **`PerfWithinBaseline`** substrate predicate (Substrate Manager; worker brief §"Acceptance gate").
+- ❌ Extend `tier3_mirror_perf.rs` bench surface without updating §3 mapping + JSON row set (fail-closed naming).
+
+**Historical note:** the *original* drafting PR for this document was explicitly **docs-only** (“do not commit baseline JSON yet”). **Executable Phase-1 landing** supersedes that historical non-goal: committing `src/v3/compiler/benches/tier3_baseline.json` **is** required for R-7 once capture discipline is satisfied.
 
 ---
 
-## 7. Routing question (single)
+## 7. Routing (authority)
 
-**For PB Manager.** The canonical bench host (R-3) needs a one-line designation in `docs/r3-structure.md` or a sibling authority doc. Once that lands, this procedure is executable. Suggested form in §1 above. Substrate Manager involvement only if the choice cross-cuts CI infrastructure (e.g., requires a new dedicated runner).
+- **R-3 host** — ratified as **`ubicloud-standard-2`**; see `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md`.
+- **Bootstrap seed vs dissolution coherence** — PB Manager / Director record whether **`R‑7.canonical coherence`** clears via Ubicloud refreshed JSON (**default**) versus a **narrowly scoped waiver**; absence of waiver + non‑Ubicloud `host_id` means dissolution-linked perf benches stay blocked on canonical pairing.
 
 ---
 
 ## 8. Acceptance summary
 
-This procedure document is intentionally bounded:
-
-- §1 records the STOP condition (R-3 unmet) and the concrete next-unblock shape.
-- §2 specifies the capture command.
-- §3 maps mirror groups to bench names, verified against `src/v3/compiler/benches/tier3_mirror_perf.rs` at HEAD `f66334729`.
-- §4 specifies the `tier3_baseline.json` schema.
-- §5 specifies validation rules.
-- §6 enumerates non-goals.
-- §7 routes one question to PB Manager.
-
-**No capture has been run. No timing data exists in this PR.** Phase 1 0c remains gated on R-3.
+- §1 designates R-3 (`ubicloud-standard-2`) + **bootstrap sequencing** exception (`host_id` honest; **split `R‑7.presence` vs `R‑7.canonical coherence`** for dissolution-linked perf parity).
+- §2–§3 prescribe capture + bench-name mapping.
+- §4–§5 prescribe schema + validation (including **`host_id` honesty**).
+- §6 lists out-of-scope substrate / fabrication classes.
+- §7 names authority for policy on seed vs refresh.

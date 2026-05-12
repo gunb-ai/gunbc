@@ -45,6 +45,8 @@ mod anthropic_messages_wire_demo_test;
 mod anthropic_operations_test;
 #[path = "integration/anthropic_schema_lockstep_test.rs"]
 mod anthropic_schema_lockstep_test;
+#[path = "integration/anthropic_tool_result_wire_demo_test.rs"]
+mod anthropic_tool_result_wire_demo_test;
 #[path = "integration/bridge_ledger_carrier_test.rs"]
 mod bridge_ledger_carrier_test;
 #[path = "integration/bridge_lower_helpers_patch_zero_residual_test.rs"]
@@ -165,12 +167,6 @@ mod pipe_desugar;
 mod prereq_x_call_on_field_access_ratchet_test;
 #[path = "integration/r1_release_acceptance_test.rs"]
 mod r1_release_acceptance_test;
-#[path = "integration/r1c_d_pb_census_gates_test.rs"]
-mod r1c_d_pb_census_gates_test;
-#[path = "integration/r1c_e_emit_gates_dag_test.rs"]
-mod r1c_e_emit_gates_dag_test;
-#[path = "integration/r1c_e_emit_gates_omni_dag_test.rs"]
-mod r1c_e_emit_gates_omni_dag_test;
 #[path = "integration/r2_b5_loop_construction_closure_test.rs"]
 mod r2_b5_loop_construction_closure_test;
 #[path = "integration/r3_class_2_function_valued_data_test.rs"]
@@ -223,8 +219,6 @@ mod t_las_complexity_contract_compile_error_test;
 mod t_las_crdt_cost_basis_demo_test;
 #[path = "integration/t_pb_b_1_dag_runner_test.rs"]
 mod t_pb_b_1_dag_runner_test;
-#[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]
-mod t_pb_b_brief_d_fixture_smoke_test;
 #[path = "integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs"]
 mod tc1_substrate_lens_eta_equivalence_deferred_test;
 #[path = "integration/tc1_substrate_lens_eta_equivalence_strict_fire_test.rs"]
