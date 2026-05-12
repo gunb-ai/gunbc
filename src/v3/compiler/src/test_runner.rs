@@ -14,7 +14,7 @@ use crate::emit::{emit_go_text, emit_python_text, last_emit_go_program_top_level
 use crate::evaluator::{
     evaluate_body, EvalError, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
 };
-use crate::generated_files::GENERATED_FILES;
+use crate::cementing_dispatch;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
@@ -2572,6 +2572,16 @@ impl<'a> TestRunner<'a> {
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
                         "BridgeLedgerZero" => self.eval_bridge_ledger_zero(claim, &payload),
                         "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
+                        "CementingDispatchMatchesProjection" => {
+                            match cementing_dispatch::evaluate_cementing_dispatch_projection(
+                                self.dag,
+                                claim.declaration_file.as_str(),
+                                &payload,
+                            ) {
+                                Ok(()) => ClaimResult::Pass,
+                                Err(reason) => ClaimResult::Fail(reason),
+                            }
+                        }
                         "ReleaseDeferredClaim" => {
                             self.eval_release_deferred_claim_shape(claim, &payload)
                         }
