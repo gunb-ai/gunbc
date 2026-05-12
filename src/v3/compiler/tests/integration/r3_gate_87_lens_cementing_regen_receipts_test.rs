@@ -13,13 +13,12 @@
 //! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
 //! placeholders with per-file dissolution triggers in their `.dag` harness comments.
 //!
-//! **INVARIANTS P5(b):** Against `origin/main...HEAD`, gate-#87 work is **merge-visible** as this
-//! module (two new `mod` lines in `tests/integration.rs`), `r3_gate_87_cementing_regen_runner_suites`
-//! + `t_pb_b_1_dag_runner_test` wiring, and the `tests/dag/t_r3_gate_87_cementing_regen_*.dag`
-//! harness files — reviewers can confirm with `git diff origin/main...HEAD --stat` / path grep.
-//! Registry `name` inventory is cross-checked against
+//! **INVARIANTS P5(b):** Gate-#87 work is **merge-visible** as this module,
+//! `r3_gate_87_cementing_regen_runner_suites` plus `t_pb_b_1_dag_runner_test` wiring, and the
+//! harness files under `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (confirm with
+//! `git diff origin/main...HEAD --stat` and path grep). Registry `name` inventory matches
 //! `r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table`
-//! (derived from `R3_GATE_87_CEMENTING_REGEN_SUITES` paths — single authority, no parallel hand list).
+//! derived from `R3_GATE_87_CEMENTING_REGEN_SUITES` (single authority, no parallel hand list).
 //!
 //! **Cementing-test discipline ratchet (`TESTING.md` §4 "One claim per test"):** every new
 //! `#[test]` / `data foo: TestClaim` in this lane makes **one** structural claim; cross-suite
@@ -139,7 +138,7 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
     assert_eq!(
         actual, expected,
         "`src/v3/compiler/regen.dag` registry drift vs \
-         `t_pb_b_1_dag_runner_test::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
+         `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
     );
 }
