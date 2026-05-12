@@ -42,7 +42,7 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
    gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)
    ```
 
-   - `ci_workflow_dag` is the input — sourced from existing `dsl/gunbc/ci.dag` `CIPipeline` value or a new `CIWorkflowDag` carrier (see "CIWorkflowDag dependency sequencing" below)
+   - `ci_workflow_dag` is the input — sourced from the `CIWorkflowDag` carrier introduced in PR #2736 (neat-badger-30); `dsl/gunbc/ci.dag::CIPipeline` is INSUFFICIENT for this role and explicitly NOT a valid source (see "CIWorkflowDag dependency sequencing" below — Path (a) REJECTED per warm-wolf-698 msg_27d99080: flat gates list without edge/dependency structure cannot serve as projection input)
    - This is the **invocation pin** that defines the canonical YAML-emission point for downstream Slice 4
    - The pinned data binding is THE Workflow value Slice 4's YamlStatic emitter walks to produce `.github/workflows/ci.yml`-equivalent output
 
