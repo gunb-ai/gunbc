@@ -20,11 +20,10 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
    EmissionTarget = YamlStatic
                   | BinaryShim
                   | PythonShim
-                  | InlineGunbc
-                  | ...           // open enum — additional targets may be added
+                  | ...           // open enum — additional targets land when real consumers exist
    ```
 
-   Each arm is a tag indicating the emission strategy. Initial set covers the 4 strategies named in PM scoping doc §3. Open-enum discipline: the projection function must total-handle the declared arms; unknown arms compile-fail (per fail-closed discipline `feedback_fail_closed_discipline`).
+   Each arm is a tag indicating the emission strategy. **Initial set: 3 arms** (`YamlStatic`, `BinaryShim`, `PythonShim`). **`InlineGunbc` is DESIGN-ONLY** per PR #2746 §5.4 + WI-1 brief discipline + openai-pro BLOCKING on PR #2744 (2026-05-12 ~07:55Z) — NO `InlineGunbc` enum variant or emitter arm lands until a real runtime consumer exists. Open-enum discipline: the projection function must total-handle the declared arms; unknown arms compile-fail (per fail-closed discipline `feedback_fail_closed_discipline`); future arms (including `InlineGunbc`) land via separate substrate-prereq PRs paired with their consumers.
 
 2. **`project_github_actions` projection function declaration**:
 
@@ -71,7 +70,7 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
 
 **DO**:
 - Create NEW file `dsl/gunbc/ci_emission.dag` (the projection-substrate file).
-- Declare `EmissionTarget` open enum with 4 named arms + open marker.
+- Declare `EmissionTarget` open enum with **3** named arms (`YamlStatic`, `BinaryShim`, `PythonShim`) + open marker. **`InlineGunbc` is DESIGN-ONLY** — do NOT add as enum arm (per WI-1 brief §scope + PR #2746 §5.4 + openai-pro BLOCKING on PR #2744).
 - Declare `project_github_actions` function signature with TODO-marked total-handling skeleton.
 - Declare `gunbc_ci_yml_workflow` pinned-projection data binding (invocation pin with `YamlStatic`).
 - Reference existing `Workflow` carrier from `dsl/extdeps/github/actions.dag` as the codomain type.
@@ -89,7 +88,7 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
 ## Acceptance gates
 
 1. New file `dsl/gunbc/ci_emission.dag` exists with valid `.dag` syntax per existing v3 parser.
-2. `EmissionTarget` open enum declared with 4 named arms (`YamlStatic`, `BinaryShim`, `PythonShim`, `InlineGunbc`) + open-enum marker.
+2. `EmissionTarget` open enum declared with **3** named arms (`YamlStatic`, `BinaryShim`, `PythonShim`) + open-enum marker. **NO `InlineGunbc` arm** — DESIGN-ONLY future target per PR #2746 §5.4; lands via separate substrate-prereq PR paired with consumer.
 3. `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow` function signature declared with structural total-handling skeleton (match on `target`; each arm body TODO-marked).
 4. `gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)` pinned-projection data binding declared.
 5. NO modifications to `dsl/extdeps/github/actions.dag` (INVARIANTS P1).
