@@ -10,7 +10,11 @@ This directory hosts the **subsystem-modeling artifacts** for the `ctrl/` → `.
 - **Module name**: `module ctrl.<subsystem>` matching the file basename.
 - **Shape**: type-only modeling — carriers, closed/open enums, projections, `service ... { fn ... }` signatures. No transport blocks in Phase 1.5 (those land in `dsl/extdeps/*.dag` under the Emission-Targets Mgr lane).
 - **Practice-4 receipts**: every enum/sum with ≥2 variants carries an inline classification (`🟢 TERMINAL` / `🟡 STAGED` / `🔴 NEEDS-DISSOLUTION`) and, if non-terminal, a named dissolution trigger. See manager brief §"Per-worker brief template" item 4 for the required receipt format.
-- **Consumer-receipt header**: each `.dag` file's module header must cite (a) the ctrl/ TS file(s) currently authoritative and (b) the future emission target whose landing fires `STAGED → AUTHORITY`.
+- **Consumer-receipt header**: each `.dag` file's module header must cite (a) the ctrl/ TS file(s) currently authoritative and (b) the future emission target whose landing fires `STAGED → AUTHORITY`. The emission target's **placement** distinguishes:
+  - `dsl/extdeps/<platform>/*.dag` — third-party source-of-record facts (GitHub-API shapes, SQL dialects, HTTP wire formats); owned by Emission-Targets Mgr; **no gunbc emission/policy facts allowed here** per INVARIANTS P1.
+  - `dsl/gunbc/*.dag` — gunbc-owned rendering / projection / policy surfaces (e.g. `digest_render.dag`, `workflow/*.dag`); composes `dsl/extdeps/*` carriers + `dsl/std/render.dag` primitives.
+  - `dsl/std/*.dag` — domain-agnostic primitives (render IR, algebra, integers, etc.).
+  Worker briefs must name the correct placement before dispatch; see `feedback_extdeps_header_discriminator_before_field_placement.md`.
 
 ## Index
 
