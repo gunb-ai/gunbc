@@ -58,7 +58,7 @@ Inventoried from `~/ctrl/research/market/viability/demos/c-compiler-in-dag/`:
 3. **Decision matrix per file** (must be in the promotion PR description):
    - `bitvector.dag` → likely **extend** `std.bit` (if std.bit covers single-bit only) or **reuse** if std.bit handles fixed-width. Spec: LLVM IR `iN` types.
    - `integer.dag` → likely **reuse** `std.integer` (integer is a math primitive, not IR-specific). Spec: LLVM IR integer-types reference for any IR-specific narrowing.
-   - `array.dag` → likely **reuse** existing std container primitives (`List<T>` / fixed-size array). Spec: LLVM IR array-type reference.
+   - `array.dag` → **MUST preserve element cardinality** (LLVM array `[N x T]` is a fixed-size container; cardinality N is a load-bearing fact per INVARIANTS P2 facts-flow-forward). Concrete options: (1) reuse `FixedArray<T, N>` or `Vector<T, N>` if std has a cardinality-carrying container; (2) extend `List<T>` to carry an explicit cardinality field; (3) introduce a new cardinality-aware `LlvmArray<T, N>` carrier in std/ BEFORE the extdeps promotion lands. Plain `List<T>` reuse is **forbidden** — it drops the cardinality fact. M9 DFS must find or land the cardinality-carrying carrier first; promotion blocks until that substrate exists. Spec: LLVM IR array-type reference (`[N x T]` syntax).
    - `product.dag` → **reuse** `std.constructors.Product` (existing M2 type-authority). Promotion is forbidden if it creates parallel Product carrier.
    - `ssa_value.dag` → likely **new extdeps carrier** (SSA is genuinely IR-domain, no std equivalent). Spec: SSA-form references.
 

@@ -283,7 +283,7 @@ Once operator spawns the Ctrl-Migration Director:
 **Day 11-14**:
 - First + second wave PRs cycle reviews + land
 - Verification Mgr framework brief (parity-test scaffolding for Phase 4)
-- Emission-Targets Mgr spawned; Phase 3 design briefs author for HTTP/SQL/audit extdeps
+- Emission-Targets Mgr (already spawned Day 1) continues HTTP/SQL/audit extdeps PR cycle — Phase 3 emission targets land in lockstep with maturing Phase 1.5 modeling PRs per the trio-convergence framing
 
 **Day 15+**:
 - Phase 3 emission target PRs land sequentially (HTTP first per §4 ordering)
