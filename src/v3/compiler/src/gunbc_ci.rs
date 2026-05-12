@@ -62,6 +62,8 @@ pub enum CiWorkflowDiff {
 /// [`select_affected_gates`] failed: malformed `CIWorkflowDag` carrier or non-acyclic prerequisites.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CiAffectedGatesError {
+    /// The same `CIGate.id` appears more than once in [`CiWorkflowDagInput::gates`] (malformed carrier; must not collapse into a `HashSet` silently).
+    DuplicateGateRosterId { id: CiGateId },
     /// `CIGateEdge` names a gate id not present in [`CiWorkflowDagInput::gates`] (violates single roster authority in `dsl/gunbc/ci.dag`).
     UnknownEdgeEndpoint { from: CiGateId, to: CiGateId },
     /// The directed prerequisite subgraph on the selected vertex set is not a DAG (cycle or broken indegree accounting).
@@ -80,14 +82,16 @@ pub enum CiAffectedGatesError {
 /// to “no merge-blocking re-verify” vs “full superset” per repository policy **outside**
 /// this function (this module does not read policy carriers).
 ///
-/// **Malformed carrier:** any edge whose `from` or `to` is absent from [`CiWorkflowDagInput::gates`]
-/// yields [`CiAffectedGatesError::UnknownEdgeEndpoint`] (fail-closed; no silent skip of bad edges).
-/// A directed cycle (or other non-DAG shape) on the selected prerequisite subgraph yields
-/// [`CiAffectedGatesError::NonAcyclicPrerequisiteGraph`] instead of fabricating a sort order.
+/// **Malformed carrier:** duplicate [`CiGateMeta::id`] values in [`CiWorkflowDagInput::gates`]
+/// yield [`CiAffectedGatesError::DuplicateGateRosterId`] (roster must be unique before any `HashSet`
+/// view so gates are not dropped silently). Any edge whose `from` or `to` is absent from that roster
+/// yields [`CiAffectedGatesError::UnknownEdgeEndpoint`]. A directed cycle on the selected prerequisite
+/// subgraph yields [`CiAffectedGatesError::NonAcyclicPrerequisiteGraph`] instead of fabricating a sort order.
 pub fn select_affected_gates(
     dag: &CiWorkflowDagInput,
     diff: &CiWorkflowDiff,
 ) -> Result<Vec<CiGateId>, CiAffectedGatesError> {
+    validate_unique_gate_roster(dag)?;
     let known: HashSet<&str> = dag.gates.iter().map(|g| g.id.as_str()).collect();
     for (from, to) in &dag.edges {
         if !known.contains(from.as_str()) || !known.contains(to.as_str()) {
@@ -137,6 +141,18 @@ pub fn select_affected_gates(
     }
 
     topo_sort_subset(dag, &selected)
+}
+
+fn validate_unique_gate_roster(dag: &CiWorkflowDagInput) -> Result<(), CiAffectedGatesError> {
+    let mut seen: HashSet<&str> = HashSet::new();
+    for g in &dag.gates {
+        if !seen.insert(g.id.as_str()) {
+            return Err(CiAffectedGatesError::DuplicateGateRosterId {
+                id: g.id.clone(),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Set inclusion witness for ratchet tests.
@@ -310,6 +326,29 @@ mod tests {
             Err(CiAffectedGatesError::UnknownEdgeEndpoint {
                 from: "solo".into(),
                 to: "phantom".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn select_affected_gates_rejects_duplicate_gate_roster_ids() {
+        let dag = CiWorkflowDagInput {
+            gates: vec![
+                CiGateMeta {
+                    id: "dup".into(),
+                    blocking: true,
+                },
+                CiGateMeta {
+                    id: "dup".into(),
+                    blocking: false,
+                },
+            ],
+            edges: vec![],
+        };
+        assert_eq!(
+            select_affected_gates(&dag, &CiWorkflowDiff::TouchAll),
+            Err(CiAffectedGatesError::DuplicateGateRosterId {
+                id: "dup".into(),
             })
         );
     }
