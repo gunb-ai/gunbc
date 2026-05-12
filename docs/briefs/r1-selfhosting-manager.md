@@ -179,7 +179,8 @@ Decisions log (append as they happen):
   retired. Further Rust deletions / `pb_*` coordination: `docs/briefs/t-pb-b-1.md`.
 - 2026-04-23: **Brief D** (`docs/briefs/t-pb-b-brief-d.md`) — extended T-PB-B inventory +
   D/G/A/B matrix + draft `TestClaim` fixtures (`tests/fixtures/t_pb_b_brief_d/*.v3`);
-  compile smoke via `t_pb_b_brief_d_fixture_smoke_test` (no `pb_*`, Rust tests unchanged).
+  the former `t_pb_b_brief_d_fixture_smoke_test` is retired in favor of the runner-backed
+  `.dag` siblings in `t_pb_b_1_dag_runner_test` (no `pb_*` gate claim).
 - 2026-04-23: SG-0 file-level census split landed as non-test/test
   sub-ratchets; `tokenize.rs` shim retired from the non-test subset.
 

@@ -153,8 +153,8 @@ fn t_pb_b_1_execute_command_boundary_suite_passes_through_runner() {
 /// R3 gate #74 — one Rust integration test ported to `.dag` `TestClaim` data and
 /// executed end-to-end through `TestRunner`.
 ///
-/// Port target: `t_pb_b_brief_d_pipeline_smoke_fixture_lowers_cleanly`
-/// (`t_pb_b_brief_d_fixture_smoke_test.rs`). The original Rust test asserts the
+/// Port target: retired `t_pb_b_brief_d_pipeline_smoke_fixture_lowers_cleanly`
+/// (`t_pb_b_brief_d_fixture_smoke_test.rs`). The original Rust test asserted the
 /// pipeline smoke fixture lowers cleanly; this carrier expresses the same
 /// surface as a `Compiles` claim over the embedded subject program.
 #[test]
@@ -253,6 +253,11 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
         &["testgen_structural_coverage"],
     );
 }
+
+// R3 gate #74 (`tests_as_data_demonstration`) — executable `.dag` `TestClaim` + runner receipt
+// lives in `r3_tests_as_data_demonstration_suite_passes_through_runner` above (and
+// `tests/dag/t_r3_tests_as_data_demonstration.dag` on `main`). Gate-#87 regen harnesses below are a
+// separate ratchet; do not conflate the two in PR titles or census expectations.
 
 // R3 gate #87 — every `LensRegistryEntry` in `src/v3/compiler/regen.dag` has a
 // `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` harness evaluated here.
