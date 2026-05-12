@@ -303,6 +303,22 @@ type TestPredicate
       authority: DeclarationRef
       generated_paths: List<Path>
     }
+  // **🟢 TERMINAL — Band-C cementing dispatch.** The runner fail-closes unless the
+  // `TestClaim` is declared in `src/v3/compiler/tests/dag/cementing_dispatch.dag`.
+  // Payload names two `DeclarationRef` edges: `capability_register` (a `List` of
+  // structured lens-capability rows authored beside this suite) and
+  // `cementing_receipts` (the Band-C receipt list). Evaluation projects registry
+  // `name` keys from bootstrap `LensRegistryEntry` (`regen.dag`) intersected with
+  // rows whose `behavioral` is `Complete` and whose `v2_counterpart` is `RealV2`,
+  // then asserts receipt `registry_name` keys match exactly, receipt triples are
+  // unique, pinned `cost` / `cost_symbolic` receipt subsets hold, and each receipt's
+  // on-disk harness exists (`tests/dag/<stem>.dag` vs `integration/cementing/<stem>.rs`
+  // + `tests/integration.rs` wiring for temporary Rust receipts). See
+  // `test_runner::eval_cementing_dispatch_matches_projection`.
+  | CementingDispatchMatchesProjection {
+      capability_register: DeclarationRef
+      cementing_receipts: DeclarationRef
+    }
   // **🟡 Scaffold — ReleaseDeferredClaim.** R1 release-acceptance concession
   // marker. Use only in release-acceptance fixtures with explicit Director
   // sign-off; this is not a generic escape hatch for arbitrary `TestSuite`s.
