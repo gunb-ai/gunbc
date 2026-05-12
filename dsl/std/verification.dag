@@ -55,6 +55,9 @@ type TestClaim {
 // convergence shape. These `_ms` fields use the existing branded
 // non-negative `Milliseconds` carrier as the older dsl projection of that
 // same timing fact, not a parallel cost algebra.
+// Retirement trigger: #102 (`slow_test_exemptions_dissolved`) consumes the v3
+// `Nanoseconds` timing authority for the slow-test ratchet, then deletes or
+// rewires this dsl projection instead of extending it.
 
 type TestNodeRef {
   decl: DeclarationRef
