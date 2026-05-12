@@ -30,8 +30,11 @@
 //! Per `INVARIANTS.md` §P5(b), the **single checkable net paydown receipt** (delete path, SG-0
 //! census shrink with counts, or cited `ROADMAP.md` deferral) must live in **PR #2639’s
 //! description**; module comments must not assert deletes for paths that never existed on
-//! `origin/main`. Remaining §Acceptance (frozen v2-oracle cementing): `ROADMAP.md` **v3 lens
-//! capability honesty pass** bullet.
+//! `origin/main`. §1.8 gate-#87 **PASSING** is indexed in `docs/r3-program-plan.md` (row 87);
+//! the canonical Pass-condition body is `r3-structure.md` §"Acceptance"
+//! (`lens_cementing_test_discipline_complete`). Broader Band-C work for lenses outside
+//! `regen.dag` continues through `docs/v3-lens-capability-register.md` +
+//! `cementing_lens_registry_dispatch_test.rs` + `ROADMAP.md` honesty pass.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;

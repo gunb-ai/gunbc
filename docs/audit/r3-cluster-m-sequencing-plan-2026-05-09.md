@@ -25,7 +25,7 @@ This plan partitions Cluster M into a sequenced 3-phase dispatch program with la
 | 84 | `every_rust_test_ports_to_dag_or_generated` | state-check | T-Tests-As-Data-Completeness | "thesis facet 3; every Rust test ports" — `EXPECTED_HAND_AUTHORED_TEST` count = 0 |
 | 85 | `forall_exists_quantifier_substrate_landed` | substrate-shape | T-Tests-As-Data-Completeness | ForAll / Exists quantifier substrate landed in `dsl/std/` |
 | 86 | `program_generator_carrier_landed` | substrate-shape | T-Tests-As-Data-Completeness | ProgramGenerator substrate carrier landed in `dsl/std/` |
-| 87 | `lens_cementing_test_discipline_complete` | state-check | T-Tests-As-Data-Completeness | every `.dag` lens has cementing test against frozen v2-oracle |
+| 87 | `lens_cementing_test_discipline_complete` | state-check | T-Tests-As-Data-Completeness | **Canonical §Acceptance body:** `docs/r3-structure.md` §"Acceptance" — every `LensRegistryEntry` in `src/v3/compiler/regen.dag` has a cementing receipt per Band-C (`TESTING.md`); non-`regen` lenses stay on register / `cementing_lens_registry_dispatch_test.rs` ratchets (not this gate’s enumeration). **Ledger:** `docs/r3-program-plan.md` §1.8 row #87. |
 
 ### §1.2 Dependency structure
 
@@ -105,7 +105,7 @@ Prior framing of §3.1 / §3.2 as "substrate canvas needed; Director ratificatio
 - Scope: cementing-test discipline pattern application to existing hand-Rust cementing tests
 - First migration target: smallest hand-Rust cementing test (e.g., `cementing/cementing_lens_registry_dispatch_test.rs`) — proof-of-concept migration
 - Pattern: hand-Rust `#[test] fn test_X` with v2-oracle assert → `.dag` `TestClaim` with frozen-snapshot `BinaryDimensionReportEquals` against captured baseline
-- Discipline: every `.dag` lens has at least one cementing test in `.dag` form (#87 Pass condition)
+- Discipline: **Phase-2 #87** — every `LensRegistryEntry` in `src/v3/compiler/regen.dag` has a `.dag` / runner cementing receipt (plus paired Rust pins where predicates stay narrower), per **`docs/r3-structure.md` §"Acceptance"** + `TESTING.md` Band-C; broader `src/v3/lenses/` coverage stays on Band-C / register dispatch outside this gate id (#87 Pass condition for the **regen registry slice**).
 - Receipt: state-check gate fires when audit confirms 100% lens coverage in cementing-test form
 
 PM authors the brief draft; Verification Mgr (wise-bear-525) consumes as Mgr-tier dispatch when Phase 1 lands.
