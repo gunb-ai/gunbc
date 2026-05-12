@@ -115,6 +115,23 @@ type AlgebraicLawKind
   | Commutativity
   | Identity
 
+// Structural reference to a declaration whose body produces generated
+// `ProgramShape` values. The referenced declaration is the family authority;
+// new program families are new declarations, not new variants in a closed
+// roster.
+type ProgramGenerator {
+  generator: DeclarationRef
+}
+
+// A generated program's shape. Bootstrap starts with the literal source form
+// that matches `TestClaim.source` / `TestClaim.file_name`; richer shape
+// variants attach here only when a new primitive generated-program form lands.
+type ProgramShape
+  = LiteralProgram {
+      source: String
+      file_name: String
+    }
+
 type TestPredicate
   = Compiles
   | FailsWithDiagnostic(DiagnosticReference)
@@ -161,8 +178,8 @@ type TestPredicate
     }
   // **🟡 Scaffold — ForAllTargets.** Per-emission-target gate: compile the claim's
   // program (`TestClaim.source` / `TestClaim.file_name` — single authority; not
-  // duplicated here) for each known target, then run the shell check below on each
-  // target's emitted output (T-Emit omni-demo gate).
+  // duplicated here) for each known target, then observe the declared
+  // `ProgramOutputBind` on each target's emitted output (T-Emit omni-demo gate).
   // Dissolution trigger: target-specific emission + verification facts live in the
   // target spec / runner tables; this sum variant narrows to declarative edges only.
   // Collapse with ExecuteCommand: same runner capability as singleton execution,
@@ -171,6 +188,7 @@ type TestPredicate
       command: String
       args: List<String>
       expect_exit_code: Int
+      input_ref: DeclarationRef
     }
   // **🟡 Scaffold — LensOutputEquals.** Apply named lens to named input declaration;
   // compare output structurally to named expected declaration (T-LaneE).
@@ -357,6 +375,31 @@ type TestClaim {
   predicate: TestPredicate
   requires: List<ResourceReference>
 }
+
+// Closed quantifier over a generated program family. This lives at the
+// claim layer, not inside `TestPredicate`, so predicates keep their
+// "property of one program" meaning.
+type Quantifier
+  = ForAll
+  | Exists
+
+type QuantifiedTestClaim {
+  name: String
+  generator: ProgramGenerator
+  quantifier: Quantifier
+  predicate: TestPredicate
+  requires: List<ResourceReference>
+}
+
+// Staged ordered suite-entry carrier for the post-#85 wrapper migration.
+// Today `TestSuite.claims` remains `List<TestClaim>` so existing enumerated
+// fixtures keep compiling while the quantifier substrate lands. Bounded
+// trigger: #2609 wraps existing suite entries as `Enumerated(...)` and flips
+// `TestSuite.claims` to `List<SuiteClaim>`, preserving reporting/dependency
+// order without parallel enumerated/quantified lists.
+type SuiteClaim
+  = Enumerated(TestClaim)
+  | Quantified(QuantifiedTestClaim)
 
 type TestSuite {
   name: String

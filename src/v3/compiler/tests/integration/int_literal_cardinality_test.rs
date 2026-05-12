@@ -393,6 +393,93 @@ fn uint64_upper_half_literal_tokenizes_and_narrows() {
 }
 
 #[test]
+fn uint128_full_magnitude_literal_tokenizes_and_narrows() {
+    // R3 gate #22: the literal carrier stores the full decimal magnitude, so
+    // the maximum UInt128 value is accepted without truncating through i128.
+    let max_u128 = "340282366920938463463374607431768211455";
+    let dag = compile_to_dag(
+        &format!("data x: UInt128 = {max_u128}"),
+        "uint128_full_magnitude_literal.v3",
+    )
+    .expect("u128::MAX must compile for UInt128 under full-magnitude literal carrier");
+    let decl = dag.declaration_by_name("x").expect("data `x` declaration");
+    let ty = decl
+        .meta_tag
+        .expect("scalar data item should carry meta_tag to its type decl");
+    assert_eq!(
+        dag.declaration(ty).name.as_deref(),
+        Some("UInt128"),
+        "literal should narrow to UInt128"
+    );
+    assert!(
+        matches!(
+            &decl.value_body,
+            Some(ValueBody::Scalar(LiteralBits::Int(s))) if s == max_u128
+        ),
+        "expected preserved decimal magnitude on declaration, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
+fn int128_max_literal_tokenizes_and_narrows() {
+    // R3 gate #22: signed positive endpoint must narrow without truncating through a
+    // narrower host intermediate (same decimal-string carrier as `UInt128` / `UInt64` cases).
+    let max_i128 = "170141183460469231731687303715884105727";
+    let dag = compile_to_dag(
+        &format!("data x: Int128 = {max_i128}"),
+        "int128_max_literal.v3",
+    )
+    .expect("i128::MAX must compile for Int128 under full-magnitude literal carrier");
+    let decl = dag.declaration_by_name("x").expect("data `x` declaration");
+    let ty = decl
+        .meta_tag
+        .expect("scalar data item should carry meta_tag to its type decl");
+    assert_eq!(
+        dag.declaration(ty).name.as_deref(),
+        Some("Int128"),
+        "literal should narrow to Int128"
+    );
+    assert!(
+        matches!(
+            &decl.value_body,
+            Some(ValueBody::Scalar(LiteralBits::Int(s))) if s == max_i128
+        ),
+        "expected preserved decimal magnitude on declaration, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
+fn int128_min_literal_tokenizes_and_narrows() {
+    // R3 gate #22: substrate documents unary `-` through `i128::MIN` as in-range for the
+    // signed decimal literal carrier (no magnitude clamp at `i64::MAX`).
+    let min_i128 = "-170141183460469231731687303715884105728";
+    let dag = compile_to_dag(
+        &format!("data x: Int128 = {min_i128}"),
+        "int128_min_literal.v3",
+    )
+    .expect("i128::MIN must compile for Int128 under full-magnitude literal carrier");
+    let decl = dag.declaration_by_name("x").expect("data `x` declaration");
+    let ty = decl
+        .meta_tag
+        .expect("scalar data item should carry meta_tag to its type decl");
+    assert_eq!(
+        dag.declaration(ty).name.as_deref(),
+        Some("Int128"),
+        "literal should narrow to Int128"
+    );
+    assert!(
+        matches!(
+            &decl.value_body,
+            Some(ValueBody::Scalar(LiteralBits::Int(s))) if s == min_i128
+        ),
+        "expected preserved decimal magnitude on declaration, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
 fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
     let err = compile_to_dag("data x: UInt8 = 256", "int_literal_u8_oob.v3")
         .expect_err("UInt8 overflow must fail closed");
@@ -436,12 +523,13 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
 /// same typed [`MagnitudeOutOfRange`](v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange)
 /// diagnostic. **UInt64** literals above `i64::MAX` that still fit in `u64`
 /// are accepted under the decimal-string literal carrier (R3 gate #22;
-/// see `uint64_upper_half_literal_tokenizes_and_narrows`). **UInt128** /
-/// full **Int128** overflow cases that remain outside the representable
-/// surface continue to use the same magnitude / range machinery. `UInt128`
-/// is still included here for its source-representable lower-bound overflow
-/// (`-1`). Alias coverage is representative rather than exhaustive so this
-/// receipt stays under the CI per-test wall-clock ratchet.
+/// see `uint64_upper_half_literal_tokenizes_and_narrows`), while literals
+/// above the declared width fail through the same range-fact path. The 128-bit
+/// cases prove the same machinery is not tied to the host `i128` boundary:
+/// signed `Int128::MAX + 1` compares as a decimal [`BigInt`](num_bigint::BigInt)
+/// magnitude, while `UInt128` still participates through its representable
+/// lower-bound overflow (`-1`). Alias coverage is representative rather than
+/// exhaustive so this receipt stays under the CI per-test wall-clock ratchet.
 #[test]
 fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
     let cases = [
@@ -478,6 +566,22 @@ fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
             check_alias: true,
         },
         IntegerOverflowCase {
+            ty: "Int64",
+            target: "i64",
+            literal: "9223372036854775808",
+            min: "-9223372036854775808",
+            max: "9223372036854775807",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "Int128",
+            target: "i128",
+            literal: "170141183460469231731687303715884105728",
+            min: "-170141183460469231731687303715884105728",
+            max: "170141183460469231731687303715884105727",
+            check_alias: false,
+        },
+        IntegerOverflowCase {
             ty: "UInt8",
             target: "u8",
             literal: "256",
@@ -507,6 +611,14 @@ fn int_refinement_overflow_is_proven_parametric_for_representable_widths() {
             literal: "4294967296",
             min: "0",
             max: "4294967295",
+            check_alias: true,
+        },
+        IntegerOverflowCase {
+            ty: "UInt64",
+            target: "u64",
+            literal: "18446744073709551616",
+            min: "0",
+            max: "18446744073709551615",
             check_alias: true,
         },
         IntegerOverflowCase {

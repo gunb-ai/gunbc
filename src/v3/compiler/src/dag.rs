@@ -81,10 +81,272 @@ mod bootstrap_generated_without_parse_surface {
 }
 
 mod builder;
+mod computation {
+    //! Host lowering projection for Lane E-C (`std.computation`).
+    //!
+    //! Authority: `dsl/std/computation.dag` ↔ `src/v3/std/computation.dag`. These Rust
+    //! spellings stay in structural parity with the `.dag` carriers while std block
+    //! bodies remain `ArrowBody::Unparsed` at bootstrap.
+    //!
+    //! **Scope:** structural isolation only — the same host projections previously
+    //! lived inline in `dag.rs`; this nested `mod computation` keeps them separate from
+    //! the E-P induction producer in the parent module without adding a new SG-0
+    //! hand-authored file path. This is **not** R3 gate
+    //! `tier3_computation_mirror_dissolved` closure (no mirror deletion, no evaluator
+    //! substitution for those bodies); full dissolution remains T-Tier3-Dissolution
+    //! lane work.
+
+    use super::{
+        positive_descent_count, DescentEvidence, PositiveDescentAmount, ProportionalDivisor,
+    };
+
+    /// 🟡 SCAFFOLD — `SizeBound` coproduct (`docs/modeling-discipline.md` §4).
+    ///
+    /// Authority: `src/v3/std/computation.dag`. Variant taxonomy is durable; `param: String` and
+    /// other bootstrap bridges dissolve when size parameters become first-class substrate refs.
+    /// **Named trigger:** evaluated `std.computation` std block bodies (same dissolution wave as
+    /// the termination lattice mirror). **Ledger:** parity ratchet
+    /// `m2_substrate_inhabitance_test::computation_size_bound_helpers_match_dag_authority`.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum SizeBound {
+        CollectionSize { param: String },
+        ParserStreamSize { witness: String },
+        WorklistDrainSize { element: String },
+        TreeSize { param: String },
+        ArithmeticParam { param: String },
+        ExplicitCountZero,
+        ExplicitCountPositive { steps: PositiveDescentAmount },
+        Forever,
+    }
+
+    pub fn tree_size_bound(param: String) -> SizeBound {
+        SizeBound::TreeSize { param }
+    }
+
+    /// 🟡 SCAFFOLD — `CallPattern` coproduct (`docs/modeling-discipline.md` §4).
+    ///
+    /// Authority: `src/v3/std/computation.dag`. Peano shrink payloads are proof-grade (terminal
+    /// at witness shape); `String` slots on `CallPattern` forward into `SizeBound.param` via
+    /// `lower_call_pattern` (no fabricated size labels). Dissolves with structural parameter refs
+    /// (E-P). **Named trigger:** same as [`SizeBound`]. **Ledger:**
+    /// `m2_substrate_inhabitance_test::computation_lowering_rust_mirror_matches_dag_authority`.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum CallPattern {
+        ChildAccessorCall {
+            accessor: String,
+        },
+        CollectionShrinkCall {
+            amount: PositiveDescentAmount,
+            collection: String,
+        },
+        ArithmeticSubtractCall {
+            steps: PositiveDescentAmount,
+            ring_param: String,
+        },
+        ArithmeticDivideCall {
+            divisor: ProportionalDivisor,
+            ring_param: String,
+        },
+        ParserAdvanceCall {
+            witness: String,
+        },
+        WorklistDrainCall {
+            element: String,
+        },
+        FoldBodyCall {
+            outer_collection: String,
+        },
+        SameArgumentCall,
+    }
+
+    /// 🟢 TERMINAL — `ShrinkFactor` coproduct (`docs/modeling-discipline.md` §4).
+    ///
+    /// Authority: `src/v3/std/computation.dag`. Only unit / Peano constant / Peano proportional
+    /// shrink — illegal rates stay unrepresentable at the carrier. **Ledger:** exercised through
+    /// the same `m2_substrate_inhabitance_test` computation rows as [`CallPattern`].
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub enum ShrinkFactor {
+        UnitShrink,
+        ConstantShrink { steps: PositiveDescentAmount },
+        ProportionalShrink { divisor: ProportionalDivisor },
+    }
+
+    /// 🟢 TERMINAL — `IterationPrimitive` coproduct (`docs/modeling-discipline.md` §4).
+    ///
+    /// Closed `{Fold, Descend, Repeat}` behavioral alphabet (MODELING.md M9). Authority:
+    /// `src/v3/std/computation.dag`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum IterationPrimitive {
+        Fold,
+        Descend,
+        Repeat,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct LoweringTarget {
+        pub primitive: IterationPrimitive,
+        pub bound: SizeBound,
+        pub evidence: DescentEvidence,
+        pub factor: Option<ShrinkFactor>,
+    }
+
+    pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
+        match pattern {
+            CallPattern::ChildAccessorCall { accessor } => LoweringTarget {
+                primitive: IterationPrimitive::Descend,
+                bound: SizeBound::TreeSize { param: accessor },
+                evidence: DescentEvidence::Strict,
+                factor: None,
+            },
+            CallPattern::CollectionShrinkCall { amount, collection } => LoweringTarget {
+                primitive: IterationPrimitive::Fold,
+                bound: SizeBound::CollectionSize { param: collection },
+                evidence: DescentEvidence::Strict,
+                factor: Some(ShrinkFactor::ConstantShrink { steps: amount }),
+            },
+            CallPattern::ArithmeticSubtractCall { steps, ring_param } => LoweringTarget {
+                primitive: IterationPrimitive::Repeat,
+                bound: SizeBound::ArithmeticParam { param: ring_param },
+                evidence: DescentEvidence::Strict,
+                factor: Some(ShrinkFactor::ConstantShrink { steps }),
+            },
+            CallPattern::ArithmeticDivideCall {
+                divisor,
+                ring_param,
+            } => LoweringTarget {
+                primitive: IterationPrimitive::Repeat,
+                bound: SizeBound::ArithmeticParam { param: ring_param },
+                evidence: DescentEvidence::Strict,
+                factor: Some(ShrinkFactor::ProportionalShrink { divisor }),
+            },
+            CallPattern::ParserAdvanceCall { witness } => LoweringTarget {
+                primitive: IterationPrimitive::Fold,
+                bound: SizeBound::ParserStreamSize { witness },
+                evidence: DescentEvidence::Strict,
+                factor: None,
+            },
+            CallPattern::WorklistDrainCall { element } => LoweringTarget {
+                primitive: IterationPrimitive::Fold,
+                bound: SizeBound::WorklistDrainSize { element },
+                evidence: DescentEvidence::Strict,
+                factor: None,
+            },
+            CallPattern::FoldBodyCall { outer_collection } => LoweringTarget {
+                primitive: IterationPrimitive::Fold,
+                bound: SizeBound::CollectionSize {
+                    param: outer_collection,
+                },
+                evidence: DescentEvidence::NonIncreasing,
+                factor: None,
+            },
+            CallPattern::SameArgumentCall => LoweringTarget {
+                primitive: IterationPrimitive::Repeat,
+                bound: SizeBound::Forever,
+                evidence: DescentEvidence::NonIncreasing,
+                factor: None,
+            },
+        }
+    }
+
+    pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
+        match bound {
+            SizeBound::TreeSize { param } => Some(param.as_str()),
+            SizeBound::CollectionSize { param } => Some(param.as_str()),
+            SizeBound::ParserStreamSize { witness } => Some(witness.as_str()),
+            SizeBound::WorklistDrainSize { element } => Some(element.as_str()),
+            SizeBound::ArithmeticParam { param } => Some(param.as_str()),
+            SizeBound::ExplicitCountZero
+            | SizeBound::ExplicitCountPositive { .. }
+            | SizeBound::Forever => None,
+        }
+    }
+
+    pub fn is_constant_bound(bound: &SizeBound) -> bool {
+        matches!(
+            bound,
+            SizeBound::ExplicitCountZero
+                | SizeBound::ExplicitCountPositive { .. }
+                | SizeBound::Forever
+        )
+    }
+
+    /// Signed `Int` top iterate count (`i64::MAX`) for [`SizeBound::Forever`] / `repeat(max_int)`.
+    pub fn forever_iteration_bound() -> i64 {
+        i64::MAX
+    }
+
+    /// `None` when `bound` is not constant (`ExplicitCount*` / `Forever` only).
+    pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
+        match bound {
+            SizeBound::ExplicitCountZero => Some(0),
+            SizeBound::ExplicitCountPositive { steps } => Some(positive_descent_count(steps)),
+            SizeBound::Forever => Some(forever_iteration_bound()),
+            _ => None,
+        }
+    }
+
+    /// 🟢 TERMINAL — `IterationDimension` coproduct (`docs/modeling-discipline.md` §4).
+    ///
+    /// Three-way projection from kernel algebra profiles onto iteration regimes. Authority:
+    /// `src/v3/std/computation.dag`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum IterationDimension {
+        TreeDescent,
+        CollectionFold,
+        ArithmeticRepeat,
+    }
+
+    /// 🟢 TERMINAL — `AlgebraProfile` coproduct (`docs/modeling-discipline.md` §4).
+    ///
+    /// Closed seven-variant mirror of `dsl/std/algebra.dag` `AlgebraProfile`.
+    /// The profile table itself is read from the lowered `kernel_algebra_profile`
+    /// `ValueBody::Map`, not from a hand-maintained Rust lookup table.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum AlgebraProfile {
+        OrderedRingProfile,
+        ApproximateFieldProfile,
+        BooleanAlgebraProfile,
+        BooleanAlgebraCollectionProfile,
+        FreeMonoidScalarProfile,
+        FreeMonoidCollectionProfile,
+        PartialFunctionProfile,
+    }
+
+    pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<IterationDimension> {
+        match profile {
+            AlgebraProfile::FreeMonoidCollectionProfile
+            | AlgebraProfile::FreeMonoidScalarProfile
+            | AlgebraProfile::BooleanAlgebraCollectionProfile
+            | AlgebraProfile::PartialFunctionProfile => Some(IterationDimension::CollectionFold),
+            AlgebraProfile::OrderedRingProfile | AlgebraProfile::ApproximateFieldProfile => {
+                Some(IterationDimension::ArithmeticRepeat)
+            }
+            AlgebraProfile::BooleanAlgebraProfile => None,
+        }
+    }
+
+    pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
+        if type_name == "Node" {
+            return Some(IterationDimension::TreeDescent);
+        }
+
+        super::BOOTSTRAPPED_DAG
+            .kernel_algebra_profile(type_name)
+            .and_then(algebra_profile_to_dimension)
+    }
+}
 mod effects;
 mod ports;
 
+pub use computation::{
+    algebra_profile_to_dimension, constant_bound_value, forever_iteration_bound, is_constant_bound,
+    lower_call_pattern, size_bound_param, tree_size_bound, type_iteration_dimension,
+    AlgebraProfile, CallPattern, IterationDimension, IterationPrimitive, LoweringTarget,
+    ShrinkFactor, SizeBound,
+};
+
 pub use effects::{
+    analyze_workflow, lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
     BranchArm, BreakingShape, CompositionVerdict, CreateCause, EffectShape, HttpMethodScalar,
     IdempotencyUnsupportedDetail, IdempotentShape, KeySource, OperationEffect,
     ParallelismUnsupportedDetail, ParallelismUnsupportedKind, WorkflowEffect,
@@ -1096,81 +1358,6 @@ pub fn map_evidence_merge_at(
     base
 }
 
-// Continuation: Rust execution mirror for `src/v3/std/computation.dag` (Lane E-C).
-// Same staging contract as the termination mirror above (`ArrowBody::Unparsed` std bodies).
-// `m2_substrate_inhabitance_test::{computation_*}` pins carrier shape + lowering helpers.
-
-/// 🟡 SCAFFOLD — `SizeBound` coproduct (`docs/modeling-discipline.md` §4).
-///
-/// Authority: `src/v3/std/computation.dag`. Variant taxonomy is durable; `param: String` and
-/// other bootstrap bridges dissolve when size parameters become first-class substrate refs.
-/// **Named trigger:** evaluated `std.computation` std block bodies (same dissolution wave as
-/// the termination lattice mirror). **Ledger:** parity ratchet
-/// `m2_substrate_inhabitance_test::computation_size_bound_helpers_match_dag_authority`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SizeBound {
-    CollectionSize { param: String },
-    ParserStreamSize { witness: String },
-    WorklistDrainSize { element: String },
-    TreeSize { param: String },
-    ArithmeticParam { param: String },
-    ExplicitCountZero,
-    ExplicitCountPositive { steps: PositiveDescentAmount },
-    Forever,
-}
-
-pub fn tree_size_bound(param: String) -> SizeBound {
-    SizeBound::TreeSize { param }
-}
-
-/// 🟡 SCAFFOLD — `CallPattern` coproduct (`docs/modeling-discipline.md` §4).
-///
-/// Authority: `src/v3/std/computation.dag`. Peano shrink payloads are proof-grade (terminal
-/// at witness shape); `String` slots on `CallPattern` forward into `SizeBound.param` via
-/// `lower_call_pattern` (no fabricated size labels). Dissolves with structural parameter refs
-/// (E-P). **Named trigger:** same as [`SizeBound`]. **Ledger:**
-/// `m2_substrate_inhabitance_test::computation_lowering_rust_mirror_matches_dag_authority`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CallPattern {
-    ChildAccessorCall {
-        accessor: String,
-    },
-    CollectionShrinkCall {
-        amount: PositiveDescentAmount,
-        collection: String,
-    },
-    ArithmeticSubtractCall {
-        steps: PositiveDescentAmount,
-        ring_param: String,
-    },
-    ArithmeticDivideCall {
-        divisor: ProportionalDivisor,
-        ring_param: String,
-    },
-    ParserAdvanceCall {
-        witness: String,
-    },
-    WorklistDrainCall {
-        element: String,
-    },
-    FoldBodyCall {
-        outer_collection: String,
-    },
-    SameArgumentCall,
-}
-
-/// 🟢 TERMINAL — `ShrinkFactor` coproduct (`docs/modeling-discipline.md` §4).
-///
-/// Authority: `src/v3/std/computation.dag`. Only unit / Peano constant / Peano proportional
-/// shrink — illegal rates stay unrepresentable at the carrier. **Ledger:** exercised through
-/// the same `m2_substrate_inhabitance_test` computation rows as [`CallPattern`].
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ShrinkFactor {
-    UnitShrink,
-    ConstantShrink { steps: PositiveDescentAmount },
-    ProportionalShrink { divisor: ProportionalDivisor },
-}
-
 /// 🟢 TERMINAL at E-I inductive-shape scope.
 ///
 /// Runtime mirror of `std.induction::RecursionShape`: the closed partition of
@@ -1233,83 +1420,6 @@ pub struct CallDescentEvidence {
     pub caller: String,
     pub callee: String,
     pub evidence: Vec<SubValueRelation>,
-}
-
-/// 🟢 TERMINAL — `IterationPrimitive` coproduct (`docs/modeling-discipline.md` §4).
-///
-/// Closed `{Fold, Descend, Repeat}` behavioral alphabet (MODELING.md M9). Authority:
-/// `src/v3/std/computation.dag`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IterationPrimitive {
-    Fold,
-    Descend,
-    Repeat,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LoweringTarget {
-    pub primitive: IterationPrimitive,
-    pub bound: SizeBound,
-    pub evidence: DescentEvidence,
-    pub factor: Option<ShrinkFactor>,
-}
-
-pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
-    match pattern {
-        CallPattern::ChildAccessorCall { accessor } => LoweringTarget {
-            primitive: IterationPrimitive::Descend,
-            bound: SizeBound::TreeSize { param: accessor },
-            evidence: DescentEvidence::Strict,
-            factor: None,
-        },
-        CallPattern::CollectionShrinkCall { amount, collection } => LoweringTarget {
-            primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize { param: collection },
-            evidence: DescentEvidence::Strict,
-            factor: Some(ShrinkFactor::ConstantShrink { steps: amount }),
-        },
-        CallPattern::ArithmeticSubtractCall { steps, ring_param } => LoweringTarget {
-            primitive: IterationPrimitive::Repeat,
-            bound: SizeBound::ArithmeticParam { param: ring_param },
-            evidence: DescentEvidence::Strict,
-            factor: Some(ShrinkFactor::ConstantShrink { steps }),
-        },
-        CallPattern::ArithmeticDivideCall {
-            divisor,
-            ring_param,
-        } => LoweringTarget {
-            primitive: IterationPrimitive::Repeat,
-            bound: SizeBound::ArithmeticParam { param: ring_param },
-            evidence: DescentEvidence::Strict,
-            factor: Some(ShrinkFactor::ProportionalShrink { divisor }),
-        },
-        CallPattern::ParserAdvanceCall { witness } => LoweringTarget {
-            primitive: IterationPrimitive::Fold,
-            bound: SizeBound::ParserStreamSize { witness },
-            evidence: DescentEvidence::Strict,
-            factor: None,
-        },
-        CallPattern::WorklistDrainCall { element } => LoweringTarget {
-            primitive: IterationPrimitive::Fold,
-            bound: SizeBound::WorklistDrainSize { element },
-            evidence: DescentEvidence::Strict,
-            factor: None,
-        },
-        CallPattern::FoldBodyCall { outer_collection } => LoweringTarget {
-            primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize {
-                param: outer_collection,
-            },
-            evidence: DescentEvidence::NonIncreasing,
-            factor: None,
-        },
-        CallPattern::SameArgumentCall => LoweringTarget {
-            primitive: IterationPrimitive::Repeat,
-            bound: SizeBound::Forever,
-            evidence: DescentEvidence::NonIncreasing,
-            factor: None,
-        },
-    }
 }
 
 /// E-P per-call descent evidence side table.
@@ -1382,19 +1492,192 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
 /// preserved here; multi-argument composition and lowered/lens consumers
 /// remain separate E-P gates.
 pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> {
+    per_call_pattern_and_descent_operand_index(dag, call_site).map(|(p, _)| p)
+}
+
+/// Same projection as [`per_call_pattern_at`], plus the evidence index (crate-internal).
+///
+/// Only [`per_call_descent_operand_port`] may publish substrate coupling to callers:
+/// it maps this index through [`TransformNode::inputs`] on the `Dag`. Keeping the
+/// index off the public API avoids consumers re-aligning evidence rows against a
+/// stale parallel port list (P2).
+fn per_call_pattern_and_descent_operand_index(
+    dag: &Dag,
+    call_site: NodeId,
+) -> Option<(CallPattern, usize)> {
     let entry = per_call_descent_evidence(dag)
         .into_iter()
         .find(|entry| entry.call == call_site)?;
-    call_pattern_from_relations(&entry.evidence)
+    call_pattern_from_relations_with_index(&entry.evidence)
 }
 
-fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPattern> {
-    if let Some(pattern) = relations
+/// [`PortId`] for the [`TransformNode::inputs`] slot that carried the [`SubValueRelation`]
+/// selected by [`per_call_pattern_at`].
+///
+/// `call_site` must identify a [`Behavior::Transform`] in `dag`; input ports are read from that
+/// transform only (P2: no parallel list from the consumer that could desync from substrate).
+///
+/// **`SameArgumentCall`:** returns [`None`]. Preserved-value rows classify as same-argument for the
+/// [`CallPattern`] projection, but there is **no** arithmetic-descent witness — publishing an input
+/// index would fabricate a descent operand (P3).
+pub fn per_call_descent_operand_port(dag: &Dag, call_site: NodeId) -> Option<PortId> {
+    let (pattern, idx) = per_call_pattern_and_descent_operand_index(dag, call_site)?;
+    if matches!(pattern, CallPattern::SameArgumentCall) {
+        return None;
+    }
+    let transform = dag.node_opt(&call_site).and_then(Behavior::as_transform)?;
+    transform.inputs.get(idx).copied()
+}
+
+fn declaration_id_owning_bind_root(dag: &Dag, bind_node_id: NodeId) -> Option<DeclarationId> {
+    for decl in dag.declarations() {
+        let TypeConnective::Arrow {
+            body: ArrowBody::UserDefined(bind_id),
+            ..
+        } = &decl.connective
+        else {
+            continue;
+        };
+        if bind_id.node_id() == bind_node_id {
+            return Some(decl.id);
+        }
+    }
+    None
+}
+
+/// Collapses an accidental `ProductCost(Linear, Linear)` on **unary-parameter** binds when one
+/// factor keys off the formal parameter port and the other keys off the **descent operand port**
+/// for a **self-call** in this bind’s body — the same duplicate-induction artifact described in
+/// gate **#78** (`iterate` multiplies loop-bound `Linear(param)` with `pattern_to_iter_bound` on the
+/// descent wire; distinct `PortId`s, same chain).
+///
+/// **Does not** collapse `Linear(param) × Linear(other)` from descent-port coincidence alone:
+/// [`unary_bind_duplicate_iter_alias_evidence`] requires the same joint witness as `cost.dag`
+/// (`Loop.source` iteration carrier × per-call `combine_iterate`) — a **param-sourced** [`LoopNode`]
+/// whose **body** contains the self-call, and `other` is that call’s [`per_call_descent_operand_port`].
+///
+/// **Residual flow (why this exists):** `recursive_transform_cost` / `sum_costs_excluding_descent_operand`
+/// already prevent double-counting **within** the recursive call’s operand list. They do **not**
+/// merge the **outer** `LoopNode` bound (`linear_at(loop.source)`, usually the parameter port) with
+/// the **inner** `pattern_to_iter_bound` keyed on `per_call_descent_operand_port` (the call’s input
+/// port — a different `PortId` than the formal parameter). `iterate` in `algebra.dag` multiplies
+/// those two `LinearCost` shells structurally, yielding a binary `ProductCost` that overstates the
+/// asymptotic carrier until alias-aware folding exists in the algebra.
+///
+/// **Soundness scope (P2 / modeling-discipline Practice 5):** This pass does **not** read provenance
+/// bits inside [`SymbolicCost`] — it matches the **structural** coincidence `Product(Linear(param),
+/// Linear(descent))` at a unary bind **result** port (`bind_value_port == BindNode::value`) together
+/// with [`unary_bind_duplicate_iter_alias_evidence`] (joint self-call + descent operand port +
+/// param-sourced loop envelope). That aligns with the **only** lens emission path for this product
+/// shape in today’s `cost.dag` wiring for gate **#78** tail recursion (outer loop iterate × inner
+/// recurrence). A future producer that introduced an **independent** multiplicative
+/// `Linear(param) × Linear(other)` at the same port **without** that iterate-alias genesis would
+/// require narrowing this pass or dissolving it into `.dag` algebra per the ROADMAP trigger below.
+///
+/// **P5:** transitional host pass until dissolution — explicit ROADMAP row **“R3 gate #78 — unary-bind
+/// `SymbolicCost` iterate alias collapse post-pass”** (`ROADMAP.md`, Post-merge debt 2026-05-08).
+///
+/// **Bind resolution:** `bind_value_port` is the bind's **result** port (`entry_for` row port). The
+/// helper scans [`Dag::nodes`] for the [`BindNode`] with [`BindNode::value`] equal to that port; in
+/// the lowered substrate each port has a single producer, so at most one bind matches (same class of
+/// uniqueness as other port-keyed walks — not a name table keyed off parallel string lists).
+pub fn collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+    dag: &Dag,
+    bind_value_port: PortId,
+    cost: SymbolicCost,
+) -> SymbolicCost {
+    let Some(bind) = dag
+        .nodes()
         .iter()
-        .filter(|relation| !matches!(relation, SubValueRelation::PreservedValue))
-        .find_map(sub_value_relation_to_call_pattern)
-    {
-        return Some(pattern);
+        .find_map(|node| Behavior::as_bind(node).filter(|bind| bind.value == bind_value_port))
+    else {
+        return cost;
+    };
+    if bind.params.len() != 1 {
+        return cost;
+    }
+    let param = bind.params[0];
+
+    let SymbolicCost::ProductCost { _0: terms } = &cost else {
+        return cost;
+    };
+    if !terms.rest.is_empty() {
+        return cost;
+    }
+
+    match (terms.first.as_ref(), terms.second.as_ref()) {
+        (SymbolicCost::LinearCost { _0: va }, SymbolicCost::LinearCost { _0: vb }) => {
+            let non_param_port = if va.source_port == param && vb.source_port != param {
+                vb.source_port
+            } else if vb.source_port == param && va.source_port != param {
+                va.source_port
+            } else {
+                return cost;
+            };
+            if !unary_bind_duplicate_iter_alias_evidence(dag, bind, param, non_param_port) {
+                return cost;
+            }
+            SymbolicCost::LinearCost {
+                _0: SizeVariable {
+                    source_port: param,
+                    display_name: None,
+                },
+            }
+        }
+        _ => cost,
+    }
+}
+
+// Tracked-bridge debt (R3 follow-up, T-Tier3-Dissolution):
+// the inlined match below is the last hand-Rust residue of the
+// `std.induction::sub_value_to_call_pattern` projection. The R3 gate
+// `tier3_induction_mirror_dissolved` retired the public mirror surface
+// (`sub_value_relation_to_call_pattern`) and the named private helper;
+// fully routing this lookup through `std/induction.dag` requires
+// `per_call_pattern_at` lens-emission to consume the .dag projection
+// directly (substrate-tier work tracked under T-E-P-Producer-Broadening).
+// Until that producer landing, the inlined match below is the bridge.
+fn call_pattern_from_relations_with_index(
+    relations: &[SubValueRelation],
+) -> Option<(CallPattern, usize)> {
+    let project = |relation: &SubValueRelation| -> Option<CallPattern> {
+        match relation {
+            SubValueRelation::ArithmeticDescent { param, factor } => match factor {
+                ShrinkFactor::ConstantShrink { steps } => {
+                    Some(CallPattern::ArithmeticSubtractCall {
+                        steps: steps.clone(),
+                        ring_param: param.clone(),
+                    })
+                }
+                ShrinkFactor::ProportionalShrink { divisor } => {
+                    Some(CallPattern::ArithmeticDivideCall {
+                        divisor: divisor.clone(),
+                        ring_param: param.clone(),
+                    })
+                }
+                ShrinkFactor::UnitShrink => Some(CallPattern::ArithmeticSubtractCall {
+                    steps: PositiveDescentAmount::OneStep,
+                    ring_param: param.clone(),
+                }),
+            },
+            SubValueRelation::StrictSubValue { field, .. }
+            | SubValueRelation::IteratedSubValue { field } => {
+                Some(CallPattern::ChildAccessorCall {
+                    accessor: field.field_name.clone(),
+                })
+            }
+            SubValueRelation::PreservedValue => Some(CallPattern::SameArgumentCall),
+            SubValueRelation::SubValueUnknown => None,
+        }
+    };
+
+    for (i, relation) in relations.iter().enumerate() {
+        if matches!(relation, SubValueRelation::PreservedValue) {
+            continue;
+        }
+        if let Some(pattern) = project(relation) {
+            return Some((pattern, i));
+        }
     }
 
     if relations
@@ -1404,36 +1687,13 @@ fn call_pattern_from_relations(relations: &[SubValueRelation]) -> Option<CallPat
         return None;
     }
 
-    relations
-        .iter()
-        .find_map(sub_value_relation_to_call_pattern)
-}
-
-pub fn sub_value_relation_to_call_pattern(relation: &SubValueRelation) -> Option<CallPattern> {
-    match relation {
-        SubValueRelation::ArithmeticDescent { param, factor } => match factor {
-            ShrinkFactor::ConstantShrink { steps } => Some(CallPattern::ArithmeticSubtractCall {
-                steps: steps.clone(),
-                ring_param: param.clone(),
-            }),
-            ShrinkFactor::ProportionalShrink { divisor } => {
-                Some(CallPattern::ArithmeticDivideCall {
-                    divisor: divisor.clone(),
-                    ring_param: param.clone(),
-                })
-            }
-            ShrinkFactor::UnitShrink => Some(CallPattern::ArithmeticSubtractCall {
-                steps: PositiveDescentAmount::OneStep,
-                ring_param: param.clone(),
-            }),
-        },
-        SubValueRelation::StrictSubValue { field, .. }
-        | SubValueRelation::IteratedSubValue { field } => Some(CallPattern::ChildAccessorCall {
-            accessor: field.field_name.clone(),
-        }),
-        SubValueRelation::PreservedValue => Some(CallPattern::SameArgumentCall),
-        SubValueRelation::SubValueUnknown => None,
+    for (i, relation) in relations.iter().enumerate() {
+        if let Some(pattern) = project(relation) {
+            return Some((pattern, i));
+        }
     }
+
+    None
 }
 
 fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a BindNode> {
@@ -1458,9 +1718,109 @@ fn bind_body_transform_ids(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
         bind.value,
         &mut visited_ports,
         &mut visited_nodes,
+        true,
         &mut transforms,
     );
     transforms
+}
+
+fn bind_body_reachable_nodes(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
+    let mut transforms = HashSet::new();
+    let mut visited_ports = HashSet::new();
+    let mut visited_nodes = HashSet::new();
+    collect_body_port(
+        dag,
+        bind.value,
+        &mut visited_ports,
+        &mut visited_nodes,
+        false,
+        &mut transforms,
+    );
+    visited_nodes
+}
+
+/// True when `call_site` lies in the subgraph rooted at [`LoopNode::body`] for some [`LoopNode`]
+/// in `bind`'s body whose [`LoopNode::source`] is the unary formal `param`.
+///
+/// This is the spatial half of the gate **#78** duplicate-induction witness: `cost.dag` composes
+/// `loop_cost` (`Linear(loop.source)`) with `combine_iterate` only along this lowered shape — so we
+/// must not collapse param×descent products arising from unrelated linear work outside that loop
+/// envelope.
+fn self_call_under_param_bound_loop(
+    dag: &Dag,
+    bind: &BindNode,
+    param: PortId,
+    call_site: NodeId,
+) -> bool {
+    for node_id in bind_body_reachable_nodes(dag, bind) {
+        let Some(Behavior::Loop(loop_node)) = dag.node_opt(&node_id) else {
+            continue;
+        };
+        if loop_node.source != param {
+            continue;
+        }
+        let mut transforms = HashSet::new();
+        let mut visited_ports = HashSet::new();
+        let mut visited_nodes = HashSet::new();
+        collect_body_node(
+            dag,
+            loop_node.body,
+            &mut visited_ports,
+            &mut visited_nodes,
+            false,
+            &mut transforms,
+        );
+        if visited_nodes.contains(&call_site) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Joint structural witness for gate **#78** iterate-alias collapse: same owning declaration
+/// self-call as [`per_call_descent_evidence`], `other_port` as [`per_call_descent_operand_port`], and
+/// that call appears under a param-sourced loop body (links [`LoopNode::source`] with per-call
+/// recurrence wiring — not descent-port coincidence alone). This is **not** "any self-call
+/// anywhere": [`bind_body_transform_ids`] limits candidates to transforms in the bind body, and
+/// [`self_call_under_param_bound_loop`] requires the call site to sit under a `Loop` whose
+/// `source` is the unary `param`, matching the `loop_cost` × `combine_iterate` join that produced
+/// the spurious `ProductCost` in the first place.
+fn unary_bind_duplicate_iter_alias_evidence(
+    dag: &Dag,
+    bind: &BindNode,
+    param: PortId,
+    other_port: PortId,
+) -> bool {
+    let Some(owning_decl) = declaration_id_owning_bind_root(dag, bind.id) else {
+        return false;
+    };
+    let caller_template = callable_target_template_for_provenance(dag, owning_decl);
+    let CallableProvenance::Resolved(caller_tpl) = caller_template else {
+        return false;
+    };
+
+    for call_site in bind_body_transform_ids(dag, bind) {
+        let Some(transform) = dag.node_opt(&call_site).and_then(Behavior::as_transform) else {
+            continue;
+        };
+        let TransformTarget::Callable(target_decl) = transform.target else {
+            continue;
+        };
+        let callee_template = callable_target_template_for_provenance(dag, target_decl);
+        let CallableProvenance::Resolved(callee_tpl) = callee_template else {
+            continue;
+        };
+        if caller_tpl != callee_tpl {
+            continue;
+        }
+        if per_call_descent_operand_port(dag, call_site) != Some(other_port) {
+            continue;
+        }
+        if self_call_under_param_bound_loop(dag, bind, param, call_site) {
+            return true;
+        }
+    }
+    false
 }
 
 fn collect_body_port(
@@ -1468,7 +1828,8 @@ fn collect_body_port(
     port: PortId,
     visited_ports: &mut HashSet<PortId>,
     visited_nodes: &mut HashSet<NodeId>,
-    transforms: &mut HashSet<NodeId>,
+    record_transform_ids: bool,
+    transform_ids: &mut HashSet<NodeId>,
 ) {
     if !visited_ports.insert(port) {
         return;
@@ -1476,7 +1837,14 @@ fn collect_body_port(
     let Some(producer) = dag.port_opt(&port).and_then(|p| p.produced_by) else {
         return;
     };
-    collect_body_node(dag, producer, visited_ports, visited_nodes, transforms);
+    collect_body_node(
+        dag,
+        producer,
+        visited_ports,
+        visited_nodes,
+        record_transform_ids,
+        transform_ids,
+    );
 }
 
 fn collect_body_node(
@@ -1484,7 +1852,8 @@ fn collect_body_node(
     node: NodeId,
     visited_ports: &mut HashSet<PortId>,
     visited_nodes: &mut HashSet<NodeId>,
-    transforms: &mut HashSet<NodeId>,
+    record_transform_ids: bool,
+    transform_ids: &mut HashSet<NodeId>,
 ) {
     if !visited_nodes.insert(node) {
         return;
@@ -1495,16 +1864,46 @@ fn collect_body_node(
     match behavior {
         Behavior::Value(_) => {}
         Behavior::Transform(transform) => {
-            transforms.insert(transform.id);
+            if record_transform_ids {
+                transform_ids.insert(transform.id);
+            }
             for input in &transform.inputs {
-                collect_body_port(dag, *input, visited_ports, visited_nodes, transforms);
+                collect_body_port(
+                    dag,
+                    *input,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
         }
         Behavior::Branch(branch) => {
-            collect_body_port(dag, branch.input, visited_ports, visited_nodes, transforms);
+            collect_body_port(
+                dag,
+                branch.input,
+                visited_ports,
+                visited_nodes,
+                record_transform_ids,
+                transform_ids,
+            );
             for path in &branch.paths {
-                collect_body_node(dag, path.body, visited_ports, visited_nodes, transforms);
-                collect_body_port(dag, path.output, visited_ports, visited_nodes, transforms);
+                collect_body_node(
+                    dag,
+                    path.body,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
+                collect_body_port(
+                    dag,
+                    path.output,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
         }
         Behavior::Loop(loop_node) => {
@@ -1513,24 +1912,34 @@ fn collect_body_node(
                 loop_node.source,
                 visited_ports,
                 visited_nodes,
-                transforms,
+                record_transform_ids,
+                transform_ids,
             );
             collect_body_port(
                 dag,
                 loop_node.init,
                 visited_ports,
                 visited_nodes,
-                transforms,
+                record_transform_ids,
+                transform_ids,
             );
             if let Some(count) = loop_node.bound.count_port() {
-                collect_body_port(dag, count, visited_ports, visited_nodes, transforms);
+                collect_body_port(
+                    dag,
+                    count,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
             collect_body_node(
                 dag,
                 loop_node.body,
                 visited_ports,
                 visited_nodes,
-                transforms,
+                record_transform_ids,
+                transform_ids,
             );
         }
         Behavior::Bind(inner) => {
@@ -1538,7 +1947,14 @@ fn collect_body_node(
             // own a separate `ArrowBody::UserDefined` body and are scanned through
             // their declaration, not through an enclosing span/body walk.
             if inner.params.is_empty() {
-                collect_body_port(dag, inner.value, visited_ports, visited_nodes, transforms);
+                collect_body_port(
+                    dag,
+                    inner.value,
+                    visited_ports,
+                    visited_nodes,
+                    record_transform_ids,
+                    transform_ids,
+                );
             }
         }
     }
@@ -1635,7 +2051,8 @@ fn classify_call_argument(
 ///
 /// **Substrate-fact discipline.** `InductiveField` is consumer-facing
 /// substrate provenance (cost / complexity lenses project this through
-/// `sub_value_relation_to_call_pattern → CallPattern::ChildAccessorCall`).
+/// `std.induction::sub_value_to_call_pattern → ChildAccessorCall`;
+/// the hand-Rust mirror has dissolved per gate `tier3_induction_mirror_dissolved`).
 /// The producer therefore derives every field from authoritative DAG state:
 /// - `type_name` / `variant_name` from the parent-Disj lookup of the variant
 ///   declaration the post-infer `resolve_branch_patterns` pass installed on
@@ -1978,96 +2395,6 @@ fn ordinal_param_label(idx: usize) -> String {
     format!("param_{idx}")
 }
 
-pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
-    match bound {
-        SizeBound::TreeSize { param } => Some(param.as_str()),
-        SizeBound::CollectionSize { param } => Some(param.as_str()),
-        SizeBound::ParserStreamSize { witness } => Some(witness.as_str()),
-        SizeBound::WorklistDrainSize { element } => Some(element.as_str()),
-        SizeBound::ArithmeticParam { param } => Some(param.as_str()),
-        SizeBound::ExplicitCountZero
-        | SizeBound::ExplicitCountPositive { .. }
-        | SizeBound::Forever => None,
-    }
-}
-
-pub fn is_constant_bound(bound: &SizeBound) -> bool {
-    matches!(
-        bound,
-        SizeBound::ExplicitCountZero | SizeBound::ExplicitCountPositive { .. } | SizeBound::Forever
-    )
-}
-
-/// Signed `Int` top iterate count (`i64::MAX`) for [`SizeBound::Forever`] / `repeat(max_int)`.
-pub fn forever_iteration_bound() -> i64 {
-    i64::MAX
-}
-
-/// `None` when `bound` is not constant (`ExplicitCount*` / `Forever` only).
-pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
-    match bound {
-        SizeBound::ExplicitCountZero => Some(0),
-        SizeBound::ExplicitCountPositive { steps } => Some(positive_descent_count(steps)),
-        SizeBound::Forever => Some(forever_iteration_bound()),
-        _ => None,
-    }
-}
-
-/// 🟢 TERMINAL — `IterationDimension` coproduct (`docs/modeling-discipline.md` §4).
-///
-/// Three-way projection from kernel algebra profiles onto iteration regimes. Authority:
-/// `src/v3/std/computation.dag`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IterationDimension {
-    TreeDescent,
-    CollectionFold,
-    ArithmeticRepeat,
-}
-
-/// 🟢 TERMINAL — `AlgebraProfile` coproduct (`docs/modeling-discipline.md` §4).
-///
-/// Closed seven-variant mirror of `dsl/std/algebra.dag` `AlgebraProfile`.
-/// The profile table itself is read from the lowered `kernel_algebra_profile`
-/// `ValueBody::Map`, not from a hand-maintained Rust lookup table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AlgebraProfile {
-    OrderedRingProfile,
-    ApproximateFieldProfile,
-    BooleanAlgebraProfile,
-    BooleanAlgebraCollectionProfile,
-    FreeMonoidScalarProfile,
-    FreeMonoidCollectionProfile,
-    PartialFunctionProfile,
-}
-
-pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<IterationDimension> {
-    match profile {
-        AlgebraProfile::FreeMonoidCollectionProfile
-        | AlgebraProfile::FreeMonoidScalarProfile
-        | AlgebraProfile::BooleanAlgebraCollectionProfile
-        | AlgebraProfile::PartialFunctionProfile => Some(IterationDimension::CollectionFold),
-        AlgebraProfile::OrderedRingProfile | AlgebraProfile::ApproximateFieldProfile => {
-            Some(IterationDimension::ArithmeticRepeat)
-        }
-        AlgebraProfile::BooleanAlgebraProfile => None,
-    }
-}
-
-pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
-    if type_name == "Node" {
-        return Some(IterationDimension::TreeDescent);
-    }
-
-    kernel_algebra_profile(type_name).and_then(algebra_profile_to_dimension)
-}
-
-/// Kernel type name → iteration algebra profile (`Int`, `List`, …).
-///
-/// Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`).
-/// Runtime v3 reads the lowered [`ValueBody::Map`] from the bootstrapped DAG.
-pub fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
-    BOOTSTRAPPED_DAG.kernel_algebra_profile(type_name)
-}
 #[derive(Debug, Clone)]
 pub struct ValueNode {
     pub id: NodeId,
@@ -2082,7 +2409,7 @@ pub struct ValueNode {
     /// [`Dag::lane2_workflow_effect_at`] are read-only projections of the same
     /// storage. The sole mutating constructor for tests/staging is
     /// [`Dag::try_register_lane2_workflow_effect`]; lowering fills this field when
-    /// it exists. [`crate::workflow_idempotency::analyze_workflow`] reads through
+    /// it exists. [`crate::dag::analyze_workflow`] reads through
     /// [`Dag::lane2_workflow_effect_at`].
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
@@ -2398,6 +2725,16 @@ impl Behavior {
             Behavior::Branch(b) => b.id,
             Behavior::Loop(l) => l.id,
             Behavior::Bind(b) => b.id,
+        }
+    }
+
+    pub fn span(&self) -> &SourceSpan {
+        match self {
+            Behavior::Value(v) => &v.span,
+            Behavior::Transform(t) => &t.span,
+            Behavior::Branch(b) => &b.span,
+            Behavior::Loop(l) => &l.span,
+            Behavior::Bind(b) => &b.span,
         }
     }
 
@@ -4852,12 +5189,99 @@ mod tests {
     #[test]
     fn call_pattern_from_relations_fails_closed_for_mixed_unknown_and_preserved_evidence() {
         assert_eq!(
-            call_pattern_from_relations(&[
+            call_pattern_from_relations_with_index(&[
                 SubValueRelation::PreservedValue,
                 SubValueRelation::SubValueUnknown
             ]),
             None,
             "mixed unknown + preserved evidence must not fabricate SameArgumentCall"
+        );
+    }
+
+    #[test]
+    fn call_pattern_from_relations_skips_leading_preserved_rows_for_descent_bound_index() {
+        let relations = [
+            SubValueRelation::PreservedValue,
+            SubValueRelation::ArithmeticDescent {
+                param: "param_1".to_string(),
+                factor: ShrinkFactor::ConstantShrink {
+                    steps: PositiveDescentAmount::OneStep,
+                },
+            },
+        ];
+        let (pattern, idx) = call_pattern_from_relations_with_index(&relations)
+            .expect("expected pattern from the first non-preserved, mapped row");
+        assert_eq!(
+            idx, 1,
+            "lenses must key `per_call_descent_operand_port` off the evidence index that produced the \
+             CallPattern, not `0` / first input heuristics"
+        );
+        assert!(
+            matches!(pattern, CallPattern::ArithmeticSubtractCall { .. }),
+            "expected arithmetic descent pattern, got {pattern:?}"
+        );
+    }
+
+    #[test]
+    fn collapse_unary_bind_product_requires_joint_iter_alias_witness() {
+        let dag = crate::compile_to_dag(
+            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
+            "collapse_evidence_unit.v3",
+        )
+        .expect("compile countdown fixture");
+
+        let bind = dag
+            .nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .find(|b| b.name == "countdown")
+            .expect("countdown bind");
+        let param = bind.params[0];
+
+        let descent_port = per_call_descent_evidence(&dag)
+            .into_iter()
+            .filter(|e| e.caller == bind.name)
+            .find_map(|e| per_call_descent_operand_port(&dag, e.call))
+            .expect("self-call descent operand port");
+
+        let mk_product = |other: PortId| SymbolicCost::ProductCost {
+            _0: NonSingletonList::from_vec(vec![
+                Box::new(SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: param,
+                        display_name: None,
+                    },
+                }),
+                Box::new(SymbolicCost::LinearCost {
+                    _0: SizeVariable {
+                        source_port: other,
+                        display_name: None,
+                    },
+                }),
+            ])
+            .expect("two linear factors"),
+        };
+
+        let collapsed = collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+            &dag,
+            bind.value,
+            mk_product(descent_port),
+        );
+        assert!(
+            matches!(collapsed, SymbolicCost::LinearCost { .. }),
+            "gate #78 duplicate iterate-alias (param loop × descent operand, call under loop body) \
+             should collapse: {collapsed:?}"
+        );
+
+        let bogus = PortId::test_raw(999_999);
+        let unchanged = collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+            &dag,
+            bind.value,
+            mk_product(bogus),
+        );
+        assert!(
+            matches!(unchanged, SymbolicCost::ProductCost { .. }),
+            "bogus second factor must not collapse without joint witness: {unchanged:?}"
         );
     }
 

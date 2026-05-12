@@ -11,6 +11,12 @@
 //! the retired `t_pb_b_1_tests_dag_smoke_test` (runner evaluation of embedded
 //! `TestClaim.source` is orthogonal). Still
 //! **not** a `pb_*` gate and still not a Rust-deletion signal.
+//!
+//! R3 gate #87 `R3_GATE_87_CEMENTING_REGEN_SUITES` wiring: **INVARIANTS P5(b)** — merge-visible
+//! integration delta; see module doc on `r3_gate_87_lens_cementing_regen_receipts_test` (§P5(b)
+//! checkable receipt = **PR #2639 description**, not inferred deletes).
+
+use std::collections::BTreeSet;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
@@ -144,6 +150,42 @@ fn t_pb_b_1_execute_command_boundary_suite_passes_through_runner() {
     run_suite_all_pass(&dag, "suite_execute_command_boundary");
 }
 
+/// R3 gate #74 — one Rust integration test ported to `.dag` `TestClaim` data and
+/// executed end-to-end through `TestRunner`.
+///
+/// Port target: `t_pb_b_brief_d_pipeline_smoke_fixture_lowers_cleanly`
+/// (`t_pb_b_brief_d_fixture_smoke_test.rs`). The original Rust test asserts the
+/// pipeline smoke fixture lowers cleanly; this carrier expresses the same
+/// surface as a `Compiles` claim over the embedded subject program.
+#[test]
+fn r3_tests_as_data_demonstration_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_r3_tests_as_data_demonstration.dag"),
+        "src/v3/compiler/tests/dag/t_r3_tests_as_data_demonstration.dag",
+    );
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "suite_tests_as_data_demonstration",
+        &["tests-as-data port of pipeline smoke fixture compiles"],
+    );
+}
+
+/// R3 gate #65 — a Tier3 mirror-consumer `.dag` program executes through
+/// `TestRunner` using std termination authority instead of the hand-Rust mirror
+/// bench path.
+#[test]
+fn r3_tier3_dissolution_demonstration_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_r3_tier3_dissolution_demonstration.dag"),
+        "src/v3/compiler/tests/dag/t_r3_tier3_dissolution_demonstration.dag",
+    );
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "suite_tier3_dissolution_demonstration",
+        &["tier3_dissolution_demonstration_executes"],
+    );
+}
+
 #[test]
 fn t_impossiblebugs_nested_optional_flatten_suite_passes_through_runner() {
     let dag = lower(
@@ -210,4 +252,107 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
         "testgen_structural_coverage_suite",
         &["testgen_structural_coverage"],
     );
+}
+
+// R3 gate #87 — every `LensRegistryEntry` in `src/v3/compiler/regen.dag` has a
+// `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` harness evaluated here.
+const R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX: &str =
+    "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_";
+const R3_GATE_87_CEMENTING_HARNESS_PATH_SUFFIX: &str = ".dag";
+
+/// `LensRegistryEntry.name` values implied by `R3_GATE_87_CEMENTING_REGEN_SUITES` harness `file`
+/// paths (`t_r3_gate_87_cementing_regen_<name>.dag`). **Single authority** for the gate-#87
+/// inventory ratchet: `r3_gate_87_lens_cementing_regen_receipts_test` compares live `regen.dag`
+/// names against this set so a new registry row cannot ship without a matching runner row.
+pub(crate) fn r3_gate_87_cementing_regen_lens_names_for_runner_table() -> BTreeSet<String> {
+    R3_GATE_87_CEMENTING_REGEN_SUITES
+        .iter()
+        .map(|(_, file, _, _)| lens_name_from_gate_87_harness_path(file))
+        .collect()
+}
+
+fn lens_name_from_gate_87_harness_path(file: &str) -> String {
+    file.strip_prefix(R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX)
+        .and_then(|rest| rest.strip_suffix(R3_GATE_87_CEMENTING_HARNESS_PATH_SUFFIX))
+        .unwrap_or_else(|| {
+            panic!(
+                "R3_GATE_87_CEMENTING_REGEN_SUITES: harness path must be \
+                 `{prefix}<lens_name>{suffix}`, got `{file}`",
+                prefix = R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX,
+                suffix = R3_GATE_87_CEMENTING_HARNESS_PATH_SUFFIX,
+            )
+        })
+        .to_string()
+}
+
+const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_cost.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost.dag",
+        "r3_gate_87_cementing_regen_cost_suite",
+        &["cementing_regen_cost"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag",
+        "r3_gate_87_cementing_regen_cost_symbolic_suite",
+        &["cementing_regen_cost_symbolic"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_cost_target_realization.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_cost_target_realization.dag",
+        "r3_gate_87_cementing_regen_cost_target_realization_suite",
+        &["cementing_regen_cost_target_realization"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_effect_enumeration.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_effect_enumeration.dag",
+        "r3_gate_87_cementing_regen_effect_enumeration_suite",
+        &["cementing_regen_effect_enumeration"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_infer_helpers.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_infer_helpers.dag",
+        "r3_gate_87_cementing_regen_infer_helpers_suite",
+        &["cementing_regen_infer_helpers"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_lower_helpers.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_lower_helpers.dag",
+        "r3_gate_87_cementing_regen_lower_helpers_suite",
+        &["cementing_regen_lower_helpers"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_provenance.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_provenance.dag",
+        "r3_gate_87_cementing_regen_provenance_suite",
+        &["cementing_regen_provenance"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_structural_resolution.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_structural_resolution.dag",
+        "r3_gate_87_cementing_regen_structural_resolution_suite",
+        &["cementing_regen_structural_resolution"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_unused_parameters.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_unused_parameters.dag",
+        "r3_gate_87_cementing_regen_unused_parameters_suite",
+        &["cementing_regen_unused_parameters"],
+    ),
+    (
+        include_str!("../dag/t_r3_gate_87_cementing_regen_variant_payload.dag"),
+        "src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_variant_payload.dag",
+        "r3_gate_87_cementing_regen_variant_payload_suite",
+        &["cementing_regen_variant_payload"],
+    ),
+];
+
+#[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
+fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
+    for (source, file, suite, claim_names) in R3_GATE_87_CEMENTING_REGEN_SUITES {
+        let dag = lower(source, file);
+        run_suite_all_pass_with_expected_claim_names(&dag, suite, claim_names);
+    }
 }

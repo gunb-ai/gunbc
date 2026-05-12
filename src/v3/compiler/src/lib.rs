@@ -21,7 +21,6 @@ pub mod diagnostics;
 mod enforced_lens_application;
 pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
-pub mod pb_method_template_projection_dag_emit;
 mod regen_bootstrap_emit;
 pub mod regen_tokenize;
 
@@ -3790,7 +3789,6 @@ pub mod lens_effect_enumeration {
 /// wrapped here inline (same host pattern as `lens_cost` / `lens_provenance`).
 pub mod lens_unused_parameters {
     use crate::dag::{NodeId, PortId};
-    use crate::diagnostics::SourceSpan;
     use crate::Dag;
 
     mod generated {
@@ -3817,7 +3815,6 @@ pub mod lens_unused_parameters {
         pub function: NodeId,
         pub parameter: PortId,
         pub parameter_index: usize,
-        pub function_span: SourceSpan,
     }
 
     pub struct UnusedParametersLens<'a> {
@@ -3837,7 +3834,6 @@ pub mod lens_unused_parameters {
                     parameter: violation.parameter,
                     parameter_index: usize::try_from(violation.parameter_index)
                         .expect("compiled lens should emit non-negative parameter indexes"),
-                    function_span: violation.function_span,
                 })
                 .collect()
         }
@@ -4505,7 +4501,8 @@ pub mod lens_cost_symbolic {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        clippy::deref_addrof
     )]
     mod generated {
         use crate::dag::*;
@@ -4515,9 +4512,51 @@ pub mod lens_cost_symbolic {
     }
 
     pub use generated::{
-        compute_symbolic_costs, symbolic_cost_of, transform_cost_for_target, CostBasisDeclaration,
-        CostBasisKind, SymbolicCostEntry,
+        transform_cost_for_target, CostBasisDeclaration, CostBasisKind, SymbolicCostEntry,
     };
+
+    /// Same fold order as regen’d [`generated::compute_symbolic_costs`], plus
+    /// [`crate::dag::collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction`] on
+    /// each `Hit` row **before it enters the fold accumulator** (P5 receipt: `ROADMAP.md`
+    /// Post-merge debt (2026-05-08), **R3 gate #78**).
+    ///
+    /// The generated lens reads operand costs via [`generated::lookup_cost`] against entries built
+    /// earlier in the fold; applying collapse only after the full vector would leave those lookups
+    /// observing uncollapsed `ProductCost` shells (facts-forward / single-authority for composed
+    /// rows).
+    /// **Single public authority** for symbolic-cost facts: [`symbolic_cost_of`] is just
+    /// [`generated::lookup_cost`] over this table — no parallel uncollapsed export (P2).
+    pub fn compute_symbolic_costs(dag: &crate::dag::Dag) -> Vec<SymbolicCostEntry> {
+        use crate::dag::Lookup;
+
+        dag.nodes()
+            .iter()
+            .fold(generated::seed_bind_params(dag.nodes()), |fold_acc, fold_item| {
+                let mut row = generated::entry_for(dag, &fold_acc, fold_item);
+                let port = row.port;
+                row.cost = match row.cost {
+                    Lookup::Miss => Lookup::Miss,
+                    Lookup::Hit(c) => Lookup::Hit(
+                        crate::dag::collapse_unary_bind_tail_iterate_linear_product_if_duplicate_induction(
+                            dag, port, c,
+                        ),
+                    ),
+                };
+                let mut list = fold_acc.clone();
+                list.insert(0, row);
+                list
+            })
+    }
+
+    /// [`generated::lookup_cost`] over [`compute_symbolic_costs`] — the normalized lens surface (see
+    /// module docs on [`compute_symbolic_costs`]).
+    pub fn symbolic_cost_of(
+        dag: &crate::dag::Dag,
+        port: &crate::dag::PortId,
+    ) -> crate::dag::Lookup<crate::dag::SymbolicCost> {
+        generated::lookup_cost(&compute_symbolic_costs(dag), port)
+    }
+
     /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
     /// at `SymbolicCost`. Alias (not a second sum type) — the lens now
     /// returns `Lookup<SymbolicCost>` directly; this name stays for
@@ -4949,15 +4988,15 @@ pub(crate) mod infer_helpers {
     )]
     mod generated {
         use crate::dag::*;
-        use crate::diagnostics::SourceSpan;
+        use crate::diagnostics::{SourceByteSpan, SourceSpan};
 
         include!("infer_helpers_generated.rs");
     }
 
     pub(crate) use generated::{
-        behavior_output_port, behavior_span, normalize_instantiation_arguments,
-        payload_binding_span, push_template_argument_binding, resolve_template_argument_value,
-        template_argument_value, template_arguments_match as generated_template_arguments_match,
+        behavior_output_port, normalize_instantiation_arguments, payload_binding_span,
+        push_template_argument_binding, resolve_template_argument_value, template_argument_value,
+        template_arguments_match as generated_template_arguments_match,
         NormalizedInstantiationArgs, TemplateArgumentBinding, TemplateArgumentsMatch,
     };
 
@@ -4970,6 +5009,8 @@ pub(crate) mod infer_helpers {
 /// Consumed from `lower.rs`; `parse_generated.rs` keeps its own `&SourceSpan` helper for
 /// parser-local span fusion without cloning.
 pub(crate) mod lower_helpers {
+    use crate::diagnostics::SourceSpan;
+
     #[allow(
         dead_code,
         unused_imports,
@@ -4979,19 +5020,45 @@ pub(crate) mod lower_helpers {
         clippy::collapsible_else_if
     )]
     mod generated {
-        use crate::diagnostics::SourceSpan;
+        use crate::diagnostics::SourceByteSpan;
         use crate::parse_surface;
         use crate::parse_surface::{SurfaceExpr, SurfaceItem, SurfacePattern};
 
         include!("lower_helpers_generated.rs");
     }
 
+    #[allow(unused_imports)] // `item_span` is only referenced from this module's unit tests.
     pub(crate) use generated::{expr_span, item_span, pattern_binding_names};
+
+    /// Full [`SourceSpan`] for a top-level [`SurfaceItem`]: `file` plus byte range,
+    /// read from the parse surface (`span` on each item shape, or
+    /// [`crate::parse::expr_span`] for `Let` bodies).
+    ///
+    /// Contrast with `expr_span` / `item_span` from `lower_helpers.dag`, which
+    /// return `SourceByteSpan` only (R3 gate #31 — no `SourceSpan.file` on that
+    /// lens-generated surface). Callers that need a real diagnostic / declaration
+    /// span with compilation-unit identity use this helper instead of inventing a
+    /// span from bytes alone.
+    pub(crate) fn surface_item_span(item: &crate::parse_surface::SurfaceItem) -> &SourceSpan {
+        use crate::parse_surface::SurfaceItem;
+        match item {
+            SurfaceItem::Let { expr, .. } => crate::parse::expr_span(expr),
+            SurfaceItem::Fn { span, .. } => span,
+            SurfaceItem::FnExternalBody { span, .. } => span,
+            SurfaceItem::Data { span, .. } => span,
+            SurfaceItem::Module { span, .. } => span,
+            SurfaceItem::Import { span, .. } => span,
+            SurfaceItem::TypeAtom { span, .. } => span,
+            SurfaceItem::TypeRecord { span, .. } => span,
+            SurfaceItem::TypeSum { span, .. } => span,
+            SurfaceItem::TypeAlias { span, .. } => span,
+        }
+    }
 
     #[cfg(test)]
     mod tests {
         use super::{expr_span, item_span, pattern_binding_names};
-        use crate::diagnostics::SourceSpan;
+        use crate::diagnostics::{SourceByteSpan, SourceSpan};
         use crate::parse_surface::{SurfaceExpr, SurfaceItem, SurfacePattern, SurfacePatternField};
 
         #[test]
@@ -5001,7 +5068,7 @@ pub(crate) mod lower_helpers {
                 value: crate::parse_surface::SurfaceLiteral::Int("1".into()),
                 span: span.clone(),
             };
-            assert_eq!(expr_span(&e), span);
+            assert_eq!(expr_span(&e), SourceByteSpan::new(10, 20));
         }
 
         #[test]
@@ -5018,7 +5085,7 @@ pub(crate) mod lower_helpers {
                         span: expr_span_value.clone(),
                     },
                 }),
-                expr_span_value
+                SourceByteSpan::new(50, 60)
             );
             assert_eq!(
                 item_span(&SurfaceItem::Fn {
@@ -5035,7 +5102,7 @@ pub(crate) mod lower_helpers {
                     },
                     span: item_span_value.clone(),
                 }),
-                item_span_value
+                SourceByteSpan::new(30, 40)
             );
         }
 
@@ -5086,7 +5153,7 @@ pub(crate) mod lower_helpers {
 /// bridge collapsed to a single re-export. Keep the module name as an API alias
 /// until callers move to the crate-root `analyze_workflow` export.
 pub mod lens_idempotency {
-    pub use crate::workflow_idempotency::analyze_workflow;
+    pub use crate::dag::analyze_workflow;
 }
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
@@ -5135,16 +5202,11 @@ pub(crate) mod variant_payload {
     };
 }
 mod r3_fc_lane2_loop_witness;
-pub(crate) mod workflow_idempotency;
 pub(crate) mod workflow_parallelism;
 
 pub use cost_basis_declaration::{
     try_build_per_write_log_cost_basis_declaration, CostBasisDeclarationBuildError,
 };
-pub use dag::{Dag, NodeId};
-pub use diagnostics::{Diagnostic, SourceSpan, LAYER1_DIAGNOSTIC_KIND_LABELS};
-pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
-pub use emit_rust::EmitError;
 /// Lane 2 Stage 2b — supported public surface: [`analyze_workflow`] is the
 /// primary entry; [`report_unsupported_workflow_variant`] and
 /// [`lane2_workflow_idempotency_report`] are additionally exported so
@@ -5153,10 +5215,12 @@ pub use emit_rust::EmitError;
 /// `operation_to_breaker` are **not** re-exported: naming and algebra authority
 /// live in `src/v3/std/effects.dag`, and the Rust bridge must not become a
 /// parallel public implementation surface beyond these std.effects mirrors.
-pub use workflow_idempotency::analyze_workflow;
-pub use workflow_idempotency::{
-    lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
-};
+pub use dag::analyze_workflow;
+pub use dag::{lane2_workflow_idempotency_report, report_unsupported_workflow_variant};
+pub use dag::{Dag, NodeId};
+pub use diagnostics::{Diagnostic, SourceSpan, LAYER1_DIAGNOSTIC_KIND_LABELS};
+pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
+pub use emit_rust::EmitError;
 /// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
 pub use workflow_parallelism::{analyze_parallelism, loop_iteration_parallel_emission_indicator};
 

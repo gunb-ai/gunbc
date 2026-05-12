@@ -92,18 +92,53 @@ fn expected_origin_from_producer_behavior(behavior: &Behavior) -> Origin {
     }
 }
 
-/// Pairs of (`regen_lens --lens <name>` registry key, cementing module stem
-/// under `tests/integration/cementing/` without `.rs`).
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum CementingReceiptKind {
+    // 🟢 GREEN (terminal): `.dag` TestClaim/TestSuite harnesses are the target
+    // tests-as-data receipt shape for Band-C cementing.
+    DagHarness,
+    // 🟡 YELLOW (scaffold): Rust receipts dissolve when TestPredicate data can
+    // express the published carrier shape named by the receipt's blocker.
+    TemporaryRustModule,
+}
+
+impl CementingReceiptKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::DagHarness => "dag",
+            Self::TemporaryRustModule => "temporary-rust",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct CementingReceipt {
+    registry_name: &'static str,
+    stem: &'static str,
+    kind: CementingReceiptKind,
+}
+
+/// Pairs of `regen_lens --lens <name>` registry key and cementing receipt.
 ///
 /// **Must match register + regen mechanically** — see
 /// `cementing_escalation_slice_matches_capability_register`. Append when the
 /// capability table row is plain `COMPLETE` (not `**PROXY**` / `**STUB**` / `N/A`)
 /// **and** the v2 counterpart cell names a real v2 path (not `None (v3-native)` /
-/// not `N/A` per `TESTING.md` Band-C). Land the new
-/// `cementing/<stem>.rs` module and a `#[path = ...]` line in
-/// `tests/integration.rs` in the same PR.
-const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] =
-    &[("cost", "complexity_lens_behavioral_completion")];
+/// not `N/A` per `TESTING.md` Band-C). Land the new `.dag` TestClaim harness in
+/// the same PR unless the published carrier still needs a temporary Rust receipt
+/// with a named blocker.
+const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[CementingReceipt] = &[
+    CementingReceipt {
+        registry_name: "cost",
+        stem: "t_r3_gate_87_cementing_regen_cost",
+        kind: CementingReceiptKind::DagHarness,
+    },
+    CementingReceipt {
+        registry_name: "cost",
+        stem: "complexity_lens_behavioral_completion",
+        kind: CementingReceiptKind::TemporaryRustModule,
+    },
+];
 
 fn run_with_cementing_stack(f: impl FnOnce() + Send + 'static) {
     std::thread::Builder::new()
@@ -148,7 +183,7 @@ fn register_row_has_real_v2_counterpart_matches_testing_md_band_c() {
     assert!(!register_row_has_real_v2_counterpart("N/A"));
     assert!(!register_row_has_real_v2_counterpart("  `N/A`  "));
     assert!(register_row_has_real_v2_counterpart(
-        "src/v2/complexity.dag (5488L)"
+        "src/v3/lenses/complexity.dag (586L)"
     ));
 }
 
@@ -421,10 +456,9 @@ fn assert_cementing_stem_wired_in_integration_rs(
     let expected = format!(r#"#[path = "integration/cementing/{stem}.rs"]"#);
     assert!(
         integration_rs_cementing_path_attr_binds_mod_stem(integration_rs, stem),
-        "registry lens `{registry_name}` lists cementing stem `{stem}` but \
+        "registry lens `{registry_name}` lists temporary Rust cementing stem `{stem}` but \
          `tests/integration.rs` does not bind `{expected}` to `mod {stem};` in the same item \
-         (Band-C dispatch — not a stray `#[path]` plus an unrelated `mod` line). \
-         Land both lines in the same PR as the on-disk `cementing/{stem}.rs` module."
+         (Band-C dispatch — not a stray `#[path]` plus an unrelated `mod` line)."
     );
 }
 
@@ -460,35 +494,95 @@ fn cementing_escalation_slice_matches_capability_register() {
         let expected = registry_names_required_by_register_and_regen();
         let declared: BTreeSet<&str> = CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
             .iter()
-            .map(|(name, _)| *name)
+            .map(|receipt| receipt.registry_name)
             .collect();
+        let declared_receipts: BTreeSet<(&str, &str, &str)> =
+            CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
+                .iter()
+                .map(|receipt| (receipt.registry_name, receipt.stem, receipt.kind.as_str()))
+                .collect();
+        assert_eq!(
+            declared_receipts.len(),
+            CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS.len(),
+            "`CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` contains duplicate receipt identities; \
+             each `(registry_name, stem, kind)` must be unique."
+        );
         let expected_refs: BTreeSet<&str> = expected.iter().map(String::as_str).collect();
         assert_eq!(
             declared, expected_refs,
             "`CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` must list exactly the registry `name` keys \
              for rows where docs/v3-lens-capability-register.md marks `COMPLETE` with a real v2 \
              counterpart (not `None (v3-native)` / not `N/A` per `TESTING.md`) — update the slice \
-             (and cementing modules + `#[path]` wiring) in the same PR as the register promotion."
+             (and cementing `.dag` TestClaim harnesses, or temporary Rust receipts with named \
+             blockers) in the same PR as the register promotion."
         );
     });
 }
 
 #[test]
-fn cementing_test_modules_exist_for_escalated_v2_complete_registry_claims() {
+fn cementing_cost_receipt_pair_stays_explicit_until_complexity_summary_claim_lands() {
+    let cost_receipts: BTreeSet<(&str, &str)> = CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
+        .iter()
+        .filter(|receipt| receipt.registry_name == "cost")
+        .map(|receipt| (receipt.stem, receipt.kind.as_str()))
+        .collect();
+
+    let expected = BTreeSet::from([
+        ("t_r3_gate_87_cementing_regen_cost", "dag"),
+        ("complexity_lens_behavioral_completion", "temporary-rust"),
+    ]);
+    assert_eq!(
+        cost_receipts, expected,
+        "`cost` currently needs both the gate #87 `.dag` harness and the temporary \
+         `ComplexitySummary` Rust receipt. R3 gate #79 \
+         (`complexity_lens_behaviorally_complete`) is carried by that temporary Rust \
+         receipt while `regen.dag` keeps `src/v3/lenses/complexity.dag` behind the \
+         historical `cost` registry key. Remove the Rust receipt only when the named \
+         TestPredicate/substrate blocker has landed and the replacement `.dag` claim \
+         covers the published `complexity_of` carrier with nested `ComplexitySummary` / \
+         `SymbolicCost` expected literals."
+    );
+}
+
+#[test]
+fn cementing_test_claims_exist_for_escalated_v2_complete_registry_claims() {
     run_with_cementing_stack(|| {
+        let dag_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("dag");
         let cementing_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests")
             .join("integration")
             .join("cementing");
         let integration_rs = integration_rs_text();
-        for (registry_name, stem) in CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS {
-            let path = cementing_dir.join(format!("{stem}.rs"));
-            assert!(
-                path.is_file(),
-                "registry lens `{registry_name}` is listed for v2-complete cementing; expected cementing module at {}",
-                path.display()
-            );
-            assert_cementing_stem_wired_in_integration_rs(&integration_rs, stem, registry_name);
+        for receipt in CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS {
+            match receipt.kind {
+                CementingReceiptKind::DagHarness => {
+                    let path = dag_dir.join(format!("{}.dag", receipt.stem));
+                    assert!(
+                        path.is_file(),
+                        "registry lens `{}` is listed for v2-complete cementing; expected cementing TestClaim harness at {}",
+                        receipt.registry_name,
+                        path.display()
+                    );
+                }
+                CementingReceiptKind::TemporaryRustModule => {
+                    let path = cementing_dir.join(format!("{}.rs", receipt.stem));
+                    assert!(
+                        path.is_file(),
+                        "registry lens `{}` is listed for v2-complete cementing but its published \
+                         carrier is still blocked from `.dag` TestClaim form; expected temporary \
+                         Rust receipt at {}",
+                        receipt.registry_name,
+                        path.display()
+                    );
+                    assert_cementing_stem_wired_in_integration_rs(
+                        &integration_rs,
+                        receipt.stem,
+                        receipt.registry_name,
+                    );
+                }
+            }
         }
     });
 }

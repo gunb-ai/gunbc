@@ -157,8 +157,6 @@ mod method_template_projection_emit_shim_coherence_test;
 mod p0_std_render_repeat_string_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]
 mod pb1_bootstrap_full_snapshot_test;
-#[path = "integration/pb_method_template_projection_dag_emit_test.rs"]
-mod pb_method_template_projection_dag_emit_test;
 #[path = "integration/pb_method_template_projection_test.rs"]
 mod pb_method_template_projection_test;
 #[path = "integration/pipe_desugar.rs"]
@@ -175,12 +173,22 @@ mod r1c_e_emit_gates_dag_test;
 mod r1c_e_emit_gates_omni_dag_test;
 #[path = "integration/r2_b5_loop_construction_closure_test.rs"]
 mod r2_b5_loop_construction_closure_test;
+#[path = "integration/r3_class_2_function_valued_data_test.rs"]
+mod r3_class_2_function_valued_data_test;
 #[path = "integration/r3_free_consequences_first_batch_test.rs"]
 mod r3_free_consequences_first_batch_test;
 #[path = "integration/r3_free_consequences_second_batch_test.rs"]
 mod r3_free_consequences_second_batch_test;
+#[path = "integration/r3_gate_87_lens_cementing_regen_receipts_test.rs"]
+mod r3_gate_87_lens_cementing_regen_receipts_test;
+#[path = "integration/r3_lens_producer_retirement_executable_witness_test.rs"]
+mod r3_lens_producer_retirement_executable_witness_test;
 #[path = "integration/r3_pb_runtime_evaluator_corpus_seed_test.rs"]
 mod r3_pb_runtime_evaluator_corpus_seed_test;
+#[path = "integration/r3_substrate_gap_reflection_closure_test.rs"]
+mod r3_substrate_gap_reflection_closure_test;
+#[path = "integration/r3_v3_self_host_demonstration_dag_test.rs"]
+mod r3_v3_self_host_demonstration_dag_test;
 #[path = "integration/r3_verification_l4_l7_l5_skeleton_test.rs"]
 mod r3_verification_l4_l7_l5_skeleton_test;
 #[path = "integration/services_carrier_shape_test.rs"]
@@ -235,6 +243,8 @@ mod thesis_parallelism_test;
 mod thesis_validation_test;
 #[path = "integration/timing_lens_substrate_carrier_test.rs"]
 mod timing_lens_substrate_carrier_test;
+#[path = "integration/v2_oracle_no_remaining_test_consumers_test.rs"]
+mod v2_oracle_no_remaining_test_consumers_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/workflow_root_port_test.rs"]

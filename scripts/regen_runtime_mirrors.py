@@ -49,6 +49,23 @@ impl SourceSpan {
 """
 
 
+SOURCE_BYTE_SPAN_TEMPLATE = """#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceByteSpan {
+    pub byte_start: u32,
+    pub byte_end: u32,
+}
+
+impl SourceByteSpan {
+    pub const fn new(byte_start: u32, byte_end: u32) -> Self {
+        Self {
+            byte_start,
+            byte_end,
+        }
+    }
+}
+"""
+
+
 CORRECTION_TEMPLATE = """#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Correction {
     pub description: String,
@@ -795,7 +812,13 @@ def render_sum(
 
 def render_diagnostics_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     del records, sums
-    return "\n\n".join([SOURCE_SPAN_TEMPLATE.strip(), CORRECTION_TEMPLATE.strip()])
+    return "\n\n".join(
+        [
+            SOURCE_SPAN_TEMPLATE.strip(),
+            SOURCE_BYTE_SPAN_TEMPLATE.strip(),
+            CORRECTION_TEMPLATE.strip(),
+        ]
+    )
 
 
 def render_types_module(substrate_records: dict[str, RecordDef]) -> str:

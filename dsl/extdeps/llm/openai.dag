@@ -10,13 +10,28 @@ module extdeps.llm.openai
 
 import extdeps.llm.llm { StopReason, TokenUsage, llm_snake_wire_contract }
 import std.errors { OpenAiErrorShape }
-import std.serialization { VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding }
 import std.types { HttpMethod, AuthScheme }
 
 // Wire contract: OpenAI API returns enum values as snake_case strings.
 // Single authority: same `VariantEncoding` value as `extdeps.llm.llm` (`llm_snake_wire_contract`);
 // module-local `wire_contract` is the per-module binding name the emitter resolves (`05_emit_rust.dag`).
 data wire_contract: VariantEncoding = llm_snake_wire_contract
+
+data openai_chat_message_wire_contract: CoproductWireContract = {
+  coproduct: "OpenAiChatMessage",
+  encoding: InternallyTaggedObject { tag_field: "role", naming: StripPrefixAndSnakeCase { prefix: "OpenAiChatMessage" } }
+}
+
+data openai_chat_message_part_wire_contract: CoproductWireContract = {
+  coproduct: "OpenAiChatMessagePart",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "OpenAiChatMessage", suffix: "Part" } }
+}
+
+data openai_chat_message_content_wire_contract: CoproductWireContract = {
+  coproduct: "OpenAiChatMessageContent",
+  encoding: UntaggedVariant
+}
 
 // -- Models --------------------------------------------------------
 
@@ -78,27 +93,57 @@ type ToolCall {
   function: FunctionCall
 }
 
-// Roles on Chat Completions `messages[]` for this **narrow string-content**
-// carrier: system / developer / user / assistant per OpenAI Chat Completions
-// (https://platform.openai.com/docs/api-reference/chat/create). Tool rows and
-// multimodal `content` arrays are not modeled here — gap-carried below.
-// 🟢 TERMINAL provider-domain coproduct for the modeled narrow text-message
-// row. Full Chat Completions message variants remain gap-carried by
-// `structural_coverage_gap_openai_chat_message_full_api_surface`.
+// Roles on Chat Completions `messages[]`: system / developer / user /
+// assistant / tool / function per OpenAI Chat Completions
+// (https://platform.openai.com/docs/api-reference/chat/create).
+// 🟢 TERMINAL provider-domain coproduct for modeled Chat Completions message
+// roles. The value is projected from `OpenAiChatMessage` variant identity, not
+// caller-authored as a free payload field.
 //
-// Request wire for this row (`messages[].role` as system/developer/user/assistant)
-// is ratcheted by pipeline tests in `src/v2/tests/src/pipeline.rs`:
+// Request wire for this row (`messages[].role` as
+// system/developer/user/assistant/tool/function) is ratcheted by pipeline tests
+// in historical pipeline integration tests:
 // `openai_chat_message_role_wire_matches_llm_snake_contract` (emitted serde attrs)
 // and `openai_chat_message_row_json_matches_chat_completions_wire_tags` (golden JSON).
-type OpenAiChatMessageRole = System | Developer | User | Assistant
+type OpenAiChatMessageRole = System | Developer | User | Assistant | Tool | Function
 
-// Chat Completions API message row: wire accepts plain-string `content` for
-// text-only payloads (OpenAI docs). Typed here so callers cannot pass opaque
-// Json; multimodal rows extend this product when needed (Q4.5 P1 / #808).
-type OpenAiChatMessage {
-  role: OpenAiChatMessageRole
-  content: String
+// 🟡 SCAFFOLD provider-domain coproduct for request `messages[].content`.
+// Chat Completions accepts either a scalar text string or typed content parts.
+// Wire uses untagged string-or-array alternatives via
+// `openai_chat_message_content_wire_contract`; `OpenAiChatMessagePart` carries
+// the tagged part rows. Trigger: split this content carrier by message role if
+// OpenAI role-specific content-part legality is modeled structurally.
+type OpenAiChatMessageContent
+  = OpenAiChatMessageText { text: String }
+  | OpenAiChatMessageParts { parts: List<OpenAiChatMessagePart> }
+
+type OpenAiChatMessageImageUrl {
+  url: String
+  detail: String?
 }
+
+// 🟡 SCAFFOLD provider-domain coproduct for Chat Completions request content
+// parts. Text and image_url close the original multimodal-content gap; audio,
+// refusal, and file-like additive parts remain gap-carried by
+// `structural_coverage_gap_openai_chat_message_additive_content_parts`.
+type OpenAiChatMessagePart
+  = OpenAiChatMessageTextPart { text: String }
+  | OpenAiChatMessageImageUrlPart { image_url: OpenAiChatMessageImageUrl }
+
+// Chat Completions API message row. Variant identity determines the wire `role`
+// discriminator; role is deliberately not a payload field, so illegal rows like
+// a tool payload with `role: User` are not structurally representable.
+// 🟡 SCAFFOLD provider-domain coproduct for the current Chat Completions request
+// message surface. Trigger: update this carrier when OpenAI request messages
+// add new role variants or when assistant/tool custom-call payloads are lifted
+// out of the residual rows below.
+type OpenAiChatMessage
+  = OpenAiChatMessageSystem { content: OpenAiChatMessageContent }
+  | OpenAiChatMessageDeveloper { content: OpenAiChatMessageContent }
+  | OpenAiChatMessageUser { content: OpenAiChatMessageContent }
+  | OpenAiChatMessageAssistant { content: OpenAiChatMessageContent?, tool_calls: List<ToolCall>?, function_call: FunctionCall? }
+  | OpenAiChatMessageTool { content: OpenAiChatMessageContent, tool_call_id: String }
+  | OpenAiChatMessageFunction { content: String, name: String }
 
 // Narrow 200-OK wire slice for Chat Completions (`response { 200 => … }` + serde).
 // Tool calls / multimodal message bodies remain outside this carrier (same narrow
@@ -193,10 +238,9 @@ data structural_coverage_gap_openai_chat_completion_200_residual: List<String> =
   "closure:openai_chat_completion_200_residual|OpenAiChatCompletion200Message|variant_pending:tool_calls|variant_pending:function_call|variant_pending:audio|variant_pending:non_string_content|variant_pending:refusal_without_content|trigger:model response content/tool/audio coproduct surface"
 ]
 
-// Full Chat Completions message coproduct (tool_call_id, tool role, function,
-// multimodal content parts) is not this row — downstream closure trigger.
-data structural_coverage_gap_openai_chat_message_full_api_surface: List<String> = [
-  "closure:openai_chat_message_full_coproduct|OpenAiChatMessage|missing:tool_role_with_tool_call_id|missing:function_role|missing:multimodal_content_array"
+data structural_coverage_gap_openai_chat_message_additive_content_parts: List<String> = [
+  "closure:openai_chat_message_additive_content_parts|OpenAiChatMessagePart|missing:audio_input_part|missing:refusal_part|missing:file_or_custom_parts|trigger:OpenAI Chat Completions request content-part spec extension",
+  "closure:openai_chat_message_additive_tool_calls|ToolCall|missing:custom_tool_call|trigger:OpenAI Chat Completions custom tool-call payload carrier"
 ]
 
 // Narrow 200-OK wire slice for OpenAI Responses (`response { 200 => … }`).

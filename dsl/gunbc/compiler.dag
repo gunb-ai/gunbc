@@ -10,15 +10,10 @@
 //       ▲                                                            │
 //       └────────────────────(reads)─────────────────────────────────┘
 //
-// Faithfulness: stage0 has hand-maintained .rs files
-// (cli_run.rs, v2_interpreter.rs, rest_transport_facts.rs) that survive regen and are excluded
-// from the fixed-point diff. rest_transport_facts.rs is a bounded substrate seed
-// (INVARIANTS.md): delete when REST operation facts are available from the
-// resolved graph (or equivalent single authority) so derivation tests need no
-// parallel AST walk. The GeneratedCrate type names hand-maintained files
-// explicitly. Cargo.toml is also hand-maintained but lives outside
-// source_dir and is never part of the src/ fixed-point — it's noted
-// here but not modeled as a structural field.
+// Faithfulness: `stage0.hand_maintained_src` names `.rs` baselines under
+// `src/v3/compiler/src` that are not emitted output — they survive regen and are
+// excluded from the fixed-point diff. Cargo.toml is hand-maintained but lives
+// outside `source_dir` and is never part of the src/ fixed-point.
 //
 // Tool modeling: the compiler cycle depends on cargo, grep, diff, cp, rm.
 // Each is declared as a CliTool with an InstallSource. Workflows resolve
@@ -26,7 +21,7 @@
 // shell string uses absolute paths from `which`, not bare names.
 //
 // What this file is NOT:
-//   - Internal pipeline (Tokenize → Parse → ...) — see src/v2/compile.dag
+//   - Internal pipeline (Tokenize → Parse → ...) — see src/v3/compiler/pipeline.dag
 //   - Executable regen/freshness/ratchet — see dsl/gunbc/tools/*.dag
 //   - CI gate declarations — those derive from this model, see gunbc/ci.dag
 
@@ -50,7 +45,7 @@ type SourceRoot {
   path: FilePath
 }
 
-data compiler_source: SourceRoot = { path: "src/v2" }
+data compiler_source: SourceRoot = { path: "src/v3" }
 data dsl_root: SourceRoot = { path: "dsl" }
 
 // ── Generated crate ─────────────────────────────────────────────────
@@ -103,7 +98,6 @@ data stage0: GeneratedCrate = {
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted shells.
     "process_exit.rs",
     "regen_parse_emit.rs",
-    "workflow_idempotency.rs",
     "workflow_parallelism.rs"
   ]
 }
@@ -271,7 +265,7 @@ func resolve_compiler_tools() -> ToolResolveResult {
 // The test crate validates the compiler. Part of the same workspace
 // but not part of the self-hosting cycle (not regenerated).
 
-data test_package: NonEmptyStr = "v2-compiler-tests"
+data test_package: NonEmptyStr = "v3-compiler"
 
 // ── v3 source authority inventory (SG program) ──────────────────────
 //

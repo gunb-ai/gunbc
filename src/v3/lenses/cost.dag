@@ -36,9 +36,12 @@
 // and the `CostBound` algebra in `std.induction`. Integer **`Div`** composes
 // operand costs (`transform_cost`) with **`LogCost(dividend_port)`** in
 // `transform_cost_for_target`; other primitives still use input-port sum only.
-// General per-call `CallPattern` descent remains **E-P** follow-on (producer wiring,
-// richer size variables, behavioral tests) — not missing E-I vocabulary or a ported
-// `MethodSemantics` carrier. E-M closed method carrier parity by structural subsumption
+// Recursive callable transforms consume per-call descent facts via
+// `std.computation::per_call_pattern_at` (R3 gate `e_p_sub_value_relation_per_call_landed` /
+// T-E-P-Producer-Broadening Phase 3): same `SubValueRelation`→`CallPattern` projection
+// authority as `complexity.dag`, per `docs/design-cost-lens-sizevar-dimension-wiring.md` §3.2.
+// Band-C v2-oracle cementing for cost stays PROXY per register row. E-M closed method
+// carrier parity by structural subsumption
 // through `TransformTarget` and typed declaration/effect metadata. Integration module
 // `cost_lens_symbolic_consumer_test` pins the generated `symbolic_cost_of` consumer on
 // `compile_to_dag` fixtures. Band-C cementing (`integration/cementing/`, v2 oracle /
@@ -69,6 +72,19 @@ import std.algebra {
   max_path,
   miss_symbolic_cost_lookup,
   hit_symbolic_cost_lookup
+}
+import std.computation {
+  CallPattern,
+  ArithmeticSubtractCall,
+  ArithmeticDivideCall,
+  ChildAccessorCall,
+  CollectionShrinkCall,
+  FoldBodyCall,
+  ParserAdvanceCall,
+  WorklistDrainCall,
+  SameArgumentCall,
+  per_call_pattern_at,
+  per_call_descent_operand_port
 }
 import v3.std.lookup { Lookup }
 import v3.std.substrate { SourceSpan }
@@ -197,13 +213,79 @@ fn entry_for(
     Value(v) =>
       { port: v.result_port, cost: hit_symbolic_cost_lookup(ConstantCost(0)) }
     Transform(t) =>
-      { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
+      match per_call_pattern_at(d, t.id) {
+        None =>
+          { port: t.result_port, cost: transform_cost_for_target(acc, t.target, t.inputs) }
+        Some(pattern) =>
+          match per_call_descent_operand_port(d, t.id) {
+            None =>
+              { port: t.result_port, cost: miss_symbolic_cost_lookup() }
+            Some(descent_port) =>
+              {
+                port: t.result_port,
+                cost: recursive_transform_cost(acc, pattern, descent_port, t.inputs)
+              }
+          }
+      }
     Branch(b) =>
       { port: b.result_port, cost: branch_cost(acc, b.input, b.paths) }
     Loop(l) =>
       { port: l.result_port, cost: loop_cost(d, acc, l) }
     Bind(bind) =>
       { port: bind.result_port, cost: lookup_cost(acc, bind.result_port) }
+  }
+
+// Recurrence iteration bound × operand spine from `inputs`, keyed by the same
+// `per_call_pattern_at` projection over `SubValueRelation` evidence.
+//
+// **`pattern_to_iter_bound(pattern, descent_port)`** supplies only the **iterate
+// dimension** (recurrence measure keyed on `descent_port`), not the sequential cost of
+// **evaluating** the argument subgraph on that wire — mirror `complexity.dag`
+// `recursive_transform_summary`: compose `lookup_cost(acc, descent_port)` inside the
+// iterate body, then fold **remaining** inputs while skipping `descent_port` so we never
+// charge `lookup_cost` twice for the same wire or stack `sum_costs` on top of the bound's
+// same-port linear factor (unary tail recursion still surfaces benign `ProductCost`
+// shells until alias-aware folding / host collapse).
+// `SameArgumentCall` has no recurrence bound → `pattern_to_iter_bound` is `Miss` (P3).
+fn recursive_transform_cost(
+  acc: List<SymbolicCostEntry>,
+  pattern: CallPattern,
+  descent_port: PortId,
+  inputs: List<PortId>
+) -> Lookup<SymbolicCost> =
+  match inputs {
+    Empty => miss_symbolic_cost_lookup()
+    Cons(_) =>
+      combine_iterate(
+        pattern_to_iter_bound(pattern, descent_port),
+        combine_sequential(
+          lookup_cost(acc, descent_port),
+          sum_costs_excluding_descent_operand(acc, inputs, descent_port)
+        )
+      )
+  }
+
+// Recurrence **bound** for `combine_iterate` / `iterate`. `SameArgumentCall` is a
+// no-descent self-call (not a well-founded recurrence dimension here) — **Miss**, not
+// a successful `UnknownCost` shell (P3 / INVARIANTS.md; design: same-arg is not recurrence).
+fn pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> Lookup<SymbolicCost> =
+  match pattern {
+    ArithmeticSubtractCall { steps: steps, ring_param: ring_param } =>
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+    ArithmeticDivideCall { divisor: divisor , ring_param: ring_param } =>
+      hit_symbolic_cost_lookup(LogCost(unnamed_size_variable(arg_port)))
+    ChildAccessorCall { accessor: accessor } =>
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+    CollectionShrinkCall { amount: amount, collection: collection } =>
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+    FoldBodyCall { outer_collection: outer_collection } =>
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+    ParserAdvanceCall { witness: witness } =>
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+    WorklistDrainCall { element: element } =>
+      hit_symbolic_cost_lookup(LinearCost(unnamed_size_variable(arg_port)))
+    SameArgumentCall =>
+      miss_symbolic_cost_lookup()
   }
 
 // `loop_cost` composes iteration: bound × body.
@@ -369,6 +451,22 @@ fn sum_costs(
 ) -> Lookup<SymbolicCost> =
   fold(ports, hit_symbolic_cost_lookup(ConstantCost(0)), |running, port_id|
     combine_sequential(running, lookup_cost(acc, port_id))
+  )
+
+// Sum operand-port costs for recursive Callable transforms, **excluding** the port
+// identified by `per_call_descent_operand_port` — `recursive_transform_cost` composes
+// `lookup_cost(acc, descent_port)` once in the iterate body; this fold covers **other**
+// operands only (see `recursive_transform_cost` commentary).
+fn sum_costs_excluding_descent_operand(
+  acc: List<SymbolicCostEntry>,
+  ports: List<PortId>,
+  descent_port: PortId
+) -> Lookup<SymbolicCost> =
+  fold(ports, hit_symbolic_cost_lookup(ConstantCost(0)), |running, port_id|
+    if port_id == descent_port then
+      running
+    else
+      combine_sequential(running, lookup_cost(acc, port_id))
   )
 
 fn combine_sequential(
