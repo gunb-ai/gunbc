@@ -224,7 +224,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 
 | # | Gate ID | Family | Owner Lane | Status | Notes |
 |---|---|---|---|---|---|
-| 1 | `tier3_termination_mirror_dissolved` | state-check | T-Tier3-Dissolution | DECLARED | r3-structure.md §Acceptance |
+| 1 | `tier3_termination_mirror_dissolved` | state-check | T-Tier3-Dissolution | **CONSUMER_LANDED + PASSING** (2026-05-12 — public `DescentEvidence` lattice-operation mirror helpers retired from `src/v3/compiler/src/dag.rs`; ratchet `termination_lattice_rust_mirror_dissolved` keeps the Rust mirror dissolved while `src/v3/std/termination.dag` remains the authority; Phase-1 `bench_termination_mirror` registration and frozen baseline row removed) | r3-structure.md §Acceptance |
 | 2 | `tier3_computation_mirror_dissolved` | state-check | T-Tier3-Dissolution | DECLARED | r3-structure.md §Acceptance |
 | 3 | `tier3_induction_mirror_dissolved` | state-check | T-Tier3-Dissolution | **CONSUMER_LANDED** (PR #2678 squash 2026-05-11 — merry-wolf-735 T-Tier3 induction mirror retirement; scope-verified per R-7 vs C1 Phase-1 baseline now landed via PR #2702) | r3-structure.md §Acceptance |
 | 4 | `tier3_effect_carrier_mirror_dissolved` | state-check | T-Tier3-Dissolution | **CONSUMER_LANDED + PASSING** (PR #2679 squash `6897445b` 2026-05-11 — warm-ibex-579 retired `workflow_idempotency.rs`, co-located Lane 2b idempotency projection in `dag/effects.rs` with P5/P2 receipts + bootstrap `ArrowBody::Unparsed` ratchet test) | r3-structure.md §Acceptance |
