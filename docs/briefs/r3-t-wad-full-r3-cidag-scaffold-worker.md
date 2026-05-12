@@ -2,7 +2,7 @@
 
 **Authority**: PM scoping doc `docs/r3-t-workflow-as-data-full-r3-close-scope.md` §6 WI-2; operator FULL elevation 2026-05-12; Director ratification msg_5cbdad24 + (c-refined) ratification msg_237bde05 / msg_f9fd669e 2026-05-12.
 **Parent**: T-Workflow-As-Data lane (Substrate Mgr warm-wolf-698 lane-absorbed Slices 4-5/8 per Director); this WI lands the projection-function substrate that enables Slice 4 emitter implementation.
-**Closure predicate**: `dsl/gunbc/ci_emission.dag` declares `EmissionTarget` open enum + `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow` projection function + `gunbc_ci_yml_workflow` pinned-projection data binding; downstream Slice 4 YamlStatic emitter consumes the projection; downstream Slice 8 deletes hand-authored `.github/workflows/ci.yml`.
+**Closure predicate**: `dsl/gunbc/ci_emission.dag` declares `EmissionTarget` open enum + `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow` projection function + `gunbc_ci_yml_workflow` pinned-projection data binding; downstream Slice 4 YamlStatic emitter consumes the projection; downstream Slice 8 dissolves hand-authority over `.github/workflows/ci.yml` (per `ci_yml_hand_authority_dissolved` gate — see scope doc §1).
 
 ## Substrate-shape ratification anchor
 
@@ -47,15 +47,25 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
    - This is the **invocation pin** that defines the canonical YAML-emission point for downstream Slice 4
    - The pinned data binding is THE Workflow value Slice 4's YamlStatic emitter walks to produce `.github/workflows/ci.yml`-equivalent output
 
-## CIWorkflowDag dependency sequencing
+## CIWorkflowDag dependency sequencing — Path (b) REQUIRED (Substrate Mgr clarification 2026-05-12 msg_27d99080)
 
-The projection function takes a `CIWorkflowDag` input. Two valid sourcing paths:
+**The projection function takes a `CIWorkflowDag` input.** Substrate Mgr (warm-wolf-698) clarified at msg_27d99080 that Path (a) is INSUFFICIENT:
 
-**Path (a) — reuse existing `dsl/gunbc/ci.dag` CIPipeline value**: pass the gate-centric `CIPipeline` from PR #2371 as the input domain; the projection function unpacks gates + pipeline structure into Workflow shape. **No new substrate type needed**.
+**Path (a) — reuse existing `dsl/gunbc/ci.dag::CIPipeline`** — REJECTED. `CIPipeline { name, gates: List<CIGate> }` is a FLAT gates list without edge/dependency structure. `project_github_actions` consumes gate-DEPENDENCY (which gates depend on which); flat `List<CIGate>` cannot serve as the projection input. Path (a) is INSUFFICIENT for the projection's input requirements.
 
-**Path (b) — introduce new `CIWorkflowDag` carrier**: declares a richer CI-logic shape that captures jobs/steps/needs/triggers at gunbc-substrate level (NOT platform-level), then projects into the `Workflow` platform carrier via the function. **Substrate-shape addition — belongs to Mgr canvas per `feedback_substrate_shape_belongs_in_mgr_canvas`**.
+**Path (b) — use `CIWorkflowDag` carrier from PR #2736 (neat-badger-30)** — REQUIRED. `CIWorkflowDag { name, nodes: List<CIGateNode>, edges: List<CIGateEdge> }` is the load-bearing semantic carrier carrying gate-dependency structure. This is **ALREADY canvas-tier ratified** (PR #2749 §1 option (a) discussion + §2.4 / §7.4 tables explicitly position CIWorkflowDag as the gate-dependency authority on which (c-refined) composes) AND Director-ratified (msg_4f7f536d). PR #2736 is the carrier-introduction PR; canvas + Director ratification covers Path (b) — **no additional Mgr ratification needed for the CIWorkflowDag choice itself**.
 
-**Disposition**: Path (a) preferred for this WI — minimal substrate addition, leverages existing `CIPipeline` authority. If Path (a) cannot express ci.yml fully (e.g., needs steps/runners that `CIPipeline` doesn't carry), **STOP and PING Substrate Mgr** to ratify Path (b) carrier shape via canvas. Do NOT introduce `CIWorkflowDag` without Mgr ratification.
+**Disposition**: Proceed Path (b) directly. Use `CIWorkflowDag` from PR #2736 as the projection function's input domain.
+
+**Sequencing implication** (per Substrate Mgr msg_27d99080):
+- WI-2 implementation **depends on PR #2736 merge** OR references the in-flight `CIWorkflowDag` type
+- If PR #2736 is still HOLD-merging when cool-carp-720 opens WI-2: either (1) WI-2 holds until PR #2736 merges, OR (2) WI-2's PR rebases on PR #2736's branch (`session/neat-badger-30`)
+- PR #2736 mergeable=CLEAN with all CI checks SUCCESS as of 2026-05-12 (no structural blocker; awaiting review tally)
+
+**STOP-and-route discipline** (revised):
+- The CIWorkflowDag CARRIER CHOICE is canvas+Director-ratified — no STOP needed for this dimension.
+- STOP still applies for OTHER substrate-shape questions (e.g., `EmissionTarget` open-enum vocabulary support, function-as-projection declaration vocabulary support) — see STOP / PING criteria below.
+- PING-on-PR-open ratification covers shape (signature, derived-binding form, module placement), NOT the CIWorkflowDag choice in isolation.
 
 ## Scope boundaries (DO / DON'T)
 
@@ -65,14 +75,16 @@ The projection function takes a `CIWorkflowDag` input. Two valid sourcing paths:
 - Declare `project_github_actions` function signature with TODO-marked total-handling skeleton.
 - Declare `gunbc_ci_yml_workflow` pinned-projection data binding (invocation pin with `YamlStatic`).
 - Reference existing `Workflow` carrier from `dsl/extdeps/github/actions.dag` as the codomain type.
-- Cite existing `CIPipeline` from `dsl/gunbc/ci.dag` as the input source if Path (a).
+- Reference `CIWorkflowDag` carrier from PR #2736 as the input domain type (canvas + Director-ratified per msg_4f7f536d).
+- Sequence WI-2 PR after PR #2736 merge OR rebase WI-2's branch on PR #2736's `session/neat-badger-30` if PR #2736 is still HOLD-merging.
 
 **DON'T**:
 - Do NOT add fields to `dsl/extdeps/github/actions.dag` carriers (Workflow/Job/Step) — this is the INVARIANTS P1 violation the (c-refined) shape resolves.
 - Do NOT extend `dsl/gunbc/ci.dag` with new substrate types — extension belongs to Mgr canvas tier.
+- Do NOT use `CIPipeline` from `dsl/gunbc/ci.dag` as the projection input — it is flat without edge structure and INSUFFICIENT for `project_github_actions` (per Substrate Mgr clarification msg_27d99080).
 - Do NOT implement per-arm projection bodies — those are Slice 4-5 work owned by Substrate Mgr after canvas ratification.
-- Do NOT modify `.github/workflows/ci.yml` — Slice 8 deletes; this WI only lands the projection substrate.
-- Do NOT introduce a `CIWorkflowDag` carrier without Substrate Mgr ratification (see "CIWorkflowDag dependency sequencing" above).
+- Do NOT modify `.github/workflows/ci.yml` — Slice 8 dissolves hand-authority; this WI only lands the projection substrate.
+- Do NOT introduce ALTERNATE carriers for the projection input — `CIWorkflowDag` from PR #2736 is the ratified authority.
 
 ## Acceptance gates
 
@@ -89,26 +101,31 @@ The projection function takes a `CIWorkflowDag` input. Two valid sourcing paths:
 
 ## STOP / PING criteria
 
-- **STOP** if existing `CIPipeline` from `dsl/gunbc/ci.dag` cannot supply enough input data for the projection function to produce a faithful `Workflow` value — surface to Substrate Mgr; Path (b) requires canvas-tier ratification.
 - **STOP** if `EmissionTarget` open-enum declaration requires substrate-shape features not yet supported by current v3 surface (e.g., open-enum vocabulary missing) — surface to Substrate Mgr.
 - **STOP** if `project_github_actions` function signature requires substrate features not yet supported (e.g., function-as-projection declaration vocabulary missing) — surface to Substrate Mgr; canvas-tier decision.
+- **STOP** if PR #2736 (CIWorkflowDag introduction) is BLOCKED on something WI-2 implementation reveals (e.g., shape mismatch with what `project_github_actions` actually needs) — surface to Substrate Mgr; CIWorkflowDag carrier shape ratified-but-revisable.
 - **PING** PM (deep-wolf-155) on PR-open for review-routing.
-- **PING** Substrate Mgr (warm-wolf-698) on PR-open for Mgr-tier ratification + Slice 4 emitter dispatch routing.
+- **PING** Substrate Mgr (warm-wolf-698) on PR-open for Mgr-tier ratification of overall shape (signature, derived-binding form, module placement; NOT CIWorkflowDag carrier choice — that's pre-ratified).
 - **COORDINATE** with sibling still-heron-763 (WI-1 emitter-dispatch canvas at PR #2749) — the canvas declares the (c-refined) shape this WI implements; if canvas re-ratifies the shape, this WI must follow.
+- **COORDINATE** with neat-badger-30 (PR #2736 CIWorkflowDag introduction) if shape questions arise about the input carrier itself.
 
 ## Reference materials
 
 - `docs/r3-t-workflow-as-data-full-r3-close-scope.md` — PM FULL scope (this brief's parent); §1 gate `project_github_actions_landed` is the closure-gate for this WI.
 - `docs/briefs/r3-t-wad-full-r3-emitter-dispatch-canvas-worker.md` — sibling WI-1 brief (declares the (c-refined) substrate shape this WI implements).
 - PR #2749 (still-heron-763 WI-1 canvas) §7 — (c-refined) shape self-correction; THIS WI implements that shape.
+- PR #2749 (still-heron-763 WI-1 canvas) §1 + §2.4 + §7.4 — canvas-tier ratification of `CIWorkflowDag` as the gate-dependency authority on which (c-refined) composes.
+- PR #2736 (neat-badger-30) — `CIWorkflowDag` carrier introduction; MERGEABLE with all checks SUCCESS as of 2026-05-12; awaiting review tally; this WI consumes `CIWorkflowDag` as the projection input domain.
+- Director ratification msg_4f7f536d — covers Path (b) (CIWorkflowDag-as-input) per Substrate Mgr clarification msg_27d99080.
 - `dsl/extdeps/github/actions.dag:1-12` — platform-carrier scope header ("platform constraints, not CI logic (that lives in gunbc/ci.dag)"); the discriminator that grounds the (c-refined) shape.
 - `dsl/extdeps/github/actions.dag:21` — `Workflow` carrier (codomain type for `project_github_actions`).
-- `dsl/gunbc/ci.dag` — existing gate-centric CI substrate (Path (a) input source).
+- `dsl/gunbc/ci.dag::CIPipeline` — existing gate-centric CI substrate; INSUFFICIENT as projection input (flat without edge structure) per Substrate Mgr msg_27d99080. Do NOT use as `project_github_actions` input.
 - `feedback_audit_extdeps_header_for_logic_vs_platform_discriminator.md` — the discipline that catches (a)-shape mis-placements at canvas-authoring time.
 
 ## Sequencing
 
-- Dispatch-ready NOW (existing `dsl/extdeps/github/actions.dag::Workflow` + existing `dsl/gunbc/ci.dag::CIPipeline` suffice for declaration scope).
+- **Depends on PR #2736 merge** (CIWorkflowDag carrier introduction by neat-badger-30) — currently MERGEABLE, awaiting review tally. WI-2 implementation either holds for PR #2736 merge OR rebases on `session/neat-badger-30` branch.
+- `dsl/extdeps/github/actions.dag::Workflow` already present — no upstream dependency for codomain type.
 - Slice 1 substrate LANDED (PR #2160) — `WorkflowSecret` + `CronSchedule` available; consumed downstream by Slice 4 emitter, not this WI.
 - Slice 3 demo LANDED (PR #2371) — `t_ci_workflow_as_data_demo.dag` exists; this WI extends scope from demo-of-evaluation into projection-substrate-declaration.
 - This WI lands the projection-function substrate; Slice 4 implements per-arm bodies; Slice 8 dissolves hand-authority over `.github/workflows/ci.yml` (per renamed gate `ci_yml_hand_authority_dissolved` — see scope doc §1 fix 2026-05-12).
