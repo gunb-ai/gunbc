@@ -4157,13 +4157,23 @@ fn lower_data_item(
                 (Some(canonical), Some(&callee)) if callee == canonical => {
                     try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, ctx.dag)
                 }
-                _ => try_lower_symbolic_cost_constant_cost_data(
-                    target,
-                    args.as_slice(),
+                _ => try_lower_symbolic_cost_structural_data(
+                    name,
+                    body.expect("call arm has body"),
                     ty_decl_id,
+                    ctx.symbols,
                     ctx.dag,
-                    ctx.symbols.get(target).copied(),
-                ),
+                    ctx.pending_refined_function_refs,
+                )
+                .or_else(|| {
+                    try_lower_symbolic_cost_constant_cost_data(
+                        target,
+                        args.as_slice(),
+                        ty_decl_id,
+                        ctx.dag,
+                        ctx.symbols.get(target).copied(),
+                    )
+                }),
             }
         }
         _ => None,
@@ -4387,6 +4397,35 @@ fn try_lower_symbolic_cost_constant_cost_data(
                 payload: vec![crate::dag::FieldValue::Literal(LiteralBits::Int(s.clone()))],
             },
         )],
+    })
+}
+
+fn try_lower_symbolic_cost_structural_data(
+    name: &str,
+    expr: &SurfaceExpr,
+    ty_decl_id: DeclarationId,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+    pending_refined_function_refs: &HashSet<DeclarationId>,
+) -> Option<crate::dag::ValueBody> {
+    if !type_decl_is_symbolic_cost(dag, ty_decl_id) {
+        return None;
+    }
+    let span = surface_expr_span(expr);
+    let fv = lower_structural_field_value(
+        name,
+        "_",
+        expr,
+        ty_decl_id,
+        &LowerSubstStack::default(),
+        symbols,
+        dag,
+        None,
+        span,
+        pending_refined_function_refs,
+    )?;
+    Some(crate::dag::ValueBody::Structural {
+        fields: vec![("_".to_string(), fv)],
     })
 }
 
