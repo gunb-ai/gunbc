@@ -28,6 +28,11 @@ use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag};
 const DEMO_SPAN_FILE: &str = "src/v3/std/t_ci_workflow_as_data_demo.dag";
 const GUNBC_CI_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci.dag");
 const GUNBC_CI_FILE: &str = "dsl/gunbc/ci.dag";
+const GUNBC_CI_GITHUB_WORKFLOW_SOURCE: &str =
+    include_str!("../../../../../dsl/gunbc/ci_github_actions_workflow.dag");
+const GUNBC_CI_GITHUB_WORKFLOW_FILE: &str = "dsl/gunbc/ci_github_actions_workflow.dag";
+const GUNBC_CI_EMISSION_SOURCE: &str = include_str!("../../../../../dsl/gunbc/ci_emission.dag");
+const GUNBC_CI_EMISSION_FILE: &str = "dsl/gunbc/ci_emission.dag";
 
 // P5 checkable receipt (parent gate #1956 / brief linkage — same pattern as `tc1_*_strict_fire_test`).
 const _: &str = include_str!(concat!(
