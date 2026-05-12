@@ -14,7 +14,7 @@
 
 ## Why catalog #8 first
 
-Per Mgr brief §"Wave-1-trio checkpoint" rationale: PR-digest helpers are pure functions over GitHub PR JSON shapes. The corresponding Phase 3 emission target is a **gunbc-owned render surface** (`dsl/gunbc/digest_render.dag` proposed name), narrow-consuming `dsl/extdeps/github/pulls.dag` for source carriers and `dsl/std/render.dag` + `dsl/std/markdown_render.dag` for rendering primitives — **NOT** a new extdep field/operation.
+Per Mgr brief §"Wave-1-trio checkpoint" rationale: PR-digest helpers are pure functions over GitHub PR JSON shapes. The corresponding Phase 3 emission target is a **gunbc-owned render projection** over `dsl/std/render.dag` (proposed name `dsl/gunbc/digest_render.dag`), narrow-consuming `dsl/extdeps/github/pulls.dag` for source carriers — **NOT** a new extdep field/operation. If a Markdown-specific wrapper is later needed, it is a **separate source-fact/render placement decision** and must land as its own authority — `dsl/std/render.dag` notes a future `std/markdown_render.dag` format-specific wrapper but no such authority exists on main today (verified 2026-05-12; per Director `msg_96a23421`).
 
 **Placement discipline** (per Emission-Targets Mgr `deep-ibex-326` 2026-05-12 message `msg_c83099ac`): `dsl/extdeps/github/` owns GitHub-API source-of-record facts only (PR / CI / review shapes); rendering/projection is gunbc-owned. This is the `feedback_extdeps_header_discriminator_before_field_placement.md` discipline applied to this lane — gunbc emission/policy facts cannot live on extdeps platform carriers per INVARIANTS P1. The trio anchor therefore does NOT gate on Emission-Targets Mgr's HTTP/SQL extdeps work (PR #2778); it converges via a separate gunbc-owned render landing.
 
@@ -49,8 +49,9 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
    //       is needed, lands at dsl/extdeps/github/pull_digest.dag importing pulls.dag —
    //       NOT as new fields on PullRequest itself per Director/Emission-Targets ratification
    //       2026-05-12),
-   //   (b) gunbc/std render projection (dsl/gunbc/digest_render.dag composing
-   //       dsl/std/render.dag + dsl/std/markdown_render.dag),
+   //   (b) gunbc-owned render projection over dsl/std/render.dag (proposed
+   //       name dsl/gunbc/digest_render.dag); any Markdown-specific wrapper
+   //       is a separate authority decision, not assumed live,
    //   (c) named parity-harness gate green
    // PLUS ctrl PR cut-over deleting the 5 .mjs files.
    ```
