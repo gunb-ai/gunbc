@@ -377,7 +377,7 @@ table at workflow level, only `run-name` is, and `run-name` is not
 currently a field on `Workflow`; `DispatchInput.default` added
 2026-05-12T11:35:26Z per operator BLOCKING at :298 — per
 `on.workflow_call.inputs.<id>.default` + `on.workflow_dispatch.inputs.<id>.default`
-context-availability entries). The 7-site enumeration was keyed to ci.yml
+context-availability entries). The 9-site enumeration was keyed to ci.yml
 usage, not actions.dag schema — under-modeling the platform surface by
 21 sites.
 
@@ -396,7 +396,7 @@ discipline expanded to substrate-shape audits.
 
 ### §5.5.1 Migration rule (revised — string-typed sites only; typed-field sites HOLD per §5.5.2)
 
-The 23 expression-capable sites split into three classes by HEAD-type:
+The 28 expression-capable sites split into three classes by HEAD-type:
 
 - **String-typed sites (18)**: fields already typed `String` / `String?` /
   `Map<String, String>` at HEAD — `Workflow.env`,
@@ -419,7 +419,7 @@ The 23 expression-capable sites split into three classes by HEAD-type:
   a new variant (`ExpressionRunner { expr: Expression }`) to the existing
   sum rather than swapping the type. Per §2 (c) sketch for `RunnerSpec`.
   This site is in scope for the §7.5 ask #4 prereq PR alongside the
-  15 string-typed sites — same uniform-string-expression class at the
+  17 string-typed sites — same uniform-string-expression class at the
   substrate level (the variant carries `Expression`).
 
   **Note**: `UsesStep.uses: ActionRef` was previously listed here as a
@@ -432,7 +432,7 @@ The 23 expression-capable sites split into three classes by HEAD-type:
   INVARIANTS P1 modeling faithfulness.
 
 Total in-scope for the substrate-prereq PR under §7.5 ask #4 / Slice 4
-brief: **18 string-typed + 1 enum-extension = 19 sites**. The 7
+brief: **18 string-typed + 1 enum-extension = 19 sites**. The 9
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -445,7 +445,7 @@ recognizes "this field can carry a GH Actions expression" via
 
 **Why typed-field sites can HOLD without violating the same discipline**:
 typed-field sites carry a different question (how to model
-string-coerced-to-typed expressions), not the same question. The 5 sites
+string-coerced-to-typed expressions), not the same question. The 9 sites
 in the typed-field class form a separate uniform migration class once
 §6 Q#4 ratifies; deferring the class as a whole pending the typed-
 question resolution preserves single-authority for "what is a
@@ -455,7 +455,7 @@ create the contradiction codex REQUEST_CHANGES review 10083 flagged
 ("ALL 22 migrate" + "typed shape unresolved" cannot both hold).
 
 **Implementing-PR scope**: §7.5 ask #4 / Slice 4 brief migrates the
-18 string-typed + 1 enum-extension sites (19 total) uniformly. The 7
+18 string-typed + 1 enum-extension sites (19 total — see §5.5 audit)  uniformly. The 9
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -488,7 +488,7 @@ This canvas does not pre-author the choice (per §6 framing); routing to
 
 The §1 table and §2 (a/b/c) code sketches retain their 7-site framing as
 the ci.yml-keyed reference set, with §5.5 as the actions.dag-keyed audit
-extending to 23 sites. The substrate-shape ratification covers the
+extending to 28 sites. The substrate-shape ratification covers the
 expanded scope per §5.5.1 migration rule (all expression-capable fields);
 the §1/§2 7-site enumeration is the minimum subset proven by current
 ci.yml usage, not the migration ceiling.
@@ -520,7 +520,7 @@ ci.yml usage, not the migration ceiling.
    question; it was implied by §3 reasoning point #4 ("Pre-empts the
    type-alias trap") which applies equally to record-form aliases.
 
-2. **Migration sequencing across the 23 expression-capable fields**
+2. **Migration sequencing across the 28 expression-capable fields**
    (revised from "seven sites" per §5.5 audit). Do all sites migrate
    to `Expression` in one PR (substrate-prereq PR before Slice 4) or
    incrementally? Recommendation: one PR (cohesive substrate change;
@@ -592,9 +592,9 @@ items per ratification:
    enum-extension `RunnerSpec.ExpressionRunner`). **9 typed-field
    sites HOLD** pending §6 Q#4 Director ratification of the
    wrap/sum/defer choice. Total expression-capable surface in
-   `actions.dag`: 23 sites; the (c) substrate-shape ratification covers
-   all 23 per the "single-authority for expression substrate" principle,
-   but the implementing-PR migrates 16 immediately + 7 deferred class
+   `actions.dag`: 28 sites; the (c) substrate-shape ratification covers
+   all 28 per the "single-authority for expression substrate" principle,
+   but the implementing-PR migrates 19 immediately + 9 deferred class
    sequences as a follow-on after §6 Q#4 resolves.
 
 > **Site-count correction evolution (cumulative)**: Director ratification
@@ -613,11 +613,20 @@ items per ratification:
 >    GH workflow-syntax (no entry in context-availability table);
 >    removed. Corrected 24 → 23 sites.
 > 
-> Net audit set: 23 expression-capable sites in `actions.dag` (15
+> 5. 2026-05-12T11:35:26Z (:298): codex BLOCKING 10128 + operator BLOCKING
+>    surfaced `MatrixStrategy` carriers (5 sites: dimensions, include,
+>    exclude, fail_fast, max_parallel) + `DispatchInput.default` (shared
+>    by WorkflowCall/WorkflowDispatch). Corrected 23 → 28 sites.
+>    Operator BLOCKING at :274 also removed `Workflow.name` (GH
+>    context-availability lists only `run-name` as expression-capable
+>    at workflow level; `run-name` is not currently a field on
+>    `Workflow`). Net 28 sites.
+>
+> Net audit set: 28 expression-capable sites in `actions.dag` (18
 > string-typed + 1 enum-extension + 9 typed-field-HOLD). This is a
 > cumulative site-count correction sequence, not substrate-shape
 > changes — the (c) ratification ("single-authority for expression
-> substrate") covers all 23 uniformly. Leaving any expression-capable
+> substrate") covers all 28 uniformly. Leaving any expression-capable
 > site (within the migrating class) un-migrated would violate P2
 > (hidden parallel authority: one site typed, others opaque) and block
 > P5 dissolution at the un-migrated sites. The typed-field class HOLD
