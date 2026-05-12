@@ -8,7 +8,7 @@ pub(crate) fn bootstrapped_fixture_without_parse_surface_dag() -> Dag {
         ports: bootstrapped_fixture_without_parse_surface_dag_ports(),
         diagnostics: bootstrapped_fixture_without_parse_surface_dag_diagnostics(),
         next_node_id: 854,
-        next_declaration_id: 2839,
+        next_declaration_id: 2844,
         next_port_id: 1021,
         primitives: PrimitiveCache::default(),
         substrate_markers: SubstrateMarkers::default(),
@@ -24,7 +24,7 @@ pub(crate) fn bootstrapped_fixture_without_parse_surface_dag() -> Dag {
         emit_model_variants: EmitModelVariants::default(),
         clusters: bootstrapped_fixture_without_parse_surface_dag_clusters(),
         optional_match_disjs: bootstrapped_fixture_without_parse_surface_dag_optional_match_disjs(),
-        declaration_append_begin_after_bootstrap: 2839,
+        declaration_append_begin_after_bootstrap: 2844,
     }
 }
 
@@ -9834,7 +9834,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_nodes() -> Vec<Behavior> {
 #[allow(clippy::vec_init_then_push)]
 fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declaration> {
     {
-        let mut declarations = Vec::with_capacity(2839);
+        let mut declarations = Vec::with_capacity(2844);
         declarations.push(Declaration {
             id: DeclarationId(0),
             name: Some("Classical".to_string()),
@@ -43879,7 +43879,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1478, 1742),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1484, 1748),
         });
         declarations.push(Declaration {
             id: DeclarationId(1346),
@@ -43912,7 +43912,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1744, 1886),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1750, 1892),
         });
         declarations.push(Declaration {
             id: DeclarationId(1347),
@@ -43941,7 +43941,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1888, 1942),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1894, 1948),
         });
         declarations.push(Declaration {
             id: DeclarationId(1348),
@@ -43978,7 +43978,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2058, 2350),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2064, 2356),
         });
         declarations.push(Declaration {
             id: DeclarationId(1349),
@@ -44015,7 +44015,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2352, 2446),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2358, 2452),
         });
         declarations.push(Declaration {
             id: DeclarationId(1350),
@@ -44052,7 +44052,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2448, 2570),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2454, 2576),
         });
         declarations.push(Declaration {
             id: DeclarationId(1351),
@@ -44085,7 +44085,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2572, 2656),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2578, 2662),
         });
         declarations.push(Declaration {
             id: DeclarationId(1352),
@@ -44114,7 +44114,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 4759, 4814),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 4765, 4820),
         });
         declarations.push(Declaration {
             id: DeclarationId(1353),
@@ -44139,7 +44139,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5089, 5152),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5095, 5158),
         });
         declarations.push(Declaration {
             id: DeclarationId(1354),
@@ -44204,7 +44204,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5296, 5765),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5302, 5771),
         });
         declarations.push(Declaration {
             id: DeclarationId(1355),
@@ -44229,19 +44229,19 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6583, 6703),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6589, 6709),
         });
         declarations.push(Declaration {
             id: DeclarationId(1356),
-            name: Some("ConcurrencyQueueMode".to_string()),
+            name: Some("CancelInProgressWhenQueueMax".to_string()),
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
-                        label: "ConcurrencyQueueSingle".to_string(),
+                        label: "QueueMaxCancelInProgressFalse".to_string(),
                         ty: DeclarationId(2366),
                     },
                     Field {
-                        label: "ConcurrencyQueueMax".to_string(),
+                        label: "QueueMaxCancelInProgressExpression".to_string(),
                         ty: DeclarationId(2367),
                     },
                 ],
@@ -44254,7 +44254,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7193, 7265),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7517, 7646),
         });
         declarations.push(Declaration {
             id: DeclarationId(1357),
@@ -44266,8 +44266,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         ty: DeclarationId(2368),
                     },
                     Field {
-                        label: "ConcurrencyMapping".to_string(),
-                        ty: DeclarationId(2371),
+                        label: "ConcurrencyMappingQueueMax".to_string(),
+                        ty: DeclarationId(2370),
+                    },
+                    Field {
+                        label: "ConcurrencyMappingQueueNotMax".to_string(),
+                        ty: DeclarationId(2373),
                     },
                 ],
             },
@@ -44279,7 +44283,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7631, 7979),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8199, 8845),
         });
         declarations.push(Declaration {
             id: DeclarationId(1358),
@@ -44288,15 +44292,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "HostedRunner".to_string(),
-                        ty: DeclarationId(2372),
-                    },
-                    Field {
-                        label: "SelfHosted".to_string(),
                         ty: DeclarationId(2374),
                     },
                     Field {
+                        label: "SelfHosted".to_string(),
+                        ty: DeclarationId(2376),
+                    },
+                    Field {
                         label: "RunsOnExpression".to_string(),
-                        ty: DeclarationId(2375),
+                        ty: DeclarationId(2377),
                     },
                 ],
             },
@@ -44308,7 +44312,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9151, 9374),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10017, 10240),
         });
         declarations.push(Declaration {
             id: DeclarationId(1359),
@@ -44317,27 +44321,27 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "UbuntuLatest".to_string(),
-                        ty: DeclarationId(2376),
-                    },
-                    Field {
-                        label: "Ubuntu2404".to_string(),
-                        ty: DeclarationId(2377),
-                    },
-                    Field {
-                        label: "Ubuntu2204".to_string(),
                         ty: DeclarationId(2378),
                     },
                     Field {
-                        label: "MacosLatest".to_string(),
+                        label: "Ubuntu2404".to_string(),
                         ty: DeclarationId(2379),
                     },
                     Field {
-                        label: "Macos14".to_string(),
+                        label: "Ubuntu2204".to_string(),
                         ty: DeclarationId(2380),
                     },
                     Field {
-                        label: "WindowsLatest".to_string(),
+                        label: "MacosLatest".to_string(),
                         ty: DeclarationId(2381),
+                    },
+                    Field {
+                        label: "Macos14".to_string(),
+                        ty: DeclarationId(2382),
+                    },
+                    Field {
+                        label: "WindowsLatest".to_string(),
+                        ty: DeclarationId(2383),
                     },
                 ],
             },
@@ -44349,7 +44353,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9376, 9485),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10242, 10351),
         });
         declarations.push(Declaration {
             id: DeclarationId(1360),
@@ -44358,11 +44362,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "RunStep".to_string(),
-                        ty: DeclarationId(2389),
+                        ty: DeclarationId(2391),
                     },
                     Field {
                         label: "UsesStep".to_string(),
-                        ty: DeclarationId(2397),
+                        ty: DeclarationId(2399),
                     },
                 ],
             },
@@ -44374,7 +44378,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9630, 10135),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10496, 11001),
         });
         declarations.push(Declaration {
             id: DeclarationId(1361),
@@ -44383,23 +44387,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "Bash".to_string(),
-                        ty: DeclarationId(2398),
-                    },
-                    Field {
-                        label: "Sh".to_string(),
-                        ty: DeclarationId(2399),
-                    },
-                    Field {
-                        label: "Pwsh".to_string(),
                         ty: DeclarationId(2400),
                     },
                     Field {
-                        label: "Python".to_string(),
+                        label: "Sh".to_string(),
                         ty: DeclarationId(2401),
                     },
                     Field {
-                        label: "Cmd".to_string(),
+                        label: "Pwsh".to_string(),
                         ty: DeclarationId(2402),
+                    },
+                    Field {
+                        label: "Python".to_string(),
+                        ty: DeclarationId(2403),
+                    },
+                    Field {
+                        label: "Cmd".to_string(),
+                        ty: DeclarationId(2404),
                     },
                 ],
             },
@@ -44411,7 +44415,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10137, 10185),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11003, 11051),
         });
         declarations.push(Declaration {
             id: DeclarationId(1362),
@@ -44440,7 +44444,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10187, 10250),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11053, 11116),
         });
         declarations.push(Declaration {
             id: DeclarationId(1363),
@@ -44449,35 +44453,35 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "AnnotationError".to_string(),
-                        ty: DeclarationId(2406),
+                        ty: DeclarationId(2408),
                     },
                     Field {
                         label: "AnnotationWarning".to_string(),
-                        ty: DeclarationId(2410),
+                        ty: DeclarationId(2412),
                     },
                     Field {
                         label: "AnnotationNotice".to_string(),
-                        ty: DeclarationId(2414),
-                    },
-                    Field {
-                        label: "AnnotationGroup".to_string(),
-                        ty: DeclarationId(2415),
-                    },
-                    Field {
-                        label: "AnnotationEndGroup".to_string(),
                         ty: DeclarationId(2416),
                     },
                     Field {
-                        label: "SetOutput".to_string(),
+                        label: "AnnotationGroup".to_string(),
                         ty: DeclarationId(2417),
                     },
                     Field {
-                        label: "AddMask".to_string(),
+                        label: "AnnotationEndGroup".to_string(),
                         ty: DeclarationId(2418),
                     },
                     Field {
-                        label: "StopCommands".to_string(),
+                        label: "SetOutput".to_string(),
                         ty: DeclarationId(2419),
+                    },
+                    Field {
+                        label: "AddMask".to_string(),
+                        ty: DeclarationId(2420),
+                    },
+                    Field {
+                        label: "StopCommands".to_string(),
+                        ty: DeclarationId(2421),
                     },
                 ],
             },
@@ -44489,7 +44493,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10484, 10911),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11350, 11777),
         });
         declarations.push(Declaration {
             id: DeclarationId(1364),
@@ -44508,7 +44512,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10977, 11026),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11843, 11892),
         });
         declarations.push(Declaration {
             id: DeclarationId(1365),
@@ -44527,7 +44531,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11027, 11080),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11893, 11946),
         });
         declarations.push(Declaration {
             id: DeclarationId(1366),
@@ -44546,7 +44550,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11081, 11132),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11947, 11998),
         });
         declarations.push(Declaration {
             id: DeclarationId(1367),
@@ -44565,7 +44569,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11133, 11183),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11999, 12049),
         });
         declarations.push(Declaration {
             id: DeclarationId(1368),
@@ -44584,7 +44588,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11184, 11233),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12050, 12099),
         });
         declarations.push(Declaration {
             id: DeclarationId(1369),
@@ -44603,7 +44607,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11234, 11298),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12100, 12164),
         });
         declarations.push(Declaration {
             id: DeclarationId(1370),
@@ -44622,7 +44626,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11299, 11355),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12165, 12221),
         });
         declarations.push(Declaration {
             id: DeclarationId(1371),
@@ -44641,7 +44645,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11356, 11422),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12222, 12288),
         });
         declarations.push(Declaration {
             id: DeclarationId(1372),
@@ -44650,11 +44654,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "Upload".to_string(),
-                        ty: DeclarationId(2421),
+                        ty: DeclarationId(2423),
                     },
                     Field {
                         label: "Download".to_string(),
-                        ty: DeclarationId(2423),
+                        ty: DeclarationId(2425),
                     },
                 ],
             },
@@ -44666,7 +44670,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11644, 11809),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12510, 12675),
         });
         declarations.push(Declaration {
             id: DeclarationId(1373),
@@ -44675,15 +44679,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "Warn".to_string(),
-                        ty: DeclarationId(2424),
+                        ty: DeclarationId(2426),
                     },
                     Field {
                         label: "ErrorOut".to_string(),
-                        ty: DeclarationId(2425),
+                        ty: DeclarationId(2427),
                     },
                     Field {
                         label: "Ignore".to_string(),
-                        ty: DeclarationId(2426),
+                        ty: DeclarationId(2428),
                     },
                 ],
             },
@@ -44695,7 +44699,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11811, 11863),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12677, 12729),
         });
         declarations.push(Declaration {
             id: DeclarationId(1374),
@@ -44711,12 +44715,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                 "dsl/extdeps/github/actions.dag",
-                11955,
-                12023,
+                12821,
+                12889,
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11914, 12023),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12780, 12889),
         });
         declarations.push(Declaration {
             id: DeclarationId(1375),
@@ -44732,12 +44736,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                 "dsl/extdeps/github/actions.dag",
-                12068,
-                12138,
+                12934,
+                13004,
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12025, 12138),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12891, 13004),
         });
         declarations.push(Declaration {
             id: DeclarationId(1376),
@@ -44746,15 +44750,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 children: vec![
                     Field {
                         label: "dimensions".to_string(),
-                        ty: DeclarationId(2428),
-                    },
-                    Field {
-                        label: "include".to_string(),
                         ty: DeclarationId(2430),
                     },
                     Field {
-                        label: "exclude".to_string(),
+                        label: "include".to_string(),
                         ty: DeclarationId(2432),
+                    },
+                    Field {
+                        label: "exclude".to_string(),
+                        ty: DeclarationId(2434),
                     },
                     Field {
                         label: "fail_fast".to_string(),
@@ -44762,7 +44766,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     },
                     Field {
                         label: "max_parallel".to_string(),
-                        ty: DeclarationId(2433),
+                        ty: DeclarationId(2435),
                     },
                 ],
             },
@@ -44774,7 +44778,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12277, 12453),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13143, 13319),
         });
         declarations.push(Declaration {
             id: DeclarationId(1377),
@@ -44783,27 +44787,27 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "Success".to_string(),
-                        ty: DeclarationId(2434),
-                    },
-                    Field {
-                        label: "Failure".to_string(),
-                        ty: DeclarationId(2435),
-                    },
-                    Field {
-                        label: "Cancelled".to_string(),
                         ty: DeclarationId(2436),
                     },
                     Field {
-                        label: "Skipped".to_string(),
+                        label: "Failure".to_string(),
                         ty: DeclarationId(2437),
                     },
                     Field {
-                        label: "TimedOut".to_string(),
+                        label: "Cancelled".to_string(),
                         ty: DeclarationId(2438),
                     },
                     Field {
-                        label: "ActionRequired".to_string(),
+                        label: "Skipped".to_string(),
                         ty: DeclarationId(2439),
+                    },
+                    Field {
+                        label: "TimedOut".to_string(),
+                        ty: DeclarationId(2440),
+                    },
+                    Field {
+                        label: "ActionRequired".to_string(),
+                        ty: DeclarationId(2441),
                     },
                 ],
             },
@@ -44815,7 +44819,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12582, 12684),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13448, 13550),
         });
         declarations.push(Declaration {
             id: DeclarationId(1378),
@@ -44831,12 +44835,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                 "dsl/extdeps/github/actions.dag",
-                12844,
-                12905,
+                13710,
+                13771,
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12810, 12905),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13676, 13771),
         });
         declarations.push(Declaration {
             id: DeclarationId(1379),
@@ -44852,12 +44856,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                 "dsl/extdeps/github/actions.dag",
-                12943,
-                13031,
+                13809,
+                13897,
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12907, 13031),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13773, 13897),
         });
         declarations.push(Declaration {
             id: DeclarationId(1380),
@@ -44873,12 +44877,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             inhabits: None,
             value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                 "dsl/extdeps/github/actions.dag",
-                13064,
-                13122,
+                13930,
+                13988,
             ))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13033, 13122),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13899, 13988),
         });
         declarations.push(Declaration {
             id: DeclarationId(1381),
@@ -44895,7 +44899,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: Some(ValueBody::Scalar(LiteralBits::Int("360".to_string()))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13198, 13237),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 14064, 14103),
         });
         declarations.push(Declaration {
             id: DeclarationId(1382),
@@ -44912,7 +44916,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: Some(ValueBody::Scalar(LiteralBits::Int("360".to_string()))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13239, 13282),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 14105, 14148),
         });
         declarations.push(Declaration {
             id: DeclarationId(1383),
@@ -44929,7 +44933,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: Some(ValueBody::Scalar(LiteralBits::Int("256".to_string()))),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13284, 13323),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 14150, 14189),
         });
         declarations.push(Declaration {
             id: DeclarationId(1384),
@@ -44957,11 +44961,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 variants: vec![
                     Field {
                         label: "GitHubActionsWorkflowYml".to_string(),
-                        ty: DeclarationId(2440),
+                        ty: DeclarationId(2442),
                     },
                     Field {
                         label: "GitHubActionsWorkflowYaml".to_string(),
-                        ty: DeclarationId(2441),
+                        ty: DeclarationId(2443),
                     },
                 ],
             },
@@ -44985,7 +44989,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             specialization_parent: None,
             inhabits: None,
             value_body: None,
-            refinement: Some(DeclarationId(2442)),
+            refinement: Some(DeclarationId(2444)),
             nominal_opacity: None,
             span: SourceSpan::new("dsl/extdeps/github/ci.dag", 2615, 2714),
         });
@@ -62014,7 +62018,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1515, 1536),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1521, 1542),
         });
         declarations.push(Declaration {
             id: DeclarationId(2320),
@@ -62033,7 +62037,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1552, 1568),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1558, 1574),
         });
         declarations.push(Declaration {
             id: DeclarationId(2321),
@@ -62053,7 +62057,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1577, 1586),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1583, 1592),
         });
         declarations.push(Declaration {
             id: DeclarationId(2322),
@@ -62079,7 +62083,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1684, 1703),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1690, 1709),
         });
         declarations.push(Declaration {
             id: DeclarationId(2323),
@@ -62098,7 +62102,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1684, 1704),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1690, 1710),
         });
         declarations.push(Declaration {
             id: DeclarationId(2324),
@@ -62117,7 +62121,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1720, 1740),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1726, 1746),
         });
         declarations.push(Declaration {
             id: DeclarationId(2325),
@@ -62131,7 +62135,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1911, 1919),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1917, 1925),
         });
         declarations.push(Declaration {
             id: DeclarationId(2326),
@@ -62145,7 +62149,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1922, 1931),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1928, 1937),
         });
         declarations.push(Declaration {
             id: DeclarationId(2327),
@@ -62159,7 +62163,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1934, 1942),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1940, 1948),
         });
         declarations.push(Declaration {
             id: DeclarationId(2328),
@@ -62179,7 +62183,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2100, 2112),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2106, 2118),
         });
         declarations.push(Declaration {
             id: DeclarationId(2329),
@@ -62199,7 +62203,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2121, 2133),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2127, 2139),
         });
         declarations.push(Declaration {
             id: DeclarationId(2330),
@@ -62224,7 +62228,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2083, 2135),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2089, 2141),
         });
         declarations.push(Declaration {
             id: DeclarationId(2331),
@@ -62244,7 +62248,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2164, 2176),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2170, 2182),
         });
         declarations.push(Declaration {
             id: DeclarationId(2332),
@@ -62264,7 +62268,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2185, 2210),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2191, 2216),
         });
         declarations.push(Declaration {
             id: DeclarationId(2333),
@@ -62289,7 +62293,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2140, 2212),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2146, 2218),
         });
         declarations.push(Declaration {
             id: DeclarationId(2334),
@@ -62308,7 +62312,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2217, 2248),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2223, 2254),
         });
         declarations.push(Declaration {
             id: DeclarationId(2335),
@@ -62328,7 +62332,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2280, 2299),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2286, 2305),
         });
         declarations.push(Declaration {
             id: DeclarationId(2336),
@@ -62347,7 +62351,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2253, 2301),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2259, 2307),
         });
         declarations.push(Declaration {
             id: DeclarationId(2337),
@@ -62367,7 +62371,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2329, 2348),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2335, 2354),
         });
         declarations.push(Declaration {
             id: DeclarationId(2338),
@@ -62386,7 +62390,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2306, 2350),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2312, 2356),
         });
         declarations.push(Declaration {
             id: DeclarationId(2339),
@@ -62400,7 +62404,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2381, 2387),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2387, 2393),
         });
         declarations.push(Declaration {
             id: DeclarationId(2340),
@@ -62414,7 +62418,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2392, 2403),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2398, 2409),
         });
         declarations.push(Declaration {
             id: DeclarationId(2341),
@@ -62428,7 +62432,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2408, 2416),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2414, 2422),
         });
         declarations.push(Declaration {
             id: DeclarationId(2342),
@@ -62442,7 +62446,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2421, 2435),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2427, 2441),
         });
         declarations.push(Declaration {
             id: DeclarationId(2343),
@@ -62456,7 +62460,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2440, 2446),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2446, 2452),
         });
         declarations.push(Declaration {
             id: DeclarationId(2344),
@@ -62475,7 +62479,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2499, 2506),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2505, 2512),
         });
         declarations.push(Declaration {
             id: DeclarationId(2345),
@@ -62494,7 +62498,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2535, 2542),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2541, 2548),
         });
         declarations.push(Declaration {
             id: DeclarationId(2346),
@@ -62508,7 +62512,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2597, 2608),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2603, 2614),
         });
         declarations.push(Declaration {
             id: DeclarationId(2347),
@@ -62522,7 +62526,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2611, 2623),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2617, 2629),
         });
         declarations.push(Declaration {
             id: DeclarationId(2348),
@@ -62536,7 +62540,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2626, 2637),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2632, 2643),
         });
         declarations.push(Declaration {
             id: DeclarationId(2349),
@@ -62550,7 +62554,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2640, 2656),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2646, 2662),
         });
         declarations.push(Declaration {
             id: DeclarationId(2350),
@@ -62564,7 +62568,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 4778, 4787),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 4784, 4793),
         });
         declarations.push(Declaration {
             id: DeclarationId(2351),
@@ -62578,7 +62582,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 4790, 4798),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 4796, 4804),
         });
         declarations.push(Declaration {
             id: DeclarationId(2352),
@@ -62592,7 +62596,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 4801, 4814),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 4807, 4820),
         });
         declarations.push(Declaration {
             id: DeclarationId(2353),
@@ -62611,7 +62615,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5328, 5335),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5334, 5341),
         });
         declarations.push(Declaration {
             id: DeclarationId(2354),
@@ -62631,7 +62635,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5366, 5376),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5372, 5382),
         });
         declarations.push(Declaration {
             id: DeclarationId(2355),
@@ -62651,7 +62655,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5386, 5398),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5392, 5404),
         });
         declarations.push(Declaration {
             id: DeclarationId(2356),
@@ -62677,7 +62681,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5486, 5505),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5492, 5511),
         });
         declarations.push(Declaration {
             id: DeclarationId(2357),
@@ -62696,7 +62700,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5486, 5506),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5492, 5512),
         });
         declarations.push(Declaration {
             id: DeclarationId(2358),
@@ -62722,7 +62726,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5609, 5628),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5615, 5634),
         });
         declarations.push(Declaration {
             id: DeclarationId(2359),
@@ -62741,7 +62745,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5609, 5629),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5615, 5635),
         });
         declarations.push(Declaration {
             id: DeclarationId(2360),
@@ -62760,7 +62764,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5646, 5653),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5652, 5659),
         });
         declarations.push(Declaration {
             id: DeclarationId(2361),
@@ -62779,7 +62783,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5666, 5681),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5672, 5687),
         });
         declarations.push(Declaration {
             id: DeclarationId(2362),
@@ -62798,7 +62802,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5701, 5705),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5707, 5711),
         });
         declarations.push(Declaration {
             id: DeclarationId(2363),
@@ -62817,7 +62821,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5747, 5763),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5753, 5769),
         });
         declarations.push(Declaration {
             id: DeclarationId(2364),
@@ -62836,7 +62840,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6613, 6649),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6619, 6655),
         });
         declarations.push(Declaration {
             id: DeclarationId(2365),
@@ -62855,7 +62859,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6654, 6703),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 6660, 6709),
         });
         declarations.push(Declaration {
             id: DeclarationId(2366),
@@ -62869,12 +62873,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7221, 7243),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7555, 7584),
         });
         declarations.push(Declaration {
             id: DeclarationId(2367),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "expression".to_string(),
+                    ty: DeclarationId(230),
+                }],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -62883,7 +62892,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7246, 7265),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7589, 7646),
         });
         declarations.push(Declaration {
             id: DeclarationId(2368),
@@ -62902,29 +62911,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7656, 7691),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8224, 8259),
         });
         declarations.push(Declaration {
             id: DeclarationId(2369),
-            name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(1355),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7842, 7863),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2370),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
@@ -62940,10 +62930,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7952, 7973),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8418, 8447),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2371),
+            id: DeclarationId(2370),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -62955,9 +62945,72 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         label: "cancel_in_progress".to_string(),
                         ty: DeclarationId(2369),
                     },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8264, 8453),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2371),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(1355),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8615, 8636),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2372),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(129),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8834, 8839),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2373),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![
                     Field {
-                        label: "queue".to_string(),
-                        ty: DeclarationId(2370),
+                        label: "group".to_string(),
+                        ty: DeclarationId(230),
+                    },
+                    Field {
+                        label: "cancel_in_progress".to_string(),
+                        ty: DeclarationId(2371),
+                    },
+                    Field {
+                        label: "explicit_single".to_string(),
+                        ty: DeclarationId(2372),
                     },
                 ],
             },
@@ -62969,10 +63022,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7696, 7979),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8458, 8845),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2372),
+            id: DeclarationId(2374),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -62988,10 +63041,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9171, 9206),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10037, 10072),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2373),
+            id: DeclarationId(2375),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(685),
@@ -63008,15 +63061,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9232, 9244),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10098, 10110),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2374),
+            id: DeclarationId(2376),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "labels".to_string(),
-                    ty: DeclarationId(2373),
+                    ty: DeclarationId(2375),
                 }],
             },
             type_params: vec![],
@@ -63027,10 +63080,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9211, 9246),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10077, 10112),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2375),
+            id: DeclarationId(2377),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63046,35 +63099,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9335, 9374),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2376),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9397, 9409),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2377),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9414, 9424),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10201, 10240),
         });
         declarations.push(Declaration {
             id: DeclarationId(2378),
@@ -63088,7 +63113,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9429, 9439),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10263, 10275),
         });
         declarations.push(Declaration {
             id: DeclarationId(2379),
@@ -63102,7 +63127,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9444, 9455),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10280, 10290),
         });
         declarations.push(Declaration {
             id: DeclarationId(2380),
@@ -63116,7 +63141,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9460, 9467),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10295, 10305),
         });
         declarations.push(Declaration {
             id: DeclarationId(2381),
@@ -63130,17 +63155,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9472, 9485),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10310, 10321),
         });
         declarations.push(Declaration {
             id: DeclarationId(2382),
             name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(230),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -63149,10 +63169,24 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9666, 9673),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10326, 10333),
         });
         declarations.push(Declaration {
             id: DeclarationId(2383),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10338, 10351),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2384),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
@@ -63168,10 +63202,29 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9685, 9692),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10532, 10539),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2384),
+            id: DeclarationId(2385),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(230),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10551, 10558),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2386),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(137),
@@ -63194,51 +63247,32 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9748, 9767),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2385),
-            name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(2384),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9748, 9768),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2386),
-            name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(230),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9795, 9802),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10614, 10633),
         });
         declarations.push(Declaration {
             id: DeclarationId(2387),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(2386),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10614, 10634),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2388),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
                     DeclarationId(230),
                     CardinalityBound::AtMostOne,
                 ),
@@ -63251,10 +63285,29 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9824, 9831),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10661, 10668),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2388),
+            id: DeclarationId(2389),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(230),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10690, 10697),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2390),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
@@ -63270,20 +63323,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9887, 9891),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10753, 10757),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2389),
+            id: DeclarationId(2391),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
                     Field {
                         label: "name".to_string(),
-                        ty: DeclarationId(2382),
+                        ty: DeclarationId(2384),
                     },
                     Field {
                         label: "id".to_string(),
-                        ty: DeclarationId(2383),
+                        ty: DeclarationId(2385),
                     },
                     Field {
                         label: "run".to_string(),
@@ -63295,15 +63348,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     },
                     Field {
                         label: "env".to_string(),
-                        ty: DeclarationId(2385),
+                        ty: DeclarationId(2387),
                     },
                     Field {
                         label: "working_directory".to_string(),
-                        ty: DeclarationId(2386),
+                        ty: DeclarationId(2388),
                     },
                     Field {
                         label: "if_condition".to_string(),
-                        ty: DeclarationId(2387),
+                        ty: DeclarationId(2389),
                     },
                     Field {
                         label: "continue_on_error".to_string(),
@@ -63311,7 +63364,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     },
                     Field {
                         label: "timeout_minutes".to_string(),
-                        ty: DeclarationId(2388),
+                        ty: DeclarationId(2390),
                     },
                 ],
             },
@@ -63323,104 +63376,14 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9644, 9897),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2390),
-            name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(230),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9925, 9932),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2391),
-            name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(230),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9944, 9951),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10510, 10763),
         });
         declarations.push(Declaration {
             id: DeclarationId(2392),
             name: None,
-            connective: TypeConnective::Instantiation {
-                template: DeclarationId(137),
-                arguments: vec![
-                    TemplateArgument {
-                        parameter: DeclarationId(138),
-                        value: DeclarationId(230),
-                    },
-                    TemplateArgument {
-                        parameter: DeclarationId(139),
-                        value: DeclarationId(230),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9988, 10007),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2393),
-            name: None,
-            connective: TypeConnective::Instantiation {
-                template: DeclarationId(137),
-                arguments: vec![
-                    TemplateArgument {
-                        parameter: DeclarationId(138),
-                        value: DeclarationId(230),
-                    },
-                    TemplateArgument {
-                        parameter: DeclarationId(139),
-                        value: DeclarationId(230),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10020, 10039),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2394),
-            name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(2393),
+                    DeclarationId(230),
                     CardinalityBound::AtMostOne,
                 ),
             ),
@@ -63432,10 +63395,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10020, 10040),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10791, 10798),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2395),
+            id: DeclarationId(2393),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
@@ -63451,10 +63414,100 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10062, 10069),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10810, 10817),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2394),
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template: DeclarationId(137),
+                arguments: vec![
+                    TemplateArgument {
+                        parameter: DeclarationId(138),
+                        value: DeclarationId(230),
+                    },
+                    TemplateArgument {
+                        parameter: DeclarationId(139),
+                        value: DeclarationId(230),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10854, 10873),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2395),
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template: DeclarationId(137),
+                arguments: vec![
+                    TemplateArgument {
+                        parameter: DeclarationId(138),
+                        value: DeclarationId(230),
+                    },
+                    TemplateArgument {
+                        parameter: DeclarationId(139),
+                        value: DeclarationId(230),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10886, 10905),
         });
         declarations.push(Declaration {
             id: DeclarationId(2396),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(2395),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10886, 10906),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2397),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(230),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10928, 10935),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2398),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
@@ -63470,20 +63523,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10125, 10129),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10991, 10995),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2397),
+            id: DeclarationId(2399),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
                     Field {
                         label: "name".to_string(),
-                        ty: DeclarationId(2390),
+                        ty: DeclarationId(2392),
                     },
                     Field {
                         label: "id".to_string(),
-                        ty: DeclarationId(2391),
+                        ty: DeclarationId(2393),
                     },
                     Field {
                         label: "uses".to_string(),
@@ -63491,15 +63544,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     },
                     Field {
                         label: "with".to_string(),
-                        ty: DeclarationId(2392),
-                    },
-                    Field {
-                        label: "env".to_string(),
                         ty: DeclarationId(2394),
                     },
                     Field {
+                        label: "env".to_string(),
+                        ty: DeclarationId(2396),
+                    },
+                    Field {
                         label: "if_condition".to_string(),
-                        ty: DeclarationId(2395),
+                        ty: DeclarationId(2397),
                     },
                     Field {
                         label: "continue_on_error".to_string(),
@@ -63507,7 +63560,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     },
                     Field {
                         label: "timeout_minutes".to_string(),
-                        ty: DeclarationId(2396),
+                        ty: DeclarationId(2398),
                     },
                 ],
             },
@@ -63519,35 +63572,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9902, 10135),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2398),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10154, 10158),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2399),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10161, 10163),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10768, 11001),
         });
         declarations.push(Declaration {
             id: DeclarationId(2400),
@@ -63561,7 +63586,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10166, 10170),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11020, 11024),
         });
         declarations.push(Declaration {
             id: DeclarationId(2401),
@@ -63575,7 +63600,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10173, 10179),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11027, 11029),
         });
         declarations.push(Declaration {
             id: DeclarationId(2402),
@@ -63589,17 +63614,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10182, 10185),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11032, 11036),
         });
         declarations.push(Declaration {
             id: DeclarationId(2403),
             name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(230),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -63608,17 +63628,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10548, 10555),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11039, 11045),
         });
         declarations.push(Declaration {
             id: DeclarationId(2404),
             name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(93),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -63627,13 +63642,32 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10563, 10567),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11048, 11051),
         });
         declarations.push(Declaration {
             id: DeclarationId(2405),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(230),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11414, 11421),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2406),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
                     DeclarationId(93),
                     CardinalityBound::AtMostOne,
                 ),
@@ -63646,65 +63680,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10574, 10578),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2406),
-            name: None,
-            connective: TypeConnective::Conj {
-                children: vec![
-                    Field {
-                        label: "message".to_string(),
-                        ty: DeclarationId(230),
-                    },
-                    Field {
-                        label: "file".to_string(),
-                        ty: DeclarationId(2403),
-                    },
-                    Field {
-                        label: "line".to_string(),
-                        ty: DeclarationId(2404),
-                    },
-                    Field {
-                        label: "col".to_string(),
-                        ty: DeclarationId(2405),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10507, 10580),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11429, 11433),
         });
         declarations.push(Declaration {
             id: DeclarationId(2407),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(230),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10628, 10635),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2408),
-            name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
                     DeclarationId(93),
                     CardinalityBound::AtMostOne,
                 ),
@@ -63717,13 +63699,65 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10643, 10647),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11440, 11444),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2408),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![
+                    Field {
+                        label: "message".to_string(),
+                        ty: DeclarationId(230),
+                    },
+                    Field {
+                        label: "file".to_string(),
+                        ty: DeclarationId(2405),
+                    },
+                    Field {
+                        label: "line".to_string(),
+                        ty: DeclarationId(2406),
+                    },
+                    Field {
+                        label: "col".to_string(),
+                        ty: DeclarationId(2407),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11373, 11446),
         });
         declarations.push(Declaration {
             id: DeclarationId(2409),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(230),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11494, 11501),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2410),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
                     DeclarationId(93),
                     CardinalityBound::AtMostOne,
                 ),
@@ -63736,10 +63770,29 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10654, 10658),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11509, 11513),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2410),
+            id: DeclarationId(2411),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(93),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11520, 11524),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2412),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -63749,15 +63802,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     },
                     Field {
                         label: "file".to_string(),
-                        ty: DeclarationId(2407),
+                        ty: DeclarationId(2409),
                     },
                     Field {
                         label: "line".to_string(),
-                        ty: DeclarationId(2408),
+                        ty: DeclarationId(2410),
                     },
                     Field {
                         label: "col".to_string(),
-                        ty: DeclarationId(2409),
+                        ty: DeclarationId(2411),
                     },
                 ],
             },
@@ -63769,10 +63822,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10585, 10660),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11451, 11526),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2411),
+            id: DeclarationId(2413),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
@@ -63788,48 +63841,48 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10707, 10714),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2412),
-            name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(93),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10722, 10726),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2413),
-            name: None,
-            connective: TypeConnective::Cardinality(
-                CardinalityPayload::new_unchecked_bypassing_idempotence(
-                    DeclarationId(93),
-                    CardinalityBound::AtMostOne,
-                ),
-            ),
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10733, 10737),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11573, 11580),
         });
         declarations.push(Declaration {
             id: DeclarationId(2414),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(93),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11588, 11592),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2415),
+            name: None,
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(
+                    DeclarationId(93),
+                    CardinalityBound::AtMostOne,
+                ),
+            ),
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11599, 11603),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2416),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -63839,15 +63892,15 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     },
                     Field {
                         label: "file".to_string(),
-                        ty: DeclarationId(2411),
+                        ty: DeclarationId(2413),
                     },
                     Field {
                         label: "line".to_string(),
-                        ty: DeclarationId(2412),
+                        ty: DeclarationId(2414),
                     },
                     Field {
                         label: "col".to_string(),
-                        ty: DeclarationId(2413),
+                        ty: DeclarationId(2415),
                     },
                 ],
             },
@@ -63859,10 +63912,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10665, 10739),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11531, 11605),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2415),
+            id: DeclarationId(2417),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63878,10 +63931,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10744, 10777),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11610, 11643),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2416),
+            id: DeclarationId(2418),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63892,10 +63945,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10782, 10800),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11648, 11666),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2417),
+            id: DeclarationId(2419),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -63917,10 +63970,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10805, 10846),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11671, 11712),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2418),
+            id: DeclarationId(2420),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63936,10 +63989,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10851, 10876),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11717, 11742),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2419),
+            id: DeclarationId(2421),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63955,10 +64008,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10881, 10911),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11747, 11777),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2420),
+            id: DeclarationId(2422),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
@@ -63974,10 +64027,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11717, 11721),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12583, 12587),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2421),
+            id: DeclarationId(2423),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -63991,7 +64044,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     },
                     Field {
                         label: "retention_days".to_string(),
-                        ty: DeclarationId(2420),
+                        ty: DeclarationId(2422),
                     },
                     Field {
                         label: "if_no_files_found".to_string(),
@@ -64007,10 +64060,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11664, 11764),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12530, 12630),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2422),
+            id: DeclarationId(2424),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
@@ -64026,10 +64079,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11800, 11807),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12666, 12673),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2423),
+            id: DeclarationId(2425),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -64039,7 +64092,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                     },
                     Field {
                         label: "path".to_string(),
-                        ty: DeclarationId(2422),
+                        ty: DeclarationId(2424),
                     },
                 ],
             },
@@ -64051,35 +64104,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11769, 11809),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2424),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11839, 11843),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2425),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11846, 11854),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12635, 12675),
         });
         declarations.push(Declaration {
             id: DeclarationId(2426),
@@ -64093,10 +64118,38 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11857, 11863),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12705, 12709),
         });
         declarations.push(Declaration {
             id: DeclarationId(2427),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12712, 12720),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2428),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12723, 12729),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2429),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(685),
@@ -64113,69 +64166,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12325, 12337),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2428),
-            name: None,
-            connective: TypeConnective::Instantiation {
-                template: DeclarationId(137),
-                arguments: vec![
-                    TemplateArgument {
-                        parameter: DeclarationId(138),
-                        value: DeclarationId(230),
-                    },
-                    TemplateArgument {
-                        parameter: DeclarationId(139),
-                        value: DeclarationId(2427),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12313, 12338),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2429),
-            name: None,
-            connective: TypeConnective::Instantiation {
-                template: DeclarationId(137),
-                arguments: vec![
-                    TemplateArgument {
-                        parameter: DeclarationId(138),
-                        value: DeclarationId(230),
-                    },
-                    TemplateArgument {
-                        parameter: DeclarationId(139),
-                        value: DeclarationId(230),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12355, 12374),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13191, 13203),
         });
         declarations.push(Declaration {
             id: DeclarationId(2430),
             name: None,
             connective: TypeConnective::Instantiation {
-                template: DeclarationId(685),
-                arguments: vec![TemplateArgument {
-                    parameter: DeclarationId(686),
-                    value: DeclarationId(2429),
-                }],
+                template: DeclarationId(137),
+                arguments: vec![
+                    TemplateArgument {
+                        parameter: DeclarationId(138),
+                        value: DeclarationId(230),
+                    },
+                    TemplateArgument {
+                        parameter: DeclarationId(139),
+                        value: DeclarationId(2429),
+                    },
+                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -64185,7 +64192,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12350, 12375),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13179, 13204),
         });
         declarations.push(Declaration {
             id: DeclarationId(2431),
@@ -64211,7 +64218,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12392, 12411),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13221, 13240),
         });
         declarations.push(Declaration {
             id: DeclarationId(2432),
@@ -64231,10 +64238,56 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12387, 12412),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13216, 13241),
         });
         declarations.push(Declaration {
             id: DeclarationId(2433),
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template: DeclarationId(137),
+                arguments: vec![
+                    TemplateArgument {
+                        parameter: DeclarationId(138),
+                        value: DeclarationId(230),
+                    },
+                    TemplateArgument {
+                        parameter: DeclarationId(139),
+                        value: DeclarationId(230),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13258, 13277),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2434),
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template: DeclarationId(685),
+                arguments: vec![TemplateArgument {
+                    parameter: DeclarationId(686),
+                    value: DeclarationId(2433),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13253, 13278),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2435),
             name: None,
             connective: TypeConnective::Cardinality(
                 CardinalityPayload::new_unchecked_bypassing_idempotence(
@@ -64250,35 +64303,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12447, 12451),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2434),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12607, 12614),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2435),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12619, 12626),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13313, 13317),
         });
         declarations.push(Declaration {
             id: DeclarationId(2436),
@@ -64292,7 +64317,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12631, 12640),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13473, 13480),
         });
         declarations.push(Declaration {
             id: DeclarationId(2437),
@@ -64306,7 +64331,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12645, 12652),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13485, 13492),
         });
         declarations.push(Declaration {
             id: DeclarationId(2438),
@@ -64320,7 +64345,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12657, 12665),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13497, 13506),
         });
         declarations.push(Declaration {
             id: DeclarationId(2439),
@@ -64334,7 +64359,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12670, 12684),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13511, 13518),
         });
         declarations.push(Declaration {
             id: DeclarationId(2440),
@@ -64348,7 +64373,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/ci.dag", 1935, 1959),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13523, 13531),
         });
         declarations.push(Declaration {
             id: DeclarationId(2441),
@@ -64362,10 +64387,38 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/ci.dag", 1964, 1989),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13536, 13550),
         });
         declarations.push(Declaration {
             id: DeclarationId(2442),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/ci.dag", 1935, 1959),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2443),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/ci.dag", 1964, 1989),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2444),
             name: None,
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(151)],
@@ -64383,52 +64436,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/extdeps/github/ci.dag", 2673, 2714),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2443),
+            id: DeclarationId(2445),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(48),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17832, 17834),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2444),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 17832, 17834),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2445),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2443),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2444),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -64443,6 +64457,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2446),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/algebra.dag", 17832, 17834),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2447),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2445),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2446),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/algebra.dag", 17832, 17834),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2448),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -64460,7 +64513,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 17851, 17853),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2447),
+            id: DeclarationId(2449),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64474,17 +64527,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 17851, 17853),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2448),
+            id: DeclarationId(2450),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2446),
+                        ty: DeclarationId(2448),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2447),
+                        ty: DeclarationId(2449),
                     },
                 ],
             },
@@ -64499,52 +64552,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 17851, 17853),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2449),
+            id: DeclarationId(2451),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(51),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18997, 18999),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2450),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 18997, 18999),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2451),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2449),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2450),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -64559,6 +64573,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2452),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/algebra.dag", 18997, 18999),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2453),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2451),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2452),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/algebra.dag", 18997, 18999),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2454),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -64576,7 +64629,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 19047, 19049),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2453),
+            id: DeclarationId(2455),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64590,17 +64643,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 19047, 19049),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2454),
+            id: DeclarationId(2456),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2452),
+                        ty: DeclarationId(2454),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2453),
+                        ty: DeclarationId(2455),
                     },
                 ],
             },
@@ -64615,7 +64668,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 19047, 19049),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2455),
+            id: DeclarationId(2457),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -64634,7 +64687,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 23544, 23565),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2456),
+            id: DeclarationId(2458),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64648,17 +64701,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 23544, 23565),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2457),
+            id: DeclarationId(2459),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2455),
+                        ty: DeclarationId(2457),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2456),
+                        ty: DeclarationId(2458),
                     },
                 ],
             },
@@ -64673,7 +64726,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 23544, 23565),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2458),
+            id: DeclarationId(2460),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -64692,7 +64745,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 23580, 23590),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2459),
+            id: DeclarationId(2461),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64706,17 +64759,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 23580, 23590),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2460),
+            id: DeclarationId(2462),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2458),
+                        ty: DeclarationId(2460),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2459),
+                        ty: DeclarationId(2461),
                     },
                 ],
             },
@@ -64731,52 +64784,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/algebra.dag", 23580, 23590),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2461),
+            id: DeclarationId(2463),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(93),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23835, 23839),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2462),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/algebra.dag", 23835, 23839),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2463),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2461),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2462),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -64791,6 +64805,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2464),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/algebra.dag", 23835, 23839),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2465),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2463),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2464),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/algebra.dag", 23835, 23839),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2466),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -64808,7 +64861,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 3781, 3785),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2465),
+            id: DeclarationId(2467),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64822,17 +64875,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 3781, 3785),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2466),
+            id: DeclarationId(2468),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2464),
+                        ty: DeclarationId(2466),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2465),
+                        ty: DeclarationId(2467),
                     },
                 ],
             },
@@ -64847,52 +64900,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 3781, 3785),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2467),
+            id: DeclarationId(2469),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(230),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 4264, 4271),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2468),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 4264, 4271),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2469),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2467),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2468),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -64907,6 +64921,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2470),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 4264, 4271),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2471),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2469),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2470),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 4264, 4271),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2472),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -64924,7 +64977,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 6172, 6179),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2471),
+            id: DeclarationId(2473),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64938,17 +64991,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 6172, 6179),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2472),
+            id: DeclarationId(2474),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2470),
+                        ty: DeclarationId(2472),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2471),
+                        ty: DeclarationId(2473),
                     },
                 ],
             },
@@ -64963,7 +65016,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 6172, 6179),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2473),
+            id: DeclarationId(2475),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -64982,7 +65035,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 16964, 16984),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2474),
+            id: DeclarationId(2476),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64996,17 +65049,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 16964, 16984),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2475),
+            id: DeclarationId(2477),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2473),
+                        ty: DeclarationId(2475),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2474),
+                        ty: DeclarationId(2476),
                     },
                 ],
             },
@@ -65021,7 +65074,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 16964, 16984),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2476),
+            id: DeclarationId(2478),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65040,7 +65093,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 17620, 17627),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2477),
+            id: DeclarationId(2479),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65054,17 +65107,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 17620, 17627),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2478),
+            id: DeclarationId(2480),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2476),
+                        ty: DeclarationId(2478),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2477),
+                        ty: DeclarationId(2479),
                     },
                 ],
             },
@@ -65079,7 +65132,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 17620, 17627),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2479),
+            id: DeclarationId(2481),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65098,7 +65151,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 21380, 21390),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2480),
+            id: DeclarationId(2482),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65112,17 +65165,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 21380, 21390),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2481),
+            id: DeclarationId(2483),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2479),
+                        ty: DeclarationId(2481),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2480),
+                        ty: DeclarationId(2482),
                     },
                 ],
             },
@@ -65137,7 +65190,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 21380, 21390),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2482),
+            id: DeclarationId(2484),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65156,7 +65209,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 21515, 21522),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2483),
+            id: DeclarationId(2485),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65170,17 +65223,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 21515, 21522),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2484),
+            id: DeclarationId(2486),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2482),
+                        ty: DeclarationId(2484),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2483),
+                        ty: DeclarationId(2485),
                     },
                 ],
             },
@@ -65195,7 +65248,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 21515, 21522),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2485),
+            id: DeclarationId(2487),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65214,7 +65267,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 21589, 21593),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2486),
+            id: DeclarationId(2488),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65228,17 +65281,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 21589, 21593),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2487),
+            id: DeclarationId(2489),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2485),
+                        ty: DeclarationId(2487),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2486),
+                        ty: DeclarationId(2488),
                     },
                 ],
             },
@@ -65253,52 +65306,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 21589, 21593),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2488),
+            id: DeclarationId(2490),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(230),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23360, 23367),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2489),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23360, 23367),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2490),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2488),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2489),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -65313,25 +65327,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2491),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23872, 23879),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2492),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -65341,22 +65336,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 23872, 23879),
+            span: SourceSpan::new("dsl/std/types.dag", 23360, 23367),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2493),
+            id: DeclarationId(2492),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2491),
+                        ty: DeclarationId(2490),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2492),
+                        ty: DeclarationId(2491),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 23360, 23367),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2493),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -65371,6 +65385,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2494),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 23872, 23879),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2495),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2493),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2494),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 23872, 23879),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2496),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -65388,7 +65441,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 23966, 23973),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2495),
+            id: DeclarationId(2497),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65402,17 +65455,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 23966, 23973),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2496),
+            id: DeclarationId(2498),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2494),
+                        ty: DeclarationId(2496),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2495),
+                        ty: DeclarationId(2497),
                     },
                 ],
             },
@@ -65427,7 +65480,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 23966, 23973),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2497),
+            id: DeclarationId(2499),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65446,7 +65499,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 24196, 24211),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2498),
+            id: DeclarationId(2500),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65460,17 +65513,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 24196, 24211),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2499),
+            id: DeclarationId(2501),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2497),
+                        ty: DeclarationId(2499),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2498),
+                        ty: DeclarationId(2500),
                     },
                 ],
             },
@@ -65485,7 +65538,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 24196, 24211),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2500),
+            id: DeclarationId(2502),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65504,7 +65557,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 24222, 24235),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2501),
+            id: DeclarationId(2503),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65518,17 +65571,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 24222, 24235),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2502),
+            id: DeclarationId(2504),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2500),
+                        ty: DeclarationId(2502),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2501),
+                        ty: DeclarationId(2503),
                     },
                 ],
             },
@@ -65543,7 +65596,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 24222, 24235),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2503),
+            id: DeclarationId(2505),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65562,7 +65615,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 24251, 24264),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2504),
+            id: DeclarationId(2506),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65576,17 +65629,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 24251, 24264),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2505),
+            id: DeclarationId(2507),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2503),
+                        ty: DeclarationId(2505),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2504),
+                        ty: DeclarationId(2506),
                     },
                 ],
             },
@@ -65601,52 +65654,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/std/types.dag", 24251, 24264),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2506),
+            id: DeclarationId(2508),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(230),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24374, 24381),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2507),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24374, 24381),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2508),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2506),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2507),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -65661,6 +65675,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2509),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 24374, 24381),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2510),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2508),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2509),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/std/types.dag", 24374, 24381),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2511),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -65678,7 +65731,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 11753, 11760),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2510),
+            id: DeclarationId(2512),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65692,17 +65745,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 11753, 11760),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2511),
+            id: DeclarationId(2513),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2509),
+                        ty: DeclarationId(2511),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2510),
+                        ty: DeclarationId(2512),
                     },
                 ],
             },
@@ -65717,7 +65770,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 11753, 11760),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2512),
+            id: DeclarationId(2514),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65736,7 +65789,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 21031, 21059),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2513),
+            id: DeclarationId(2515),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65750,17 +65803,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 21031, 21059),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2514),
+            id: DeclarationId(2516),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2512),
+                        ty: DeclarationId(2514),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2513),
+                        ty: DeclarationId(2515),
                     },
                 ],
             },
@@ -65775,7 +65828,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 21031, 21059),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2515),
+            id: DeclarationId(2517),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65794,7 +65847,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 21211, 21239),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2516),
+            id: DeclarationId(2518),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65808,17 +65861,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 21211, 21239),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2517),
+            id: DeclarationId(2519),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2515),
+                        ty: DeclarationId(2517),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2516),
+                        ty: DeclarationId(2518),
                     },
                 ],
             },
@@ -65833,7 +65886,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 21211, 21239),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2518),
+            id: DeclarationId(2520),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65852,7 +65905,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 29695, 29706),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2519),
+            id: DeclarationId(2521),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65866,17 +65919,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 29695, 29706),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2520),
+            id: DeclarationId(2522),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2518),
+                        ty: DeclarationId(2520),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2519),
+                        ty: DeclarationId(2521),
                     },
                 ],
             },
@@ -65891,52 +65944,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 29695, 29706),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2521),
+            id: DeclarationId(2523),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(230),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30432, 30439),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2522),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/effects.dag", 30432, 30439),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2523),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2521),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2522),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -65951,6 +65965,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2524),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/effects.dag", 30432, 30439),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2525),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2523),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2524),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/effects.dag", 30432, 30439),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2526),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -65968,7 +66021,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 30662, 30669),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2525),
+            id: DeclarationId(2527),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65982,17 +66035,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 30662, 30669),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2526),
+            id: DeclarationId(2528),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2524),
+                        ty: DeclarationId(2526),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2525),
+                        ty: DeclarationId(2527),
                     },
                 ],
             },
@@ -66007,7 +66060,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/effects.dag", 30662, 30669),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2527),
+            id: DeclarationId(2529),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66026,7 +66079,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 22288, 22296),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2528),
+            id: DeclarationId(2530),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66040,17 +66093,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 22288, 22296),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2529),
+            id: DeclarationId(2531),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2527),
+                        ty: DeclarationId(2529),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2528),
+                        ty: DeclarationId(2530),
                     },
                 ],
             },
@@ -66065,52 +66118,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 22288, 22296),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2530),
+            id: DeclarationId(2532),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(827),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22345, 22354),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2531),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22345, 22354),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2532),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2530),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2531),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -66125,6 +66139,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2533),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22345, 22354),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2534),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2532),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2533),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22345, 22354),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2535),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -66142,7 +66195,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 22420, 22429),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2534),
+            id: DeclarationId(2536),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66156,17 +66209,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 22420, 22429),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2535),
+            id: DeclarationId(2537),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2533),
+                        ty: DeclarationId(2535),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2534),
+                        ty: DeclarationId(2536),
                     },
                 ],
             },
@@ -66181,52 +66234,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 22420, 22429),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2536),
+            id: DeclarationId(2538),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(799),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22806, 22818),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2537),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22806, 22818),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2538),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2536),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2537),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -66241,6 +66255,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2539),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22806, 22818),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2540),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2538),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2539),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22806, 22818),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2541),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -66258,7 +66311,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 23681, 23693),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2540),
+            id: DeclarationId(2542),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66272,17 +66325,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 23681, 23693),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2541),
+            id: DeclarationId(2543),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2539),
+                        ty: DeclarationId(2541),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2540),
+                        ty: DeclarationId(2542),
                     },
                 ],
             },
@@ -66297,7 +66350,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 23681, 23693),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2542),
+            id: DeclarationId(2544),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66316,7 +66369,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 24004, 24019),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2543),
+            id: DeclarationId(2545),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66330,17 +66383,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 24004, 24019),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2544),
+            id: DeclarationId(2546),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2542),
+                        ty: DeclarationId(2544),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2543),
+                        ty: DeclarationId(2545),
                     },
                 ],
             },
@@ -66355,7 +66408,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 24004, 24019),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2545),
+            id: DeclarationId(2547),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66374,7 +66427,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 867, 874),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2546),
+            id: DeclarationId(2548),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66388,17 +66441,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 867, 874),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2547),
+            id: DeclarationId(2549),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2545),
+                        ty: DeclarationId(2547),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2546),
+                        ty: DeclarationId(2548),
                     },
                 ],
             },
@@ -66413,7 +66466,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 867, 874),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2548),
+            id: DeclarationId(2550),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66432,7 +66485,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 11800, 11807),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2549),
+            id: DeclarationId(2551),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66446,17 +66499,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 11800, 11807),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2550),
+            id: DeclarationId(2552),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2548),
+                        ty: DeclarationId(2550),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2549),
+                        ty: DeclarationId(2551),
                     },
                 ],
             },
@@ -66471,52 +66524,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 11800, 11807),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2551),
+            id: DeclarationId(2553),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(723),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11925, 11939),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2552),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11925, 11939),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2553),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2551),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2552),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -66531,6 +66545,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2554),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11925, 11939),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2555),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2553),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2554),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11925, 11939),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2556),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -66548,7 +66601,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 11952, 11966),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2555),
+            id: DeclarationId(2557),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66562,17 +66615,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 11952, 11966),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2556),
+            id: DeclarationId(2558),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2554),
+                        ty: DeclarationId(2556),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2555),
+                        ty: DeclarationId(2557),
                     },
                 ],
             },
@@ -66587,7 +66640,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 11952, 11966),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2557),
+            id: DeclarationId(2559),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66606,7 +66659,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 11981, 11991),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2558),
+            id: DeclarationId(2560),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66620,17 +66673,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 11981, 11991),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2559),
+            id: DeclarationId(2561),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2557),
+                        ty: DeclarationId(2559),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2558),
+                        ty: DeclarationId(2560),
                     },
                 ],
             },
@@ -66645,7 +66698,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 11981, 11991),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2560),
+            id: DeclarationId(2562),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66664,7 +66717,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 12011, 12026),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2561),
+            id: DeclarationId(2563),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66678,17 +66731,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 12011, 12026),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2562),
+            id: DeclarationId(2564),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2560),
+                        ty: DeclarationId(2562),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2561),
+                        ty: DeclarationId(2563),
                     },
                 ],
             },
@@ -66703,7 +66756,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 12011, 12026),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2563),
+            id: DeclarationId(2565),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66722,7 +66775,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 15469, 15484),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2564),
+            id: DeclarationId(2566),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66736,17 +66789,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 15469, 15484),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2565),
+            id: DeclarationId(2567),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2563),
+                        ty: DeclarationId(2565),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2564),
+                        ty: DeclarationId(2566),
                     },
                 ],
             },
@@ -66761,7 +66814,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 15469, 15484),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2566),
+            id: DeclarationId(2568),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66780,7 +66833,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 18518, 18533),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2567),
+            id: DeclarationId(2569),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66794,17 +66847,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 18518, 18533),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2568),
+            id: DeclarationId(2570),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2566),
+                        ty: DeclarationId(2568),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2567),
+                        ty: DeclarationId(2569),
                     },
                 ],
             },
@@ -66819,7 +66872,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 18518, 18533),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2569),
+            id: DeclarationId(2571),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66838,7 +66891,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 19007, 19031),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2570),
+            id: DeclarationId(2572),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66852,17 +66905,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 19007, 19031),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2571),
+            id: DeclarationId(2573),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2569),
+                        ty: DeclarationId(2571),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2570),
+                        ty: DeclarationId(2572),
                     },
                 ],
             },
@@ -66877,7 +66930,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 19007, 19031),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2572),
+            id: DeclarationId(2574),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66896,7 +66949,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 19585, 19600),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2573),
+            id: DeclarationId(2575),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66910,17 +66963,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 19585, 19600),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2574),
+            id: DeclarationId(2576),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2572),
+                        ty: DeclarationId(2574),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2573),
+                        ty: DeclarationId(2575),
                     },
                 ],
             },
@@ -66935,7 +66988,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 19585, 19600),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2575),
+            id: DeclarationId(2577),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66954,7 +67007,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 19623, 19645),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2576),
+            id: DeclarationId(2578),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66968,17 +67021,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 19623, 19645),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2577),
+            id: DeclarationId(2579),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2575),
+                        ty: DeclarationId(2577),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2576),
+                        ty: DeclarationId(2578),
                     },
                 ],
             },
@@ -66993,7 +67046,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/substrate.dag", 19623, 19645),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2578),
+            id: DeclarationId(2580),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -67012,7 +67065,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 6780, 6801),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2579),
+            id: DeclarationId(2581),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -67026,17 +67079,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 6780, 6801),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2580),
+            id: DeclarationId(2582),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2578),
+                        ty: DeclarationId(2580),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2579),
+                        ty: DeclarationId(2581),
                     },
                 ],
             },
@@ -67051,7 +67104,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 6780, 6801),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2581),
+            id: DeclarationId(2583),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -67070,7 +67123,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 6816, 6826),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2582),
+            id: DeclarationId(2584),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -67084,17 +67137,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 6816, 6826),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2583),
+            id: DeclarationId(2585),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2581),
+                        ty: DeclarationId(2583),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2582),
+                        ty: DeclarationId(2584),
                     },
                 ],
             },
@@ -67109,7 +67162,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 6816, 6826),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2584),
+            id: DeclarationId(2586),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -67128,7 +67181,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 6856, 6860),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2585),
+            id: DeclarationId(2587),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -67142,17 +67195,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 6856, 6860),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2586),
+            id: DeclarationId(2588),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2584),
+                        ty: DeclarationId(2586),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2585),
+                        ty: DeclarationId(2587),
                     },
                 ],
             },
@@ -67167,7 +67220,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 6856, 6860),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2587),
+            id: DeclarationId(2589),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -67186,7 +67239,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 7429, 7436),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2588),
+            id: DeclarationId(2590),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -67200,17 +67253,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 7429, 7436),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2589),
+            id: DeclarationId(2591),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2587),
+                        ty: DeclarationId(2589),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2588),
+                        ty: DeclarationId(2590),
                     },
                 ],
             },
@@ -67225,7 +67278,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/algebra.dag", 7429, 7436),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2590),
+            id: DeclarationId(2592),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -67244,7 +67297,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_messages.dag", 4566, 4572),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2591),
+            id: DeclarationId(2593),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -67258,17 +67311,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_messages.dag", 4566, 4572),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2592),
+            id: DeclarationId(2594),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2590),
+                        ty: DeclarationId(2592),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2591),
+                        ty: DeclarationId(2593),
                     },
                 ],
             },
@@ -67283,7 +67336,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_messages.dag", 4566, 4572),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2593),
+            id: DeclarationId(2595),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -67302,7 +67355,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_messages.dag", 4589, 4596),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2594),
+            id: DeclarationId(2596),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -67316,17 +67369,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_messages.dag", 4589, 4596),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2595),
+            id: DeclarationId(2597),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2593),
+                        ty: DeclarationId(2595),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2594),
+                        ty: DeclarationId(2596),
                     },
                 ],
             },
@@ -67341,7 +67394,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_messages.dag", 4589, 4596),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2596),
+            id: DeclarationId(2598),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -67360,7 +67413,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6286, 6323),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2597),
+            id: DeclarationId(2599),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -67374,17 +67427,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6286, 6323),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2598),
+            id: DeclarationId(2600),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2596),
+                        ty: DeclarationId(2598),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2597),
+                        ty: DeclarationId(2599),
                     },
                 ],
             },
@@ -67399,7 +67452,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6286, 6323),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2599),
+            id: DeclarationId(2601),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -67418,7 +67471,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6345, 6358),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2600),
+            id: DeclarationId(2602),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -67432,17 +67485,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6345, 6358),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2601),
+            id: DeclarationId(2603),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2599),
+                        ty: DeclarationId(2601),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2600),
+                        ty: DeclarationId(2602),
                     },
                 ],
             },
@@ -67457,7 +67510,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 6345, 6358),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2602),
+            id: DeclarationId(2604),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -67476,7 +67529,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7030, 7057),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2603),
+            id: DeclarationId(2605),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -67490,17 +67543,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7030, 7057),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2604),
+            id: DeclarationId(2606),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2602),
+                        ty: DeclarationId(2604),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2603),
+                        ty: DeclarationId(2605),
                     },
                 ],
             },
@@ -67515,7 +67568,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7030, 7057),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2605),
+            id: DeclarationId(2607),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -67534,7 +67587,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7074, 7079),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2606),
+            id: DeclarationId(2608),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -67548,17 +67601,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7074, 7079),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2607),
+            id: DeclarationId(2609),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2605),
+                        ty: DeclarationId(2607),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2606),
+                        ty: DeclarationId(2608),
                     },
                 ],
             },
@@ -67573,52 +67626,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 7074, 7079),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2608),
+            id: DeclarationId(2610),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(230),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8435, 8442),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2609),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8435, 8442),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2610),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2608),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2609),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67633,25 +67647,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2611),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8453, 8460),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2612),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67661,22 +67656,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8453, 8460),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8435, 8442),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2613),
+            id: DeclarationId(2612),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2611),
+                        ty: DeclarationId(2610),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2612),
+                        ty: DeclarationId(2611),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8435, 8442),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2613),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67691,25 +67705,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2614),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8583, 8590),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2615),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67719,22 +67714,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8583, 8590),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8453, 8460),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2616),
+            id: DeclarationId(2615),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2614),
+                        ty: DeclarationId(2613),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2615),
+                        ty: DeclarationId(2614),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8453, 8460),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2616),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67749,25 +67763,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2617),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8601, 8608),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2618),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67777,22 +67772,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8601, 8608),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8583, 8590),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2619),
+            id: DeclarationId(2618),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2617),
+                        ty: DeclarationId(2616),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2618),
+                        ty: DeclarationId(2617),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8583, 8590),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2619),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67807,25 +67821,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2620),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8741, 8748),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2621),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67835,22 +67830,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8741, 8748),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8601, 8608),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2622),
+            id: DeclarationId(2621),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2620),
+                        ty: DeclarationId(2619),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2621),
+                        ty: DeclarationId(2620),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8601, 8608),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2622),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67865,25 +67879,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2623),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8759, 8766),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2624),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67893,22 +67888,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8759, 8766),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8741, 8748),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2625),
+            id: DeclarationId(2624),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2623),
+                        ty: DeclarationId(2622),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2624),
+                        ty: DeclarationId(2623),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8741, 8748),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2625),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67923,25 +67937,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2626),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8897, 8904),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2627),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67951,22 +67946,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8897, 8904),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8759, 8766),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2628),
+            id: DeclarationId(2627),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2626),
+                        ty: DeclarationId(2625),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2627),
+                        ty: DeclarationId(2626),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8759, 8766),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2628),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -67981,6 +67995,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2629),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8897, 8904),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2630),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2628),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2629),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8897, 8904),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2631),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -67998,7 +68051,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8990, 8997),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2630),
+            id: DeclarationId(2632),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68012,17 +68065,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8990, 8997),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2631),
+            id: DeclarationId(2633),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2629),
+                        ty: DeclarationId(2631),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2630),
+                        ty: DeclarationId(2632),
                     },
                 ],
             },
@@ -68037,7 +68090,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 8990, 8997),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2632),
+            id: DeclarationId(2634),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -68056,7 +68109,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9695, 9730),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2633),
+            id: DeclarationId(2635),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68070,17 +68123,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9695, 9730),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2634),
+            id: DeclarationId(2636),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2632),
+                        ty: DeclarationId(2634),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2633),
+                        ty: DeclarationId(2635),
                     },
                 ],
             },
@@ -68095,52 +68148,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9695, 9730),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2635),
+            id: DeclarationId(2637),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(130),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9933, 9938),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2636),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9933, 9938),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2637),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2635),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2636),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -68155,25 +68169,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2638),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(130),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10038, 10043),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2639),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -68183,22 +68178,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10038, 10043),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9933, 9938),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2640),
+            id: DeclarationId(2639),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2638),
+                        ty: DeclarationId(2637),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2639),
+                        ty: DeclarationId(2638),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 9933, 9938),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2640),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(130),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -68213,25 +68227,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2641),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(130),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10129, 10134),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2642),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -68241,22 +68236,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10129, 10134),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10038, 10043),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2643),
+            id: DeclarationId(2642),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2641),
+                        ty: DeclarationId(2640),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2642),
+                        ty: DeclarationId(2641),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10038, 10043),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2643),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(130),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -68271,25 +68285,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2644),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10756, 10760),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2645),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -68299,22 +68294,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10756, 10760),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10129, 10134),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2646),
+            id: DeclarationId(2645),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2644),
+                        ty: DeclarationId(2643),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2645),
+                        ty: DeclarationId(2644),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10129, 10134),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2646),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -68329,6 +68343,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2647),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10756, 10760),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2648),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2646),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2647),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10756, 10760),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2649),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -68346,7 +68399,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10792, 10796),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2648),
+            id: DeclarationId(2650),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68360,17 +68413,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10792, 10796),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2649),
+            id: DeclarationId(2651),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2647),
+                        ty: DeclarationId(2649),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2648),
+                        ty: DeclarationId(2650),
                     },
                 ],
             },
@@ -68385,52 +68438,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10792, 10796),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2650),
+            id: DeclarationId(2652),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(230),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10828, 10835),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2651),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10828, 10835),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2652),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2650),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2651),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -68445,6 +68459,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2653),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10828, 10835),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2654),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2652),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2653),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 10828, 10835),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2655),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -68462,7 +68515,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11804, 11811),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2654),
+            id: DeclarationId(2656),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68476,17 +68529,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11804, 11811),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2655),
+            id: DeclarationId(2657),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2653),
+                        ty: DeclarationId(2655),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2654),
+                        ty: DeclarationId(2656),
                     },
                 ],
             },
@@ -68501,7 +68554,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11804, 11811),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2656),
+            id: DeclarationId(2658),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -68520,7 +68573,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11872, 11877),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2657),
+            id: DeclarationId(2659),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68534,17 +68587,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11872, 11877),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2658),
+            id: DeclarationId(2660),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2656),
+                        ty: DeclarationId(2658),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2657),
+                        ty: DeclarationId(2659),
                     },
                 ],
             },
@@ -68559,7 +68612,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 11872, 11877),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2659),
+            id: DeclarationId(2661),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -68578,7 +68631,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 2751, 2763),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2660),
+            id: DeclarationId(2662),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68592,17 +68645,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 2751, 2763),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2661),
+            id: DeclarationId(2663),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2659),
+                        ty: DeclarationId(2661),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2660),
+                        ty: DeclarationId(2662),
                     },
                 ],
             },
@@ -68617,7 +68670,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 2751, 2763),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2662),
+            id: DeclarationId(2664),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -68636,7 +68689,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 2961, 2968),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2663),
+            id: DeclarationId(2665),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68650,17 +68703,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 2961, 2968),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2664),
+            id: DeclarationId(2666),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2662),
+                        ty: DeclarationId(2664),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2663),
+                        ty: DeclarationId(2665),
                     },
                 ],
             },
@@ -68675,7 +68728,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 2961, 2968),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2665),
+            id: DeclarationId(2667),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -68694,7 +68747,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 5779, 5786),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2666),
+            id: DeclarationId(2668),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68708,17 +68761,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 5779, 5786),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2667),
+            id: DeclarationId(2669),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2665),
+                        ty: DeclarationId(2667),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2666),
+                        ty: DeclarationId(2668),
                     },
                 ],
             },
@@ -68733,7 +68786,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 5779, 5786),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2668),
+            id: DeclarationId(2670),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -68752,7 +68805,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 6710, 6714),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2669),
+            id: DeclarationId(2671),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68766,17 +68819,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 6710, 6714),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2670),
+            id: DeclarationId(2672),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2668),
+                        ty: DeclarationId(2670),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2669),
+                        ty: DeclarationId(2671),
                     },
                 ],
             },
@@ -68791,52 +68844,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 6710, 6714),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2671),
+            id: DeclarationId(2673),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(946),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/computation.dag", 7761, 7780),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2672),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/computation.dag", 7761, 7780),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2673),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2671),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2672),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -68851,6 +68865,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2674),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/computation.dag", 7761, 7780),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2675),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2673),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2674),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/computation.dag", 7761, 7780),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2676),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -68868,7 +68921,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 8326, 8345),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2675),
+            id: DeclarationId(2677),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68882,17 +68935,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 8326, 8345),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2676),
+            id: DeclarationId(2678),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2674),
+                        ty: DeclarationId(2676),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2675),
+                        ty: DeclarationId(2677),
                     },
                 ],
             },
@@ -68907,7 +68960,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 8326, 8345),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2677),
+            id: DeclarationId(2679),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -68926,7 +68979,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 3859, 3872),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2678),
+            id: DeclarationId(2680),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68940,17 +68993,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 3859, 3872),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2679),
+            id: DeclarationId(2681),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2677),
+                        ty: DeclarationId(2679),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2678),
+                        ty: DeclarationId(2680),
                     },
                 ],
             },
@@ -68965,7 +69018,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/computation.dag", 3859, 3872),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2680),
+            id: DeclarationId(2682),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -68984,7 +69037,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/induction.dag", 20558, 20570),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2681),
+            id: DeclarationId(2683),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -68998,17 +69051,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/induction.dag", 20558, 20570),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2682),
+            id: DeclarationId(2684),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2680),
+                        ty: DeclarationId(2682),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2681),
+                        ty: DeclarationId(2683),
                     },
                 ],
             },
@@ -69023,7 +69076,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/induction.dag", 20558, 20570),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2683),
+            id: DeclarationId(2685),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -69042,7 +69095,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/induction.dag", 21943, 21958),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2684),
+            id: DeclarationId(2686),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -69056,17 +69109,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/induction.dag", 21943, 21958),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2685),
+            id: DeclarationId(2687),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2683),
+                        ty: DeclarationId(2685),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2684),
+                        ty: DeclarationId(2686),
                     },
                 ],
             },
@@ -69081,52 +69134,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/induction.dag", 21943, 21958),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2686),
+            id: DeclarationId(2688),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(93),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 33612, 33616),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2687),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 33612, 33616),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2688),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2686),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2687),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69141,25 +69155,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2689),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 33908, 33912),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2690),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69169,22 +69164,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 33908, 33912),
+            span: SourceSpan::new("src/v3/std/induction.dag", 33612, 33616),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2691),
+            id: DeclarationId(2690),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2689),
+                        ty: DeclarationId(2688),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2690),
+                        ty: DeclarationId(2689),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/induction.dag", 33612, 33616),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2691),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69199,25 +69213,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2692),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 35157, 35161),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2693),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69227,22 +69222,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 35157, 35161),
+            span: SourceSpan::new("src/v3/std/induction.dag", 33908, 33912),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2694),
+            id: DeclarationId(2693),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2692),
+                        ty: DeclarationId(2691),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2693),
+                        ty: DeclarationId(2692),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/induction.dag", 33908, 33912),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2694),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69257,25 +69271,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2695),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 35632, 35636),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2696),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69285,22 +69280,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 35632, 35636),
+            span: SourceSpan::new("src/v3/std/induction.dag", 35157, 35161),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2697),
+            id: DeclarationId(2696),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2695),
+                        ty: DeclarationId(2694),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2696),
+                        ty: DeclarationId(2695),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/induction.dag", 35157, 35161),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2697),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69315,25 +69329,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2698),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 36895, 36899),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2699),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69343,22 +69338,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 36895, 36899),
+            span: SourceSpan::new("src/v3/std/induction.dag", 35632, 35636),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2700),
+            id: DeclarationId(2699),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2698),
+                        ty: DeclarationId(2697),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2699),
+                        ty: DeclarationId(2698),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/induction.dag", 35632, 35636),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2700),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69373,6 +69387,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2701),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/induction.dag", 36895, 36899),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2702),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2700),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2701),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/induction.dag", 36895, 36899),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2703),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -69390,7 +69443,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/induction.dag", 37167, 37171),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2702),
+            id: DeclarationId(2704),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -69404,17 +69457,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/induction.dag", 37167, 37171),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2703),
+            id: DeclarationId(2705),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2701),
+                        ty: DeclarationId(2703),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2702),
+                        ty: DeclarationId(2704),
                     },
                 ],
             },
@@ -69429,52 +69482,13 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/induction.dag", 37167, 37171),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2704),
+            id: DeclarationId(2706),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
                     ty: DeclarationId(1197),
                 }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/termination.dag", 2429, 2445),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2705),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/termination.dag", 2429, 2445),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2706),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2704),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2705),
-                    },
-                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69489,25 +69503,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2707),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(1197),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/termination.dag", 2450, 2466),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2708),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69517,22 +69512,41 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/termination.dag", 2450, 2466),
+            span: SourceSpan::new("src/v3/std/termination.dag", 2429, 2445),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2709),
+            id: DeclarationId(2708),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2707),
+                        ty: DeclarationId(2706),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2708),
+                        ty: DeclarationId(2707),
                     },
                 ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/termination.dag", 2429, 2445),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2709),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(1197),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -69547,6 +69561,45 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         declarations.push(Declaration {
             id: DeclarationId(2710),
             name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/termination.dag", 2450, 2466),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2711),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2709),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2710),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/termination.dag", 2450, 2466),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2712),
+            name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
@@ -69564,7 +69617,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/termination.dag", 2471, 2487),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2711),
+            id: DeclarationId(2713),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -69578,17 +69631,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/termination.dag", 2471, 2487),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2712),
+            id: DeclarationId(2714),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2710),
+                        ty: DeclarationId(2712),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2711),
+                        ty: DeclarationId(2713),
                     },
                 ],
             },
@@ -69603,7 +69656,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/termination.dag", 2471, 2487),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2713),
+            id: DeclarationId(2715),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -69622,7 +69675,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/termination.dag", 6397, 6419),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2714),
+            id: DeclarationId(2716),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -69636,17 +69689,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/termination.dag", 6397, 6419),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2715),
+            id: DeclarationId(2717),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2713),
+                        ty: DeclarationId(2715),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2714),
+                        ty: DeclarationId(2716),
                     },
                 ],
             },
@@ -69661,7 +69714,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/termination.dag", 6397, 6419),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2716),
+            id: DeclarationId(2718),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -69680,7 +69733,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/termination.dag", 6839, 6859),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2717),
+            id: DeclarationId(2719),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -69694,17 +69747,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/termination.dag", 6839, 6859),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2718),
+            id: DeclarationId(2720),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2716),
+                        ty: DeclarationId(2718),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2717),
+                        ty: DeclarationId(2719),
                     },
                 ],
             },
@@ -69719,7 +69772,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/std/termination.dag", 6839, 6859),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2719),
+            id: DeclarationId(2721),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -69738,7 +69791,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/compiler/operators.dag", 142, 155),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2720),
+            id: DeclarationId(2722),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -69752,17 +69805,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/compiler/operators.dag", 142, 155),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2721),
+            id: DeclarationId(2723),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2719),
+                        ty: DeclarationId(2721),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2720),
+                        ty: DeclarationId(2722),
                     },
                 ],
             },
@@ -69777,7 +69830,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("src/v3/compiler/operators.dag", 142, 155),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2722),
+            id: DeclarationId(2724),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -69796,7 +69849,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/extdeps/github/github.dag", 1274, 1284),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2723),
+            id: DeclarationId(2725),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -69810,17 +69863,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/extdeps/github/github.dag", 1274, 1284),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2724),
+            id: DeclarationId(2726),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2722),
+                        ty: DeclarationId(2724),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2723),
+                        ty: DeclarationId(2725),
                     },
                 ],
             },
@@ -69835,7 +69888,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/extdeps/github/github.dag", 1274, 1284),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2725),
+            id: DeclarationId(2727),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -69854,7 +69907,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/extdeps/github/github.dag", 1554, 1561),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2726),
+            id: DeclarationId(2728),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -69868,17 +69921,17 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/extdeps/github/github.dag", 1554, 1561),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2727),
+            id: DeclarationId(2729),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2725),
+                        ty: DeclarationId(2727),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2726),
+                        ty: DeclarationId(2728),
                     },
                 ],
             },
@@ -69893,7 +69946,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             span: SourceSpan::new("dsl/extdeps/github/github.dag", 1554, 1561),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2728),
+            id: DeclarationId(2730),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -69909,10 +69962,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1552, 1568),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1558, 1574),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2729),
+            id: DeclarationId(2731),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -69923,20 +69976,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1552, 1568),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1558, 1574),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2730),
+            id: DeclarationId(2732),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2728),
+                        ty: DeclarationId(2730),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2729),
+                        ty: DeclarationId(2731),
                     },
                 ],
             },
@@ -69948,10 +70001,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1552, 1568),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1558, 1574),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2731),
+            id: DeclarationId(2733),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -69967,10 +70020,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1684, 1704),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1690, 1710),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2732),
+            id: DeclarationId(2734),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -69981,20 +70034,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1684, 1704),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1690, 1710),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2733),
+            id: DeclarationId(2735),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2731),
+                        ty: DeclarationId(2733),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2732),
+                        ty: DeclarationId(2734),
                     },
                 ],
             },
@@ -70006,10 +70059,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1684, 1704),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1690, 1710),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2734),
+            id: DeclarationId(2736),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -70025,56 +70078,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1720, 1740),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2735),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1720, 1740),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2736),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2734),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2735),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1720, 1740),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1726, 1746),
         });
         declarations.push(Declaration {
             id: DeclarationId(2737),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70083,12 +70092,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2499, 2506),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1726, 1746),
         });
         declarations.push(Declaration {
             id: DeclarationId(2738),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2736),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2737),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70097,22 +70117,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2499, 2506),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 1726, 1746),
         });
         declarations.push(Declaration {
             id: DeclarationId(2739),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2737),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2738),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -70122,17 +70136,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2499, 2506),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2505, 2512),
         });
         declarations.push(Declaration {
             id: DeclarationId(2740),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70141,34 +70150,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2535, 2542),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2505, 2512),
         });
         declarations.push(Declaration {
             id: DeclarationId(2741),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2535, 2542),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2742),
-            name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2740),
+                        ty: DeclarationId(2739),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2741),
+                        ty: DeclarationId(2740),
                     },
                 ],
             },
@@ -70180,10 +70175,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2535, 2542),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2505, 2512),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2743),
+            id: DeclarationId(2742),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -70199,10 +70194,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5328, 5335),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2541, 2548),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2744),
+            id: DeclarationId(2743),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -70213,20 +70208,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5328, 5335),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2541, 2548),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2745),
+            id: DeclarationId(2744),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2743),
+                        ty: DeclarationId(2742),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2744),
+                        ty: DeclarationId(2743),
                     },
                 ],
             },
@@ -70238,10 +70233,68 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5328, 5335),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 2541, 2548),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2745),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5334, 5341),
         });
         declarations.push(Declaration {
             id: DeclarationId(2746),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5334, 5341),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2747),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2745),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2746),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5334, 5341),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2748),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -70257,10 +70310,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5486, 5506),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5492, 5512),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2747),
+            id: DeclarationId(2749),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -70271,20 +70324,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5486, 5506),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5492, 5512),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2748),
+            id: DeclarationId(2750),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2746),
+                        ty: DeclarationId(2748),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2747),
+                        ty: DeclarationId(2749),
                     },
                 ],
             },
@@ -70296,10 +70349,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5486, 5506),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5492, 5512),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2749),
+            id: DeclarationId(2751),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -70315,10 +70368,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5609, 5629),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5615, 5635),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2750),
+            id: DeclarationId(2752),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -70329,20 +70382,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5609, 5629),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5615, 5635),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2751),
+            id: DeclarationId(2753),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2749),
+                        ty: DeclarationId(2751),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2750),
+                        ty: DeclarationId(2752),
                     },
                 ],
             },
@@ -70354,10 +70407,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5609, 5629),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5615, 5635),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2752),
+            id: DeclarationId(2754),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -70373,10 +70426,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5646, 5653),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5652, 5659),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2753),
+            id: DeclarationId(2755),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -70387,20 +70440,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5646, 5653),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5652, 5659),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2754),
+            id: DeclarationId(2756),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2752),
+                        ty: DeclarationId(2754),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2753),
+                        ty: DeclarationId(2755),
                     },
                 ],
             },
@@ -70412,10 +70465,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5646, 5653),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5652, 5659),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2755),
+            id: DeclarationId(2757),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -70431,10 +70484,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5666, 5681),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5672, 5687),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2756),
+            id: DeclarationId(2758),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -70445,20 +70498,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5666, 5681),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5672, 5687),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2757),
+            id: DeclarationId(2759),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2755),
+                        ty: DeclarationId(2757),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2756),
+                        ty: DeclarationId(2758),
                     },
                 ],
             },
@@ -70470,10 +70523,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5666, 5681),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5672, 5687),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2758),
+            id: DeclarationId(2760),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -70489,10 +70542,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5701, 5705),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5707, 5711),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2759),
+            id: DeclarationId(2761),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -70503,20 +70556,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5701, 5705),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5707, 5711),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2760),
+            id: DeclarationId(2762),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2758),
+                        ty: DeclarationId(2760),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2759),
+                        ty: DeclarationId(2761),
                     },
                 ],
             },
@@ -70528,10 +70581,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5701, 5705),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5707, 5711),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2761),
+            id: DeclarationId(2763),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -70547,69 +70600,11 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5747, 5763),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2762),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5747, 5763),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2763),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2761),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2762),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5747, 5763),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5753, 5769),
         });
         declarations.push(Declaration {
             id: DeclarationId(2764),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(1355),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7842, 7863),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2765),
-            name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -70619,20 +70614,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7842, 7863),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5753, 5769),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2766),
+            id: DeclarationId(2765),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2764),
+                        ty: DeclarationId(2763),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2765),
+                        ty: DeclarationId(2764),
                     },
                 ],
             },
@@ -70644,10 +70639,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7842, 7863),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 5753, 5769),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2767),
+            id: DeclarationId(2766),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -70663,12 +70658,37 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7952, 7973),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8418, 8447),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2767),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8418, 8447),
         });
         declarations.push(Declaration {
             id: DeclarationId(2768),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2766),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2767),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70677,22 +70697,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7952, 7973),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8418, 8447),
         });
         declarations.push(Declaration {
             id: DeclarationId(2769),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2767),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2768),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(1355),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -70702,17 +70716,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 7952, 7973),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8615, 8636),
         });
         declarations.push(Declaration {
             id: DeclarationId(2770),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70721,12 +70730,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9666, 9673),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8615, 8636),
         });
         declarations.push(Declaration {
             id: DeclarationId(2771),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2769),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2770),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70735,22 +70755,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9666, 9673),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8615, 8636),
         });
         declarations.push(Declaration {
             id: DeclarationId(2772),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2770),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2771),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(129),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -70760,17 +70774,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9666, 9673),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8834, 8839),
         });
         declarations.push(Declaration {
             id: DeclarationId(2773),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70779,12 +70788,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9685, 9692),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8834, 8839),
         });
         declarations.push(Declaration {
             id: DeclarationId(2774),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2772),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2773),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70793,22 +70813,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9685, 9692),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 8834, 8839),
         });
         declarations.push(Declaration {
             id: DeclarationId(2775),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2773),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2774),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -70818,17 +70832,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9685, 9692),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10532, 10539),
         });
         declarations.push(Declaration {
             id: DeclarationId(2776),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(2384),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70837,12 +70846,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9748, 9768),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10532, 10539),
         });
         declarations.push(Declaration {
             id: DeclarationId(2777),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2775),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2776),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70851,22 +70871,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9748, 9768),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10532, 10539),
         });
         declarations.push(Declaration {
             id: DeclarationId(2778),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2776),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2777),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -70876,17 +70890,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9748, 9768),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10551, 10558),
         });
         declarations.push(Declaration {
             id: DeclarationId(2779),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70895,12 +70904,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9795, 9802),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10551, 10558),
         });
         declarations.push(Declaration {
             id: DeclarationId(2780),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2778),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2779),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70909,22 +70929,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9795, 9802),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10551, 10558),
         });
         declarations.push(Declaration {
             id: DeclarationId(2781),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2779),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2780),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(2386),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -70934,17 +70948,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9795, 9802),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10614, 10634),
         });
         declarations.push(Declaration {
             id: DeclarationId(2782),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70953,12 +70962,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9824, 9831),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10614, 10634),
         });
         declarations.push(Declaration {
             id: DeclarationId(2783),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2781),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2782),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -70967,22 +70987,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9824, 9831),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10614, 10634),
         });
         declarations.push(Declaration {
             id: DeclarationId(2784),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2782),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2783),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -70992,17 +71006,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9824, 9831),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10661, 10668),
         });
         declarations.push(Declaration {
             id: DeclarationId(2785),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71011,12 +71020,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9887, 9891),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10661, 10668),
         });
         declarations.push(Declaration {
             id: DeclarationId(2786),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2784),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2785),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71025,22 +71045,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9887, 9891),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10661, 10668),
         });
         declarations.push(Declaration {
             id: DeclarationId(2787),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2785),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2786),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71050,17 +71064,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9887, 9891),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10690, 10697),
         });
         declarations.push(Declaration {
             id: DeclarationId(2788),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71069,12 +71078,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9925, 9932),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10690, 10697),
         });
         declarations.push(Declaration {
             id: DeclarationId(2789),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2787),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2788),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71083,22 +71103,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9925, 9932),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10690, 10697),
         });
         declarations.push(Declaration {
             id: DeclarationId(2790),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2788),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2789),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71108,17 +71122,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9925, 9932),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10753, 10757),
         });
         declarations.push(Declaration {
             id: DeclarationId(2791),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71127,12 +71136,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9944, 9951),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10753, 10757),
         });
         declarations.push(Declaration {
             id: DeclarationId(2792),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2790),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2791),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71141,22 +71161,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9944, 9951),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10753, 10757),
         });
         declarations.push(Declaration {
             id: DeclarationId(2793),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2791),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2792),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71166,17 +71180,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 9944, 9951),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10791, 10798),
         });
         declarations.push(Declaration {
             id: DeclarationId(2794),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(2393),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71185,12 +71194,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10020, 10040),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10791, 10798),
         });
         declarations.push(Declaration {
             id: DeclarationId(2795),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2793),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2794),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71199,22 +71219,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10020, 10040),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10791, 10798),
         });
         declarations.push(Declaration {
             id: DeclarationId(2796),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2794),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2795),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71224,17 +71238,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10020, 10040),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10810, 10817),
         });
         declarations.push(Declaration {
             id: DeclarationId(2797),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71243,12 +71252,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10062, 10069),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10810, 10817),
         });
         declarations.push(Declaration {
             id: DeclarationId(2798),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2796),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2797),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71257,22 +71277,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10062, 10069),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10810, 10817),
         });
         declarations.push(Declaration {
             id: DeclarationId(2799),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2797),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2798),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(2395),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71282,17 +71296,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10062, 10069),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10886, 10906),
         });
         declarations.push(Declaration {
             id: DeclarationId(2800),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71301,12 +71310,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10125, 10129),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10886, 10906),
         });
         declarations.push(Declaration {
             id: DeclarationId(2801),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2799),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2800),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71315,22 +71335,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10125, 10129),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10886, 10906),
         });
         declarations.push(Declaration {
             id: DeclarationId(2802),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2800),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2801),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71340,17 +71354,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10125, 10129),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10928, 10935),
         });
         declarations.push(Declaration {
             id: DeclarationId(2803),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71359,12 +71368,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10548, 10555),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10928, 10935),
         });
         declarations.push(Declaration {
             id: DeclarationId(2804),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2802),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2803),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71373,22 +71393,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10548, 10555),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10928, 10935),
         });
         declarations.push(Declaration {
             id: DeclarationId(2805),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2803),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2804),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71398,17 +71412,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10548, 10555),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10991, 10995),
         });
         declarations.push(Declaration {
             id: DeclarationId(2806),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71417,12 +71426,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10563, 10567),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10991, 10995),
         });
         declarations.push(Declaration {
             id: DeclarationId(2807),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2805),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2806),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71431,22 +71451,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10563, 10567),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10991, 10995),
         });
         declarations.push(Declaration {
             id: DeclarationId(2808),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2806),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2807),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71456,17 +71470,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10563, 10567),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11414, 11421),
         });
         declarations.push(Declaration {
             id: DeclarationId(2809),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71475,12 +71484,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10574, 10578),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11414, 11421),
         });
         declarations.push(Declaration {
             id: DeclarationId(2810),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2808),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2809),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71489,22 +71509,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10574, 10578),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11414, 11421),
         });
         declarations.push(Declaration {
             id: DeclarationId(2811),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2809),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2810),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71514,17 +71528,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10574, 10578),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11429, 11433),
         });
         declarations.push(Declaration {
             id: DeclarationId(2812),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71533,12 +71542,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10628, 10635),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11429, 11433),
         });
         declarations.push(Declaration {
             id: DeclarationId(2813),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2811),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2812),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71547,22 +71567,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10628, 10635),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11429, 11433),
         });
         declarations.push(Declaration {
             id: DeclarationId(2814),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2812),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2813),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71572,17 +71586,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10628, 10635),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11440, 11444),
         });
         declarations.push(Declaration {
             id: DeclarationId(2815),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71591,12 +71600,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10643, 10647),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11440, 11444),
         });
         declarations.push(Declaration {
             id: DeclarationId(2816),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2814),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2815),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71605,22 +71625,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10643, 10647),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11440, 11444),
         });
         declarations.push(Declaration {
             id: DeclarationId(2817),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2815),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2816),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71630,17 +71644,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10643, 10647),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11494, 11501),
         });
         declarations.push(Declaration {
             id: DeclarationId(2818),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71649,12 +71658,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10654, 10658),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11494, 11501),
         });
         declarations.push(Declaration {
             id: DeclarationId(2819),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2817),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2818),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71663,22 +71683,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10654, 10658),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11494, 11501),
         });
         declarations.push(Declaration {
             id: DeclarationId(2820),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2818),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2819),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71688,17 +71702,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10654, 10658),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11509, 11513),
         });
         declarations.push(Declaration {
             id: DeclarationId(2821),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(230),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71707,12 +71716,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10707, 10714),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11509, 11513),
         });
         declarations.push(Declaration {
             id: DeclarationId(2822),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2820),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2821),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71721,22 +71741,16 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10707, 10714),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11509, 11513),
         });
         declarations.push(Declaration {
             id: DeclarationId(2823),
             name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2821),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2822),
-                    },
-                ],
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -71746,17 +71760,12 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10707, 10714),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11520, 11524),
         });
         declarations.push(Declaration {
             id: DeclarationId(2824),
             name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71765,12 +71774,23 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10722, 10726),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11520, 11524),
         });
         declarations.push(Declaration {
             id: DeclarationId(2825),
             name: None,
-            connective: TypeConnective::Conj { children: vec![] },
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2823),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2824),
+                    },
+                ],
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -71779,151 +71799,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10722, 10726),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11520, 11524),
         });
         declarations.push(Declaration {
             id: DeclarationId(2826),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2824),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2825),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10722, 10726),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2827),
-            name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10733, 10737),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2828),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10733, 10737),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2829),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2827),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2828),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 10733, 10737),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2830),
-            name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_0".to_string(),
-                    ty: DeclarationId(93),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11717, 11721),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2831),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11717, 11721),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2832),
-            name: None,
-            connective: TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "Some".to_string(),
-                        ty: DeclarationId(2830),
-                    },
-                    Field {
-                        label: "None".to_string(),
-                        ty: DeclarationId(2831),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11717, 11721),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2833),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -71939,10 +71818,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11800, 11807),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11573, 11580),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2834),
+            id: DeclarationId(2827),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -71953,20 +71832,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11800, 11807),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11573, 11580),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2835),
+            id: DeclarationId(2828),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2833),
+                        ty: DeclarationId(2826),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2834),
+                        ty: DeclarationId(2827),
                     },
                 ],
             },
@@ -71978,10 +71857,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11800, 11807),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11573, 11580),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2836),
+            id: DeclarationId(2829),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -71997,10 +71876,10 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12447, 12451),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11588, 11592),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2837),
+            id: DeclarationId(2830),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -72011,20 +71890,20 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12447, 12451),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11588, 11592),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2838),
+            id: DeclarationId(2831),
             name: None,
             connective: TypeConnective::Disj {
                 variants: vec![
                     Field {
                         label: "Some".to_string(),
-                        ty: DeclarationId(2836),
+                        ty: DeclarationId(2829),
                     },
                     Field {
                         label: "None".to_string(),
-                        ty: DeclarationId(2837),
+                        ty: DeclarationId(2830),
                     },
                 ],
             },
@@ -72036,7 +71915,239 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12447, 12451),
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11588, 11592),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2832),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11599, 11603),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2833),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11599, 11603),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2834),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2832),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2833),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 11599, 11603),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2835),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12583, 12587),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2836),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12583, 12587),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2837),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2835),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2836),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12583, 12587),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2838),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(230),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12666, 12673),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2839),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12666, 12673),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2840),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2838),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2839),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 12666, 12673),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2841),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_0".to_string(),
+                    ty: DeclarationId(93),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13313, 13317),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2842),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13313, 13317),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2843),
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Some".to_string(),
+                        ty: DeclarationId(2841),
+                    },
+                    Field {
+                        label: "None".to_string(),
+                        ty: DeclarationId(2842),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("dsl/extdeps/github/actions.dag", 13313, 13317),
         });
         declarations
     }
@@ -80229,138 +80340,139 @@ fn bootstrapped_fixture_without_parse_surface_dag_optional_match_disjs(
 ) -> HashMap<DeclarationId, DeclarationId> {
     {
         let mut map = HashMap::new();
-        map.insert(DeclarationId(389), DeclarationId(2445));
-        map.insert(DeclarationId(391), DeclarationId(2448));
-        map.insert(DeclarationId(423), DeclarationId(2451));
-        map.insert(DeclarationId(426), DeclarationId(2454));
-        map.insert(DeclarationId(471), DeclarationId(2457));
-        map.insert(DeclarationId(472), DeclarationId(2460));
-        map.insert(DeclarationId(473), DeclarationId(2463));
-        map.insert(DeclarationId(513), DeclarationId(2466));
-        map.insert(DeclarationId(515), DeclarationId(2469));
-        map.insert(DeclarationId(516), DeclarationId(2472));
-        map.insert(DeclarationId(539), DeclarationId(2475));
-        map.insert(DeclarationId(582), DeclarationId(2478));
-        map.insert(DeclarationId(602), DeclarationId(2481));
-        map.insert(DeclarationId(603), DeclarationId(2484));
-        map.insert(DeclarationId(605), DeclarationId(2487));
-        map.insert(DeclarationId(608), DeclarationId(2490));
-        map.insert(DeclarationId(613), DeclarationId(2493));
-        map.insert(DeclarationId(614), DeclarationId(2496));
-        map.insert(DeclarationId(618), DeclarationId(2499));
-        map.insert(DeclarationId(619), DeclarationId(2502));
-        map.insert(DeclarationId(620), DeclarationId(2505));
-        map.insert(DeclarationId(625), DeclarationId(2508));
-        map.insert(DeclarationId(1424), DeclarationId(2511));
-        map.insert(DeclarationId(1428), DeclarationId(2514));
-        map.insert(DeclarationId(1431), DeclarationId(2517));
-        map.insert(DeclarationId(1433), DeclarationId(2520));
-        map.insert(DeclarationId(1434), DeclarationId(2523));
-        map.insert(DeclarationId(1435), DeclarationId(2526));
-        map.insert(DeclarationId(1489), DeclarationId(2529));
-        map.insert(DeclarationId(1490), DeclarationId(2532));
-        map.insert(DeclarationId(1491), DeclarationId(2535));
-        map.insert(DeclarationId(1492), DeclarationId(2538));
-        map.insert(DeclarationId(1493), DeclarationId(2541));
-        map.insert(DeclarationId(1494), DeclarationId(2544));
-        map.insert(DeclarationId(1500), DeclarationId(2547));
-        map.insert(DeclarationId(1555), DeclarationId(2550));
-        map.insert(DeclarationId(1558), DeclarationId(2553));
-        map.insert(DeclarationId(1559), DeclarationId(2556));
-        map.insert(DeclarationId(1560), DeclarationId(2559));
-        map.insert(DeclarationId(1561), DeclarationId(2562));
-        map.insert(DeclarationId(1584), DeclarationId(2565));
-        map.insert(DeclarationId(1589), DeclarationId(2568));
-        map.insert(DeclarationId(1593), DeclarationId(2571));
-        map.insert(DeclarationId(1596), DeclarationId(2574));
-        map.insert(DeclarationId(1597), DeclarationId(2577));
-        map.insert(DeclarationId(1642), DeclarationId(2580));
-        map.insert(DeclarationId(1643), DeclarationId(2583));
-        map.insert(DeclarationId(1644), DeclarationId(2586));
-        map.insert(DeclarationId(1645), DeclarationId(2589));
-        map.insert(DeclarationId(1695), DeclarationId(2592));
-        map.insert(DeclarationId(1696), DeclarationId(2595));
-        map.insert(DeclarationId(1715), DeclarationId(2598));
-        map.insert(DeclarationId(1716), DeclarationId(2601));
-        map.insert(DeclarationId(1720), DeclarationId(2604));
-        map.insert(DeclarationId(1721), DeclarationId(2607));
-        map.insert(DeclarationId(1732), DeclarationId(2610));
-        map.insert(DeclarationId(1733), DeclarationId(2613));
-        map.insert(DeclarationId(1735), DeclarationId(2616));
-        map.insert(DeclarationId(1736), DeclarationId(2619));
-        map.insert(DeclarationId(1738), DeclarationId(2622));
-        map.insert(DeclarationId(1739), DeclarationId(2625));
-        map.insert(DeclarationId(1741), DeclarationId(2628));
-        map.insert(DeclarationId(1743), DeclarationId(2631));
-        map.insert(DeclarationId(1746), DeclarationId(2634));
-        map.insert(DeclarationId(1750), DeclarationId(2637));
-        map.insert(DeclarationId(1752), DeclarationId(2640));
-        map.insert(DeclarationId(1754), DeclarationId(2643));
-        map.insert(DeclarationId(1764), DeclarationId(2646));
-        map.insert(DeclarationId(1765), DeclarationId(2649));
-        map.insert(DeclarationId(1766), DeclarationId(2652));
-        map.insert(DeclarationId(1769), DeclarationId(2655));
-        map.insert(DeclarationId(1770), DeclarationId(2658));
-        map.insert(DeclarationId(1805), DeclarationId(2661));
-        map.insert(DeclarationId(1806), DeclarationId(2664));
-        map.insert(DeclarationId(1807), DeclarationId(2667));
-        map.insert(DeclarationId(1808), DeclarationId(2670));
-        map.insert(DeclarationId(1809), DeclarationId(2673));
-        map.insert(DeclarationId(1810), DeclarationId(2676));
-        map.insert(DeclarationId(1833), DeclarationId(2679));
-        map.insert(DeclarationId(1963), DeclarationId(2682));
-        map.insert(DeclarationId(1964), DeclarationId(2685));
-        map.insert(DeclarationId(1970), DeclarationId(2688));
-        map.insert(DeclarationId(1971), DeclarationId(2691));
-        map.insert(DeclarationId(1972), DeclarationId(2694));
-        map.insert(DeclarationId(1973), DeclarationId(2697));
-        map.insert(DeclarationId(1974), DeclarationId(2700));
-        map.insert(DeclarationId(1975), DeclarationId(2703));
-        map.insert(DeclarationId(2080), DeclarationId(2706));
-        map.insert(DeclarationId(2081), DeclarationId(2709));
-        map.insert(DeclarationId(2082), DeclarationId(2712));
-        map.insert(DeclarationId(2085), DeclarationId(2715));
-        map.insert(DeclarationId(2086), DeclarationId(2718));
-        map.insert(DeclarationId(2280), DeclarationId(2721));
-        map.insert(DeclarationId(2309), DeclarationId(2724));
-        map.insert(DeclarationId(2315), DeclarationId(2727));
-        map.insert(DeclarationId(2320), DeclarationId(2730));
-        map.insert(DeclarationId(2323), DeclarationId(2733));
-        map.insert(DeclarationId(2324), DeclarationId(2736));
-        map.insert(DeclarationId(2344), DeclarationId(2739));
-        map.insert(DeclarationId(2345), DeclarationId(2742));
-        map.insert(DeclarationId(2353), DeclarationId(2745));
-        map.insert(DeclarationId(2357), DeclarationId(2748));
-        map.insert(DeclarationId(2359), DeclarationId(2751));
-        map.insert(DeclarationId(2360), DeclarationId(2754));
-        map.insert(DeclarationId(2361), DeclarationId(2757));
-        map.insert(DeclarationId(2362), DeclarationId(2760));
-        map.insert(DeclarationId(2363), DeclarationId(2763));
-        map.insert(DeclarationId(2369), DeclarationId(2766));
-        map.insert(DeclarationId(2370), DeclarationId(2769));
-        map.insert(DeclarationId(2382), DeclarationId(2772));
-        map.insert(DeclarationId(2383), DeclarationId(2775));
-        map.insert(DeclarationId(2385), DeclarationId(2778));
-        map.insert(DeclarationId(2386), DeclarationId(2781));
-        map.insert(DeclarationId(2387), DeclarationId(2784));
-        map.insert(DeclarationId(2388), DeclarationId(2787));
-        map.insert(DeclarationId(2390), DeclarationId(2790));
-        map.insert(DeclarationId(2391), DeclarationId(2793));
-        map.insert(DeclarationId(2394), DeclarationId(2796));
-        map.insert(DeclarationId(2395), DeclarationId(2799));
-        map.insert(DeclarationId(2396), DeclarationId(2802));
-        map.insert(DeclarationId(2403), DeclarationId(2805));
-        map.insert(DeclarationId(2404), DeclarationId(2808));
-        map.insert(DeclarationId(2405), DeclarationId(2811));
-        map.insert(DeclarationId(2407), DeclarationId(2814));
-        map.insert(DeclarationId(2408), DeclarationId(2817));
-        map.insert(DeclarationId(2409), DeclarationId(2820));
-        map.insert(DeclarationId(2411), DeclarationId(2823));
-        map.insert(DeclarationId(2412), DeclarationId(2826));
-        map.insert(DeclarationId(2413), DeclarationId(2829));
-        map.insert(DeclarationId(2420), DeclarationId(2832));
-        map.insert(DeclarationId(2422), DeclarationId(2835));
-        map.insert(DeclarationId(2433), DeclarationId(2838));
+        map.insert(DeclarationId(389), DeclarationId(2447));
+        map.insert(DeclarationId(391), DeclarationId(2450));
+        map.insert(DeclarationId(423), DeclarationId(2453));
+        map.insert(DeclarationId(426), DeclarationId(2456));
+        map.insert(DeclarationId(471), DeclarationId(2459));
+        map.insert(DeclarationId(472), DeclarationId(2462));
+        map.insert(DeclarationId(473), DeclarationId(2465));
+        map.insert(DeclarationId(513), DeclarationId(2468));
+        map.insert(DeclarationId(515), DeclarationId(2471));
+        map.insert(DeclarationId(516), DeclarationId(2474));
+        map.insert(DeclarationId(539), DeclarationId(2477));
+        map.insert(DeclarationId(582), DeclarationId(2480));
+        map.insert(DeclarationId(602), DeclarationId(2483));
+        map.insert(DeclarationId(603), DeclarationId(2486));
+        map.insert(DeclarationId(605), DeclarationId(2489));
+        map.insert(DeclarationId(608), DeclarationId(2492));
+        map.insert(DeclarationId(613), DeclarationId(2495));
+        map.insert(DeclarationId(614), DeclarationId(2498));
+        map.insert(DeclarationId(618), DeclarationId(2501));
+        map.insert(DeclarationId(619), DeclarationId(2504));
+        map.insert(DeclarationId(620), DeclarationId(2507));
+        map.insert(DeclarationId(625), DeclarationId(2510));
+        map.insert(DeclarationId(1424), DeclarationId(2513));
+        map.insert(DeclarationId(1428), DeclarationId(2516));
+        map.insert(DeclarationId(1431), DeclarationId(2519));
+        map.insert(DeclarationId(1433), DeclarationId(2522));
+        map.insert(DeclarationId(1434), DeclarationId(2525));
+        map.insert(DeclarationId(1435), DeclarationId(2528));
+        map.insert(DeclarationId(1489), DeclarationId(2531));
+        map.insert(DeclarationId(1490), DeclarationId(2534));
+        map.insert(DeclarationId(1491), DeclarationId(2537));
+        map.insert(DeclarationId(1492), DeclarationId(2540));
+        map.insert(DeclarationId(1493), DeclarationId(2543));
+        map.insert(DeclarationId(1494), DeclarationId(2546));
+        map.insert(DeclarationId(1500), DeclarationId(2549));
+        map.insert(DeclarationId(1555), DeclarationId(2552));
+        map.insert(DeclarationId(1558), DeclarationId(2555));
+        map.insert(DeclarationId(1559), DeclarationId(2558));
+        map.insert(DeclarationId(1560), DeclarationId(2561));
+        map.insert(DeclarationId(1561), DeclarationId(2564));
+        map.insert(DeclarationId(1584), DeclarationId(2567));
+        map.insert(DeclarationId(1589), DeclarationId(2570));
+        map.insert(DeclarationId(1593), DeclarationId(2573));
+        map.insert(DeclarationId(1596), DeclarationId(2576));
+        map.insert(DeclarationId(1597), DeclarationId(2579));
+        map.insert(DeclarationId(1642), DeclarationId(2582));
+        map.insert(DeclarationId(1643), DeclarationId(2585));
+        map.insert(DeclarationId(1644), DeclarationId(2588));
+        map.insert(DeclarationId(1645), DeclarationId(2591));
+        map.insert(DeclarationId(1695), DeclarationId(2594));
+        map.insert(DeclarationId(1696), DeclarationId(2597));
+        map.insert(DeclarationId(1715), DeclarationId(2600));
+        map.insert(DeclarationId(1716), DeclarationId(2603));
+        map.insert(DeclarationId(1720), DeclarationId(2606));
+        map.insert(DeclarationId(1721), DeclarationId(2609));
+        map.insert(DeclarationId(1732), DeclarationId(2612));
+        map.insert(DeclarationId(1733), DeclarationId(2615));
+        map.insert(DeclarationId(1735), DeclarationId(2618));
+        map.insert(DeclarationId(1736), DeclarationId(2621));
+        map.insert(DeclarationId(1738), DeclarationId(2624));
+        map.insert(DeclarationId(1739), DeclarationId(2627));
+        map.insert(DeclarationId(1741), DeclarationId(2630));
+        map.insert(DeclarationId(1743), DeclarationId(2633));
+        map.insert(DeclarationId(1746), DeclarationId(2636));
+        map.insert(DeclarationId(1750), DeclarationId(2639));
+        map.insert(DeclarationId(1752), DeclarationId(2642));
+        map.insert(DeclarationId(1754), DeclarationId(2645));
+        map.insert(DeclarationId(1764), DeclarationId(2648));
+        map.insert(DeclarationId(1765), DeclarationId(2651));
+        map.insert(DeclarationId(1766), DeclarationId(2654));
+        map.insert(DeclarationId(1769), DeclarationId(2657));
+        map.insert(DeclarationId(1770), DeclarationId(2660));
+        map.insert(DeclarationId(1805), DeclarationId(2663));
+        map.insert(DeclarationId(1806), DeclarationId(2666));
+        map.insert(DeclarationId(1807), DeclarationId(2669));
+        map.insert(DeclarationId(1808), DeclarationId(2672));
+        map.insert(DeclarationId(1809), DeclarationId(2675));
+        map.insert(DeclarationId(1810), DeclarationId(2678));
+        map.insert(DeclarationId(1833), DeclarationId(2681));
+        map.insert(DeclarationId(1963), DeclarationId(2684));
+        map.insert(DeclarationId(1964), DeclarationId(2687));
+        map.insert(DeclarationId(1970), DeclarationId(2690));
+        map.insert(DeclarationId(1971), DeclarationId(2693));
+        map.insert(DeclarationId(1972), DeclarationId(2696));
+        map.insert(DeclarationId(1973), DeclarationId(2699));
+        map.insert(DeclarationId(1974), DeclarationId(2702));
+        map.insert(DeclarationId(1975), DeclarationId(2705));
+        map.insert(DeclarationId(2080), DeclarationId(2708));
+        map.insert(DeclarationId(2081), DeclarationId(2711));
+        map.insert(DeclarationId(2082), DeclarationId(2714));
+        map.insert(DeclarationId(2085), DeclarationId(2717));
+        map.insert(DeclarationId(2086), DeclarationId(2720));
+        map.insert(DeclarationId(2280), DeclarationId(2723));
+        map.insert(DeclarationId(2309), DeclarationId(2726));
+        map.insert(DeclarationId(2315), DeclarationId(2729));
+        map.insert(DeclarationId(2320), DeclarationId(2732));
+        map.insert(DeclarationId(2323), DeclarationId(2735));
+        map.insert(DeclarationId(2324), DeclarationId(2738));
+        map.insert(DeclarationId(2344), DeclarationId(2741));
+        map.insert(DeclarationId(2345), DeclarationId(2744));
+        map.insert(DeclarationId(2353), DeclarationId(2747));
+        map.insert(DeclarationId(2357), DeclarationId(2750));
+        map.insert(DeclarationId(2359), DeclarationId(2753));
+        map.insert(DeclarationId(2360), DeclarationId(2756));
+        map.insert(DeclarationId(2361), DeclarationId(2759));
+        map.insert(DeclarationId(2362), DeclarationId(2762));
+        map.insert(DeclarationId(2363), DeclarationId(2765));
+        map.insert(DeclarationId(2369), DeclarationId(2768));
+        map.insert(DeclarationId(2371), DeclarationId(2771));
+        map.insert(DeclarationId(2372), DeclarationId(2774));
+        map.insert(DeclarationId(2384), DeclarationId(2777));
+        map.insert(DeclarationId(2385), DeclarationId(2780));
+        map.insert(DeclarationId(2387), DeclarationId(2783));
+        map.insert(DeclarationId(2388), DeclarationId(2786));
+        map.insert(DeclarationId(2389), DeclarationId(2789));
+        map.insert(DeclarationId(2390), DeclarationId(2792));
+        map.insert(DeclarationId(2392), DeclarationId(2795));
+        map.insert(DeclarationId(2393), DeclarationId(2798));
+        map.insert(DeclarationId(2396), DeclarationId(2801));
+        map.insert(DeclarationId(2397), DeclarationId(2804));
+        map.insert(DeclarationId(2398), DeclarationId(2807));
+        map.insert(DeclarationId(2405), DeclarationId(2810));
+        map.insert(DeclarationId(2406), DeclarationId(2813));
+        map.insert(DeclarationId(2407), DeclarationId(2816));
+        map.insert(DeclarationId(2409), DeclarationId(2819));
+        map.insert(DeclarationId(2410), DeclarationId(2822));
+        map.insert(DeclarationId(2411), DeclarationId(2825));
+        map.insert(DeclarationId(2413), DeclarationId(2828));
+        map.insert(DeclarationId(2414), DeclarationId(2831));
+        map.insert(DeclarationId(2415), DeclarationId(2834));
+        map.insert(DeclarationId(2422), DeclarationId(2837));
+        map.insert(DeclarationId(2424), DeclarationId(2840));
+        map.insert(DeclarationId(2435), DeclarationId(2843));
         map
     }
 }

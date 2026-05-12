@@ -18,7 +18,7 @@
 module extdeps.github.actions
 
 import extdeps.cron.schedule_model { CronSchedule }
-import std.types { SecretName }
+import std.types { SecretName, Unit }
 
 // -- Workflows --------------------------------------------------------
 // A workflow is the top-level unit: trigger + jobs.
@@ -151,26 +151,40 @@ type CancelInProgressSpec
   = CancelInProgressBool { value: Bool }
   | CancelInProgressExpression { expression: String }
 
-// 🟢 GREEN (terminal). GitHub documents exactly two `queue:` keywords (`single`, `max`);
-// variants are 1:1 with that closed keyword pair.
-// Ledger (patterns 1–4): no cheaper dissolution — keywords are irreducible at YAML input.
-// `queue:` inside the mapping form. Omitted in YAML → GitHub default (`single`).
-// `max` allows a bounded pending queue; must not be combined with `cancel-in-progress: true`
-// (workflow validation rejects — structural emitter responsibility).
-type ConcurrencyQueueMode = ConcurrencyQueueSingle | ConcurrencyQueueMax
+// When YAML fixes `queue: max`, GitHub rejects `cancel-in-progress: true` (literal bool).
+// This sum therefore excludes literal `true` while still modeling omitted key, literal
+// `false`, and opaque `${{ }}` (expression truth remains runtime — see 🟡 below).
+//
+// Coproduct dissolution classification (modeling-discipline.md Practice 4):
+// 🟢 GREEN (terminal). `QueueMaxCancelInProgressFalse` is 1:1 with YAML `cancel-in-progress: false`.
+// 🟡 YELLOW (scaffold). `QueueMaxCancelInProgressExpression` mirrors expression-valued mapping;
+// GitHub may still reject at runtime if the expression evaluates to true with `queue: max`.
+// Named dissolution trigger: same as `CancelInProgressSpec` — typed boolean-expression substrate
+// plus `gunbc/ci_emission.dag` consumption for mapping values.
+type CancelInProgressWhenQueueMax
+  = QueueMaxCancelInProgressFalse
+  | QueueMaxCancelInProgressExpression { expression: String }
 
 // 🟡 YELLOW (scaffold). Scalar vs mapping mirrors GitHub's top-level `concurrency:` grammar
-// split; `ConcurrencyMapping` may grow when GitHub documents additional mapping keys.
+// split. Mapping is split into two arms so `queue: max` + literal `cancel-in-progress: true`
+// is **unrepresentable** (GitHub validation rejects that product — docs:
+// https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#concurrency ).
 // Named dissolution trigger: GitHub adds documented concurrency mapping fields beyond
 // `group` / `cancel-in-progress` / `queue` OR emitter needs single-axis dimensional dispatch.
 type ConcurrencySpec
   = ConcurrencyScalar { group: String }
-  | ConcurrencyMapping {
+  | ConcurrencyMappingQueueMax {
+      group: String
+      // `none` when YAML omits `cancel-in-progress:` (do not invent `false`).
+      cancel_in_progress: CancelInProgressWhenQueueMax?
+    }
+  | ConcurrencyMappingQueueNotMax {
       group: String
       // `none` when YAML omits `cancel-in-progress:` (do not invent `false`).
       cancel_in_progress: CancelInProgressSpec?
-      // `none` when YAML omits `queue:` (default single-queue semantics).
-      queue: ConcurrencyQueueMode?
+      // `none` when YAML omits `queue:` (GitHub default single-queue semantics).
+      // `some(Unit)` when YAML sets explicit `queue: single` (marker only — no payload).
+      explicit_single: Unit?
     }
 
 // -- Runners ----------------------------------------------------------
