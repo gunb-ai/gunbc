@@ -35,7 +35,6 @@ EXTRACT = REPO_ROOT / "src/v3/compiler/benches/tier3_extract_perf_stats.py"
 RUSTC_VERSION_FILE = "rustc_version.txt"
 
 TIER3_BENCH_ORDER: list[str] = [
-    "tier3_termination_merge_evidence",
     "tier3_computation_positive_descent_count",
     "tier3_computation_lower_same_argument_call",
     "tier3_induction_type_iteration_dimension_miss",
@@ -123,10 +122,6 @@ def mirror_groups_from_runs(criterion_run_dirs: list[Path]) -> dict:
         }
 
     return {
-        "termination": {
-            "claim": "tier3_termination_mirror_perf_within_budget",
-            "benches": [benches_out["tier3_termination_merge_evidence"]],
-        },
         "computation": {
             "claim": "tier3_computation_mirror_perf_within_budget",
             "benches": [
