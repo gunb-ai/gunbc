@@ -279,7 +279,7 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
 }
 
 #[test]
-#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization - owner: TBD per separate dispatch"]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator() {
     let dag = demo_bootstrap_dag();
     assert!(
