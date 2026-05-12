@@ -106,10 +106,10 @@ data cross_target_optimization_cost_structurally_derived: TestClaim = {
 data r3_free_consequences_second_batch_suite: TestSuite = {
   name: "r3_free_consequences_second_batch_suite",
   claims: [
-    auto_loop_parallelism_provable_independence_emits_parallel,
-    auto_loop_parallelism_unproven_falls_back_sequential,
-    auto_loop_parallelism_dependence_emits_sequential,
-    cross_target_optimization_constant_fold_consistent,
-    cross_target_optimization_cost_structurally_derived
+    Enumerated(auto_loop_parallelism_provable_independence_emits_parallel),
+    Enumerated(auto_loop_parallelism_unproven_falls_back_sequential),
+    Enumerated(auto_loop_parallelism_dependence_emits_sequential),
+    Enumerated(cross_target_optimization_constant_fold_consistent),
+    Enumerated(cross_target_optimization_cost_structurally_derived)
   ]
 }

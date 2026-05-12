@@ -391,19 +391,23 @@ type QuantifiedTestClaim {
   requires: List<ResourceReference>
 }
 
-// Staged ordered suite-entry carrier for the post-#85 wrapper migration.
-// Today `TestSuite.claims` remains `List<TestClaim>` so existing enumerated
-// fixtures keep compiling while the quantifier substrate lands. Bounded
-// trigger: #2609 wraps existing suite entries as `Enumerated(...)` and flips
-// `TestSuite.claims` to `List<SuiteClaim>`, preserving reporting/dependency
-// order without parallel enumerated/quantified lists.
+// **🟢 TERMINAL — SuiteClaim.** Closed two-variant coproduct exhausting the
+// structurally meaningful suite-entry shapes: an existing single-source
+// `TestClaim` (`Enumerated`) and a generator-driven property-based family
+// (`Quantified(QuantifiedTestClaim)`). One ordered carrier preserves reporting
+// and dependency order without parallel enumerated/quantified lists (gate #85
+// CONSUMER_LANDED wrapper migration; per design `docs/design-tests-as-data-completeness.md`
+// §2.2). New suite-entry shapes are new variants on this sum, not new carriers
+// or parallel fields; richer quantifier vocabularies attach by extending
+// `Quantifier` or by adding fields on `QuantifiedTestClaim`, not by widening
+// `SuiteClaim`.
 type SuiteClaim
   = Enumerated(TestClaim)
   | Quantified(QuantifiedTestClaim)
 
 type TestSuite {
   name: String
-  claims: List<TestClaim>
+  claims: List<SuiteClaim>
 }
 
 // DB-15 — dependency-walk projection: each claim's `requires` list is the
@@ -427,6 +431,23 @@ fn obligation_for_claim(c: TestClaim) -> TestObligation {
   TestObligation { claim_name: c.name, resources: claim_obligation_resources(c) }
 }
 
-fn materialize_test_obligations(claims: List<TestClaim>) -> List<TestObligation> {
-  map(claims, obligation_for_claim)
+// `QuantifiedTestClaim` projects onto the same obligation surface — `requires`
+// is the sole authority per design §2.2. Generator/quantifier shape is
+// orthogonal to the dependency-walk fact and never adds parallel edges.
+fn obligation_for_quantified_claim(q: QuantifiedTestClaim) -> TestObligation {
+  TestObligation { claim_name: q.name, resources: q.requires }
+}
+
+// SuiteClaim-level projection — dispatches the suite-entry coproduct onto the
+// shared `TestObligation` surface so `QuantifiedTestClaim.requires` flows
+// forward through the dependency-walk on equal footing with enumerated claims
+// (INVARIANTS P2 — facts flow forward through a single carrier).
+fn obligation_for_suite_claim(entry: SuiteClaim) -> TestObligation =
+  match entry {
+    Enumerated(c) => obligation_for_claim(c)
+    Quantified(q) => obligation_for_quantified_claim(q)
+  }
+
+fn materialize_test_obligations(claims: List<SuiteClaim>) -> List<TestObligation> {
+  map(claims, obligation_for_suite_claim)
 }
