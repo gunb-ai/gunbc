@@ -168,9 +168,10 @@ These gates have NO unsatisfied prerequisites. Each is an independent worker spa
 - Worker D1: **Slow-test residual sweep** (post-cost-dim-landing follow-on)
 - Worker D2: **SG-0 trajectory follow-on** per `docs/audit/r3-sg0-trajectory-tracker.md`
 
-**PB Mgr** (nimble-crab-786 — gate **#2** slice receipt + ledger sync in flight; spawn follow-on workers for remaining **PASSING** bar + **#16**):
-- Worker PB1: **#2** remainder — Evaluator-gated dissolution of `SizeBound` / `CallPattern` bootstrap mirrors (post-slice)
-- Worker PB2: **#16 pb_self_compile_fixed_point** (R3 interpretation strengthening)
+**PB Mgr** (nimble-crab-786 — Wave-1 pre-authored worker briefs landed under `docs/briefs/`):
+- **Briefs (author before spawn):** [`r3-wave1-pb1-tier3-gate2-computation-mirror-worker.md`](briefs/r3-wave1-pb1-tier3-gate2-computation-mirror-worker.md) (gate **#2**), [`r3-wave1-pb2-fixedpoint-gate16-r3-horizon-worker.md`](briefs/r3-wave1-pb2-fixedpoint-gate16-r3-horizon-worker.md) (gate **#16**)
+- Worker PB1: **#2** remainder — Evaluator-gated dissolution of `SizeBound` / `CallPattern` bootstrap mirrors (post-`kernel_algebra_profile` slice)
+- Worker PB2: **#16 pb_self_compile_fixed_point** (R3 interpretation strengthening; parent [`r3-pb-t-fixedpoint-worker.md`](briefs/r3-pb-t-fixedpoint-worker.md))
 
 **Wave 1 worker count: ~13-15 parallel workers**. Mgr capacity not exhausted; can scale further if needed.
 
