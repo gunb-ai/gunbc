@@ -187,16 +187,24 @@ fn is_approving_verdict(verdict: ReviewVerdict) -> Bool {
 }
 
 fn is_actionable_finding(finding: ReviewFinding) -> Bool {
-  match finding.severity {
-    Blocking => true
-    NonBlocking => match finding.priority {
-      P0 => true
-      P1 => true
-      P2 => false
-      P3 => false
-      Unprioritized => false
+  match finding.priority {
+    P0 => true
+    P1 => true
+    P2 => match finding.severity {
+      Blocking => true
+      NonBlocking => false
+      Info => false
     }
-    Info => false
+    P3 => match finding.severity {
+      Blocking => true
+      NonBlocking => false
+      Info => false
+    }
+    Unprioritized => match finding.severity {
+      Blocking => true
+      NonBlocking => false
+      Info => false
+    }
   }
 }
 
