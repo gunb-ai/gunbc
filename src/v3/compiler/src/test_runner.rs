@@ -5839,13 +5839,6 @@ fn field_value_to_symbolic_cost_bind_param_expected_pattern(
              SymbolicCostBindParamExpected variant, got {fv:?}"
         ));
     };
-    if !payload.is_empty() {
-        return Err(format!(
-            "SymbolicCostExprEqualsForBindParam: bind-param expected variants must have no \
-             payload, got {} slot(s)",
-            payload.len()
-        ));
-    }
     let label = dag
         .declaration(*constructor)
         .name
@@ -5855,13 +5848,52 @@ fn field_value_to_symbolic_cost_bind_param_expected_pattern(
                 .to_string()
         })?;
     match label {
-        "LinearCostForBindParam" => Ok(SymbolicCostEqPattern::Linear {
-            source_port: SymbolicCostPortPattern::ExpectedBindParam,
-        }),
+        "LinearCostForBindParam" => {
+            let record = single_payload(payload)?;
+            let fields = record_fields(record).ok_or_else(|| {
+                format!(
+                    "SymbolicCostExprEqualsForBindParam: LinearCostForBindParam payload must be \
+                     a record, got {record:?}"
+                )
+            })?;
+            let var = field(fields, "var").ok_or_else(|| {
+                "SymbolicCostExprEqualsForBindParam: LinearCostForBindParam missing `var`"
+                    .to_string()
+            })?;
+            parse_bind_param_size_variable_expected(dag, var)?;
+            Ok(SymbolicCostEqPattern::Linear {
+                source_port: SymbolicCostPortPattern::ExpectedBindParam,
+            })
+        }
         other => Err(format!(
             "SymbolicCostExprEqualsForBindParam: unsupported expected variant `{other}`"
         )),
     }
+}
+
+fn parse_bind_param_size_variable_expected(dag: &Dag, fv: &FieldValue) -> Result<(), String> {
+    let FieldValue::Record(fields) = fv else {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: BindParamSizeVariable expected record, got {fv:?}"
+        ));
+    };
+    if !fields.is_empty() {
+        return Err(format!(
+            "SymbolicCostExprEqualsForBindParam: BindParamSizeVariable must not carry fields; \
+             predicate `param_name` is the selected-parameter authority, got {fields:?}"
+        ));
+    }
+    let Some(bind_param_size_variable) = dag
+        .declaration_by_name("BindParamSizeVariable")
+        .map(|decl| decl.id)
+    else {
+        return Err(
+            "SymbolicCostExprEqualsForBindParam: BindParamSizeVariable type not found in bootstrap"
+                .to_string(),
+        );
+    };
+    let _ = bind_param_size_variable;
+    Ok(())
 }
 
 fn single_payload(payload: &[FieldValue]) -> Result<&FieldValue, String> {
