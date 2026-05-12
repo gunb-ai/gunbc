@@ -24,17 +24,24 @@ Equivalently: `run_<cluster> = (affected_dimensions ∩ row.dimensions) ≠ ∅`
 
 ## §1. Affected-set lens `Dimension` enum (reference)
 
-Per `docs/design-affected-set-lens.md` §2:
+Per `docs/design-affected-set-lens.md` §2 (note the trailing `...` — this enum is **open**):
 
 ```
-enum Dimension {
-    Value,        // value-output / structural-output (emit, parse, substrate shape)
-    Cost,         // cost lens / symbolic cost / realization cost
-    Complexity,   // complexity lens / analyze_complexity / asymptotic class
-    Effect,       // effect lens / idempotency / effect-shape
-    Refinement,   // refinement type checks / int width / cardinality
-}
+Dimension = {value, cost, complexity, effect, refinement, ...}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^
+              built-in base set                          OPEN for user-defined
 ```
+
+Built-in base members:
+- **Value** — value-output / structural-output (emit, parse, substrate shape)
+- **Cost** — cost lens / symbolic cost / realization cost
+- **Complexity** — complexity lens / analyze_complexity / asymptotic class
+- **Effect** — effect lens / idempotency / effect-shape
+- **Refinement** — refinement type checks / int width / cardinality
+
+**User-extensibility (load-bearing)**: per `THESIS.md` "User-defined dimensions," user-declared dimensions extend the same structural proof surface as built-ins. A `.dag` lens authored for a project-specific concern (e.g., "max external HTTP calls per workflow," "bounded memory footprint per request," "no cross-tenant data flow") is a valid `Dimension` member by construction. The trailing `...` in §2 is intentional; closing the enum would close the user-extensibility surface (codex BLOCKING on PR #2721 caught an earlier draft that hard-rejected outside-set dims).
+
+**For this template**: every row's `dimensions` set MUST be carried as Set<Dimension> structurally. Encountering a dimension outside the built-in base set → treat as fail-closed (always-run) until consumer-tracing identifies the affected-set predicate; do NOT reject the row.
 
 Every test-group entry below carries a `dimensions:` field that is a **Set<Dimension>** — the full set of dimensions the test/consumer reads, NOT a single "primary." Per `docs/design-affected-set-lens.md` §2:
 
@@ -239,7 +246,7 @@ Mgr-fill complete when:
 - [ ] Each cluster has a pilot-PR worker brief authored (or batched into the Director-authored Layer 2 brief).
 - [ ] `changes` job in `ci.yml` extended with per-cluster `skip_<cluster>` boolean outputs.
 - [ ] At least one cluster (pilot) has its `if: needs.changes.outputs.skip_<cluster> != 'true'` gate landed and CI-validated against a representative test case (docs-only PR skips; in-cluster code change runs).
-- [ ] All path-mapping entries have a `dimensions:` field that is a Set<Dimension> with every member of the set in `{Value, Cost, Complexity, Effect, Refinement}`. **Single-element sets are valid (e.g., `[Cost]`); narrowing a known-multi-dim consumer to a single-element set is not.**
+- [ ] All path-mapping entries have a `dimensions:` field that is a Set<Dimension>. The base set per `docs/design-affected-set-lens.md` §2 is `{Value, Cost, Complexity, Effect, Refinement, ...}` — **note the trailing `...`**: the enum is **open** for user-defined dimensions (per `THESIS.md` "User-defined dimensions" — user-declared dimensions extend the same structural proof surface). Unknown dimension on a row → carry it through + treat as fail-closed (always-run); do NOT reject. **Single-element sets are valid (e.g., `[Cost]`); narrowing a known-multi-dim consumer to a single-element set is not.**
 - [ ] Post-dissolution mapping verified: each row's per-row formula reads `(affected_dimensions ∩ row.dimensions) = ∅` (skip when intersection IS empty / nothing affected), NOT `≠ ∅`. The CI gate is `if: skip_<cluster> != 'true'` (run when skip is false); inverting the polarity silently skips affected tests.
 - [ ] **Cluster-level aggregation verified**: `skip_<cluster>` aggregates per-row results by conjunction (`∀ row : row-skip-empty`). NOT disjunction (`∃ row : row-skip-empty`). Disjunction silently skips affected rows when only one row is unaffected.
 - [ ] **Path regex validation against live source tree**: every concrete (non-`.*`) `required_paths_regex` validated against source tree at HEAD before CI implementation. Unverified entries replaced with `.*` per conservative default. Validation record kept (PR description or commit message citing the validation pass).
@@ -249,7 +256,7 @@ Mgr-fill complete when:
 ## §6. STOP triggers (Mgr aborts and surfaces to Director)
 
 - Any cluster needs a *new* substrate carrier to express path-dependency → STOP. Surface to Director: this is the lens substrate, not a bridge.
-- Any path-mapping entry has a `dimensions:` element outside `{Value, Cost, Complexity, Effect, Refinement}` → STOP. Surface to Director: this is a coproduct-dissolution candidate.
+- Any path-mapping entry has a `dimensions:` element that **cannot be carried as a typed Dimension at all** (e.g., string-as-dimension, runtime-only dimension) → STOP. Surface to Director: this is a coproduct-dissolution candidate. **Note: encountering a dimension OUTSIDE the base set `{Value, Cost, Complexity, Effect, Refinement}` is NOT a STOP** — the design doc §2 enum has trailing `...` (open enum per `THESIS.md` "User-defined dimensions"); novel dimensions extend the enum and are carried as fail-closed (always-run) until consumer-tracing identifies the affected-set predicate (codex BLOCKING on PR #2721 caught earlier draft that hard-rejected outside-set dims, which would have closed the user-extensibility surface the THESIS leaves intentionally open).
 - Any row tempted to use a single-dimension `dimensions:` set when consumer tracing reveals multi-dim reads → STOP and EXPAND the set. Narrowing is a semantic-contract violation (codex REQUEST_CHANGES on PR #2721 caught one such instance; do not regress).
 - Any cluster's `required_paths_regex` requires depending on test-output (not just changed files) → STOP. That's the lens, not the bridge.
 - Any cluster aggregation tempted to use **disjunction** (`∃ row : row-skip-empty`) instead of **conjunction** (`∀ row : row-skip-empty`) → STOP. Disjunction silently skips affected rows; conjunction is load-bearing (codex BLOCKING on PR #2721 caught this gap; aggregation predicate now explicit at §3 + §4 + §5).
