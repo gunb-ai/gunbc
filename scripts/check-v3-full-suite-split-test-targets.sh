@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Fail closed if `v3-compiler` gains a new top-level integration test binary
 # (`tests/*.rs`) that is not wired into the split full-suite timings in
-# `.github/workflows/ci.yml` (each such target must run with `--report-time`
+# `scripts/ci-binary-shim.sh` (each such target must run with `--report-time`
 # so `scripts/check-test-timeout.sh` sees per-test lines).
 #
-# 🟡 BRIDGE — hand-authored CI gate (THESIS.md: bootstrap/CI modeled as `.dag`
-# workflows; `dag run` primary). **Authority:** repo `ci.yml` split-suite shape +
+# 🟡 BRIDGE — shell runner gate behind T-WAD BinaryShim. **Authority:** repo
+# BinaryShim runner split-suite shape +
 # `cargo metadata` as the mechanical source of truth for integration test targets.
 # **Named trigger:** self-hosted v3 suite split for log/timing survival (#2681).
 # **Dissolution:** fold this invariant into the Workflow-as-Data / single `.dag`
-# CI surface (or generated workflow) so adding a gate edits one `.dag` file;
-# delete this script and drop the `ci.yml` step in the **same** commit.
+# CI surface so adding a gate edits one `.dag` file; delete this script and
+# drop the BinaryShim runner call in the **same** commit.
 #
 # Uses Python's stdlib JSON parser only (no `jq`); the v3 CI job sets up
 # Python before this step.
@@ -23,9 +23,9 @@ set -euo pipefail
 repo_root=$(git rev-parse --show-toplevel)
 cd "${repo_root}"
 
-workflow=.github/workflows/ci.yml
-if [[ ! -f "${workflow}" ]]; then
-  echo "::error::missing ${workflow}"
+runner=scripts/ci-binary-shim.sh
+if [[ ! -f "${runner}" ]]; then
+  echo "::error::missing ${runner}"
   exit 1
 fi
 
@@ -64,8 +64,8 @@ fail=false
 while IFS= read -r name; do
   [[ -z "${name}" ]] && continue
   # One line must invoke this test target with libtest timing output enabled.
-  if ! grep -qE "cargo test -p v3-compiler --test ${name}[[:space:]].*--report-time" "${workflow}"; then
-    echo "::error::v3-compiler integration test target '${name}' has no split full-suite step with --report-time in ${workflow}. Add a step (mirror determinism_test / integration) or fold the module into an existing tests/*.rs harness."
+  if ! grep -qE "cargo test -p v3-compiler --test ${name}[[:space:]].*--report-time" "${runner}"; then
+    echo "::error::v3-compiler integration test target '${name}' has no split full-suite command with --report-time in ${runner}. Add a command (mirror determinism_test / integration) or fold the module into an existing tests/*.rs harness."
     fail=true
   fi
 done <"${names_out}"

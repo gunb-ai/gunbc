@@ -1,0 +1,32 @@
+// gunbc/ci_emission.dag -- WorkflowRuntime projection surface for gunbc CI.
+//
+// Authority for T-WAD Slice 5: `.github/workflows/ci.yml` is a BinaryShim
+// bootstrap artifact, not a hand-authored CI policy file. The provider
+// artifact delegates to `scripts/ci-binary-shim.sh`; future slices replace
+// that shell runner with an emitted compiled runner without changing the
+// GitHub Actions bootstrap contract.
+
+module gunbc.ci_emission
+
+import gunbc.ci { CIPipeline, ci_pipeline }
+import extdeps.github.actions { Workflow }
+
+// Initial concrete targets only. PythonShim and InlineGunbc remain design-only
+// until paired with real runtime consumers.
+//
+// Practice 4 receipt: YELLOW scaffold. `YamlStatic` and `BinaryShim` encode
+// two axes (artifact shape and runner realization) while there are exactly two
+// live consumers. Dissolution trigger: the first additional shim runtime splits
+// static-vs-shim artifact shape from runner kind.
+type WorkflowRuntime
+  = YamlStatic
+  | BinaryShim
+
+// Projection boundary. Bodies are emitted/implemented per target arm; callers
+// must pass the target explicitly so the build system never chooses a hidden
+// emitter path.
+fn project_github_actions(source: CIPipeline, target: WorkflowRuntime) -> Workflow
+
+data gunbc_ci_workflow_source: CIPipeline = ci_pipeline
+
+data gunbc_ci_workflow_runtime: WorkflowRuntime = BinaryShim
