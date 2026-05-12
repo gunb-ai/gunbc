@@ -31,22 +31,6 @@ import v3.std.timing_lens {
 }
 import v3.std.workflows { behavior_spine }
 
-type ModeledCIGateNode {
-  id: String
-  gate_name: String
-}
-
-type ModeledCIGateEdge {
-  from: String
-  to: String
-}
-
-type ModeledCIWorkflowDag {
-  name: String
-  nodes: List<ModeledCIGateNode>
-  edges: List<ModeledCIGateEdge>
-}
-
 // Modeled subset of gunbc CI: push trigger + ubuntu-latest job with checkout + Rust setup.
 data modeled_gunbc_ci_workflow: Workflow = Workflow {
   name: "gunbc-ci-demo",
@@ -94,26 +78,6 @@ data modeled_gunbc_ci_workflow: Workflow = Workflow {
   },
   env: { WORKFLOW_LEVEL: "demo" },
   permissions: none,
-}
-
-// Same CI intent as a provider-neutral DAG. This is intentionally not paired
-// with a hand-authored GitHub Actions transport in this receipt: until a real
-// projection function exists, the provider-neutral graph is the single modeled
-// authority for gate dependency shape.
-data modeled_gunbc_ci_workflow_dag: ModeledCIWorkflowDag = {
-  name: "gunbc-ci",
-  nodes: [
-    { id: "compile-gates", gate_name: "Compile Gates" },
-    { id: "lint", gate_name: "Lint" },
-    { id: "tests", gate_name: "Tests" },
-    { id: "l1-ratchet", gate_name: "L1 Type Knowledge Ratchet" }
-  ],
-  edges: [
-    { from: "compile-gates", to: "lint" },
-    { from: "compile-gates", to: "tests" },
-    { from: "lint", to: "l1-ratchet" },
-    { from: "tests", to: "l1-ratchet" }
-  ]
 }
 
 // Historical note: an earlier PB-1 receipt wrapped this predicate in `_ci_wad_nonlinear_timing_stub`
