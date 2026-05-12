@@ -5482,11 +5482,9 @@ fn field_value_for_symbolic_cost_expected(
 }
 
 /// Normalization for `SymbolicCost` equality across distinct compiled DAGs (`TestClaim.source` vs
-/// fixture graph). [`PortId`] values are compared via stable numeric encoding (`FieldValue` literal
-/// `Int`, same as lens reflection). Expected `.dag` fixtures may use
-/// `SizeVariable.display_name` as an explicit stable reference to a selected bind parameter; the
-/// runner resolves that name to the compiled parameter port before equality. Otherwise identity
-/// follows `algebra.dag` / [`crate::dag::SizeVariable`]: `source_port` only.
+/// fixture graph). Expected `.dag` fixtures may leave `SizeVariable.source_port` unresolved only
+/// when the predicate carries an explicit selected bind parameter. Otherwise identity follows
+/// `algebra.dag` / [`crate::dag::SizeVariable`]: `source_port` only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SymbolicCostEqPattern {
     Constant(i64),
@@ -5508,7 +5506,7 @@ enum SymbolicCostEqPattern {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SymbolicCostPortPattern {
     Raw(u32),
-    BindParamName(String),
+    ExpectedBindParam,
 }
 
 fn symbolic_cost_to_eq_pattern(cost: &SymbolicCost) -> SymbolicCostEqPattern {
@@ -5543,40 +5541,56 @@ fn resolve_symbolic_cost_param_refs_for_bind(
     bind: &crate::dag::BindNode,
     source: &str,
     file_name: &str,
+    expected_param_name: Option<&str>,
 ) -> Result<SymbolicCostEqPattern, String> {
     fn resolve(
         port: SymbolicCostPortPattern,
         bind: &crate::dag::BindNode,
         source: &str,
         file_name: &str,
+        expected_param_name: Option<&str>,
     ) -> Result<SymbolicCostPortPattern, String> {
         match port {
             SymbolicCostPortPattern::Raw(raw) => Ok(SymbolicCostPortPattern::Raw(raw)),
-            SymbolicCostPortPattern::BindParamName(name) => {
-                let port = bind_param_port_by_source_name(bind, source, file_name, &name)?;
+            SymbolicCostPortPattern::ExpectedBindParam => {
+                let Some(param_name) = expected_param_name else {
+                    return Err(
+                        "SymbolicCostExprEquals: expected SymbolicCost contains an unresolved \
+                         SizeVariable.source_port; use SymbolicCostExprEqualsForBindParam to \
+                         provide the selected bind parameter"
+                            .to_string(),
+                    );
+                };
+                let port = bind_param_port_by_source_name(bind, source, file_name, param_name)?;
                 Ok(SymbolicCostPortPattern::Raw(port.raw()))
             }
         }
     }
     Ok(match pattern {
         SymbolicCostEqPattern::Linear { source_port } => SymbolicCostEqPattern::Linear {
-            source_port: resolve(source_port, bind, source, file_name)?,
+            source_port: resolve(source_port, bind, source, file_name, expected_param_name)?,
         },
         SymbolicCostEqPattern::Log { source_port } => SymbolicCostEqPattern::Log {
-            source_port: resolve(source_port, bind, source, file_name)?,
+            source_port: resolve(source_port, bind, source, file_name, expected_param_name)?,
         },
         SymbolicCostEqPattern::Polynomial {
             source_port,
             degree_raw,
         } => SymbolicCostEqPattern::Polynomial {
-            source_port: resolve(source_port, bind, source, file_name)?,
+            source_port: resolve(source_port, bind, source, file_name, expected_param_name)?,
             degree_raw,
         },
         SymbolicCostEqPattern::Product(terms) => SymbolicCostEqPattern::Product(
             terms
                 .into_iter()
                 .map(|term| {
-                    resolve_symbolic_cost_param_refs_for_bind(term, bind, source, file_name)
+                    resolve_symbolic_cost_param_refs_for_bind(
+                        term,
+                        bind,
+                        source,
+                        file_name,
+                        expected_param_name,
+                    )
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         ),
@@ -5584,7 +5598,13 @@ fn resolve_symbolic_cost_param_refs_for_bind(
             terms
                 .into_iter()
                 .map(|term| {
-                    resolve_symbolic_cost_param_refs_for_bind(term, bind, source, file_name)
+                    resolve_symbolic_cost_param_refs_for_bind(
+                        term,
+                        bind,
+                        source,
+                        file_name,
+                        expected_param_name,
+                    )
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         ),
@@ -5609,7 +5629,7 @@ fn bind_param_port_by_source_name(
         _ => None,
     }) else {
         return Err(format!(
-            "SymbolicCostExprEquals: expected SizeVariable.display_name `{param_name}` \
+            "SymbolicCostExprEqualsForBindParam: expected `param_name` `{param_name}` \
              to reference a parameter on function bind `{}`",
             bind.name
         ));
@@ -5769,6 +5789,15 @@ fn one_string_payload(payload: &[FieldValue]) -> Result<String, String> {
     }
 }
 
+fn string_literal_field_value(fv: &FieldValue) -> Result<String, String> {
+    match fv {
+        FieldValue::Literal(LiteralBits::String(s)) => Ok(s.clone()),
+        other => Err(format!(
+            "SymbolicCostExprEqualsForBindParam: param_name must be a String literal, got {other:?}"
+        )),
+    }
+}
+
 fn port_id_raw_field_value(fv: &FieldValue) -> Result<u32, String> {
     match fv {
         FieldValue::Literal(LiteralBits::Int(s)) => {
@@ -5802,15 +5831,13 @@ fn parse_size_variable_source_port_for_symbolic_cost_eq(
             fv
         )
     })?;
-    let source_port_fv = field(fields, "source_port").ok_or_else(|| {
-        "SymbolicCostExprEquals: SizeVariable missing required field `source_port`".to_string()
-    })?;
-    let source_port_raw = port_id_raw_field_value(source_port_fv)?;
-    if let Some(param_name) = optional_string_field_for_record(dag, fields, "display_name")? {
-        Ok(SymbolicCostPortPattern::BindParamName(param_name))
-    } else {
-        Ok(SymbolicCostPortPattern::Raw(source_port_raw))
-    }
+    let _ = optional_string_field_for_record(dag, fields, "display_name")?;
+    let Some(source_port_fv) = field(fields, "source_port") else {
+        return Ok(SymbolicCostPortPattern::ExpectedBindParam);
+    };
+    Ok(SymbolicCostPortPattern::Raw(port_id_raw_field_value(
+        source_port_fv,
+    )?))
 }
 
 fn optional_string_field_for_record(
