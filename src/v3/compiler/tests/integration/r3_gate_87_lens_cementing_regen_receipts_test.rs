@@ -23,9 +23,10 @@
 //! Per `INVARIANTS.md` §P5(b), the **single checkable net paydown receipt** (delete path, SG-0
 //! census shrink with counts, or cited `ROADMAP.md` deferral) must live in **PR #2639’s
 //! description**; module comments must not assert deletes for paths that never existed on
-//! `origin/main`. §1.8 gate-#87 **PASSING** for the `regen.dag` slice is recorded in
-//! `docs/r3-program-plan.md` (ledger row 87, PR #2757 receipt). Broader Band-C work for
-//! non-`regen` lenses continues through `docs/v3-lens-capability-register.md` +
+//! `origin/main`. §1.8 gate-#87 **PASSING** is indexed in `docs/r3-program-plan.md` (row 87);
+//! the canonical Pass-condition body is `r3-structure.md` §"Acceptance"
+//! (`lens_cementing_test_discipline_complete`). Broader Band-C work for lenses outside
+//! `regen.dag` continues through `docs/v3-lens-capability-register.md` +
 //! `cementing_lens_registry_dispatch_test.rs` + `ROADMAP.md` honesty pass.
 
 use std::collections::BTreeSet;
