@@ -272,31 +272,42 @@ sg0_net_path_delta_from_git_diff() {
 
 sg0_assert_ci_wiring() {
   local workflow=".github/workflows/ci.yml"
+  local runner="scripts/ci-binary-shim.sh"
+  local wiring_file
   local self_test_line body_check_line bootstrap_verify_line
 
   if [ ! -f "$workflow" ]; then
     echo "::error::missing $workflow; gate #75 requires CI wiring for SG-0 PR-body discipline"
     return 1
   fi
+  if grep -q 'bash scripts/ci-binary-shim.sh ci' "$workflow"; then
+    wiring_file="$runner"
+    if [ ! -f "$wiring_file" ]; then
+      echo "::error::missing $wiring_file; BinaryShim workflow delegates SG-0 CI wiring there"
+      return 1
+    fi
+  else
+    wiring_file="$workflow"
+  fi
 
-  self_test_line=$(grep -nE 'bash[[:space:]]+scripts/check-pr-sg0-net-shrink-discipline\.sh[[:space:]]+--self-test([[:space:]]|$)' "$workflow" | head -1 | cut -d: -f1 || true)
-  body_check_line=$(grep -nE 'bash[[:space:]]+scripts/check-pr-sg0-net-shrink-discipline\.sh([[:space:]]|$)' "$workflow" | grep -v -- '--self-test' | head -1 | cut -d: -f1 || true)
-  bootstrap_verify_line=$(grep -nE '^[[:space:]]*run:[[:space:]]+.*regen_bootstrap[[:space:]].*--verify' "$workflow" | head -1 | cut -d: -f1 || true)
+  self_test_line=$(grep -nE 'bash[[:space:]]+scripts/check-pr-sg0-net-shrink-discipline\.sh[[:space:]]+--self-test([[:space:]]|$)' "$wiring_file" | head -1 | cut -d: -f1 || true)
+  body_check_line=$(grep -nE 'bash[[:space:]]+scripts/check-pr-sg0-net-shrink-discipline\.sh([[:space:]]|$)' "$wiring_file" | grep -v -- '--self-test' | head -1 | cut -d: -f1 || true)
+  bootstrap_verify_line=$(grep -nE 'regen_bootstrap[[:space:]].*--verify' "$wiring_file" | head -1 | cut -d: -f1 || true)
 
   if [ -z "$self_test_line" ]; then
-    echo "::error::$workflow no longer runs check-pr-sg0-net-shrink-discipline.sh --self-test"
+    echo "::error::$wiring_file no longer runs check-pr-sg0-net-shrink-discipline.sh --self-test"
     return 1
   fi
   if [ -z "$body_check_line" ]; then
-    echo "::error::$workflow no longer runs check-pr-sg0-net-shrink-discipline.sh for pull_request PR-body enforcement"
+    echo "::error::$wiring_file no longer runs check-pr-sg0-net-shrink-discipline.sh for pull_request PR-body enforcement"
     return 1
   fi
   if [ -z "$bootstrap_verify_line" ]; then
-    echo "::error::$workflow no longer has the bootstrap verify step used as the gate-order anchor"
+    echo "::error::$wiring_file no longer has the bootstrap verify command used as the gate-order anchor"
     return 1
   fi
   if [ "$self_test_line" -ge "$body_check_line" ] || [ "$body_check_line" -ge "$bootstrap_verify_line" ]; then
-    echo "::error::$workflow must run SG-0 discipline self-test, then PR-body enforcement, before bootstrap verify (gate #75 CI-active receipt)"
+    echo "::error::$wiring_file must run SG-0 discipline self-test, then PR-body enforcement, before bootstrap verify (gate #75 CI-active receipt)"
     return 1
   fi
 }
