@@ -44,9 +44,28 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
    // pr_ci_digest, pr_conflict_digest, pr_merge_ready_digest, pr_rest_fallback}.mjs
    //
    // STAGED → AUTHORITY trigger (single event under INVARIANTS P2/P5): the
-   // ctrl PR cut-over deleting the 5 .mjs files. Trio convergence below is
-   // the gating precondition that authorizes cut-over dispatch — it is NOT
-   // itself the authority flip:
+   // ctrl PR cut-over deleting ONLY WHOLE .mjs files whose ENTIRE function
+   // set is fully modeled in this brief's narrowed scope. Per single-
+   // authority discipline, the unit of authority is the .mjs FILE, not
+   // a function body — partial-file cut-over (keep the .mjs, delete some
+   // functions) would leave TS and .dag as co-authorities and violate
+   // INVARIANTS P2/P5. With the narrowed service surface, only TWO files
+   // qualify:
+   //   - pr_attached_urls.mjs        (extract_attached_urls fully covers)
+   //   - pr_rest_fallback.mjs        (classify_rest_fallback fully covers)
+   // The remaining 3 (pr_ci_digest.mjs, pr_conflict_digest.mjs,
+   // pr_merge_ready_digest.mjs) stay TS-authoritative as WHOLE FILES
+   // because at least one of their functions is unmodeled here (CI /
+   // conflict / mergeability branches). They become cut-over-eligible
+   // only when a follow-up Phase 1.5 PR models the remaining functions
+   // and a dedicated ctrl-side cut-over PR fires for those files. The
+   // gunbc-side render_pr_summary_line and merge_readiness_verdict in
+   // the modeled service are net-additive .dag-only authority (no
+   // 1-to-1 .mjs replacement); their existence does NOT mark any .mjs
+   // file as cut-over-eligible on its own. Operator BLOCKING fixes
+   // 2026-05-12 at worker brief :47 + :50.
+   // Trio convergence below is the gating precondition that authorizes
+   // cut-over dispatch — it is NOT itself the authority flip:
    //   (a) digest source-fact authority (consuming dsl/extdeps/github/pulls.dag PullRequest
    //       as fetched source-of-record; if a narrow GitHub-domain digest-summary record
    //       is needed, lands at dsl/extdeps/github/pull_digest.dag importing pulls.dag —
@@ -65,7 +84,7 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
    - `PullRequestRef` — `ref / sha / label`
    - `PullReview` — output of `service github.Pulls.ListReviews` operation; fields `id / body / state / commit_id / html_url`
    - `Diff` operation output — `diff: String` (raw unified diff text)
-   - `IssueComment` if URL extraction needs comment-body parsing
+   - ~~`IssueComment` if URL extraction needs comment-body parsing~~ — **excluded**: `dsl/extdeps/github/pulls.dag` has no list-operation producing PR issue-level comments (only `CreateComment` to write one, and `ListComments` returns `List<ReviewComment>` line-level inline comments). Until `ListIssueComments` (or equivalent) lands as an extdep operation, `extract_attached_urls` cannot receive `List<IssueComment>` as an input; signature narrowed accordingly (operator BLOCKING fix 2026-05-12 at worker brief :89). Route extdep gap to Emission Mgr (`deep-ibex-326`) as a follow-up if comment-body URL extraction becomes load-bearing.
 
    **CI/conflict/mergeability are OUT OF SCOPE for this first worker** (per Emission Mgr `msg_c5b7d419` 2026-05-12): they are NOT assumed fields on `PullRequest`, they are NOT added as new gunbc-side carriers, and they are NOT prerequisites for the trio anchor. If parity/receipt work proves CI/conflict/mergeability is load-bearing post-landing, a **follow-up** narrow `dsl/extdeps/github/*.dag` source-fact module gets routed to Emission Mgr (`deep-ibex-326`) — out of this PR's scope.
 
@@ -76,7 +95,7 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
      - `Ready`
      - `NotReady { first_reason: String, more_reasons: List<String> }` — **structural cardinality**: `NotReady` is uninhabitable with zero reasons (the invariant is encoded in the carrier shape, not in a runtime check on a bare `List<String>`). Reasons derived only from existing PullRequest/PullReview fields (draft / state / merged_at / review states) — NOT from CI/conflict facts (deferred). Practice-4 receipt **required**.
    - `AttachedUrl` — `{ url: Url, container: AttachedUrlContainer, context: AttachedUrlTextContext }` (reuse `Url` from `std.types`). Two **separate dimensional coordinates**, not a single conflated sum:
-     - `AttachedUrlContainer` closed sum: `PrBody | IssueCommentBody | PullReviewBody` — *source container* dimension (which GitHub object the URL was found in). Variants are **exactly the source-fact set imported by the service block below** (`PullRequest.body`, `List<IssueComment>` bodies, `List<PullReview>` bodies); no variant exists without a matching imported carrier, per INVARIANTS P2 single-authority discipline. `ReviewCommentBody` (line-level review comments — `dsl/extdeps/github/pulls.dag::ReviewComment`) is deliberately excluded from this first worker and gates on a follow-up Phase 1.5 PR that adds `ListReviewComments` operation output to the import list; until then no `AttachedUrl` value can claim a `ReviewComment` source.
+     - `AttachedUrlContainer` closed sum: `PrBody | PullReviewBody` — *source container* dimension (which GitHub object the URL was found in). Variants are **exactly the source-fact set imported by the service block below** (`PullRequest.body`, `List<PullReview>` bodies); no variant exists without a matching imported carrier, per INVARIANTS P2 single-authority discipline. `IssueCommentBody` (PR issue-level conversation comments) is excluded because `dsl/extdeps/github/pulls.dag` has no list-operation producing them (operator BLOCKING fix at worker brief :89 — see import-list note above). `ReviewCommentBody` (line-level review comments — `dsl/extdeps/github/pulls.dag::ReviewComment`) is also deliberately excluded; both gate on follow-up Phase 1.5 PRs that add the corresponding list-operation outputs (`ListIssueComments` / `ListReviewComments`) to the import list. Until then no `AttachedUrl` value can claim a comment-thread source.
      - `AttachedUrlTextContext` closed sum: `Prose | InlineCode` — *text context* dimension (whether the URL was in a code fence/backticks vs prose). Note: Practice-4 dimensional check made this split visible — original conflated `AttachedUrlSource` was mixing the two coordinates.
      - Both sums get Practice-4 receipts **required**.
    - `RestFallbackReason` — closed sum (`GraphqlIncomplete | GraphqlRateLimited | GraphqlSchemaUnknown`) — Practice-4 receipt **required**
@@ -86,7 +105,7 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
 3. **Service block** narrowed to existing `PullRequest` + `PullReview` + `Diff` output facts (per Emission Mgr `msg_c5b7d419` smaller-first-path ratification 2026-05-12; no transport):
    ```
    service ctrl.PrDigests {
-     fn extract_attached_urls(pr: PullRequest, comments: List<IssueComment>, reviews: List<PullReview>) -> List<AttachedUrl>
+     fn extract_attached_urls(pr: PullRequest, reviews: List<PullReview>) -> List<AttachedUrl>
      fn render_pr_summary_line(pr: PullRequest) -> String         // status/draft/title rendering from existing fields
      fn merge_readiness_verdict(pr: PullRequest, reviews: List<PullReview>) -> MergeReadinessVerdict
                                                                   // verdict from existing fields only: state/draft/merged_at + review-state aggregation
