@@ -1,7 +1,10 @@
 // R3 gate #87 — `LensRegistryEntry` `structural_resolution` (`.dag` harness placeholder).
 // `LensOutputEquals` over `List<UnresolvedArrowBody>` literals is not yet structurally
 // authorable in strict user modules (M1(2.8) opaque-body gate on imported lens row types).
-// Executable receipt: `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_structural_resolution_rust_receipt`.
+// Executable receipt: `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_structural_resolution_rust_receipt_on_literal_program`.
+//
+// **Discipline:** `Compiles` is wiring-only — not structural-resolution lens output. Do not
+// substitute unrelated bind-resolution checks under this row name.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_structural_resolution
 

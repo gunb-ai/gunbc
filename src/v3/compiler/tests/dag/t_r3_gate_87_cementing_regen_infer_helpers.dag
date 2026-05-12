@@ -1,5 +1,9 @@
 // R3 gate #87 — `LensRegistryEntry` `infer_helpers` (`.dag` harness placeholder).
-// Structural / emit migration receipts: `m2_substrate_inhabitance_test` + `m2_lens_*` modules.
+// Structural / emit migration receipts: `m2_substrate_inhabitance_test` + `m2_lens_*` modules;
+// lens source compile: `r3_gate_87_infer_helpers_lens_source_compiles`.
+//
+// **Discipline:** `Compiles` on a trivial program is inventory/wiring only — not infer-helpers
+// lens application. Do not assert unrelated bind-resolution facts under this row name.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_infer_helpers
 
