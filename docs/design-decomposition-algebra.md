@@ -407,12 +407,36 @@ This is ~50 lines of substrate. CLI / REST / SQL / audit emissions derive.
 
 ---
 
-## §13. Validation case study (retained from prior draft)
+## §13. Validation case study — PR #2745 misread (2026-05-12)
 
-The walk-back protocol applied retroactively to PR #2745 misread (2026-05-12) demonstrates the algebra catches contradictions structurally. See [previous draft §4 in git history at d534fd40d](../docs/design-decomposition-algebra.md) for the worked example; the key claim — algebra surfaces gap at PR-close time, not at audit-time — remains valid under the structural substrate proposed in this doc.
+The structural algebra proposed in this doc would have caught the PR #2745 misread at PR-close time, not at PM-audit-time. Walked through:
 
-The procedural walk-back algorithm (prior §3 of d534fd40d) becomes the `replan` operation in the structural substrate (§6). `WalkBackEvent` becomes a sequence of `Replan` operations in the event log. `StableAncestor` becomes the parent node where `Replan` was authored.
+**Decomposition (implicit, as it stood)**:
+- Root: operator intent "T-WAD FULL R3-close"
+- → PM scope doc (PR #2744 §0)
+- → Criterion 3 "WorkflowRuntime + project_github_actions in gunbc-substrate"
+- → WI-2 brief: claim "NEW file `dsl/gunbc/ci_emission.dag` declaring enum + signature"
+- → cool-carp-720 worker → PR #2745
+
+**The contradiction**:
+- WI-2 brief claim: PR #2745 delivers `dsl/gunbc/ci_emission.dag` with `WorkflowRuntime` + `project_github_actions`
+- Actual delivery: PR #2745 created `dsl/extdeps/github/ci.dag` (platform substrate) + modifications to `actions.dag` + comment additions to `dsl/gunbc/ci.dag`. The claimed file `dsl/gunbc/ci_emission.dag` was never authored.
+
+**Walk-back trace (under structural algebra)**:
+- Start at PR #2745 leaf node; check parent (WI-2 brief composite node)
+- WI-2 brief claim unchanged (meaning intact)
+- Composite check: do children's deliveries cover the parent's stated children-set? **NO** — `dsl/gunbc/ci_emission.dag` is listed but missing
+- → `COMPOSITE_HAS_OPEN_CHILDREN` would fire at PR-close-event
+- → `Replan` operation authored under WI-2 brief; reconcile work-item created
+
+**What the structural algebra catches that prose-driven workflow missed**: file-list-intersection between brief's declared deliverables and PR's actual file changes is a `StructuralLens` projection over `EventLog<NodeOperation>`. Mismatch raises `canCloseNode → COMPOSITE_HAS_OPEN_CHILDREN` automatically. Saves the wrong-claim cycle PM hit (which required Director questioning + grep-discovery + correction relay).
+
+**Mapping to operations**:
+- `WalkBackEvent` → sequence of `Replan` operations in the event log
+- `StableAncestor` → parent node where `Replan` was authored
+- `RootContested` → `Escalate` operation routed to root-asker (operator)
+- `force: true` resolution path → `WitnessedOverride` operation
 
 ---
 
-— Authored by deep-wolf-155 (PM) 2026-05-12 per operator directive for ctrl/ migration scoping. Replaces prior procedural draft (d534fd40d) with structural-integration shape; prior content retained as validation case study reference.
+— Authored by deep-wolf-155 (PM) 2026-05-12 per operator directive for ctrl/ migration scoping. Replaces a prior procedural walk-back draft with this structural-integration scope; validation case study (§13) inlined.
