@@ -206,8 +206,8 @@ data lens_capability_register_rows: List<LensCapabilityRegisterRow> = [
   },
   {
     lens_basename: "parallelism.dag"
-    structural: LensCapabilityStructuralPartial
-    behavioral: LensCapabilityBehavioralStub
+    structural: LensCapabilityStructuralTerminal
+    behavioral: LensCapabilityBehavioralComplete
     v2_counterpart: LensCapabilityV2NoneV3Native
   },
   {

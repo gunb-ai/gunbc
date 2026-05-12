@@ -349,6 +349,11 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
             "src/v3/compiler/src/lens_effect_enumeration_generated.rs",
         ),
         (
+            "parallelism",
+            "src/v3/lenses/parallelism.dag",
+            "src/v3/compiler/src/lens_parallelism_generated.rs",
+        ),
+        (
             "infer_helpers",
             "src/v3/lenses/infer_helpers.dag",
             "src/v3/compiler/src/infer_helpers_generated.rs",
