@@ -1,7 +1,7 @@
 # T-WAD Slice 7 — Affected-set selection via `BinaryShim` (gate `ci_uses_affected_set_selection`, program row 103)
 
 **Status:** Verification-lane design canvas (implementation **not** in this PR).  
-**PR:** [gunbc#2760](https://github.com/gunb-ai/gunbc/pull/2760) ships as **draft** while the canvas is iterated; dashboard **auto**-reviews / CI gates skip draft until **ready** (manual dashboard triggers still run). When the canvas is complete and you want GitHub auto-coverage: `gh pr ready 2760 --repo gunb-ai/gunbc`.  
+**PR:** [gunbc#2760](https://github.com/gunb-ai/gunbc/pull/2760) — **draft by default** for canvas iteration (confirm with `gh pr view 2760 --repo gunb-ai/gunbc --json isDraft`). While **draft**, scheduled auto-reviews / default CI gates are skipped; manual triggers still run. To opt into full GitHub auto-coverage when intentionally desired: `gh pr ready 2760 --repo gunb-ai/gunbc`.  
 **Authority:** `docs/r3-structure.md` (gate `ci_uses_affected_set_selection`), `docs/r3-program-plan.md` row 103, `docs/r3-t-workflow-as-data-full-r3-close-scope.md` §0–§1, PR #2744 WI / FULL R3-close scope context, `docs/design-ci-workflow-emitter-dispatch.md`, `docs/design-affected-set-lens.md`.  
 **Parent emitter canvas:** `docs/design-ci-workflow-emitter-dispatch.md` §5.2, §6 (this document **specializes** Slice 7; it does not reopen (c-refined) placement or `WorkflowRuntime` shape).  
 **Upstream lens:** PR #2713 (affected-set lens substrate; merged per scope docs).  
@@ -28,7 +28,7 @@
 Until warm-wolf-698 lands Slice 5, the following is **assumed interface / dependency text** (not executable in this canvas PR):
 
 - **Projection:** `project_github_actions(ci_workflow_dag, BinaryShim)` emits a provider `Workflow` value that **points at** a **compiled CI binary entry-point** plus **thin shim YAML** (bootstrap only; policy in binary — matches `docs/design-ci-workflow-emitter-dispatch.md` §5.2).
-- **PR-time runner:** the binary reads the **git diff / event** (equivalently: materializes `Dag_before`, `Dag_after`), **computes affected-set** via the PR #2713 lens pipeline, then **dispatches the matrix dynamically** (GitHub-native matrix payload and/or in-runner execution list — see §2 for staged vs end-state wording).
+- **PR-time runner (PM end-state vision):** the binary reads the **git diff / event**, materializes `Dag_before` / `Dag_after`, runs the PR #2713 affected-set lens, then **decides which checks run**. That decision may ultimately be realized as a **GitHub dynamic `strategy.matrix`**, fan-out jobs, and/or other orchestration — but that is **not** required on **day one** (see §2 **staged vs end-state**).
 - **Caveat:** no gunbc code in **this** document PR implements that path; integration PRs queue **behind** Slice 5.
 
 ### §1.3 Interface stub (Slice 5–owned details)
@@ -48,6 +48,13 @@ Verification Mgr may request a written **Slice 5 public surface** from warm-wolf
 |--------|------|------|
 | **Dynamic matrix JSON** (`strategy.matrix` from a prior step output) | Native GitHub fan-out, visible per-matrix-cell checks | GH matrix limits, expression fragility, harder local reproduction |
 | **In-runner selection** (single or few jobs; **selected test list** / **selected job list** executed inside the runner) | Matches `design-ci-workflow-emitter-dispatch.md` §6.1 preference; simpler shim; easier fail-closed logging | Less visible fan-out in Actions UI |
+
+**Staged vs end-state (resolves §1.2 wording):**
+
+| Phase | What “dynamic dispatch” means | GitHub `strategy.matrix` emission |
+|-------|--------------------------------|-----------------------------------|
+| **Staged first landing** (Slice 7 gate / minimal integration) | Binary computes affected-set and runs the **selected** tests/gates **inside the runner process** (fixed small YAML job graph; filters passed to `cargo test` / scripts). | **Not required.** No obligation to emit dynamic matrix JSON for row **103** to read as satisfied — selection is **in-runner**. |
+| **End-state** (PM / emitter-canvas vision) | Same lens inputs; runner may **fan out** work for wall-clock or UI visibility. | **Optional escalation** when native GH parallelism is worth the complexity (`design-ci-workflow-emitter-dispatch.md` §6.1). |
 
 **Chosen initial shape (Slice 7 first landing):** **In-runner selection** as primary:
 
