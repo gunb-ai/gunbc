@@ -5816,14 +5816,10 @@ fn field_value_to_symbolic_cost_bind_param_expected_pattern(
             })?;
     match label_owned.as_str() {
         "LinearCostForBindParam" => {
-            let record = peel_single_underscore_record(single_payload(payload)?);
-            let _ = record_fields(record).ok_or_else(|| {
-                format!(
-                    "SymbolicCostExprEqualsForBindParam: LinearCostForBindParam payload must be \
-                     a record, got {record:?}"
-                )
-            })?;
-            parse_bind_param_size_variable_expected(dag, record)?;
+            parse_bind_param_size_variable_expected(
+                dag,
+                peel_single_underscore_record(single_payload(payload)?),
+            )?;
             Ok(SymbolicCostEqPattern::Linear {
                 source_port: SymbolicCostPortPattern::ExpectedBindParam,
             })
