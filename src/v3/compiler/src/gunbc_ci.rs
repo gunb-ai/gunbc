@@ -44,6 +44,12 @@ pub struct CiWorkflowDagInput {
     pub edges: Vec<(CiGateId, CiGateId)>,
 }
 
+// Practice 4 (coproduct checkpoint, `docs/modeling-discipline.md` §4):
+// 🟢 GREEN — terminal upstream-policy boundary for gate-id touch semantics before
+// `select_affected_gates`: `TouchAll` is the conservative in-DAG superset seed;
+// `TouchedGates` is the explicit finite set upstream mapped from lens/git facts.
+// Ledger: no third authority here — path-regex, env, and PR #2713 receipts stay
+// outside this module (Slice 7 brief + affected-set selection canvas §1).
 /// Diff-against-base input projected to **gate ids** (single authority at this boundary).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CiWorkflowDiff {
