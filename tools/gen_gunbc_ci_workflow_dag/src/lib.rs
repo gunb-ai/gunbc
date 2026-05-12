@@ -92,6 +92,12 @@ fn str_field(m: &serde_yaml::Mapping, k: &str) -> Result<String, Box<dyn std::er
         .ok_or_else(|| format!("missing string field {k}").into())
 }
 
+/// Escape `s` as a v3 `.dag` string literal token.
+///
+/// Today this uses Rust `Debug` quoting (`{:?}`), which matches the repo's
+/// `.github/workflows/ci.yml` inputs in practice but is **not** formally the DSL lexer
+/// string grammar (e.g. Unicode escapes could diverge). If this generator is reused for
+/// broader YAML, replace with a lexer-aligned escaper shared with the compiler.
 fn dag_string(s: &str) -> String {
     format!("{:?}", s)
 }
