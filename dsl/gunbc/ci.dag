@@ -113,13 +113,13 @@ type CIWorkflowDag {
 // Commands use bare "cargo" because CI runners always have cargo on PATH. For
 // local dag run, tools/*.dag workflows resolve the absolute path via
 // extdeps.tools. Command literals are intentionally structural data here:
-// `data` rows must lower without opaque function-call bodies so this file can
-// serve as a fail-closed authority for CI topology inspection.
+// CI topology remains fail-closed inspectable through gate ids and workflow
+// edges until a typed command carrier can preserve derived command facts.
 
 data lint_gate: CIGate = {
   id: "lint",
   name: "Lint",
-  command: lint_command(cargo: "cargo"),
+  command: "cargo clippy --workspace -- -D warnings",
   blocking: true,
   source: LintGate
 }
@@ -127,7 +127,7 @@ data lint_gate: CIGate = {
 data test_gate: CIGate = {
   id: "tests",
   name: "Tests",
-  command: test_command(cargo: "cargo", package: test_package),
+  command: "cargo test -p v3-compiler",
   blocking: true,
   source: TestSuiteGate { test_name: "" }
 }
@@ -154,7 +154,7 @@ data l1_gate: CIGate = {
 data compile_gates_gate: CIGate = {
   id: "compile-gates",
   name: "Compile Gates",
-  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "ci_"),
+  command: "cargo test -p v3-compiler ci_ -- --ignored --nocapture",
   blocking: true,
   source: FixedPointGate
 }
