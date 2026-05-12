@@ -587,6 +587,11 @@ jobs:
 
   # DB-8 — fixed-point ratchet infrastructure (Lane 3 Stage 3c prep). Staged until
   # Lane 1 Stage 1e closes: do not block merges on this job yet.
+  #
+  # R3 T-FixedPoint / `docs/r3-program-plan.md` §1.8 gate #16: `self_host_fixed_point`
+  # is the DB-8 mechanical verifier on the path to the strong fixed-point horizon;
+  # R1 `pb_self_compile_fixed_point` pass/fail still comes from `verification.dag` +
+  # `test_runner` — this job's continue-on-error posture does not redefine that gate.
   self_host_ratchet:
     # Always schedule this job name on PRs so branch-protection "required checks" get a
     # definitive **success** after `v3` (skipped jobs / workflow-wide cancels were surfacing

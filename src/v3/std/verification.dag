@@ -414,6 +414,12 @@ type TestPredicate
       list_constant: CensusListConstant
       subset_predicate: DeclarationRef
     }
+  // R3 §1.8 gate #16 / T-FixedPoint — **not dispatch-eligible for strong suite here.**
+  // R1 `pb_self_compile_fixed_point` composes this variant today; the R3 thesis
+  // horizon adds distinct `pb_self_compile_fixed_point_strong` claims only after
+  // joint preconditions in `docs/briefs/r3-pb-t-fixedpoint-worker.md` §"Dispatch
+  // preconditions". Do not rename or shadow the R1 claim; do not extend this
+  // enum from PB without Substrate ack (see `INVARIANTS.md` P1).
   | FixedPointConverges {
       compile_target: Path
       expected: SnapshotRef
