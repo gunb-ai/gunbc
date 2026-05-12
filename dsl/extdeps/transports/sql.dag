@@ -17,8 +17,10 @@ module extdeps.transports.sql
 
 import std.serialization { WireFormat }
 
-// SQL statement classes used by common relational engines. These variants name
-// the statement's externally observable behavior, not an emitter preference.
+// 🟢 TERMINAL. SQL statement classes used by common relational engines.
+// These variants name the statement's externally observable behavior, not an
+// emitter preference. The partition is retained because SELECT / mutation / DDL
+// / transaction-control statements have distinct transport behavior.
 type SqlStatementKind
   = Select
   | Insert
@@ -27,9 +29,10 @@ type SqlStatementKind
   | Ddl
   | TransactionControl
 
-// Prepared statement parameter styles used by SQLite, PostgreSQL, and MySQL.
-// This is a transport fact because client libraries need to render bind sites
-// without turning SQL strings into target-language policy.
+// 🟢 TERMINAL. Prepared statement parameter styles used by SQLite, PostgreSQL,
+// and MySQL. This is a transport fact because client libraries need to render
+// bind sites without turning SQL strings into target-language policy. The
+// variants are externally specified marker syntaxes, not local aliases.
 type SqlParameterStyle
   = QuestionMark      // SQLite/MySQL: ?
   | NumberedDollar    // PostgreSQL: $1, $2, ...
@@ -37,7 +40,8 @@ type SqlParameterStyle
   | NamedAt           // SQLite: @name
   | NamedDollar       // SQLite: $name
 
-// Transaction boundary expected by an operation.
+// 🟢 TERMINAL. Transaction boundary expected by an operation. These variants are
+// the irreducible transport-level ownership modes for transaction scope.
 type SqlTransactionMode
   = Autocommit
   | ExistingTransaction
