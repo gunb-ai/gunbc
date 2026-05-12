@@ -179,8 +179,79 @@ jobs:
       - name: v3 bootstrap snapshot freshness gate (--verify)
         run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
 
-  v3:
+  # Layer 1 CI mitigation (bridge-debt; gunbc#846 2026-05-11): coarse path
+  # filter so docs-only PRs skip the heavy `v3` job (~67m wall). Computes a
+  # single boolean output `code` = "PR touches anything outside the docs
+  # allowlist." Docs allowlist: `docs/**` + root `*.md` files. Anything else
+  # (src/, dsl/, scripts/, .github/, Cargo.lock, rust-toolchain.toml, etc.)
+  # counts as a code change and runs the full v3 job.
+  #
+  # **Dissolution trigger**: gate `ci_uses_provable_minimal_affected_set_selection`
+  # (**R4.B full delivery** per `docs/design-affected-set-lens.md` §5 "CI integration
+  # sketch (deferred to R4 full delivery)"; the affected-set lens prototype is
+  # pre-R3-close at gunbc#2699 but CI integration is R4-scoped). Once the lens
+  # computes provable minimal test sets AND the CI integration lands, this coarse
+  # filter is replaced by the structural lens output. Delete this job + `needs:
+  # [changes]` on `v3` at that point.
+  #
+  # Note on branch protection: when `v3` skips (docs-only), `self_host_ratchet`
+  # (`needs: [v3]`) would also skip. To keep its required-check name green for
+  # branch protection, its `if:` was widened below to accept `v3.result ==
+  # 'skipped'`.
+  changes:
     if: github.event.pull_request.draft != true
+    runs-on: [self-hosted, linux, x64, gunbc-quick]
+    timeout-minutes: 3
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect non-docs changes
+        id: filter
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "push event — always run heavy v3 job"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch origin main:refs/remotes/origin/main
+          changed=$(git diff --name-only origin/main...HEAD)
+          echo "Changed files (first 200):"
+          echo "$changed" | head -200
+          # Docs-only allowlist: anything under docs/ OR a root-level *.md
+          # file (no slash before .md). Examples that count as docs:
+          #   docs/audit/foo.md           ✓
+          #   docs/design-x.md            ✓
+          #   WISHLIST.md                 ✓ (root *.md)
+          #   ROADMAP.md                  ✓
+          # Examples that count as code (run full v3):
+          #   src/v3/compiler/src/foo.rs
+          #   dsl/std/lens_foo.dag
+          #   scripts/check-foo.sh
+          #   .github/workflows/ci.yml    (workflow self-edit)
+          #   src/v3/compiler/tests/README.md (nested .md, not root)
+          non_docs=$(echo "$changed" | grep -vE '^(docs/.*|[^/]+\.md)$' || true)
+          if [ -n "$non_docs" ]; then
+            echo "Non-docs files detected; v3 will run full heavy compute:"
+            echo "$non_docs" | head -50
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docs-only PR (allowlist: docs/** + root *.md) — v3 will skip"
+            echo "(Layer 1 CI mitigation; dissolution trigger = affected-set lens CI integration)"
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  v3:
+    # Job-level `if:` gates on the `changes` filter so docs-only PRs skip the
+    # heavy compute entirely. Pushes to main always run the full job (no PR
+    # base to diff against).
+    if: github.event.pull_request.draft != true && (needs.changes.outputs.code == 'true' || github.event_name == 'push')
+    needs: [changes]
     # Heavy compute (cargo release builds, full v3 test suite at the
     # 4000s transitional budget + clippy + lens gates). 2-core ubuntu-latest blows
     # the 60min cap reliably. Run the heavy job on the gunb-ci ephemeral
@@ -508,7 +579,31 @@ jobs:
     # as merge-blocking reds on #2681). The heavy DB-8 matrix still runs **only** on
     # `push` to `main`; PRs execute a cheap stub on `gunbc-quick` instead of competing
     # for `gunbc-ci` with `v3`.
-    if: github.event.pull_request.draft != true
+    #
+    # Layer 1 CI mitigation widens this `if:`: when `v3` is skipped on a docs-only
+    # PR (via the `changes` filter job), this stub must still report green so its
+    # required-check name doesn't block merges. The `always() && ... != 'failure'`
+    # pattern lets this job run when `v3` either succeeded OR was skipped, but not
+    # when `v3` actually failed.
+    #
+    # **Fail-closed under filter failure** (openai-pro REQUEST_CHANGES on PR #2718,
+    # then codex BLOCKING on PR #2718 line 579 caught the actual fail-open):
+    #
+    # Original openai-pro fix used `if: ... && needs.changes.result == 'success'`,
+    # intending changes-failure → self_host_ratchet skipped → branch-protection
+    # incomplete signal. **But GitHub branch protection treats SKIPPED required
+    # checks as SUCCESS by default** (per docs/en/pull-requests/.../troubleshooting-
+    # required-status-checks#handling-skipped-but-required-checks). So skipping on
+    # filter-failure was still phantom-green.
+    #
+    # **True fail-closed**: the job MUST RUN on every PR (`if: ${{ always() && ... }}`
+    # with no result-checks gating the JOB), and an EXPLICIT step fails when the
+    # gate evidence is incomplete. A failed step → job FAILURE → required-check RED
+    # → branch-protection BLOCKS. Job-level `continue-on-error: true` (kept below)
+    # only governs workflow conclusion, not job conclusion reported to branch
+    # protection; individual DB-8 staging steps have their own step-level
+    # continue-on-error to preserve their non-blocking semantics.
+    if: ${{ always() && github.event.pull_request.draft != true }}
     # Same sizing rationale as `v3` above: DB-8 release builds + determinism_test (5× matrix) +
     # `self_host_fixed_point` run on the same ephemeral GCE Spot runner pool as `v3`;
     # small/default runners saw mid-compile shutdown on #1794. **60m** wall so cold-cache
@@ -521,9 +616,43 @@ jobs:
       - x64
       - ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'gunbc-ci' || 'gunbc-quick' }}
     timeout-minutes: 60
-    needs: [v3]
+    # `changes` added to `needs:` so the fail-closed `if:` clause above can
+    # reference `needs.changes.result` (openai-pro REQUEST_CHANGES fix). Without
+    # the `needs:` declaration the `result` accessor is unavailable and the
+    # gate degenerates to fail-open under filter failure.
+    needs: [v3, changes]
     continue-on-error: true
     steps:
+      # **Fail-closed gate-evidence validation** (codex BLOCKING on PR #2718 line 579 fix).
+      # Reports explicit step FAILURE → job FAILURE → required-check RED when the
+      # Layer 1 filter (`changes`) failed or was cancelled, or when `v3` failed/cancelled.
+      # Job conclusion FAILURE propagates to branch protection (skipped does NOT — that's
+      # the bug this fixes). No `continue-on-error` on this step; its failure must surface.
+      #
+      # Allowed `v3.result` values that the validation accepts:
+      #   - `success`: v3 ran cleanly (CI green)
+      #   - `skipped`: v3 was skipped because `changes` proved docs-only (`code=false`)
+      # Allowed `changes.result` values:
+      #   - `success`: filter completed (regardless of `code` value)
+      # Anything else → fail with explicit diagnostic (P3 fail-closed / C-8).
+      - name: Validate gate evidence (fail-closed under filter/v3 failure)
+        run: |
+          echo "Gate evidence: changes.result=${{ needs.changes.result }} v3.result=${{ needs.v3.result }}"
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "::error::Layer 1 filter (`changes` job) did not succeed (result=${{ needs.changes.result }})."
+            echo "::error::Cannot determine v3 skip legitimacy — skipped required-checks default to SUCCESS"
+            echo "::error::in GitHub branch protection (https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks#handling-skipped-but-required-checks),"
+            echo "::error::so an explicit step failure here surfaces the missing-evidence as a diagnostic"
+            echo "::error::per P3 fail-closed / C-8 discipline."
+            exit 1
+          fi
+          if [ "${{ needs.v3.result }}" = "failure" ] || [ "${{ needs.v3.result }}" = "cancelled" ]; then
+            echo "::error::v3 job did not succeed (result=${{ needs.v3.result }}); ratchet cannot claim green."
+            exit 1
+          fi
+          # Either v3.result == success (ran cleanly) or v3.result == skipped (legit docs-only via changes.code=false)
+          echo "Gate evidence validated; ratchet may proceed."
+
       - name: Checkout
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/checkout@v4
