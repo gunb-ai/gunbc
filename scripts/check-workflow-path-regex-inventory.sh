@@ -35,6 +35,20 @@ cd "$ROOT"
 INVENTORY_DOC="docs/design-t-wad-slice-7-implementation-prequeue.md"
 CI_YML=".github/workflows/ci.yml"
 
+# Single source of truth for "GitHub Actions workflow file" universe. Both
+# `.yml` and `.yaml` are honored by GitHub Actions (per
+# https://docs.github.com/actions). Every detector below uses this helper
+# instead of inlining a glob, so a new file extension cannot create a
+# fail-open extension gap.
+workflow_files_nul() {
+  git ls-files -z '.github/workflows/*.yml' '.github/workflows/*.yaml'
+}
+
+# Stray .yaml warning: today the repo has zero workflow .yaml files. If one
+# appears in future, that is fine on its own — but the bigger picture, per
+# §3 inventory + Slice 7 dissolution path, is that *all* workflow files
+# (regardless of extension) feed both detectors below.
+
 violations=0
 note() { echo "check-workflow-path-regex-inventory: $*" >&2; }
 fail() { note "FAIL: $*"; violations=$((violations + 1)); }
@@ -90,7 +104,7 @@ while IFS= read -r line; do
   if [[ "$line" != *"$INVENTORIED_DIFF_ANCHOR"* ]]; then
     extra_locations+=("$line")
   fi
-done < <(git ls-files -z '.github/workflows/*.yml' | xargs -0 grep -nH "git diff --name-only" 2>/dev/null || true)
+done < <(workflow_files_nul | xargs -0 grep -nH "git diff --name-only" 2>/dev/null || true)
 
 # Locate the inventoried anchor specifically; if it's missing, the §3 row #1
 # fingerprint check above already reported it — here we just confirm count.
@@ -157,7 +171,7 @@ while IFS= read -r match; do
         orthogonal, document in $INVENTORY_DOC §3 and add an explicit allowlist
         entry to this script."
 done < <(
-  git ls-files -z '.github/workflows/*.yml' \
+  workflow_files_nul \
     | xargs -0 grep -nHE "^[[:space:]]*paths(-ignore)?:|dorny/paths-filter|tj-actions/changed-files|paths-filter@" \
         2>/dev/null || true
 )

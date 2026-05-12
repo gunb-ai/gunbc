@@ -28,7 +28,7 @@ directive **no fabricated substrate** is introduced here.
 
 ## §1. What this PR ships
 
-1. **Inventory** of `.github/workflows/*.yml` sites that today encode
+1. **Inventory** of `.github/workflows/{*.yml,*.yaml}` sites that today encode
    **authoritative path-regex selection** for heavy CI compute (§3).
 2. **Observational ratchet script** `scripts/check-workflow-path-regex-inventory.sh`
    that pins those sites and fails if either (a) a **new** path-regex
@@ -44,7 +44,7 @@ directive **no fabricated substrate** is introduced here.
 ## §2. What this PR explicitly does NOT ship
 
 - No `gunbc-ci` binary, no Rust planner module, no public-API types.
-- No edits to `.github/workflows/*.yml` content or job graph.
+- No edits to `.github/workflows/{*.yml,*.yaml}` content or job graph.
 - No invocation of the ratchet script from CI (the script exists as an
   out-of-band tool until Slice 5 is in place to mean anything by passing).
 - No claim that gate `ci_uses_affected_set_selection` is closer to PASSING;
@@ -78,8 +78,12 @@ test that exits non-zero in any of:
 
 - **New authoritative selection** appears outside the inventoried sites.
   The script covers **two** detector classes across **all**
-  `.github/workflows/*.yml` (explicitly including `ci.yml` itself, so the
-  inventoried file is not free to grow un-inventoried selection):
+  `.github/workflows/{*.yml,*.yaml}` (both extensions are honored by GitHub
+  Actions; the script's `workflow_files_nul` helper is the single source of
+  truth and is used by every detector to prevent file-extension fail-open).
+  Both `.yml` and `.yaml` files are scanned, and `ci.yml` itself is
+  explicitly included so the inventoried file is not free to grow
+  un-inventoried selection:
 
   1. **`git diff --name-only` bridges.** Count of these invocations is
      compared against the expected baseline (currently `1`, the §3 row #1
