@@ -13,10 +13,10 @@
 //! assertions (`M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA`). The compile-backed
 //! consumer-path fixtures remain in `lane2_stage_2d_symbolic_cost_test`; this
 //! receipt stays under the per-test ratchet by cementing the generated
-//! `SymbolicCost` surface directly. The paired in-crate receipt
-//! `dimension::fail_closed_tests::cost_lens_complete_receipt_uses_generated_surface_and_dimension_entrypoint`
-//! pins the exported `symbolic_cost_of` and `analyze_symbolic_cost_dimension`
-//! path without paying `compile_to_dag` wall time in this temporary Rust module.
+//! `SymbolicCost` surface directly. The paired consumer-path receipts in
+//! `cost_lens_symbolic_consumer_test` pin the exported `symbolic_cost_of` and
+//! `analyze_symbolic_cost_dimension` path on tracked compile-backed fixtures
+//! without adding new slow test names to this temporary Rust module.
 
 use v3_compiler::dag::{
     classify_symbolic_cost, dominates, iterate, max_path, ArithmeticOp, AsymptoticClass,

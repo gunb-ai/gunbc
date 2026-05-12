@@ -26,6 +26,7 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId, SymbolicCost};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use v3_compiler::{analyze_symbolic_cost_dimension, DimensionReport, Witness};
 
 use crate::common::assert_recursive_countdown_linear_semantics;
 
@@ -43,6 +44,15 @@ fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
         .value
 }
 
+fn find_bind_node(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|bind| bind.name == name)
+        .unwrap_or_else(|| panic!("bind `{name}` not found"))
+        .id
+}
+
 /// v3 `symbolic_cost_of` lookup only (no v2 oracle); see module docs for Band-C scope.
 fn expect_symbolic_cost(dag: &v3_compiler::dag::Dag, bind_name: &str) -> SymbolicCost {
     let port = find_bind_value(dag, bind_name);
@@ -52,6 +62,25 @@ fn expect_symbolic_cost(dag: &v3_compiler::dag::Dag, bind_name: &str) -> Symboli
             panic!("symbolic_cost_of returned Miss for bind `{bind_name}`")
         }
     }
+}
+
+fn expect_symbolic_cost_dimension(dag: &v3_compiler::dag::Dag, bind_name: &str) -> SymbolicCost {
+    let report = analyze_symbolic_cost_dimension(dag, find_bind_node(dag, bind_name));
+    let DimensionReport::DimensionOk {
+        dimension_name,
+        composed,
+        witnesses,
+    } = report
+    else {
+        panic!("analyze_symbolic_cost_dimension returned failure for bind `{bind_name}`");
+    };
+    assert_eq!(dimension_name, "symbolic_cost");
+    assert!(
+        witnesses.iter().all(|w| matches!(w, Witness::Inhabits(_))),
+        "symbolic cost dimension should only emit Inhabits witnesses for `{bind_name}`, got \
+         {witnesses:?}"
+    );
+    composed
 }
 
 fn linear_size_ports(cost: &SymbolicCost, out: &mut Vec<PortId>) {
@@ -86,6 +115,11 @@ fn literal_bind_pins_symbolic_cost_of_constant_on_fixture() {
     run_with_symbolic_cost_stack(|| {
         let dag = compile_to_dag("let lit: Int = 7", "cost_sym_lit.v3").expect("literal compiles");
         let cost = expect_symbolic_cost(&dag, "lit");
+        let dimension_cost = expect_symbolic_cost_dimension(&dag, "lit");
+        assert_eq!(
+            dimension_cost, cost,
+            "dimension entrypoint should compose the same generated symbolic_cost_of carrier"
+        );
 
         assert!(
             matches!(cost, SymbolicCost::ConstantCost { _0: 0 }),
@@ -114,6 +148,11 @@ fn recursive_countdown_pins_symbolic_cost_linear_and_sizevar_on_fixture() {
             .copied()
             .expect("countdown should have one size-bearing parameter port");
         let cost = expect_symbolic_cost(&dag, "countdown");
+        let dimension_cost = expect_symbolic_cost_dimension(&dag, "countdown");
+        assert_eq!(
+            dimension_cost, cost,
+            "dimension entrypoint should compose the same generated symbolic_cost_of carrier"
+        );
 
         let mut ports = Vec::new();
         linear_size_ports(&cost, &mut ports);
