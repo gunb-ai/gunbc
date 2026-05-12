@@ -12,8 +12,8 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
-const FIXTURE_SOURCE: &str = include_str!("../fixtures/r1_pb_census_gates.dag");
-const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r1_pb_census_gates.dag";
+const FIXTURE_SOURCE: &str = include_str!("../dag/t_r1c_d_pb_census_gates.dag");
+const FIXTURE_PATH: &str = "src/v3/compiler/tests/dag/t_r1c_d_pb_census_gates.dag";
 const SUITE_NAME: &str = "r1_pb_census_gates_suite";
 const CLAIM_NAME: &str = "lens_producer_files_remaining";
 const CURRENT_RESIDUAL_COUNT: i64 = 3;

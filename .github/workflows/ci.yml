@@ -644,7 +644,7 @@ jobs:
         run: |
           echo "Gate evidence: changes.result=${{ needs.changes.result }} v3.result=${{ needs.v3.result }}"
           if [ "${{ needs.changes.result }}" != "success" ]; then
-            echo "::error::Layer 1 filter (`changes` job) did not succeed (result=${{ needs.changes.result }})."
+            echo "::error::Layer 1 filter (changes job) did not succeed (result=${{ needs.changes.result }})."
             echo "::error::Cannot determine v3 skip legitimacy — skipped required-checks default to SUCCESS"
             echo "::error::in GitHub branch protection (https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks#handling-skipped-but-required-checks),"
             echo "::error::so an explicit step failure here surfaces the missing-evidence as a diagnostic"
