@@ -13,7 +13,7 @@
 **Existing scope** (per `r3-program-plan.md` §1.8 gate #56): `ci_workflow_modeled_as_dag` = "at least one workflow as `.dag` data executes through evaluator." Slice 3 demonstration; consumes Slices 1+2 substrate. **Slice 1 LANDED via PR #2160 + #2169** (`WorkflowSecret` + `CronSchedule` carriers — Slice 1 worker brief naming `CronExpression` was superseded by the landed `CronSchedule` model at `dsl/extdeps/cron_schedule_model.dag`; use `CronSchedule` as the grounded name). **Slice 3 demo LANDED via PR #2371** (`t_ci_workflow_as_data_demo.dag` + integration tests).
 
 **FULL R3-close scope** (operator-ratified 2026-05-12; Director-ratified gate-additive framing msg_5cbdad24):
-1. **ALL** CI workflow authored as `.dag` (not just one demo workflow) — extend `dsl/gunbc/ci.dag` to cover full `.github/workflows/ci.yml`
+1. **ALL** CI workflow authored as `.dag` (not just one demo workflow) — `.github/workflows/ci.yml` content sourced from gunbc-substrate via projection function `project_github_actions(ci_workflow_dag, target) → Workflow`; WI-2 lands the projection-substrate (new file `dsl/gunbc/ci_emission.dag`); Slice 4-5 implements per-arm projection bodies that walk `CIWorkflowDag` (PR #2736) + emit the chosen target.
 2. **Hand-authored `ci.yml` AUTHORITY DISSOLVED** — `.github/workflows/ci.yml` content authored by gunbc emission (not hand-edited); file present as full-emit artifact (YamlStatic) OR thin-shim entry-point (BinaryShim / PythonShim) OR absent (some emission targets); regression-guard test prevents hand-authored re-introduction. **Per briansrls BLOCKING #PR2744 2026-05-12**: NOT file deletion — P5 / Pure Bootstrap dissolves authority; YamlStatic and shim targets STILL require some `.github/workflows/ci.yml` artifact for GH Actions trigger discovery.
 3. **EmissionTarget toggle** — same `ci.dag` emits multiple target shapes (YamlStatic, BinaryShim, PythonShim, …); choice is a modeled field, not a build-system decision. Field placement OPEN (see §2).
 4. **Affected-set integration** — Layer 2 path-regex bridge (PR #2718/#2721/#2727) dissolved; CI selection consumes affected-set lens output (PR #2713 ✓ merged)
@@ -41,7 +41,7 @@
 | **NEW: `slow_test_exemptions_dissolved`** | state-check | T-WAD + Debt-Paydown | `scripts/slow-test-exemptions.txt` deleted; slow-test ratchet derives from `Cost` dimension structurally (state-check sibling of `test_cost_dimension_landed` per kernel-modeling discipline split) |
 | **NEW: `ci_uses_affected_set_selection`** | state-check | T-WAD + T-Verification | `BinaryShim` emitter consumes affected-set lens output from PR #2713; Layer 2 path-regex `if:` gates removed from any remaining workflow files (cross-tier co-owned with clever-tern-670 Slice 7 work) |
 
-## §2. Architectural shape (operator-ratified 2026-05-12)
+## §2. Architectural shape (operator-ratified 2026-05-12; (c-refined) substrate-shape LOCKED 2026-05-12 per PR #2749 §7)
 
 **`EmissionTarget` as modeled data** (open enum, same shape as `Dimension`):
 
@@ -49,24 +49,40 @@
 type EmissionTarget = YamlStatic | BinaryShim | PythonShim | InlineGunbc | ...
 ```
 
-**Operator-ratified semantic**: emission target is a modeled toggle, not a hard-coded compiler decision. Field PLACEMENT is open canvas question (WI-1 evaluates and recommends):
+**Substrate-shape RATIFIED** (per PR #2749 §7 + Director msg_237bde05 + msg_f9fd669e — (c-refined) shape; was option (c) wrapper, refined to projection-function):
 
-- **(a) Field on `Workflow`** (`dsl/extdeps/github/actions.dag:21` — concrete type, NOT generic; has `name`/`on`/`jobs`/`env`/`permissions` fields): platform-level placement; but actions.dag header states "platform constraints, not CI logic" — emission_target IS CI logic, so this may violate the separation
-- **(b) Field on `CIPipeline`** (`dsl/gunbc/ci.dag`): CI-intent-level placement; natural fit per actions.dag's "consumers: gunbc/ci.dag" framing
-- **(c) Wrapper node** (`WorkflowEmission { workflow: Workflow, target: EmissionTarget }`): preserves platform/CI separation cleanly; emission policy attaches via wrapper
+**`EmissionTarget` is an invocation-time parameter to the projection function in gunbc-substrate**, NOT a field on any carrier:
 
-**Carrier hierarchy** (per `dsl/extdeps/github/actions.dag` authority):
+```dag
+// In dsl/gunbc/ci_emission.dag (NEW file, WI-2 lands it):
+project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow
+
+// Invocation pin (canonical YAML-emission point for Slice 4):
+gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)
+```
+
+- **Input domain**: `CIWorkflowDag` (PR #2736 carrier; gate-dependency-bearing semantic source — flat `CIPipeline` is INSUFFICIENT per warm-wolf-698 msg_27d99080)
+- **Output codomain**: `extdeps.github.actions.Workflow` (platform-faithful; UNMODIFIED — INVARIANTS P1)
+- **Emission choice**: invocation-time argument (`target: EmissionTarget`); per-arm projection bodies are Slice 4-5 implementation
+
+**Prior framings — RETRACTED / DISSOLVED**:
+
+- **(a) Field on `Workflow` (extdeps platform carrier)** — RETRACTED 2026-05-12 at Director msg_b4151f45 + codex BLOCKING #9970 on PR #2749. INVARIANTS P1 violation: emission_target IS CI logic, not platform fact; cannot land on `dsl/extdeps/github/actions.dag` per its scope header ("platform constraints — not CI logic").
+- **(b) Field on `CIPipeline`** — superseded; `CIPipeline { name, gates: List<CIGate> }` is flat without edge structure; cannot serve as projection input per warm-wolf-698 msg_27d99080. Replaced by `CIWorkflowDag` (PR #2736) input domain.
+- **(c) Wrapper node** `WorkflowEmission { workflow, target }` — superseded by (c-refined) projection function. Wrapper introduces an extra carrier; projection function is the cleaner shape (parameter-as-data preserves single-substrate-fact + cost-of-change ≤ 1).
+
+**Carrier hierarchy** (per `dsl/extdeps/github/actions.dag` authority — UNMODIFIED):
 
 ```
-Workflow {                              // :21 — CONCRETE type, not generic
+Workflow {                              // :21 — CONCRETE type, codomain for project_github_actions
   on: List<WorkflowTrigger>             // :23
-  jobs: List<Job>                       // :24 — Workflow contains JOBS
+  jobs: List<Job>                       // :24
   env, permissions, ...
 }
 
 Job {                                   // :110
-  steps: List<Step>                     // :114 — Job contains STEPS
-  needs: List<String>                   // :115 — job-id refs (NOT step-level)
+  steps: List<Step>                     // :114
+  needs: List<String>                   // :115
   runner, strategy, ...
 }
 
@@ -75,12 +91,14 @@ Step = RunStep | UsesStep               // :147 — sum type
 
 **Emitter dispatch** (parallel to `05_emit_*.dag` consolidation thesis per `project_eliminate_emit_lang_files.md`):
 
-- Single emitter reads `emission_target` from wherever placed (per §2 canvas decision)
-- Dispatches to YamlStatic emitter (regenerate `ci.yml`) OR BinaryShim emitter (compile binary + emit thin shim YAML) OR PythonShim (emit Python harness + thin shim YAML)
-- Same `ci.dag` semantically equivalent across targets at workflow level
-- A/B comparison is apples-to-apples (toggle one field, re-emit)
+- Slice 4-5 emitter consumes the **pinned-projection invocation** `gunbc_ci_yml_workflow = project_github_actions(ci_workflow_dag, YamlStatic)` (or other `target` for BinaryShim / PythonShim / etc.)
+- Per-arm projection bodies (Slice 4 = YamlStatic, Slice 5 = BinaryShim, future = PythonShim / InlineGunbc) walk `CIWorkflowDag` + emit the chosen target
+- Same `ci_workflow_dag` value across all targets at workflow level; the emission STRATEGY is invocation-time
+- A/B comparison is apples-to-apples (call `project_github_actions(ci_workflow_dag, BinaryShim)` vs `project_github_actions(ci_workflow_dag, YamlStatic)`)
 
 **Why BinaryShim is the affected-set unlock**: Static YAML can't naturally express "compute affected-set at PR time, dispatch matrix dynamically." BinaryShim makes runtime decisions structural — binary reads git diff, computes `affected_set = ⋃ over dim of reachable(Δ, dim)`, dispatches matrix accordingly.
+
+**Open expression-substrate question — DEFERRED to canvas (NOT blocking this scope)**: GH Actions expression syntax modeling (`runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}` etc.) is a Slice 4-5 substrate-shape question routed to warm-wolf-698 canvas authority (PR #2751 — Expression 🟡 YELLOW recommendation; Director ratification pending). NOT a §1 gate.
 
 ## §3. Slice expansion
 
@@ -92,7 +110,7 @@ Existing T-WAD slices (state at 2026-05-12):
 
 **New slices added by FULL elevation** (Director-ratified absorption to lanes):
 
-- **Slice 4**: `EmissionTarget` field landing (placement per WI-1 canvas) + YamlStatic emitter implementation → **Substrate Mgr (warm-wolf-698) lane**. Gated on WI-1 + WI-2 PR merges.
+- **Slice 4**: YamlStatic projection-arm implementation — body of `project_github_actions(..., YamlStatic)` walks `CIWorkflowDag` and emits `Workflow` value byte-equivalent to current `.github/workflows/ci.yml` content; consumed by emission pipeline to produce the on-disk artifact → **Substrate Mgr (warm-wolf-698) lane**. Gated on WI-1 + WI-2 PR merges + PR #2736 (CIWorkflowDag) merge. NOTE: NOT an "EmissionTarget field landing" — per (c-refined) shape (§2), `EmissionTarget` is invocation-time projection parameter, not carrier-time data.
 - **Slice 5**: BinaryShim emitter implementation → **Substrate Mgr (warm-wolf-698) lane**. Parallel to Slice 4; proves toggle.
 - **Slice 6**: Cost dimension on test nodes + slow-test-exemptions.txt dissolution → **Debt-Paydown Mgr (zesty-boar-261) lane** (sub-component). Gated on Phase 3 Cluster M settling (test-as-data substrate stable).
 - **Slice 7**: Affected-set integration via BinaryShim → **Verification Mgr (clever-tern-670) lane**. Gated on Slice 5 + PR #2713 (✓ merged).
@@ -109,10 +127,13 @@ External prereqs:
   - PR #2371 (Slice 3 demo) ✓ MERGED
 
 Critical path (forward):
-  WI-1 canvas merge ──┐
-                      ├─→ Slice 4 (YamlStatic emitter) ──┐
-  WI-2 ci.dag extend ─┤                                   │
-                      ├─→ Slice 5 (BinaryShim emitter) ──┼─→ Slice 7 (affected-set integration) ──┐
+  WI-1 canvas merge ───────┐
+                           ├─→ Slice 4 (YamlStatic projection-arm) ──┐
+  WI-2 ci_emission.dag ────┤                                          │
+  (proj-fn substrate)      │                                          │
+                           │                                          │
+  PR #2736 CIWorkflowDag ──┤                                          │
+                           ├─→ Slice 5 (BinaryShim projection-arm) ──┼─→ Slice 7 (affected-set integration) ──┐
                                                           │                                        │
                           Phase 3 Cluster M settles → Slice 6 (Cost dim) ─────────────────────────┤
                                                                                                   │
@@ -122,7 +143,7 @@ Critical path (forward):
 
 Parallelizable (started 2026-05-12 — dispatched under PM):
   - WI-1 emitter-dispatch architecture canvas (worker still-heron-763)
-  - WI-2 dsl/gunbc/ci.dag extension to full ci.yml coverage (worker cool-carp-720)
+  - WI-2 new file dsl/gunbc/ci_emission.dag — declares EmissionTarget open enum + project_github_actions function signature + gunbc_ci_yml_workflow pinned-projection (worker cool-carp-720)
 ```
 
 ## §5. Realistic R3-close timing
@@ -145,11 +166,14 @@ Assumes:
 - Brief: `docs/briefs/r3-t-wad-full-r3-emitter-dispatch-canvas-worker.md`
 - Independent of held substrate; Slice 1 LANDED
 
-**WI-2**: `dsl/gunbc/ci.dag` extension to full `.github/workflows/ci.yml` coverage
-- Output: extended `dsl/gunbc/ci.dag` (existing file from PR #2371) using concrete `Workflow` / `Job` / `Step` carriers from `dsl/extdeps/github/actions.dag`
+**WI-2**: NEW file `dsl/gunbc/ci_emission.dag` — projection-function substrate scaffold (per (c-refined) shape)
+- Output: NEW file `dsl/gunbc/ci_emission.dag` declaring `EmissionTarget` open enum + `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow` function signature + `gunbc_ci_yml_workflow` pinned-projection data binding
+- Scope: DECLARATION + signature ONLY (per-arm projection bodies are Slice 4-5 owned by Substrate Mgr post-canvas-merge)
 - Worker: **cool-carp-720** (PM auto-spawn 2026-05-12 ~06:30Z)
 - Brief: `docs/briefs/r3-t-wad-full-r3-cidag-scaffold-worker.md`
-- Independent of held substrate; Slice 1 LANDED
+- Dependency: PR #2736 (CIWorkflowDag carrier introduction); WI-2 sequences after PR #2736 merge OR rebases on `session/neat-badger-30`
+- **Does NOT extend `dsl/gunbc/ci.dag`** — existing gate-centric CI substrate from PR #2371 stays untouched (per (c-refined) shape; INVARIANTS P1 boundary)
+- **Does NOT modify `dsl/extdeps/github/actions.dag`** — platform carriers stay platform-faithful (per (c-refined) shape; INVARIANTS P1)
 
 Both workers briefed with brief-pointer messages 2026-05-12 ~06:30Z. Canvas + extension PRs expected within ~1 week.
 
@@ -175,7 +199,9 @@ PM-relay to warm-wolf-698 + Director co-sign at #828 if cross-tier confirmation 
 - `docs/design-affected-set-lens.md` — affected-set lens substrate (PR #2713 ✓ merged); Slice 7 consumes
 - `docs/briefs/r3-substrate-t-workflow-as-data-slice-1-worker.md` — Slice 1 substrate carrier brief (LANDED PR #2160)
 - `dsl/extdeps/github/actions.dag` — canonical platform carriers (`Workflow:21` `Job:110` `Step:147` `WorkflowSecret:102`)
-- `dsl/gunbc/ci.dag` — existing CI intent declarations (PR #2371; gate-centric; WI-2 extends)
+- `dsl/gunbc/ci.dag` — existing gate-centric CI intent declarations (PR #2371); WI-2 does NOT extend this file (per (c-refined) shape); CIPipeline is NOT used as projection input (flat without edge structure per warm-wolf-698 msg_27d99080)
+- `dsl/gunbc/ci_emission.dag` — NEW file WI-2 creates (projection-function substrate; EmissionTarget enum + project_github_actions signature + pinned-projection binding)
+- PR #2736 (neat-badger-30) — `CIWorkflowDag` carrier introduction; WI-2 sources projection input from this
 - `dsl/extdeps/cron_schedule_model.dag` — CronSchedule carrier (LANDED via PR #2169)
 - `docs/ci-pipeline-optimization.md` — pre-v3 historical optimization (background context; not active program)
 - `docs/briefs/r3-ci-layer-2-pm-prestaged-mgr-fill-template.md` — Layer 2 path-regex bridge (PR #2721 ✓ merged); dissolution target for Slice 7
