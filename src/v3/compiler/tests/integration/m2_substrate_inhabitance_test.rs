@@ -541,6 +541,59 @@ fn tier3_computation_mirror_trivial_constructors_dissolved() {
 }
 
 #[test]
+fn tier3_computation_mirror_kernel_algebra_profile_substrate_authority() {
+    // Gate `tier3_computation_mirror_dissolved` (R3 §1.8 #2, T-Tier3-Dissolution) —
+    // slice receipt: `kernel_algebra_profile` must not be shadowed by a parallel
+    // hand-maintained type-name → profile table in Rust. `type_iteration_dimension`
+    // routes non-`Node` names through `BOOTSTRAPPED_DAG.kernel_algebra_profile`, which
+    // reads the lowered `data kernel_algebra_profile` map (see `Dag::kernel_algebra_profile`).
+    assert_eq!(
+        type_iteration_dimension("Node"),
+        Some(IterationDimension::TreeDescent)
+    );
+    assert_eq!(
+        type_iteration_dimension("Int"),
+        Some(IterationDimension::ArithmeticRepeat)
+    );
+    assert_eq!(
+        type_iteration_dimension("String"),
+        Some(IterationDimension::CollectionFold)
+    );
+    assert_eq!(type_iteration_dimension("Bool"), None);
+
+    let dag_rs = include_str!("../../src/dag.rs");
+    let fn_needle = "pub fn type_iteration_dimension";
+    let fn_start = dag_rs
+        .find(fn_needle)
+        .unwrap_or_else(|| panic!("expected `{fn_needle}` in dag.rs"));
+    let brace_start = dag_rs[fn_start..]
+        .find('{')
+        .map(|rel| fn_start + rel)
+        .expect("opening brace for type_iteration_dimension");
+    let mut depth = 0u32;
+    let mut fn_end = None;
+    for (idx, ch) in dag_rs[brace_start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    fn_end = Some(brace_start + idx + ch.len_utf8());
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let fn_end = fn_end.expect("unterminated type_iteration_dimension");
+    let fn_slice = &dag_rs[fn_start..fn_end];
+    assert!(
+        fn_slice.contains("BOOTSTRAPPED_DAG") && fn_slice.contains(".kernel_algebra_profile(type_name)"),
+        "type_iteration_dimension must delegate through BOOTSTRAPPED_DAG.kernel_algebra_profile; got:\n{fn_slice}"
+    );
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_side_table_reads_recursive_call() {
     let dag = compile_to_dag(
         "\
