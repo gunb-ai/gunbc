@@ -519,11 +519,25 @@ the runtime does not consume "emission target"; it consumes whatever YAML
 or shim ends up at `.github/workflows/ci.yml`. The selection between
 projection shapes is a gunbc decision about which artifact gunbc renders.
 
-Per `INVARIANTS.md` P1 (single authority): emission-policy authority belongs
-to `gunbc/ci.dag` (single authority), **not** `extdeps.github.actions` (which
-holds platform authority). Placing `emission_target` on
+**Authority citation correction (per gpt-5.5-pro review 9972)**: the
+single-authority / "every fact lives in exactly one place" principle is
+`INVARIANTS.md` **P2 Boundary Discipline**, not P1. P1 is Modeling
+Faithfulness / grounding. The operator BLOCKING quote above invokes "P1"
+verbatim; both principles are in play here — P1 because adding gunbc-policy
+state to an extdeps carrier makes the carrier no longer faithful to the
+extdeps header's "platform facts only" claim, and P2 because emission-policy
+authority must live in exactly one place (`gunbc/ci.dag`), not split across
+extdeps and gunbc. Subsequent canvas references to single-authority cite
+**P2**; the extdeps-fidelity dimension cites **P1**.
+
+Per `INVARIANTS.md` P2 (Boundary Discipline): emission-policy authority
+belongs to `gunbc/ci.dag` (single authority), **not** `extdeps.github.actions`
+(which holds platform authority). Placing `emission_target` on
 `extdeps.github.actions.Workflow` creates a dual-authority condition where
 the extdeps file holds a gunbc-policy fact alongside its platform facts.
+Per P1 (Modeling Faithfulness): the extdeps carrier would no longer
+faithfully model what its header claims to model ("platform constraints,
+not CI logic").
 
 PR #2746 canvas §3.1 explicitly weighed and rejected the parallel objection
 ("`extdeps.github.actions` describes platform constraints, not gunbc CI
@@ -608,7 +622,7 @@ Replacing the §2.4 row "Workflow-artifact authority":
 | Gate-dependency authority | ✓ `CIWorkflowDag` | ✗ implicit `Job.needs` | ✓ `CIWorkflowDag` | ✓ `CIWorkflowDag` |
 | Workflow-artifact authority | ✗ unmodeled | ✓ `Workflow` (platform-coupled emission-policy) | ✓ `Workflow` (same) | ✓ `Workflow` (platform-pure) + projection-fn in gunbc |
 | Emission-target carrier | ✗ build-system implicit | ✗ on extdeps (P1 violation) | ✗ on extdeps (P1 violation) | ✓ `gunbc.ci.EmissionTarget` (gunbc-namespace) |
-| INVARIANTS P1 (single authority) | ✗ dual-authority unresolved | ✗ extdeps holds gunbc-policy fact | ✗ extdeps holds gunbc-policy fact | ✓ each authority single-sourced |
+| INVARIANTS P2 (Boundary Discipline / single authority) | ✗ dual-authority unresolved | ✗ extdeps holds gunbc-policy fact | ✗ extdeps holds gunbc-policy fact | ✓ each authority single-sourced |
 | Extdeps fidelity (file header :1-12) | n/a | ✗ violated | ✗ violated | ✓ preserved |
 | Sufficient for FULL R3-close | no | no | no (P1) | **yes** |
 
@@ -629,7 +643,8 @@ No separately-declared `Workflow` value exists as modeled authority.**
    on actions.Workflow` field placement is withdrawn. PR #2746 canvas
    §3.1 reasoning narrows to "`EmissionTarget` substrate-decision
    (sum-type, not sibling-wrapper) is correct; placement moves from
-   extdeps to gunbc namespace per INVARIANTS P1". Suggest PR #2746
+   extdeps to gunbc namespace per INVARIANTS P2 (boundary discipline) +
+   P1 (extdeps-carrier modeling faithfulness)". Suggest PR #2746
    authors a §7 addendum mirroring this canvas's §7 + revises §3.1/§3
    accordingly, OR PR #2746 is held while (c-refined) is implemented as a
    replacement canvas. Director call.
