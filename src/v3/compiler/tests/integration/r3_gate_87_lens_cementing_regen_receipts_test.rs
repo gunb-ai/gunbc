@@ -4,6 +4,8 @@
 //! `src/v3/compiler/regen.dag` registry lenses whose `tests/dag/t_r3_gate_87_cementing_regen_*.dag`
 //! harnesses are still `Compiles` placeholders (bootstrap-scale / multi-arg lenses where a frozen
 //! `LensOutputEquals` / `DifferentialEquals` witness is not yet authored as `.dag` data).
+//! Placeholder claims intentionally prove **harness wiring** only; they must not use unrelated
+//! runner predicates that read as lens behavior without applying the named lens (`TESTING.md`).
 //!
 //! **Lane-E + symbolic-cost** `.dag` receipts are exercised by `t_pb_b_1_dag_runner_test`.
 //! `unused_parameters` and `structural_resolution` stay `Compiles` placeholders in `.dag` until
