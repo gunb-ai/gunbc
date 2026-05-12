@@ -846,9 +846,9 @@ one authoritative place, named once. §7.3.2's "keep the name, document
 the mapping" disposition is insufficient: no amount of framing-
 narrowing keeps a name available when another carrier already owns it.
 
-**Rename**: `EmissionTarget` → `WorkflowRuntime` throughout the canvas
-+ cascade across PR #2744 (briefs) + PR #2745 (WI-2 impl) + PR #2750
-(ledger gate-IDs) + PR #2746-merged content (this PR #2756). Variant
+**Rename**: `EmissionTarget` → `WorkflowRuntime` throughout the canvas,
+with cascade across PR #2744 (briefs), PR #2745 (WI-2 impl), PR #2750
+(ledger gate-IDs), and PR #2746-merged content (this PR #2756). Variant
 names + 23-site migration scope + 🟡 YELLOW classification +
 three-condition dissolution trigger + projection-function signature +
 gunbc-namespace placement all stand; only the sum-type name changed.
