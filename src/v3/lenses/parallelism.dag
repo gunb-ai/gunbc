@@ -34,10 +34,22 @@ import std.effects {
 }
 
 type LinearBranchesLookup
+  // 🟢 TERMINAL helper coproduct. This is the local, total result of trying to
+  // view each parallel branch as `LinearEffect`; dissolving it into
+  // `WorkflowParallelismReport` would mix traversal control flow with the
+  // public Stage 2e diagnostic contract. The terminal carrier is private to
+  // this lens and has exactly one unsupported class (`NonLinearParallelBranch`)
+  // at the report boundary.
   = LinearBranchesFound { branches: List<List<OperationEffect>> }
   | NonLinearBranchFound
 
 type NonCommutingPairLookup
+  // 🟢 TERMINAL helper coproduct. The operation pair is internal search
+  // evidence used only to decide the closed `PairwiseNonCommute` class; the
+  // exported report contract remains `ParallelismUnsupportedDetail { kind,
+  // downstream_stage, reason }` from `std.effects`. Dissolution into a public
+  // pair-evidence payload is intentionally deferred until that report contract
+  // grows a typed evidence field instead of overloading the free-text reason.
   = NonCommutingPairFound { left: OperationEffect, right: OperationEffect }
   | AllPairsCommute
 
@@ -211,6 +223,11 @@ fn parallelism_report_for_workflow(wf: WorkflowEffect) -> WorkflowParallelismRep
               match pairwise_cross_branch_commutes(branch_ops) {
                 AllPairsCommute => ParallelCompositionVerdict(IdempotentComposition)
                 NonCommutingPairFound { left: left_op, right: right_op } =>
+                  // The pair witnesses stay bound here to prove the search found
+                  // concrete non-commuting operations, but Stage 2e's exported
+                  // report contract is deliberately the closed kind plus a
+                  // stable reason string. Tests lock that contract instead of
+                  // formatting operation names into `reason`.
                   report_parallelism_unsupported(
                     PairwiseNonCommute,
                     "parallel branch operations do not commute under parallel scheduling"
