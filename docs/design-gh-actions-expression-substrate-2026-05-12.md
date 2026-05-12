@@ -232,18 +232,54 @@ site-already-migrated.
 ## §4. Dissolution path preview
 
 When dissolution fires, the second variant follows the GH Actions
-expression grammar at https://docs.github.com/en/actions/learn-github-actions/expressions
-The likely target shape (not authoritative until dissolution):
+expression grammar at https://docs.github.com/en/actions/learn-github-actions/expressions.
+
+**Important extdeps-fidelity correction (per operator BLOCKING at PR #2751:214,
+2026-05-12)**: GH Actions expression-bearing scalars are **template strings**,
+not pure expression ASTs. A scalar field like
+`concurrency.group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}`
+is a *sequence* of alternating literal-text segments and `${{ ... }}`
+expression segments, not a single expression. A dissolution target
+modeling each scalar as one pure AST node would mis-model what the
+platform actually parses (text-with-interpolated-expressions), violating
+INVARIANTS P1 (modeling faithfulness). The corrected dissolution target
+distinguishes the template-string layer (sequence of segments) from the
+expression-AST layer (the content of one `${{ ... }}` segment):
 
 ```dag
+// Top-level: an expression-bearing field holds a template string,
+// which is a sequence of text segments and interpolated expression
+// segments. A pure-literal scalar is a single TextSegment; a pure-
+// expression scalar is a single ExpressionSegment.
 type Expression
-  = OpaqueString(String)        // dissolves to specific arms
-  | Literal(LiteralValue)
-  | Var(VarPath)                // github.event.pull_request.draft
-  | BinOp(Expression, BinOpKind, Expression)
-  | Func(FunctionName, List<Expression>)
-  | Index(Expression, String)
+  = OpaqueString(String)              // 🟡 SCAFFOLD until dissolution
+  | Template(List<TemplateSegment>)   // dissolved form
+
+type TemplateSegment
+  = TextSegment(String)
+  | ExpressionSegment(ExpressionAst)
+
+// The inner expression grammar (per docs.github.com expression docs):
+type ExpressionAst
+  = Literal(LiteralValue)
+  | Var(VarPath)                      // github.event.pull_request.draft
+  | BinOp(ExpressionAst, BinOpKind, ExpressionAst)
+  | Func(FunctionName, List<ExpressionAst>)
+  | Index(ExpressionAst, String)
 ```
+
+This shape is extdeps-faithful: the carrier mirrors the platform's
+actual parse structure (template string → segment list → per-segment
+either literal text or an expression AST). Pure literal scalars
+(e.g., `runs-on: ubuntu-latest`) collapse to `Template([TextSegment("ubuntu-latest")])`;
+pure expression scalars collapse to `Template([ExpressionSegment(...)])`;
+mixed scalars carry the full segment list. This corrects the original
+sketch above, which collapsed template and expression layers into one
+type and would have under-modeled the platform.
+
+(Note: the original sketch is preserved here as authoring-evolution
+record for the BLOCKING-finding audit trail; the corrected shape
+immediately above supersedes it.)
 
 `OpaqueString` may persist as a SCAFFOLD arm during the migration window
 (per `INVARIANTS.md` P5: Progress Is Dissolution; scaffold arms must
