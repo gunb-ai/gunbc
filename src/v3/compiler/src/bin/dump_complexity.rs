@@ -24,9 +24,7 @@ fn main() -> ExitCode {
         match arg.as_str() {
             "--file" => filter = args.next(),
             "--limit" => {
-                limit = args
-                    .next()
-                    .and_then(|v| v.parse::<usize>().ok());
+                limit = args.next().and_then(|v| v.parse::<usize>().ok());
             }
             other => {
                 eprintln!("unknown argument `{other}`");
