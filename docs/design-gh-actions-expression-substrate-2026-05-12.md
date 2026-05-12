@@ -366,7 +366,7 @@ expression-capable fields in actions.dag carriers (audited 2026-05-12):
 | `MatrixStrategy` | `exclude: List<Map<String, String>>` (`:225`) | List of Map | ✓ (matrix excludes per workflow-syntax) |
 | `MatrixStrategy` | `fail_fast: Bool` (`:226`) | Bool | ✓ (typed; string-coerced expression) |
 | `MatrixStrategy` | `max_parallel: Int?` (`:227`) | Int? | ✓ (typed; string-coerced expression) |
-| `DispatchInput` | `default: String?` (`:58`) | String? | ✓ (per `on.workflow_call.inputs.<id>.default` + `on.workflow_dispatch.inputs.<id>.default` context-availability entries — added 2026-05-12T11:35:26Z per operator BLOCKING at :298) |
+| `DispatchInput` | `default: String?` (`:58`) | String? | ✗ **split capability — BLOCKED on carrier-split per §6 Q#5**. Per GH context-availability table, `on.workflow_call.inputs.<id>.default` is expression-capable but `on.workflow_dispatch.inputs.<id>.default` is **not** (literal-only). The shared `DispatchInput` carrier collapses both placements (used by `WorkflowCall.inputs` at `:46` and `WorkflowDispatch.inputs` at `:45`); migrating the shared field to `Expression` would invent workflow_dispatch capability (INVARIANTS P1 violation). Resolution: split carrier per §6 Q#5 before this field can migrate. Operator BLOCKING at :369 (2026-05-12T12:32:10Z) corrected the earlier dual-placement claim. |
 
 Total expression-capable surface: **28 fields** across `Workflow`, `Job`,
 `RunStep`, `UsesStep`, `ConcurrencySpec`, `RunnerSpec`, `MatrixStrategy`,
