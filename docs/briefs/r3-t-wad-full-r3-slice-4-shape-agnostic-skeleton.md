@@ -29,8 +29,8 @@ semantic authority.
 
 - `dsl/gunbc/ci_emission.dag` once WI-2 lands.
 - `CIWorkflowDag` authority for gunbc CI topology.
-- `EmissionTarget` standalone gunbc sum type.
-- `project_github_actions(CIWorkflowDag, EmissionTarget) -> Workflow`.
+- `WorkflowRuntime` standalone gunbc sum type.
+- `project_github_actions(CIWorkflowDag, WorkflowRuntime) -> Workflow`.
 - `Expression::OpaqueString` for GitHub Actions expressions that remain opaque
   until a non-YamlStatic consumer needs structural evaluation.
 
@@ -45,7 +45,7 @@ semantic authority.
 
 ## Acceptance
 
-- No `EmissionTarget` field in `dsl/extdeps/github/actions.dag`.
+- No `WorkflowRuntime` field in `dsl/extdeps/github/actions.dag`.
 - No independent hand-authored `Workflow` copy for gunbc CI.
 - `Expression::OpaqueString` is emitted verbatim to YAML.
 - Focused T-CI-WAD tests pass.
