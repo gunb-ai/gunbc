@@ -74,6 +74,9 @@ rendering client code from those facts.
 
 - HTTP audited: existing `extdeps.transports.rest` is the authoritative home.
 - SQL audited: new `extdeps.transports.sql` establishes the authoritative home.
+- Parser receipts: `rest_transport_dag_compiles_cleanly` and
+  `sql_transport_dag_compiles_cleanly` pin both transport extdeps as parseable
+  substrate.
 - Extdeps fidelity preserved: the new module cites upstream SQL/prepared
   statement sources and avoids gunbc-specific policy.
 - Emission-target boundary preserved: neither HTTP nor SQL is introduced as a
