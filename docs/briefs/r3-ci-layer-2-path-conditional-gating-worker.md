@@ -205,7 +205,17 @@ This is the parallel-representation-debt prevention. If Layer 2's group-classifi
 
 **Hard constraint**: no group entry without a `dimensions:` field of type `Set<Dimension>` with members from the lens enum. Single-element sets like `{cost}` are valid for single-dim groups. Empty set is invalid. If a group doesn't fit any of the 5 dimensions cleanly, escalate to Coordinator — that's a substrate-shape question, not a Layer 2 design choice.
 
-**Polarity invariant** (per PM caught inversion 2026-05-11 via openai-pro RC #9721 on template PR #2721, fixed at `262f42d7d`): the carrier name is `skip_<group>`. CI consumer wires `if: skip_<group> != 'true'` (i.e., RUN when `skip` is false). The dissolution formula MUST therefore be `skip = (affected ∩ group.dimensions) = ∅` (skip when intersection is **empty** = group's dimensions unaffected). The inverted form `skip = (∩ ≠ ∅)` is a fail-open boolean-polarity bug: it would silently skip AFFECTED groups when the intersection is non-empty. Skip-form is canonical (matches carrier name); run-form `run = (∩ ≠ ∅)` is the equivalent run-carrier statement. Any acceptance-criterion / YAML example / formula citation in this brief or its Mgr-fill output MUST use the canonical skip-form (empty intersection) or the equivalent run-form (non-empty intersection) — never invert.
+**Polarity invariant** (per cursor APPROVE_WITH_COMMENTS on #2725 review #9815 2026-05-12 catching §3-vs-§4 dimensions-only residual + Brian BLOCKING #3 + codex BLOCKING #9XXX absorption): the carrier name is `skip_<group>`. CI consumer wires `if: skip_<group> != 'true'` (i.e., RUN when `skip` is false). **Post-dissolution, the dissolution formula is the CANONICAL 2-STEP JOIN per `docs/design-affected-set-lens.md:359` — BOTH NodeRef AND dimension intersections required**:
+
+```
+run  = (group.testclaim_references ∩ lens.affected_node_refs) ≠ ∅
+       AND (group.dimensions ∩ lens.changed_dimensions) ≠ ∅
+skip = ¬run = (refs ∩ nodes) = ∅  OR  (dims ∩ changed_dims) = ∅
+```
+
+**The dimensions-only form `skip = (affected ∩ group.dimensions) = ∅` is INCOMPLETE** — silently drops the NodeRef-intersection step, violating Facts Flow Forward. Both inversion (`skip = (∩ ≠ ∅)`) and dimension-only collapse are fail-open bug patterns; reject in review.
+
+**Bridge-tier note**: at bridge stage (pre-dissolution), per-group `skip_*` derives from `(changed-files ∩ required_paths_regex) = ∅` — path-side proxy for the canonical 2-step (over-approximates; bridge runs MORE tests than canonical; fail-closed-safe coarseness). Carrier-name-matches-contract: `skip_*` flag true when group is unaffected (both lens-join inputs empty post-dissolution; path-regex-empty bridge-tier).
 
 ## §4. Hard constraints
 
