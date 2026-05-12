@@ -526,3 +526,16 @@ fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
         run_suite_all_pass_with_expected_claim_names(&dag, suite, claim_names);
     }
 }
+
+#[test]
+fn cementing_dispatch_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/cementing_dispatch.dag"),
+        "src/v3/compiler/tests/dag/cementing_dispatch.dag",
+    );
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "cementing_dispatch_suite",
+        &["cementing_dispatch_projection_matches_register_and_regen"],
+    );
+}
