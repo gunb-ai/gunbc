@@ -21,12 +21,27 @@ module extdeps.github.ci
 
 import std.list { List, Empty, Cons }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep,
-  HostedRunner, SelfHosted, UbuntuLatest,
-  Push, PullRequest, Opened, Synchronize, Reopened,
-  checkout_action, setup_rust_action, cache_action,
-  WorkflowPermissions, PermRead, PermNone,
-  Bash, ActionRef,
+  Workflow,
+  Job,
+  Step,
+  RunStep,
+  UsesStep,
+  HostedRunner,
+  SelfHosted,
+  UbuntuLatest,
+  Push,
+  PullRequest,
+  Opened,
+  Synchronize,
+  Reopened,
+  checkout_action,
+  setup_rust_action,
+  cache_action,
+  WorkflowPermissions,
+  PermRead,
+  PermNone,
+  Bash,
+  ActionRef
 }
 
 data gunbc_ci_yml_workflow: Workflow = Workflow {
