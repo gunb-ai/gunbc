@@ -79,10 +79,10 @@ type GateSource
 
 type CICommand {
   kind: String
-  renderer: String?
-  package: String?
-  test_name: String?
-  shell_command: String?
+  renderer: String
+  package: String
+  test_name: String
+  shell_command: String
 }
 
 type CIGate {
@@ -123,6 +123,8 @@ type CIWorkflowDag {
 // names before rendering shell strings with resolved tools or CI's conventional
 // `cargo` on PATH. ROADMAP F12 tracks the broader typed command-record carrier
 // that can replace these symbolic references with typed declaration edges.
+// Empty strings mark fields that do not apply to a command kind; nullable
+// structural fields are not accepted by the current M1 data-body validator.
 
 data lint_gate: CIGate = {
   id: "lint",
@@ -130,9 +132,9 @@ data lint_gate: CIGate = {
   command: {
     kind: "lint",
     renderer: "lint_command",
-    package: null,
-    test_name: null,
-    shell_command: null
+    package: "",
+    test_name: "",
+    shell_command: ""
   },
   blocking: true,
   source: LintGate
@@ -145,8 +147,8 @@ data test_gate: CIGate = {
     kind: "test",
     renderer: "test_command",
     package: "test_package",
-    test_name: null,
-    shell_command: null
+    test_name: "",
+    shell_command: ""
   },
   blocking: true,
   source: TestSuiteGate { test_name: "" }
@@ -160,9 +162,9 @@ data l1_gate: CIGate = {
   name: "L1 Type Knowledge Ratchet",
   command: {
     kind: "shell",
-    renderer: null,
-    package: null,
-    test_name: null,
+    renderer: "",
+    package: "",
+    test_name: "",
     shell_command: "scripts/l1-ratchet.sh --check"
   },
   blocking: true,
@@ -185,7 +187,7 @@ data compile_gates_gate: CIGate = {
     renderer: "ignored_test_command",
     package: "test_package",
     test_name: "ci_",
-    shell_command: null
+    shell_command: ""
   },
   blocking: true,
   source: FixedPointGate
