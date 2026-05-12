@@ -2,11 +2,17 @@ use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective, ValueBody,
+    Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortId, PortState, TypeConnective,
+    ValueBody,
 };
 use v3_compiler::generated_full_bootstrap_dag;
+use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
+
+use crate::common::{
+    escape_v3_string_literal_content, run_on_larger_stack, symbolic_cost_as_v3_data_initializer,
+};
 
 fn compile_any(src: &str, file: &str) -> Dag {
     match compile_to_dag(src, file) {
@@ -52,6 +58,16 @@ fn sum_variants(dag: &Dag, name: &str) -> Vec<(String, Vec<String>)> {
             .collect(),
         other => panic!("expected `{name}` to lower to a Disj, got {other:?}"),
     }
+}
+
+fn find_bind_value_port(dag: &Dag, name: &str) -> PortId {
+    dag.nodes()
+        .iter()
+        .find_map(|node| match node {
+            Behavior::Bind(bind) if bind.name == name => Some(bind.value),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("bind `{name}` not found"))
 }
 
 fn bind_value_type_decl(dag: &Dag, name: &str) -> DeclarationId {
