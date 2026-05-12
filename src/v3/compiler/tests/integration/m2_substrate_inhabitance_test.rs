@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
