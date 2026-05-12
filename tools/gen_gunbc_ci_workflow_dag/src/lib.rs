@@ -14,7 +14,7 @@ fn reject_unknown_keys(
         let key = k
             .as_str()
             .ok_or_else(|| format!("{ctx}: mapping keys must be YAML strings"))?;
-        if !allowed.iter().any(|a| *a == key) {
+        if !allowed.contains(&key) {
             return Err(format!(
                 "{ctx}: unsupported YAML key `{key}` (generator is fail-closed; extend gen_gunbc_ci_workflow_dag if this field should project into the carrier)"
             )
