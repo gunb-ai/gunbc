@@ -1,6 +1,6 @@
 // lenses.cost — symbolic-cost lens over the v3 DAG.
 //
-// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PROXY
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE
 //   (T-CostLens-Composition α-narrow #38 + #39 satisfied by construction at
 //   HEAD per PR #2171. **ε path ratified canonical-not-transitional** at
 //   gunb-ai/gunbc#2181 #issuecomment-4401584012 (canvas
@@ -15,10 +15,8 @@
 //   Rust-side `RealizationCostTable` row walker over structural
 //   `*Realization.cost` fields; Slice 1b parameterizes the concrete
 //   cost-fold consumer → Slice 2 test_runner #40 wiring → Slice 3 demo
-//   fixture #70. Status stays PROXY per single-authority discipline with
-//   `docs/v3-lens-capability-register.md` cost.dag row (INVARIANTS P2);
-//   register-row promotion happens when canvas-tier consumer landings
-//   warrant it.
+//   fixture #70. Those gates remain target-realization composition work
+//   outside this lens's target-agnostic abstract `SymbolicCost` scope.
 // See docs/v3-lens-capability-register.md.
 //
 // Produces `Lookup<SymbolicCost>` per port using `SymbolicCost`
@@ -29,9 +27,11 @@
 // `unnamed_size_variable` / `linear_at`-style paths, so `display_name` is often
 // `None` until producers author labels — unlike v2's richer `SizeVar` value
 // semantics. Output dimensions, certainty, and asymptotic classification from
-// v2's complexity analysis are also not carried on this lens. Dimension wiring
-// for executable `Dimension<SymbolicCost>` records remains deferred on grammar
-// gaps (see the `Dimension<SymbolicCost>` discussion lower in this file). Lane E-C stages `CallPattern` /
+// v2's complexity analysis live on `complexity.dag`; this lens owns the abstract
+// `SymbolicCost` projection. Executable Dimension wiring exists through
+// `v3_compiler::analyze_symbolic_cost_dimension`, which returns
+// `DimensionReport<SymbolicCost>` over this generated `symbolic_cost_of`
+// authority. Lane E-C stages `CallPattern` /
 // `LoweringTarget` in `std.computation`; lane E-I stages `SubValueRelation`
 // and the `CostBound` algebra in `std.induction`. Integer **`Div`** composes
 // operand costs (`transform_cost`) with **`LogCost(dividend_port)`** in
@@ -40,13 +40,12 @@
 // `std.computation::per_call_pattern_at` (R3 gate `e_p_sub_value_relation_per_call_landed` /
 // T-E-P-Producer-Broadening Phase 3): same `SubValueRelation`→`CallPattern` projection
 // authority as `complexity.dag`, per `docs/design-cost-lens-sizevar-dimension-wiring.md` §3.2.
-// Band-C v2-oracle cementing for cost stays PROXY per register row. E-M closed method
+// Band-C cementing for the abstract cost projection lives at
+// `integration/cementing/cost_lens_symbolic_consumer_test.rs`. E-M closed method
 // carrier parity by structural subsumption
 // through `TransformTarget` and typed declaration/effect metadata. Integration module
 // `cost_lens_symbolic_consumer_test` pins the generated `symbolic_cost_of` consumer on
-// `compile_to_dag` fixtures. Band-C cementing (`integration/cementing/`, v2 oracle /
-// reviewed projection) stays gated on clearing the `cost.dag` **PROXY** row per register
-// Discipline.
+// `compile_to_dag` fixtures.
 //
 // Shared carrier: `v3.std.lookup.Lookup` (compiler-std consolidation;
 // see docs/thesis/compiler-std-consolidation.md). The prior lens-local
