@@ -276,6 +276,12 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
     );
     dag.declaration_by_name("modeled_gunbc_ci_workflow")
         .expect("modeled_gunbc_ci_workflow data must load from t_ci_workflow_as_data_demo.dag");
+    dag.declaration_by_name("modeled_gunbc_ci_workflow_dag")
+        .expect("modeled_gunbc_ci_workflow_dag data must load from t_ci_workflow_as_data_demo.dag");
+    dag.declaration_by_name("modeled_gunbc_ci_workflow_transport")
+        .expect("modeled_gunbc_ci_workflow_transport data must load from t_ci_workflow_as_data_demo.dag");
+    dag.declaration_by_name("ci_workflow_dag")
+        .expect("gunbc.ci ci_workflow_dag data must load as the structural CI DAG authority");
 }
 
 #[test]

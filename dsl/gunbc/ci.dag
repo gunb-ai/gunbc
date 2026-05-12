@@ -78,6 +78,24 @@ type CIPipeline {
   gates: List<CIGate>
 }
 
+// CI workflow as a DAG, separate from GitHub Actions transport. Nodes are
+// structural gates; edges are prerequisite relationships between gate ids.
+type CIGateNode {
+  id: String
+  gate: CIGate
+}
+
+type CIGateEdge {
+  from: String
+  to: String
+}
+
+type CIWorkflowDag {
+  name: String
+  nodes: List<CIGateNode>
+  edges: List<CIGateEdge>
+}
+
 // ── Gates ───────────────────────────────────────────────────────────
 // Commands are derived from compiler.dag; commands use bare "cargo"
 // because CI runners always have cargo on PATH. For local dag run,
@@ -136,5 +154,21 @@ data ci_pipeline: CIPipeline = {
     lint_gate,
     test_gate,
     l1_gate
+  ]
+}
+
+data ci_workflow_dag: CIWorkflowDag = {
+  name: "gunbc-ci",
+  nodes: [
+    { id: "compile-gates", gate: compile_gates_gate },
+    { id: "lint", gate: lint_gate },
+    { id: "tests", gate: test_gate },
+    { id: "l1-ratchet", gate: l1_gate }
+  ],
+  edges: [
+    { from: "compile-gates", to: "lint" },
+    { from: "compile-gates", to: "tests" },
+    { from: "lint", to: "l1-ratchet" },
+    { from: "tests", to: "l1-ratchet" }
   ]
 }
