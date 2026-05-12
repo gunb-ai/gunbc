@@ -35,7 +35,6 @@
 module gunbc.ci
 
 import std.list { List }
-import v3.spec.v3_l1 { DeclarationRef }
 import gunbc.compiler {
   compiler_cycle, test_package,
   lint_command, test_command, ignored_test_command
@@ -80,8 +79,8 @@ type GateSource
 
 type CICommand {
   kind: String
-  renderer: DeclarationRef?
-  package: DeclarationRef?
+  renderer: String?
+  package: String?
   test_name: String?
   shell_command: String?
 }
@@ -119,18 +118,18 @@ type CIWorkflowDag {
 }
 
 // ── Gates ───────────────────────────────────────────────────────────
-// Commands are structural intent, not rendered shell text. Command variants point
-// at gunbc.compiler renderers and package facts by `DeclarationRef`; live
-// transports render shell strings later using resolved tools or CI's conventional
+// Commands are structural intent, not rendered shell text. Command rows name
+// gunbc.compiler renderers and package facts; live transports resolve those
+// names before rendering shell strings with resolved tools or CI's conventional
 // `cargo` on PATH. ROADMAP F12 tracks the broader typed command-record carrier
-// shared with other command consumers.
+// that can replace these symbolic references with typed declaration edges.
 
 data lint_gate: CIGate = {
   id: "lint",
   name: "Lint",
   command: {
     kind: "lint",
-    renderer: lint_command,
+    renderer: "lint_command",
     package: null,
     test_name: null,
     shell_command: null
@@ -144,8 +143,8 @@ data test_gate: CIGate = {
   name: "Tests",
   command: {
     kind: "test",
-    renderer: test_command,
-    package: test_package,
+    renderer: "test_command",
+    package: "test_package",
     test_name: null,
     shell_command: null
   },
@@ -183,8 +182,8 @@ data compile_gates_gate: CIGate = {
   name: "Compile Gates",
   command: {
     kind: "ignored-test",
-    renderer: ignored_test_command,
-    package: test_package,
+    renderer: "ignored_test_command",
+    package: "test_package",
     test_name: "ci_",
     shell_command: null
   },
