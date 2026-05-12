@@ -152,6 +152,21 @@ test takes >2s locally (cold bootstrap aside), the suite is
 drifting into heavy-integration territory. See
 `feedback_test_timeout_2s`.
 
+### Phase-0 per-test wall clock (CI)
+
+The v3 CI job tees libtest `--report-time` output and
+`scripts/check-test-timeout.sh` enforces `TEST_TIMEOUT_MS` (default
+2000 ms). **Warn-only backlog** is **not** a hand-edited `.txt` list:
+it is **`scripts/test-node-wall-clock-ratchet.jsonl`** — one JSON
+object per line, `{"test":"<libtest token>","policy":"warn"}`,
+aligned with R3 gate **#101** `TestNodeCostDimension` on test nodes
+(`src/v3/std/verification.dag`) and gate **#102**
+`slow_test_exemptions_dissolved` (see the script header). There is
+**no** `TEST_TIMEOUT_MAX_EXEMPTIONS` row-count ratchet: unknown tests
+over budget **fail closed**. Any new slow `#[test]` that must **warn**
+instead of **fail** when over budget needs a manifest row in the
+**same PR** as the policy intent. Override: **`TEST_TIMEOUT_MANIFEST`**.
+
 ## Mocks and dependency injection
 
 Prefer passing `&Dag` / `&dyn Lens` / etc. over globals. Prefer

@@ -52,6 +52,13 @@
 #                         (default v3-compiler).
 #   TEST_TIMEOUT_MANIFEST Path to JSONL warn manifest (default
 #                         scripts/test-node-wall-clock-ratchet.jsonl).
+#
+# **Fail-closed policy (gate #102).** A test whose wall time exceeds
+# `TEST_TIMEOUT_MS` and whose libtest name is **not** warn-listed in the
+# manifest is a ratchet **failure**. There is no `TEST_TIMEOUT_MAX_EXEMPTIONS`
+# floor: the JSONL manifest is the sole warn backlog — add a `{"policy":"warn"}`
+# row in the **same PR** as any intentional expansion of warn-only coverage.
+# Omitting a slow test fails closed (unknown over-budget names error this step).
 
 set -euo pipefail
 
