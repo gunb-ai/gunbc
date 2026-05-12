@@ -8,6 +8,11 @@
 //! `std.verification` `lens_capability_register_rows` (closed coproduct status axes per
 //! `docs/design-tests-as-data-completeness.md` §8.3), then validates the Band-C receipt list
 //! in `cementing_dispatch.dag` and on-disk harness artifacts.
+//!
+//! **Interim host coupling:** validating `temporary-rust` receipts scans `tests/integration.rs`
+//! once per predicate evaluation (see `std::fs::read_to_string` below). Dissolution: consume
+//! reflected wiring facts at the runner edge so Band-C dispatch does not depend on crate layout
+//! + host FS for this check.
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::Path as FsPath;
@@ -210,11 +215,16 @@ fn v2_cementing_basenames_from_capability_rows(
 ///
 /// Exposed for integration tests that mechanically ratchet the markdown capability table against
 /// this structural authority (`lens_register_correspondence_test`).
-pub fn lens_capability_register_v2_cementing_basenames(dag: &Dag) -> Result<BTreeSet<String>, String> {
-    let reg_decl = dag.declaration_by_name("lens_capability_register_rows").ok_or_else(|| {
-        "bootstrap must declare `lens_capability_register_rows` (std.verification)".to_string()
-    })?;
-    let capability_rows = list_items_of_declaration(dag, reg_decl.id, "lens_capability_register_rows")?;
+pub fn lens_capability_register_v2_cementing_basenames(
+    dag: &Dag,
+) -> Result<BTreeSet<String>, String> {
+    let reg_decl = dag
+        .declaration_by_name("lens_capability_register_rows")
+        .ok_or_else(|| {
+            "bootstrap must declare `lens_capability_register_rows` (std.verification)".to_string()
+        })?;
+    let capability_rows =
+        list_items_of_declaration(dag, reg_decl.id, "lens_capability_register_rows")?;
     v2_cementing_basenames_from_capability_rows(dag, &capability_rows)
 }
 

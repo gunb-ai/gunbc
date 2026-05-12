@@ -179,6 +179,82 @@ fn capability_table_rows() -> Vec<(String, String)> {
     rows
 }
 
+fn normalize_capability_table_markdown_token(cell: &str) -> String {
+    cell.trim().trim_matches('*').trim().to_ascii_uppercase()
+}
+
+/// True when the markdown **v2 counterpart** cell names a real v2 oracle path (so the row
+/// belongs in the Band-C v2-cementing slice alongside `LensCapabilityV2RealV2` in
+/// `lens_capability_register_rows`).
+fn md_v2_counterpart_is_real_v2_oracle(v2_cell: &str) -> bool {
+    let t = v2_cell.trim();
+    if t.is_empty() {
+        return false;
+    }
+    let lower = t.to_ascii_lowercase();
+    if lower.contains("none (v3-native)") {
+        return false;
+    }
+    if matches!(lower.as_str(), "n/a" | "—" | "-" | "none") {
+        return false;
+    }
+    true
+}
+
+/// Lens basenames for markdown rows that read **behaviorally complete** with a **real v2**
+/// counterpart column (excludes v3-native / bare `N/A` rows such as `idempotency.dag`).
+fn capability_md_v2_cementing_basenames() -> BTreeSet<String> {
+    let md_path = workspace_root().join("docs/v3-lens-capability-register.md");
+    let md = std::fs::read_to_string(&md_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", md_path.display()));
+    assert!(
+        md.lines().any(|l| l.trim() == CAPABILITY_TABLE_HEADING),
+        "docs/v3-lens-capability-register.md must contain a `{CAPABILITY_TABLE_HEADING}` \
+         heading; this test scopes its table scan to that section and cannot run \
+         without it. If the heading was renamed, update `CAPABILITY_TABLE_HEADING` \
+         in this test in the same PR."
+    );
+    let mut in_capability_section = false;
+    let mut out = BTreeSet::new();
+    for raw in md.lines() {
+        let line = raw.trim();
+        if line == CAPABILITY_TABLE_HEADING {
+            in_capability_section = true;
+            continue;
+        }
+        if in_capability_section && line.starts_with("## ") {
+            in_capability_section = false;
+        }
+        if !in_capability_section {
+            continue;
+        }
+        if !line.starts_with('|') || line.starts_with("|---") || line.contains("---|---") {
+            continue;
+        }
+        let cells = md_table_cells(line);
+        if cells.len() < 5 {
+            continue;
+        }
+        let lens_cell = cells[1].trim();
+        if lens_cell == "Lens" {
+            continue;
+        }
+        let basename = lens_cell.trim_matches('`').trim();
+        if !basename.ends_with(".dag") {
+            continue;
+        }
+        let behavioral = normalize_capability_table_markdown_token(&cells[3]);
+        if behavioral != "COMPLETE" {
+            continue;
+        }
+        if !md_v2_counterpart_is_real_v2_oracle(&cells[4]) {
+            continue;
+        }
+        out.insert(basename.to_string());
+    }
+    out
+}
+
 fn register_lens_basenames() -> BTreeSet<String> {
     capability_table_rows()
         .into_iter()
@@ -276,5 +352,25 @@ fn r3_gate_83_current_register_blockers_are_explicit() {
         "Gate #83 is not ready to strict-fire until sibling lens-completion slices \
          remove all PROXY/STUB statuses. If this changed, update the strict-fire \
          posture in `r3_gate_83_lens_capability_register_has_zero_proxy_zero_stub`."
+    );
+}
+
+#[test]
+fn lens_capability_register_rows_match_md_v2_cementing_projection() {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap Dag should load cleanly for lens capability register ratchet, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let structural = cementing_dispatch::lens_capability_register_v2_cementing_basenames(&dag)
+        .expect("read v2 cementing projection from lens_capability_register_rows");
+    let markdown = capability_md_v2_cementing_basenames();
+    assert_eq!(
+        structural, markdown,
+        "`docs/v3-lens-capability-register.md` Band-C v2-cementing slice (COMPLETE + real v2 counterpart column) \
+         must match `std.verification` `lens_capability_register_rows` (`LensCapabilityBehavioralComplete` + \
+         `LensCapabilityV2RealV2`). Update both in the same PR when promoting or narrowing a lens. \
+         structural={structural:?} markdown={markdown:?}"
     );
 }
