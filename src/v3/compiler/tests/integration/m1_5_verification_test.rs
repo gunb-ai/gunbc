@@ -400,16 +400,18 @@ data generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
         find_named(&dag, "generator_ref"),
         find_named(&dag, "ProgramGenerator")
     );
-    assert_eq!(
+    let Some(ValueBody::Structural { fields }) =
         dag.declaration(find_named(&dag, "generator_ref"))
             .value_body
-            .as_ref(),
-        Some(&ValueBody::Structural {
-            fields: vec![(
-                String::from("generator"),
-                FieldValue::Reference(find_named(&dag, "parse_smoke_generator"))
-            )]
-        })
+            .as_ref()
+    else {
+        panic!("generator_ref should lower to a structural data body");
+    };
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].0, "generator");
+    assert_eq!(
+        fields[0].1,
+        FieldValue::Reference(find_named(&dag, "parse_smoke_generator"))
     );
 }
 
