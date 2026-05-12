@@ -185,7 +185,8 @@ data ci_pipeline: CIPipeline = {
 // ── GitHub Actions workflow mirror (`.github/workflows/ci.yml`) ──────────────
 // Hierarchy: Workflow > Job > Step (RunStep | UsesStep). Structural TODOs:
 // workflow `concurrency:`, job `outputs:`, step `id:`, PullRequest `ready_for_review`,
-// Layer-2 `if:` regex cluster, affected-set wiring — see header on slice dissolution.
+// Layer-2 `if:` regex cluster, affected-set wiring, `_wi2_empty_env` empty-env sentinel
+//   (parser Map-literal gap — dissolution in file header) — see slice / Director notes.
 
 data gunbc_ci_yml_workflow: Workflow = Workflow {
   name: "ci",
