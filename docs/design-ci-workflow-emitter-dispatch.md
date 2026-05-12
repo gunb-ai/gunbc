@@ -610,7 +610,7 @@ is shaped to consume affected-set receipts when they become available.
 - Land this canvas.
 - Ratify `EmissionTarget` placement in gunbc namespace as the projection
   argument to `project_github_actions`.
-- Ratify `YamlStatic` default for absent projection target during migration.
+- Ratify that authoritative projection calls require an explicit target.
 
 ### Phase B: Static Parity
 
@@ -619,6 +619,8 @@ is shaped to consume affected-set receipts when they become available.
 - Emit `.github/workflows/ci.yml` from
   `project_github_actions(ci_workflow_dag, YamlStatic)`.
 - Keep the checked-in YAML as a generated artifact with freshness checking.
+- If old fixtures or scaffolding records lack a target, convert them through a
+  non-authoritative migration adapter before calling `project_github_actions`.
 
 ### Phase C: Shim Runtime
 
@@ -641,8 +643,7 @@ is shaped to consume affected-set receipts when they become available.
   or thin shim.
 - Add a ratchet that rejects manual workflow policy edits outside `ci.dag`.
 - Add a ratchet that rejects missing projection target on authoritative
-  projection calls; the optional target remains only for historical fixture
-  compatibility.
+  projection calls.
 - Mark `ci_yml_dissolved` passing only when the source of truth is `.dag`.
 
 ## 11. Ratchets
@@ -666,8 +667,8 @@ design authority once ratified.
 The following questions should be answered by ratification, not by worker
 implementation:
 
-1. Should `EmissionTarget` be optional during the migration or required
-   immediately with every projection call updated in one PR?
+1. Which non-authoritative fixture reader or migration adapter should translate
+   legacy records that predate `EmissionTarget`?
 2. Should `BinaryShim` first run jobs in-process, or should it emit dynamic
    matrix JSON for GitHub fanout?
 3. What is the minimal verifier for GitHub Actions YAML in CI before a full
@@ -677,7 +678,7 @@ implementation:
 
 This canvas recommends:
 
-- optional field during migration, required at Slice 8 `ci_yml_dissolved`
+- required explicit target for authoritative projection calls from Slice 4
 - in-process selected job/test execution first
 - syntax validation plus freshness check for YAML
 - keep `InlineGunbc` design-only; add no enum variant until a consumer exists
@@ -687,7 +688,7 @@ This canvas recommends:
 This design is ready for downstream implementation when:
 
 - `EmissionTarget` lives in gunbc namespace as a projection argument, with
-  `YamlStatic` default for absence during migration.
+  explicit target required at authoritative projection call sites.
 - `YamlStatic`, `BinaryShim`, and `PythonShim` have explicit semantics and
   acceptance contracts.
 - Affected-set integration is assigned to shim runtime targets and remains
