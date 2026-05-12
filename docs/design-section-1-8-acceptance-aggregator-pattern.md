@@ -59,7 +59,7 @@ Live §1.8 uses more status values than the abstract 3-value lattice. The deriva
 | `SATISFIED-BY-CONSTRUCTION` | `PASSING` | gate is closed by structural construction; no executable receipt needed; functionally identical to PASSING for closure arithmetic |
 | `CONSUMER_LANDED` | `CONSUMER_LANDED` | identity |
 | `INTEGRATION_RECEIPT (partial — ε-slice)` (or any `_partial`-suffixed bracketed form) | `CONSUMER_LANDED` | partial-receipt forms close to `CONSUMER_LANDED` per §1.7 corpus-quantified rule (slice receipts ≠ PASSING) |
-| `R3-LOAD-BEARING` | **REJECTED — see precondition rule below** | this is scope-metadata ("in R3, not R4-carved"), NOT a closure-progress status; cells with this value must be reframed to expose closure-progress status before view-membership applies |
+| `R3-LOAD-BEARING` | **REJECTED — see precondition rule below** | this is scope-metadata ("in R3 per carve-promotion-IN-R3 2026-05-09; formerly R4-carved (C1/C2/C3), now DISSOLVED per Director ratification gunbc#846"), NOT a closure-progress status; cells with this value must be reframed to expose closure-progress status before view-membership applies |
 | `DECLARED` (and `DECLARED through R3` variants) | `DECLARED` | identity |
 | `HELD-CANVAS-DEFERRED` | **EXCLUDED — see exclusion rule below** | gate is moved past R3 close; not load-bearing for R3-close arithmetic; MUST NOT appear in any view's `depends_on:` |
 | `DEFERRED` (post-R3) | **EXCLUDED** | same as above — post-R3 work; not in view scope |
