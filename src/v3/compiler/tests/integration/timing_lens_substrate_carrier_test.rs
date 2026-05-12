@@ -422,10 +422,7 @@ fn timing_measurement_iterate_fail_closed_on_observed_with_loop_bound() {
 #[test]
 fn timing_lens_carrier_landed_timing_lens_is_lens_instantiation() {
     let dag = generated_full_bootstrap_dag();
-    let lens_template = dag
-        .declaration_by_name("Lens")
-        .expect("Lens template")
-        .id;
+    let lens_template = dag.declaration_by_name("Lens").expect("Lens template").id;
     let timing_m = dag
         .declaration_by_name("TimingMeasurement")
         .expect("TimingMeasurement")
