@@ -34,6 +34,7 @@ Implement the pre-R3-close prototype from `docs/design-affected-set-lens.md` §7
    - PR #2679: gate #4 `workflow_idempotency`
    - PR #2647: quantifier substrate
 6. Each real-PR output must include per-dimension affected-set data plus commentary on why the set is narrower than naive transitive-downstream.
+7. Prove the fixtures execute through an existing zero-SG-0 runner path. `tests/dag/` is not self-discovering on current main; live execution is still mediated by Rust `TestRunner` / suite wiring. The implementation PR must name the existing runner/suite path that executes the new `TestClaim`s, or STOP if execution would require adding a new Rust integration test/table entry.
 
 ## §2. Required substrate composition
 
@@ -71,6 +72,7 @@ Unknowns must not silently disappear. If the lens cannot prove `delta(dim) == em
 4. **SG-0 delta must be zero or negative.** Positive SG-0 delta is a stop signal. Escalate to PM/Director before pushing.
 5. **No template-only fake.** The lens body must compose substrate facts. A table of hand-authored PR-name-to-output templates does not satisfy the brief.
 6. **No new substrate carriers unless escalated.** The prototype consumes existing carriers and substrate facts named above. New `DagDiff`, `DimensionInput`, query, or specialized cardinality-lens substrate requires canvas-tier approval before implementation.
+7. **No new Rust runner bridge.** The executable receipt must use an existing zero-SG-0 test-as-data runner path. Adding a Rust integration test, fixture registry, or ad hoc table entry just to discover this lens's fixtures is a stop condition, not part of this canvas.
 
 ## §5. Acceptance
 
@@ -83,6 +85,7 @@ The implementation PR is acceptable when all are true:
   - dimension-specific outputs for value, cost, complexity, effect, refinement
   - fail-closed unknown-delta behavior
   - the three real PRs named in §1
+- The PR body includes a zero-SG-0 executable receipt naming the existing `TestRunner` / suite path that executed those fixtures, with the command and result.
 - Fixture commentary explains narrowing vs naive transitive-downstream for each real PR.
 - SG-0 hand-authored Rust count does not increase.
 - PR body includes: `Supersedes PR #2701` and a closure note that #2701 should close as superseded once the replacement PR is open.
@@ -95,6 +98,7 @@ Escalate with `dashboard-message send --to parent --body "..."` if:
 - before/after/dimension inputs cannot be represented using existing `.dag` substrate and tests-as-data fixtures
 - a required substrate fact is absent or only available through a host mirror
 - a TestClaim cannot express the prototype output without a new predicate/carrier
+- the new `TestClaim` fixtures cannot execute through an existing zero-SG-0 runner/suite path
 - the SG-0 delta would be positive
 - the worked real-PR outputs cannot be represented as `Set<NodeRef>` / dimension-keyed records
 
