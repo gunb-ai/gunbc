@@ -397,6 +397,11 @@ type AttestationEvidence =          // 🟡 MIXED — will become TERMINAL when 
   | ProseAttestation { text: String }
 
 // === Operation (closed sum, TERMINAL) ===
+// All variants below mirror §6's full operation set including the witnessed
+// closure-retraction operations (Reopen + Regress). Per INVARIANTS P2
+// (facts-flow-forward): the substrate skeleton must carry every operation
+// declared in §6 — dropping Reopen/Regress here would create silent fact-loss
+// at the substrate boundary.
 type Operation =                   // 🟢 TERMINAL
     Declare { node: NodeId, mode: Mode, attestation: Attestation }
   | Decompose { parent: NodeId, children: List<NodeId>, attestation: Attestation }
@@ -404,7 +409,20 @@ type Operation =                   // 🟢 TERMINAL
   | Replan { node: NodeId, reason: Attestation }
   | Escalate { from: NodeId, to_parent: NodeId, debt: Attestation }
   | Pause { node: NodeId, reason: Attestation }
+  | Reopen { node: NodeId, reopen: ReopenAttestation }                              // closed → open; closure-retraction per §6
+  | Regress { node: NodeId, retracted_child_ids: List<NodeId>, regression: RegressionAttestation }  // parent re-open + child retraction per §6
   | AttestedOverride { rule: ClosureRule, attestation: Attestation }
+
+// ReopenAttestation + RegressionAttestation are co-declared in this same
+// substrate file (dsl/std/process_algebra.dag, per §9 framing above) alongside
+// Operation. The §6 prose section is the conceptual rationale; the typed
+// declarations live in this file. Concrete shapes mirror §6 lines 279-296:
+//
+//   type ReopenAttestation { reason: ReopenReason, ... }
+//   type RegressionAttestation { reason: RegressionReason, ... }
+//
+// (Concrete field set carried over verbatim from §6's design; substrate-file
+// authoring lands the exact declaration. No prose-only import.)
 
 // === EventLog<T> primitive (Gap 1) ===
 type EventLog<T> = FreeMonoid<TimestampedEvent<T>>
