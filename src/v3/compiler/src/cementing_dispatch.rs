@@ -1,5 +1,9 @@
 //! Band-C cementing dispatch — [`crate::test_runner::TestPredicate::CementingDispatchMatchesProjection`].
 //!
+//! SG-0 / INVARIANTS P5: hand-authored `src/v3/compiler/src/` module — register the path in
+//! `EXPECTED_HAND_AUTHORED_NON_TEST` inside `tests/integration/sg0_census_test.rs` when this
+//! file ships or changes materially.
+//!
 //! Projects `LensRegistryEntry` rows from the bootstrapped `regen.dag` authority against
 //! structured lens-capability rows declared in `cementing_dispatch.dag`, then validates
 //! the Band-C receipt list and on-disk harness artifacts.

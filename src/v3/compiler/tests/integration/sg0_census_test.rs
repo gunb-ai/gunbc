@@ -253,6 +253,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // predicate substrate owns the walk without host FS coupling).
     "src/v3/compiler/src/cementing_dispatch.rs",
     "src/v3/compiler/src/complexity_lattice.rs",
+    "src/v3/compiler/src/cost_basis_declaration.rs",
     "src/v3/compiler/src/dag.rs",
     "src/v3/compiler/src/dag/builder.rs",
     // Closed Cardinality payload + idempotent target shim (API closure).
@@ -359,14 +360,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (PB-Runtime interpreter-as-data or typed lens-registry carrier);
     // until then, this hand-Rust ratchet IS the slice's structural gate.
     "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
+    // R3 gate #87: provenance `origin_of` seam check (retired from `cementing_lens_registry_dispatch_test.rs`).
+    "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
     // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
     // COMPLETE promotion against frozen v2-oracle values. Temporarily stays Rust
     // because `.dag` TestClaims cannot yet express `ComplexitySummary` /
     // nested `SymbolicCost` expected values (M1_2_8_STRUCTURAL_SYMBOLIC_COST_DATA,
     // Gate73_ReportPredicateCarriers).
     "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
-    // R3 gate #87: provenance `origin_of` seam check (retired from `cementing_lens_registry_dispatch_test.rs`).
-    "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
     // R3 T-Lens-Behavioral-Parity gate #80 (`cost_lens_behaviorally_complete`):
     // Band-C cementing receipt for the standalone `cost_symbolic` lens COMPLETE
     // promotion. P5 deferral receipt: lane=T-Lens-Behavioral-Parity; concrete

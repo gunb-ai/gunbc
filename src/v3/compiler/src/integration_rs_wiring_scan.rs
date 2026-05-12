@@ -1,5 +1,9 @@
 //! `tests/integration.rs` wiring scanner (Band-C cementing dispatch).
 //!
+//! SG-0 / INVARIANTS P5: this module is hand-authored Rust under `src/v3/compiler/src/` —
+//! keep `EXPECTED_HAND_AUTHORED_NON_TEST` in `tests/integration/sg0_census_test.rs` in
+//! lockstep when adding or retiring paths here.
+//!
 //! Lives in the compiler crate so `test_runner` can validate
 //! `#[path = "integration/cementing/<stem>.rs"]` + `mod <stem>;` pairings without
 //! duplicating the scanner across test binaries.
