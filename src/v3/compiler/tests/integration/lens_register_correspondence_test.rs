@@ -19,7 +19,7 @@
 //! markdown `## Capability table` rows that read `BEHAVIORALLY COMPLETE` with a
 //! real v2 counterpart (not v3-native / bare `N/A`) must match the projection
 //! from `std.verification` `lens_capability_register_rows` (`LensCapabilityBehavioralComplete`
-//! + `LensCapabilityV2RealV2`). This preserves the retired
+//! and `LensCapabilityV2RealV2`). This preserves the retired
 //! `cementing_lens_registry_dispatch_test` ratchet without reintroducing a second
 //! register body in `cementing_dispatch.dag`.
 //!

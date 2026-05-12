@@ -159,6 +159,61 @@ fn read_lens_registry_name_lens_file_pairs(dag: &Dag) -> Result<Vec<(String, Str
     Ok(pairs)
 }
 
+/// Closed roster of Band-C `(registry_name, module_stem, kind)` receipts implied by the
+/// current `regen.dag` × v2-complete register projection. When a new v2-complete lens
+/// lands in `regen.dag`, extend this expansion in the same PR as `cementing_dispatch.dag`
+/// receipt rows — otherwise the dispatch predicate fail-closes with an explicit error.
+fn expected_cementing_receipt_triples(
+    registry_pairs: &[(String, String)],
+    basenames: &BTreeSet<String>,
+) -> Result<BTreeSet<(String, String, String)>, String> {
+    let mut out = BTreeSet::new();
+    for (name, lens_file) in registry_pairs {
+        let basename = FsPath::new(lens_file)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| {
+                format!("registry entry `{name}` has lens_file without basename: {lens_file}")
+            })?
+            .to_string();
+        if !basenames.contains(&basename) {
+            continue;
+        }
+        match (name.as_str(), basename.as_str()) {
+            ("cost", "complexity.dag") => {
+                out.insert((
+                    name.clone(),
+                    "t_r3_gate_87_cementing_regen_cost".to_string(),
+                    "dag".to_string(),
+                ));
+                out.insert((
+                    name.clone(),
+                    "complexity_lens_behavioral_completion".to_string(),
+                    "temporary-rust".to_string(),
+                ));
+            }
+            ("cost_symbolic", "cost.dag") => {
+                out.insert((
+                    name.clone(),
+                    "cost_lens_symbolic_consumer_test".to_string(),
+                    "temporary-rust".to_string(),
+                ));
+            }
+            _ => {
+                return Err(format!(
+                    "Band-C v2 cementing projection includes `LensRegistryEntry` \
+                     (`name={name}`, `lens_file` basename `{basename}`) but \
+                     `expected_cementing_receipt_triples` has no receipt expansion — \
+                     land matching `cementing_band_c_v2_complete_receipts` rows in \
+                     `cementing_dispatch.dag` and extend the expansion table in \
+                     `cementing_dispatch.rs` in the same PR."
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn v2_cementing_basenames_from_capability_rows(
     dag: &Dag,
     capability_rows: &[FieldValue],
@@ -277,7 +332,6 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
 
     let registry_pairs = read_lens_registry_name_lens_file_pairs(dag)?;
 
-    let mut expected_registry_names = BTreeSet::new();
     let mut matched_basenames = BTreeSet::new();
     for (name, lens_file) in &registry_pairs {
         let Some(basename) = FsPath::new(lens_file).file_name().and_then(|s| s.to_str()) else {
@@ -286,7 +340,6 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
             ));
         };
         if basenames.contains(basename) {
-            expected_registry_names.insert(name.clone());
             matched_basenames.insert(basename.to_string());
         }
     }
@@ -299,7 +352,6 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
         ));
     }
 
-    let mut declared_names = BTreeSet::new();
     let mut receipt_triples = BTreeSet::new();
 
     for row in &receipt_rows {
@@ -323,13 +375,14 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
                  `(registry_name, module_stem, kind)` must be unique."
             ));
         }
-        declared_names.insert(registry_name.clone());
     }
 
-    if declared_names != expected_registry_names {
+    let expected_triples = expected_cementing_receipt_triples(&registry_pairs, &basenames)?;
+    if receipt_triples != expected_triples {
         return Err(format!(
-            "cementing_receipts registry `name` keys must equal the projection from capability_register ∩ regen.dag — \
-             expected {expected_registry_names:?}, got {declared_names:?}"
+            "cementing_receipts `(registry_name, module_stem, kind)` triples must exactly match \
+             the Band-C expansion of the register ∩ regen projection — expected {expected_triples:?}, \
+             got {receipt_triples:?}"
         ));
     }
 

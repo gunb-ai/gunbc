@@ -417,11 +417,13 @@ type TestPredicate
   // Payload names two `DeclarationRef` edges: `capability_register` (a `List` of
   // `LensCapabilityRegisterRow` values — canonical `data lens_capability_register_rows`
   // in this module) and `cementing_receipts` (the Band-C receipt list in the suite
-  // fixture). Evaluation projects registry `name` keys from bootstrap
-  // `LensRegistryEntry` (`regen.dag`) intersected with rows whose behavioral axis is
-  // `LensCapabilityBehavioralComplete` and whose v2 axis is `LensCapabilityV2RealV2`,
-  // then asserts receipt `registry_name` keys match exactly, receipt triples are
-  // unique, and each receipt's on-disk harness exists (`tests/dag/<stem>.dag` vs
+  // fixture). Evaluation projects bootstrap `LensRegistryEntry` (`regen.dag`) rows
+  // whose `lens_file` basename appears in the register slice with behavioral axis
+  // `LensCapabilityBehavioralComplete` and v2 axis `LensCapabilityV2RealV2`, expands
+  // each matched pair to the closed roster of `(registry_name, module_stem, kind)`
+  // receipts, then asserts the `cementing_receipts` list matches that expansion
+  // **exactly** (set equality on receipt triples, not merely registry-name keys), that
+  // receipt triples are unique, and each receipt's on-disk harness exists (`tests/dag/<stem>.dag` vs
   // `integration/cementing/<stem>.rs` + `tests/integration.rs` wiring for temporary Rust
   // receipts). See `cementing_dispatch::evaluate_cementing_dispatch_projection`.
   | CementingDispatchMatchesProjection {
