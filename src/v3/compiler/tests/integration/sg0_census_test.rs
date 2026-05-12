@@ -429,7 +429,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // the dsl/extdeps loader surface.
     "src/v3/compiler/tests/integration/extdeps_rust_primitives_loader_test.rs",
     // Ctrl-Migration Emission-Targets Phase 3 HTTP/SQL extdeps: narrow host-side
-    // parser receipt for `dsl/extdeps/transports/sql.dag`. Explicit P5 receipt lives
+    // parser receipt for `dsl/extdeps/transports/rest.dag` and
+    // `dsl/extdeps/transports/sql.dag`. Explicit P5 receipt lives
     // in INVARIANTS.md § "SG-0 hand-authored integration test receipts"; dissolves
     // when extdeps transport files are covered by a `.dag`-native parse/authority
     // suite or generated test harness.
