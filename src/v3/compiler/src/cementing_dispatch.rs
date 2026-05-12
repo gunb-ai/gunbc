@@ -9,10 +9,10 @@
 //! `docs/design-tests-as-data-completeness.md` §8.3), then validates the Band-C receipt list
 //! in `cementing_dispatch.dag` and on-disk harness artifacts.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::Path as FsPath;
 
-use crate::dag::{Dag, FieldValue, LiteralBits, ValueBody};
+use crate::dag::{Dag, FieldValue, LiteralBits, TypeConnective, ValueBody};
 use crate::integration_rs_wiring_scan::integration_rs_cementing_path_attr_binds_mod_stem;
 use crate::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_pb_b1_dag_module_stems;
 
@@ -31,65 +31,56 @@ fn string_field(fields: &[(String, FieldValue)], label: &str) -> Result<String, 
     }
 }
 
-fn nullary_sum_variant_label(
+fn disj_variants(
     dag: &Dag,
+    type_name: &str,
+) -> Result<Vec<(String, crate::dag::DeclarationId)>, String> {
+    let sum_decl = dag.declaration_by_name(type_name).ok_or_else(|| {
+        format!("bootstrap missing `{type_name}` (expected `std.verification` lens capability sum)")
+    })?;
+    let TypeConnective::Disj { variants } = &sum_decl.connective else {
+        return Err(format!("`{type_name}` must be a Disj coproduct"));
+    };
+    Ok(variants.iter().map(|v| (v.label.clone(), v.ty)).collect())
+}
+
+fn decode_nullary_sum_variant(
+    dag: &Dag,
+    sum_type_name: &str,
     value: &FieldValue,
     field_label: &str,
 ) -> Result<String, String> {
+    let variants = disj_variants(dag, sum_type_name)?;
+    let allowed: HashSet<crate::dag::DeclarationId> = variants.iter().map(|(_, id)| *id).collect();
     let FieldValue::Variant {
         constructor,
         payload,
     } = value
     else {
         return Err(format!(
-            "capability_register row `{field_label}` must be a closed sum variant (see \
-             `std.verification` lens capability register coproducts); got {value:?}"
+            "capability_register row `{field_label}` must be a closed sum variant of `{sum_type_name}`; got {value:?}"
         ));
     };
     if !payload.is_empty() {
         return Err(format!(
-            "capability_register row `{field_label}`: unexpected variant payload (expected a nullary constructor)"
+            "capability_register row `{field_label}`: unexpected variant payload (expected nullary `{sum_type_name}` arm)"
         ));
     }
-    dag.declaration(*constructor)
-        .name
-        .clone()
-        .ok_or_else(|| format!("capability_register row `{field_label}`: anonymous constructor"))
-}
-
-fn validate_lens_capability_structural_status(label: &str) -> Result<(), String> {
-    match label {
-        "LensCapabilityStructuralTerminal" | "LensCapabilityStructuralPartial" => Ok(()),
-        other => Err(format!(
-            "capability_register `structural`: unknown variant `{other}` — add it to \
-             `std.verification` `LensCapabilityStructuralStatus` before using it here."
-        )),
+    if !allowed.contains(constructor) {
+        return Err(format!(
+            "capability_register row `{field_label}`: constructor id {:?} is not a declared variant of `{sum_type_name}`",
+            constructor
+        ));
     }
-}
-
-fn validate_lens_capability_behavioral_status(label: &str) -> Result<(), String> {
-    match label {
-        "LensCapabilityBehavioralComplete"
-        | "LensCapabilityBehavioralPartial"
-        | "LensCapabilityBehavioralStub"
-        | "LensCapabilityBehavioralNA" => Ok(()),
-        other => Err(format!(
-            "capability_register `behavioral`: unknown variant `{other}` — add it to \
-             `std.verification` `LensCapabilityBehavioralStatus` before using it here."
-        )),
-    }
-}
-
-fn validate_lens_capability_v2_counterpart(label: &str) -> Result<(), String> {
-    match label {
-        "LensCapabilityV2RealV2"
-        | "LensCapabilityV2NoneV3Native"
-        | "LensCapabilityV2NotApplicable" => Ok(()),
-        other => Err(format!(
-            "capability_register `v2_counterpart`: unknown variant `{other}` — add it to \
-             `std.verification` `LensCapabilityV2Counterpart` before using it here."
-        )),
-    }
+    variants
+        .iter()
+        .find(|(_, id)| id == constructor)
+        .map(|(label, _)| label.clone())
+        .ok_or_else(|| {
+            format!(
+                "capability_register row `{field_label}`: internal mismatch resolving `{sum_type_name}` variant"
+            )
+        })
 }
 
 fn record_fields(value: &FieldValue) -> Option<&[(String, FieldValue)]> {
@@ -231,12 +222,20 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
              `LensCapabilityV2Counterpart` variant)"
                 .to_string()
         })?;
-        let structural_label = nullary_sum_variant_label(dag, structural, "structural")?;
-        validate_lens_capability_structural_status(&structural_label)?;
-        let behavioral_label = nullary_sum_variant_label(dag, behavioral, "behavioral")?;
-        validate_lens_capability_behavioral_status(&behavioral_label)?;
-        let v2_label = nullary_sum_variant_label(dag, v2, "v2_counterpart")?;
-        validate_lens_capability_v2_counterpart(&v2_label)?;
+        decode_nullary_sum_variant(
+            dag,
+            "LensCapabilityStructuralStatus",
+            structural,
+            "structural",
+        )?;
+        let behavioral_label = decode_nullary_sum_variant(
+            dag,
+            "LensCapabilityBehavioralStatus",
+            behavioral,
+            "behavioral",
+        )?;
+        let v2_label =
+            decode_nullary_sum_variant(dag, "LensCapabilityV2Counterpart", v2, "v2_counterpart")?;
         if behavioral_label == "LensCapabilityBehavioralComplete"
             && v2_label == "LensCapabilityV2RealV2"
         {
