@@ -354,19 +354,39 @@ expression-capable fields in actions.dag carriers (audited 2026-05-12):
 | `UsesStep` | `if_condition: String?` | String? | ✓ (already in 7-site) |
 | `UsesStep` | `continue_on_error: Bool` | Bool | ✓ |
 | `UsesStep` | `timeout_minutes: Int?` | Int? | ✓ |
+| `MatrixStrategy` | `dimensions: Map<String, List<String>>` (`:223`) | Map values | ✓ (matrix values per workflow-syntax) |
+| `MatrixStrategy` | `include: List<Map<String, String>>` (`:224`) | List of Map | ✓ (matrix includes per workflow-syntax) |
+| `MatrixStrategy` | `exclude: List<Map<String, String>>` (`:225`) | List of Map | ✓ (matrix excludes per workflow-syntax) |
+| `MatrixStrategy` | `fail_fast: Bool` (`:226`) | Bool | ✓ (typed; string-coerced expression) |
+| `MatrixStrategy` | `max_parallel: Int?` (`:227`) | Int? | ✓ (typed; string-coerced expression) |
 
-Total expression-capable surface: **23 fields** across `Workflow`, `Job`,
-`RunStep`, `UsesStep`, `ConcurrencySpec`, `RunnerSpec` (post-correction:
-`UsesStep.uses` removed per :381 operator BLOCKING; literal-only per GH
-Actions workflow-syntax). The 7-site enumeration was keyed to ci.yml
+Total expression-capable surface: **28 fields** across `Workflow`, `Job`,
+`RunStep`, `UsesStep`, `ConcurrencySpec`, `RunnerSpec`, `MatrixStrategy`
+(post-corrections: `UsesStep.uses` removed per :381 — literal-only;
+`MatrixStrategy` carriers added 2026-05-12T11:35Z per codex BLOCKING
+review 10128 / sha 248f2cf3 — full-carrier sweep cross-reference against
+GH Actions workflow-syntax). The 7-site enumeration was keyed to ci.yml
 usage, not actions.dag schema — under-modeling the platform surface by
-16 sites.
+21 sites.
+
+**Audit methodology note** (per codex BLOCKING review 10128): the
+audit above is now the cross-product of (every current carrier in
+`dsl/extdeps/github/actions.dag`) × (the GH Actions context-availability
++ workflow-syntax tables). Carriers whose every field is literal-only
+(e.g., `LogAnnotation`, `Artifact`, `WorkflowPermissions` with enum
+levels, `ActionRef`, `CheckConclusion`) are omitted by construction.
+The implementing PR (per §7.5 ask #4 / Slice 4 brief) re-runs this
+audit against `actions.dag` HEAD at implementation time and migrates
+any additional expression-capable fields surfaced — the canvas-level
+audit is the authority-at-ratification-time; the implementing-PR audit
+is the authority-at-migration-time, per `feedback_grep_substrate_before_naming_ratification`
+discipline expanded to substrate-shape audits.
 
 ### §5.5.1 Migration rule (revised — string-typed sites only; typed-field sites HOLD per §5.5.2)
 
 The 23 expression-capable sites split into three classes by HEAD-type:
 
-- **String-typed sites (15)**: fields already typed `String` / `String?` /
+- **String-typed sites (18)**: fields already typed `String` / `String?` /
   `Map<String, String>` at HEAD — `Workflow.name`, `Workflow.env`,
   `Job.name`, `Job.if_condition`, `Job.env`, `Job.concurrency.group`,
   `RunStep.name`, `RunStep.run`, `RunStep.env`,
@@ -374,7 +394,7 @@ The 23 expression-capable sites split into three classes by HEAD-type:
   `UsesStep.name`, `UsesStep.with`, `UsesStep.env`,
   `UsesStep.if_condition`. Migration shape under (c) is uniform:
   every site → `Expression` / `Expression?` / `Map<String, Expression>`.
-- **Typed-field sites (7)**: `Job.timeout_minutes: Int?`,
+- **Typed-field sites (9)**: `Job.timeout_minutes: Int?`,
   `Job.continue_on_error: Bool`,
   `Job.concurrency.cancel_in_progress: Bool`,
   `RunStep.continue_on_error: Bool`, `RunStep.timeout_minutes: Int?`,
@@ -400,7 +420,7 @@ The 23 expression-capable sites split into three classes by HEAD-type:
   INVARIANTS P1 modeling faithfulness.
 
 Total in-scope for the substrate-prereq PR under §7.5 ask #4 / Slice 4
-brief: **15 string-typed + 1 enum-extension = 16 sites**. The 7
+brief: **18 string-typed + 1 enum-extension = 19 sites**. The 7
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -423,7 +443,7 @@ create the contradiction codex REQUEST_CHANGES review 10083 flagged
 ("ALL 22 migrate" + "typed shape unresolved" cannot both hold).
 
 **Implementing-PR scope**: §7.5 ask #4 / Slice 4 brief migrates the
-15 string-typed + 1 enum-extension sites (16 total) uniformly. The 7
+18 string-typed + 1 enum-extension sites (19 total) uniformly. The 7
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -556,8 +576,8 @@ items per ratification:
    `actions.dag`** (post-correction; see scope-evolution note below):
    RATIFIED. Single-authority for expression substrate. The
    implementing-PR scope per §7.5 ask #4 / Slice 4 brief covers the
-   §5.5 audit set: **16 sites in scope** (15 string-typed + 1
-   enum-extension `RunnerSpec.ExpressionRunner`). **7 typed-field
+   §5.5 audit set: **19 sites in scope** (18 string-typed + 1
+   enum-extension `RunnerSpec.ExpressionRunner`). **9 typed-field
    sites HOLD** pending §6 Q#4 Director ratification of the
    wrap/sum/defer choice. Total expression-capable surface in
    `actions.dag`: 23 sites; the (c) substrate-shape ratification covers
@@ -582,7 +602,7 @@ items per ratification:
 >    removed. Corrected 24 → 23 sites.
 > 
 > Net audit set: 23 expression-capable sites in `actions.dag` (15
-> string-typed + 1 enum-extension + 7 typed-field-HOLD). This is a
+> string-typed + 1 enum-extension + 9 typed-field-HOLD). This is a
 > cumulative site-count correction sequence, not substrate-shape
 > changes — the (c) ratification ("single-authority for expression
 > substrate") covers all 23 uniformly. Leaving any expression-capable
