@@ -57,8 +57,8 @@ If any required substrate piece is missing or cannot be consumed from `.dag`, ST
 The prototype must preserve the dimension-parameterized shape from the design:
 
 - dimensions: `value`, `cost`, `complexity`, `effect`, `refinement`
-- seed only nodes with a **PROVEN** delta in that dimension
-- include unknown/unprovable deltas by default (fail-closed)
+- seed nodes with a **PROVEN** delta in that dimension, plus nodes whose dimension delta cannot be proven empty
+- exclude a node only when the lens emits a receipt proving `delta(dim) == empty` for that consumer
 - propagate only through typed edges where that dimension is read by the consumer
 - emit or fixture a per-dimension affected-set output, not just one undifferentiated set
 
