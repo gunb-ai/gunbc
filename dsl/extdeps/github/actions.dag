@@ -138,12 +138,28 @@ type Job {
 
 // YAML `concurrency:` is either a scalar group expression or a mapping.
 // See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#concurrency
+// and https://docs.github.com/en/actions/using-jobs/using-concurrency (mapping keys
+// `group`, `cancel-in-progress`, `queue`; expression-valued cancel-in-progress).
+
+// Boolean `cancel-in-progress:` literal, or a `${{ }}` expression that evaluates to
+// boolean (GitHub allows expression form with restricted contexts).
+type CancelInProgressSpec
+  = CancelInProgressBool { value: Bool }
+  | CancelInProgressExpression { expression: String }
+
+// `queue:` inside the mapping form. Omitted in YAML → GitHub default (`single`).
+// `max` allows a bounded pending queue; must not be combined with `cancel-in-progress: true`
+// (workflow validation rejects — structural emitter responsibility).
+type ConcurrencyQueueMode = ConcurrencyQueueSingle | ConcurrencyQueueMax
+
 type ConcurrencySpec
   = ConcurrencyScalar { group: String }
   | ConcurrencyMapping {
       group: String
       // `none` when YAML omits `cancel-in-progress:` (do not invent `false`).
-      cancel_in_progress: Bool?
+      cancel_in_progress: CancelInProgressSpec?
+      // `none` when YAML omits `queue:` (default single-queue semantics).
+      queue: ConcurrencyQueueMode?
     }
 
 // -- Runners ----------------------------------------------------------
