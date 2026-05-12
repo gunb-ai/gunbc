@@ -5,17 +5,18 @@
 # Reads libtest `--report-time` output (lines like
 # `test foo::bar ... ok <1.234s>`) from a pre-captured log file and fails
 # if any single `#[test]` exceeded the budget (default 2000 ms, aligns
-# with `feedback_test_timeout_2s`). Tests listed in the **structural**
-# warn manifest (gate #102 / R3 program plan row 102) log a warning when
-# over budget instead of failing — the manifest is the paydown backlog,
-# not a free-form text table.
+# with `feedback_test_timeout_2s`). Tests listed in the checked-in JSONL
+# warn manifest log a warning when over budget instead of failing — still a
+# hand-maintained side file (P5 bridge), but structured JSONL replacing the
+# retired free-form `slow-test-exemptions.txt` table + row-count ratchet.
 #
-# **Authority (gate #101 / #102).** Rows use the same libtest name tokens
-# as `--report-time`. Each line is JSON `{"test":"<token>","policy":"warn"}`
-# carrying the warn-only ratchet policy for that node. This is the shell
-# transport for the same wall-clock facts `TestNodeCostDimension` models on
-# test nodes in `src/v3/std/verification.dag` until the runner projects
-# budgets directly from `.dag` data.
+# **Naming alignment (gate #101; gate #102 in flight).** Rows use the same
+# libtest name tokens as `--report-time` — the tokens `TestNodeCostDimension`
+# will attach to in `src/v3/std/verification.dag`. **Enforcement here still
+# reads this file** until #102 wires the ratchet to modeled timing facts. Each
+# line is JSON `{"test":"<token>","policy":"warn"}` carrying warn-only policy
+# for that node (shell transport today; substrate projection is the retirement
+# path).
 #
 # **Why parse an external log, not re-run `cargo test`.** The v3 CI job
 # already runs `cargo test -p v3-compiler` once (budget 1200s) and the
@@ -53,12 +54,14 @@
 #   TEST_TIMEOUT_MANIFEST Path to JSONL warn manifest (default
 #                         scripts/test-node-wall-clock-ratchet.jsonl).
 #
-# **Fail-closed policy (gate #102).** A test whose wall time exceeds
+# **Fail-closed policy (interim ratchet).** A test whose wall time exceeds
 # `TEST_TIMEOUT_MS` and whose libtest name is **not** warn-listed in the
 # manifest is a ratchet **failure**. There is no `TEST_TIMEOUT_MAX_EXEMPTIONS`
-# floor: the JSONL manifest is the sole warn backlog — add a `{"policy":"warn"}`
-# row in the **same PR** as any intentional expansion of warn-only coverage.
-# Omitting a slow test fails closed (unknown over-budget names error this step).
+# floor: the JSONL is the sole warn backlog for this step — add a
+# `{"policy":"warn"}` row in the **same PR** as any intentional expansion of
+# warn-only coverage. Omitting a slow test fails closed (unknown over-budget
+# names error this step). Closing R3 gate #102 still requires moving policy
+# input off this hand manifest onto modeled test-node timing facts.
 
 set -euo pipefail
 
