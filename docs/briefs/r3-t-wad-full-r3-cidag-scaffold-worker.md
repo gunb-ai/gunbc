@@ -1,113 +1,118 @@
-# Worker brief — T-WAD FULL R3 ci.dag extension (current ci.yml coverage)
+# Worker brief — T-WAD FULL R3 ci_emission.dag substrate scaffold
 
-**Authority**: PM scoping doc `docs/r3-t-workflow-as-data-full-r3-close-scope.md` §6 WI-2; operator FULL elevation 2026-05-12; Director ratification msg_5cbdad24 2026-05-12.
-**Parent**: T-Workflow-As-Data lane (Substrate Mgr warm-wolf-698 lane-absorbed Slices 4-5/8 per Director); this is forward-looking scaffold; final ratification + emitter integration in Slice 4-5.
-**Closure predicate**: `dsl/gunbc/ci.dag` extended to cover current `.github/workflows/ci.yml` content + Mgr-ratified shape; downstream Slice 4 YamlStatic emitter consumes; downstream Slice 8 deletes hand-authored `.github/workflows/ci.yml`.
+**Authority**: PM scoping doc `docs/r3-t-workflow-as-data-full-r3-close-scope.md` §6 WI-2; operator FULL elevation 2026-05-12; Director ratification msg_5cbdad24 + (c-refined) ratification msg_237bde05 / msg_f9fd669e 2026-05-12.
+**Parent**: T-Workflow-As-Data lane (Substrate Mgr warm-wolf-698 lane-absorbed Slices 4-5/8 per Director); this WI lands the projection-function substrate that enables Slice 4 emitter implementation.
+**Closure predicate**: `dsl/gunbc/ci_emission.dag` declares `EmissionTarget` open enum + `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow` projection function + `gunbc_ci_yml_workflow` pinned-projection data binding; downstream Slice 4 YamlStatic emitter consumes the projection; downstream Slice 8 deletes hand-authored `.github/workflows/ci.yml`.
+
+## Substrate-shape ratification anchor
+
+The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e and self-corrected to via PR #2749 §7 (warm-wolf-698). The earlier (a) shape (`EmissionTarget?` field on `dsl/extdeps/github/actions.dag::Workflow`) was RETRACTED at Director msg_b4151f45 + codex BLOCKING #9970 on PR #2749 for INVARIANTS P1 violation (CI logic placed on platform carrier).
+
+**The ratified shape**: `EmissionTarget` is a parameter to a projection function in `dsl/gunbc/`, NOT a field on any carrier. The function's invocation pin produces the `Workflow` value the emitter consumes.
 
 ## Output
 
-**Extend existing `dsl/gunbc/ci.dag`** to cover full current `.github/workflows/ci.yml` content. (This file ALREADY EXISTS — it is the gate-centric CI declaration; landed via PR #2371. Current shape: `CIGate` / `CIPipeline` / `GateSource` + 4 instantiated gates [lint_gate / test_gate / l1_gate / compile_gates_gate]. The extension work is to express the FULL workflow content — jobs, steps, triggers, runner selection, matrix — composing against existing platform carriers at `dsl/extdeps/github/actions.dag`.)
+**Create NEW file `dsl/gunbc/ci_emission.dag`** declaring:
 
-## Scope
+1. **`EmissionTarget` open enum** (sum-type with named arms; OPEN per design):
 
-Compose the current `.github/workflows/ci.yml` against existing platform carriers from `dsl/extdeps/github/actions.dag` (authority — single-authority per `feedback_audit_adjacent_authority_first`):
+   ```
+   EmissionTarget = YamlStatic
+                  | BinaryShim
+                  | PythonShim
+                  | InlineGunbc
+                  | ...           // open enum — additional targets may be added
+   ```
 
-**Carrier hierarchy** (per `dsl/extdeps/github/actions.dag`):
+   Each arm is a tag indicating the emission strategy. Initial set covers the 4 strategies named in PM scoping doc §3. Open-enum discipline: the projection function must total-handle the declared arms; unknown arms compile-fail (per fail-closed discipline `feedback_fail_closed_discipline`).
 
-```
-Workflow {                              // line :21 — concrete type, NOT generic
-  name: String
-  on: List<WorkflowTrigger>             // triggers
-  jobs: List<Job>                       // line :24 — workflow contains JOBS
-  env: Map<String, String>
-  permissions: WorkflowPermissions?
-}
+2. **`project_github_actions` projection function declaration**:
 
-Job {                                   // line :110
-  id: String
-  steps: List<Step>                     // line :114 — job contains STEPS
-  needs: List<String>                   // line :115 — job-id references (NOT step-level)
-  runner: RunnerSpec
-  strategy: MatrixStrategy?
-  ...
-}
+   ```
+   project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow
+   ```
 
-Step                                    // line :147 — RunStep | UsesStep sum
-  = RunStep { run, shell, env, ... }
-  | UsesStep { uses: ActionRef, with, ... }
-```
+   - Input domain: `(ci_workflow_dag: CIWorkflowDag, target: EmissionTarget)`
+   - Output codomain: `Workflow` (the `dsl/extdeps/github/actions.dag::Workflow` platform carrier)
+   - **This WI lands the DECLARATION + signature**, not the per-arm implementation. Per-arm bodies (YamlStatic projection, BinaryShim projection, etc.) are Slice 4+ work owned by Substrate Mgr.
+   - Leave function body as `// TODO Slice 4-5: per-arm projection implementations` with structural total-handling skeleton (match on `target` arms; each arm body marked TODO).
 
-**Mapping ci.yml → Workflow instance**:
+3. **`gunbc_ci_yml_workflow` pinned-projection data binding**:
 
-1. **Top-level `on:`** → `Workflow.on: List<WorkflowTrigger>` (Push / PullRequest / Schedule / WorkflowDispatch variants from `:41`)
-2. **Each `job:` in ci.yml** → `Job` element in `Workflow.jobs: List<Job>` (NOT a Step — Workflow contains Jobs, Jobs contain Steps)
-3. **Per-job `needs:` field** → `Job.needs: List<String>` (list of job-id references; NOT step-level dependencies)
-4. **Per-job `steps:` field** → `Job.steps: List<Step>` (each `run:` → RunStep; each `uses:` → UsesStep)
-5. **Per-job `strategy.matrix:`** → `Job.strategy: MatrixStrategy?` (per `:222`)
-6. **Per-job `runs-on:`** → `Job.runner: RunnerSpec` (HostedRunner / SelfHosted variants from `:132`); use existing pool labels (`gunbc-quick` / `gunbc-v3` etc.)
-7. **`if:` conditions** → `Job.if_condition: String?` or `Step.if_condition: String?` per appropriate level
-8. **Layer 1 skip** (`changes` job) → first `Job` in pipeline; its output binding drives `if:` conditions on downstream jobs
-9. **Layer 2 cluster skip** (template per PR #2721 — NOT WIRED into ci.yml at HEAD): leave as `// TODO Slice 7` marker — Slice 7 affected-set integration replaces
-10. **Slow-test ratchet** (`scripts/slow-test-exemptions.txt`): represented as `Step` with `RunStep.run: "scripts/check-slow-test-ratchet.sh"` for now — leave `// TODO Slice 6` marker for Cost-dimension migration
-11. **Secrets references**: use existing `WorkflowSecret { name: SecretName, scope: SecretScope }` carrier (per actions.dag `:102` — LANDED in PR #2160, **NOT held** as earlier brief incorrectly stated)
-12. **Cron triggers**: use existing `CronSchedule` carrier from `dsl/extdeps/cron_schedule_model.dag` (LANDED)
+   ```
+   gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)
+   ```
 
-**Existing `gunbc/ci.dag` already declares** `CIGate` / `CIPipeline` / `GateSource` (gate-centric CI intent). The extension work integrates the platform-shape `Workflow` instance alongside (or composing through) the existing gate-centric declaration. **Open question for canvas/Mgr** (WI-1 may inform): does the new Workflow data go into `gunbc/ci.dag` as a sibling data, into a new file `dsl/gunbc/ci_workflow.dag`, or compose `CIPipeline` → `Workflow` via a derivation lens? Leave this in `// QUESTION ratify-via-Mgr` markers.
+   - `ci_workflow_dag` is the input — sourced from existing `dsl/gunbc/ci.dag` `CIPipeline` value or a new `CIWorkflowDag` carrier (see "CIWorkflowDag dependency sequencing" below)
+   - This is the **invocation pin** that defines the canonical YAML-emission point for downstream Slice 4
+   - The pinned data binding is THE Workflow value Slice 4's YamlStatic emitter walks to produce `.github/workflows/ci.yml`-equivalent output
 
-## Coverage scope
+## CIWorkflowDag dependency sequencing
 
-This is a FIRST DRAFT extending the existing `dsl/gunbc/ci.dag`. Coverage acceptance:
+The projection function takes a `CIWorkflowDag` input. Two valid sourcing paths:
 
-- **MUST**: All `jobs:` in `.github/workflows/ci.yml` represented as `Job` nodes (Workflow.jobs list)
-- **MUST**: `needs:` graph faithful at Job-level (each Job.needs: List<String> matches ci.yml `needs:` field for that job)
-- **MUST**: Triggers captured (push / PR / schedule trio as List<WorkflowTrigger>)
-- **MUST**: Per-job runner pool selection correct (`gunbc-quick` / `gunbc-v3` / generic)
-- **MUST**: Trigger conditions / runner labels validate against existing carriers (no new substrate types introduced)
-- **SHOULD**: Matrix strategies for jobs that use them
-- **SHOULD**: Steps within each Job captured (RunStep / UsesStep)
-- **NICE-TO-HAVE**: complete `with:` / `uses:` action references per step
-- **DEFERRED**: Layer 2 cluster `if:` regex (TODO Slice 7); slow-test-exemptions Cost-dim migration (TODO Slice 6); affected-set wiring (TODO Slice 7); emission_target field placement (TODO ratify via WI-1 canvas)
+**Path (a) — reuse existing `dsl/gunbc/ci.dag` CIPipeline value**: pass the gate-centric `CIPipeline` from PR #2371 as the input domain; the projection function unpacks gates + pipeline structure into Workflow shape. **No new substrate type needed**.
 
-## Reference materials
+**Path (b) — introduce new `CIWorkflowDag` carrier**: declares a richer CI-logic shape that captures jobs/steps/needs/triggers at gunbc-substrate level (NOT platform-level), then projects into the `Workflow` platform carrier via the function. **Substrate-shape addition — belongs to Mgr canvas per `feedback_substrate_shape_belongs_in_mgr_canvas`**.
 
-- `docs/r3-t-workflow-as-data-full-r3-close-scope.md` — PM FULL scope (this brief's parent)
-- `docs/briefs/r3-t-wad-full-r3-emitter-dispatch-canvas-worker.md` — sibling WI-1 brief (emitter-dispatch canvas; informs emission_target placement)
-- `dsl/extdeps/github/actions.dag` — **canonical platform carriers** (authority for `Workflow` / `Job` / `Step` shapes; READ THIS FIRST — line numbers `:21` `:24` `:110` `:114` `:147` cited above)
-- `dsl/gunbc/ci.dag` — **existing file to extend** (gate-centric declarations from PR #2371; do NOT duplicate)
-- `dsl/extdeps/cron_schedule_model.dag` — `CronSchedule` carrier (Schedule trigger consumer)
-- `dsl/extdeps/github/actions.dag:96-105` — `WorkflowSecret` + `SecretScope` carriers (LANDED PR #2160)
-- `.github/workflows/ci.yml` — source content to translate
+**Disposition**: Path (a) preferred for this WI — minimal substrate addition, leverages existing `CIPipeline` authority. If Path (a) cannot express ci.yml fully (e.g., needs steps/runners that `CIPipeline` doesn't carry), **STOP and PING Substrate Mgr** to ratify Path (b) carrier shape via canvas. Do NOT introduce `CIWorkflowDag` without Mgr ratification.
+
+## Scope boundaries (DO / DON'T)
+
+**DO**:
+- Create NEW file `dsl/gunbc/ci_emission.dag` (the projection-substrate file).
+- Declare `EmissionTarget` open enum with 4 named arms + open marker.
+- Declare `project_github_actions` function signature with TODO-marked total-handling skeleton.
+- Declare `gunbc_ci_yml_workflow` pinned-projection data binding (invocation pin with `YamlStatic`).
+- Reference existing `Workflow` carrier from `dsl/extdeps/github/actions.dag` as the codomain type.
+- Cite existing `CIPipeline` from `dsl/gunbc/ci.dag` as the input source if Path (a).
+
+**DON'T**:
+- Do NOT add fields to `dsl/extdeps/github/actions.dag` carriers (Workflow/Job/Step) — this is the INVARIANTS P1 violation the (c-refined) shape resolves.
+- Do NOT extend `dsl/gunbc/ci.dag` with new substrate types — extension belongs to Mgr canvas tier.
+- Do NOT implement per-arm projection bodies — those are Slice 4-5 work owned by Substrate Mgr after canvas ratification.
+- Do NOT modify `.github/workflows/ci.yml` — Slice 8 deletes; this WI only lands the projection substrate.
+- Do NOT introduce a `CIWorkflowDag` carrier without Substrate Mgr ratification (see "CIWorkflowDag dependency sequencing" above).
 
 ## Acceptance gates
 
-1. `dsl/gunbc/ci.dag` extended (NOT replaced); valid `.dag` syntax per existing v3 parser
-2. All ci.yml `jobs:` represented as Job nodes in a `Workflow` instance — count matches
-3. `Job.needs` faithfully captures each job's `needs:` field as job-id references
-4. Triggers captured (push / PR / schedule trio)
-5. Per-job runner selection correct
-6. No new substrate types introduced (extends only — substrate-shape additions belong to Substrate Mgr per `feedback_substrate_shape_belongs_in_mgr_canvas`)
-7. TODO markers explicit for: Layer 2 cluster `if:` regex (Slice 7); slow-test-exemptions (Slice 6); affected-set wiring (Slice 7); emission_target placement (ratify via WI-1 canvas)
-8. `cargo test --workspace` green (no breakage of existing tests including `t_ci_workflow_as_data_demo`)
-9. `cargo clippy --all-targets -- -D warnings` clean
-10. `cargo fmt --all --check` clean
+1. New file `dsl/gunbc/ci_emission.dag` exists with valid `.dag` syntax per existing v3 parser.
+2. `EmissionTarget` open enum declared with 4 named arms (`YamlStatic`, `BinaryShim`, `PythonShim`, `InlineGunbc`) + open-enum marker.
+3. `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow` function signature declared with structural total-handling skeleton (match on `target`; each arm body TODO-marked).
+4. `gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)` pinned-projection data binding declared.
+5. NO modifications to `dsl/extdeps/github/actions.dag` (INVARIANTS P1).
+6. NO new fields on existing `dsl/gunbc/ci.dag` carriers (`CIGate` / `CIPipeline` / `GateSource`).
+7. NO new substrate types introduced without Mgr ratification (per `feedback_substrate_shape_belongs_in_mgr_canvas`).
+8. `cargo test --workspace` green (no breakage of existing tests including `t_ci_workflow_as_data_demo`).
+9. `cargo clippy --all-targets -- -D warnings` clean.
+10. `cargo fmt --all --check` clean.
 
 ## STOP / PING criteria
 
-- **STOP** if existing carriers at `dsl/extdeps/github/actions.dag` are insufficient (e.g., need new step-shape, new trigger-shape) — surface to Substrate Mgr (substrate-shape additions belong to canvas-tier per `feedback_substrate_shape_belongs_in_mgr_canvas`)
-- **STOP** if extending `gunbc/ci.dag` requires structural reframing of existing `CIGate` / `CIPipeline` declarations (e.g., they should compose under `Workflow` rather than parallel-represent) — surface to Mgr; this is a Mgr-canvas-tier decision
-- **STOP** if `emission_target` field placement is forced before WI-1 canvas ratifies — leave `// QUESTION` markers, sibling worker (still-heron-763 / WI-1) is authoring the canvas in parallel
-- **PING** PM (deep-wolf-155) on PR-open for review-routing
-- **PING** Substrate Mgr (warm-wolf-698) on PR-open for Mgr-tier ratification + Slice 4 YamlStatic emitter dispatch routing
-- **COORDINATE** with sibling still-heron-763 (WI-1 emitter-dispatch canvas) if emission_target shape questions cross
+- **STOP** if existing `CIPipeline` from `dsl/gunbc/ci.dag` cannot supply enough input data for the projection function to produce a faithful `Workflow` value — surface to Substrate Mgr; Path (b) requires canvas-tier ratification.
+- **STOP** if `EmissionTarget` open-enum declaration requires substrate-shape features not yet supported by current v3 surface (e.g., open-enum vocabulary missing) — surface to Substrate Mgr.
+- **STOP** if `project_github_actions` function signature requires substrate features not yet supported (e.g., function-as-projection declaration vocabulary missing) — surface to Substrate Mgr; canvas-tier decision.
+- **PING** PM (deep-wolf-155) on PR-open for review-routing.
+- **PING** Substrate Mgr (warm-wolf-698) on PR-open for Mgr-tier ratification + Slice 4 emitter dispatch routing.
+- **COORDINATE** with sibling still-heron-763 (WI-1 emitter-dispatch canvas at PR #2749) — the canvas declares the (c-refined) shape this WI implements; if canvas re-ratifies the shape, this WI must follow.
+
+## Reference materials
+
+- `docs/r3-t-workflow-as-data-full-r3-close-scope.md` — PM FULL scope (this brief's parent); §1 gate `project_github_actions_landed` is the closure-gate for this WI.
+- `docs/briefs/r3-t-wad-full-r3-emitter-dispatch-canvas-worker.md` — sibling WI-1 brief (declares the (c-refined) substrate shape this WI implements).
+- PR #2749 (still-heron-763 WI-1 canvas) §7 — (c-refined) shape self-correction; THIS WI implements that shape.
+- `dsl/extdeps/github/actions.dag:1-12` — platform-carrier scope header ("platform constraints, not CI logic (that lives in gunbc/ci.dag)"); the discriminator that grounds the (c-refined) shape.
+- `dsl/extdeps/github/actions.dag:21` — `Workflow` carrier (codomain type for `project_github_actions`).
+- `dsl/gunbc/ci.dag` — existing gate-centric CI substrate (Path (a) input source).
+- `feedback_audit_extdeps_header_for_logic_vs_platform_discriminator.md` — the discipline that catches (a)-shape mis-placements at canvas-authoring time.
 
 ## Sequencing
 
-- Dispatch-ready NOW (existing carriers + existing ci.dag suffice for first-draft extension)
-- Slice 1 substrate LANDED (PR #2160) — `WorkflowSecret` + `CronSchedule` available; no held substrate
-- Slice 3 demo LANDED (PR #2371) — `t_ci_workflow_as_data_demo.dag` exists; this WI extends scope from demo→full
-- Final shape ratified during Slice 4 YamlStatic emitter implementation (Substrate Mgr dispatch)
-- Slice 4 YamlStatic emitter consumes this extended `ci.dag` and emits `.github/workflows/ci.yml`-equivalent; equivalence is the Slice 4 acceptance gate
+- Dispatch-ready NOW (existing `dsl/extdeps/github/actions.dag::Workflow` + existing `dsl/gunbc/ci.dag::CIPipeline` suffice for declaration scope).
+- Slice 1 substrate LANDED (PR #2160) — `WorkflowSecret` + `CronSchedule` available; consumed downstream by Slice 4 emitter, not this WI.
+- Slice 3 demo LANDED (PR #2371) — `t_ci_workflow_as_data_demo.dag` exists; this WI extends scope from demo-of-evaluation into projection-substrate-declaration.
+- This WI lands the projection-function substrate; Slice 4 implements per-arm bodies; Slice 8 deletes hand-authored ci.yml.
 
 ---
 
-— Authored by deep-wolf-155 (PM) 2026-05-12 per operator FULL elevation directive + Director ratification msg_5cbdad24; codex BLOCKING #9970 fixed 2026-05-12 (carrier hierarchy: Workflow > Job > Step, not flat job→Step).
+— Authored by deep-wolf-155 (PM) 2026-05-12 per operator FULL elevation directive + Director ratification msg_5cbdad24 + (c-refined) ratification msg_237bde05 / msg_f9fd669e; revised after codex BLOCKING #9970 on PR #2749 (INVARIANTS P1: EmissionTarget belongs in gunbc-substrate projection function, not as field on actions.dag::Workflow).

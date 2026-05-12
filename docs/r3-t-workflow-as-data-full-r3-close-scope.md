@@ -19,19 +19,27 @@
 4. **Affected-set integration** — Layer 2 path-regex bridge (PR #2718/#2721/#2727) dissolved; CI selection consumes affected-set lens output (PR #2713 ✓ merged)
 5. **Cost dimension on test nodes** — `slow-test-exemptions.txt` dissolved; slow-test ratchet derives from Cost dimension structurally
 
-## §1. §1.8 gate additions — RATIFIED 2026-05-12 (gate-additive)
+## §1. §1.8 gate additions — RATIFIED 2026-05-12 (gate-additive; revised post-(c-refined) ratification)
 
-**Authority**: Director ratification (zesty-bear-812) at msg_5cbdad24 2026-05-12 ~06:35Z. **Framing: GATE-ADDITIVE** (NOT scope-expand #56). Reasoning: #56 was authored as demonstration-class (one workflow proves feasibility); scope-expanding to "ALL workflow" would invalidate demonstration semantics + force a post-hoc reclassification of #56's status meaning. Cleaner: #56 stays as demonstration anchor (promotable to PASSING when first .dag workflow lands — likely closing soon given PR #2371 landed the demo); add 4 NEW gates for full-R3 closure surface.
+**Authority**: Director ratification (zesty-bear-812):
+- Initial gate-additive framing + 4 NEW gates: msg_5cbdad24 2026-05-12 ~06:35Z
+- Revised gate set per (c-refined) canvas ratification + clarification: msg_4f7f536d + msg_f9fd669e 2026-05-12 ~07:00Z (6 NEW gates with substrate-shape vs state-check family splits per kernel-modeling discipline)
+
+**Framing**: GATE-ADDITIVE (NOT scope-expand #56). Reasoning: #56 was authored as demonstration-class (one workflow proves feasibility); scope-expanding to "ALL workflow" would invalidate demonstration semantics + force a post-hoc reclassification of #56's status meaning. Cleaner: #56 stays as demonstration anchor (promotable to PASSING when first .dag workflow lands — likely closing soon given PR #2371 landed the demo); add 6 NEW gates for full-R3 closure surface.
 
 **Citation chain**: operator directive aligns with prior #846 c#4412330468 ("0 hand-Rust including tests AND stage0; bootstrap is data + self-generated") — `.github/workflows/ci.yml` is structurally identical to hand-Rust under that framing. Dissolution is load-bearing for R3 close.
+
+**Substrate-shape ratified** (per PR #2749 (c-refined)): `EmissionTarget` sum-type lives in gunbc namespace; `project_github_actions: (CIWorkflowDag, EmissionTarget) → Workflow` lives in gunbc; extdeps.github.actions.Workflow unmodified. Emission choice is invocation-time data (projection parameter), NOT carrier-time data. See PR #2749 for the comparison canvas authority.
 
 | Gate ID | Predicate-family | Lane | Pass condition |
 |---|---|---|---|
 | **#56** (unchanged) | demonstration | T-WAD | At least one workflow as `.dag` data executes through evaluator (existing scope — promotable when PR #2371 demo + integration is gate-PASSING) |
-| **NEW: `workflow_emission_target_toggle_proven`** | substrate-shape | T-WAD | `EmissionTarget` open enum proven via BOTH `YamlStatic` + `BinaryShim` emitters working from same `ci.dag` (Brian's modeling-decision-not-choice framing structurally encoded) |
-| **NEW: `ci_yml_dissolved`** | state-check | T-WAD | `.github/workflows/ci.yml` absent from repo + regression guard test prevents re-introduction |
-| **NEW: `ci_uses_affected_set_selection`** | state-check | T-WAD + T-Verification | `BinaryShim` emitter consumes affected-set lens output from PR #2713; Layer 2 path-regex `if:` gates removed from any remaining workflow files |
-| **NEW: `test_cost_dimension_landed`** | substrate-shape + state-check | T-WAD + Debt-Paydown | `Cost` dimension declared on test nodes; `scripts/slow-test-exemptions.txt` deleted; slow-test ratchet derives from Cost dimension |
+| **NEW: `ci_yml_deleted`** | state-check | T-WAD | `.github/workflows/ci.yml` absent from repo + regression guard test prevents re-introduction |
+| **NEW: `emission_target_open_enum_landed`** | substrate-shape | T-WAD | `EmissionTarget` sum-type (`YamlStatic | BinaryShim | PythonShim | InlineGunbc | ...`) declared in gunbc namespace as open enum |
+| **NEW: `project_github_actions_landed`** | substrate-shape | T-WAD | `project_github_actions: (CIWorkflowDag, EmissionTarget) → Workflow` projection function declared in gunbc namespace; consumes `extdeps.github.actions.Workflow` as output type; per (c-refined) substrate-shape per PR #2749 §7 |
+| **NEW: `test_cost_dimension_landed`** | substrate-shape | T-WAD + Debt-Paydown | `Cost` dimension declared on test nodes (substrate-shape only — splits from state-check sibling below) |
+| **NEW: `slow_test_exemptions_dissolved`** | state-check | T-WAD + Debt-Paydown | `scripts/slow-test-exemptions.txt` deleted; slow-test ratchet derives from `Cost` dimension structurally (state-check sibling of `test_cost_dimension_landed` per kernel-modeling discipline split) |
+| **NEW: `ci_uses_affected_set_selection`** | state-check | T-WAD + T-Verification | `BinaryShim` emitter consumes affected-set lens output from PR #2713; Layer 2 path-regex `if:` gates removed from any remaining workflow files (cross-tier co-owned with clever-tern-670 Slice 7 work) |
 
 ## §2. Architectural shape (operator-ratified 2026-05-12)
 
@@ -174,17 +182,25 @@ PM-relay to warm-wolf-698 + Director co-sign at #828 if cross-tier confirmation 
 - `project_eliminate_emit_lang_files.md` (memory) — omni-emission consolidation thesis; inherited architecture for workflow-target dispatch
 - `feedback_audit_adjacent_authority_first` (memory) — grep authority before authoring; rule of record for codex BLOCKING #9970 fix below
 
-## §9. Acceptance-aggregator pattern pilot (Director-flagged 2026-05-12; parked)
+## §9. Acceptance-aggregator pattern pilot — Director scaffold LANDED (PR #2748); pilot row REVISED 2026-05-12
 
-Director (msg_5cbdad24 §5 META) flagged T-CI-WAD as a natural pilot for the **acceptance-aggregator row-class** under discussion in Director↔user thread.
+Director scaffolded acceptance-aggregator pattern doc at `docs/design-section-1-8-acceptance-aggregator-pattern.md` (PR #2748). Pattern semantics: new §1.8 Family value 'acceptance-aggregator' + new 'depends_on:' column (comma-separated #-refs to constituent rows). Status derived as lattice-meet (DECLARED < CONSUMER_LANDED < PASSING) — machine-checkable; never hand-set. Aggregator rows are VIEWS over constituents; do NOT inflate 97→96 honest-close arithmetic.
 
-Proposed gate (not blocking PR #2744 merge):
+**T-CI-WAD pilot row** (Director-ratified at msg_4f7f536d + msg_f9fd669e 2026-05-12; depends_on revised 4→5→6 across Director iterations):
 
-| Proposed | Predicate-family | Lane | Closes when |
+| Proposed | Predicate-family | Lane | depends_on (lattice-meet status) |
 |---|---|---|---|
-| `t_ci_wad_acceptance` | acceptance-aggregator | T-CI-WAD | All 5 constituent gates GREEN (#56 + 4 NEW gates from §1) |
+| `t_ci_wad_acceptance` (or PM-named equivalent) | acceptance-aggregator | T-CI-WAD | **#56 + 6 NEW** (from §1): #56, `ci_yml_deleted`, `emission_target_open_enum_landed`, `project_github_actions_landed`, `test_cost_dimension_landed`, `slow_test_exemptions_dissolved`, `ci_uses_affected_set_selection` |
 
-**Status**: PARKED — surfaces at next Director cadence tick for scaffold decision. If user-tier framing converges on broad aggregator pattern (Cluster M / Cluster F / Cluster K / T-V2-Retirement siblings), T-CI-WAD becomes #6 in aggregator set. PM available to author the §1.8 pattern-doc shape if Director elects to scaffold.
+**Status**: PARKED pending PR #2748 ratification (currently 1/2 approvals). When PR #2748 ratifies, this pilot row inserts into §1.8 ledger as the canonical T-CI-WAD aggregator. Sibling clusters (Cluster M / Cluster F / Cluster K / T-V2-Retirement) get the same template at low marginal cost.
+
+**Row is SHAPE-STABLE** post (c-refined) ratification: constituent gate-IDs finalized at Director msg_f9fd669e. depends_on revisions from #56+4→#56+5→#56+6 reflect canvas-driven gate-set refinement; aggregator semantics unchanged.
+
+**Lattice-meet status derivation**:
+- All constituents DECLARED → aggregator DECLARED
+- All constituents CONSUMER_LANDED → aggregator CONSUMER_LANDED
+- All constituents PASSING → aggregator PASSING
+- ANY mix → aggregator status = minimum of constituents (per lattice-meet rule)
 
 ---
 
