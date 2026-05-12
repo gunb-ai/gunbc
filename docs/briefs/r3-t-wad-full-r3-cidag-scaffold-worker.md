@@ -36,15 +36,19 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
    - **This WI lands the DECLARATION + signature**, not the per-arm implementation. Per-arm bodies (YamlStatic projection, BinaryShim projection, etc.) are Slice 4+ work owned by Substrate Mgr.
    - Leave function body as `// TODO Slice 4-5: per-arm projection implementations` with structural total-handling skeleton (match on `target` arms; each arm body marked TODO).
 
-3. **`gunbc_ci_yml_workflow` pinned-projection data binding**:
+3. **`gunbc_ci_yml_workflow` pinned-projection data binding** — **DEFERRED TO SLICE 4** (P2 single-authority lockdown):
+
+   The binding will eventually take this form:
 
    ```
-   gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)
+   gunbc_ci_yml_workflow: Workflow = project_github_actions(<canonical_ci_workflow_dag>, YamlStatic)
    ```
 
-   - `ci_workflow_dag` is the input — sourced from the `CIWorkflowDag` carrier introduced in PR #2736 (neat-badger-30); `dsl/gunbc/ci.dag::CIPipeline` is INSUFFICIENT for this role and explicitly NOT a valid source (see "CIWorkflowDag dependency sequencing" below — Path (a) REJECTED per warm-wolf-698 msg_27d99080: flat gates list without edge/dependency structure cannot serve as projection input)
-   - This is the **invocation pin** that defines the canonical YAML-emission point for downstream Slice 4
-   - The pinned data binding is THE Workflow value Slice 4's YamlStatic emitter walks to produce `.github/workflows/ci.yml`-equivalent output
+   But WI-2 does **NOT** land this binding. Rationale (per briansrls BLOCKING on PR #2744 2026-05-12T08:30:15Z c#3224878308): the binding requires a concrete `CIWorkflowDag` *instance* whose authority is locked to a canonical source. No such canonical instance exists in main today — `CIWorkflowDag` was introduced as a carrier (type) by PR #2736 (neat-badger-30), but the first canonical *value* (the CI-workflow-as-data corresponding to current `.github/workflows/ci.yml`) lands as part of **Slice 4** (YamlStatic projection-arm implementation, Substrate Mgr warm-wolf-698 lane). If WI-2 landed the binding now, the worker would have to either (a) invent a placeholder `CIWorkflowDag` value inline in `ci_emission.dag` (creating a parallel authority alongside the eventual Slice 4 canonical instance — P2 violation), or (b) build a `CIWorkflowDag` value from `CIPipeline` via inline conversion (reopens Path (a) authority despite the explicit Path (b) rejection below — P2 violation), or (c) leave the binding as a non-compiling forward-reference.
+
+   **WI-2 scope therefore lands only items 1 (`EmissionTarget` enum) + 2 (function signature)**. The pinned-projection binding is a Slice 4 deliverable, not a WI-2 deliverable. Slice 4 authors the canonical `CIWorkflowDag` instance and the pinned-projection binding together, sourcing the binding's `ci_workflow_dag` argument from that canonical instance (single authority, P2-clean).
+
+   Forward reference for Slice 4 (informational, not WI-2 work): the pinned binding will be the canonical YAML-emission point Slice 4's YamlStatic emitter walks to produce `.github/workflows/ci.yml`-equivalent output (per scope-doc §3 Slice 4).
 
 ## CIWorkflowDag dependency sequencing — Path (b) REQUIRED (Substrate Mgr clarification 2026-05-12 msg_27d99080)
 
@@ -72,7 +76,7 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
 - Create NEW file `dsl/gunbc/ci_emission.dag` (the projection-substrate file).
 - Declare `EmissionTarget` open enum with **3** named arms (`YamlStatic`, `BinaryShim`, `PythonShim`) + open marker. **`InlineGunbc` is DESIGN-ONLY** — do NOT add as enum arm (per WI-1 brief §scope + PR #2746 §5.4 + openai-pro BLOCKING on PR #2744).
 - Declare `project_github_actions` function signature with TODO-marked total-handling skeleton.
-- Declare `gunbc_ci_yml_workflow` pinned-projection data binding (invocation pin with `YamlStatic`).
+- Author Practice 4 coproduct-dissolution receipt for `EmissionTarget` (🟡 YELLOW classification + named dissolution trigger + coordinate-dissolution sketch per WI-1 brief discipline; see acceptance gate 3).
 - Reference existing `Workflow` carrier from `dsl/extdeps/github/actions.dag` as the codomain type.
 - Reference `CIWorkflowDag` carrier from PR #2736 as the input domain type (canvas + Director-ratified per msg_4f7f536d).
 - Sequence WI-2 PR after PR #2736 merge OR rebase WI-2's branch on PR #2736's `session/neat-badger-30` if PR #2736 is still HOLD-merging.
@@ -84,19 +88,26 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
 - Do NOT implement per-arm projection bodies — those are Slice 4-5 work owned by Substrate Mgr after canvas ratification.
 - Do NOT modify `.github/workflows/ci.yml` — Slice 8 dissolves hand-authority; this WI only lands the projection substrate.
 - Do NOT introduce ALTERNATE carriers for the projection input — `CIWorkflowDag` from PR #2736 is the ratified authority.
+- Do NOT land the `gunbc_ci_yml_workflow` pinned-projection data binding in this PR — DEFERRED to Slice 4 per §3 + acceptance gate 5 (P2 single-authority lockdown; the binding requires a canonical `CIWorkflowDag` instance, which Slice 4 authors alongside the binding).
+- Do NOT author a placeholder `CIWorkflowDag` instance to satisfy the binding shape — that creates parallel authority alongside Slice 4's canonical instance (P2 violation per briansrls BLOCKING c#3224878308).
+- Do NOT land the `EmissionTarget` enum WITHOUT its Practice 4 receipt — receipt is a co-equal substrate authoring artifact, not optional documentation (per briansrls BLOCKING c#3224878313).
 
 ## Acceptance gates
 
 1. New file `dsl/gunbc/ci_emission.dag` exists with valid `.dag` syntax per existing v3 parser.
 2. `EmissionTarget` open enum declared with **3** named arms (`YamlStatic`, `BinaryShim`, `PythonShim`) + open-enum marker. **NO `InlineGunbc` arm** — DESIGN-ONLY future target per PR #2746 §5.4; lands via separate substrate-prereq PR paired with consumer.
-3. `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow` function signature declared with structural total-handling skeleton (match on `target`; each arm body TODO-marked).
-4. `gunbc_ci_yml_workflow: Workflow = project_github_actions(ci_workflow_dag, YamlStatic)` pinned-projection data binding declared.
-5. NO modifications to `dsl/extdeps/github/actions.dag` (INVARIANTS P1).
-6. NO new fields on existing `dsl/gunbc/ci.dag` carriers (`CIGate` / `CIPipeline` / `GateSource`).
-7. NO new substrate types introduced without Mgr ratification (per `feedback_substrate_shape_belongs_in_mgr_canvas`).
-8. `cargo test --workspace` green (no breakage of existing tests including `t_ci_workflow_as_data_demo`).
-9. `cargo clippy --all-targets -- -D warnings` clean.
-10. `cargo fmt --all --check` clean.
+3. **Practice 4 coproduct-dissolution receipt for `EmissionTarget`** (consistent with WI-1 brief discipline; per `feedback_coproduct_dissolution` + `modeling-discipline.md` Practice 4; addresses briansrls BLOCKING c#3224878313 on PR #2744 2026-05-12T08:30:15Z):
+   - Receipt classification: **🟡 YELLOW scaffold** (flat enum with named dimensions noted: artifact-shape `StaticYaml` vs `ThinShim` × runner-realization `CompiledBinary` vs `EmittedPython`)
+   - Named dissolution trigger: first additional shim runtime OR first need to share runner metadata across shim targets
+   - Coordinate-dissolution sketch (in-doc, not code): the eventual factoring is `EmissionArtifactShape × ShimRunnerKind` per WI-1 canvas §3 (PR #2746 merged 08:29:09Z); declare the receipt as a `.dag` comment block at the `EmissionTarget` declaration site OR as a `modeling-discipline.md`-style receipt header in `ci_emission.dag` preamble. WI-2 worker MUST NOT land the enum without the receipt — receipt is part of substrate authoring discipline, not optional documentation.
+4. `project_github_actions: (CIWorkflowDag, EmissionTarget) -> Workflow` function signature declared with structural total-handling skeleton (match on `target`; each arm body TODO-marked).
+5. **NO pinned-projection data binding** (`gunbc_ci_yml_workflow`) in WI-2's PR — DEFERRED to Slice 4 per §3 above (P2 single-authority lockdown; canonical `CIWorkflowDag` instance lands with Slice 4, binding lands with the canonical instance).
+6. NO modifications to `dsl/extdeps/github/actions.dag` (INVARIANTS P1).
+7. NO new fields on existing `dsl/gunbc/ci.dag` carriers (`CIGate` / `CIPipeline` / `GateSource`).
+8. NO new substrate types introduced without Mgr ratification (per `feedback_substrate_shape_belongs_in_mgr_canvas`).
+9. `cargo test --workspace` green (no breakage of existing tests including `t_ci_workflow_as_data_demo`).
+10. `cargo clippy --all-targets -- -D warnings` clean.
+11. `cargo fmt --all --check` clean.
 
 ## STOP / PING criteria
 
