@@ -56,12 +56,32 @@ directive **no fabricated substrate** is introduced here.
 
 As of this commit (`.github/workflows/ci.yml` content hash captured in the
 ratchet script via grep-anchored fingerprints, not file hash, so unrelated
-edits don't false-trip):
+edits don't false-trip).
+
+**Authoritative literals (greppable, unescaped — these are what the ratchet
+pins; markdown table cells below paraphrase them with `\|` table-escapes
+that would not match the raw source):**
+
+```
+# Row #1 docs-only allowlist filter — exactly as it appears in
+#   .github/workflows/ci.yml :: changes: job
+#   and scripts/check-workflow-path-regex-inventory.sh :: PATH_REGEX_FILTER:
+grep -vE '^(docs/.*|[^/]+\.md)$'
+
+# Row #1 inventoried `git diff --name-only` anchor:
+git diff --name-only origin/main...HEAD
+
+# Row #2 if-gate fingerprint (substring within the v3 job `if:` line):
+needs.changes.outputs.code
+```
+
+Inventory table (cell text uses markdown table-escape `\|` where the live
+source uses raw `|`; use the literals above for grep/diff):
 
 | # | File | Lines | Selection role | Replacement owner |
 |---|------|-------|----------------|-------------------|
-| 1 | `.github/workflows/ci.yml` | `changes:` job (around L201–L247) | Computes `outputs.code = true \| false` via `git diff --name-only origin/main...HEAD` filtered by `grep -vE '^(docs/.*\|[^/]+\.md)$'` — i.e., **path-regex** docs-only allowlist. **Layer 1** mitigation per inline comment ("dissolution trigger = affected-set lens CI integration"). | Slice 7 implementation PR (post–Slice 5) deletes the `changes` job and routes selection through the BinaryShim runner consuming PR #2713 lens output. |
-| 2 | `.github/workflows/ci.yml` | `v3:` job `if:` (around L253) | `needs.changes.outputs.code == 'true' \|\| github.event_name == 'push'` — the **`if:` gate** that turns inventory #1 from a probe into authoritative selection (skip-when-false on PR events). | Same as #1: the `if:` reduces to draft-PR / event-orthogonal mechanics only; affected-set selection lives in the binary. |
+| 1 | `.github/workflows/ci.yml` | `changes:` job (around L201–L247) | Computes `outputs.code = true \| false` via `git diff --name-only origin/main...HEAD` filtered by the docs-only allowlist regex (literal above) — i.e., **path-regex** docs-only allowlist. **Layer 1** mitigation per inline comment ("dissolution trigger = affected-set lens CI integration"). | Slice 7 implementation PR (post–Slice 5) deletes the `changes` job and routes selection through the BinaryShim runner consuming PR #2713 lens output. |
+| 2 | `.github/workflows/ci.yml` | `v3:` job `if:` (around L253) | `if:` gate consumes the `needs.changes.outputs.code` boolean OR `github.event_name == 'push'` (literal substring above) — the gate that turns inventory #1 from a probe into authoritative selection (skip-when-false on PR events). | Same as #1: the `if:` reduces to draft-PR / event-orthogonal mechanics only; affected-set selection lives in the binary. |
 
 **`if:` not inventoried (event-orthogonal, per canvas §5):**
 
