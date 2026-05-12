@@ -54,6 +54,7 @@ fn decode_nullary_sum_variant(
     sum_type_name: &str,
     value: &FieldValue,
     field_label: &str,
+    record_role: &str,
 ) -> Result<String, String> {
     let variants = disj_variants(dag, sum_type_name)?;
     let allowed: HashSet<crate::dag::DeclarationId> = variants.iter().map(|(_, id)| *id).collect();
@@ -63,17 +64,17 @@ fn decode_nullary_sum_variant(
     } = value
     else {
         return Err(format!(
-            "capability_register row `{field_label}` must be a closed sum variant of `{sum_type_name}`; got {value:?}"
+            "{record_role} `{field_label}` must be a closed sum variant of `{sum_type_name}`; got {value:?}"
         ));
     };
     if !payload.is_empty() {
         return Err(format!(
-            "capability_register row `{field_label}`: unexpected variant payload (expected nullary `{sum_type_name}` arm)"
+            "{record_role} `{field_label}`: unexpected variant payload (expected nullary `{sum_type_name}` arm)"
         ));
     }
     if !allowed.contains(constructor) {
         return Err(format!(
-            "capability_register row `{field_label}`: constructor id {:?} is not a declared variant of `{sum_type_name}`",
+            "{record_role} `{field_label}`: constructor id {:?} is not a declared variant of `{sum_type_name}`",
             constructor
         ));
     }
@@ -83,9 +84,36 @@ fn decode_nullary_sum_variant(
         .map(|(label, _)| label.clone())
         .ok_or_else(|| {
             format!(
-                "capability_register row `{field_label}`: internal mismatch resolving `{sum_type_name}` variant"
+                "{record_role} `{field_label}`: internal mismatch resolving `{sum_type_name}` variant"
             )
         })
+}
+
+/// Maps `CementingBandCReceiptKind` variant labels to the stable wire tags used in
+/// `expected_cementing_receipt_triples` and on-disk dispatch branches.
+fn cementing_receipt_kind_wire_tag(sum_variant_label: &str) -> Result<&'static str, String> {
+    match sum_variant_label {
+        "DagHarness" => Ok("dag"),
+        "TemporaryRustModule" => Ok("temporary-rust"),
+        other => Err(format!(
+            "cementing receipt `kind`: unknown `CementingBandCReceiptKind` variant `{other}`"
+        )),
+    }
+}
+
+fn decode_cementing_band_c_receipt_kind(
+    dag: &Dag,
+    value: &FieldValue,
+    field_label: &str,
+) -> Result<&'static str, String> {
+    let label = decode_nullary_sum_variant(
+        dag,
+        "CementingBandCReceiptKind",
+        value,
+        field_label,
+        "cementing receipt row",
+    )?;
+    cementing_receipt_kind_wire_tag(&label)
 }
 
 fn record_fields(value: &FieldValue) -> Option<&[(String, FieldValue)]> {

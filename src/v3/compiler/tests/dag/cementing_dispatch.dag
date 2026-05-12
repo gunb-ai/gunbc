@@ -19,29 +19,34 @@ import std.verification {
   lens_capability_register_rows
 }
 
+// Closed coproduct: receipt harness shape is a type error at fixture load, not a runtime string whitelist.
+type CementingBandCReceiptKind
+  = DagHarness
+  | TemporaryRustModule
+
 type CementingBandCReceipt {
   registry_name: String
   module_stem: String
-  // `dag` = `.dag` TestClaim harness under `tests/dag/<module_stem>.dag`;
-  // `temporary-rust` = `tests/integration/cementing/<module_stem>.rs` + `integration.rs` wiring.
-  kind: String
+  // `DagHarness` → `.dag` TestClaim harness under `tests/dag/<module_stem>.dag`;
+  // `TemporaryRustModule` → `tests/integration/cementing/<module_stem>.rs` + `integration.rs` wiring.
+  kind: CementingBandCReceiptKind
 }
 
 data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
   {
     registry_name: "cost"
     module_stem: "t_r3_gate_87_cementing_regen_cost"
-    kind: "dag"
+    kind: DagHarness
   },
   {
     registry_name: "cost"
     module_stem: "complexity_lens_behavioral_completion"
-    kind: "temporary-rust"
+    kind: TemporaryRustModule
   },
   {
     registry_name: "cost_symbolic"
     module_stem: "cost_lens_symbolic_consumer_test"
-    kind: "temporary-rust"
+    kind: TemporaryRustModule
   }
 ]
 
