@@ -9,8 +9,9 @@
 // M9 DFS receipt:
 // - Reuses `std.types.Timestamp` / `NonEmptyStr` for time and actor identity.
 // - Reuses `std.algebra.FreeMonoid` for append-only event-log shape.
-// - Reuses `std.effects.WorkflowEffect` for typed operation effects instead
-//   of claiming blanket monotonicity.
+// - Reuses `std.effects.OperationEffect` for layer-local per-operation
+//   external effect facts instead of importing v3 workflow carriers or
+//   claiming blanket monotonicity.
 // - Does not define `Witness`; `v3.std.dimensions.Witness<C>` remains the
 //   analysis proof carrier. This file's human intent record is `Attestation`.
 // - Does not define a bidirectional Lens; `v3.std.lens.Lens<C>` remains the
@@ -27,7 +28,7 @@
 module std.process_algebra
 
 import std.algebra { FreeMonoid }
-import std.effects { WorkflowEffect }
+import std.effects { OperationEffect }
 import std.types { NonEmptyStr, Timestamp }
 
 type ProcessNodeId = NonEmptyStr where brand("ProcessNodeId")
@@ -35,23 +36,37 @@ type ProcessSessionId = NonEmptyStr where brand("ProcessSessionId")
 type ProcessRuleName = NonEmptyStr where brand("ProcessRuleName")
 type ProcessEventPosition = Int where range(min: 0), brand("ProcessEventPosition")
 
-// 🟡 STAGED coproduct — process decomposition shape, mirroring ctrl PR #1192.
+// 🟢 TERMINAL coproduct at Phase-1 scope — declared process decomposition
+// modes, mirroring ctrl PR #1192's non-null mode values.
 //
 // Practice 4 receipt:
-// - Classification: 🟡 STAGED / mixed. `Leaf`, `Composite`, and `Bucket`
-//   are durable graph-shape coordinates, while `ModeUndeclared` is a cutoff
-//   transition state.
-// - Dissolution pattern: dimensional + fact-placement. Mode is a projection
-//   over declared operations and child/drain facts, not a workflow lifecycle
-//   phase and not a run-keyed pipeline fact.
-// - Trigger: when `current_process_mode` is emitted from the event-log fold
-//   and all pre-cutoff ctrl nodes are closed, `ModeUndeclared` dissolves and
-//   stored mode becomes projection provenance.
-type ProcessNodeMode
+// - Classification: 🟢 TERMINAL for declared modes. Leaf, Composite, and
+//   Bucket are durable graph-shape coordinates.
+// - Dissolution pattern rejected: undeclared/cutoff state is not a mode; it
+//   lives in `ProcessModeProjection` so declared-mode consumers cannot accept
+//   a transitional missing declaration as a real declaration.
+// - Trigger: none for declared modes. New ctrl declaration modes must extend
+//   this sum here first.
+type DeclaredProcessNodeMode
   = Leaf
   | Composite
   | Bucket
-  | ModeUndeclared
+
+// 🟡 STAGED coproduct — current mode projection result. This separates the
+// transitional cutoff/null case from durable declarations.
+//
+// Practice 4 receipt:
+// - Classification: 🟡 STAGED. `DeclaredProcessMode` carries durable
+//   declarations; `ProcessModeUndeclared` preserves post-cutoff failure and
+//   pre-cutoff grandfathering without polluting declared mode.
+// - Dissolution pattern: fact-placement. Undeclared state is a projection
+//   result over event-log/cutoff facts, not a stored node mode.
+// - Trigger: when `current_process_mode` is emitted from the event-log fold
+//   and all pre-cutoff ctrl nodes are closed, the transitional arm narrows to
+//   an explicit refusal-only result and stored mode becomes provenance.
+type ProcessModeProjection
+  = DeclaredProcessMode(DeclaredProcessNodeMode)
+  | ProcessModeUndeclared
 
 // 🟡 STAGED coproduct — evidence channels attached to a human-authored
 // attestation. Kept distinct from `v3.std.dimensions.Witness<C>`.
@@ -136,15 +151,15 @@ type ClosureEligibilityEffect
   | ClosureOverride
 
 // 🟡 STAGED record — a typed effect summary is required per operation. The
-// `workflow_effect` field reuses the existing effect substrate rather than
-// defining a process-local effect hierarchy.
+// `external_effect` field reuses the layer-local `std.effects.OperationEffect`
+// authority instead of importing v3 workflow carriers into `dsl/std`.
 //
 // Dissolution trigger: when ctrl HTTP/SQL/audit emission consumes this file,
 // operation effect rows are generated from each `ProcessOperation` arm and
 // validated against emitted behavior.
 type ProcessOperationEffect {
   closure_effect: ClosureEligibilityEffect
-  workflow_effect: WorkflowEffect
+  external_effect: OperationEffect
 }
 
 type ReopenAttestation {
@@ -173,7 +188,7 @@ type RegressionAttestation {
 type ProcessOperation
   = DeclareProcessNode {
       node: ProcessNodeId
-      mode: ProcessNodeMode
+      mode: DeclaredProcessNodeMode
       attestation: Attestation
       effect: ProcessOperationEffect
     }
@@ -242,6 +257,24 @@ type ProcessEvent {
 // concrete process log names the same FreeMonoid structure directly.
 type ProcessEventLog = FreeMonoid<ProcessEvent>
 
+// 🟢 TERMINAL coproduct at Phase-1 scope — mode-specific closure facts. This
+// avoids sibling nullable fields that admit impossible states, such as a leaf
+// with a bucket-drain timestamp or a bucket with child facts.
+//
+// Practice 4 receipt:
+// - Classification: 🟢 TERMINAL for the closure guard state consumed by
+//   `can_close_process_node`.
+// - Dissolution pattern rejected: nullable sibling fields collapse distinct
+//   repair paths and admit contradictory states. Each mode owns only the
+//   facts needed for its closure rule.
+// - Trigger: none for PR #1195 parity; new mode-specific closure facts must
+//   extend the corresponding carrier here.
+type ProcessNodeModeState
+  = LeafState
+  | CompositeState { open_children: List<ProcessNodeId> }
+  | BucketState { drained_at: Timestamp? }
+  | UndeclaredState
+
 // 🟡 STAGED graph snapshot for closure projection. This is the minimum state
 // needed by the Phase-1 guard; workflow phase and run-keyed facts remain in
 // `gunbc.workflow.types`.
@@ -250,10 +283,8 @@ type ProcessEventLog = FreeMonoid<ProcessEvent>
 // snapshot is generated from the event log and no longer hand-authored.
 type ProcessNodeState {
   id: ProcessNodeId
-  mode: ProcessNodeMode
+  mode: ProcessNodeModeState
   closed_at: Timestamp?
-  bucket_drained_at: Timestamp?
-  children: List<ProcessNodeId>
 }
 
 type ProcessGraph {
@@ -262,7 +293,7 @@ type ProcessGraph {
 
 // Projection signatures. Bodies wait for emission/parity work; declaring the
 // signature here fixes the substrate boundary that ctrl projections consume.
-fn current_process_mode(_graph: ProcessGraph, _node: ProcessNodeId) -> ProcessNodeMode {
+fn current_process_mode(_graph: ProcessGraph, _node: ProcessNodeId) -> ProcessModeProjection {
   host process_algebra_current_mode
 }
 
