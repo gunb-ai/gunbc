@@ -18,7 +18,7 @@
 |---|---|---|---|
 | `subsystem_id` | string | row insert (Subsystem-Modeling Mgr) | snake_case name matching `dsl/ctrl/<subsystem>.dag` |
 | `catalog_row` | int | row insert | project-plan §3 row number (1–16) |
-| `algebra_landed` | bool | Substrate Mgr (or N/A for non-consumers) | Phase-1 substrate PR URL + merge SHA, OR `N/A` for rows not consuming algebra |
+| `algebra_landed` | `bool \| "—"` | Substrate Mgr (or `—` for non-consumers) | Phase-1 substrate PR URL + merge SHA, OR `—` for rows not consuming algebra. `—` is **not** a placeholder for "unknown" — it is a structural assertion that this subsystem has no algebra-consumer dependency; see §"N/A semantics" below for gate semantics. |
 | `phase15_pr_merged` | bool | Subsystem-Modeling Mgr | modeling PR URL + merge SHA |
 | `phase3_emission_landed` | bool | Emission-Targets Mgr | emission PR URL + merge SHA + canonical digest-declaration ref path + projection module path |
 | `parity_passed` | bool | Verification Mgr | gate_id string + CI job URL OR in-tree test path |
