@@ -106,15 +106,15 @@ The (c-refined) shape was ratified by Director at msg_237bde05 + msg_f9fd669e an
 - **STOP** if PR #2736 (CIWorkflowDag introduction) is BLOCKED on something WI-2 implementation reveals (e.g., shape mismatch with what `project_github_actions` actually needs) — surface to Substrate Mgr; CIWorkflowDag carrier shape ratified-but-revisable.
 - **PING** PM (deep-wolf-155) on PR-open for review-routing.
 - **PING** Substrate Mgr (warm-wolf-698) on PR-open for Mgr-tier ratification of overall shape (signature, derived-binding form, module placement; NOT CIWorkflowDag carrier choice — that's pre-ratified).
-- **COORDINATE** with sibling still-heron-763 (WI-1 emitter-dispatch canvas at PR #2749) — the canvas declares the (c-refined) shape this WI implements; if canvas re-ratifies the shape, this WI must follow.
+- **COORDINATE** with sibling still-heron-763 (WI-1 emitter-dispatch canvas at PR #2746) — the canvas declares emitter-dispatch architecture this WI's projection function plugs into. PR #2749 (warm-wolf-698's adjacent substrate-shape comparison canvas) §7 is the (c-refined) ratification anchor; if either canvas re-ratifies the shape, this WI must follow.
 - **COORDINATE** with neat-badger-30 (PR #2736 CIWorkflowDag introduction) if shape questions arise about the input carrier itself.
 
 ## Reference materials
 
 - `docs/r3-t-workflow-as-data-full-r3-close-scope.md` — PM FULL scope (this brief's parent); §1 gate `project_github_actions_landed` is the closure-gate for this WI.
 - `docs/briefs/r3-t-wad-full-r3-emitter-dispatch-canvas-worker.md` — sibling WI-1 brief (declares the (c-refined) substrate shape this WI implements).
-- PR #2749 (still-heron-763 WI-1 canvas) §7 — (c-refined) shape self-correction; THIS WI implements that shape.
-- PR #2749 (still-heron-763 WI-1 canvas) §1 + §2.4 + §7.4 — canvas-tier ratification of `CIWorkflowDag` as the gate-dependency authority on which (c-refined) composes.
+- PR #2746 (still-heron-763 WI-1 emitter-dispatch canvas, `docs/design-ci-workflow-emitter-dispatch.md`) — the primary WI-1 canvas; declares emitter-dispatch architecture this WI's projection function plugs into.
+- PR #2749 (warm-wolf-698 substrate-shape comparison canvas, `session/warm-wolf-698-substrate-shape-canvas`) §7 — (c-refined) shape self-correction; THIS WI implements that shape. PR #2749 §1 + §2.4 + §7.4 — canvas-tier ratification of `CIWorkflowDag` as the gate-dependency authority on which (c-refined) composes.
 - PR #2736 (neat-badger-30) — `CIWorkflowDag` carrier introduction; MERGEABLE with all checks SUCCESS as of 2026-05-12; awaiting review tally; this WI consumes `CIWorkflowDag` as the projection input domain.
 - Director ratification msg_4f7f536d — covers Path (b) (CIWorkflowDag-as-input) per Substrate Mgr clarification msg_27d99080.
 - `dsl/extdeps/github/actions.dag:1-12` — platform-carrier scope header ("platform constraints, not CI logic (that lives in gunbc/ci.dag)"); the discriminator that grounds the (c-refined) shape.
