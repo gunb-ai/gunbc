@@ -46,9 +46,8 @@ Use the existing `TestPredicate` surface. Inventing new predicate variants is ou
 | Class | Predicate shape | Use when |
 |---|---|---|
 | C-DiffEq | `DifferentialEquals` | The row has a real v2 counterpart. |
-| C-LensOutEq | `LensOutputEquals` | The row is v3-native and the full expected carrier is authorable. |
+| C-LensOutEq | `LensOutputEquals` | The row is v3-native and the expected carrier is authorable; scalar Int projections are handled here as `LensOutputEquals` against an Int expected value. |
 | C-SymCostEq | `SymbolicCostExprEquals` | The contract is a symbolic cost expression. |
-| C-IntProj | scalar projection such as `IntEquals` | Full carrier authoring is not yet available, but a named scalar projection is the ratified temporary receipt. |
 | C-CompilesHelper | `Compiles` plus paired receipt | The row is helper-only or intentionally narrower than a full behavioral predicate. |
 | C-HandRustBlocker | hand-Rust receipt with named blocker | The row cannot yet cement as data because a structural/compiler prerequisite is missing. |
 
