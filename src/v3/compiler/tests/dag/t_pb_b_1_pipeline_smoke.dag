@@ -15,5 +15,5 @@ data claim_pipe_unary_compiles: TestClaim = {
 
 data suite_pipeline_pipe_unary: TestSuite = {
   name: "t-pb-b-1/pipeline/pipe_unary_compiles",
-  claims: [claim_pipe_unary_compiles]
+  claims: [Enumerated(claim_pipe_unary_compiles)]
 }

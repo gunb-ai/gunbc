@@ -77,7 +77,7 @@ data bad_deferred_claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "bad_suite",
-  claims: [bad_deferred_claim]
+  claims: [Enumerated(bad_deferred_claim)]
 }
 "##;
     let dag = compile_to_dag(source, "arbitrary_substrate_research_deferred_claim.dag")

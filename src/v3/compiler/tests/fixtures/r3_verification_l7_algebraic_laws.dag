@@ -194,22 +194,22 @@ data r3_l7_free_monoid_identity: TestClaim = {
 // one module under `r3_verification_l4_l7_direct_suite` (parent brief).
 data r3_verification_l7_algebra_skeleton_suite: TestSuite = {
   name: "r3_verification_l7_algebra_skeleton_suite",
-  claims: [r3_verification_l7_algebraic_laws_skeleton]
+  claims: [Enumerated(r3_verification_l7_algebraic_laws_skeleton)]
 }
 
 data r3_verification_l7_algebra_matrix_suite: TestSuite = {
   name: "r3_verification_l7_algebra_matrix_suite",
   claims: [
-    l7_algebraic_laws_witnessed,
-    r3_l7_monoid_identity,
-    r3_l7_commutative_monoid_commutativity,
-    r3_l7_group_identity,
-    r3_l7_abelian_group_commutativity,
-    r3_l7_semiring_add_commutativity,
-    r3_l7_semiring_mul_identity,
-    r3_l7_ring_add_commutativity,
-    r3_l7_ring_mul_identity,
-    r3_l7_ordered_ring_add_commutativity,
-    r3_l7_ordered_ring_mul_identity
+    Enumerated(l7_algebraic_laws_witnessed),
+    Enumerated(r3_l7_monoid_identity),
+    Enumerated(r3_l7_commutative_monoid_commutativity),
+    Enumerated(r3_l7_group_identity),
+    Enumerated(r3_l7_abelian_group_commutativity),
+    Enumerated(r3_l7_semiring_add_commutativity),
+    Enumerated(r3_l7_semiring_mul_identity),
+    Enumerated(r3_l7_ring_add_commutativity),
+    Enumerated(r3_l7_ring_mul_identity),
+    Enumerated(r3_l7_ordered_ring_add_commutativity),
+    Enumerated(r3_l7_ordered_ring_mul_identity)
   ]
 }

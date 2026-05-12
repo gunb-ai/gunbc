@@ -43,5 +43,5 @@ data tc2_church_rosser_executable_claim: TestClaim = {
 
 data tc2_church_rosser_strict_fire_suite: TestSuite = {
   name: "tc2_church_rosser_strict_fire_suite",
-  claims: [tc2_church_rosser_executable_claim]
+  claims: [Enumerated(tc2_church_rosser_executable_claim)]
 }

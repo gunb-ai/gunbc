@@ -22,5 +22,5 @@ data cementing_regen_effect_enumeration_claim: TestClaim = {
 
 data r3_gate_87_cementing_regen_effect_enumeration_suite: TestSuite = {
   name: "r3-gate-87/cementing/regen/effect_enumeration",
-  claims: [cementing_regen_effect_enumeration_claim]
+  claims: [Enumerated(cementing_regen_effect_enumeration_claim)]
 }

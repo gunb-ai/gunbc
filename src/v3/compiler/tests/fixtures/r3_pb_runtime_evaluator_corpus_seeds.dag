@@ -64,7 +64,7 @@ data pb_eval_corpus_seed_list_fold_deferred: TestClaim = {
 data r3_pb_runtime_evaluator_corpus_seed_suite: TestSuite = {
   name: "r3_pb_runtime_evaluator_corpus_seed_suite",
   claims: [
-    pb_eval_corpus_seed_int_arithmetic_deferred,
-    pb_eval_corpus_seed_list_fold_deferred
+    Enumerated(pb_eval_corpus_seed_int_arithmetic_deferred),
+    Enumerated(pb_eval_corpus_seed_list_fold_deferred)
   ]
 }
