@@ -180,17 +180,77 @@ fi
 # document it in $INVENTORY_DOC §3 and add the specific file:line to an
 # explicit allowlist here (mirroring the `expected_diff_count` pattern
 # above). The default stance is fail-closed.
+# Trigger-level `paths:` / `paths-ignore:` detector (awk state-machine).
+# Only flags `paths:` / `paths-ignore:` keys that appear UNDER
+# `on:` → `push:` / `pull_request:` / `pull_request_target:` (the only YAML
+# locations where these keys carry authoritative path-regex selection
+# semantics). Step-input `paths:` keys (e.g., `with:` blocks under
+# `dorny/paths-filter`) are intentionally NOT flagged here — they are step
+# inputs, not workflow-trigger filters; the dorny action itself is caught by
+# the separate action-name detector below.
+#
+# This precise scoping resolves the doc-vs-impl mismatch raised by cursor
+# review 10280 (P2 / Practice 5 single-authority alignment).
+trigger_paths_awk='
+function indent_of(s,   l) { l = match(s, /[^ ]/); return l > 0 ? l - 1 : -1 }
+{
+  raw = $0
+  if (raw ~ /^[[:space:]]*$/ || raw ~ /^[[:space:]]*#/) next
+  ind = indent_of(raw)
+  content = raw; sub(/^[[:space:]]+/, "", content)
+  if (ind == 0) {
+    in_on  = (content ~ /^on:/) ? 1 : 0
+    in_trig = 0
+    next
+  }
+  if (!in_on) next
+  if (!in_trig) {
+    if (content ~ /^(push|pull_request|pull_request_target):/) {
+      in_trig = 1; trig_indent = ind
+    }
+    next
+  }
+  if (ind <= trig_indent) {
+    if (content ~ /^(push|pull_request|pull_request_target):/) {
+      in_trig = 1; trig_indent = ind
+    } else {
+      in_trig = 0
+    }
+    next
+  }
+  if (content ~ /^paths(-ignore)?:/) {
+    printf("%s:%d:%s\n", FILENAME, NR, raw)
+  }
+}'
+
 while IFS= read -r match; do
   [[ -z "$match" ]] && continue
-  fail "new non-diff path-regex selection candidate: $match
-        Matches one of: trigger-level paths:/paths-ignore:, dorny/paths-filter,
-        tj-actions/changed-files, or 'paths-filter' uses-clause substring.
-        Either dissolve via the BinaryShim runner (post–Slice 5) or, if event-
-        orthogonal, document in $INVENTORY_DOC §3 and add an explicit allowlist
-        entry to this script."
+  fail "new trigger-level paths:/paths-ignore: selection candidate: $match
+        Authoritative path-regex selection under on:push / on:pull_request /
+        on:pull_request_target. Either dissolve via the BinaryShim runner
+        (post–Slice 5) or, if event-orthogonal, document in $INVENTORY_DOC §3
+        and add an explicit allowlist entry to this script."
+done < <(
+  while IFS= read -r -d '' f; do
+    awk "$trigger_paths_awk" "$f"
+  done < <(workflow_files_nul)
+)
+
+# Action-name detector for non-trigger-level non-diff path-regex selection:
+# popular changed-files action wrappers that read changed paths and emit
+# outputs which downstream jobs gate on. Uses-clause substrings are a tight
+# fingerprint with no plausible false positives.
+while IFS= read -r match; do
+  [[ -z "$match" ]] && continue
+  fail "new changed-files action use detected: $match
+        Matches one of: dorny/paths-filter, tj-actions/changed-files, or
+        a 'paths-filter@' uses-clause substring. Either dissolve via the
+        BinaryShim runner (post–Slice 5) or, if event-orthogonal, document
+        in $INVENTORY_DOC §3 and add an explicit allowlist entry to this
+        script."
 done < <(
   workflow_files_nul \
-    | xargs -0 grep -nHE "^[[:space:]]*paths(-ignore)?:|dorny/paths-filter|tj-actions/changed-files|paths-filter@" \
+    | xargs -0 grep -nHE "dorny/paths-filter|tj-actions/changed-files|paths-filter@" \
         2>/dev/null || true
 )
 
