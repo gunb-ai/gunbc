@@ -4411,6 +4411,9 @@ fn try_lower_symbolic_cost_structural_data(
     if !type_decl_is_symbolic_cost(dag, ty_decl_id) {
         return None;
     }
+    if !symbolic_cost_expr_uses_canonical_constructors(name, expr, symbols, dag) {
+        return None;
+    }
     let span = surface_expr_span(expr);
     let fv = lower_structural_field_value(
         name,
@@ -4427,6 +4430,110 @@ fn try_lower_symbolic_cost_structural_data(
     Some(crate::dag::ValueBody::Structural {
         fields: vec![("_".to_string(), fv)],
     })
+}
+
+fn symbolic_cost_expr_uses_canonical_constructors(
+    data_name: &str,
+    expr: &SurfaceExpr,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> bool {
+    match expr {
+        SurfaceExpr::Call { target, args, span } => {
+            if !symbolic_cost_constructor_spelling_is_canonical(data_name, target, span, symbols, dag)
+            {
+                return false;
+            }
+            args.iter()
+                .all(|arg| symbolic_cost_expr_uses_canonical_constructors(data_name, arg, symbols, dag))
+        }
+        SurfaceExpr::VariantRecord {
+            target,
+            fields,
+            span,
+        } => {
+            symbolic_cost_constructor_spelling_is_canonical(data_name, target, span, symbols, dag)
+                && fields.iter().all(|field| {
+                    symbolic_cost_expr_uses_canonical_constructors(
+                        data_name,
+                        &field.value,
+                        symbols,
+                        dag,
+                    )
+                })
+        }
+        SurfaceExpr::Operator { args, .. } | SurfaceExpr::PathCall { args, .. } => args
+            .iter()
+            .all(|arg| symbolic_cost_expr_uses_canonical_constructors(data_name, arg, symbols, dag)),
+        SurfaceExpr::Lambda { body, .. } => {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, body, symbols, dag)
+        }
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, cond, symbols, dag)
+                && symbolic_cost_expr_uses_canonical_constructors(
+                    data_name,
+                    then_branch,
+                    symbols,
+                    dag,
+                )
+                && symbolic_cost_expr_uses_canonical_constructors(
+                    data_name,
+                    else_branch,
+                    symbols,
+                    dag,
+                )
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, scrutinee, symbols, dag)
+                && arms.iter().all(|arm| {
+                    symbolic_cost_expr_uses_canonical_constructors(data_name, &arm.body, symbols, dag)
+                })
+        }
+        SurfaceExpr::Record { fields, .. } => fields.iter().all(|field| {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, &field.value, symbols, dag)
+        }),
+        SurfaceExpr::List { elements, .. } => elements
+            .iter()
+            .all(|element| symbolic_cost_expr_uses_canonical_constructors(data_name, element, symbols, dag)),
+        SurfaceExpr::Map { entries, .. } => entries.iter().all(|entry| {
+            symbolic_cost_expr_uses_canonical_constructors(data_name, &entry.value, symbols, dag)
+        }),
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => true,
+    }
+}
+
+fn symbolic_cost_constructor_spelling_is_canonical(
+    data_name: &str,
+    target: &str,
+    span: &SourceSpan,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> bool {
+    let Some(canonical) = symbolic_cost_variant_constructor_id(dag, target) else {
+        return true;
+    };
+    if symbols.get(target).copied() == Some(canonical) {
+        return true;
+    }
+    report_declaration_error(
+        dag,
+        Diagnostic::ResolveError {
+            name: format!(
+                "data `{data_name}` SymbolicCost constructor `{target}` is shadowed or unresolved; \
+                 expected the canonical std.algebra `{target}` constructor"
+            ),
+            span: span.clone(),
+            fixes: Vec::new(),
+        },
+    );
+    false
 }
 
 fn lower_list_to_structural(
