@@ -22,12 +22,12 @@
 //!
 //! R3 gate #87 `R3_GATE_87_CEMENTING_REGEN_SUITES` wiring: **INVARIANTS P5(b)** — merge-visible
 //! integration delta; see module doc on `r3_gate_87_lens_cementing_regen_receipts_test` (§P5(b)
-//! checkable receipt = **PR #2639 description**, not inferred deletes).
-
-use std::collections::BTreeSet;
+//! checkable receipt = **PR #2639 description**, not inferred deletes). Table lives in
+//! `v3_compiler::r3_gate_87_cementing_regen_runner_suites` (shared with `cementing_dispatch`).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES;
 use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
@@ -422,6 +422,7 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
 // `tests/dag/t_r3_tests_as_data_demonstration.dag` on `main`). Gate-#87 regen harnesses below are a
 // separate ratchet; do not conflate the two in PR titles or census expectations.
 
+<<<<<<< HEAD
 // R3 gate #87 — every `LensRegistryEntry` in `src/v3/compiler/regen.dag` has a
 // `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<name>.dag` harness evaluated here.
 const R3_GATE_87_CEMENTING_HARNESS_PATH_PREFIX: &str =
@@ -519,6 +520,8 @@ const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
     ),
 ];
 
+=======
+>>>>>>> origin/main
 #[test]
 fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
     // One `compile_to_dag` per `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<lens>.dag`
@@ -528,4 +531,17 @@ fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
         let dag = lower(source, file);
         run_suite_all_pass_with_expected_claim_names(&dag, suite, claim_names);
     }
+}
+
+#[test]
+fn cementing_dispatch_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/cementing_dispatch.dag"),
+        "src/v3/compiler/tests/dag/cementing_dispatch.dag",
+    );
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "cementing_dispatch_suite",
+        &["cementing_dispatch_projection_matches_register_and_regen"],
+    );
 }

@@ -248,6 +248,10 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
+    // R3 gate #87 / T-Tests-As-Data-Completeness: `CementingDispatchMatchesProjection` host
+    // evaluator for `tests/dag/cementing_dispatch.dag` (P5 consumer receipt; dissolves when
+    // predicate substrate owns the walk without host FS coupling).
+    "src/v3/compiler/src/cementing_dispatch.rs",
     "src/v3/compiler/src/complexity_lattice.rs",
     "src/v3/compiler/src/cost_basis_declaration.rs",
     "src/v3/compiler/src/dag.rs",
@@ -270,6 +274,10 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/enforced_lens_application.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
+    // R3 gate #87: `tests/integration.rs` wiring scanner shared by Band-C cementing dispatch
+    // (`cementing_dispatch.rs`) and integration tests (P5 receipt for host promotion from
+    // `tests/integration/common/mod.rs`).
+    "src/v3/compiler/src/integration_rs_wiring_scan.rs",
     "src/v3/compiler/src/lens_apply.rs",
     "src/v3/compiler/src/lens_t_las_carrier.rs",
     "src/v3/compiler/src/lib.rs",
@@ -296,6 +304,9 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/r1c_e_gates.rs",
     // R3 T-Free-Consequences: authored comment → `lane2_workflow` staging until lowering owns it.
     "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
+    // R3 gate #87: PB-B-1 runner table + `cementing_dispatch` shared inventory for
+    // `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (INVARIANTS P2 single authority).
+    "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
@@ -352,7 +363,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (PB-Runtime interpreter-as-data or typed lens-registry carrier);
     // until then, this hand-Rust ratchet IS the slice's structural gate.
     "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
-    "src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs",
+    // R3 gate #87: provenance `origin_of` seam check (retired from `cementing_lens_registry_dispatch_test.rs`).
+    "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
     // R3 T-Lens-Behavioral-Parity: Band-C cementing receipt for the complexity lens
     // COMPLETE promotion against frozen v2-oracle values. Temporarily stays Rust
     // because `.dag` TestClaims cannot yet consume the `ComplexitySummary`
@@ -380,6 +392,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 gate #78 / E-P: shared countdown `SymbolicCost` oracle helper for cost-lens consumer
     // tests (`cost_lens_symbolic_consumer_test`, lane2 `lane2_stage_2d_symbolic_cost_test`).
     "src/v3/compiler/tests/integration/common/symbolic_cost_countdown.rs",
+    // R3 gate #87: unit tests for `tests/integration.rs` wiring scanners (split from retired
+    // `cementing_lens_registry_dispatch_test.rs`).
+    "src/v3/compiler/tests/integration/common/wiring_scanner_test.rs",
     // R3 L6 carrier slice (PR #1842; Measure-carrier precedent at #1819,
     // Director Option 2 RATIFIED at
     // gunbc#828 #issuecomment-4377533390): slice-active ratchet for

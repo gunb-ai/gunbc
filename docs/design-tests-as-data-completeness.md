@@ -324,7 +324,7 @@ The `DifferentialEquals` predicate already names the comparison shape (subject v
 Per the lane row `lens_cementing_test_discipline_complete`: at R3 close, every `LensRegistryEntry` whose register row reads `BEHAVIORALLY COMPLETE` with a real v2 counterpart has:
 
 1. A `.dag` `TestClaim` declaration with `predicate: DifferentialEquals { subject: <v3_lens>, oracle: <v2_lens>, input: <fixture> }`.
-2. The dispatch ratchet (`cementing_dispatch.dag` — the `.dag` successor to `cementing_lens_registry_dispatch_test.rs`) verifies the cementing claim list matches the register projection exactly.
+2. The dispatch ratchet (`cementing_dispatch.dag` — the `.dag` successor to `cementing_lens_registry_dispatch_test.rs`) wires `CementingDispatchMatchesProjection` so the Band-C receipt list matches the register projection exactly; the canonical register rows live in `std.verification` (`lens_capability_register_rows`, §8.3).
 3. Each cementing claim evaluates green under the test runner.
 
 The four lenses currently at PROXY/STUB/PARTIAL (complexity, cost, parallelism, effect_enumeration) flip to `BEHAVIORALLY COMPLETE` under T-Lens-Behavioral-Parity; their cementing claims land in the same PR per the existing `TESTING.md` cementing-symmetry rule.
