@@ -519,7 +519,7 @@ const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
 #[test]
 fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
     // One `compile_to_dag` per `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<lens>.dag`
-    // harness — the on-disk file is the single authority for that row (INVARIANTS §P2); no
+    // harness — the on-disk file is the single authority for that row (INVARIANTS P2); no
     // duplicated copy in a bundle module.
     for (source, file, suite, claim_names) in R3_GATE_87_CEMENTING_REGEN_SUITES {
         let dag = lower(source, file);
