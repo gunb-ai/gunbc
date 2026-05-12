@@ -23,8 +23,23 @@
 //   gunbc_ci_yml_workflow (Workflow from extdeps.github.actions) — T-WAD R3 WI-2 full ci.yml data
 //   future: dag run ci_pipeline  -- interpreter execution of compiler-intent gates
 //
+// Dual authority (transitional): `ci.yml` stays human-edited until WI-1 emitter dispatch
+//   (`docs/design-ci-workflow-emitter-dispatch.md`, still-heron-763) lands and can own generation;
+//   then either (i) `ci.yml` becomes emitted-only and this `Workflow` data is the structural source
+//   for Actions YAML, or (ii) Director ratifies gate #56 / PR #2736 neutral DAG supersedes this layer
+//   — remove the stale bullet from this file when that decision closes.
+//
 // QUESTION ratify-via-Mgr: Workflow-shaped `data` placement (vs sibling emitter dispatch doc
 //   still-heron-763 / WI-1) — resolve on canvas if emitter routing conflicts.
+//
+// Transitional — empty `env` on Job / Step (`Map<String, String>` in actions.dag):
+//   Sites with no workflow env vars use `env: { _wi2_empty_env: "" }` because v3 surface grammar
+//   cannot express an empty string map in record fields today: `{}` parses as an empty *record*, not
+//   an empty `Map`, and fails shape check (same deferral as `src/v3/std/anthropic_operations.dag`
+//   §EXPLICIT DEFERRAL §1 / #1133). This key MUST NOT appear in emitted YAML: treat as empty map for
+//   GHA `env:` blocks. Dissolution: land nested / empty `Map<String, String>` literals (or an
+//   authoritative `empty_map` binding usable here), then sweep every `_wi2_empty_env` row to the real
+//   empty form and delete this bullet.
 
 module gunbc.ci
 
