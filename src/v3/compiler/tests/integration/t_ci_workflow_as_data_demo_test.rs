@@ -568,8 +568,14 @@ fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
 
 #[test]
 fn gunbc_ci_emission_substrate_compiles() {
-    let dag = compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE)
-        .unwrap_or_else(|e| panic!("compile {GUNBC_CI_EMISSION_FILE}: {e:?}"));
+    let dag = match compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE) {
+        Ok(d) => d,
+        Err(CompileError::Semantic(d)) => panic!(
+            "compile {GUNBC_CI_EMISSION_FILE} semantic: {:?}",
+            d.diagnostics()
+        ),
+        Err(e) => panic!("compile {GUNBC_CI_EMISSION_FILE}: {e:?}"),
+    };
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
 }
 
