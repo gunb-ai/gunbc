@@ -568,15 +568,24 @@ jobs:
     # pattern lets this job run when `v3` either succeeded OR was skipped, but not
     # when `v3` actually failed.
     #
-    # **Fail-closed under filter failure** (openai-pro REQUEST_CHANGES on PR #2718):
-    # a `v3` skip is only legitimate when `changes` SUCCEEDED with `code=false`
-    # (proven docs-only). If `changes` itself fails or is cancelled, `v3` skips
-    # via the `needs:` graph but the skip is NOT proof of docs-only — it's
-    # absence of evidence. Adding `changes` to `needs:` + requiring
-    # `needs.changes.result == 'success'` in the `if:` makes the gate fail-closed:
-    # filter failure → self_host_ratchet skipped → branch-protection-visible
-    # incomplete signal rather than a phantom green.
-    if: ${{ always() && github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.v3.result != 'failure' && needs.v3.result != 'cancelled' }}
+    # **Fail-closed under filter failure** (openai-pro REQUEST_CHANGES on PR #2718,
+    # then codex BLOCKING on PR #2718 line 579 caught the actual fail-open):
+    #
+    # Original openai-pro fix used `if: ... && needs.changes.result == 'success'`,
+    # intending changes-failure → self_host_ratchet skipped → branch-protection
+    # incomplete signal. **But GitHub branch protection treats SKIPPED required
+    # checks as SUCCESS by default** (per docs/en/pull-requests/.../troubleshooting-
+    # required-status-checks#handling-skipped-but-required-checks). So skipping on
+    # filter-failure was still phantom-green.
+    #
+    # **True fail-closed**: the job MUST RUN on every PR (`if: ${{ always() && ... }}`
+    # with no result-checks gating the JOB), and an EXPLICIT step fails when the
+    # gate evidence is incomplete. A failed step → job FAILURE → required-check RED
+    # → branch-protection BLOCKS. Job-level `continue-on-error: true` (kept below)
+    # only governs workflow conclusion, not job conclusion reported to branch
+    # protection; individual DB-8 staging steps have their own step-level
+    # continue-on-error to preserve their non-blocking semantics.
+    if: ${{ always() && github.event.pull_request.draft != true }}
     # Same sizing rationale as `v3` above: DB-8 release builds + determinism_test (5× matrix) +
     # `self_host_fixed_point` run on the same ephemeral GCE Spot runner pool as `v3`;
     # small/default runners saw mid-compile shutdown on #1794. **60m** wall so cold-cache
@@ -596,6 +605,36 @@ jobs:
     needs: [v3, changes]
     continue-on-error: true
     steps:
+      # **Fail-closed gate-evidence validation** (codex BLOCKING on PR #2718 line 579 fix).
+      # Reports explicit step FAILURE → job FAILURE → required-check RED when the
+      # Layer 1 filter (`changes`) failed or was cancelled, or when `v3` failed/cancelled.
+      # Job conclusion FAILURE propagates to branch protection (skipped does NOT — that's
+      # the bug this fixes). No `continue-on-error` on this step; its failure must surface.
+      #
+      # Allowed `v3.result` values that the validation accepts:
+      #   - `success`: v3 ran cleanly (CI green)
+      #   - `skipped`: v3 was skipped because `changes` proved docs-only (`code=false`)
+      # Allowed `changes.result` values:
+      #   - `success`: filter completed (regardless of `code` value)
+      # Anything else → fail with explicit diagnostic (P3 fail-closed / C-8).
+      - name: Validate gate evidence (fail-closed under filter/v3 failure)
+        run: |
+          echo "Gate evidence: changes.result=${{ needs.changes.result }} v3.result=${{ needs.v3.result }}"
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "::error::Layer 1 filter (`changes` job) did not succeed (result=${{ needs.changes.result }})."
+            echo "::error::Cannot determine v3 skip legitimacy — skipped required-checks default to SUCCESS"
+            echo "::error::in GitHub branch protection (https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks#handling-skipped-but-required-checks),"
+            echo "::error::so an explicit step failure here surfaces the missing-evidence as a diagnostic"
+            echo "::error::per P3 fail-closed / C-8 discipline."
+            exit 1
+          fi
+          if [ "${{ needs.v3.result }}" = "failure" ] || [ "${{ needs.v3.result }}" = "cancelled" ]; then
+            echo "::error::v3 job did not succeed (result=${{ needs.v3.result }}); ratchet cannot claim green."
+            exit 1
+          fi
+          # Either v3.result == success (ran cleanly) or v3.result == skipped (legit docs-only via changes.code=false)
+          echo "Gate evidence validated; ratchet may proceed."
+
       - name: Checkout
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/checkout@v4
