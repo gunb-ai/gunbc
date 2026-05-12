@@ -1160,3 +1160,78 @@ fn test_runner_runs_p0_repeat_string_correct_gate() {
 fn test_runner_runs_p0_host_sentinel_and_rest_gate() {
     crate::common::assert_p0_host_sentinel_and_rest_gate_passes();
 }
+
+#[test]
+fn test_runner_quantified_suite_entry_reports_nyi_with_modeled_name() {
+    // Gate #85 happy-path regression: a structurally valid
+    // `Quantified(QuantifiedTestClaim)` suite entry passes the
+    // `validate_quantified_claim_shape` boundary and yields
+    // `NotYetImplemented`; `claim_name` is projected from the modeled
+    // `QuantifiedTestClaim.name` so runner and obligation-walk agree on the
+    // single-authority identity.
+    let source = r#"
+data smoke_generator_body: List<ProgramShape> = []
+
+data smoke_quantified_claim: QuantifiedTestClaim = {
+  name: "smoke_quantified_claim_name",
+  generator: { generator: smoke_generator_body },
+  quantifier: ForAll,
+  predicate: Compiles,
+  requires: []
+}
+
+data suite_quantified: TestSuite = {
+  name: "runner_quantified_smoke",
+  claims: [Quantified(smoke_quantified_claim)]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_quantified_nyi.dag");
+    let results = TestRunner::new(&dag).run_suite("suite_quantified");
+
+    assert_eq!(results.len(), 1);
+    let entry = &results[0];
+    assert_eq!(
+        entry.claim_name, "smoke_quantified_claim_name",
+        "claim_name must come from QuantifiedTestClaim.name (single-authority \
+         identity matching obligation_for_quantified_claim), got {entry:?}",
+    );
+    assert!(
+        matches!(entry.result, ClaimResult::NotYetImplemented(_)),
+        "Quantified suite entry with valid shape must yield NotYetImplemented \
+         (gate #85 substrate-only landing), got {entry:?}",
+    );
+}
+
+#[test]
+fn test_runner_quantified_suite_entry_fails_closed_on_wrong_shape() {
+    // Gate #85 fail-closed regression: a `Quantified(...)` payload pointing at
+    // a non-`QuantifiedTestClaim` declaration is rejected at the type-checker
+    // boundary (`TypeMismatch` on the variant argument) — the suite never
+    // reaches the runner. This is the stronger of the two fail-closed postures
+    // (ill-shaped quantified entries cannot compile at all);
+    // `validate_quantified_claim_shape` handles the residual synthetic-dag
+    // case below the type-checker.
+    let source = r#"
+data not_quantified: Int = 7
+
+data suite_quantified_bad: TestSuite = {
+  name: "runner_quantified_bad_shape",
+  claims: [Quantified(not_quantified)]
+}
+"#;
+    match compile_to_dag(source, "test_runner_quantified_bad_shape.dag") {
+        Err(CompileError::Semantic(dag)) => {
+            let found_type_mismatch = dag
+                .diagnostics()
+                .iter()
+                .any(|(_, diag)| matches!(diag, Diagnostic::TypeMismatch { .. }));
+            assert!(
+                found_type_mismatch,
+                "ill-shaped `Quantified(Int)` must surface a TypeMismatch diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+        }
+        Ok(_) => panic!("Quantified(Int) should not compile cleanly — TypeMismatch expected"),
+        Err(err) => panic!("expected Semantic diagnostic, got {err:?}"),
+    }
+}
