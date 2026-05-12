@@ -5509,7 +5509,7 @@ fn lower_structural_field_value(
                 return None;
             }
         }
-        for (label, ty) in &expected_fields {
+        for (label, _) in &expected_fields {
             if !fields.iter().any(|field| field.name == *label)
                 && !expected_fields
                     .iter()
@@ -5517,14 +5517,6 @@ fn lower_structural_field_value(
                     .is_some_and(|(_, ty)| {
                         is_at_most_one_type_with_subst(dag, *ty, &nested_subst, 0)
                     })
-                && !symbolic_cost_expected_size_variable_param_placeholder(
-                    dag,
-                    conj_id,
-                    label,
-                    *ty,
-                    &nested_subst,
-                    fields,
-                )
             {
                 report_declaration_error(
                     dag,
@@ -5938,28 +5930,6 @@ fn optional_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Decl
         } if arguments.is_empty() => optional_element_type(dag, *template),
         _ => None,
     }
-}
-
-fn symbolic_cost_expected_size_variable_param_placeholder(
-    dag: &Dag,
-    record_decl_id: DeclarationId,
-    field_label: &str,
-    field_ty: DeclarationId,
-    subst: &LowerSubstStack,
-    fields: &[crate::parse::SurfaceRecordField],
-) -> bool {
-    if field_label != "source_port" || fields.iter().any(|field| field.name == "source_port") {
-        return false;
-    }
-    let Some(size_variable_id) = dag.declaration_by_name("SizeVariable").map(|decl| decl.id) else {
-        return false;
-    };
-    let Some(port_id) = dag.declaration_by_name("PortId").map(|decl| decl.id) else {
-        return false;
-    };
-    record_decl_id == size_variable_id
-        && resolve_decl_with_subst_lower(dag, field_ty, subst, 0)
-            .is_some_and(|resolved| walks_to(dag, resolved, port_id))
 }
 
 fn list_element_type_with_subst(

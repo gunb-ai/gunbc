@@ -3197,7 +3197,15 @@ impl<'a> TestRunner<'a> {
                 Ok(p) => p,
                 Err(msg) => return ClaimResult::Fail(msg),
             };
+        self.eval_symbolic_cost_expr_equals_pattern(claim, expected_pattern, expected_param_name)
+    }
 
+    fn eval_symbolic_cost_expr_equals_pattern(
+        &self,
+        claim: &TestClaimValue,
+        expected_pattern: SymbolicCostEqPattern,
+        expected_param_name: Option<&str>,
+    ) -> ClaimResult {
         let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(dag) => dag,
             Err(CompileError::Semantic(dag)) => {
@@ -3306,9 +3314,41 @@ impl<'a> TestRunner<'a> {
             Ok(name) => name,
             Err(msg) => return ClaimResult::Fail(msg),
         };
-        self.eval_symbolic_cost_expr_equals_shape(
+        let expected_id = match self.resolve_declaration_ref_id(expected_fv, "expected") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let expected_decl = self.dag.declaration(expected_id);
+        let expected_name = decl_display_name(expected_id, expected_decl);
+        let Some(expected_body) = expected_decl.value_body.as_ref() else {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEqualsForBindParam: expected `{expected_name}` has no value body \
+                 to compare against"
+            ));
+        };
+        if let Err(reason) = self.validate_symbolic_cost_bind_param_expected_ref(expected_id) {
+            return ClaimResult::Fail(reason);
+        }
+        let expected_field = match field_value_from_value_body(self.dag, expected_body) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "SymbolicCostExprEqualsForBindParam: could not lower expected \
+                     `{expected_name}` to a structural value: {err:?}"
+                ));
+            }
+        };
+        let expected_pattern =
+            match field_value_to_symbolic_cost_bind_param_expected_pattern(
+                self.dag,
+                &expected_field,
+            ) {
+                Ok(p) => p,
+                Err(msg) => return ClaimResult::Fail(msg),
+            };
+        self.eval_symbolic_cost_expr_equals_pattern(
             claim,
-            std::slice::from_ref(expected_fv),
+            expected_pattern,
             Some(param_name.as_str()),
         )
     }

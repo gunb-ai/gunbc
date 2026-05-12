@@ -135,6 +135,9 @@ type ProgramShape
       file_name: String
     }
 
+type SymbolicCostBindParamExpected
+  = LinearCostForBindParam
+
 type TestPredicate
   = Compiles
   | FailsWithDiagnostic(DiagnosticReference)
