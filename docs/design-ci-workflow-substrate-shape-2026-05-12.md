@@ -531,14 +531,22 @@ Both rejections cost more substrate churn than (c) ratification.
 
 ## §6. Open questions surfaced (not pre-authored)
 
+> **⚠ Q#2 RESOLVED in §7.3 (c-refined).** Reasoning preserved below as
+> canvas-evolution record; for the ratified signature shape see §7.3 + §9.
+
 1. **S1 projection function placement**: `dsl/gunbc/ci_emission.dag`?
    `dsl/gunbc/ci.dag` itself? A new module? Director-tier concept-layering
    call.
 2. **Projection function signature**: take `EmissionTarget` as parameter, or
    read it from the input `CIWorkflowDag` (would require adding the field
-   there, contradicting M9)? This canvas defers — PR #2746 places the field
-   on `Workflow` (the projection output), so the projection function
-   signature is likely `(CIWorkflowDag, EmissionTarget) → Workflow`.
+   there, contradicting M9)? **Resolved in §7.3 (c-refined)**: signature is
+   `(CIWorkflowDag, EmissionTarget) → Workflow`, with `EmissionTarget` as
+   parameter — NOT a field on any carrier. The "PR #2746 places the field
+   on `Workflow`" framing in the pre-§7 reasoning below is **overturned**:
+   under (c-refined), `extdeps.github.actions.Workflow` is unmodified
+   (no emission-target field on any carrier — see §7.6 + §9 ask #1). The
+   parametric signature was the right answer regardless; this Q#2 entry
+   over-attributed the rationale to a placement that no longer stands.
 3. **Multi-provider extension path**: does (c) imply that future GitLab-CI
    support adds `dsl/extdeps/gitlab/ci.dag` + `project_gitlab_ci: CIWorkflowDag → GitLabPipeline`?
    This canvas asserts yes (per the cost-of-change decoupling argument) but
