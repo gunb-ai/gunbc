@@ -2482,7 +2482,15 @@ impl<'a> TestRunner<'a> {
                 },
             },
             "Quantified" => ClaimEvaluation {
-                claim_name: decl_label,
+                // Single-authority claim identity (P2): read `name` off the
+                // modeled `QuantifiedTestClaim` rather than the declaration
+                // label, so obligation-walk and runner reporting agree on one
+                // identity even while evaluation is NotYetImplemented. Fall
+                // back to the declaration label only if the structural read
+                // fails (malformed declaration — still fail-closed below).
+                claim_name: structural_fields(decl)
+                    .and_then(|fields| string_field(fields, "name").ok())
+                    .unwrap_or(decl_label),
                 result: ClaimResult::NotYetImplemented(
                     "QuantifiedTestClaim runner evaluation NotYetImplemented \
                      (gate #85 substrate-only landing; quantifier evaluation deferred to \
