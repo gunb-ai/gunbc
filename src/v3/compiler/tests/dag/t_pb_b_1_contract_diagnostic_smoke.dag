@@ -17,5 +17,5 @@ data claim_bool_int_rejected: TestClaim = {
 
 data suite_contract_diagnostic_negatives: TestSuite = {
   name: "t-pb-b-1/contract/diagnostic_negatives",
-  claims: [claim_bool_int_rejected]
+  claims: [Enumerated(claim_bool_int_rejected)]
 }

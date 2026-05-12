@@ -42,5 +42,5 @@ data gate87_merge_sort_v3_matches_v2_oracle: TestClaim = {
 
 data r3_gate_87_cementing_regen_cost_suite: TestSuite = {
   name: "r3-gate-87/cementing/regen/cost",
-  claims: [gate87_merge_sort_v3_matches_v2_oracle]
+  claims: [Enumerated(gate87_merge_sort_v3_matches_v2_oracle)]
 }

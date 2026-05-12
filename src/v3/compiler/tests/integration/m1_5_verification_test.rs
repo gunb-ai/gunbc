@@ -337,7 +337,7 @@ let claim_alias_refine: TestClaim = {
 
 let suite: TestSuite = {
   name: "verification_smoke",
-  claims: [claim_compiles, claim_fails, claim_alias_refine]
+  claims: [Enumerated(claim_compiles), Enumerated(claim_fails), Enumerated(claim_alias_refine)]
 }
 "#;
 
@@ -378,6 +378,43 @@ let suite: TestSuite = {
     assert_eq!(
         bind_value_type_decl(&dag, "suite"),
         find_named(&dag, "TestSuite")
+    );
+}
+
+#[test]
+fn program_generator_authoring_surface_compiles_cleanly() {
+    let src = r#"
+data parse_smoke_generator: List<ProgramShape> = []
+
+let generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
+"#;
+
+    let dag = compile_any(src, "program_generator_authoring_surface.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "ProgramGenerator authoring surface should compile cleanly, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+
+    assert_eq!(
+        bind_value_type_decl(&dag, "generator_ref"),
+        find_named(&dag, "ProgramGenerator")
+    );
+}
+
+#[test]
+fn program_generator_rejects_empty_declaration_ref_literal() {
+    let src = r#"
+let generator_ref: ProgramGenerator = { generator: {  } }
+"#;
+
+    let dag = compile_any(src, "program_generator_empty_ref.v3");
+    assert!(
+        dag.diagnostics().iter().any(|diagnostic| {
+            format!("{diagnostic:?}").contains("must be a DeclarationRef edge")
+        }),
+        "empty DeclarationRef literal should fail-closed for ProgramGenerator.generator, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
     );
 }
 
@@ -736,7 +773,7 @@ data symbolic_cost_expr_equals_claim: TestClaim = {
 
 data symbolic_cost_expr_equals_suite: TestSuite = {
   name: "symbolic_cost_expr_equals_smoke_suite",
-  claims: [symbolic_cost_expr_equals_claim]
+  claims: [Enumerated(symbolic_cost_expr_equals_claim)]
 }
 "#;
 

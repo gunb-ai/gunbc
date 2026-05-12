@@ -40,5 +40,5 @@ data emit_rust_fixtures_rustc_green_claim: TestClaim = {
 
 data r1c_e_emit_gates_suite: TestSuite = {
   name: "r1c_e_emit_gates_suite",
-  claims: [emit_generic_bounds_survive_claim, emit_rust_fixtures_rustc_green_claim]
+  claims: [Enumerated(emit_generic_bounds_survive_claim), Enumerated(emit_rust_fixtures_rustc_green_claim)]
 }

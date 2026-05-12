@@ -101,9 +101,9 @@ data r3_verification_l4_emit_eval_add_then_branch: TestClaim = {
 data r3_verification_l4_l7_direct_suite: TestSuite = {
   name: "r3_verification_l4_l7_direct_suite",
   claims: [
-    l4_emit_eval_match,
-    r3_verification_l4_emit_eval_false_branch,
-    r3_verification_l4_emit_eval_nested_branch,
-    r3_verification_l4_emit_eval_add_then_branch
+    Enumerated(l4_emit_eval_match),
+    Enumerated(r3_verification_l4_emit_eval_false_branch),
+    Enumerated(r3_verification_l4_emit_eval_nested_branch),
+    Enumerated(r3_verification_l4_emit_eval_add_then_branch)
   ]
 }

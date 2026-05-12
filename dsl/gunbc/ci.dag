@@ -18,12 +18,31 @@
 // once tools/ratchet.dag and tools/freshness.dag execute reliably in
 // any environment (blocked on tool upsert landing end-to-end).
 //
+// Related modules:
+//   dsl/extdeps/github/ci.dag — repository-relative workflow file path facts (GitHub `.github/workflows/`).
+//
 // Consumers:
-//   .github/workflows/ci.yml     -- current transport (hand-maintained shim)
-//   future: dag run ci_pipeline  -- interpreter execution of gates
+//   .github/workflows/ci.yml — sole live Actions transport for gunbc CI (single authority).
+//   dsl/gunbc/ci.dag — compiler-intent gates only (`CIPipeline` / `CIGate`). No parallel `Workflow`
+//     mirror of `ci.yml` here: that would violate INVARIANTS P2 / modeling-discipline Practice 5
+//     (dual encoding without a same-PR generator or structural consumer closing the boundary).
+//   future: dsl/gunbc/ci_emission.dag (WI-2 T-WAD R3; brief — file not authored yet) —
+//     `project_github_actions(ci_workflow_dag, runtime: WorkflowRuntime)` → `extdeps.github.actions.Workflow`
+//     (`WorkflowRuntime` = projection-mode sum per WI-2 brief; replaces retired `EmissionTarget` name — Shape A collision).
+//     Declaration + pinning first; per-arm bodies Slice 4–5.
+//   future: dag run ci_pipeline — interpreter execution of compiler-intent gates.
 
 module gunbc.ci
 
+<<<<<<< HEAD
+=======
+import std.list { List }
+import gunbc.compiler {
+  compiler_cycle, test_package,
+  lint_command, test_command, ignored_test_command
+}
+
+>>>>>>> origin/main
 // ── Ratchet kind ────────────────────────────────────────────────────
 
 // Direction of a ratchet gate. Down = monotonically decreasing (we
@@ -157,6 +176,7 @@ data ci_pipeline: CIPipeline = {
   ]
 }
 
+<<<<<<< HEAD
 data ci_workflow_dag: CIWorkflowDag = {
   name: "gunbc-ci",
   nodes: [
@@ -172,3 +192,5 @@ data ci_workflow_dag: CIWorkflowDag = {
     { from: "tests", to: "l1-ratchet" }
   ]
 }
+=======
+>>>>>>> origin/main

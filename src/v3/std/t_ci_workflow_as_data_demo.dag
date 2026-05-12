@@ -38,6 +38,7 @@ data modeled_gunbc_ci_workflow: Workflow = Workflow {
     head: Push { branches: Empty, paths: Empty },
     tail: Empty,
   },
+  concurrency: none,
   jobs: Cons {
     head: Job {
       id: "build",
@@ -46,6 +47,7 @@ data modeled_gunbc_ci_workflow: Workflow = Workflow {
       steps: Cons {
         head: UsesStep {
           name: none,
+          id: none,
           uses: checkout_action,
           with: { fetch_depth: "1" },
           env: { DEMO_CI: "1" },
@@ -56,6 +58,7 @@ data modeled_gunbc_ci_workflow: Workflow = Workflow {
         tail: Cons {
           head: UsesStep {
             name: none,
+            id: none,
             uses: setup_rust_action,
             with: { rust_version: "stable" },
             env: { DEMO_CI: "1" },
@@ -68,6 +71,7 @@ data modeled_gunbc_ci_workflow: Workflow = Workflow {
       },
       needs: Empty,
       env: { CI: "demo" },
+      outputs: none,
       if_condition: none,
       strategy: none,
       timeout_minutes: none,

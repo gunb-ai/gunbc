@@ -52,5 +52,5 @@ data eta_equivalent_dag_forms_yield_identical_lens_results: TestClaim = {
 
 data tc1_substrate_lens_eta_equivalence_suite: TestSuite = {
   name: "tc1_substrate_lens_eta_equivalence_suite",
-  claims: [eta_equivalent_dag_forms_yield_identical_lens_results]
+  claims: [Enumerated(eta_equivalent_dag_forms_yield_identical_lens_results)]
 }

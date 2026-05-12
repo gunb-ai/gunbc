@@ -92,7 +92,7 @@ data bad_deferred_claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "bad_deferred_suite",
-  claims: [bad_deferred_claim]
+  claims: [Enumerated(bad_deferred_claim)]
 }
 "##;
     let dag = compile_to_dag(source, FIXTURE_PATH)
@@ -133,7 +133,7 @@ data bad_deferred_claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "bad_deferred_suite",
-  claims: [bad_deferred_claim]
+  claims: [Enumerated(bad_deferred_claim)]
 }
 "##;
     let dag = compile_to_dag(source, "arbitrary_release_deferred_claim.dag")
@@ -174,7 +174,7 @@ data bad_deferred_claim: TestClaim = {
 
 data suite: TestSuite = {
   name: "bad_deferred_suite",
-  claims: [bad_deferred_claim]
+  claims: [Enumerated(bad_deferred_claim)]
 }
 "##;
     let dag = compile_to_dag(source, "nonlocal_release_deferred_markers.dag")

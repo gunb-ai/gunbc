@@ -23,6 +23,11 @@ use crate::lens_apply::{
 };
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use crate::lens_cost_target_realization::type_realization_meta;
+use crate::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use crate::lens_provenance::{origin_of, Origin};
+use crate::lens_structural_resolution;
+use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use crate::types::TypeShape;
 use crate::{
     analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots,
@@ -2447,28 +2452,82 @@ impl<'a> TestRunner<'a> {
         };
         claims
             .iter()
-            .map(|claim_ref| match claim_ref {
-                FieldValue::Reference(id) => {
-                    let decl = self.dag.declaration(*id);
-                    match TestClaimValue::from_declaration(decl) {
-                        Ok(claim) => self.run_claim(&claim),
-                        Err(reason) => ClaimEvaluation {
-                            claim_name: decl
-                                .name
-                                .clone()
-                                .unwrap_or_else(|| format!("Declaration#{}", id.raw())),
-                            result: ClaimResult::Fail(reason),
-                        },
-                    }
-                }
-                other => ClaimEvaluation {
-                    claim_name: suite_name.to_string(),
-                    result: ClaimResult::Fail(format!(
-                        "TestSuite `{suite_name}` claim entry is not a reference: {other:?}"
-                    )),
-                },
-            })
+            .map(|entry| self.run_suite_entry(suite_name, entry))
             .collect()
+    }
+
+    fn run_suite_entry(&self, suite_name: &str, entry: &FieldValue) -> ClaimEvaluation {
+        let Some((label, payload)) = self.variant_value(entry) else {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` claim entry is not a SuiteClaim variant: {entry:?}"
+                )),
+            };
+        };
+        // Both `SuiteClaim` variants are single-argument coproduct arms
+        // (`Enumerated(TestClaim)` / `Quantified(QuantifiedTestClaim)`) — any
+        // other payload arity is ill-shaped and must fail closed at the
+        // boundary (INVARIANTS P3).
+        if payload.len() != 1 {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` `{label}` expects exactly 1 payload argument, got {}: {payload:?}",
+                    payload.len()
+                )),
+            };
+        }
+        let Some(FieldValue::Reference(id)) = payload.first() else {
+            return ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` `{label}` payload is not a reference: {payload:?}"
+                )),
+            };
+        };
+        let decl = self.dag.declaration(*id);
+        let decl_label = decl
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("Declaration#{}", id.raw()));
+        match label.as_str() {
+            "Enumerated" => match TestClaimValue::from_declaration(decl) {
+                Ok(claim) => self.run_claim(&claim),
+                Err(reason) => ClaimEvaluation {
+                    claim_name: decl_label,
+                    result: ClaimResult::Fail(reason),
+                },
+            },
+            "Quantified" => match validate_quantified_claim_shape(decl) {
+                Ok(quantified_name) => ClaimEvaluation {
+                    // Single-authority claim identity (P2): use the
+                    // modeled `QuantifiedTestClaim.name`, matching
+                    // `obligation_for_quantified_claim`'s projection so
+                    // obligation-walk and runner reporting agree.
+                    claim_name: quantified_name,
+                    result: ClaimResult::NotYetImplemented(
+                        "QuantifiedTestClaim runner evaluation NotYetImplemented \
+                         (gate #85 substrate-only landing; quantifier evaluation deferred to \
+                         Cluster M Phase 2/3 per `docs/r3-structure.md` \
+                         §\"T-Tests-As-Data-Completeness\" — gate #87 cementing-test discipline \
+                         + gate #84 bulk-port lanes; tracking row at \
+                         `docs/r3-program-plan.md` §1.8 row #85)"
+                            .to_string(),
+                    ),
+                },
+                Err(reason) => ClaimEvaluation {
+                    claim_name: decl_label,
+                    result: ClaimResult::Fail(reason),
+                },
+            },
+            other => ClaimEvaluation {
+                claim_name: suite_name.to_string(),
+                result: ClaimResult::Fail(format!(
+                    "TestSuite `{suite_name}` unknown SuiteClaim variant `{other}`"
+                )),
+            },
+        }
     }
 
     pub fn run_claim(&self, claim: &TestClaimValue) -> ClaimEvaluation {
@@ -2779,6 +2838,17 @@ impl<'a> TestRunner<'a> {
             }
         };
 
+        if let Some(result) = self.eval_gate_87_cementing_projection(
+            lens_decl.name.as_deref(),
+            &lens_name,
+            &program_dag,
+            &claim.file_name,
+            expected_decl,
+            &expected_name,
+        ) {
+            return result;
+        }
+
         // R3 gate #43 (`auto_parallelism_independent_binds_emit_parallel`): independent top-level
         // binds must emit a parallel Rust schedule (`std::thread::scope`). Structural witness via
         // program text — dissolution when ordinary DB-20 parallelism lens output reaches `.dag`.
@@ -3029,6 +3099,58 @@ impl<'a> TestRunner<'a> {
                 render_field_value(self.dag, &computed),
             ))
         }
+    }
+
+    fn eval_gate_87_cementing_projection(
+        &self,
+        lens_decl_name: Option<&str>,
+        lens_name: &str,
+        program_dag: &Dag,
+        file_name: &str,
+        expected_decl: &Declaration,
+        expected_name: &str,
+    ) -> Option<ClaimResult> {
+        let computed = match lens_decl_name? {
+            "gate87_cost_target_realization_meta_present" => {
+                i64::from(type_realization_meta(program_dag).is_some())
+            }
+            "gate87_effect_enumeration_no_transaction" => i64::from(matches!(
+                enumerate_effects(program_dag).transaction,
+                TransactionalPattern::NoTransaction
+            )),
+            "gate87_provenance_literal_origin_source" => {
+                let Some(bind) = find_bind(program_dag, "lit", file_name) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): bind `lit` not found in `{file_name}`"
+                    )));
+                };
+                i64::from(matches!(
+                    origin_of(program_dag, &bind.value),
+                    Origin::Source { .. }
+                ))
+            }
+            "gate87_structural_resolution_no_violations" => {
+                i64::from(lens_structural_resolution::check(program_dag).is_empty())
+            }
+            "gate87_unused_parameters_no_findings" => i64::from(
+                UnusedParametersLens::new(program_dag)
+                    .query(&UnusedParametersConfig::default())
+                    .is_empty(),
+            ),
+            _ => return None,
+        };
+
+        let expected = match expected_int_literal(expected_decl, expected_name, lens_name) {
+            Ok(v) => v,
+            Err(result) => return Some(result),
+        };
+        Some(if computed == expected {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "LensOutputEquals({lens_name}): expected `{expected}`, computed `{computed}`"
+            ))
+        })
     }
 
     fn eval_symbolic_cost_expr_equals_shape(
@@ -5225,6 +5347,34 @@ impl TestClaimValue {
     }
 }
 
+// Structural boundary validator for `QuantifiedTestClaim` declarations
+// referenced by `Quantified(...)` suite entries. Evaluation is deferred per
+// gate #85 but the declaration shape must still fail-closed at the boundary
+// (INVARIANTS P3 / fail-closed): only declarations matching the substrate
+// shape (`name`/`generator`/`quantifier`/`predicate`/`requires`) are accepted
+// as deferred quantified claims. Returns the modeled `name` field on success.
+fn validate_quantified_claim_shape(decl: &Declaration) -> Result<String, String> {
+    let fields = structural_fields(decl)
+        .ok_or_else(|| "QuantifiedTestClaim declaration is not structural".to_string())?;
+    let name = string_field(fields, "name")?;
+    field(fields, "generator")
+        .ok_or_else(|| "QuantifiedTestClaim is missing `generator`".to_string())?;
+    field(fields, "quantifier")
+        .ok_or_else(|| "QuantifiedTestClaim is missing `quantifier`".to_string())?;
+    field(fields, "predicate")
+        .ok_or_else(|| "QuantifiedTestClaim is missing `predicate`".to_string())?;
+    match field(fields, "requires") {
+        Some(FieldValue::List(_)) => {}
+        Some(other) => {
+            return Err(format!(
+                "QuantifiedTestClaim `requires` is not a list: {other:?}"
+            ));
+        }
+        None => return Err("QuantifiedTestClaim is missing `requires`".to_string()),
+    }
+    Ok(name)
+}
+
 fn structural_fields(decl: &Declaration) -> Option<&[(String, FieldValue)]> {
     match decl.value_body.as_ref()? {
         ValueBody::Structural { fields } => Some(fields),
@@ -5722,6 +5872,23 @@ fn find_bind<'a>(
         }
         _ => None,
     })
+}
+
+fn expected_int_literal(
+    expected_decl: &Declaration,
+    expected_name: &str,
+    lens_name: &str,
+) -> Result<i64, ClaimResult> {
+    match expected_decl.value_body.as_ref() {
+        Some(ValueBody::Scalar(LiteralBits::Int(s))) => s.parse::<i64>().map_err(|_| {
+            ClaimResult::Fail(format!(
+                "LensOutputEquals({lens_name}): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+            ))
+        }),
+        _ => Err(ClaimResult::Fail(format!(
+            "LensOutputEquals({lens_name}): expected_ref `{expected_name}` must be `data ...: Int = <literal>`"
+        ))),
+    }
 }
 
 fn diagnostic_matches_reference(
