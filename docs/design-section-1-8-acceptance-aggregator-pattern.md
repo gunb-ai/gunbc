@@ -1,5 +1,7 @@
 # §1.9 Acceptance-Aggregator Views (Pilot)
 
+> **Filename note**: this file is named `design-section-1-8-acceptance-aggregator-pattern.md` for historical reasons (original draft targeted §1.8). The substantive section the doc specifies is **§1.9** of `docs/r3-program-plan.md`, NOT §1.8 — the relocation was done per codex REQUEST_CHANGES /api/reviews/9982 to preserve §1.8's single-authority semantics. Filename retained to avoid breaking in-flight review thread anchors.
+
 **Status**: PILOT scaffold (Director-authored 2026-05-12 per Brian exploratory + PM-confirmed cadence message). REVISED 2026-05-12 per codex REQUEST_CHANGES /api/reviews/9982 on PR #2748 — aggregators relocated OUT of §1.8 into a new §1.9 section to preserve §1.8's "canonical closure-authority ledger" single-authority semantics per INVARIANTS P2.
 
 **Purpose**: Provide a derived **view layer** over `docs/r3-program-plan.md` §1.8 that surfaces cluster-tier meta-program closure progress as the lattice-meet of constituent §1.8 rows. Resolves the "viz gap" where cluster-level programs (Cluster M = T-Tests-As-Data-Completeness, Cluster F = T-LP-Retirement parity, T-CI-WAD = ci.yml WAD program) have disparate constituent blockers but no single rendering of the cluster as a whole.
@@ -103,7 +105,7 @@ These 6 NEW §1.8 rows participate in the canonical arithmetic (close-gate count
 Same view pattern generalizes to sibling clusters at low cost. Each candidate MUST pass the precondition + exclusion rules over its §1.8 constituents before being added to §1.9:
 
 - **Cluster M** (T-Tests-As-Data-Completeness) — view over §1.8 #84/#85/#86/#87 (per `docs/audit/r3-cluster-m-sequencing-plan-2026-05-09.md` 3-phase plan); view-ready once constituents' Status cells coerce cleanly
-- **Cluster F** (T-Lens-Behavioral-Parity) — candidate view over the 4-lens parity rows (#79 complexity, #80 cost, #81 parallelism, #82 effect_enumeration). **NOT view-ready at HEAD**: §1.8 rows #81 and #82 (and #83, #95) carry bare `R3-LOAD-BEARING` as scope-metadata in the Status cell (not closure-progress); these rows fail the precondition. **Pre-pilot fix required**: §1.8 cells for #81/#82/#83/#95 must inline closure-progress (e.g., `R3-LOAD-BEARING — DECLARED`) before the Cluster F view can be added.
+- **Cluster F** (T-Lens-Behavioral-Parity) — candidate view over the 4-lens parity rows (#79 complexity, #80 cost, #81 parallelism, #82 effect_enumeration). **NOT view-ready at HEAD**: §1.8 rows #81 and #82 (and #95) carry bare `R3-LOAD-BEARING` as scope-metadata in the Status cell with no closure-progress inlined; these rows fail the precondition. Row #83 (`lens_capability_register_zero_proxy_zero_stub`) is a positive counter-example — its Status cell already reads "**DECLARED — full scope IN R3 (carve-promotion-IN-R3 2026-05-09)**", inlining closure-progress alongside the scope-metadata, so #83 already coerces to `DECLARED` under the precondition rule. **Pre-pilot fix required for #81/#82/#95**: their §1.8 cells must follow #83's pattern and inline closure-progress (e.g., `R3-LOAD-BEARING — DECLARED`) before the Cluster F view can be added.
 - **Cluster K** — view scope TBD per `docs/audit/r3-cluster-analysis-2026-05-09.md` §2; precondition check required at pilot time
 - **T-V2-Retirement** — view over v2 retirement constituent gates; precondition check required at pilot time
 
