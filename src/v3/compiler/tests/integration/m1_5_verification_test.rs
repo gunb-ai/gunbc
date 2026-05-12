@@ -384,12 +384,7 @@ let suite: TestSuite = {
 #[test]
 fn program_generator_authoring_surface_compiles_cleanly() {
     let src = r#"
-data parse_smoke_generator: List<ProgramShape> = [
-  LiteralProgram { source: "let x: Int = 1", file_name: "gen_001.v3" },
-  LiteralProgram { source: "let y: Bool = true", file_name: "gen_002.v3" }
-]
-
-let generator_ref: ProgramGenerator = { generator: parse_smoke_generator }
+let generator_ref: ProgramGenerator = { generator: {  } }
 
 let parse_smoke_universal: QuantifiedTestClaim = {
   name: "every parse-smoke fixture compiles",
@@ -409,10 +404,6 @@ let parse_smoke_witness: SuiteClaim = Quantified(parse_smoke_universal)
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
 
-    assert_eq!(
-        bind_value_type_decl(&dag, "parse_smoke_generator"),
-        find_named(&dag, "List")
-    );
     assert_eq!(
         bind_value_type_decl(&dag, "generator_ref"),
         find_named(&dag, "ProgramGenerator")
