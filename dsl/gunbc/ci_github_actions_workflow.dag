@@ -16,6 +16,31 @@ import extdeps.github.actions {
   ShellType, Bash
 }
 
+data gunbc_ci_wf_str_map_empty: Map<String, String> = {}
+data gunbc_ci_wf_str_map_0: Map<String, String> = { "fetch-depth": "1" }
+data gunbc_ci_wf_str_map_1: Map<String, String> = { "components": "rustfmt", "cache": "false", "rustflags": "" }
+data gunbc_ci_wf_str_map_2: Map<String, String> = { "fetch-depth": "0" }
+data gunbc_ci_wf_str_map_3: Map<String, String> = { "PR_BODY": "${{ github.event.pull_request.body }}" }
+data gunbc_ci_wf_str_map_4: Map<String, String> = { "GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}" }
+data gunbc_ci_wf_str_map_5: Map<String, String> = { "components": "rustfmt", "cache": "false", "rustflags": "" }
+data gunbc_ci_wf_str_map_6: Map<String, String> = { "path": "~/.cargo/registry/index/\n~/.cargo/registry/cache/\n~/.cargo/git/db/\ntarget/\n", "key": "cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}", "restore-keys": "cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-ci-${{ runner.os }}-\n" }
+data gunbc_ci_wf_str_map_7: Map<String, String> = { "fetch-depth": "0" }
+data gunbc_ci_wf_str_map_8: Map<String, String> = { "code": "${{ steps.filter.outputs.code }}" }
+data gunbc_ci_wf_str_map_9: Map<String, String> = { "fetch-depth": "1" }
+data gunbc_ci_wf_str_map_10: Map<String, String> = { "components": "rustfmt, clippy", "cache": "false", "rustflags": "" }
+data gunbc_ci_wf_str_map_11: Map<String, String> = { "version": "0.13.0", "cache": "false" }
+data gunbc_ci_wf_str_map_12: Map<String, String> = { "python-version": "3.x" }
+data gunbc_ci_wf_str_map_13: Map<String, String> = { "go-version": "stable" }
+data gunbc_ci_wf_str_map_14: Map<String, String> = { "path": "~/.cargo/registry/index/\n~/.cargo/registry/cache/\n~/.cargo/git/db/\ntarget/\n", "key": "cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}", "restore-keys": "cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-v3-${{ runner.os }}-\n" }
+data gunbc_ci_wf_str_map_15: Map<String, String> = { "CARGO_TERM_COLOR": "never", "RUST_MIN_STACK": "16777216" }
+data gunbc_ci_wf_str_map_16: Map<String, String> = { "CARGO_TERM_COLOR": "never", "RUST_MIN_STACK": "16777216" }
+data gunbc_ci_wf_str_map_17: Map<String, String> = { "CARGO_TERM_COLOR": "never", "RUST_MIN_STACK": "16777216" }
+data gunbc_ci_wf_str_map_18: Map<String, String> = { "CARGO_TERM_COLOR": "never", "RUST_MIN_STACK": "16777216" }
+data gunbc_ci_wf_str_map_19: Map<String, String> = { "fetch-depth": "1" }
+data gunbc_ci_wf_str_map_20: Map<String, String> = { "cache": "false", "rustflags": "" }
+data gunbc_ci_wf_str_map_21: Map<String, String> = { "path": "~/.cargo/registry/index/\n~/.cargo/registry/cache/\n~/.cargo/git/db/\ntarget/\n", "key": "cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}", "restore-keys": "cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-self-host-${{ runner.os }}-\n" }
+data gunbc_ci_wf_str_map_22: Map<String, String> = { "CARGO_TERM_COLOR": "always", "RUSTFLAGS": "-D warnings" }
+
 data gunbc_ci_github_actions_workflow: Workflow = Workflow {
   name: "ci",
   on: Cons { head: Push { branches: Cons { head: "main", tail: Empty }, paths: Empty }, tail: Cons { head: PullRequest { branches: Cons { head: "main", tail: Empty }, types: Cons { head: Opened, tail: Cons { head: Synchronize, tail: Cons { head: Reopened, tail: Cons { head: ReadyForReview, tail: Empty } } } } }, tail: Empty } },
@@ -32,7 +57,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Checkout"),
           id: none,
           uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
-          with: { "fetch-depth": "1" },
+          with: gunbc_ci_wf_str_map_0,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -41,7 +66,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Setup Rust"),
           id: none,
           uses: ActionRef { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
-          with: { components: "rustfmt", cache: "false", rustflags: "" },
+          with: gunbc_ci_wf_str_map_1,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -73,7 +98,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Checkout"),
           id: none,
           uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
-          with: { "fetch-depth": "0" },
+          with: gunbc_ci_wf_str_map_2,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -103,7 +128,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           id: none,
           run: "body=\"${PR_BODY}\"\nappend_file=\"scripts/ci-merge/sg0-pr-body-append.${{ github.event.pull_request.number }}.txt\"\nif [ -f \"${append_file}\" ]; then\n  # Prepend so `check-pr-sg0-net-shrink-discipline.sh` (grep head-1 on\n  # `SG-0 hand-path delta:`) reads the machine-authored append **first**. PR\n  # descriptions often keep template scaffolding or mistaken `+0` paste lines\n  # above the fold — appending only left those as the first match and tripped\n  # declared-vs-computed mismatch (false fail).\n  body=\"$(cat \"${append_file}\")\"$'\\n\\n'\"${body}\"\nfi\nPR_BODY=\"${body}\" bash scripts/check-pr-sg0-net-shrink-discipline.sh\n",
           shell: Bash,
-          env: some({ PR_BODY: "${{ github.event.pull_request.body }}" }),
+          env: some(gunbc_ci_wf_str_map_3),
           working_directory: none,
           if_condition: some("github.event_name == 'pull_request'"),
           continue_on_error: false,
@@ -163,7 +188,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           id: none,
           run: "bash scripts/check-manager-brief-authority.sh",
           shell: Bash,
-          env: some({ GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }),
+          env: some(gunbc_ci_wf_str_map_4),
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
@@ -192,7 +217,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Setup Rust"),
           id: none,
           uses: ActionRef { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
-          with: { components: "rustfmt", cache: "false", rustflags: "" },
+          with: gunbc_ci_wf_str_map_5,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -201,7 +226,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Cache Cargo (ci bootstrap gate)"),
           id: none,
           uses: ActionRef { owner: "actions", repo: "cache", ref: "v4" },
-          with: { path: "~/.cargo/registry/index/\n~/.cargo/registry/cache/\n~/.cargo/git/db/\ntarget/\n", key: "cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}", "restore-keys": "cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-ci-${{ runner.os }}-\n" },
+          with: gunbc_ci_wf_str_map_6,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -233,7 +258,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Checkout"),
           id: none,
           uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
-          with: { "fetch-depth": "0" },
+          with: gunbc_ci_wf_str_map_7,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -251,7 +276,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
         }, tail: Empty } },
       needs: Empty,
       env: none,
-      outputs: some({ code: "${{ steps.filter.outputs.code }}" }),
+      outputs: some(gunbc_ci_wf_str_map_8),
       if_condition: some("github.event.pull_request.draft != true"),
       strategy: none,
       timeout_minutes: 3,
@@ -265,7 +290,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Checkout"),
           id: none,
           uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
-          with: { "fetch-depth": "1" },
+          with: gunbc_ci_wf_str_map_9,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -274,7 +299,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Setup Rust"),
           id: none,
           uses: ActionRef { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
-          with: { components: "rustfmt, clippy", cache: "false", rustflags: "" },
+          with: gunbc_ci_wf_str_map_10,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -283,7 +308,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Setup Zig C toolchain"),
           id: none,
           uses: ActionRef { owner: "goto-bus-stop", repo: "setup-zig", ref: "v2" },
-          with: { version: "0.13.0", cache: "false" },
+          with: gunbc_ci_wf_str_map_11,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -302,7 +327,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Setup Python"),
           id: none,
           uses: ActionRef { owner: "actions", repo: "setup-python", ref: "v6" },
-          with: { "python-version": "3.x" },
+          with: gunbc_ci_wf_str_map_12,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -311,7 +336,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Setup Go"),
           id: none,
           uses: ActionRef { owner: "actions", repo: "setup-go", ref: "v6" },
-          with: { "go-version": "stable" },
+          with: gunbc_ci_wf_str_map_13,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -320,7 +345,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Cache Cargo (v3)"),
           id: none,
           uses: ActionRef { owner: "actions", repo: "cache", ref: "v4" },
-          with: { path: "~/.cargo/registry/index/\n~/.cargo/registry/cache/\n~/.cargo/git/db/\ntarget/\n", key: "cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}", "restore-keys": "cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-v3-${{ runner.os }}-\n" },
+          with: gunbc_ci_wf_str_map_14,
           env: none,
           if_condition: none,
           continue_on_error: false,
@@ -370,7 +395,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           id: none,
           run: "set -euo pipefail\necho \"V3_SUITE_START_TS=$(date +%s)\" >> \"${GITHUB_ENV}\"\n: > /tmp/v3-test-timings.log\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --lib --bins -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (lib+bins) failed (exit=$status)\"\n  exit \"$status\"\nfi\n",
           shell: Bash,
-          env: some({ CARGO_TERM_COLOR: "never", RUST_MIN_STACK: "16777216" }),
+          env: some(gunbc_ci_wf_str_map_15),
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
@@ -380,7 +405,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           id: none,
           run: "set -euo pipefail\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test determinism_test -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (determinism_test) failed (exit=$status)\"\n  exit \"$status\"\nfi\n",
           shell: Bash,
-          env: some({ CARGO_TERM_COLOR: "never", RUST_MIN_STACK: "16777216" }),
+          env: some(gunbc_ci_wf_str_map_16),
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
@@ -390,7 +415,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           id: none,
           run: "set -euo pipefail\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --doc -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (--doc) failed (exit=$status)\"\n  exit \"$status\"\nfi\n",
           shell: Bash,
-          env: some({ CARGO_TERM_COLOR: "never", RUST_MIN_STACK: "16777216" }),
+          env: some(gunbc_ci_wf_str_map_17),
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
@@ -400,7 +425,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           id: none,
           run: "set -euo pipefail\necho \"::notice::v3 integration test execution SKIPPED via zero-test-filter per operator hot-fix at gunbc#846.\"\necho \"::notice::Guard pattern preserved; integration binary runs zero tests (nonexistent filter).\"\nif [ -z \"${V3_SUITE_START_TS:-}\" ]; then\n  echo \"::error::missing V3_SUITE_START_TS (full suite part 1 must run first)\"\n  exit 1\nfi\n# Zero-test-filter: `__HOT_FIX_NONEXISTENT_FILTER__` matches no tests;\n# binary runs through libtest setup + reports 0 tests run. Satisfies\n# check-v3-full-suite-split-test-targets.sh pattern requirement.\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration __HOT_FIX_NONEXISTENT_FILTER__ -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log\nstatus=${PIPESTATUS[0]}\nelapsed=$(( $(date +%s) - V3_SUITE_START_TS ))\necho \"v3 full-suite wall time (integration-skipped): ${elapsed}s\"\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (integration, zero-filter) failed (exit=$status) — should never happen with nonexistent filter; investigate.\"\n  exit \"$status\"\nfi\necho \"::notice::Restore criteria: rebuild session per #2722 §5 OnceLock/cached_compile amortization → per-test wall ≤ 2s ratchet → re-enable per cluster filter (replace __HOT_FIX_NONEXISTENT_FILTER__ with cluster-specific filter).\"\n",
           shell: Bash,
-          env: some({ CARGO_TERM_COLOR: "never", RUST_MIN_STACK: "16777216" }),
+          env: some(gunbc_ci_wf_str_map_18),
           working_directory: none,
           if_condition: none,
           continue_on_error: false,
@@ -512,7 +537,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Checkout"),
           id: none,
           uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
-          with: { "fetch-depth": "1" },
+          with: gunbc_ci_wf_str_map_19,
           env: none,
           if_condition: some("github.event_name == 'push' && github.ref == 'refs/heads/main'"),
           continue_on_error: false,
@@ -531,7 +556,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Setup Rust"),
           id: none,
           uses: ActionRef { owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0" },
-          with: { cache: "false", rustflags: "" },
+          with: gunbc_ci_wf_str_map_20,
           env: none,
           if_condition: some("github.event_name == 'push' && github.ref == 'refs/heads/main'"),
           continue_on_error: false,
@@ -540,7 +565,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
           name: some("Cache Cargo (self_host_ratchet)"),
           id: none,
           uses: ActionRef { owner: "actions", repo: "cache", ref: "v4" },
-          with: { path: "~/.cargo/registry/index/\n~/.cargo/registry/cache/\n~/.cargo/git/db/\ntarget/\n", key: "cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}", "restore-keys": "cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-\ncargo-self-host-${{ runner.os }}-\n" },
+          with: gunbc_ci_wf_str_map_21,
           env: none,
           if_condition: some("github.event_name == 'push' && github.ref == 'refs/heads/main'"),
           continue_on_error: false,
@@ -585,7 +610,7 @@ data gunbc_ci_github_actions_workflow: Workflow = Workflow {
       continue_on_error: true,
       concurrency: none
     }, tail: Empty } } } } },
-  env: some({ CARGO_TERM_COLOR: "always", RUSTFLAGS: "-D warnings" }),
+  env: some(gunbc_ci_wf_str_map_22),
   permissions: some(WorkflowPermissions {
       contents: PermRead,
       pull_requests: PermRead,
