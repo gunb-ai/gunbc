@@ -23,6 +23,11 @@ use crate::lens_apply::{
 };
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use crate::lens_cost_target_realization::type_realization_meta;
+use crate::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use crate::lens_provenance::{origin_of, Origin};
+use crate::lens_structural_resolution;
+use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use crate::types::TypeShape;
 use crate::{
     analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots,
@@ -2833,6 +2838,17 @@ impl<'a> TestRunner<'a> {
             }
         };
 
+        if let Some(result) = self.eval_gate_87_cementing_projection(
+            lens_decl.name.as_deref(),
+            &lens_name,
+            &program_dag,
+            &claim.file_name,
+            expected_decl,
+            &expected_name,
+        ) {
+            return result;
+        }
+
         // R3 gate #43 (`auto_parallelism_independent_binds_emit_parallel`): independent top-level
         // binds must emit a parallel Rust schedule (`std::thread::scope`). Structural witness via
         // program text — dissolution when ordinary DB-20 parallelism lens output reaches `.dag`.
@@ -3083,6 +3099,58 @@ impl<'a> TestRunner<'a> {
                 render_field_value(self.dag, &computed),
             ))
         }
+    }
+
+    fn eval_gate_87_cementing_projection(
+        &self,
+        lens_decl_name: Option<&str>,
+        lens_name: &str,
+        program_dag: &Dag,
+        file_name: &str,
+        expected_decl: &Declaration,
+        expected_name: &str,
+    ) -> Option<ClaimResult> {
+        let computed = match lens_decl_name? {
+            "gate87_cost_target_realization_meta_present" => {
+                i64::from(type_realization_meta(program_dag).is_some())
+            }
+            "gate87_effect_enumeration_no_transaction" => i64::from(matches!(
+                enumerate_effects(program_dag).transaction,
+                TransactionalPattern::NoTransaction
+            )),
+            "gate87_provenance_literal_origin_source" => {
+                let Some(bind) = find_bind(program_dag, "lit", file_name) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): bind `lit` not found in `{file_name}`"
+                    )));
+                };
+                i64::from(matches!(
+                    origin_of(program_dag, &bind.value),
+                    Origin::Source { .. }
+                ))
+            }
+            "gate87_structural_resolution_no_violations" => {
+                i64::from(lens_structural_resolution::check(program_dag).is_empty())
+            }
+            "gate87_unused_parameters_no_findings" => i64::from(
+                UnusedParametersLens::new(program_dag)
+                    .query(&UnusedParametersConfig::default())
+                    .is_empty(),
+            ),
+            _ => return None,
+        };
+
+        let expected = match expected_int_literal(expected_decl, expected_name, lens_name) {
+            Ok(v) => v,
+            Err(result) => return Some(result),
+        };
+        Some(if computed == expected {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "LensOutputEquals({lens_name}): expected `{expected}`, computed `{computed}`"
+            ))
+        })
     }
 
     fn eval_symbolic_cost_expr_equals_shape(
@@ -5804,6 +5872,23 @@ fn find_bind<'a>(
         }
         _ => None,
     })
+}
+
+fn expected_int_literal(
+    expected_decl: &Declaration,
+    expected_name: &str,
+    lens_name: &str,
+) -> Result<i64, ClaimResult> {
+    match expected_decl.value_body.as_ref() {
+        Some(ValueBody::Scalar(LiteralBits::Int(s))) => s.parse::<i64>().map_err(|_| {
+            ClaimResult::Fail(format!(
+                "LensOutputEquals({lens_name}): expected Int literal is not a valid i64 decimal for `{expected_name}`"
+            ))
+        }),
+        _ => Err(ClaimResult::Fail(format!(
+            "LensOutputEquals({lens_name}): expected_ref `{expected_name}` must be `data ...: Int = <literal>`"
+        ))),
+    }
 }
 
 fn diagnostic_matches_reference(
