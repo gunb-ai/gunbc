@@ -18,7 +18,8 @@
 
 use crate::common::find_list_empty_constructor_tag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, DeclarationId, LiteralBits, TypeConnective, ValueNode,
+    AtomPayload, Behavior, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody,
+    ValueNode,
 };
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
@@ -266,6 +267,35 @@ fn sample_demo_value_behavior(dag: &v3_compiler::dag::Dag) -> Behavior {
         })
 }
 
+fn structural_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> &'a FieldValue {
+    fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .map(|(_, value)| value)
+        .unwrap_or_else(|| panic!("missing structural field `{label}`"))
+}
+
+fn literal_string(value: &FieldValue) -> &str {
+    let FieldValue::Literal(LiteralBits::String(value)) = value else {
+        panic!("expected string literal field, got {value:?}");
+    };
+    value
+}
+
+fn structural_record(value: &FieldValue) -> &[(String, FieldValue)] {
+    let FieldValue::Record(fields) = value else {
+        panic!("expected structural record field, got {value:?}");
+    };
+    fields
+}
+
+fn structural_list(value: &FieldValue) -> &[FieldValue] {
+    let FieldValue::List(items) = value else {
+        panic!("expected structural list field, got {value:?}");
+    };
+    items
+}
+
 #[test]
 fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
     let dag = demo_bootstrap_dag();
@@ -282,6 +312,57 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
         .expect("modeled_gunbc_ci_workflow_transport data must load from t_ci_workflow_as_data_demo.dag");
     dag.declaration_by_name("ci_workflow_dag")
         .expect("gunbc.ci ci_workflow_dag data must load as the structural CI DAG authority");
+}
+
+#[test]
+fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
+    let dag = demo_bootstrap_dag();
+    let decl = dag
+        .declaration_by_name("ci_workflow_dag")
+        .expect("gunbc.ci ci_workflow_dag data must load");
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "ci_workflow_dag must lower as structural data, got {:?}",
+            decl.value_body
+        );
+    };
+
+    assert_eq!(
+        literal_string(structural_field(fields, "name")),
+        "gunbc-ci",
+        "modeled workflow DAG name must stay aligned with the CI pipeline"
+    );
+
+    let node_ids: Vec<_> = structural_list(structural_field(fields, "nodes"))
+        .iter()
+        .map(|node| literal_string(structural_field(structural_record(node), "id")))
+        .collect();
+    assert_eq!(
+        node_ids,
+        vec!["compile-gates", "lint", "tests", "l1-ratchet"],
+        "CI workflow DAG must carry one node per structural gate"
+    );
+
+    let edges: Vec<_> = structural_list(structural_field(fields, "edges"))
+        .iter()
+        .map(|edge| {
+            let edge = structural_record(edge);
+            (
+                literal_string(structural_field(edge, "from")),
+                literal_string(structural_field(edge, "to")),
+            )
+        })
+        .collect();
+    assert_eq!(
+        edges,
+        vec![
+            ("compile-gates", "lint"),
+            ("compile-gates", "tests"),
+            ("lint", "l1-ratchet"),
+            ("tests", "l1-ratchet"),
+        ],
+        "CI workflow dependencies must be modeled as provider-neutral DAG edges"
+    );
 }
 
 #[test]
