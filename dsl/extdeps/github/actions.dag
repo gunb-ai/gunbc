@@ -87,7 +87,7 @@ type DispatchInputType = InputString | InputBoolean | InputChoice | InputEnviron
 // Structural-consumer dissolution trigger:
 // `WorkflowSecret` is a Slice 1 carrier introduction; structural attachment
 // to consumer sites (`Step.env`, `Job.env`, `Workflow.env` value-shape
-// migrating from `Map<String, String>` to a sum type that includes
+// migrating from optional plain-text `Map<String, String>?` env maps to a sum type that includes
 // `WorkflowSecret`) is the responsibility of Slice 3
 // (`ci_workflow_modeled_as_dag` demo, tracked at #1956), which consumes
 // Slices 1+2. Until that wiring lands, the carrier is intentionally
