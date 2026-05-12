@@ -5397,7 +5397,14 @@ fn lower_structural_field_value(
             }
         }
         for (label, _) in &expected_fields {
-            if !fields.iter().any(|field| field.name == *label) {
+            if !fields.iter().any(|field| field.name == *label)
+                && !expected_fields
+                    .iter()
+                    .find(|(candidate, _)| candidate == label)
+                    .is_some_and(|(_, ty)| {
+                        is_at_most_one_type_with_subst(dag, *ty, &nested_subst, 0)
+                    })
+            {
                 report_declaration_error(
                     dag,
                     Diagnostic::ResolveError {
@@ -5413,10 +5420,9 @@ fn lower_structural_field_value(
         }
         let mut lowered = Vec::with_capacity(expected_fields.len());
         for (label, ty) in expected_fields {
-            let nested = fields
-                .iter()
-                .find(|field| field.name == label)
-                .expect("checked above");
+            let Some(nested) = fields.iter().find(|field| field.name == label) else {
+                continue;
+            };
             lowered.push((
                 label.clone(),
                 lower_structural_field_value(
@@ -5927,6 +5933,33 @@ fn map_key_type_is_not_string_with_subst(
             let key = resolve_decl_with_subst_lower(dag, arguments[0].value, subst, 0)
                 .unwrap_or(arguments[0].value);
             !walks_to(dag, key, string_id)
+        }
+        _ => false,
+    }
+}
+
+fn is_at_most_one_type_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> bool {
+    if depth >= 32 {
+        return false;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Cardinality(payload) => payload.bound() == CardinalityBound::AtMostOne,
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst
+            .lookup(expected_type)
+            .is_some_and(|bound| is_at_most_one_type_with_subst(dag, bound, subst, depth + 1)),
+        TypeConnective::Atom(
+            AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+        ) => is_at_most_one_type_with_subst(dag, *next, subst, depth + 1),
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.is_empty() => {
+            is_at_most_one_type_with_subst(dag, *template, subst, depth + 1)
         }
         _ => false,
     }
