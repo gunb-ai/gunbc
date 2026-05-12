@@ -143,7 +143,7 @@ type Step
 
 Cost-of-change post-introduction: **low at every site** (new
 expression-bearing field carries `Expression`). Cost of dissolution from
-scaffold to typed AST: **single carrier edit + 7 sites-already-migrated**
+scaffold to typed AST: **single carrier edit + 19 sites-already-migrated** (post-§5.5 audit; 9 typed-field sites add to this count once §6 Q#4 resolves)
 (versus option (b) where each site has its own carrier surface to
 re-flatten).
 
@@ -229,8 +229,9 @@ expression substrate is needed — at which point the per-provider scaffold
 shape forces the question of common AST.
 
 Until one of (a)/(b)/(c) fires, `Expression` remains a single-variant
-sum type and the substrate cost is one carrier name + seven
-site-already-migrated.
+sum type and the substrate cost is one carrier name + 19
+sites-already-migrated (post-§5.5 audit; 9 typed-field sites add once
+§6 Q#4 resolves).
 
 ---
 
@@ -287,8 +288,9 @@ record for the BLOCKING-finding audit trail; the corrected shape
 immediately above supersedes it.)
 
 `OpaqueString` may persist as a SCAFFOLD arm during the migration window
-(per `INVARIANTS.md` P5: Progress Is Dissolution; scaffold arms must
-declare a sunset milestone). Per the migration discipline at
+(per `INVARIANTS.md` P5: Progress Is Dissolution — checkable dissolution
+trigger required; the scaffold-comment convention requiring a sunset
+declaration lives in `docs/modeling-discipline.md` Practice 4). Per the migration discipline at
 `feedback_pattern_a_scaffold_sentinel_per_instance_ratification`,
 scaffold-arm presence requires per-instance Director ratification at
 dissolution time; this canvas does not pre-author that decision.
