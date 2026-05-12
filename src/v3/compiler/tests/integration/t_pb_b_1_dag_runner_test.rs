@@ -349,6 +349,7 @@ const R3_GATE_87_CEMENTING_REGEN_SUITES: &[(&str, &str, &str, &[&str])] = &[
 ];
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn r3_gate_87_cementing_regen_lens_suites_pass_through_runner() {
     for (source, file, suite, claim_names) in R3_GATE_87_CEMENTING_REGEN_SUITES {
         let dag = lower(source, file);

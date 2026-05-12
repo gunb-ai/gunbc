@@ -29,7 +29,7 @@
 //! `build.rs` names it. File contents do not participate: a hand-authored
 //! `.rs` that begins with `// AUTO-GENERATED` does not slip through.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -556,6 +556,20 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
+    // R3 §1.4 Class 2 / §1.8 row #61
+    // (`substrate_gap_function_valued_data_closed`): hand-Rust executable
+    // receipt for the narrowed gap-test ratified in Q-Class-2-Chain-Break
+    // option (a) and dispatched by
+    // `docs/briefs/r3-substrate-s1-gap-test-representative-worker.md`.
+    // P5 receipt: explicit deferral cites ROADMAP.md post-merge debt F8
+    // (`SymbolicCost` first-class `Semiring<SymbolicCost>` witness; function-
+    // valued data prerequisite) plus docs/r3-program-plan.md §1.8 row #61.
+    // This bounded host-side harness asserts "function-valued data is first-
+    // class" through public evaluator consumption; production code removes an
+    // opaque data-body scaffold and routes through existing substrate `Arrow`
+    // / `Callable`. Dissolves when §1.8 row #61 can be expressed as a `.dag`
+    // TestClaim over evaluator output without direct Rust DAG inspection.
+    "src/v3/compiler/tests/integration/r3_class_2_function_valued_data_test.rs",
     // R3 T-Free-Consequences first batch: hand-Rust driver for five
     // author-now/fire-later `BinaryDimensionReportEquals` TestClaims.
     // Dissolves when generic DimensionReport<C> evaluation can execute
@@ -581,6 +595,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
     // R2-Evaluator corpus comparison directly without this host-side harness.
     "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
+    // R3 gate #64 substrate-plumbing receipt: hand-Rust driver for the
+    // non-canonical `.dag` residual-census receipt until the canonical
+    // PB-Runtime reflection consumer lands. P5 test-subset deferral:
+    // ROADMAP.md § "Nine lanes" row `T-PB-B` and § "Lane acceptance — .dag
+    // gates" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; dissolves
+    // when the generic TestClaim runner can execute the receipt without this
+    // host-side harness.
+    "src/v3/compiler/tests/integration/r3_substrate_gap_reflection_closure_test.rs",
     // R3 gate #71 (`v3_self_host_demonstration`): `.dag` + `CARGO_BIN_EXE` splice for
     // `ExecuteCommand(self_host_fixed_point, [--r3-gate-71-demonstration], 0)` — strict DB-8 slice
     // (non-zero unless `compiler.dag` parses + `fixed_point_diff` ok). Unignored compile-only smoke
@@ -686,6 +708,94 @@ const EXPECTED_GENERATED_FRAGMENTS: &[&str] = &[
     // Produced by `cargo test refresh_handwritten_parse_snapshot_manifest -- --ignored`.
     "src/v3/compiler/tests/integration/parse_corpus_manifest.txt",
 ];
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum TestsAsDataMigrationClass {
+    CompileOrReject,
+    LensOutputEquality,
+    BehavioralObservation,
+    BoundaryHostProcess,
+    CementingV2Oracle,
+    CensusOrRatchet,
+    PropertyBased,
+}
+
+const EXPECTED_TESTS_AS_DATA_MIGRATION_AUDIT_COUNT: usize = 116;
+
+// Transitional gate #84 audit only. As each class migrates to `.dag`
+// `TestClaim` data, remove that class's path matcher branch with the
+// retired Rust paths; when `EXPECTED_HAND_AUTHORED_TEST` reaches zero,
+// this classifier should disappear with it.
+// Match order is load-bearing while this exists: check classification
+// before deleting or reordering a branch, especially broad substring
+// branches such as `contains("sg")`.
+fn tests_as_data_migration_class(path: &str) -> Option<TestsAsDataMigrationClass> {
+    use TestsAsDataMigrationClass::*;
+
+    if path.starts_with("src/v3/compiler/tests/boundary/") {
+        return Some(BoundaryHostProcess);
+    }
+
+    if path.contains("/cementing/")
+        || path.ends_with("lens_behavioral_parity_demonstration_test.rs")
+        || path.ends_with("r3_gate_87_lens_cementing_regen_receipts_test.rs")
+    {
+        return Some(CementingV2Oracle);
+    }
+
+    if path.contains("census")
+        || path.contains("ratchet")
+        || path.contains("bridge")
+        || path.contains("sg")
+        || path.contains("r1c_")
+        || path.contains("v2_oracle")
+        || path.contains("value_body_substrate_mirror")
+        || path.contains("lens_producer_retirement")
+    {
+        return Some(CensusOrRatchet);
+    }
+
+    if path.contains("free_consequences")
+        || path.contains("tc1_")
+        || path.contains("tc2_")
+        || path.contains("tc3_")
+    {
+        return Some(PropertyBased);
+    }
+
+    if path.contains("lens")
+        || path.contains("cost")
+        || path.contains("parallelism")
+        || path.contains("timing")
+        || path.contains("workflow")
+        || path.contains("e6_g1a")
+        || path.contains("lane2_stage_2d")
+    {
+        return Some(LensOutputEquality);
+    }
+
+    if path.contains("anthropic")
+        || path.contains("operation")
+        || path.contains("services")
+        || path.contains("omni")
+        || path.contains("openapi")
+        || path.contains("runtime_evaluator_corpus")
+        || path.contains("self_host_demonstration")
+        || path.contains("t_ci_workflow_as_data_demo")
+        || path.contains("pb1_bootstrap_full_snapshot")
+    {
+        return Some(BehavioralObservation);
+    }
+
+    if path.starts_with("src/v3/compiler/tests/integration/")
+        || path.starts_with("src/v3/compiler/tests/determinism_test.rs")
+        || path.starts_with("src/v3/compiler/tests/integration.rs")
+    {
+        return Some(CompileOrReject);
+    }
+
+    None
+}
 
 fn is_test_path(path: &str) -> bool {
     path.starts_with("src/v3/compiler/tests/")
@@ -941,6 +1051,46 @@ fn sg0_v3_test_hand_authored_subratchet() {
          EXPECTED_HAND_AUTHORED_TEST; new Rust-authored tests must match the TESTING.md \
          residual or wait for the testgen path."
     );
+}
+
+#[test]
+fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
+    let mut by_class: BTreeMap<TestsAsDataMigrationClass, Vec<&str>> = BTreeMap::new();
+    let mut unclassified = Vec::new();
+
+    for path in EXPECTED_HAND_AUTHORED_TEST {
+        match tests_as_data_migration_class(path) {
+            Some(class) => by_class.entry(class).or_default().push(*path),
+            None => unclassified.push(*path),
+        }
+    }
+
+    assert!(
+        unclassified.is_empty(),
+        "gate #84 migration audit must classify every hand-authored test path; \
+         unclassified paths: {unclassified:?}"
+    );
+    assert_eq!(
+        EXPECTED_HAND_AUTHORED_TEST.len(),
+        EXPECTED_TESTS_AS_DATA_MIGRATION_AUDIT_COUNT,
+        "gate #84 migration audit count drifted; update the migration-class audit \
+         when the SG-0 hand-authored test ratchet changes"
+    );
+
+    for class in [
+        TestsAsDataMigrationClass::CompileOrReject,
+        TestsAsDataMigrationClass::LensOutputEquality,
+        TestsAsDataMigrationClass::BehavioralObservation,
+        TestsAsDataMigrationClass::BoundaryHostProcess,
+        TestsAsDataMigrationClass::CementingV2Oracle,
+        TestsAsDataMigrationClass::CensusOrRatchet,
+        TestsAsDataMigrationClass::PropertyBased,
+    ] {
+        assert!(
+            by_class.get(&class).is_some_and(|paths| !paths.is_empty()),
+            "gate #84 migration audit lost class coverage for {class:?}"
+        );
+    }
 }
 
 #[test]
