@@ -4,9 +4,9 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, is_constant_bound, literal_bits_int,
     lower_call_pattern, per_call_descent_evidence, per_call_pattern_at, positive_amount_from_i64,
-    size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile, ArrowBody,
-    AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval,
-    IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    size_bound_param, type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload,
+    CallPattern, CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
+    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
     PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
     TypeConnective, ValueBody,
 };
@@ -510,6 +510,32 @@ fn termination_lattice_rust_mirror_dissolved() {
             !dag_rs.contains(forbidden),
             "`dag.rs` must not export termination lattice mirror helper `{forbidden}`; \
              `src/v3/std/termination.dag` is the authority"
+        );
+    }
+}
+
+#[test]
+fn tier3_computation_mirror_trivial_constructors_dissolved() {
+    // Gate `tier3_computation_mirror_dissolved` (R3 §1.8 gate #2, narrow slice):
+    // the trivial host-Rust mirror entrypoints for `std.computation` declarations
+    // whose Rust definition added no information beyond direct variant construction
+    // (`tree_size_bound` returned `SizeBound::TreeSize { param }`;
+    //  `forever_iteration_bound` returned the `i64::MAX` literal) have been retired
+    // from `src/v3/compiler/src/dag.rs`. `src/v3/std/computation.dag` remains the
+    // single authority for these names and their bootstrap body spans stay pinned
+    // by `computation_lowering_functions_preserve_std_body_spans`.
+    //
+    // Wider mirror dissolution (`lower_call_pattern`, `type_iteration_dimension`,
+    // `size_bound_param`, `is_constant_bound`, `constant_bound_value`,
+    // `algebra_profile_to_dimension`) requires evaluated `std.computation` block
+    // bodies and stays tracked in the T-Tier3-Dissolution lane; this ratchet
+    // forbids only reintroduction of the trivial-constructor mirrors above.
+    let dag_rs = include_str!("../../src/dag.rs");
+    for forbidden in ["pub fn tree_size_bound", "pub fn forever_iteration_bound"] {
+        assert!(
+            !dag_rs.contains(forbidden),
+            "`dag.rs` must not export trivial `std.computation` mirror helper `{forbidden}`; \
+             `src/v3/std/computation.dag` is the authority (R3 gate #2 narrow slice)"
         );
     }
 }
@@ -1793,7 +1819,9 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
 
 #[test]
 fn computation_size_bound_helpers_match_dag_authority() {
-    let tree = tree_size_bound(String::from("node"));
+    let tree = SizeBound::TreeSize {
+        param: String::from("node"),
+    };
     let collection = SizeBound::CollectionSize {
         param: String::from("items"),
     };
