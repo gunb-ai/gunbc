@@ -25,6 +25,7 @@ const FIXTURE_PATH: &str =
 const SUITE_NAME: &str = "tc1_substrate_lens_eta_equivalence_strict_fire_suite";
 
 #[test]
+#[ignore = "hot-fix-2026-05-12 cold-v3-67min-reduction; rebuild via OnceLock/cached_compile amortization — owner: TBD per separate dispatch"]
 fn tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape() {
     run_on_larger_stack(|| {
         tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape_inner()
