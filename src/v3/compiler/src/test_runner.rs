@@ -4900,25 +4900,25 @@ impl<'a> TestRunner<'a> {
                 "TestCostDimensionDeclared: node_ref `{node_name}` is missing `cost`"
             ));
         };
-        let cost_value = match cost {
+        let cost_fields = match cost {
             FieldValue::Reference(cost_id) => {
                 let cost_decl = self.dag.declaration(*cost_id);
-                match &cost_decl.value_body {
-                    Some(value_body) => value_body,
-                    None => {
-                        return ClaimResult::Fail(format!(
-                            "TestCostDimensionDeclared: node_ref `{node_name}` cost reference `{}` has no value body",
-                            decl_display_name(*cost_id, cost_decl)
-                        ));
-                    }
-                }
+                let Some(fields) = structural_fields(cost_decl) else {
+                    return ClaimResult::Fail(format!(
+                        "TestCostDimensionDeclared: node_ref `{node_name}` cost reference `{}` must resolve to a Dimension<TestCost, Int> record",
+                        decl_display_name(*cost_id, cost_decl)
+                    ));
+                };
+                fields
             }
-            other => other,
-        };
-        let Some(cost_fields) = record_fields(cost_value) else {
-            return ClaimResult::Fail(format!(
-                "TestCostDimensionDeclared: node_ref `{node_name}` cost must resolve to a Dimension<TestCost, Int> record"
-            ));
+            other => {
+                let Some(fields) = record_fields(other) else {
+                    return ClaimResult::Fail(format!(
+                        "TestCostDimensionDeclared: node_ref `{node_name}` cost must resolve to a Dimension<TestCost, Int> record"
+                    ));
+                };
+                fields
+            }
         };
         let Some(FieldValue::Literal(LiteralBits::Int(value_s))) = field(cost_fields, "value")
         else {
@@ -4926,6 +4926,30 @@ impl<'a> TestRunner<'a> {
                 "TestCostDimensionDeclared: node_ref `{node_name}` cost must carry an Int `value`"
             ));
         };
+        if let FieldValue::Reference(cost_id) = cost {
+            let cost_decl = self.dag.declaration(*cost_id);
+            match &cost_decl.connective {
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } => {
+                    let template_name = self.dag.declaration(*template).name.clone();
+                    let args_match = matches!(
+                        arguments.as_slice(),
+                        [unit, carrier]
+                            if self.type_ref_normalizes_to_named(unit.value, "TestCost")
+                                && self.type_ref_normalizes_to_named(carrier.value, "Int")
+                    );
+                    if template_name.as_deref() != Some("Dimension") || !args_match {
+                        return ClaimResult::Fail(format!(
+                            "TestCostDimensionDeclared: cost reference `{}` must be typed Dimension<TestCost, Int>",
+                            decl_display_name(*cost_id, cost_decl)
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
         match value_s.parse::<i64>() {
             Ok(value) if value >= 0 => ClaimResult::Pass,
             Ok(value) => ClaimResult::Fail(format!(
