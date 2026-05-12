@@ -68,7 +68,12 @@ Implement the `YamlStatic` arm body of `project_github_actions`:
    - Surface the carrier-gap to warm-wolf-698 (see §1 Phase B carrier-gap protocol below) — gap resolution is a hard prerequisite, not a side-channel.
    - This applies in particular to: `name`, `on` triggers, `env`, `permissions`, and any per-`Job` / per-`Step` field whose value isn't carried by the input. **P2/P3 single-authority bar**: a `Workflow` value with any fabricated field violates INVARIANTS P2 (single authority) and P3 (no second source of truth) per codex review 10208 on PR #2762.
    - **18-site Expression-substrate consumption** per PR #2751 §5.5 (live canvas authority):
-     - 17 string-container sites (Workflow.env, Job.name/if_condition/env/concurrency.group, RunStep.*, UsesStep.*, MatrixStrategy.dimensions/include/exclude)
+     - 17 string-container sites (exact enumeration per PR #2751 §5.5.1, NOT shorthand — `RunStep.*` / `UsesStep.*` glob would incorrectly pull in `UsesStep.uses` (literal-only per GH workflow-syntax) + typed-HOLD fields per operator BLOCKING PR #2768 :70):
+       - `Workflow.env`
+       - `Job.name`, `Job.if_condition`, `Job.env`, `Job.concurrency.group`
+       - `RunStep.name`, `RunStep.run`, `RunStep.env`, `RunStep.working_directory`, `RunStep.if_condition` (5 RunStep fields; NOT `timeout_minutes`/`continue_on_error` — typed HOLD per §6 Q#4)
+       - `UsesStep.name`, `UsesStep.with`, `UsesStep.env`, `UsesStep.if_condition` (4 UsesStep fields; NOT `uses` — literal-only; NOT `timeout_minutes`/`continue_on_error` — typed HOLD)
+       - `MatrixStrategy.dimensions`, `MatrixStrategy.include`, `MatrixStrategy.exclude` (3 MatrixStrategy fields; NOT `fail_fast`/`max_parallel` — typed HOLD)
      - 1 enum-extension site (Job.runner: RunnerSpec — scalar-expression case only via `ExpressionRunner { expr: Expression }`)
      - At each site: emit `Expression::OpaqueString(s)` variant by unwrapping `s` and emitting verbatim into YAML (single-arm pattern match, no expression grammar engine needed)
    - **DO NOT** migrate these (out-of-scope per §6 deferrals):
