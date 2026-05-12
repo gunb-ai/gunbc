@@ -36,37 +36,49 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
 
 `dsl/ctrl/pr_digests.dag` containing:
 
-1. **Module header** with consumer receipt:
+1. **Module header** with consumer receipt** (neutral Phase-3 trigger per Director ratification 2026-05-12 `msg_d1589d17`)**:
    ```
    // ctrl/pr_digests.dag — PR digest helpers (status / conflicts / merge-readiness / URL extraction).
    //
    // Current authority (consumer-side): ctrl/scripts/session-dashboard/{pr_attached_urls,
    // pr_ci_digest, pr_conflict_digest, pr_merge_ready_digest, pr_rest_fallback}.mjs
-   // STAGED → AUTHORITY trigger: dsl/gunbc/digest_render.dag (Phase 3 gunbc-owned render
-   // surface, NOT an extdep) lands + ctrl PR cut-over deletes the 5 .mjs files + parity
-   // test passes. GitHub source carriers imported from dsl/extdeps/github/pulls.dag;
-   // rendering primitives from dsl/std/render.dag + dsl/std/markdown_render.dag.
+   //
+   // STAGED → AUTHORITY trigger: a Phase-3 trio of
+   //   (a) digest source-fact authority (consuming dsl/extdeps/github/pulls.dag PullRequest
+   //       as fetched source-of-record; if a narrow GitHub-domain digest-summary record
+   //       is needed, lands at dsl/extdeps/github/pull_digest.dag importing pulls.dag —
+   //       NOT as new fields on PullRequest itself per Director/Emission-Targets ratification
+   //       2026-05-12),
+   //   (b) gunbc/std render projection (dsl/gunbc/digest_render.dag composing
+   //       dsl/std/render.dag + dsl/std/markdown_render.dag),
+   //   (c) named parity-harness gate green
+   // PLUS ctrl PR cut-over deleting the 5 .mjs files.
    ```
 
-2. **Carrier types** (DFS via M9 before defining; reuse `dsl/extdeps/github/pulls.dag` carriers where they exist):
-   - `PrDigestInputs` — composite of CI-state, conflict-state, branch-state needed for verdict
-   - `CiDigestLine` — single-line CI rendering
-   - `ConflictDigestLine` — single-line conflict rendering
-   - `MergeReadinessVerdict` — closed sum: `Ready | NotReady(reasons: List<String>)` — Practice-4 receipt **required**
-   - `AttachedUrl` — `{ url: String, source: AttachedUrlSource }` where `AttachedUrlSource` is closed sum (`PrBody | CommentThread | ReviewComment | InlineCode`) — Practice-4 receipt **required**
-   - `RestFallbackReason` — closed sum classifying when REST fallback triggers (`GraphqlIncomplete | GraphqlRateLimited | GraphqlSchemaUnknown`) — Practice-4 receipt **required**
+2. **Carrier types** (DFS via M9 before defining; **MUST grep `dsl/extdeps/github/pulls.dag` before naming any carrier** per substrate-grep-miss correction below):
 
-3. **Service block** with function signatures (no transport):
+   **Existing source-fact carriers to import, NOT redeclare** (verified in `pulls.dag` on main 2026-05-12 per Emission Mgr `msg_f9d2bfab`): `PullRequest` (with fields `number / title / body / state / html_url / user / head / base / created_at / updated_at / merged_at / draft`), `PullRequestRef`, `IssueComment`. Plus diff/review operation outputs already in `pulls.dag`.
+
+   **GitHub-source-fact gaps** (CI state, conflict state, mergeability): these are **NOT** assumed fields on `PullRequest`. They are **digest input facts** from existing or future GitHub source-fact carriers. If the worker needs them and they're absent on main, **route a source-fact gap to Emission-Targets Mgr** (`deep-ibex-326`) for placement under `dsl/extdeps/github/*.dag` (narrow `pull_digest.dag` or sibling) — **DO NOT inflate `PullRequest`** and **DO NOT define them on the gunbc side**.
+
+   **Gunbc-side carriers this file owns** (after source-fact carriers resolve):
+   - `CiDigestLine` — single-line CI rendering output (gunbc projection)
+   - `ConflictDigestLine` — single-line conflict rendering output (gunbc projection)
+   - `MergeReadinessVerdict` — closed sum `Ready | NotReady(reasons: List<String>)` — Practice-4 receipt **required**
+   - `AttachedUrl` — `{ url: Url, source: AttachedUrlSource }` (reuse `Url` from `std.types`); `AttachedUrlSource` closed sum (`PrBody | CommentThread | ReviewComment | InlineCode`) — Practice-4 receipt **required**
+   - `RestFallbackReason` — closed sum (`GraphqlIncomplete | GraphqlRateLimited | GraphqlSchemaUnknown`) — Practice-4 receipt **required**
+
+3. **Service block** with function signatures (no transport; signatures use REAL imported `PullRequest` carrier + neutral source-fact placeholders for CI/conflict input facts pending Emission-Mgr placement):
    ```
    service ctrl.PrDigests {
-     fn extract_attached_urls(pr: GithubPr) -> List<AttachedUrl>
-     fn render_ci_digest(state: CiState) -> CiDigestLine
-     fn render_conflict_digest(state: ConflictState) -> ConflictDigestLine
-     fn merge_readiness_verdict(inputs: PrDigestInputs) -> MergeReadinessVerdict
-     fn classify_rest_fallback(error: GithubError) -> Option<RestFallbackReason>
+     fn extract_attached_urls(pr: PullRequest) -> List<AttachedUrl>
+     fn render_ci_digest(facts: <ci-source-facts>) -> CiDigestLine
+     fn render_conflict_digest(facts: <conflict-source-facts>) -> ConflictDigestLine
+     fn merge_readiness_verdict(pr: PullRequest, ci: <ci-source-facts>, conflict: <conflict-source-facts>) -> MergeReadinessVerdict
+     fn classify_rest_fallback(error: GitHubErrorShape) -> Option<RestFallbackReason>
    }
    ```
-   (Final signature shape DFS-derives from existing `dsl/extdeps/github/pulls.dag` `GithubPr` / `CiState` / `ConflictState` carriers if present; if absent, surface to Mgr — those are extdep-side substrate, not subsystem-side.)
+   `<ci-source-facts>` / `<conflict-source-facts>` resolve to typed carriers imported from `dsl/extdeps/github/*.dag` (existing or new under Emission-Mgr placement) — worker MUST NOT invent these on the gunbc side.
 
 4. **Practice-4 receipts** for the 3 closed sums above (per Mgr brief §"Per-worker brief template" item 4 — classification + dissolution pattern + trigger).
 
@@ -74,14 +86,14 @@ Each is a pure function modulo GitHub-API I/O. Phase 1.5 models the **input/outp
 
 1. `dsl/ctrl/pr_digests.dag` parses + compiles (whatever validates `.dag` files in this repo — likely `cargo test -p v3-compiler` covers it).
 2. Practice-4 receipts on `MergeReadinessVerdict`, `AttachedUrlSource`, `RestFallbackReason` — each names classification + dissolution-pattern + trigger.
-3. Consumer-receipt header cites all 5 ctrl `.mjs` files + names `dsl/gunbc/digest_render.dag` (gunbc-owned render surface) as the Phase 3 trigger. **DO NOT** name `dsl/extdeps/github/digest_render.dag` — that placement was corrected pre-dispatch by Emission-Targets Mgr (see §"Why catalog #8 first" placement-discipline note).
+3. Consumer-receipt header cites all 5 ctrl `.mjs` files + names the **neutral 3-part Phase-3 trigger** (digest source-fact authority + gunbc/std render projection + named parity harness green) per Director ratification `msg_d1589d17`. **DO NOT** name `dsl/extdeps/github/digest_render.dag` or any new render-field on `PullRequest` — both placements were ruled out by Director + Emission Mgr 2026-05-12.
 4. Cost-of-change check: adding a new `RestFallbackReason` variant touches **only** this file (no parallel registry / no extdep update / no consumer-side fix-up). If it touches more, surface to Mgr — that's a substrate-shape signal.
 5. M9 DFS audit comment: for each carrier, name the existing `dsl/std/` or `dsl/extdeps/github/` primitive it attaches to (or document why it must be new — must be a substantive structural reason, not "didn't find one").
 6. Doc-only — zero emission code; zero TS-side changes.
 
 ## STOP/PING criteria
 
-- **STOP** if `dsl/extdeps/github/pulls.dag` lacks `GithubPr` / `CiState` / `ConflictState` carriers — that's an extdep-side substrate gap; surface to Mgr who routes to Substrate Mgr or Emission-Targets Mgr (`deep-ibex-326`). Per Emission Mgr placement-discipline 2026-05-12: any new GitHub-source-of-record carriers MUST land in `dsl/extdeps/github/` (provider facts), never in this gunbc-side subsystem file.
+- **STOP** if required GitHub source facts (CI state, conflict state, mergeability inputs) are absent on main — **route an emission/source-fact gap to Emission-Targets Mgr** (`deep-ibex-326`) for placement under `dsl/extdeps/github/*.dag` (narrow `pull_digest.dag` or sibling). **DO NOT inflate `PullRequest` with render/digest fields**; **DO NOT** define source facts on the gunbc side. Per Director ratification `msg_d1589d17`: the worker either narrows to existing `PullRequest` fields (number/title/body/state/html_url/user/head/base/created_at/updated_at/merged_at/draft + diff/review op outputs) OR waits for source-fact placement.
 - **STOP** if a closed sum has no clear dissolution pattern (TERMINAL unjustified) — surface to project Director for ratification per `feedback_pattern_a_scaffold_sentinel_per_instance_ratification.md`.
 - **STOP** if any carrier name collides with `src/v3/SELF_HOSTING.md` or `dsl/std/` (per `feedback_self_hosting_md_authority_audit_before_naming.md`) — rename and re-grep before proceeding.
 - **PING** project Director on PR-open with brief reference.
