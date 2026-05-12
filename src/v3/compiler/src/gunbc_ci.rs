@@ -14,6 +14,12 @@
 //! S5 + prequeue §5.2: monotone **inclusion** under enlarging the touched-id
 //! set (smaller touch ⊆ larger touch ⇒ selected subset ⊆ selected superset).
 //! See [`selection_subset_under_touch_set_growth`].
+//!
+//! **Expansion semantics:** [`select_affected_gates`] walks each `CIGateEdge` **symmetrically**
+//! (treat `from → to` as an undirected adjacency) to fixpoint, so a downstream obligation
+//! pulls in its sibling prerequisites (e.g. touching `lint` selects `l1-ratchet`, which
+//! forces `tests` because both parents are prerequisites of `l1-ratchet`). The returned
+//! order is a **topological sort** of that vertex set on the directed prerequisite subgraph.
 
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 
@@ -47,8 +53,9 @@ pub enum CiWorkflowDiff {
     TouchedGates(BTreeSet<CiGateId>),
 }
 
-/// Returns gate ids to execute: prerequisite closure ∪ downstream closure of the seed,
-/// then **topologically sorted** (prerequisites first).
+/// Returns gate ids to execute: the **connected component** of the seed under the symmetric
+/// closure of prerequisite edges (iterate `from ↔ to` adjacency to fixpoint), then
+/// **topologically sorted** on the directed subgraph (prerequisites first).
 ///
 /// **Fail-closed** (`design-t-wad-slice-7-binary-shim-affected-set-selection-canvas.md` §3):
 /// any touched id not present in `dag.gates` forces **all** gates listed in `dag.gates`
@@ -77,7 +84,8 @@ pub fn select_affected_gates(dag: &CiWorkflowDagInput, diff: &CiWorkflowDiff) ->
         return Vec::new();
     }
 
-    // Bidirectional closure: downstream of seed ∪ upstream of everything selected.
+    // Symmetric edge closure: expand along `from ↔ to` until stable, then topo-sort
+    // the induced set on directed prerequisite edges.
     let mut selected: HashSet<&str> = seed.clone();
     loop {
         let before = selected.len();
