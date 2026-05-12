@@ -351,9 +351,7 @@ pub fn apply_lens_declaration(
         if decl.name.as_deref() == Some("auto_loop_parallelism_pending_lens") && inputs.len() == 1 {
             let v = pu
                 .workflow_lane2_subject()
-                .map(|subject| {
-                    crate::loop_iteration_parallel_emission_indicator(pu, subject)
-                })
+                .map(|subject| crate::loop_iteration_parallel_emission_indicator(pu, subject))
                 .unwrap_or(0);
             return Ok(FieldValue::Literal(LiteralBits::Int(v.to_string())));
         }
