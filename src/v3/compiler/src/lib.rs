@@ -25,6 +25,7 @@ pub mod lens_t_las_carrier;
 pub mod pb_method_template_projection;
 mod regen_bootstrap_emit;
 pub mod regen_tokenize;
+pub mod r3_gate_87_cementing_regen_runner_suites;
 
 /// SG-0 producer-owned generated-file manifest.
 ///

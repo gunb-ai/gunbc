@@ -13,6 +13,7 @@ use std::path::Path as FsPath;
 
 use crate::dag::{Dag, FieldValue, LiteralBits, ValueBody};
 use crate::integration_rs_wiring_scan::integration_rs_cementing_path_attr_binds_mod_stem;
+use crate::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_pb_b1_dag_module_stems;
 
 fn record_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> Option<&'a FieldValue> {
     fields
@@ -260,6 +261,7 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
     }
 
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let pb_b1_gate87_dag_stems = r3_gate_87_cementing_regen_pb_b1_dag_module_stems();
     let integration_rs = match std::fs::read_to_string(manifest_dir.join("tests/integration.rs")) {
         Ok(text) => text,
         Err(err) => {
@@ -280,6 +282,14 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
         let kind_str = string_field(fields, "kind")?;
         match kind_str.as_str() {
             "dag" => {
+                if !pb_b1_gate87_dag_stems.contains(&module_stem) {
+                    return Err(format!(
+                        "registry lens `{registry_name}` lists v2-complete cementing receipt `{module_stem}` \
+                         as a `.dag` harness, but that stem is not wired in \
+                         `r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES` \
+                         (T-PB-B-1 runner) — extend the shared table or fix the receipt list."
+                    ));
+                }
                 let path = manifest_dir
                     .join("tests")
                     .join("dag")
