@@ -3124,7 +3124,10 @@ impl<'a> TestRunner<'a> {
                         "LensOutputEquals({lens_name}): bind `lit` not found in `{file_name}`"
                     )));
                 };
-                i64::from(matches!(origin_of(program_dag, &bind.value), Origin::Source { .. }))
+                i64::from(matches!(
+                    origin_of(program_dag, &bind.value),
+                    Origin::Source { .. }
+                ))
             }
             "gate87_structural_resolution_no_violations" => {
                 i64::from(lens_structural_resolution::check(program_dag).is_empty())
