@@ -3160,7 +3160,7 @@ impl<'a> TestRunner<'a> {
         &self,
         claim: &TestClaimValue,
         payload: &[FieldValue],
-        expected_param_name: Option<&str>,
+        expected_param_index: Option<usize>,
     ) -> ClaimResult {
         let [expected_fv] = payload else {
             return ClaimResult::Fail(format!(
@@ -3197,14 +3197,14 @@ impl<'a> TestRunner<'a> {
                 Ok(p) => p,
                 Err(msg) => return ClaimResult::Fail(msg),
             };
-        self.eval_symbolic_cost_expr_equals_pattern(claim, expected_pattern, expected_param_name)
+        self.eval_symbolic_cost_expr_equals_pattern(claim, expected_pattern, expected_param_index)
     }
 
     fn eval_symbolic_cost_expr_equals_pattern(
         &self,
         claim: &TestClaimValue,
         expected_pattern: SymbolicCostEqPattern,
-        expected_param_name: Option<&str>,
+        expected_param_index: Option<usize>,
     ) -> ClaimResult {
         let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(dag) => dag,
@@ -3268,9 +3268,7 @@ impl<'a> TestRunner<'a> {
         let expected_pattern = match resolve_symbolic_cost_param_refs_for_bind(
             expected_pattern,
             bind,
-            &claim.source,
-            &claim.file_name,
-            expected_param_name,
+            expected_param_index,
         ) {
             Ok(pattern) => pattern,
             Err(msg) => return ClaimResult::Fail(msg),
@@ -3303,15 +3301,15 @@ impl<'a> TestRunner<'a> {
         claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [expected_fv, param_name_fv] = payload else {
+        let [expected_fv, param_fv] = payload else {
             return ClaimResult::Fail(format!(
                 "SymbolicCostExprEqualsForBindParam payload should be exactly two fields \
-                 (expected, param_name); got {} payload slot(s)",
+                 (expected, param); got {} payload slot(s)",
                 payload.len()
             ));
         };
-        let param_name = match string_literal_field_value(param_name_fv) {
-            Ok(name) => name,
+        let param_index = match bind_param_ref_index(param_fv) {
+            Ok(index) => index,
             Err(msg) => return ClaimResult::Fail(msg),
         };
         let expected_id = match self.resolve_declaration_ref_id(expected_fv, "expected") {
@@ -3348,7 +3346,7 @@ impl<'a> TestRunner<'a> {
         self.eval_symbolic_cost_expr_equals_pattern(
             claim,
             expected_pattern,
-            Some(param_name.as_str()),
+            Some(param_index),
         )
     }
 

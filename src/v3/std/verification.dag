@@ -138,8 +138,11 @@ type ProgramShape
 type SymbolicCostBindParamExpected
   = LinearCostForBindParam { var: BindParamSizeVariable }
 
-type BindParamSizeVariable {
-  witness: String
+type BindParamSizeVariable
+  = SelectedBindParamSizeVariable
+
+type BindParamRef {
+  index: Int
 }
 
 type TestPredicate
@@ -253,7 +256,7 @@ type TestPredicate
     }
   | SymbolicCostExprEqualsForBindParam {
       expected: DeclarationRef
-      param_name: String
+      param: BindParamRef
     }
   // **🟢 TERMINAL at T-Tier3 P1 substrate scope.** Compare a measured
   // `PerfBaselineMeasurement` declaration against a declared baseline

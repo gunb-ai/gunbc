@@ -7,6 +7,7 @@ module v3.compiler.tests.t_r3.gate_87_cementing_regen_cost_symbolic
 
 import std.algebra { SymbolicCost }
 import std.verification {
+  BindParamRef,
   BindParamSizeVariable,
   SymbolicCostBindParamExpected,
   SymbolicCostExprEquals,
@@ -18,7 +19,7 @@ import std.verification {
 data gate87_symbolic_cost_expected: SymbolicCost = ConstantCost(0)
 
 data gate87_symbolic_cost_countdown_expected: SymbolicCostBindParamExpected =
-  LinearCostForBindParam { var: { witness: "selected_bind_param" } }
+  LinearCostForBindParam { var: SelectedBindParamSizeVariable }
 
 data cementing_regen_cost_symbolic_literal_claim: TestClaim = {
   name: "cementing_regen_cost_symbolic",
@@ -32,7 +33,7 @@ data cementing_regen_cost_symbolic_countdown_claim: TestClaim = {
   name: "cementing_regen_cost_symbolic_countdown",
   source: "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
   file_name: "r3_gate_87_symbolic_countdown.v3",
-  predicate: SymbolicCostExprEqualsForBindParam(gate87_symbolic_cost_countdown_expected, "n"),
+  predicate: SymbolicCostExprEqualsForBindParam(gate87_symbolic_cost_countdown_expected, { index: 0 }),
   requires: []
 }
 
