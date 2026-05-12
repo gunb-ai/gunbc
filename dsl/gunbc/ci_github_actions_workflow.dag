@@ -16,7 +16,7 @@ import extdeps.github.actions {
   ShellType, Bash
 }
 
-data gunbc_ci_github_actions_workflow: Workflow = Workflow {
+data gunbc_ci_github_actions_workflow: Workflow = {
   name: "ci",
   on: Cons { head: Push { branches: Cons { head: "main", tail: Empty }, paths: Empty }, tail: Cons { head: PullRequest { branches: Cons { head: "main", tail: Empty }, types: Cons { head: Opened, tail: Cons { head: Synchronize, tail: Cons { head: Reopened, tail: Cons { head: ReadyForReview, tail: Empty } } } } }, tail: Empty } },
   concurrency: some(ConcurrencyMappingQueueNotMax {

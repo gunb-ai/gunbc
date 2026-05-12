@@ -29,7 +29,7 @@ import extdeps.github.actions {
 type WorkflowRuntime = YamlStatic | BinaryShim
 
 func github_actions_binary_shim_placeholder_workflow() -> Workflow =
-  Workflow {
+  {
     name: "ci-binary-shim-placeholder",
     on: Cons {
       head: Push { branches: Empty, paths: Empty },
