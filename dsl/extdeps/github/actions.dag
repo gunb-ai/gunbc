@@ -8,8 +8,8 @@
 // Spec: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 //
 // Consumers:
-//   extdeps/github/ci.dag — workflow/check run status (execution-time API facts)
-//   gunbc/ci.dag -- CI intent declarations that compile against these types
+//   extdeps/github/ci.dag — `.github/workflows/ci.yml` as `Workflow` data (T-WAD R3)
+//   gunbc/ci.dag -- CI intent declarations (gate semantics; not Actions YAML)
 
 module extdeps.github.actions
 
