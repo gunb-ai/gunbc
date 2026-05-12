@@ -5,7 +5,7 @@
 // in actions.dag) and not compiler CI gate intent (`gunbc.ci` in gunbc/ci.dag).
 //
 // Ratified substrate layering (PR #2749 option (c-refined), T-WAD FULL R3):
-//   - Semantic gate DAG + `EmissionTarget` + `project_github_actions` live in
+//   - Semantic gate DAG + `WorkflowRuntime` + `project_github_actions` live in
 //     gunbc namespace; projection outputs bind there, not in this file.
 //   - `extdeps.github.actions.Workflow` stays a platform-only carrier (no
 //     emission-policy fields).
