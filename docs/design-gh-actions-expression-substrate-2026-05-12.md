@@ -5,8 +5,13 @@ per PR #2751 comment (Director session `msg_168005e1` to PM deep-wolf-155).
 Option **(c)** is the ratified substrate-shape: `Expression` sum-type at
 `dsl/extdeps/github/actions.dag` with single `OpaqueString(String)`
 variant + 🟡 YELLOW classification + three-condition dissolution trigger
-(§3). All 5 expression sites migrate uniformly. See §7 below for
-ratification dispositions and cascade implications.
+(§3). **Migration scope (post-§5.5 audit)**: 19 in-scope sites (18 string-typed
++ 1 enum-extension `Job.runner`) migrate uniformly in the §7.5 ask #4 prereq
+PR; 9 typed-field sites HOLD pending §6 Q#4 (wrap vs `TypedOrExpression<T>`
+sum vs defer). Total expression-capable surface: 28 fields per §5.5
+cross-product audit. The original "5 sites" framing reflected the pre-audit
+ci.yml-keyed scope and is superseded by §5.5. See §7 below for ratification
+dispositions and cascade implications.
 
 **Authority:** Director (zesty-bear-812) `msg_2a68a4b5` routing to canvas
 authority via PM (deep-wolf-155) `msg_e79d1a50` per
