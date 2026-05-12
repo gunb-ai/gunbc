@@ -359,17 +359,22 @@ expression-capable fields in actions.dag carriers (audited 2026-05-12):
 | `MatrixStrategy` | `exclude: List<Map<String, String>>` (`:225`) | List of Map | ✓ (matrix excludes per workflow-syntax) |
 | `MatrixStrategy` | `fail_fast: Bool` (`:226`) | Bool | ✓ (typed; string-coerced expression) |
 | `MatrixStrategy` | `max_parallel: Int?` (`:227`) | Int? | ✓ (typed; string-coerced expression) |
+| `DispatchInput` | `default: String?` (`:58`) | String? | ✓ (per `on.workflow_call.inputs.<id>.default` + `on.workflow_dispatch.inputs.<id>.default` context-availability entries — added 2026-05-12T11:35:26Z per operator BLOCKING at :298) |
 
-Total expression-capable surface: **27 fields** across `Workflow`, `Job`,
-`RunStep`, `UsesStep`, `ConcurrencySpec`, `RunnerSpec`, `MatrixStrategy`
+Total expression-capable surface: **28 fields** across `Workflow`, `Job`,
+`RunStep`, `UsesStep`, `ConcurrencySpec`, `RunnerSpec`, `MatrixStrategy`,
+`DispatchInput`
 (post-corrections: `UsesStep.uses` removed per :381 — literal-only;
 `MatrixStrategy` carriers added 2026-05-12T11:35Z per codex BLOCKING
 review 10128 / sha 248f2cf3; `Workflow.name` removed 2026-05-12T11:35:26Z
 per operator BLOCKING at :274 — `name` is not in the GH context-availability
 table at workflow level, only `run-name` is, and `run-name` is not
-currently a field on `Workflow`). The 7-site enumeration was keyed to ci.yml
+currently a field on `Workflow`; `DispatchInput.default` added
+2026-05-12T11:35:26Z per operator BLOCKING at :298 — per
+`on.workflow_call.inputs.<id>.default` + `on.workflow_dispatch.inputs.<id>.default`
+context-availability entries). The 7-site enumeration was keyed to ci.yml
 usage, not actions.dag schema — under-modeling the platform surface by
-20 sites.
+21 sites.
 
 **Audit methodology note** (per codex BLOCKING review 10128): the
 audit above is now the cross-product of (every current carrier in
@@ -388,13 +393,13 @@ discipline expanded to substrate-shape audits.
 
 The 23 expression-capable sites split into three classes by HEAD-type:
 
-- **String-typed sites (17)**: fields already typed `String` / `String?` /
+- **String-typed sites (18)**: fields already typed `String` / `String?` /
   `Map<String, String>` at HEAD — `Workflow.env`,
   `Job.name`, `Job.if_condition`, `Job.env`, `Job.concurrency.group`,
   `RunStep.name`, `RunStep.run`, `RunStep.env`,
   `RunStep.working_directory`, `RunStep.if_condition`,
   `UsesStep.name`, `UsesStep.with`, `UsesStep.env`,
-  `UsesStep.if_condition`. Migration shape under (c) is uniform:
+  `UsesStep.if_condition`, `DispatchInput.default`. Migration shape under (c) is uniform:
   every site → `Expression` / `Expression?` / `Map<String, Expression>`.
 - **Typed-field sites (9)**: `Job.timeout_minutes: Int?`,
   `Job.continue_on_error: Bool`,
@@ -422,7 +427,7 @@ The 23 expression-capable sites split into three classes by HEAD-type:
   INVARIANTS P1 modeling faithfulness.
 
 Total in-scope for the substrate-prereq PR under §7.5 ask #4 / Slice 4
-brief: **17 string-typed + 1 enum-extension = 18 sites**. The 7
+brief: **18 string-typed + 1 enum-extension = 19 sites**. The 7
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -445,7 +450,7 @@ create the contradiction codex REQUEST_CHANGES review 10083 flagged
 ("ALL 22 migrate" + "typed shape unresolved" cannot both hold).
 
 **Implementing-PR scope**: §7.5 ask #4 / Slice 4 brief migrates the
-17 string-typed + 1 enum-extension sites (18 total) uniformly. The 7
+18 string-typed + 1 enum-extension sites (19 total) uniformly. The 7
 typed-field sites sequence as a follow-on substrate-prereq PR after
 §6 Q#4 Director ratification resolves the wrap/sum/defer choice.
 
@@ -578,7 +583,7 @@ items per ratification:
    `actions.dag`** (post-correction; see scope-evolution note below):
    RATIFIED. Single-authority for expression substrate. The
    implementing-PR scope per §7.5 ask #4 / Slice 4 brief covers the
-   §5.5 audit set: **18 sites in scope** (17 string-typed + 1
+   §5.5 audit set: **19 sites in scope** (18 string-typed + 1
    enum-extension `RunnerSpec.ExpressionRunner`). **9 typed-field
    sites HOLD** pending §6 Q#4 Director ratification of the
    wrap/sum/defer choice. Total expression-capable surface in
