@@ -42,31 +42,15 @@ type ProcessEventPosition = Int where range(min: 0), brand("ProcessEventPosition
 // Practice 4 receipt:
 // - Classification: 🟢 TERMINAL for declared modes. Leaf, Composite, and
 //   Bucket are durable graph-shape coordinates.
-// - Dissolution pattern rejected: undeclared/cutoff state is not a mode; it
-//   lives in `ProcessModeProjection` so declared-mode consumers cannot accept
-//   a transitional missing declaration as a real declaration.
+// - Dissolution pattern rejected: undeclared/cutoff state is not a declared
+//   mode; closure snapshots carry it as `ProcessModeMissing` so declared-mode
+//   consumers cannot accept a transitional missing declaration as real data.
 // - Trigger: none for declared modes. New ctrl declaration modes must extend
 //   this sum here first.
 type DeclaredProcessNodeMode
   = Leaf
   | Composite
   | Bucket
-
-// 🟡 STAGED coproduct — current mode projection result. This separates the
-// transitional cutoff/null case from durable declarations.
-//
-// Practice 4 receipt:
-// - Classification: 🟡 STAGED. `DeclaredProcessMode` carries durable
-//   declarations; `ProcessModeUndeclared` preserves post-cutoff failure and
-//   pre-cutoff grandfathering without polluting declared mode.
-// - Dissolution pattern: fact-placement. Undeclared state is a projection
-//   result over event-log/cutoff facts, not a stored node mode.
-// - Trigger: when `current_process_mode` is emitted from the event-log fold
-//   and all pre-cutoff ctrl nodes are closed, the transitional arm narrows to
-//   an explicit refusal-only result and stored mode becomes provenance.
-type ProcessModeProjection
-  = DeclaredProcessMode(DeclaredProcessNodeMode)
-  | ProcessModeUndeclared
 
 // 🟡 STAGED coproduct — evidence channels attached to a human-authored
 // attestation. Kept distinct from `v3.std.dimensions.Witness<C>`.
@@ -300,42 +284,27 @@ type ProcessCloseState
   = ProcessOpen
   | ProcessClosed { closed_at: Timestamp }
 
-// 🟢 TERMINAL coproduct at Phase-1 scope — mode-specific closure facts for
-// declared process nodes. This avoids sibling nullable fields that admit
-// impossible states, such as a leaf with a bucket-drain timestamp or a bucket
-// with child facts.
-//
-// Practice 4 receipt:
-// - Classification: 🟢 TERMINAL for the closure guard state consumed by
-//   `can_close_process_node`.
-// - Dissolution pattern rejected: nullable sibling fields collapse distinct
-//   repair paths and admit contradictory states. Each declared mode owns only
-//   the facts needed for its closure rule.
-// - Dissolution pattern applied: undeclared/cutoff remains a projection result
-//   in `ProcessModeProjection`, not stored node state.
-// - Trigger: none for PR #1195 parity; new mode-specific closure facts must
-//   extend the corresponding carrier here.
-type ProcessNodeModeState
-  = LeafState
-  | CompositeState { open_children: List<ProcessNodeId> }
-  | BucketState { drain: BucketDrainState }
-
-// 🟢 TERMINAL coproduct at Phase-1 scope — whether an existing process node has
-// a declared mode yet. This preserves the ctrl distinction between "node not
-// found" and "node exists but has no declaration" without making undeclared a
-// stored mode.
+// 🟢 TERMINAL coproduct at Phase-1 scope — declaration and mode-specific closure
+// facts for existing process nodes. The declared mode and its closure facts live
+// in the same arm, so the snapshot cannot say "declared leaf" while storing
+// bucket facts.
 //
 // Practice 4 receipt:
 // - Classification: 🟢 TERMINAL for the closure guard snapshot. Missing
-//   declaration and declared-mode facts have different repair paths.
+//   declaration and declared-mode facts have different repair paths, and each
+//   declared mode owns only the facts needed for its closure rule.
+// - Dissolution pattern rejected: nullable sibling fields collapse distinct
+//   repair paths and admit contradictory states. Separate `mode` plus fact
+//   fields can represent impossible combinations; this carrier cannot.
 // - Dissolution pattern applied: fact placement. The missing-declaration state
-//   is stored as declaration absence; `ProcessNodeModeState` remains only the
-//   declared mode facts.
-// - Trigger: none for PR #1195 parity; richer declaration provenance extends
-//   the declared arm payload.
+//   is stored as declaration absence, not as a fourth declared mode.
+// - Trigger: none for PR #1195 parity; richer declaration provenance or new
+//   mode-specific closure facts extend the corresponding arm here.
 type ProcessNodeDeclarationState
   = ProcessModeMissing
-  | ProcessModeDeclared(ProcessNodeModeState)
+  | ProcessLeafDeclared
+  | ProcessCompositeDeclared { open_children: List<ProcessNodeId> }
+  | ProcessBucketDeclared { drain: BucketDrainState }
 
 // 🟡 STAGED node facts for closure projection. Identity is carried by the
 // graph entry below, not by this closure-fact row, so mode/close facts cannot
@@ -365,7 +334,7 @@ type ProcessGraph {
 }
 
 // Projection surfaces intentionally remain comments in this Phase-1 substrate:
-// current_process_mode(ProcessGraph, ProcessNodeId) -> ProcessModeProjection,
+// current_process_mode(ProcessGraph, ProcessNodeId) -> ProcessNodeDeclarationState,
 // process_operation_effect(ProcessOperation) -> ProcessOperationEffect, and
 // can_close_process_node(ProcessGraph, ProcessNodeId, Timestamp) ->
 // ProcessClosureDecision. They become declared functions in the PR that also
