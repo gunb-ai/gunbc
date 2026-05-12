@@ -1,0 +1,36 @@
+// T-WAD FULL R3 gate #101 — cost dimension on test nodes.
+
+module v3.compiler.tests.t_wad.test_cost_dimension_landed
+
+import v3.std.dimensions { Dimension }
+import std.verification { TestClaim, TestCost, TestNode, TestSuite }
+
+data modeled_test_claim: TestClaim = {
+  name: "modeled test claim compiles",
+  source: "let answer: Int = 1 + 1",
+  file_name: "t_wad_modeled_test_claim.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data modeled_test_cost: Dimension<TestCost, Int> = {
+  value: 2
+}
+
+data modeled_test_node: TestNode = {
+  claim: modeled_test_claim,
+  cost: modeled_test_cost
+}
+
+data test_cost_dimension_landed: TestClaim = {
+  name: "test_cost_dimension_landed",
+  source: "let receipt: Int = 1",
+  file_name: "t_wad_test_cost_dimension_landed.v3",
+  predicate: TestCostDimensionDeclared { node_ref: modeled_test_node },
+  requires: []
+}
+
+data suite_t_wad_test_cost_dimension_landed: TestSuite = {
+  name: "t-wad/test_cost_dimension_landed",
+  claims: [Enumerated(test_cost_dimension_landed)]
+}

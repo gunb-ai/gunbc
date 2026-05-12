@@ -170,6 +170,19 @@ fn t_pb_b_1_contract_port_cost_suite_passes_through_runner() {
 }
 
 #[test]
+fn t_wad_test_cost_dimension_landed_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_wad_test_cost_dimension_landed.dag"),
+        "src/v3/compiler/tests/dag/t_wad_test_cost_dimension_landed.dag",
+    );
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "suite_t_wad_test_cost_dimension_landed",
+        &["test_cost_dimension_landed"],
+    );
+}
+
+#[test]
 fn r3_fieldproject_dual_authority_dissolution_suite_passes_through_runner() {
     let dag = lower(
         include_str!("../dag/t_r3_fieldproject_dual_authority_dissolution.dag"),

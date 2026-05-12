@@ -4857,6 +4857,86 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    /// `TestPredicate::TestCostDimensionDeclared { node_ref: DeclarationRef }`.
+    fn eval_test_cost_dimension_declared(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [node_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "TestCostDimensionDeclared payload should be exactly one DeclarationRef field \
+                 (node_ref); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let node_id = match self.resolve_declaration_ref_id(node_fv, "node_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let node_decl = self.dag.declaration(node_id);
+        let node_name = decl_display_name(node_id, node_decl);
+        match self.decl_inhabits_named_role(node_decl, "TestNode") {
+            Ok(true) => {}
+            Ok(false) => {
+                return ClaimResult::Fail(format!(
+                    "TestCostDimensionDeclared: node_ref `{node_name}` must inhabit TestNode"
+                ));
+            }
+            Err(msg) => return ClaimResult::Fail(format!("TestCostDimensionDeclared: {msg}")),
+        }
+        let Some(fields) = structural_fields(node_decl) else {
+            return ClaimResult::Fail(format!(
+                "TestCostDimensionDeclared: node_ref `{node_name}` is not structural"
+            ));
+        };
+        let Some(FieldValue::Reference(_)) = field(fields, "claim") else {
+            return ClaimResult::Fail(format!(
+                "TestCostDimensionDeclared: node_ref `{node_name}` must carry a `claim: TestClaim` reference"
+            ));
+        };
+        let Some(cost) = field(fields, "cost") else {
+            return ClaimResult::Fail(format!(
+                "TestCostDimensionDeclared: node_ref `{node_name}` is missing `cost`"
+            ));
+        };
+        let cost_value = match cost {
+            FieldValue::Reference(cost_id) => {
+                let cost_decl = self.dag.declaration(*cost_id);
+                match &cost_decl.value_body {
+                    Some(value_body) => value_body,
+                    None => {
+                        return ClaimResult::Fail(format!(
+                            "TestCostDimensionDeclared: node_ref `{node_name}` cost reference `{}` has no value body",
+                            decl_display_name(*cost_id, cost_decl)
+                        ));
+                    }
+                }
+            }
+            other => other,
+        };
+        let Some(cost_fields) = record_fields(cost_value) else {
+            return ClaimResult::Fail(format!(
+                "TestCostDimensionDeclared: node_ref `{node_name}` cost must resolve to a Dimension<TestCost, Int> record"
+            ));
+        };
+        let Some(FieldValue::Literal(LiteralBits::Int(value_s))) = field(cost_fields, "value")
+        else {
+            return ClaimResult::Fail(format!(
+                "TestCostDimensionDeclared: node_ref `{node_name}` cost must carry an Int `value`"
+            ));
+        };
+        match value_s.parse::<i64>() {
+            Ok(value) if value >= 0 => ClaimResult::Pass,
+            Ok(value) => ClaimResult::Fail(format!(
+                "TestCostDimensionDeclared: node_ref `{node_name}` cost must be nonnegative, got {value}"
+            )),
+            Err(_) => ClaimResult::Fail(format!(
+                "TestCostDimensionDeclared: node_ref `{node_name}` cost value `{value_s}` is not a valid i64"
+            )),
+        }
+    }
+
     fn eval_generated_from_dag_shape(
         &self,
         _claim: &TestClaimValue,
