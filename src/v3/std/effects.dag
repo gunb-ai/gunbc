@@ -28,21 +28,22 @@
 //   - `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<Operation> }`
 //   - `is_idempotent_effect`, `operation_is_breaking`
 //   - `compose_effects(effects: List<Operation>) -> CompositionVerdict`
-//   - `derive_effect_shape(method, path)` — HTTP method + path → EffectShape
-//   - `generate_idempotency_obligations`, `check_modifier_vs_derivation`
+//   - `generate_idempotency_obligations`
 // v2-specific imports, parser quirks, and Rust bridge code do NOT
 // come over. Pure `.dag` declarations.
 //
 // Stage 2a follow-ups (cleared):
 //
-// 1. `DerivedOpEffect` was collapsed into `Operation` (PR #521).
+// 1. `DerivedOpEffect` was collapsed into `Operation` (PR #521), and the
+// later OperationEffect retirement removed the transport-derived
+// `derive_op_effect` bridge entirely.
 // The previous shape carried `method` and `path_template` fields
 // alongside `operation_name` + `shape`, but nothing downstream ever
 // read the transport fields — the modifier check and obligation
 // generator both project through `shape` alone, and the
 // `ReadEffect` variant already encodes "method was GET/HEAD/OPTIONS."
 // `Operation` is the durable carrier Stage 2b's `compose_effects`
-// walks; `derive_op_effect` now returns it directly. Future diagnostic
+// walks. Future diagnostic
 // rendering that wants the originating method/path should attach a
 // separate evidence carrier to the diagnostic, not smuggle transport
 // facts onto the effect record.
