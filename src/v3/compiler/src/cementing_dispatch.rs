@@ -1002,6 +1002,10 @@ pub mod gunbc_ci {
 
 use self::integration_rs_wiring_scan::integration_rs_cementing_path_attr_binds_mod_stem;
 use self::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_pb_b1_dag_module_stems;
+use std::collections::{BTreeSet, HashSet};
+use std::path::Path as FsPath;
+
+use crate::dag::{Dag, FieldValue, LiteralBits, TypeConnective, ValueBody};
 
 fn record_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> Option<&'a FieldValue> {
     fields

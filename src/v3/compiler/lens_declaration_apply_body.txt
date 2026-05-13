@@ -1,8 +1,7 @@
-// PB-0 cycle-2 SG-0 scaffold: bounded lens application (`lens_declaration_apply` module body).
-// Included from `lib.rs` via `include!` so `src/v3/compiler/src/lens_declaration_apply.rs` retires
-// from EXPECTED_HAND_AUTHORED_NON_TEST (same semantics; path-only retirement per gate #5 notes).
-// Dissolution: PB-Runtime / Row-4 interpreter-as-data owns reflection + application (R3 §1.8).
-
+//! PB-0 cycle-2: bounded lens application module body (`lens_declaration_apply_body.txt`), included
+//! from `lib.rs` so `src/v3/compiler/src/lens_declaration_apply.rs` retires from SG-0 NON_TEST census
+//! (path-only retirement; same semantics per gate #5 notes). Dissolution: PB-Runtime / Row-4.
+//!
 //! Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
 //! over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
 //!
@@ -3057,7 +3056,7 @@ pub mod lens_t_las_carrier {
 // from SG-0 hand-Rust census; this nested module preserves the stable `v3_compiler::lens_testgen`
 // surface (re-exported from `lib.rs`) until PB-Runtime owns testgen end-to-end.
 pub mod lens_testgen {
-    include!("lens_testgen_body.txt");
+    include!("src/lens_testgen_body.txt");
 }
 
 pub use substrate_reflection::reflect_behavior_list;
