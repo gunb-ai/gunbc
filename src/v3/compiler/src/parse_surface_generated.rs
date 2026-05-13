@@ -62,6 +62,17 @@ pub enum VariantPayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeAngleArg {
+    TypeExpr {
+        ty: Box<SurfaceType>,
+    },
+    WidthNatLiteral {
+        decimal: String,
+        span: SourceSpan,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SurfaceType {
     Named {
         name: String,
@@ -69,11 +80,7 @@ pub enum SurfaceType {
     },
     Parameterized {
         name: String,
-        args: Vec<SurfaceType>,
-        span: SourceSpan,
-    },
-    WidthNatLiteral {
-        decimal: String,
+        args: Vec<TypeAngleArg>,
         span: SourceSpan,
     },
     Optional {

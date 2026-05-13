@@ -6,7 +6,7 @@ use crate::operators::{LogicalOp, OperatorKind};
 pub use crate::parse_surface::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceMapEntry, SurfaceMatchArm,
     SurfaceModule, SurfaceParam, SurfacePattern, SurfacePatternField, SurfaceRecordField,
-    SurfaceType, SurfaceVariant, VariantPayload,
+    SurfaceType, SurfaceVariant, TypeAngleArg, VariantPayload,
 };
 use crate::parse_tables::{
     binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, primary_atom_class,
@@ -21,9 +21,17 @@ impl SurfaceType {
         match self {
             SurfaceType::Named { span, .. }
             | SurfaceType::Parameterized { span, .. }
-            | SurfaceType::WidthNatLiteral { span, .. }
             | SurfaceType::Optional { span, .. }
             | SurfaceType::Arrow { span, .. } => span,
+        }
+    }
+}
+
+impl TypeAngleArg {
+    pub fn span(&self) -> &SourceSpan {
+        match self {
+            TypeAngleArg::TypeExpr { ty } => ty.span(),
+            TypeAngleArg::WidthNatLiteral { span, .. } => span,
         }
     }
 }
@@ -1329,7 +1337,7 @@ impl<'a> Parser<'a> {
 
         if matches!(self.peek().kind, TokenKind::Lt) && self.looks_like_type_args() {
             self.bump();
-            let args = self.parse_type_expr_list_until(TokenKind::Gt)?;
+            let args = self.parse_type_angle_arg_list_until_gt()?;
             let close = self.expect_kind(TokenKind::Gt)?;
             Ok(SurfaceType::Parameterized {
                 name,
@@ -1355,11 +1363,12 @@ impl<'a> Parser<'a> {
 
     /// Decimal width literal permitted **only** inside `<…>` type-argument lists
     /// (e.g. `Int<64>`). Standalone `let x: 64 = …` must stay a parse error — gate #60
-    /// codex review (illegal surface closed at parse boundary).
-    fn parse_width_nat_type_argument(&mut self) -> Result<SurfaceType, Diagnostic> {
+    /// (single authority: this fragment is spliced by `regen_parse`; do not edit only
+    /// `parse_generated.rs` without updating here).
+    fn parse_width_nat_type_argument(&mut self) -> Result<TypeAngleArg, Diagnostic> {
         let token = self.bump().clone();
         match token.kind {
-            TokenKind::IntLit(decimal) => Ok(SurfaceType::WidthNatLiteral {
+            TokenKind::IntLit(decimal) => Ok(TypeAngleArg::WidthNatLiteral {
                 decimal,
                 span: token.span,
             }),
@@ -1371,6 +1380,28 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_type_angle_arg_list_until_gt(&mut self) -> Result<Vec<TypeAngleArg>, Diagnostic> {
+        let end = TokenKind::Gt;
+        let mut args = Vec::new();
+        if self.peek().kind == end {
+            return Ok(args);
+        }
+        loop {
+            if matches!(self.peek().kind, TokenKind::IntLit(_)) {
+                args.push(self.parse_width_nat_type_argument()?);
+            } else {
+                let ty = self.parse_type_expr()?;
+                args.push(TypeAngleArg::TypeExpr { ty: Box::new(ty) });
+            }
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+                continue;
+            }
+            break;
+        }
+        Ok(args)
+    }
+
     fn parse_type_expr_list_until(
         &mut self,
         end: TokenKind,
@@ -1379,13 +1410,8 @@ impl<'a> Parser<'a> {
         if self.peek().kind == end {
             return Ok(types);
         }
-        let angle_args = matches!(end, TokenKind::Gt);
         loop {
-            if angle_args && matches!(self.peek().kind, TokenKind::IntLit(_)) {
-                types.push(self.parse_width_nat_type_argument()?);
-            } else {
-                types.push(self.parse_type_expr()?);
-            }
+            types.push(self.parse_type_expr()?);
             if matches!(self.peek().kind, TokenKind::Comma) {
                 self.bump();
                 continue;
