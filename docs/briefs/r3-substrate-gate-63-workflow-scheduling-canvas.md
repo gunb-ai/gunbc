@@ -160,18 +160,20 @@ Cost-of-change is per the **revised Candidate A scope** (administrative un-ignor
 ## §8. Anti-patterns (Mgr-derived for reviewer enforcement)
 
 1. **Closure declared without `#[ignore]` removal** — fail-closed-discipline (§4); any closure must un-ignore the gate-criterion test
-2. **Silent-mask preservation** — adding more `#[ignore]` to mask new failures (§P5 atomic-migration violation)
+2. **Silent-mask preservation** — adding more `#[ignore]` to mask new failures (violates `INVARIANTS.md` P5 "Progress Is Dissolution / Pure Bootstrap"; atomic-migration discipline per `feedback_load_bearing_ratchet_preservation`)
 3. **Parallel-authority on CIWorkflowDag execution path** — if T-Lens-Self-Application has a competing DimensionReport producer shape, canvas should surface, not duplicate
 4. **Demo-bound closure pretending to be production** — if Candidate A repairs only demo evaluator but the criterion text intended broader scope, that's a P3 second-source-of-truth (demo passes; production doesn't)
 
-## §9. Open questions for ratification
+## §9. Open questions (RATIFIED 2026-05-13 per Director msg_804cdc93; preserved for audit trail)
 
-Director ratification on:
+At authoring time, the following questions were routed to Director:
 
-- **Q1 — Closure-scope candidate**: A (demo repair) / B (full path) / C (defer to T-Lens-Self-Application)
-- **Q2 — Lane semantics**: T-WAD + T-Lens-Self-Application AND vs OR-semantics
-- **Q3 — `#[ignore]` history**: was this `#[ignore]` planned-deferral (substrate-then-unignore) or regression-mask? Director may have grep visibility on the test's `#[ignore]` introduction commit; if so, that disambiguates A/B/C
-- **Q4 — Cross-lane coordination**: does Substrate Mgr coordinate with T-Lens-Self-Application Mgr for closure, or is gate #63 substrate-lane-owned end-to-end?
+- **Q1 — Closure-scope candidate**: A (demo repair) / B (full path) / C (defer to T-Lens-Self-Application) → **RATIFIED Q1=A** (Director msg_804cdc93, supersedes msg_4b13e93f)
+- **Q2 — Lane semantics**: AND vs OR-semantics → **RATIFIED OR-semantics**
+- **Q3 — `#[ignore]` history**: planned-deferral vs regression-mask → **RESOLVED planned-deferral** (anchor commit `73969f4a9` Director-verified)
+- **Q4 — Cross-lane coordination**: substrate-lane-owned vs cross-Mgr → **RATIFIED Substrate-lane-owned** with informational cross-Mgr notice (no AND-gate)
+
+Worker brief authored on this ratified shape: `docs/briefs/r3-substrate-gate-63-workflow-scheduling-worker.md`.
 
 ## §10. Mgr recommendation (REVISED per snappy-bear-502 msg_cef1340b)
 
