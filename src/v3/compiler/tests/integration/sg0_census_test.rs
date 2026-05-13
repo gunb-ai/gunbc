@@ -627,9 +627,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // R3 gate #60 Phase 2.1 (`substrate_gap_parser_grammar_closed` parser slice): hermetic
     // parse + lower receipts for angle-bracket width nat (`Int<64>`) surface; SG-0 P5 receipt.
     "src/v3/compiler/tests/integration/r3_gate_60_phase2_width_nat_parser_test.rs",
-    // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): Rust receipts
-    // paired with `tests/dag/t_r3_gate_87_cementing_regen_*.dag` + `t_pb_b_1_dag_runner_test`
-    // until strict modules can freeze full `LensOutputEquals` carriers (M1(2.8)).
+    // R3 gate #87 (`lens_cementing_test_discipline_complete` / issue #2609): registry-name /
+    // `R3_GATE_87_CEMENTING_REGEN_SUITES` inventory ratchet + temporary `compile_to_dag` receipts
+    // for helper / `variant_payload` lens `.dag` sources (paired `Compiles` harness placeholders).
+    // Int-projection behavioral witnesses for other regen lenses run only through
+    // `t_pb_b_1_dag_runner_test` + `TestRunner::eval_gate_87_cementing_projection` — not duplicated here.
     "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
     // R3 gate #66 (`lens_producer_retirement_executable_witness`): focused receipt
     // that the `.dag` PB census claim executes through `TestRunner` and reports
