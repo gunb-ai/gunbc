@@ -1,6 +1,6 @@
 # R3 Gate 87 Lens-Cementing Test-Discipline Dispatch — 2026-05-13
 
-**Owner:** Verification Mgr session `keen-bee-278`.
+**Owner:** Verification Mgr session `witty-ferret-873`.
 
 **Purpose:** decompose `lens_cementing_test_discipline_complete` into concrete child work that preserves the lens-completeness invariant while gate #87 stays tied to the `regen.dag` registry corpus.
 
@@ -19,15 +19,15 @@ Rows outside `regen.dag` remain Band-C / #84 bulk-port scope. Do not use them to
 
 ## Child Work Items
 
-Dashboard dispatch created 2026-05-13 from `keen-bee-278`:
+Dashboard dispatch created 2026-05-13 from `witty-ferret-873`:
 
 | Slice | Dashboard node |
 | --- | --- |
-| G87-D1 — Registry-Invariant Audit | `node://adhoc-a60be69f-0c9` |
-| G87-D2 — COMPLETE-Flip Same-PR Checklist | `node://adhoc-2dc8915c-5fa` |
-| G87-D3 — Placeholder-Dissolution Ledger | `node://adhoc-8d1d77d8-512` |
-| G87-D4 — Runner and SG-0 Ratchet Receipt | `node://adhoc-e0fb8865-bf3` |
-| G87-D5 — Band-C / #84 Handoff Classification | `node://adhoc-37f8d943-e31` |
+| G87-D1 — Registry-Invariant Audit | `node://adhoc-4f83252a-bb5` |
+| G87-D2 — COMPLETE-Flip Same-PR Checklist | `node://adhoc-a36efeb3-3b2` |
+| G87-D3 — Placeholder-Dissolution Ledger | `node://adhoc-a8461d78-065` |
+| G87-D4 — Runner and SG-0 Ratchet Receipt | `node://adhoc-deae251d-b08` |
+| G87-D5 — Band-C / #84 Handoff Classification | `node://adhoc-2c0e77e2-9d0` |
 
 ### G87-D1 — Registry-Invariant Audit
 
