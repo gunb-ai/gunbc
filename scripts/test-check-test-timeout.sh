@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Self-test for scripts/check-test-timeout.sh.
 #
-# Pins the T-WAD Slice 6 bridge behavior: slow-test policy comes from the
-# structured JSONL manifest, and over-budget tests not warn-listed in the
-# manifest fail closed. The retired slow-test-exemptions.txt count floor must not be
-# required for the consumer to run.
+# Drives warn vs fail cases via TEST_TIMEOUT_MANIFEST (temp JSONL fixture only).
+# Production uses dsl/gunbc/test_node_wall_clock_ratchet.dag projected by
+# gunbc-ci wall-clock-warn-manifest (interim #102-path bridge, not #102 closure).
 
 set -euo pipefail
 
@@ -139,4 +138,4 @@ if [ "$failures" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: check-test-timeout JSONL manifest behavior verified"
+echo "PASS: check-test-timeout warn-manifest behavior verified"

@@ -1,10 +1,10 @@
 ---
-status: Mgr canvas (substrate-shape question for Director ratification; surfaced per feedback_substrate_shape_belongs_in_mgr_canvas after snappy-bear-502 audit msg_140d9bc7 2026-05-13)
+status: "Director-ratified Mgr canvas (gate #63 §1.8 CANVAS_RATIFIED 2026-05-13 per PR #2831 + Director msg_804cdc93; Q1=Candidate A). Originated from snappy-bear-502 audit msg_140d9bc7."
 authority parent: R3 Substrate Manager (warm-wolf-698)
 authoring date: 2026-05-13
 gate: §1.8 ledger row #63 `substrate_gap_workflow_scheduling_closed`
 authority docs:
-  - `docs/r3-program-plan.md:291` — gate #63 row (DECLARED 2026-05-06)
+  - `docs/r3-program-plan.md:291` — gate #63 row (**CANVAS_RATIFIED** 2026-05-13 via PR #2831; was DECLARED 2026-05-06)
   - `docs/r3-program-plan.md:77` + §4.4 — Class 4 (workflow/scheduling) criterion: "CI workflow modeled as .dag data executes through evaluator + produces DimensionReport<TimingMeasurement>"
   - `docs/r3-structure.md` — T-Workflow-As-Data + T-Lens-Self-Application lane assignment
 snappy-bear-502 audit anchor: msg_140d9bc7-6417-45bf-b541-41cba1ea98cd
@@ -14,9 +14,9 @@ snappy-bear-502 audit anchor: msg_140d9bc7-6417-45bf-b541-41cba1ea98cd
 
 ## §0. Status
 
-DECLARED at `docs/r3-program-plan.md:291` (NEW 2026-05-06). T-WAD Wave-1 substrate just landed extensively in this Substrate-mgr lane (PR #2774 Slice 4 YamlStatic, PR #2808 Slice 5 BinaryShim, PR #2798 Slice 7 affected-set, PR #2823 gate #62 FileAttachment). snappy-bear-502 was auto-spawned without authored brief and surfaced a clean STOP-condition audit revealing partial-landing state.
+**Single visible surface:** §1.8 row **#63** is **CANVAS_RATIFIED** (2026-05-13, PR **#2831** squash `89df284e3`; Director **msg_804cdc93** — **Q1=Candidate A** administrative closure path). **CONSUMER_LANDED** and **PASSING** are **not** claimed at ratification — program-plan **Notes** + worker brief `docs/briefs/r3-substrate-gate-63-workflow-scheduling-worker.md` own executable closure.
 
-This canvas frames the **closure-scope substrate-shape question** for Director ratification before worker brief authoring.
+**Provenance:** Row **#63** was **DECLARED** (NEW 2026-05-06); T-WAD Wave-1 substrate landed (PR #2774 YamlStatic, PR #2808 BinaryShim, PR #2798 affected-set, PR #2823 gate #62 FileAttachment). snappy-bear-502 audit **msg_140d9bc7** forced STOP-condition inventory; gate-criterion test passes in isolation (**msg_cef1340b**). §§2–§7 below retain the **pre-ratification** engineering analysis that supported Director disposition; **ledger truth** is always `docs/r3-program-plan.md` §1.8 row **#63** at HEAD.
 
 ## §1. Source authority (verbatim)
 
@@ -24,9 +24,9 @@ This canvas frames the **closure-scope substrate-shape question** for Director r
 
 > CI workflow modeled as `.dag` data executes through evaluator
 
-### Gate #63 row (`docs/r3-program-plan.md:291`)
+### Gate #63 row (`docs/r3-program-plan.md` §1.8)
 
-> `substrate_gap_workflow_scheduling_closed` — substrate-gap-class — T-Workflow-As-Data + T-Lens-Self-Application — DECLARED (NEW 2026-05-06) — CI workflow as `.dag` data; substrate prereqs in §4.4
+Authoritative **Status** / **Notes** cells: **§1.8** table row **#63** at HEAD (**CANVAS_RATIFIED** — do not use stale DECLARED-era snapshots). Line numbers in this file’s YAML `authority_docs` cite may drift; grep the row by gate id.
 
 ### Class 4 §4.4 (full closure criterion per snappy-bear-502 grep)
 

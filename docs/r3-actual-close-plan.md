@@ -81,7 +81,7 @@ Neither override alone is sufficient. The PB-0 design doc admits no escape hatch
 **Close criterion**:
 ```bash
 # Predicate at gate #15 close:
-cargo test --release -p v3-compiler --test l5_cross_target_consistency
+cargo test --release -p v3-compiler --test integration l5_
 # returns: PASS with N>0 certification-corpus programs, all 3 targets agreeing on stdout
 ```
 plus §1.8 row #15 status flips DECLARED → PASSING with corpus enumeration cited.
@@ -235,26 +235,27 @@ plus #85 SuiteClaim wrapper consumer landed.
 **Promise** (interrogation §5.2): *"v2 fully retired."*
 
 **HEAD evidence**:
-- Gate #97 `method_template_projection_emit_shim_retirement_coherence` = **PASSING** for coherence-only
+- Gate #42 `v2_directory_deleted` = **CONSUMER_LANDED + PASSING** via PR #2693; `src/v2/` is absent at HEAD.
+- Gate #97 `method_template_projection_emit_shim_retirement_coherence` = **CONSUMER_LANDED + PASSING** for terminal coherence.
 - Per gate row verbatim: *"Terminal retirement = v2 tree absent ⇒ lib + bin table + bin source absent; coherence holds continuously."*
-- `src/v2/` exists at HEAD (terminal not reached)
+- The Gap-4 emit shim is absent at HEAD: no `pb_method_template_projection_dag_emit.rs`, no `emit_method_template_projection` bin source, and no `[[bin]]` manifest table.
 
-**What's missing**: actual deletion of `src/v2/` tree.
+**What's missing**: no implementation work remains for Gap 6 after PR #2693; only close-ceremony predicate receipts remain to be synchronized.
 
 **Plan to cash**:
-- **Owner**: zesty-boar-261 (R3 Debt-Paydown Mgr) — terminal-deletion sweep
-- **Sub-program**:
-  1. Final v2 consumer audit (any `src/v2/` consumers remaining?)
-  2. Delete `src/v2/` + dependent build manifests + workspace member
-  3. Verify gate #97 coherence: lib absent ✓ + bin table empty ✓ + bin source absent ✓
-- **Effort estimate**: 1-2 weeks (mostly audit; deletion is mechanical)
+- **Owner**: zesty-boar-261 (R3 Debt-Paydown Mgr) — terminal-deletion sweep completed by PR #2693.
+- **Sub-program receipt**:
+  1. Final v2 consumer audit completed before deletion.
+  2. `src/v2/` deleted by PR #2693.
+  3. Gate #97 coherence verified: lib absent ✓ + bin table empty ✓ + bin source absent ✓.
+- **Effort estimate**: complete; maintenance-only if the close predicate ledger drifts.
 - **Dependency** (Director feedback item 5 — explicit transitive depth call-out): Gap 6 has the deepest transitive chain in the program:
   - Gap 6 → depends on Gap 1 (PB-0 retirement complete) + Gap 3 (self-host fixed point R3-strong)
   - Gap 3 → depends on Gap 1 + R2-Evaluator + R2-Grounding-Rust+Python + Row-B materialization
   - Effective chain: **Gap 6 ← Gap 3 ← {Gap 1, R2-Evaluator, R2-Grounding, Row-B}** — 5+ deep
-- **Position in close ceremony**: **Gap 6 IS the close-ceremony terminal gate** (per Director recommendation msg_cd2d8d7d item 5). v2 tree deletion is the FINAL R3 dissolution; the entire ratchet → carrier → walker → emission → self-host → test-port cascade closes upstream first. Expect Gap 6 to land in the last 2 weeks of R3 close.
+- **Position in close ceremony**: **Gap 6 IS the close-ceremony terminal gate** (per Director recommendation msg_cd2d8d7d item 5). The §1.8 row #97 substrate-state predicate is already PASSING at HEAD after PR #2693; broader T-V2-Retirement lane closure still waits for the ratchet → carrier → walker → emission → self-host → test-port cascade to close upstream.
 
-**Close criterion**: `ls src/v2/ 2>&1 | grep "No such file"` returns true. §1.8 row #97 terminal-PASSING.
+**Close criterion**: `ls src/v2/ 2>&1 | grep "No such file"` returns true. §1.8 row #97 terminal-PASSING, with predicate execution recorded in `docs/audit/r3-close-predicate-execution-2026-05-13.md`.
 
 ---
 
@@ -400,18 +401,21 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 - **`ClassLinearithmic` + `ClassExponential` are unreachable outputs from the classifier**. They are constructible only via the string-to-AsymptoticClass deserialization in `src/v3/compiler/src/enforced_lens_application.rs:960-962` (used when *users* declare an enforcement budget like `"ClassLinearithmic"`). Nothing in `classify_symbolic_cost` or `normalize` ever produces them. The lattice has 8 declared classes, but the classifier produces only 6.
 
-- **`normalize(c: SymbolicCost)` body** (`src/v3/std/algebra.dag:537-548`) handles only:
-  - Sum: drop `ConstantCost(0)` (additive identity)
+- **`normalize(c: SymbolicCost)` body** (`src/v3/std/algebra.dag:537-548`) — revised per codex BLOCKING on PR #3037 sha 797a6d91: PRIOR FRAMING missed that `reduce_sum` calls `drop_dominated` (Sum-side asymptotic dominance reduction is ALREADY-LANDED at normalize-tier; the gap is at the classifier-tier for post-normalize multi-term composites):
+  - Sum (top-level): drop `ConstantCost(0)` (additive identity)
+  - **Sum dominance reduction (already-landed)**: `reduce_sum` calls `drop_dominated` on multi-term lists — strips dominated terms by asymptotic ordering (e.g. `Sum([Linear(n), Constant(5)])` → `Linear(n)` because `Constant` is dominated by `Linear`); post-drop single-survivor unwraps via `wrap_sum` to avoid invalid singleton `SumCost`. This means many Sum expressions reduce to a terminal variant at normalize-time + classify correctly via terminal arms; the gap is for post-normalize multi-term Sums with no single dominator
   - Product: collapse to `ConstantCost(0)` on multiplicative annihilator, drop `ConstantCost(1)` (multiplicative identity)
   - Single-element Sum/Product: collapse to the element
-  - Product of two identical `LinearCost`s → `PolynomialCost(var, 2)` (n*n = n²)
-  - **NO log-power rule** (`log(n^k) → k * log(n)`), **NO log-product rule**, **NO nested-log handling**, **NO Product/Sum-to-named-tier normalization** (`Product([Linear, Log])` does NOT become `ClassLinearithmic` in classification — it stays `ProductCost` and classifies to `ClassUnknown`).
+  - Product of two identical `LinearCost`s → `PolynomialCost(var, 2)` (n*n = n²) — the only Product-side composition fold
+  - **NO log-power rule** (`log(n^k) → k * log(n)`), **NO log-product rule**, **NO nested-log handling**, **NO Product-side dominance reduction** (`reduce_product` only handles single-term unwrap + LinearCost² fold), **NO Product/Sum-to-named-tier normalization** for surviving composites (`Product([Linear, Log])` does NOT fold; stays `ProductCost` post-normalize, classifies to `ClassUnknown`).
 
-- **What the compiler actually reports for nested algorithms at HEAD** (revised — was overstated previously):
-  - `n log n` = `ProductCost([LinearCost(n), LogCost(n)])` → **`ClassUnknown`** (classifier has no `n log n` arm; `ClassLinearithmic` is unreachable).
+- **What the compiler actually reports for nested algorithms at HEAD** (further revised — Sum-dominance survivor cases classify correctly via terminal arms; only post-normalize multi-term composites + Product compositions fall to Unknown):
+  - **`Sum([Linear(n), Constant(5)])`** = single-dominator sum → normalize drops `Constant(5)` via `drop_dominated` → `Linear(n)` → **`ClassLinear`** ✓ (Sum-dominance flow handles this correctly)
+  - **`Sum([Linear(n), Linear(m)])`** = multi-var multi-term sum (no single dominator) → normalize keeps as `Sum([Linear(n), Linear(m)])` → classify → **`ClassUnknown`** ✗ (composition handling absent at classifier-tier for surviving Sums)
+  - `n log n` = `ProductCost([LinearCost(n), LogCost(n)])` → no Product-side reduction applies → **`ClassUnknown`** (classifier has no `n log n` arm; `ClassLinearithmic` is unreachable).
   - `n log(n^k)` — cannot be constructed directly (type-level: `LogCost` doesn't take `PolynomialCost`). Cost-lens fold canonicalization at construction time is UNVERIFIED at HEAD (lens-body audit deferred to Gap 11 sub-program step 1). If unconstructible: lens emits `UnknownCost(<reason>)` → classifier `ClassUnknown`.
   - `log(log(n))` — same: cannot be constructed (`LogCost` doesn't take `LogCost`).
-  - `n² log n` = `ProductCost([PolynomialCost(n, 2), LogCost(n)])` → **`ClassUnknown`** (composition → Unknown; the polynomial degree and the log factor are both lost).
+  - `n² log n` = `ProductCost([PolynomialCost(n, 2), LogCost(n)])` → **`ClassUnknown`** (composition → Unknown).
   - `n log²n` = `ProductCost([LinearCost(n), LogCost(n), LogCost(n)])` → **`ClassUnknown`** (composition → Unknown).
   - `2^n` — no `ExponentialCost` substrate variant; cannot be represented in source. Would fall to `UnknownCost(<reason>)`.
 
@@ -419,7 +423,7 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 **What's missing** (recalibrated per actual HEAD evidence above — classifier composition-handling is the root issue, not lattice tier coverage):
 
-1. **`classify_symbolic_cost` composition handling**: the classifier currently maps ALL `ProductCost` and `SumCost` to `ClassUnknown`. This is the dominant gap — even `n log n` (the most common nested case) classifies to Unknown despite `ClassLinearithmic` being an enumerated tier. Composition-aware classification arms are needed: at minimum (a) `Product([Linear, Log])` → `ClassLinearithmic`, (b) `Product([Polynomial(k), Log])` → tier extension or named collapse, (c) `Sum` dominance reduction (drop dominated terms, classify the survivor).
+1. **`classify_symbolic_cost` composition handling** (revised per codex BLOCKING on PR #3037 sha 797a6d91 — distinguishing already-landed Sum-side dominance from remaining classifier-tier gap): Sum-side dominance reduction is **ALREADY-LANDED at normalize-tier** (`reduce_sum` calls `drop_dominated` — multi-term sums where one term asymptotically dominates reduce to the survivor pre-classify, which then classifies correctly via terminal arms). The remaining gap is at the **classifier-tier for post-normalize surviving composites**: (a) `Product([Linear, Log])` → currently `ClassUnknown`, should be `ClassLinearithmic`, (b) `Product([Polynomial(k), Log])` → currently `ClassUnknown`, needs tier extension or named collapse, (c) post-normalize multi-term `Sum` with no single dominator (e.g. `Sum([Linear(n), Linear(m)])`) → currently `ClassUnknown`, needs classifier-tier handling (separate from the already-landed `drop_dominated` normalization). The dominant gap is **Product-side composition arms at the classifier-tier** + multi-var Sum survivors; Sum-side single-dominator flow already correctly produces terminal classes.
 2. **`LogCost` recursive shape (OR canonicalization rule)**: substrate cannot express `Log(complex)` directly (terminal `SizeVariable`-only argument). Either ratify `LogCost(SymbolicCost)` symmetric with Product/Sum, OR ratify a `.dag`-authored canonicalization rule that converts `Log(complex)` → `Log(SizeVariable)` of the dominant variable + multiplicative factors hoisted out (e.g. `log(n^k) → k * log(n)`) at expression-construction time.
 3. **`ExponentialCost` variant absence**: no substrate way to represent exponential growth in source cost. Either add the 8th variant (against STOP SIGNAL discipline — needs ratified motivation) or formally scope `ClassExponential` as enforcement-budget-only (input-not-output) with explicit rationale.
 4. **`ClassLinearithmic` / `ClassExponential` reachability gap**: 2 of 8 lattice classes are unreachable from `classify_symbolic_cost`; only constructible via string-deserialization for enforcement budgets. Either wire the classifier to produce them (per item 1) OR formally annotate them as input-only tiers with explicit reachability documentation.
@@ -456,7 +460,7 @@ plus #85 SuiteClaim wrapper consumer landed.
 
 **Promise** (Gap 11 + gate #85 `forall_exists_quantifier_substrate_landed` + gate #86 `program_generator_carrier_landed` + thesis-facet-3: *"complexity lens behaviorally complete"* extended via the operator adversarial probe 2026-05-13: *"do we have testcases representing random combinations of functions, validating that the correct complexity result is generated?"*): the complexity lens is validated against **random program compositions** generated via the `ProgramGenerator` substrate, with per-composition expected complexity verified against an oracle. Behavioral completion is not just "passes 2 hand-authored cementing cases" but "passes N>>1 random compositions per run with zero divergence from oracle".
 
-**HEAD evidence** (operator probe 2026-05-13; revised per briansrls BLOCKING comment-... 2026-05-13T22:42:32Z on PR #3038: **prior framing pointed at wrong authority** — `Quantifier::ForAll` + `QuantifiedTestClaim` + `ProgramGenerator` surface ALREADY exists at HEAD as the property-based-testing authority; gap is the RUNNER, not the substrate):
+**HEAD evidence** (operator probe 2026-05-13; revised per codex BLOCKING on PR #3037 sha 797a6d91 + briansrls BLOCKING on PR #3038 inline at `:463`: **prior framing pointed at wrong authority** — `Quantifier::ForAll` + `QuantifiedTestClaim` + `ProgramGenerator` surface ALREADY exists at HEAD as the property-based-testing authority; gap is the RUNNER, not the substrate):
 
 - **`ProgramGenerator` substrate carrier LANDED** (gate #86; `src/v3/std/verification.dag`: `type ProgramGenerator { ... }`). Used in carrier-surface compile test at `m1_5_verification_test.rs::program_generator_authoring_surface_compiles_cleanly` + bound into the existing `QuantifiedTestClaim` (see below).
 - **`Quantifier = ForAll | Exists` sum** authored at `src/v3/std/verification.dag` (gate #85 surface). This is the **claim-layer quantifier** for property-based testing (NOT `ForAllTargets` which is a separate cross-target authority per Gap 2). Per the comment block above the type: *"Closed quantifier over a generated program family. This lives at the claim layer, not inside `TestPredicate`, so predicates keep their 'property of one program' meaning."*
@@ -467,7 +471,7 @@ plus #85 SuiteClaim wrapper consumer landed.
   Per the inline citation, runner wiring is a named gate #85 dissolution trigger via Cluster M Phase 2/3 work.
 - **Complexity cementing test** (`src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs`): **2 hand-authored test cases** at HEAD (`literal_bind_cements_constant_complexity_summary` + `recursive_countdown_cements_linear_work_and_span`). Zero random compositions; zero oracle comparison; zero quantifier-coverage.
 - **No `proptest` / `quickcheck` / random-program-generation tests** for the complexity lens anywhere in `src/v3/compiler/tests/`.
-- **Result**: gate #79 `lens_capability_register_zero_proxy_zero_stub` lens-completion for complexity can claim "behaviorally complete" while never having validated against arbitrary nested compositions (the substrate `SymbolicCost` algebra reach is **enormous** vs the 2 cementing cases covered). Closing gate #79 honestly requires (a) wiring the existing `QuantifiedTestClaim` runner (gate #85 follow-on per Cluster M Phase 2/3), (b) authoring a complexity-generator instance + oracle, (c) authoring property-based TestClaims against the wired runner.
+- **Result**: gate #79 `lens_capability_register_zero_proxy_zero_stub` lens-completion for complexity can claim "behaviorally complete" while never having validated against arbitrary nested compositions (the substrate `SymbolicCost` algebra reach is **enormous** vs the 2 cementing cases covered). Closing gate #79 honestly requires (a) wiring the existing `QuantifiedTestClaim` runner (gate #85 follow-on per Cluster M Phase 2/3), (b) authoring a complexity-generator instance + oracle, (c) authoring property-based `QuantifiedTestClaim` data declarations against the wired runner.
 
 **What's missing** (runner wiring + complexity-specific generator + oracle + property-based fixtures — NOT extending `ForAllTargets` per prior framing):
 

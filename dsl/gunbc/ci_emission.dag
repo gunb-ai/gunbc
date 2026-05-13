@@ -12,7 +12,6 @@
 module gunbc.ci_emission
 
 import gunbc.ci { CIWorkflowDag, ci_workflow_dag }
-import gunbc.ci.github_actions_workflow { gunbc_ci_github_actions_workflow }
 import extdeps.github.actions {
   Workflow, Job, RunStep, UsesStep,
   HostedRunner, UbuntuLatest,
@@ -20,11 +19,12 @@ import extdeps.github.actions {
 }
 
 // 🟡 YELLOW (scaffold) — coproduct-dissolution receipt (see modeling-discipline Practice 4).
-// Ratified initial surface: YamlStatic | BinaryShim | PythonShim (`docs/design-ci-workflow-emitter-dispatch.md` §3;
-// `docs/briefs/t-wad-wi2-substrate-and-slice4-yamlstatic-body-worker.md` §1). `InlineGunbc` stays off the enum until a
-// real runtime consumer exists (emitter-dispatch §5.4).
+// Ratified initial surface: YamlStatic | BinaryShim
+// (`docs/r3-t-workflow-as-data-full-r3-close-scope.md` §1 gate #99).
+// PythonShim and InlineGunbc stay off the enum until a real runtime consumer
+// lands with the corresponding substrate-prereq PR.
 
-type WorkflowRuntime = YamlStatic | BinaryShim | PythonShim
+type WorkflowRuntime = YamlStatic | BinaryShim
 
 // Slice 5: BinaryShim thin-shim `Workflow` projection (design-ci-workflow-emitter-dispatch.md §5.2).
 //
@@ -39,11 +39,11 @@ type WorkflowRuntime = YamlStatic | BinaryShim | PythonShim
 //
 // Binary `main()` and affected-set selection are out of scope — the arm
 // emits a `Workflow` that *references* the binary, not the binary itself.
-fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow = Workflow {
+fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow = {
   name: dag.github_actions_workflow.name,
   on: dag.github_actions_workflow.on,
   concurrency: dag.github_actions_workflow.concurrency,
-  jobs: [Job {
+  jobs: [{
       id: "ci",
       name: none,
       runner: HostedRunner { label: UbuntuLatest },
@@ -80,15 +80,11 @@ fn gunbc_ci_emission_binary_shim_workflow(dag: CIWorkflowDag) -> Workflow = Work
   permissions: dag.github_actions_workflow.permissions
 }
 
-// PythonShim placeholder retained until that arm body lands (separate slice / brief).
-data gunbc_ci_emission_python_shim_placeholder_workflow: Workflow = gunbc_ci_github_actions_workflow
-
 // v3 tokenizer maps `fn`, not legacy `func` (which becomes `Ident("func")` and fails top-level dispatch).
 fn project_github_actions(dag: CIWorkflowDag, runtime: WorkflowRuntime) -> Workflow =
   match runtime {
     YamlStatic => dag.github_actions_workflow
     BinaryShim => gunbc_ci_emission_binary_shim_workflow(dag)
-    PythonShim => gunbc_ci_emission_python_shim_placeholder_workflow
   }
 
 // Pinned projection: same `ci_workflow_dag` row, YamlStatic transport (Slice 4).
