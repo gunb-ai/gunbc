@@ -11,6 +11,11 @@
 //! Subcommands:
 //! - `wall-clock-warn-manifest` — print JSONL warn-policy lines projected from
 //!   `dsl/gunbc/test_node_wall_clock_ratchet.dag` (R3 gate #102 substrate authority).
+//!
+//! **`--workflow` / `--event` dispatch:** not implemented yet (BinaryShim gate-matrix
+//! wiring is pending). That path exits **2** fail-closed unless
+//! `GUNBC_CI_ALLOW_DISPATCH_STUB=1` (or `true`) is set so callers can smoke the
+//! binary without implying dispatch succeeded.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -92,7 +97,17 @@ fn main() -> ExitCode {
         eprintln!(
             "gunbc-ci: BinaryShim dispatch stub (workflow={wf}); gate matrix execution not wired yet."
         );
-        return ExitCode::SUCCESS;
+        let allow_stub = std::env::var("GUNBC_CI_ALLOW_DISPATCH_STUB")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        if allow_stub {
+            return ExitCode::SUCCESS;
+        }
+        eprintln!(
+            "gunbc-ci: refusing success for unimplemented dispatch (exit 2). \
+             Set GUNBC_CI_ALLOW_DISPATCH_STUB=1 to smoke this stub until dispatch lands."
+        );
+        return ExitCode::from(2);
     }
 
     usage();
