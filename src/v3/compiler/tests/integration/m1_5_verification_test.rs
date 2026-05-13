@@ -242,6 +242,14 @@ fn bootstrap_loads_verification_authority_types() {
                 vec![String::from("expected")],
             ),
             (
+                String::from("SymbolicCostExprEqualsForBindParam"),
+                vec![String::from("expected"), String::from("param")],
+            ),
+            (
+                String::from("ComplexityCostDimensionReportsAgree"),
+                vec![String::from("bind_name")],
+            ),
+            (
                 String::from("PerfWithinBaseline"),
                 vec![
                     String::from("subject"),
@@ -287,6 +295,13 @@ fn bootstrap_loads_verification_authority_types() {
             (
                 String::from("GeneratedFromDag"),
                 vec![String::from("authority"), String::from("generated_paths")],
+            ),
+            (
+                String::from("CementingDispatchMatchesProjection"),
+                vec![
+                    String::from("capability_register"),
+                    String::from("cementing_receipts"),
+                ],
             ),
             (
                 String::from("ReleaseDeferredClaim"),
