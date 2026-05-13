@@ -411,8 +411,14 @@ fn ci_workflow_as_data_demo_pins_modeled_workflow_row() {
 
 #[test]
 fn ci_workflow_as_data_demo_pins_structural_ci_dag_shape() {
-    let ci = compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_FILE}: {err:?}"));
+    let ci = match compile_to_dag(GUNBC_CI_SOURCE, GUNBC_CI_FILE) {
+        Ok(ci) => ci,
+        Err(CompileError::Semantic(dag)) => panic!(
+            "compile {GUNBC_CI_FILE}: diagnostics: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("compile {GUNBC_CI_FILE}: {other:?}"),
+    };
     let fields = structural_value_body(&ci, "ci_workflow_dag");
     let (name, node_ids, edges) = workflow_topology(&ci, fields);
 
@@ -568,8 +574,14 @@ fn gunbc_ci_github_actions_workflow_dag_matches_yaml_generator_output() {
 
 #[test]
 fn gunbc_ci_emission_substrate_compiles() {
-    let dag = compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE)
-        .unwrap_or_else(|err| panic!("compile {GUNBC_CI_EMISSION_FILE}: {err:?}"));
+    let dag = match compile_to_dag(GUNBC_CI_EMISSION_SOURCE, GUNBC_CI_EMISSION_FILE) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => panic!(
+            "compile {GUNBC_CI_EMISSION_FILE}: diagnostics: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("compile {GUNBC_CI_EMISSION_FILE}: {other:?}"),
+    };
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
 }
 
