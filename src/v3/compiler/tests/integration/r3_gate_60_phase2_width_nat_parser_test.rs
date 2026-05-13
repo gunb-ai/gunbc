@@ -20,8 +20,15 @@ fn assert_compose_algebra_machine_width_literal(
 ) {
     let ty = bind_value_type_decl(dag, bind_name);
     let decl = dag.declaration(ty);
-    let TypeConnective::Instantiation { template, arguments } = &decl.connective else {
-        panic!("expected root Instantiation for `{bind_name}`, got {:?}", decl.connective);
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &decl.connective
+    else {
+        panic!(
+            "expected root Instantiation for `{bind_name}`, got {:?}",
+            decl.connective
+        );
     };
     let compose_id = dag
         .declaration_by_name("Compose")
@@ -91,17 +98,13 @@ let width_nat: Nat<8> = 0
             .iter()
             .find_map(|it| match it {
                 parse_surface::SurfaceItem::Let {
-                    name: n,
-                    type_ann,
-                    ..
+                    name: n, type_ann, ..
                 } if n == name => Some(type_ann.as_ref().expect("type ann")),
                 _ => None,
             })
             .unwrap_or_else(|| panic!("let `{name}`"));
         let parse_surface::SurfaceType::Parameterized {
-            name: tycon,
-            args,
-            ..
+            name: tycon, args, ..
         } = item
         else {
             panic!("expected Parameterized type for `{name}`");

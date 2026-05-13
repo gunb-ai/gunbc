@@ -3618,7 +3618,11 @@ fn materialize_algebra_machine_width_width_nat(
     if args.len() != 1 {
         return None;
     }
-    let SurfaceType::WidthNatLiteral { decimal, span: lit_span } = &args[0] else {
+    let SurfaceType::WidthNatLiteral {
+        decimal,
+        span: lit_span,
+    } = &args[0]
+    else {
         return None;
     };
     let algebra_surface = match surface_name {
@@ -3667,9 +3671,9 @@ fn type_to_declaration_id(
             alloc_identifier_stub(dag, name, ty.span())
         }
         SurfaceType::Parameterized { name, args, span } => {
-            if let Some(connective) = materialize_algebra_machine_width_width_nat(
-                dag, symbols, local, name, args, span,
-            ) {
+            if let Some(connective) =
+                materialize_algebra_machine_width_width_nat(dag, symbols, local, name, args, span)
+            {
                 let id = dag.alloc_declaration_id();
                 dag.push_declaration(Declaration {
                     id,
@@ -3804,9 +3808,9 @@ fn type_to_connective(
                 arguments,
             }
         }
-        SurfaceType::WidthNatLiteral { decimal, .. } => TypeConnective::Atom(AtomPayload::Literal(
-            LiteralBits::Int(decimal.clone()),
-        )),
+        SurfaceType::WidthNatLiteral { decimal, .. } => {
+            TypeConnective::Atom(AtomPayload::Literal(LiteralBits::Int(decimal.clone())))
+        }
         SurfaceType::Optional { inner, .. } => {
             let element = type_to_declaration_id(inner, symbols, local, dag);
             type_connective_cardinality(dag, element, CardinalityBound::AtMostOne)
