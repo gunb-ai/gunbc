@@ -234,3 +234,108 @@ fn r3_gate_87_unused_parameters_rust_receipt_on_literal_program() {
         "literal bind should not surface unused-parameter findings"
     );
 }
+
+/// `LensRegistryEntry.name` values for `tests/dag/t_r3_gate_87_cementing_regen_*.dag` harnesses
+/// that intentionally remain **placeholder** receipts (`Compiles` or minimal `Int` projection)
+/// until the dissolution triggers in each harness header land.
+const G87_DAG_PLACEHOLDER_LENS_NAMES: &[&str] = &[
+    "infer_helpers",
+    "lower_helpers",
+    "structural_resolution",
+    "unused_parameters",
+    "variant_payload",
+];
+
+/// Rust paths indexed by `docs/r3-gate-87-cementing-placeholder-dissolution-ledger.md` (sorted).
+const G87_GATE87_CEMENTING_RUST_RECEIPT_PATHS: &[&str] = &[
+    "src/v3/compiler/src/cementing_dispatch.rs",
+    "src/v3/compiler/src/integration_rs_wiring_scan.rs",
+    "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs",
+    "src/v3/compiler/tests/integration/cementing/cementing_provenance_origin_integration_test.rs",
+    "src/v3/compiler/tests/integration/cementing/complexity_lens_behavioral_completion.rs",
+    "src/v3/compiler/tests/integration/cementing/cost_lens_symbolic_consumer_test.rs",
+    "src/v3/compiler/tests/integration/common/wiring_scanner_test.rs",
+    "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
+];
+
+const G87_DAG_PLACEHOLDER_KEYS_BEGIN: &str = "<!-- G87_CEMENTING_DAG_PLACEHOLDER_KEYS_BEGIN -->";
+const G87_DAG_PLACEHOLDER_KEYS_END: &str = "<!-- G87_CEMENTING_DAG_PLACEHOLDER_KEYS_END -->";
+const G87_RUST_RECEIPT_PATHS_BEGIN: &str = "<!-- G87_CEMENTING_RUST_RECEIPT_PATHS_BEGIN -->";
+const G87_RUST_RECEIPT_PATHS_END: &str = "<!-- G87_CEMENTING_RUST_RECEIPT_PATHS_END -->";
+
+fn parse_g87_ledger_marker_block(doc: &str, begin: &str, end: &str) -> BTreeSet<String> {
+    let start_idx = doc.find(begin).unwrap_or_else(|| {
+        panic!("gate-#87 dissolution ledger must contain marker `{begin}`");
+    });
+    let rest = &doc[start_idx + begin.len()..];
+    let end_rel = rest.find(end).unwrap_or_else(|| {
+        panic!("gate-#87 dissolution ledger must contain marker `{end}`");
+    });
+    let body = &rest[..end_rel];
+    body.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("<!--"))
+        .map(String::from)
+        .collect()
+}
+
+#[test]
+fn r3_gate_87_placeholder_dissolution_ledger_matches_authority() {
+    let ledger_path =
+        workspace_root().join("docs/r3-gate-87-cementing-placeholder-dissolution-ledger.md");
+    let doc = std::fs::read_to_string(&ledger_path).unwrap_or_else(|e| {
+        panic!("read gate-#87 dissolution ledger {}: {e}", ledger_path.display());
+    });
+
+    let ledger_dag_keys = parse_g87_ledger_marker_block(
+        &doc,
+        G87_DAG_PLACEHOLDER_KEYS_BEGIN,
+        G87_DAG_PLACEHOLDER_KEYS_END,
+    );
+    let expected_dag_keys: BTreeSet<String> = G87_DAG_PLACEHOLDER_LENS_NAMES
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    assert_eq!(
+        ledger_dag_keys, expected_dag_keys,
+        "update `docs/r3-gate-87-cementing-placeholder-dissolution-ledger.md` \
+         G87_CEMENTING_DAG_PLACEHOLDER_KEYS block to match G87_DAG_PLACEHOLDER_LENS_NAMES \
+         (or vice versa) when placeholder harness membership changes"
+    );
+
+    let runner_names = r3_gate_87_cementing_regen_lens_names_for_runner_table();
+    for name in G87_DAG_PLACEHOLDER_LENS_NAMES {
+        assert!(
+            runner_names.contains(*name),
+            "G87_DAG_PLACEHOLDER_LENS_NAMES names `{name}` missing from \
+             R3_GATE_87_CEMENTING_REGEN_SUITES-derived inventory"
+        );
+    }
+
+    let full_behavior_harness_count = R3_GATE_87_CEMENTING_REGEN_SUITES
+        .len()
+        .saturating_sub(G87_DAG_PLACEHOLDER_LENS_NAMES.len());
+    assert_eq!(
+        full_behavior_harness_count,
+        5,
+        "expected five non-placeholder gate-#87 regen harnesses \
+         (cost, cost_symbolic, cost_target_realization, effect_enumeration, provenance); \
+         adjust this assertion when R3_GATE_87_CEMENTING_REGEN_SUITES grows or shrinks"
+    );
+
+    let ledger_rust_paths = parse_g87_ledger_marker_block(
+        &doc,
+        G87_RUST_RECEIPT_PATHS_BEGIN,
+        G87_RUST_RECEIPT_PATHS_END,
+    );
+    let expected_rust_paths: BTreeSet<String> = G87_GATE87_CEMENTING_RUST_RECEIPT_PATHS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    assert_eq!(
+        ledger_rust_paths, expected_rust_paths,
+        "update `docs/r3-gate-87-cementing-placeholder-dissolution-ledger.md` \
+         G87_CEMENTING_RUST_RECEIPT_PATHS block to match G87_GATE87_CEMENTING_RUST_RECEIPT_PATHS \
+         (or vice versa) when the Rust bridge inventory changes"
+    );
+}
