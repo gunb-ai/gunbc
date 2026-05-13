@@ -1,6 +1,6 @@
-% R3 Cluster M — generator-manifest substrate refinement worker brief (AMENDED 2026-05-13)
+% R3 Cluster M — generator-manifest substrate refinement worker brief (RE-AMENDED 2026-05-13)
 
-**Status**: AMENDED — substrate-shape-only scope per Director re-ratification msg_606e0e50 (after worker warm-wren-479 STOP-AND-PING msg_1284363e surfaced three canvas-level shape concerns; original ratification msg_05837745 superseded on Q3 + Q-RegenCapability + Q-FixtureMapping).
+**Status**: RE-AMENDED — substrate-shape-only scope per Director re-ratifications msg_606e0e50 + msg_8423d468. Q3 has been ratified twice: first amendment to `ContentHash` (msg_606e0e50) was retracted after worker warm-wren-479 STOP-AND-PING msg_ceb979d1 surfaced that branded `ContentHash` literals fail `where brand(...)` narrowing-discharge at the lowerer's literal boundary (`lower.rs:6094`); Director msg_8423d468 then ratified **β bare `NonEmptyStr`** matching the `SnapshotRef = NonEmptyStr` precedent at `verification.dag:31` + `FixedPointConverges.expected` at line 431. Branded `ContentHash` re-introduction is deferred to the follow-up Evaluator-Mgr-owned runtime PR at its hash-derivation construction boundary. Original ratification msg_05837745 superseded on Q3 + Q-RegenCapability + Q-FixtureMapping.
 
 **Owner parent**: warm-wolf-698 (R3 Substrate Mgr).
 **Authoring date**: 2026-05-13.
@@ -15,7 +15,7 @@
 Per Director msg_606e0e50 §"Q-RegenCapability RATIFIED: (β) SPLIT" + §"Q-FixtureMapping RATIFIED: deferred":
 
 **IN-SCOPE this PR (Substrate-Mgr-owned)**:
-- Substrate-shape change: `verification.dag` `GeneratedFromDag` refinement + new `GeneratedManifestEntry` type + `ContentHash` field
+- Substrate-shape change: `verification.dag` `GeneratedFromDag` refinement + new `GeneratedManifestEntry` type + `source_hash: NonEmptyStr` field (β per Q3-RE-AMEND msg_8423d468)
 - 4-site `test_runner.rs` migration: lockstep field-rename only (minimal-shape; no new evaluator runtime capability)
 - #86 PASSING transitions in-place via shape-change (existing predicate sites carry minimal-shape `manifest_entries` with trivial `dag_source` + trivial `source_hash`; gate satisfies on shape, not on byte-equality firing)
 - Bootstrap regen via standard `regen.dag` flow (NOT hand-edit)
@@ -23,7 +23,7 @@ Per Director msg_606e0e50 §"Q-RegenCapability RATIFIED: (β) SPLIT" + §"Q-Fixt
 **OUT-OF-SCOPE this PR (split to follow-ups)**:
 - 3-way byte-equality runtime assertion → **follow-up Evaluator-Mgr-owned PR** (blocked on R3 Evaluator Mgr lane re-spawn per operator escalation msg_acf78d37)
 - Directory-walk orphan-output detection → same follow-up (also requires runtime capability extension)
-- Per-file FixtureMapping enumeration (which DeclarationRef per parse_generated.rs, what ContentHash literal per surviving file) → **follow-up Verification-Mgr-owned integration slice** per still-moth-538 msg_6c50e646 "narrow follow-up integration/sweep" framing
+- Per-file FixtureMapping enumeration (which DeclarationRef per parse_generated.rs, what hash literal per surviving file) → **follow-up Verification-Mgr-owned integration slice** per still-moth-538 msg_6c50e646 "narrow follow-up integration/sweep" framing. The follow-up runtime PR may re-introduce branded `ContentHash` at its hash-derivation construction boundary where the lowerer constraint does not apply.
 
 **Gap 5 close impact** (Director-confirmed): gate #84 positive-authority predicate close STILL waits on the follow-up runtime PR, not this PR. This PR lands substrate-shape readiness; Gap 5 actual close fires when runtime lands. PR #3013 §Gap-5 narration unchanged.
 
@@ -39,11 +39,15 @@ In `src/v3/std/verification.dag`:
 type GeneratedManifestEntry {
   output_path: Path
   dag_source:  DeclarationRef           // TestClaim source authority (Q2 ratified, unchanged)
-  source_hash: ContentHash              // AMENDED per Q3-(b): ContentHash, NOT SnapshotRef
+  source_hash: NonEmptyStr              // RE-AMENDED per Q3-(β) msg_8423d468: bare NonEmptyStr, not branded
 }
 ```
 
-**Why ContentHash, not SnapshotRef** (Director ratification msg_606e0e50): worker grep at `test_runner.rs:4742` verified `SnapshotRef` is a **sentinel string** (`"pipeline_stage_snapshots"`) driving registry-keyed-snapshot-lookup — NOT a byte-equality hash reference. Original Q3 framing overloaded the existing convention. `ContentHash` (per `core/infra::hash::ContentHash`, CLAUDE.md hash-unification) is the canonical hash type and names the actual fact per `feedback_naming_is_aliasing`. Aligns with `feedback_state_space_vs_behavioral_invariants`: type-system encodes the actual fact vs opaque-string-coupling to a registry.
+**Why bare `NonEmptyStr` this PR, branded `ContentHash` deferred** (Director re-ratification msg_8423d468):
+
+First-cycle reasoning (msg_606e0e50, Q3-amend (b) → `ContentHash`): worker grep at `test_runner.rs:4742` verified `SnapshotRef` is a **sentinel string** (`"pipeline_stage_snapshots"`) driving registry-keyed-snapshot-lookup — NOT a byte-equality hash reference. Original Q3 framing overloaded the existing convention. `ContentHash` (per `core/infra::hash::ContentHash`, CLAUDE.md hash-unification) names the actual fact per `feedback_naming_is_aliasing`.
+
+Second-cycle reasoning (msg_8423d468, Q3-RE-AMEND β → bare `NonEmptyStr`): worker STOP-AND-PING msg_ceb979d1 surfaced that `ContentHash = NonEmptyStr where brand("ContentHash")` (`dsl/std/types.dag:324`) fails literal-narrowing discharge at the lowerer's literal boundary (`lower.rs:6094`); no construction precedent for branded-`NonEmptyStr` literals exists on main today. Per amended STOP §5 trigger (iii) the canvas-shape concern returned, and Director re-ratified **β bare `NonEmptyStr`** matching the `SnapshotRef = NonEmptyStr` precedent at `verification.dag:31`. Path (α) substrate-side lowerer narrowing-branch extension is preserved as future canvas (not spawned now). Branded `ContentHash` re-introduction is deferred to the follow-up Evaluator-Mgr-owned runtime PR at its hash-derivation construction boundary, where lowerer constraint N/A.
 
 Cardinality invariants (unchanged from msg_05837745):
 - One manifest entry → exactly one source declaration (1:1).
@@ -116,11 +120,11 @@ Director-mandated per msg_606e0e50 §"Revised worker scope": existing #86 `progr
 
 - **(i)** Shape-change-only causes #86 PASSING regression — substrate-fact-introduction surfaces something unaccounted for in the field-rename. Indicates the canvas underspecified migration paths even at shape-only level.
 - **(ii)** 4-site `test_runner.rs` migration surfaces >4 call-sites — scope-broadening risk; Director's pre-dispatch grep count audit was wrong.
-- **(iii)** `ContentHash` existing type doesn't compose cleanly with substrate types (e.g., `verification.dag` cannot import/reference `ContentHash`; substrate-side ContentHash declaration unclear).
+- **(iii)** `ContentHash` did not compose cleanly with surface-DSL literal construction; RESOLVED via Q3-RE-AMEND β `NonEmptyStr` (msg_8423d468). A bare `NonEmptyStr` literal **also** failing to discharge would indicate a deeper lowerer issue beyond brand (unlikely; `verification.dag` already constructs `NonEmptyStr`-backed fields elsewhere).
 - **(iv) (preserved from original brief)** Q4 scan-root ambiguity during follow-up runtime PR — Q4-amendment trigger, not this PR.
 
 Removed triggers (no longer apply per split):
-- Original §5 trigger #4 (Q3 SnapshotRef doesn't fit) — RESOLVED via Q3-amend to ContentHash.
+- Original §5 trigger #4 (Q3 SnapshotRef doesn't fit) — RESOLVED via Q3-amend to `ContentHash` (msg_606e0e50), then RE-RESOLVED via Q3-RE-AMEND to bare `NonEmptyStr` (msg_8423d468) after the branded literal failed lowerer narrowing-discharge.
 - Original §5 trigger #2 (3-way assertion finds snapshot drift) — N/A this PR (runtime moved to follow-up).
 
 ## §6. Closure receipt
@@ -142,20 +146,21 @@ These do NOT block this PR; tracked for sequencing visibility.
 
 ### §7.2 Verification-Mgr-owned follow-up: per-file FixtureMapping enumeration
 
-- Scope: enumerate the DeclarationRef↔file mapping for existing predicate sites + populate real `source_hash: ContentHash` values per surviving file.
+- Scope: enumerate the DeclarationRef↔file mapping for existing predicate sites + populate real `source_hash` values per surviving file (follow-up runtime PR may re-introduce branded `ContentHash` at its construction boundary; this slice consumes whatever shape the runtime PR lands).
 - Dependency: §7.1 runtime capability landed (so byte-equality assertions actually fire).
 - Owner: still-moth-538 / Verification Mgr "narrow follow-up integration/sweep" per msg_6c50e646.
 
 ## §8. References
 
 - Director ratification (original): msg_05837745 (§2.A + Q2 DeclarationRef + Q4 directory-walk + Q5 per-class same-shape preserved — all UNCHANGED).
-- Director re-ratification (amendment): msg_606e0e50 (Q3-amend ContentHash + Q-RegenCapability split + Q-FixtureMapping deferred).
+- Director re-ratification (first amendment): msg_606e0e50 (Q3-amend ContentHash + Q-RegenCapability split + Q-FixtureMapping deferred).
+- Director re-ratification (second amendment): msg_8423d468 (Q3-RE-AMEND β bare `NonEmptyStr` after worker STOP-AND-PING msg_ceb979d1 surfaced branded-literal narrowing-discharge gap).
 - Worker STOP-AND-PING that surfaced amendments: warm-wren-479 msg_1284363e.
 - Canvas authority: [`docs/design-cluster-m-generator-manifest-substrate-canvas-2026-05-13.md`](../design-cluster-m-generator-manifest-substrate-canvas-2026-05-13.md) (commit 7c762c500).
 - Gap 5 close-criterion source: [`docs/r3-actual-close-plan.md`](../r3-actual-close-plan.md) §Gap-5 lines 204-223 (PR #3013).
 - Existing substrate: `src/v3/std/verification.dag:437` (`GeneratedFromDag`).
 - Existing runner consumer: `src/v3/compiler/src/test_runner.rs:5015-5060` (`eval_generated_from_dag_shape`).
-- ContentHash carrier: `core/infra::hash::ContentHash` per CLAUDE.md hash-unification (canonical hash type).
+- ContentHash carrier (deferred re-introduction): `core/infra::hash::ContentHash` per CLAUDE.md hash-unification; declared at `dsl/std/types.dag:324` as `NonEmptyStr where brand("ContentHash")`. Re-introduction lands at the follow-up runtime PR's hash-derivation construction boundary.
 - INVARIANTS §P1 (carrier introduction) + §P2 (Single Authority) + §P5 (Progress is Dissolution).
 - §1.8 rows: #84 (substrate-shape-readiness this PR; runtime close follow-up), #86 (PASSING in-place transition).
 
