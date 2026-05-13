@@ -3141,7 +3141,7 @@ impl<'a> TestRunner<'a> {
                 };
                 i64::from(matches!(
                     analyze_parallelism(program_dag, root),
-                    crate::dag::WorkflowParallelismReport::ParallelUnsupported(detail)
+                    crate::dag::WorkflowParallelismReport::ParallelismUnsupported(detail)
                         if matches!(
                             detail.kind,
                             crate::dag::ParallelismUnsupportedKind::NoWorkflowProjection
@@ -6274,6 +6274,13 @@ fn find_bind<'a>(
         }
         _ => None,
     })
+}
+
+fn first_behavior_root(dag: &Dag) -> Option<NodeId> {
+    dag.nodes()
+        .iter()
+        .find(|node| matches!(node, Behavior::Value(_) | Behavior::Bind(_)))
+        .map(Behavior::id)
 }
 
 fn expected_int_literal(
