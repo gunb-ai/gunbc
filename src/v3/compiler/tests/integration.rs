@@ -1121,6 +1121,10 @@ mod parse_stage4_prep {
 
     #[test]
     fn handwritten_parser_accepts_gunbc_digest_render_dag() {
+        // P5 receipt: this Rust harness is a narrow parser-acceptance consumer
+        // for the new `.dag` authority file. It does not introduce semantic
+        // authority; it keeps the Phase-3 render projection loadable until the
+        // parser corpus is generated from structural declarations.
         parse_file(
             include_str!("../../../../dsl/gunbc/digest_render.dag"),
             "dsl/gunbc/digest_render.dag",
