@@ -41,9 +41,14 @@ use std::path::PathBuf;
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{
+    Behavior, CompositionVerdict, Declaration, EffectShape, FieldValue, IdempotentShape,
+    LiteralBits, NonSingletonList, OperationEffect, ValueBody, WorkflowEffect,
+    WorkflowParallelismReport,
+};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use v3_compiler::lens_parallelism::analyze_parallelism;
 use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
@@ -155,6 +160,46 @@ fn r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program() {
     assert!(
         report.facts.len() <= dag.nodes().len(),
         "effect facts should not exceed walked node count"
+    );
+}
+
+#[test]
+fn r3_gate_87_parallelism_rust_receipt_on_read_only_parallel_branches() {
+    let mut dag = compile_to_dag("let anchor: Int = 1", "r3_gate_87_parallelism_receipt.v3")
+        .expect("compile");
+    let root = dag
+        .nodes()
+        .iter()
+        .find(|node| matches!(node, Behavior::Value(_) | Behavior::Bind(_)))
+        .expect("compiled fixture should contain a workflow anchor")
+        .id();
+    let read = |operation_name: &str| OperationEffect {
+        operation_name: operation_name.to_string(),
+        shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+    };
+    let workflow = WorkflowEffect::ParallelEffect {
+        branches: NonSingletonList::from_vec(vec![
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![read("left_read")],
+            }),
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![read("right_read")],
+            }),
+        ])
+        .expect("two branches form a NonSingletonList"),
+    };
+    assert!(
+        dag.try_register_lane2_workflow_effect(root, workflow),
+        "parallelism receipt must stage the lane2 workflow fact at the anchor"
+    );
+    assert!(
+        matches!(
+            analyze_parallelism(&dag, root),
+            WorkflowParallelismReport::ParallelCompositionVerdict(
+                CompositionVerdict::IdempotentComposition
+            )
+        ),
+        "read-only parallel branches should commute"
     );
 }
 

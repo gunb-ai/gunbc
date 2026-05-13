@@ -6297,6 +6297,13 @@ fn find_bind<'a>(
     })
 }
 
+fn first_workflow_anchor(dag: &Dag) -> Option<NodeId> {
+    dag.nodes()
+        .iter()
+        .find(|node| matches!(node, Behavior::Value(_) | Behavior::Bind(_)))
+        .map(Behavior::id)
+}
+
 fn expected_int_literal(
     expected_decl: &Declaration,
     expected_name: &str,
