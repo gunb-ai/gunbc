@@ -1,10 +1,22 @@
 # R3 Gate 87 Lens-Cementing Test-Discipline Dispatch — 2026-05-13
 
-**Owner:** Verification Mgr session `lively-raven-354`.
+**Owner:** Verification Mgr session `valiant-stag-468`.
 
 **Purpose:** decompose `lens_cementing_test_discipline_complete` into concrete child work that preserves the lens-completeness invariant while gate #87 stays tied to the `regen.dag` registry corpus.
 
 This is a dispatch artifact, not a second gate authority. The acceptance authority remains `docs/r3-structure.md` §"T-Tests-As-Data-Completeness" and `docs/r3-program-plan.md` §1.8 row #87. Pattern details live in `docs/briefs/r3-v-cluster-m-87-cementing-worker.md` §7 and `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md`.
+
+## Dashboard Dispatch Receipt
+
+Created by `valiant-stag-468` on 2026-05-13. The sections below are the worker-facing contracts; these dashboard nodes are the execution handles:
+
+| Item | Dashboard node |
+|---|---|
+| G87-D1 — Registry-Invariant Audit | `node://adhoc-2c88a184-49a` |
+| G87-D2 — COMPLETE-Flip Same-PR Checklist | `node://adhoc-0c6d0399-adc` |
+| G87-D3 — Placeholder-Dissolution Ledger | `node://adhoc-383ef33c-efb` |
+| G87-D4 — Runner and SG-0 Ratchet Receipt | `node://adhoc-f2bee270-6e6` |
+| G87-D5 — Band-C / #84 Handoff Classification | `node://adhoc-030f8ade-7d9` |
 
 ## Dispatch Invariant
 
@@ -116,4 +128,3 @@ rg -n "src/v3/compiler/tests/integration/cementing/|r3_gate_87_lens_cementing_re
 D1 and D4 are the fail-closed invariant checks and can run first. D2 and D3 can run in parallel once D1 confirms the current registry surface. D5 is the handoff slice for #84 and should consume D3's placeholder classifications where they overlap.
 
 Completion of these children means gate #87 has a concrete, reviewable discipline package: the registry corpus stays complete, future COMPLETE flips have same-PR receipt requirements, placeholders have named dissolution paths, executable ratchets guard drift, and broader Band-C work is handed to #84 without duplicating authority.
-
