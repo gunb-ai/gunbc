@@ -180,6 +180,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
+          name: Some { value: "Test-timeout ratchet self-test (consumer not ceremonial)" },
+          id: none,
+          run: "bash scripts/test-check-test-timeout.sh",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
           name: Some { value: "Rust toolchain single-authority check (P2)" },
           id: none,
           run: "bash scripts/check-rust-toolchain-single-authority.sh",
@@ -404,6 +414,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           env: Some { value: { "CARGO_TERM_COLOR": "never", "RUST_MIN_STACK": "16777216" } },
           working_directory: none,
           if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "v3 gunbc-ci binary (wall-clock warn manifest + BinaryShim stub)" },
+          id: none,
+          run: "cargo build -p v3-compiler --bin gunbc-ci",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "always()" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
