@@ -23,6 +23,11 @@
 //! `cementing_lens_registry_dispatch_test` ratchet without reintroducing a second
 //! register body in `cementing_dispatch.dag`.
 //!
+//! **Same-PR register promotion (`TESTING.md` Band-C checklist):** every
+//! `LensRegistryEntry` `lens_file` basename in `regen.dag` must agree on structural,
+//! behavioral, and v2-counterpart *bucket* axes between the prose capability table and
+//! `lens_capability_register_rows` (via `cementing_dispatch::lens_capability_register_normalized_axes_by_basename`).
+//!
 //! Directionality is the one written into the register's Discipline
 //! section — regen → register is required; extra register rows are
 //! allowed. `idempotency.dag` and `parallelism.dag` are the current
@@ -32,7 +37,7 @@
 //! exactly the posture the register documents; a bidirectional
 //! ratchet would misread those rows as drift.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use v3_compiler::cementing_dispatch;
@@ -201,6 +206,70 @@ fn md_v2_counterpart_is_real_v2_oracle(v2_cell: &str) -> bool {
     true
 }
 
+/// v2 counterpart column bucket aligned with `LensCapabilityV2Counterpart` mnemonics in
+/// [`v3_compiler::cementing_dispatch::lens_capability_register_normalized_axes_by_basename`].
+fn md_v2_bucket_for_register_axes_alignment(v2_cell: &str) -> String {
+    if md_v2_counterpart_is_real_v2_oracle(v2_cell) {
+        return "REAL_V2".to_string();
+    }
+    let lower = v2_cell.trim().to_ascii_lowercase();
+    if lower.contains("v3-native") {
+        return "NONE_V3_NATIVE".to_string();
+    }
+    "NOT_APPLICABLE".to_string()
+}
+
+fn capability_table_normalized_axes_by_basename() -> BTreeMap<String, (String, String, String)> {
+    let md_path = workspace_root().join("docs/v3-lens-capability-register.md");
+    let md = std::fs::read_to_string(&md_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", md_path.display()));
+    assert!(
+        md.lines().any(|l| l.trim() == CAPABILITY_TABLE_HEADING),
+        "docs/v3-lens-capability-register.md must contain a `{CAPABILITY_TABLE_HEADING}` \
+         heading; this test scopes its table scan to that section and cannot run \
+         without it. If the heading was renamed, update `CAPABILITY_TABLE_HEADING` \
+         in this test in the same PR."
+    );
+    let mut in_capability_section = false;
+    let mut out = BTreeMap::new();
+    for raw in md.lines() {
+        let line = raw.trim();
+        if line == CAPABILITY_TABLE_HEADING {
+            in_capability_section = true;
+            continue;
+        }
+        if in_capability_section && line.starts_with("## ") {
+            in_capability_section = false;
+        }
+        if !in_capability_section {
+            continue;
+        }
+        if !line.starts_with('|') || line.starts_with("|---") || line.contains("---|---") {
+            continue;
+        }
+        let cells = md_table_cells(line);
+        if cells.len() < 5 {
+            continue;
+        }
+        let lens_cell = cells[1].trim();
+        if lens_cell == "Lens" {
+            continue;
+        }
+        let basename = lens_cell.trim_matches('`').trim();
+        if !basename.ends_with(".dag") {
+            continue;
+        }
+        let structural = normalize_capability_table_markdown_token(&cells[2]);
+        let behavioral = normalize_capability_table_markdown_token(&cells[3]);
+        let v2_bucket = md_v2_bucket_for_register_axes_alignment(&cells[4]);
+        out.insert(
+            basename.to_string(),
+            (structural, behavioral, v2_bucket),
+        );
+    }
+    out
+}
+
 /// Lens basenames for markdown rows that read **behaviorally complete** with a **real v2**
 /// counterpart column (excludes v3-native / bare `N/A` rows such as `idempotency.dag`).
 fn capability_md_v2_cementing_basenames() -> BTreeSet<String> {
@@ -278,6 +347,46 @@ fn every_regen_lens_entry_has_a_capability_register_row() {
          declaring both its structural and behavioral status. Current \
          register-visible basenames: {register:?}."
     );
+}
+
+#[test]
+fn every_regen_lens_register_axes_match_verification_single_authority() {
+    let regen = regen_lens_file_basenames();
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap Dag should load cleanly for register axes ratchet, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let verification = cementing_dispatch::lens_capability_register_normalized_axes_by_basename(
+        &dag,
+    )
+    .expect("read normalized register axes from lens_capability_register_rows");
+    let markdown = capability_table_normalized_axes_by_basename();
+    for basename in regen.iter() {
+        let Some(v) = verification.get(basename) else {
+            panic!(
+                "TESTING.md Band-C same-PR checklist: every `src/v3/compiler/regen.dag` \
+                 `lens_file` basename must have a `lens_capability_register_rows` row in \
+                 `src/v3/std/verification.dag`. Missing `{basename}`. Fix: add the row in the \
+                 same PR as the registry edit."
+            );
+        };
+        let Some(m) = markdown.get(basename) else {
+            panic!(
+                "TESTING.md Band-C same-PR checklist: `{basename}` is in `regen.dag` but has no \
+                 `## Capability table` row in `docs/v3-lens-capability-register.md`. Fix: add \
+                 the prose row in the same PR as the registry edit."
+            );
+        };
+        assert_eq!(
+            v, m,
+            "TESTING.md Same-PR checklist — `docs/v3-lens-capability-register.md` must match \
+             `src/v3/std/verification.dag` `lens_capability_register_rows` for `{basename}` \
+             (structural, behavioral, v2 bucket). verification={v:?} markdown={m:?}. \
+             Update both in the same PR."
+        );
+    }
 }
 
 #[test]

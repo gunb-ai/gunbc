@@ -20,7 +20,7 @@
 //! `.dag` data (fixture or `std.verification`) so the predicate reads a single structural receipt
 //! roster keyed off the register ∩ `regen.dag` projection, with no parallel Rust roster.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::Path as FsPath;
 
 use crate::dag::{Dag, FieldValue, LiteralBits, TypeConnective, ValueBody};
@@ -330,6 +330,112 @@ pub fn lens_capability_register_v2_cementing_basenames(
     let capability_rows =
         list_items_of_declaration(dag, reg_decl.id, "lens_capability_register_rows")?;
     v2_cementing_basenames_from_capability_rows(dag, &capability_rows)
+}
+
+/// Normalized `(structural, behavioral, v2_bucket)` tuples keyed by `lens_basename` from
+/// `std.verification` `lens_capability_register_rows`.
+///
+/// Mnemonics match the normalized tokens used when scanning
+/// `docs/v3-lens-capability-register.md` in `lens_register_correspondence_test`:
+/// structural/behavioral are uppercase table tokens (`TERMINAL`, `COMPLETE`, `N/A`, …);
+/// `v2_bucket` is `REAL_V2` / `NONE_V3_NATIVE` / `NOT_APPLICABLE`.
+///
+/// This is the structural half of the `TESTING.md` Band-C **Same-PR checklist** mirror for
+/// register promotions: prose edits must land in the same PR as `verification.dag` rows.
+pub fn lens_capability_register_normalized_axes_by_basename(
+    dag: &Dag,
+) -> Result<BTreeMap<String, (String, String, String)>, String> {
+    let reg_decl = dag
+        .declaration_by_name("lens_capability_register_rows")
+        .ok_or_else(|| {
+            "bootstrap must declare `lens_capability_register_rows` (std.verification)".to_string()
+        })?;
+    let capability_rows =
+        list_items_of_declaration(dag, reg_decl.id, "lens_capability_register_rows")?;
+    let mut out = BTreeMap::new();
+    for row in &capability_rows {
+        let Some(fields) = record_fields(row) else {
+            return Err(format!(
+                "capability_register list: expected record row, got {row:?}"
+            ));
+        };
+        let lens_basename = string_field(fields, "lens_basename")?;
+        let structural = record_field(fields, "structural").ok_or_else(|| {
+            "capability_register row: missing `structural` field (expected \
+             `LensCapabilityStructuralStatus` variant)"
+                .to_string()
+        })?;
+        let behavioral = record_field(fields, "behavioral").ok_or_else(|| {
+            "capability_register row: missing `behavioral` field (expected \
+             `LensCapabilityBehavioralStatus` variant)"
+                .to_string()
+        })?;
+        let v2 = record_field(fields, "v2_counterpart").ok_or_else(|| {
+            "capability_register row: missing `v2_counterpart` field (expected \
+             `LensCapabilityV2Counterpart` variant)"
+                .to_string()
+        })?;
+        let structural_label = decode_nullary_sum_variant(
+            dag,
+            "LensCapabilityStructuralStatus",
+            structural,
+            "structural",
+            "capability_register row",
+        )?;
+        let behavioral_label = decode_nullary_sum_variant(
+            dag,
+            "LensCapabilityBehavioralStatus",
+            behavioral,
+            "behavioral",
+            "capability_register row",
+        )?;
+        let v2_label = decode_nullary_sum_variant(
+            dag,
+            "LensCapabilityV2Counterpart",
+            v2,
+            "v2_counterpart",
+            "capability_register row",
+        )?;
+        let structural_mnemonic = match structural_label.as_str() {
+            "LensCapabilityStructuralTerminal" => "TERMINAL",
+            "LensCapabilityStructuralPartial" => "PARTIAL",
+            other => {
+                return Err(format!(
+                    "`LensCapabilityStructuralStatus` variant `{other}` is not mapped for markdown register alignment"
+                ));
+            }
+        };
+        let behavioral_mnemonic = match behavioral_label.as_str() {
+            "LensCapabilityBehavioralComplete" => "COMPLETE",
+            "LensCapabilityBehavioralPartial" => "PARTIAL",
+            "LensCapabilityBehavioralStub" => "STUB",
+            "LensCapabilityBehavioralNA" => "N/A",
+            other => {
+                return Err(format!(
+                    "`LensCapabilityBehavioralStatus` variant `{other}` is not mapped for markdown register alignment"
+                ));
+            }
+        };
+        let v2_mnemonic = match v2_label.as_str() {
+            "LensCapabilityV2RealV2" => "REAL_V2",
+            "LensCapabilityV2NoneV3Native" => "NONE_V3_NATIVE",
+            "LensCapabilityV2NotApplicable" => "NOT_APPLICABLE",
+            other => {
+                return Err(format!(
+                    "`LensCapabilityV2Counterpart` variant `{other}` is not mapped for markdown register alignment"
+                ));
+            }
+        };
+        out.insert(
+            lens_basename,
+            (
+                structural_mnemonic.to_string(),
+                behavioral_mnemonic.to_string(),
+                v2_mnemonic.to_string(),
+            ),
+        );
+    }
+    Ok(out)
 }
 
 fn cementing_dispatch_two_refs(
