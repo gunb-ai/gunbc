@@ -267,9 +267,7 @@ fn src_v3_lenses_basenames() -> BTreeSet<String> {
     let lens_dir = workspace_root().join("src/v3/lenses");
     std::fs::read_dir(&lens_dir)
         .unwrap_or_else(|e| panic!("read {}: {e}", lens_dir.display()))
-        .map(|entry| {
-            entry.unwrap_or_else(|e| panic!("read entry in {}: {e}", lens_dir.display()))
-        })
+        .map(|entry| entry.unwrap_or_else(|e| panic!("read entry in {}: {e}", lens_dir.display())))
         .filter_map(|entry| {
             let path = entry.path();
             (path.extension() == Some(OsStr::new("dag"))).then(|| {
