@@ -8,7 +8,8 @@
 //! **R3 gate #57** (`lens_self_application_demonstrated`, T-Lens-Self-Application): the same module
 //! hosts the executable receipt: `dsl/gunbc/ci.dag` source markers + bootstrap `modeled_gunbc_ci_workflow`,
 //! timing via `evaluate_body` (large-stack thread for debug builds), and cost / complexity /
-//! parallelism checks on a cached representative program (`lens_self_application_demonstrated`).
+//! parallelism checks on the **compiled gunbc CI workflow dag** (`compile_to_dag` on `dsl/gunbc/ci.dag`)
+//! plus `gunbc_ci::select_affected_gates` over the structural `ci_workflow_dag` carrier.
 //!
 //! Runtime `Dag` binding is an **opaque substrate-shaped record** (empty `declarations` /
 //! `nodes` / `ports` / `clusters` lists built from existing `List<τ>.Empty` tags — see
@@ -21,7 +22,6 @@
 //! surface; dissolution target is `.dag` `TestClaim` data per `sg0_census_test.rs` R1C-E notes.
 //! This crate fails to build if the cited worker brief is removed from the worktree.
 
-use crate::common::cached_compile_to_dag;
 use crate::common::find_list_empty_constructor_tag;
 use v3_compiler::dag::{
     AtomPayload, Behavior, CompositionVerdict, DeclarationId, EffectShape, FieldValue,
@@ -31,6 +31,7 @@ use v3_compiler::dag::{
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
 };
+use v3_compiler::gunbc_ci::{select_affected_gates, CiGateMeta, CiWorkflowDiff, CiWorkflowDagInput};
 use v3_compiler::lens_cost::{complexity_of, ComplexityLookup};
 use v3_compiler::{
     analyze_complexity, analyze_parallelism, analyze_symbolic_cost_dimension, compile_to_dag,
@@ -54,23 +55,6 @@ const _: &str = include_str!(concat!(
 
 fn demo_bootstrap_dag() -> v3_compiler::dag::Dag {
     generated_full_bootstrap_dag()
-}
-
-fn bind_node_id_named(dag: &v3_compiler::dag::Dag, bind_name: &str) -> v3_compiler::dag::NodeId {
-    dag.nodes()
-        .iter()
-        .find_map(|b| match b {
-            Behavior::Bind(bind) if bind.name == bind_name => Some(bind.id),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("missing Bind named `{bind_name}`"))
-}
-
-fn lens_self_app_read_op(name: &str) -> OperationEffect {
-    OperationEffect {
-        operation_name: name.to_string(),
-        shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-    }
 }
 
 fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
@@ -315,6 +299,38 @@ fn literal_string(value: &FieldValue) -> &str {
         panic!("expected string literal field, got {value:?}");
     };
     value
+}
+
+fn literal_bool(value: &FieldValue) -> bool {
+    let FieldValue::Literal(LiteralBits::Bool(value)) = value else {
+        panic!("expected bool literal field, got {value:?}");
+    };
+    *value
+}
+
+fn ci_workflow_dag_input_from_compiled_ci(dag: &v3_compiler::dag::Dag) -> CiWorkflowDagInput {
+    let fields = structural_value_body(dag, "ci_workflow_dag");
+    let gate_records = workflow_gate_records(dag, fields);
+    let gates: Vec<CiGateMeta> = gate_records
+        .iter()
+        .map(|gate| CiGateMeta {
+            id: literal_string(structural_field(gate, "id")).to_string(),
+            blocking: literal_bool(structural_field(gate, "blocking")),
+        })
+        .collect();
+    let (_name, _node_ids, edge_pairs) = workflow_topology(dag, fields);
+    let edges: Vec<(String, String)> = edge_pairs
+        .into_iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect();
+    CiWorkflowDagInput { gates, edges }
+}
+
+fn lens_self_app_read_op(name: &str) -> OperationEffect {
+    OperationEffect {
+        operation_name: name.to_string(),
+        shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+    }
 }
 
 fn structural_record(value: &FieldValue) -> &[(String, FieldValue)] {
