@@ -3151,6 +3151,57 @@ impl<'a> TestRunner<'a> {
                     .query(&UnusedParametersConfig::default())
                     .is_empty(),
             ),
+            "gate87_parallelism_read_only_two_branch_commutes" => {
+                use crate::analyze_parallelism;
+                use crate::dag::{
+                    Behavior, CompositionVerdict, EffectShape, IdempotentShape, NonSingletonList,
+                    OperationEffect, WorkflowEffect, WorkflowParallelismReport,
+                };
+
+                let read = |name: &str| OperationEffect {
+                    operation_name: name.to_string(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                };
+                let Some(branches) = NonSingletonList::from_vec(vec![
+                    Box::new(WorkflowEffect::LinearEffect {
+                        ops: vec![read("a"), read("b")],
+                    }),
+                    Box::new(WorkflowEffect::LinearEffect {
+                        ops: vec![read("c")],
+                    }),
+                ]) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): internal error constructing parallel branches"
+                    )));
+                };
+
+                let root = program_dag
+                    .nodes()
+                    .iter()
+                    .find(|b| matches!(b, Behavior::Value(_) | Behavior::Bind(_)))
+                    .map(|b| b.id());
+                let Some(root) = root else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): fixture has no Value/Bind anchor for lane2 workflow attachment"
+                    )));
+                };
+
+                let mut dag = program_dag.clone();
+                let wf = WorkflowEffect::ParallelEffect { branches };
+                if !dag.try_register_lane2_workflow_effect(root, wf) {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): lane2 workflow attachment refused"
+                    )));
+                }
+
+                let report = analyze_parallelism(&dag, root);
+                i64::from(matches!(
+                    report,
+                    WorkflowParallelismReport::ParallelCompositionVerdict(
+                        CompositionVerdict::IdempotentComposition
+                    )
+                ))
+            }
             _ => return None,
         };
 
