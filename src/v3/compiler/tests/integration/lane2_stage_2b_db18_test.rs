@@ -5,7 +5,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     ArrowBody, Behavior, BreakingShape, CompositionVerdict, CreateCause, EffectShape,
     IdempotentShape, KeySource, NonSingletonList, TypeConnective, WorkflowEffect,
-    WorkflowIdempotencyReport, WorkflowOperation,
+    WorkflowIdempotencyReport, Operation,
 };
 use v3_compiler::diagnostics::{Diagnostic, SourceSpan};
 use v3_compiler::Dag;
@@ -22,8 +22,8 @@ fn lane2_anchor(dag: &Dag) -> NodeId {
         .id()
 }
 
-fn op(name: &str, shape: EffectShape) -> WorkflowOperation {
-    WorkflowOperation {
+fn op(name: &str, shape: EffectShape) -> Operation {
+    Operation {
         operation_name: name.to_string(),
         shape,
     }

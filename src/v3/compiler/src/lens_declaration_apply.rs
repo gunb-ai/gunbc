@@ -1616,7 +1616,7 @@ mod substrate_reflection {
         ClusterId, CreateCause, Dag, DeclarationId, EffectShape, FieldValue, HttpMethodScalar,
         IdempotentShape, KeySource, LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList,
         OperatorKind, Path, PayloadBinding, PortId, TransformNode, TransformTarget, TypeConnective,
-        ValueNode, WorkflowEffect, WorkflowOperation,
+        ValueNode, WorkflowEffect, Operation,
     };
     use crate::diagnostics::SourceSpan;
 
@@ -2040,7 +2040,7 @@ mod substrate_reflection {
         }
     }
 
-    fn reflect_operation(dag: &Dag, op: &WorkflowOperation) -> ReflectResult<FieldValue> {
+    fn reflect_operation(dag: &Dag, op: &Operation) -> ReflectResult<FieldValue> {
         Ok(FieldValue::Record(vec![
             (
                 "operation_name".to_string(),
@@ -2052,7 +2052,7 @@ mod substrate_reflection {
 
     fn reflect_operation_vec_spine(
         dag: &Dag,
-        ops: &[WorkflowOperation],
+        ops: &[Operation],
     ) -> ReflectResult<FieldValue> {
         let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
         let mut tail = FieldValue::Variant {

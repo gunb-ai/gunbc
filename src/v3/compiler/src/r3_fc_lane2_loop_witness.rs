@@ -28,7 +28,7 @@
 //! **Dissolution:** delete this scan and the magic-comment contract when lowering authors loop
 //! `lane2_workflow` facts; remove the lens name-key branch in the same change set.
 
-use crate::dag::{Dag, EffectShape, IdempotentShape, KeySource, WorkflowEffect, WorkflowOperation};
+use crate::dag::{Dag, EffectShape, IdempotentShape, KeySource, WorkflowEffect, Operation};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 
 const DIRECTIVE_PREFIX: &str = "// gunbc::r3_free_consequences::lane2_loop_witness:";
@@ -127,7 +127,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
             let wf = match kind {
                 WitnessKind::ReadOnlyLoop => WorkflowEffect::LoopEffect {
                     body: Box::new(WorkflowEffect::LinearEffect {
-                        ops: vec![WorkflowOperation {
+                        ops: vec![Operation {
                             operation_name: "r3_fc_read".to_string(),
                             shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
                         }],
@@ -135,7 +135,7 @@ pub fn apply_authored_lane2_loop_witness(dag: &mut Dag, source: &str, file: &str
                 },
                 WitnessKind::UpsertLoop => WorkflowEffect::LoopEffect {
                     body: Box::new(WorkflowEffect::LinearEffect {
-                        ops: vec![WorkflowOperation {
+                        ops: vec![Operation {
                             operation_name: "r3_fc_upsert".to_string(),
                             shape: EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
                                 key_source: KeySource::PathParam {
