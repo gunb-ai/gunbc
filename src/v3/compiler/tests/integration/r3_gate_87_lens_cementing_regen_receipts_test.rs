@@ -13,6 +13,11 @@
 //! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
 //! placeholders with per-file dissolution triggers in their `.dag` harness comments.
 //!
+//! **Placeholder–dissolution ledger:** `TESTING.md` §Cementing tests → *Gate #87
+//! placeholder–dissolution ledger* (merge-visible index of every narrow harness placeholder +
+//! co-receipt + dissolution trigger; per-harness `// Dissolution trigger:` comments stay
+//! authoritative for exact wording).
+//!
 //! **INVARIANTS P5(b):** Gate-#87 work is **merge-visible** as this module,
 //! `r3_gate_87_cementing_regen_runner_suites` plus `t_pb_b_1_dag_runner_test` wiring, and the
 //! harness files under `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (confirm with

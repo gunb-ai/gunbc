@@ -1,6 +1,11 @@
 // R3 gate #87 — `LensRegistryEntry` `provenance`.
 // The claim freezes the minimal literal-bind origin witness through a named Int projection until
 // `Origin` literals can be compared directly by `LensOutputEquals`.
+//
+// Dissolution trigger: when `Origin` literals are comparable by `LensOutputEquals`, replace this
+// Int projection with direct carrier equality in the harness and delete or narrow
+// `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_provenance_origin_rust_receipt_on_literal_bind`
+// in the same PR. See `TESTING.md` §Band C → Gate #87 placeholder–dissolution ledger.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_provenance
 

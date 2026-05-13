@@ -2,6 +2,12 @@
 // The claim names a narrow Int projection because `EffectEnumerationReport` literals are not yet
 // authorable as stable `.dag` data. The runner projection applies the Rust cementing oracle for the
 // named lens behavior and compares the frozen witness here.
+//
+// Dissolution trigger: when `EffectEnumerationReport` (or the published subset under test) is
+// expressible as stable `.dag` data, replace this Int scaffold with `LensOutputEquals` on the
+// report carrier and delete or narrow
+// `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program`
+// in the same PR. See `TESTING.md` §Band C → Gate #87 placeholder–dissolution ledger.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_effect_enumeration
 

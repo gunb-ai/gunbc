@@ -430,6 +430,27 @@ still **same-PR** Band-C when the Rust module, `tests/integration.rs`
 `#[path]`, `EXPECTED_HAND_AUTHORED_TEST` census row, and the named blocker /
 dissolution path all land together — not a deferral ticket.
 
+### Gate #87 placeholder–dissolution ledger
+
+Single tabulation of **intentionally narrow** gate-#87 regen harness evidence
+(`tests/dag/t_r3_gate_87_cementing_regen_*.dag`) and the **dissolution trigger**
+that retires each placeholder. Full behavioral receipts (`cost`,
+`cost_symbolic`) are not rows here — they already compare Lane-E / symbolic
+carriers. Per-harness `// Dissolution trigger:` comments stay authoritative for
+wording; this table is the merge-visible index (see also
+`r3_gate_87_lens_cementing_regen_receipts_test` module doc).
+
+| `regen.dag` lens | Placeholder shape | Harness | Rust co-receipt (if any) | Dissolution trigger |
+|---|---|---|---|---|
+| `infer_helpers` | `Compiles` smoke | `t_r3_gate_87_cementing_regen_infer_helpers.dag` | `r3_gate_87_infer_helpers_lens_source_compiles` | Public `infer_helpers` output carrier authorable as `.dag` data → `LensOutputEquals` (or equivalent) in the harness; delete the Rust compile-only pin in the same PR. |
+| `lower_helpers` | `Compiles` smoke | `t_r3_gate_87_cementing_regen_lower_helpers.dag` | `r3_gate_87_lower_helpers_lens_source_compiles` | Same pattern for `lower_helpers`. |
+| `variant_payload` | `Compiles` smoke | `t_r3_gate_87_cementing_regen_variant_payload.dag` | `r3_gate_87_variant_payload_lens_source_compiles` | Stable variant-declaration fixture plus `VariantPayloadShapeLookup` literal in `.dag` → `LensOutputEquals`; delete the Rust compile-only pin in the same PR. |
+| `unused_parameters` | Int projection (`LensOutputEquals` → `0` / `1`) | `t_r3_gate_87_cementing_regen_unused_parameters.dag` | `r3_gate_87_unused_parameters_rust_receipt_on_literal_program` | `List<UnusedParameter>` (or equivalent) literals stable as authored `.dag` data without M1(2.8) opaque-body diagnostics → replace the Int witness with direct carrier equality; retire redundant Rust in the same PR if the `.dag` claim subsumes it. |
+| `structural_resolution` | Int projection | `t_r3_gate_87_cementing_regen_structural_resolution.dag` | `r3_gate_87_structural_resolution_rust_receipt_on_literal_program` | `List<UnresolvedArrowBody>` literals stable in `.dag` under the same M1(2.8) constraint → full carrier `LensOutputEquals`; retire redundant Rust in the same PR when subsumed. |
+| `effect_enumeration` | Int projection (`NoTransaction` scaffold) | `t_r3_gate_87_cementing_regen_effect_enumeration.dag` | `r3_gate_87_effect_enumeration_rust_receipt_on_minimal_program` | `EffectEnumerationReport` literals stable in `.dag` → behavioral `LensOutputEquals` on the report shape; delete or narrow the Rust oracle pin in the same PR. |
+| `provenance` | Int projection | `t_r3_gate_87_cementing_regen_provenance.dag` | `r3_gate_87_provenance_origin_rust_receipt_on_literal_bind` | `Origin` literals comparable by `LensOutputEquals` → direct carrier compare in the harness; delete redundant Rust in the same PR. |
+| `cost_target_realization` | Int projection | `t_r3_gate_87_cementing_regen_cost_target_realization.dag` | `r3_gate_87_cost_target_realization_rust_receipt_resolves_type_realization_row` | Full realization-meta / `Declaration?` receipt expressible as `.dag` data → replace Int witness; align Rust pin with whatever substrate contract remains irreducible. |
+
 **2. If the lens is a `LensRegistryEntry` in `src/v3/compiler/regen.dag`, touch
 these together**
 

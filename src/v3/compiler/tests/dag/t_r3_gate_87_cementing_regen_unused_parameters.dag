@@ -1,6 +1,13 @@
 // R3 gate #87 — `LensRegistryEntry` `unused_parameters`.
 // The full `List<UnusedParameter>` expected carrier is not yet stable as authored `.dag` data,
 // so this claim freezes the minimal no-finding witness through a named Int projection.
+//
+// Dissolution trigger: when `List<UnusedParameter>` (or an equivalent published carrier) is
+// stable as authored `.dag` literals without M1(2.8) opaque-body diagnostics, replace this
+// Int projection with `LensOutputEquals` on that carrier and delete or narrow
+// `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_unused_parameters_rust_receipt_on_literal_program`
+// in the same PR if the `.dag` claim subsumes it. See `TESTING.md` §Band C → Gate #87
+// placeholder–dissolution ledger.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_unused_parameters
 

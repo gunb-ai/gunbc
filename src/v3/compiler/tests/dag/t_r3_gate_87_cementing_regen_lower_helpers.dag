@@ -7,6 +7,7 @@
 // Dissolution trigger: when a `lower_helpers` public output carrier is authorable as `.dag` data,
 // replace this `Compiles` claim with a behavior/output `LensOutputEquals` receipt over that carrier
 // and delete the temporary Rust source-compilation receipt.
+// Index: `TESTING.md` §Band C → Gate #87 placeholder–dissolution ledger.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_lower_helpers
 

@@ -1,6 +1,12 @@
 // R3 gate #87 — `LensRegistryEntry` `structural_resolution`.
 // The full `List<UnresolvedArrowBody>` expected carrier is not yet stable as authored `.dag`
 // data, so this claim freezes the minimal no-violation witness through a named Int projection.
+//
+// Dissolution trigger: when `List<UnresolvedArrowBody>` literals are stable in `.dag` under the
+// same M1(2.8) constraint as `unused_parameters`, replace this Int projection with direct carrier
+// `LensOutputEquals` and delete or narrow
+// `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_structural_resolution_rust_receipt_on_literal_program`
+// in the same PR when subsumed. See `TESTING.md` §Band C → Gate #87 placeholder–dissolution ledger.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_structural_resolution
 

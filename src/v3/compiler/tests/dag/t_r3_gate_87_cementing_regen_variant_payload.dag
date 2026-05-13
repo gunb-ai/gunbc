@@ -8,6 +8,7 @@
 // expected literal are authorable as `.dag` data, replace this `Compiles` claim with a
 // `LensOutputEquals(variant_payload_shape, ..., expected)` receipt and delete the temporary Rust
 // source-compilation receipt.
+// Index: `TESTING.md` §Band C → Gate #87 placeholder–dissolution ledger.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_variant_payload
 
