@@ -1,12 +1,18 @@
-// R3 gate #87 — `LensRegistryEntry` `lower_helpers` temporary source-compilation placeholder.
-// Helper-only lens rows currently have no single public behavioral carrier to compare with
-// `LensOutputEquals`; pretending source compilation is behavior would dilute the cementing
-// predicate. Temporary Rust receipt:
+// R3 gate #87 — `LensRegistryEntry` `lower_helpers` explicit `Compiles` placeholder.
+//
+// Named blockers (G87-D2 refresh; decomposition: `docs/r3-structure.md` gate-#87 acceptance +
+// `docs/v3-lens-capability-register.md` `lower_helpers` row):
+// - **BEHAVIORALLY N/A** SG-3g prototype — `expr_span` is the only emit-safe slice; broader lowering
+//   helpers remain blocked on `emit_rust_module` / substrate variant-construction gaps (see
+//   `src/v3/lenses/lower_helpers.dag` rejected candidates).
+// - No honest single `LensOutputEquals` carrier for the full lowering surface without pretending
+//   compilation is behavior.
+// Temporary Rust receipt:
 // `r3_gate_87_lens_cementing_regen_receipts_test::r3_gate_87_lower_helpers_lens_source_compiles`.
 //
-// Dissolution trigger: when a `lower_helpers` public output carrier is authorable as `.dag` data,
-// replace this `Compiles` claim with a behavior/output `LensOutputEquals` receipt over that carrier
-// and delete the temporary Rust source-compilation receipt.
+// Dissolution trigger: when a `lower_helpers` public output carrier is authorable as `.dag`
+// data, replace this `Compiles` claim with `LensOutputEquals` / `DifferentialEquals` over that
+// carrier and delete the temporary Rust source-compilation receipt.
 
 module v3.compiler.tests.t_r3.gate_87_cementing_regen_lower_helpers
 

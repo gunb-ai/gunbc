@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    NodeId, ParallelismUnsupportedKind, Path, PortId, PortState, SymbolicCost, TypeConnective,
+    ValueBody, WorkflowParallelismReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -3151,6 +3152,35 @@ impl<'a> TestRunner<'a> {
                     .query(&UnusedParametersConfig::default())
                     .is_empty(),
             ),
+            "gate87_parallelism_anchor_no_lane2_workflow_projection" => {
+                let Some(root) = program_dag.nodes().iter().find_map(|b| match b {
+                    Behavior::Value(_) | Behavior::Bind(_) => Some(b.id()),
+                    _ => None,
+                }) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): no Value/Bind anchor in `{file_name}`"
+                    )));
+                };
+                let report = crate::analyze_parallelism(program_dag, root);
+                i64::from(matches!(
+                    &report,
+                    WorkflowParallelismReport::ParallelismUnsupported(detail)
+                        if detail.kind == ParallelismUnsupportedKind::NoWorkflowProjection
+                ))
+            }
+            "gate87_variant_payload_empty_product_found" => {
+                let Some(decl) = program_dag.declaration_by_name("Gate87EmptyPayload") else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): `Gate87EmptyPayload` not found in `{file_name}`"
+                    )));
+                };
+                i64::from(matches!(
+                    crate::variant_payload::variant_payload_shape(program_dag, &decl.id),
+                    crate::variant_payload::VariantPayloadShapeLookup::Found {
+                        _0: crate::variant_payload::VariantPayloadShape::Empty
+                    }
+                ))
+            }
             _ => return None,
         };
 
