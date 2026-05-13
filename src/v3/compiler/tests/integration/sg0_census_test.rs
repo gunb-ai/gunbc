@@ -1133,33 +1133,239 @@ fn sg0_v3_test_hand_authored_subratchet() {
     );
 }
 
-/// `module_stem` values for `kind: TemporaryRustModule` rows in `tests/dag/cementing_dispatch.dag`.
-/// Single parse authority for the G87-D4 SG-0 cross-check (no hand-duplicated stem list).
-fn temporary_rust_stems_from_cementing_dispatch_dag() -> BTreeSet<String> {
-    const DISPATCH_DAG: &str = include_str!("../dag/cementing_dispatch.dag");
-    let mut out = BTreeSet::new();
-    let mut pending_stem: Option<String> = None;
-    for raw in DISPATCH_DAG.lines() {
-        let t = raw.trim();
-        if let Some(rest) = t.strip_prefix("module_stem:") {
-            let rest = rest.trim();
-            if let Some(inner) = rest.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-                if !inner.contains('"') {
-                    pending_stem = Some(inner.to_string());
-                }
+/// Slice of `src` starting immediately after the opening `[` of `data cementing_band_c_v2_complete_receipts … = [`
+/// through the matching closing `]` (bracket depth, string-aware). Returns `None` if the anchor or balanced close is missing.
+fn cementing_band_c_v2_receipt_list_body(dag_src: &str) -> Option<&str> {
+    let anchor = "data cementing_band_c_v2_complete_receipts";
+    let i = dag_src.find(anchor)?;
+    let tail = &dag_src[i..];
+    let eq_open = tail.find("= [")?;
+    let after_open = &tail[eq_open + "= [".len()..];
+    list_body_through_matching_close_bracket(after_open)
+}
+
+fn list_body_through_matching_close_bracket(src: &str) -> Option<&str> {
+    let bytes = src.as_bytes();
+    let mut i = 0usize;
+    let mut depth = 1usize;
+    let mut in_string = false;
+    let mut escape = false;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if escape {
+                escape = false;
+            } else if b == b'\\' {
+                escape = true;
+            } else if b == b'"' {
+                in_string = false;
             }
-        } else if let Some(rest) = t.strip_prefix("kind:") {
-            let kind = rest.trim();
-            if kind == "TemporaryRustModule" {
-                if let Some(stem) = pending_stem.take() {
-                    out.insert(stem);
-                }
-            } else {
-                pending_stem = None;
+            i += 1;
+            continue;
+        }
+        match b {
+            b'"' => {
+                in_string = true;
+                i += 1;
             }
+            b'[' => {
+                depth += 1;
+                i += 1;
+            }
+            b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return src.get(..i);
+                }
+                i += 1;
+            }
+            _ => i += 1,
         }
     }
+    None
+}
+
+/// `src` must start with `{`. Returns `(inner_text_between_braces, total_byte_len_consumed)` or `None` on imbalance.
+fn consume_braced_record(src: &str) -> Option<(String, usize)> {
+    let bytes = src.as_bytes();
+    if bytes.first() != Some(&b'{') {
+        return None;
+    }
+    let mut i = 1usize;
+    let mut depth = 1usize;
+    let inner_start = i;
+    let mut in_string = false;
+    let mut escape = false;
+    while i < bytes.len() && depth > 0 {
+        let b = bytes[i];
+        if in_string {
+            if escape {
+                escape = false;
+            } else if b == b'\\' {
+                escape = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+        match b {
+            b'"' => {
+                in_string = true;
+                i += 1;
+            }
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    if depth != 0 {
+        return None;
+    }
+    let inner_end = i - 1;
+    let inner = src.get(inner_start..inner_end)?;
+    Some((inner.to_string(), i))
+}
+
+fn record_string_field(body: &str, field: &str) -> Option<String> {
+    for raw in body.lines() {
+        let t = raw.trim();
+        if t.is_empty() || t.starts_with("//") {
+            continue;
+        }
+        let Some((k, v)) = t.split_once(':') else {
+            continue;
+        };
+        if k.trim() != field {
+            continue;
+        }
+        let v = v.trim();
+        let Some(inner) = v.strip_prefix('"').and_then(|s| s.strip_suffix('"')) else {
+            continue;
+        };
+        if inner.contains('"') {
+            continue;
+        }
+        return Some(inner.to_string());
+    }
+    None
+}
+
+fn record_kind_field(body: &str) -> Option<String> {
+    for raw in body.lines() {
+        let t = raw.trim();
+        if t.is_empty() || t.starts_with("//") {
+            continue;
+        }
+        let Some((k, v)) = t.split_once(':') else {
+            continue;
+        };
+        if k.trim() != "kind" {
+            continue;
+        }
+        return Some(v.trim().to_string());
+    }
+    None
+}
+
+fn each_cementing_band_c_record_body(list_body: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    let bytes = list_body.as_bytes();
+    while i < bytes.len() {
+        while i < bytes.len() && matches!(bytes[i], b' ' | b'\n' | b'\t' | b'\r' | b',') {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+        if bytes[i] != b'{' {
+            i += 1;
+            continue;
+        }
+        let rest = &list_body[i..];
+        let Some((inner, consumed)) = consume_braced_record(rest) else {
+            break;
+        };
+        out.push(inner);
+        i += consumed;
+    }
     out
+}
+
+/// `module_stem` values for `kind: TemporaryRustModule` rows in `tests/dag/cementing_dispatch.dag`.
+/// Parses each `CementingBandCReceipt` record as a brace-delimited block and reads `module_stem` / `kind`
+/// order-independently (modeled record shape; not line-order convention).
+fn temporary_rust_stems_from_cementing_dispatch_dag() -> BTreeSet<String> {
+    const DISPATCH_DAG: &str = include_str!("../dag/cementing_dispatch.dag");
+    let list_body = cementing_band_c_v2_receipt_list_body(DISPATCH_DAG).unwrap_or_else(|| {
+        panic!(
+            "cementing_dispatch.dag must declare `data cementing_band_c_v2_complete_receipts` with a `= [ … ]` list; \
+             SG-0 Band-C guard cannot locate the modeled receipt roster"
+        )
+    });
+    let mut out = BTreeSet::new();
+    for inner in each_cementing_band_c_record_body(list_body) {
+        let Some(kind) = record_kind_field(&inner) else {
+            continue;
+        };
+        if kind != "TemporaryRustModule" {
+            continue;
+        }
+        let stem = record_string_field(&inner, "module_stem").unwrap_or_else(|| {
+            panic!(
+                "CementingBandCReceipt with `kind: TemporaryRustModule` must set `module_stem` \
+                 (parsed order-independently within the record block):\n{inner}"
+            )
+        });
+        out.insert(stem);
+    }
+    out
+}
+
+#[test]
+fn temporary_rust_stems_from_cementing_dispatch_dag_order_independent() {
+    let fixture = r#"
+data cementing_band_c_v2_complete_receipts: List<CementingBandCReceipt> = [
+  {
+    kind: TemporaryRustModule
+    registry_name: "x"
+    module_stem: "stem_after_kind"
+  },
+  {
+    module_stem: "stem_before_kind"
+    kind: DagHarness
+  },
+  {
+    registry_name: "y"
+    module_stem: "normal_order"
+    kind: TemporaryRustModule
+  },
+]
+"#;
+    let stems = {
+        let list_body = cementing_band_c_v2_receipt_list_body(fixture).expect("list body");
+        let mut s = BTreeSet::new();
+        for inner in each_cementing_band_c_record_body(list_body) {
+            let kind = record_kind_field(&inner);
+            if kind.as_deref() != Some("TemporaryRustModule") {
+                continue;
+            }
+            let stem = record_string_field(&inner, "module_stem").expect("stem");
+            s.insert(stem);
+        }
+        s
+    };
+    assert_eq!(
+        stems,
+        BTreeSet::from(["stem_after_kind".to_string(), "normal_order".to_string()])
+    );
 }
 
 #[test]
