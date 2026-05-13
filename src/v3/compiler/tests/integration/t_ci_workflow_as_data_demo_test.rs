@@ -57,7 +57,7 @@ use v3_compiler::gunbc_ci::{
 };
 use v3_compiler::lens_cost::complexity_of;
 use v3_compiler::{
-    analyze_complexity, analyze_parallelism, analyze_symbolic_cost_dimension, compile_to_dag,
+    analyze_complexity, analyze_symbolic_cost_dimension, compile_to_dag,
     generated_full_bootstrap_dag, CompileError, DimensionReport,
 };
 

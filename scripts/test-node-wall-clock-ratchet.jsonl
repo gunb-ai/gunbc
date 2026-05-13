@@ -51,7 +51,7 @@
 {"test":"sg2c1_parse_tables_authority_test::parse_tables_generated_module_matches_checked_in_snapshot","policy":"warn"}
 {"test":"sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift","policy":"warn"}
 {"test":"t_demo_fixture_test::t_demo_canonical_suites_are_runner_visible","policy":"warn"}
-{"test":"t_ci_workflow_as_data_demo_test::lens_self_application_demonstrated","policy":"warn"}
+{"test":"t_ci_workflow_as_data_demo_test::lens_self_application_demonstrated_timing_dimension_report_on_bootstrap_shell","policy":"warn"}
 {"test":"t_pb_b_1_dag_runner_test::r3_gate_87_cementing_regen_lens_suites_pass_through_runner","policy":"warn"}
 {"test":"tc1_substrate_lens_eta_equivalence_strict_fire_test::tc1_strict_fire_suite_has_canonical_executable_claim_with_valid_binary_shape","policy":"warn"}
 {"test":"thesis_validation_test::kf_1_structural_list_operation_ordering_holds","policy":"warn"}
