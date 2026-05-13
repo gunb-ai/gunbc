@@ -16,10 +16,8 @@ use crate::common::cached_compile_outcome;
 use crate::common::CachedCompileOutcome;
 
 use v3_compiler::{
-    check_enforced_lens_applications,
-    gate_58_test_parse_timing_budget_violation_max_ns_pair,
-    gate_58_test_raise_modeled_ci_timing_measurement_duration_ns,
-    generated_full_bootstrap_dag,
+    check_enforced_lens_applications, gate_58_test_parse_timing_budget_violation_max_ns_pair,
+    gate_58_test_raise_modeled_ci_timing_measurement_duration_ns, generated_full_bootstrap_dag,
     Diagnostic,
 };
 
