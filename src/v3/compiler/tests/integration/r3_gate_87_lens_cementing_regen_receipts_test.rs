@@ -34,7 +34,8 @@
 //! the canonical Pass-condition body is `r3-structure.md` §"Acceptance"
 //! (`lens_cementing_test_discipline_complete`). Broader Band-C work for lenses outside
 //! `regen.dag` continues through `docs/v3-lens-capability-register.md` +
-//! `cementing_lens_registry_dispatch_test.rs` + `ROADMAP.md` honesty pass.
+//! `tests/dag/cementing_dispatch.dag` / `lens_register_correspondence_test.rs` + `ROADMAP.md`
+//! honesty pass.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -200,6 +201,11 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
 
 #[test]
