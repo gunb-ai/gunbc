@@ -2,9 +2,11 @@
 //!
 //! **T-Workflow-As-Data** — `ci_workflow_modeled_as_dag` receipt (gunbc#1956): gunbc CI workflow
 //! carriers from `dsl/extdeps/github/actions.dag` are authored as `.dag` **data** alongside a
-//! `Lens<TimingMeasurement>` reporting shell; `demo_ci_modeled_timing_dimension_report` is exercised
-//! via `evaluate_body` on the **gate-57 linked `gunbc.ci` compile** (see `GUNBC_CI_LINKED_COMPILE_*`)
-//! and, orthogonally, on **`generated_full_bootstrap_dag()`** for the PB-1 embed path.
+//! `Lens<TimingMeasurement>` reporting shell. On the **gate-57 linked `gunbc.ci` compile** (see
+//! `GUNBC_CI_LINKED_COMPILE_*`) we pin **structural** `ci_workflow_dag` receipts plus a **fail-closed
+//! eval regression** (`BadTransformOperands` on `demo_ci_modeled_timing_dimension_report` until the
+//! linked bundle agrees with eager eval). The **successful** `evaluate_body` receipt for that demo
+//! lives on the PB-1 bootstrap shell (`ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell`).
 //!
 //! **T-Lens-Self-Application — gate `recursive_flex_demonstration_landed` (#59):** remains **DECLARED**
 //! in `docs/r3-program-plan.md` §1.8: the recursive-flex **emit-back** consumer is the
@@ -24,10 +26,10 @@
 //! structural `ci_workflow_dag` (authority row, pipeline name, prerequisite edges, parallel fan-out),
 //! paired symbolic-cost + E7 complexity on the lowered lane-2 subject, prerequisite **graph** fan-out
 //! read from that carrier (no hand-staged `WorkflowEffect`), absence of a lowered lane-2 workflow
-//! projection until the compiler owns it (P2), and a **timing-lens `evaluate_body` receipt** on that
-//! same linked artifact (bootstrap supplies `demo_ci_modeled_timing_dimension_report` — THESIS
-//! self-inspection on the modeled CI workflow carrier, not a bootstrap-only shell). A separate **T-Workflow-As-Data** receipt (`ci_workflow_as_data_demo_*`)
-//! still exercises the PB-1 bootstrap embed path for `modeled_gunbc_ci_workflow` / demo span wiring.
+//! projection until the compiler owns it (P2), and a **timing-lens eval regression pin** on that
+//! linked artifact (`assert_linked_carrier_demo_ci_modeled_timing_dimension_report_eval_blocked`).
+//! The successful DimensionOk receipt for the same demo runs on the PB-1 bootstrap shell via
+//! `ci_workflow_as_data_demo_timing_dimension_report_on_bootstrap_shell`.
 //! Symbolic-cost and E7 complexity must both return `DimensionOk` where asserted (fail-closed).
 //!
 //! Runtime `Dag` binding is an **opaque substrate-shaped record** (empty `declarations` /
@@ -50,7 +52,8 @@ use v3_compiler::dag::{
     ValueNode,
 };
 use v3_compiler::evaluator::{
-    evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
+    evaluate_body, EvalError, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder,
+    NamedField, Value,
 };
 use v3_compiler::gunbc_ci::{
     select_affected_gates, select_affected_gates_for_binary_shim, CiBinaryShimAffectedSetReceipt,
@@ -317,8 +320,9 @@ fn sample_demo_value_behavior(dag: &v3_compiler::dag::Dag) -> Behavior {
         })
 }
 
-/// `evaluate_body` receipt for `demo_ci_modeled_timing_dimension_report` on `dag` (PB-1 / merged carrier).
-fn assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(dag: &v3_compiler::dag::Dag) {
+fn eval_demo_ci_modeled_timing_dimension_report(
+    dag: &v3_compiler::dag::Dag,
+) -> Result<Value, EvalError> {
     assert!(
         dag.diagnostics().is_empty(),
         "dag diagnostics: {:?}",
@@ -351,7 +355,30 @@ fn assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(dag: &v3_compiler:
     let strategy = EvalStrategy::ApplicativeOrder {
         input_order: InputEvaluationOrder::LeftFirst,
     };
-    let out = evaluate_body(dag, bind_node_id, &mut state, strategy).expect("eval");
+    evaluate_body(dag, bind_node_id, &mut state, strategy)
+}
+
+/// Linked `gunbc.ci` + workflow carrier: `evaluate_body(demo_ci_modeled_timing_dimension_report, …)`
+/// must remain blocked on the known eager-eval gap until appendix lowering/infer reconciles the bundle.
+fn assert_linked_carrier_demo_ci_modeled_timing_dimension_report_eval_blocked(
+    dag: &v3_compiler::dag::Dag,
+) {
+    match eval_demo_ci_modeled_timing_dimension_report(dag) {
+        Err(EvalError::BadTransformOperands {
+            reason: "Callable target declaration is not an Arrow type",
+        }) => {}
+        other => panic!(
+            "linked gunbc.ci timing-lens eval: expected BadTransformOperands(Callable target …); \
+             if this flips to Ok, migrate success assertions onto `merged` and shrink this pin — got {other:?}"
+        ),
+    }
+}
+
+/// `evaluate_body` **success** receipt for `demo_ci_modeled_timing_dimension_report` on `dag`
+/// (PB-1 bootstrap shell today; linked carrier still fails — see
+/// `assert_linked_carrier_demo_ci_modeled_timing_dimension_report_eval_blocked`).
+fn assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(dag: &v3_compiler::dag::Dag) {
+    let out = eval_demo_ci_modeled_timing_dimension_report(dag).expect("eval");
 
     let Value::VariantValue { tag, payload } = &out else {
         panic!("expected DimensionReport variant Value, got {out:?}");
@@ -1082,12 +1109,7 @@ fn lens_self_application_demonstrated_timing_dimension_report_on_ci_modeled_work
     merged
         .workflow_lane2_subject()
         .expect("merged gunbc.ci surface must expose the lane-2 CI workflow bind shell");
-    // `evaluate_body(demo_ci_modeled_timing_dimension_report, …)` on the bootstrap+linked-`gunbc.ci`
-    // Dag currently hits `BadTransformOperands` (“Callable target declaration is not an Arrow type”)
-    // inside a nested Transform — the gate-57 topology receipt above is still authoritative on
-    // `merged` / `g.dag`. Keep the executable timing-lens eval on the PB-1 bootstrap shell until
-    // appendix lowering/infer for the linked bundle is reconciled with eager eval (follow-up).
-    assert_demo_ci_modeled_timing_dimension_report_eval_on_dag(gate57_bootstrap_dag());
+    assert_linked_carrier_demo_ci_modeled_timing_dimension_report_eval_blocked(merged);
 }
 
 /// T-Workflow-As-Data / PB-1 — bootstrap embed path for `demo_ci_modeled_timing_dimension_report`
