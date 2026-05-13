@@ -4673,7 +4673,12 @@ impl<'a> TestRunner<'a> {
                 "PB census predicate `subset_predicate` should be a DeclarationRef, got {subset_predicate:?}"
             ));
         };
-        let subset_name = self.dag.declaration(*subset_id).name.as_deref().unwrap_or("");
+        let subset_name = self
+            .dag
+            .declaration(*subset_id)
+            .name
+            .as_deref()
+            .unwrap_or("");
         let (predicate, subset_label): (fn(&str) -> bool, &str) = match subset_name {
             "lens_producer_files_subset_predicate" => {
                 if let Err(reason) = self.resolve_pb_marker_ref(
