@@ -58,19 +58,11 @@ fn extract_linear_branches(
     Some(out)
 }
 
-fn first_breaking_across_branches(
-    branch_ops: &[Vec<OperationEffect>],
-) -> Option<ElementRef<OperationEffect>> {
-    let flattened: Vec<OperationEffect> = branch_ops
+fn flatten_branch_ops(branch_ops: &[Vec<OperationEffect>]) -> Vec<OperationEffect> {
+    branch_ops
         .iter()
         .flat_map(|ops| ops.iter().cloned())
-        .collect();
-    for (index, op) in flattened.iter().enumerate() {
-        if matches!(op.shape, EffectShape::IsBreaking(_)) {
-            return ElementRef::from_slice(flattened.as_slice(), index);
-        }
-    }
-    None
+        .collect()
 }
 
 fn pairwise_cross_branch_commutes(
@@ -109,10 +101,13 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
             "Stage 2e v1 requires every parallel branch to be `LinearEffect`",
         );
     };
-    if let Some(b) = first_breaking_across_branches(&branch_ops) {
-        return WorkflowParallelismReport::ParallelCompositionVerdict(CompositionVerdict::BrokenBy {
-            first_breaker: b,
-        });
+    match compose_operation_effects(flatten_branch_ops(&branch_ops).as_slice()) {
+        CompositionVerdict::BrokenBy { first_breaker } => {
+            return WorkflowParallelismReport::ParallelCompositionVerdict(
+                CompositionVerdict::BrokenBy { first_breaker },
+            );
+        }
+        CompositionVerdict::IdempotentComposition => {}
     }
     match pairwise_cross_branch_commutes(&branch_ops) {
         Ok(()) => WorkflowParallelismReport::ParallelCompositionVerdict(
