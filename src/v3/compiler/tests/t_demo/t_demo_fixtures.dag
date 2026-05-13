@@ -121,7 +121,7 @@ data integration_effects_compiles: TestClaim = {
 
 data integration_idempotency_compiles: TestClaim = {
   name: "fixture_integration_canonical.idempotency_compiles",
-  source: "let retry_verdict = compose_effects([])",
+  source: "import std.effects { EffectShape, operation_effect_shape }\nimport v3.std.services { Operation }\nfn classify_operation(op: Operation) -> EffectShape = operation_effect_shape(op)",
   file_name: "fixture_integration_canonical_idempotency.v3",
   predicate: Compiles,
   requires: []
@@ -129,7 +129,7 @@ data integration_idempotency_compiles: TestClaim = {
 
 data integration_testgen_compiles: TestClaim = {
   name: "fixture_integration_canonical.testgen_compiles",
-  source: "import std.verification { Compiles, TestClaim } data generated_claim: TestClaim = { name: \"effects_empty_compose_compiles\", source: \"let retry_verdict = compose_effects([])\", file_name: \"effects_empty_compose_claim.v3\", predicate: Compiles, requires: [] }",
+  source: "import std.verification { Compiles, TestClaim } data generated_claim: TestClaim = { name: \"effects_operation_classification_compiles\", source: \"import std.effects { EffectShape, operation_effect_shape }\\nimport v3.std.services { Operation }\\nfn classify_operation(op: Operation) -> EffectShape = operation_effect_shape(op)\", file_name: \"effects_operation_classification_claim.v3\", predicate: Compiles, requires: [] }",
   file_name: "fixture_integration_canonical_testgen.v3",
   predicate: Compiles,
   requires: []
@@ -137,7 +137,7 @@ data integration_testgen_compiles: TestClaim = {
 
 data integration_effects_lens_output: TestClaim = {
   name: "fixture_integration_canonical.effects_lens_output",
-  source: "let retry_verdict = compose_effects([])",
+  source: "import std.effects { EffectShape, operation_effect_shape }\nimport v3.std.services { Operation }\nfn classify_operation(op: Operation) -> EffectShape = operation_effect_shape(op)",
   file_name: "fixture_integration_canonical_effects.v3",
   predicate: LensOutputEquals(
     named_function_count,
