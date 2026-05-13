@@ -129,7 +129,7 @@ At authoring time of this skeleton (worktree HEAD), that count was **105**. Futu
 | 94 | `memory_peak_cost_basis_demonstrated` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #94. | — |
 | 95 | `opt_in_iteration_parallelism_via_lens_application_demonstrated` | demonstration | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #95. | — |
 | 96 | `value_body_substrate_mirror_isomorphism_executable` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #96. | — |
-| 97 | `method_template_projection_emit_shim_retirement_coherence` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #97. | — |
+| 97 | `method_template_projection_emit_shim_retirement_coherence` | state-check | **PASS** | `cargo test -p v3-compiler --test integration method_template_projection_emit_shim_coherence_test::method_template_projection_emit_shim_retirement_coherence -- --exact`; HEAD state: `src/v2/` absent, `src/v3/compiler/src/pb_method_template_projection_dag_emit.rs` absent, `src/v3/compiler/src/bin/emit_method_template_projection.rs` absent, and no `emit_method_template_projection` `[[bin]]` table remains in `src/v3/compiler/Cargo.toml`. | `src/v3/compiler/tests/integration/method_template_projection_emit_shim_coherence_test.rs` |
 | 98 | `ci_yml_hand_authority_dissolved` | state-check | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #98. | — |
 | 99 | `workflow_runtime_open_enum_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #99. | — |
 | 100 | `project_github_actions_landed` | substrate-shape | **NOT_EXECUTED** | TBD — assign per §8 + `docs/r3-structure.md` §Acceptance gate #100. | — |
@@ -156,4 +156,3 @@ At authoring time of this skeleton (worktree HEAD), that count was **105**. Futu
 - `docs/r3-program-plan.md` §1.8 — canonical gate table (Status / Notes authority for what “PASSING” means per gate).
 - `docs/r3-close-interrogation.md` §8 — requirement to preserve this execution log.
 - `docs/r3-actual-close-plan.md` — Gap 10 plan + close criterion (PR #3013).
-
