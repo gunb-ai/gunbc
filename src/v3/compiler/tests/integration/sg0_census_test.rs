@@ -234,103 +234,7 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
 // receipt-key surface (stable JSON field names for `self_host_fixed_point` trend reads),
 // not generated output. Dissolution: fold into a `.dag` or generated authority when one
 // owns receipt schema; until then this module + census line are the bounded ratchet receipt.
-const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
-    // R3 C1 perf-budget bench skeleton: Phase-1 Criterion harness for
-    // `tier3_mirror_dissolution_perf_within_budget` per
-    // `docs/briefs/r3-pb-tier3-perf-budget-worker.md` deliverable 0b
-    // (parent brief #1331; readiness matrix #1358; this PR #1362).
-    // Intentionally hand-authored: it measures live public substrate
-    // entrypoints (`merge_evidence`, `positive_descent_count`,
-    // `lower_call_pattern`, `type_iteration_dimension`,
-    // `lane2_workflow_idempotency_report`). R3 gate #4 **parallel module**
-    // `workflow_idempotency.rs` retired; native projection co-located in
-    // `dag/effects.rs` (full evaluator/emitted-authority slice still open while
-    // the std arrow is `Unparsed` in bootstrap). These benches still
-    // target hot Rust call paths (Criterion). Broader Tier3 bench retirement
-    // deletes this harness per parent brief §"Phase 1 deliverables" once the
-    // remaining mirrors dissolve; only the frozen `tier3_baseline.json` data
-    // survives.
-    "src/v3/compiler/benches/tier3_mirror_perf.rs",
-    "src/v3/compiler/build.rs",
-    "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
-    "src/v3/compiler/src/bin/regen_bootstrap.rs",
-    "src/v3/compiler/src/bin/regen_lens.rs",
-    "src/v3/compiler/src/bin/regen_parse.rs",
-    "src/v3/compiler/src/bin/regen_parse_tables.rs",
-    "src/v3/compiler/src/bin/regen_tokenize.rs",
-    "src/v3/compiler/src/bin/regen_v3.rs",
-    "src/v3/compiler/src/bin/self_host_fixed_point.rs",
-    "src/v3/compiler/src/bootstrap.rs",
-    "src/v3/compiler/src/bootstrap_regen_fresh.rs",
-    // R3 gate #87 / T-Tests-As-Data-Completeness: `CementingDispatchMatchesProjection` host
-    // evaluator for `tests/dag/cementing_dispatch.dag` (P5 consumer receipt; dissolves when
-    // predicate substrate owns the walk without host FS coupling).
-    "src/v3/compiler/src/cementing_dispatch.rs",
-    "src/v3/compiler/src/complexity_lattice.rs",
-    "src/v3/compiler/src/cost_basis_declaration.rs",
-    "src/v3/compiler/src/dag.rs",
-    "src/v3/compiler/src/dag/builder.rs",
-    // Closed Cardinality payload + idempotent target shim (API closure).
-    "src/v3/compiler/src/dag/cardinality_payload.rs",
-    "src/v3/compiler/src/dag/effects.rs",
-    "src/v3/compiler/src/dag/ports.rs",
-    "src/v3/compiler/src/diagnostics.rs",
-    "src/v3/compiler/src/dimension.rs",
-    "src/v3/compiler/src/emit.rs",
-    // CollectionOps `*_contract` → `MethodTemplateContract` identity gate (PR #1577 / #1602).
-    "src/v3/compiler/src/emit/collection_ops_method_contract.rs",
-    "src/v3/compiler/src/emit/python_target.rs",
-    "src/v3/compiler/src/emit/rust_target.rs",
-    "src/v3/compiler/src/emit_rust.rs",
-    "src/v3/compiler/src/emit_rust_bin_shim.rs",
-    // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
-    "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
-    "src/v3/compiler/src/enforced_lens_application.rs",
-    // T-WAD Slice 7 / gate #103: pure `CIWorkflowDag` gate-id selection (P5 receipt
-    // row in INVARIANTS.md §SG-0 hand-authored compiler non-test paths).
-    "src/v3/compiler/src/gunbc_ci.rs",
-    "src/v3/compiler/src/infer.rs",
-    "src/v3/compiler/src/int_literal_ranges.rs",
-    // R3 gate #87: `tests/integration.rs` wiring scanner shared by Band-C cementing dispatch
-    // (`cementing_dispatch.rs`) and integration tests (P5 receipt for host promotion from
-    // `tests/integration/common/mod.rs`).
-    "src/v3/compiler/src/integration_rs_wiring_scan.rs",
-    "src/v3/compiler/src/lens_declaration_apply.rs",
-    "src/v3/compiler/src/lens_t_las_carrier.rs",
-    "src/v3/compiler/src/lib.rs",
-    "src/v3/compiler/src/lower.rs",
-    // R3 gate #94: cost-lens memory-peak compose + enforcement authority (ties `dominant`/max_path).
-    "src/v3/compiler/src/memory_peak_cost.rs",
-    // R3 T-Omni-Shape-B Brief #1 (#2219 / PR #2251): transitional
-    // Rust-side OpenAPI projection receipt after the Shape A/Shape B boundary
-    // fix moved it out of `emit.rs`. Dissolves when the equivalent Shape B
-    // `.dag` program owns the OpenAPI artifact projection end-to-end.
-    "src/v3/compiler/src/omni_shape_b_openapi.rs",
-    // R3 row 85 / PB #1560 Gap 4: target-keyed projection of the
-    // `MethodTemplateContract` rows from the full bootstrap `Dag` for
-    // PB-zero / v2-retirement consumers (decision in
-    // `docs/decisions/r3-row85-method-template-read-surface.md`).
-    "src/v3/compiler/src/pb_method_template_projection.rs",
-    "src/v3/compiler/src/pipeline_authority.rs",
-    "src/v3/compiler/src/post_emit_verifier.rs",
-    // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
-    "src/v3/compiler/src/process_exit.rs",
-    // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
-    // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
-    // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
-    "src/v3/compiler/src/r1c_e_gates.rs",
-    // R3 T-Free-Consequences: authored comment → `lane2_workflow` staging until lowering owns it.
-    "src/v3/compiler/src/r3_fc_lane2_loop_witness.rs",
-    // R3 gate #87: PB-B-1 runner table + `cementing_dispatch` shared inventory for
-    // `tests/dag/t_r3_gate_87_cementing_regen_*.dag` (INVARIANTS P2 single authority).
-    "src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs",
-    "src/v3/compiler/src/regen_bootstrap_emit.rs",
-    "src/v3/compiler/src/regen_parse_emit.rs",
-    "src/v3/compiler/src/regen_parse_tables_emit.rs",
-    "src/v3/compiler/src/regen_tokenize.rs",
-    "src/v3/compiler/src/self_host_receipt_p0.rs",
-    "src/v3/compiler/src/test_runner.rs",
-];
+const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[];
 
 // All test .rs files under `src/v3/compiler` that are currently
 // hand-authored. Sorted; one path per line, relative to the
@@ -768,10 +672,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
 // itself `foo.txt` would silently escape the ratchet otherwise.
 // Every entry here names a dissolution trigger in its own file header.
 // Sorted; one path per line, relative to the workspace root.
-const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[
-    "src/v3/compiler/parse_parser_body.txt",
-    "src/v3/compiler/src/lens_testgen_body.txt",
-];
+const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[];
 
 // Non-`.rs` files under `src/v3/compiler/` whose content is produced
 // by a named generator (an `#[ignore]`'d refresh test, a `regen_*`
@@ -780,6 +681,8 @@ const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[
 // `sg0_generated_partition_is_producer_owned` probe forbids for
 // `.rs`; the same discipline applies here).
 const EXPECTED_GENERATED_FRAGMENTS: &[&str] = &[
+    "src/v3/compiler/parse_parser_body.txt",
+    "src/v3/compiler/src/lens_testgen_body.txt",
     // Produced by `cargo test refresh_handwritten_parse_snapshot_manifest -- --ignored`.
     "src/v3/compiler/tests/integration/parse_corpus_manifest.txt",
 ];
