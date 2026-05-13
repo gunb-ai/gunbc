@@ -602,8 +602,9 @@ fn gate_58_raise_observed_duration_ns_in_measurement(
 
 /// Integration receipt helper: mutates the PB-1 gate #58 witness row in a bootstrap [`Dag`].
 ///
-/// **Not a supported production API** — only [`crate::tests::integration`] gate #58 receipts
-/// should call this (kept `pub` so the integration test crate can link it).
+/// **Not a supported production API** — only the `v3-compiler` integration test
+/// `t_gate_58_apply_lens_self_application_test` should call this (exposed so that test binary can
+/// link against `v3_compiler` without `cfg(test)` coupling).
 #[doc(hidden)]
 pub fn gate_58_test_raise_modeled_ci_timing_measurement_duration_ns(
     dag: &mut Dag,

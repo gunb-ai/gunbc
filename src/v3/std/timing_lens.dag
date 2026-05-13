@@ -352,12 +352,10 @@ fn timing_lens_validate(d: Dag, composed: TimingMeasurement) -> OptionalDiagnost
 // gate #94 memory-peak: `>` not `>=`). Host consumer: `enforced_lens_application` (mirrors
 // `complexity_enforceable` wiring for gate #92).
 //
-// P2 note (review thread 3231515819): `timing_enforcement_fault_sentinel_count` is a single
-// substrate-chosen `Nat` witness carried only on the fault `TimingBudget` arms of
-// `timing_enforcement_project` / `timing_enforcement_fault_usage_budget`. Modeled CI wall-clock
-// observations remain many orders of magnitude below this literal; dissolution is to replace the
-// sentinel-in-`Nat` encoding with an explicit non-`Observed` carrier once the timing substrate
-// grows a dedicated fault budget type (same authority class as gate #92’s complexity fold).
+// P2 / host parity: `enforced_lens_application` mirrors this relation using a variant-shaped
+// `TimingMeasurement` projection so `Observed` wall-clock `Nat` is never compared for equality
+// against the fault sentinel (review thread 3231515819); dissolution remains a dedicated fault
+// budget carrier in `.dag` once the substrate grows one.
 
 fn timing_enforcement_fault_sentinel_count() -> Nat =
   999999999999999999
