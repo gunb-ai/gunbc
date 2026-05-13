@@ -41,13 +41,17 @@ use std::path::PathBuf;
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{
+    Behavior, CompositionVerdict, Declaration, EffectShape, FieldValue, IdempotentShape,
+    LiteralBits, NodeId, NonSingletonList, OperationEffect, ValueBody, WorkflowEffect,
+    WorkflowParallelismReport,
+};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
-use v3_compiler::Dag;
+use v3_compiler::{analyze_parallelism, Dag};
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -131,6 +135,21 @@ fn find_bind_value_port(dag: &Dag, name: &str) -> v3_compiler::dag::PortId {
         .value
 }
 
+fn lane2_anchor(dag: &Dag) -> NodeId {
+    dag.nodes()
+        .iter()
+        .find(|behavior| matches!(behavior, Behavior::Value(_) | Behavior::Bind(_)))
+        .expect("compile fixture should include a Value or Bind for lane2 staging")
+        .id()
+}
+
+fn read_operation(name: &str) -> OperationEffect {
+    OperationEffect {
+        operation_name: name.to_string(),
+        shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+    }
+}
+
 #[test]
 fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
     let actual = regen_lens_registry_names();
@@ -199,6 +218,34 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_rust_receipt_parallel_read_branches_commute() {
+    let mut dag = compile_to_dag(
+        "let lit: Int = 7",
+        "r3_gate_87_parallelism_receipt.v3",
+    )
+    .expect("compile");
+    let root = lane2_anchor(&dag);
+    let workflow = WorkflowEffect::ParallelEffect {
+        branches: NonSingletonList::from_vec(vec![
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![read_operation("read_left")],
+            }),
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: vec![read_operation("read_right")],
+            }),
+        ])
+        .expect("two branches should satisfy NonSingletonList"),
+    };
+    assert!(dag.try_register_lane2_workflow_effect(root, workflow));
+    assert!(matches!(
+        analyze_parallelism(&dag, root),
+        WorkflowParallelismReport::ParallelCompositionVerdict(
+            CompositionVerdict::IdempotentComposition
+        )
+    ));
 }
 
 #[test]
