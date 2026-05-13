@@ -12,12 +12,12 @@ artifact: validation audit for `docs/r3-close-interrogation.md`
 
 **INTERROGATION NOT ANSWERED.** R3 close is not validatable through this sheet at HEAD.
 
-## Inventory at HEAD (`docs/r3-close-interrogation.md` @ 938f334bef)
+## Inventory at HEAD (`docs/r3-close-interrogation.md` @ 13533fd22b post-merge of #2839)
 
-- Doc status: **v1, Director ratification pending** (header line 3; §12 line 378).
-- Probe checkboxes total: **116**
+- Doc status: **v1, Director ratification pending** (header line 3; §12).
+- Probe checkboxes total: **152**
 - Probes marked answered (`- [x]`): **0**
-- Probes outstanding (`- [ ]`): **116** (100%)
+- Probes outstanding (`- [ ]`): **152** (100%)
 - Director-tier meta-questions outstanding: **Q1–Q6** (§11) — none ratified.
 
 ### Per-section probe outstanding tally
@@ -33,6 +33,7 @@ artifact: validation audit for `docs/r3-close-interrogation.md`
 | §2.2 | Closed system / no escape hatches | 5 |
 | §2.3 | Single authority / cost-of-change = 1 | 5 |
 | §2.4 | Fail-closed discipline | 4 |
+| §2.5 | Impossible bugs by construction (META-PROMISE) | 36 |
 | §3.1 | Omni-emission (Rust / Python / Go) | 4 |
 | §3.2 | Workflow-as-data | 5 |
 | §3.3 | Tests-as-data | 4 |
@@ -46,7 +47,11 @@ artifact: validation audit for `docs/r3-close-interrogation.md`
 | §8 | Per-gate predicate execution at close | 4 |
 | §10 | Close ceremony | 8 |
 
-Total: 116 outstanding probes across 21 promise/ceremony sections.
+Total: 152 outstanding probes across 22 promise/ceremony sections.
+
+**Tally provenance**: counts produced via `awk` grouping `- [ ]` lines under their
+nearest preceding `## §` or `### §` heading. Verified against `grep -c '^- \[ \]'`
+= 152 and `grep -c '^- \[x\]'` = 0.
 
 ## Partial work already on-ledger (NOT probe-disposition advancement)
 
