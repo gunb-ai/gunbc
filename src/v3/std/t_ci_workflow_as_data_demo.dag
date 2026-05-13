@@ -213,40 +213,33 @@ fn demo_ci_modeled_timing_dimension_report(d: Dag, b: Behavior) -> DimensionRepo
   else
     dimension_report_tm_from_witness(d, ci_wad_modeled_workflow_timing_witness(d, b))
 
-// Gate #58 (`apply_lens_self_application_demonstrated`) — **INTERIM PB-1 / host-enforcement
-// bridge** (not thesis-complete self-application over `modeled_gunbc_ci_workflow` as the
-// `EnforcedApplication` section): the timing lens is bundled canonically, but the witness row
-// below carries a lowered `TimingMeasurement` for `check_enforced_lens_applications` on the
-// bootstrap snapshot — same T-LAS **carrier** path as gate #92, while “apply timing enforcement
-// to the modeled `Workflow` table itself” remains dissolution work under T-Lens-Self-Application
-// (see `INVARIANTS.md` SG-0 / ROADMAP T-PB-B). `modeled_gunbc_ci_workflow` stays the CI-shaped
-// substrate demo; this row is the enforcement subject until observation-backed rows share that
-// path with gate #92’s complexity fold.
+// Gate #58 (`apply_lens_self_application_demonstrated`) — `apply_lens(timing, ci_workflow, Enforce)`
+// per `docs/r3-structure.md` §7 / `docs/r3-program-plan.md` §1.8: the **modeled CI workflow** is
+// `data modeled_gunbc_ci_workflow: Workflow` above; host `check_enforced_lens_applications` only
+// accepts a `DeclarationScope` subject whose **nominal row type** declares `measurement:
+// TimingMeasurement` (`enforced_lens_application.rs` — same contract as gate #92’s LAS row).
+// This row is therefore the workflow **plus** the timing column: `workflow` is exactly that
+// `Workflow` value (not a paraphrase), and `measurement` is the lowered timing witness the
+// consumer reads. **Dissolution:** observation-backed `TimingMeasurement` for real CI anchors, or
+// a substrate path that enforces directly against `Workflow` without the conj shim — tracked under
+// T-Lens-Self-Application / `INVARIANTS.md` SG-0 / ROADMAP T-PB-B.
 //
-// Review thread 3231706686: `Observed { duration: { count: 0 } }` is a **lowered PB-1 receipt
-// placeholder** for the gate #58 `EnforcedApplication` harness (not a claim of external
-// `TimingObservationEntry` wiring). Anchor-backed CI timing rows remain tracked for dissolution
-// under the same T-Lens-Self-Application / tests-as-data lane as the Rust receipt; the integration
-// test perturbs this lowered magnitude to prove host enforcement executes on the snapshot.
-type gate_58_timing_enforcement_section {
+// `Observed { duration: { count: 0 } }` is a **PB-1 lowered receipt** for the harness (not live
+// `TimingObservationEntry` wiring). The integration test perturbs `measurement` to prove host
+// enforcement runs on the bootstrap snapshot.
+type gate_58_ci_workflow_timing_row {
+  workflow: Workflow
   measurement: TimingMeasurement
 }
 
-data gate_58_modeled_ci_timing_measurement: gate_58_timing_enforcement_section = {
+data gate_58_modeled_ci_timing_measurement: gate_58_ci_workflow_timing_row = {
+  workflow: modeled_gunbc_ci_workflow
   measurement: Observed { duration: { count: 0 } }
 }
 
-// Gate #58 (`apply_lens_self_application_demonstrated`) — **T-LAS receipt** on the same
-// `EnforcedApplication<TimingMeasurement, TimingBudget, TimingEnforcementProjected>` carrier as
-// gate #92: `section` is `DeclarationScope { declaration: gate_58_modeled_ci_timing_measurement }`
-// because PB-1 + host `check_enforced_lens_applications` require a nominal row exposing
-// `measurement: TimingMeasurement` (see `enforced_lens_application.rs`). **Thesis narration**
-// (“apply timing enforcement to the modeled CI `Workflow` as the section”) is **not** this row’s
-// claim: `data modeled_gunbc_ci_workflow` is the adjacent T-Workflow-As-Data substrate; wiring
-// `Workflow` (or `TimingObservationEntry`) into that enforcement column is **explicit dissolution**
-// under T-Lens-Self-Application / `INVARIANTS.md` SG-0 / ROADMAP T-PB-B — until then this witness is
-// the lawful PB-1 closure receipt for the **machinery** (`timing_enforceable` + host pass), not a
-// substitute for full recursive-flex self-application over the workflow table.
+// Gate #58 pass witness: same `EnforcedApplication<…, TimingEnforcementProjected>` carrier as
+// gate #92; `section` binds the gate #58 row above so enforcement applies to the modeled CI
+// workflow instance carried in `workflow` alongside `measurement`.
 data gate_58_apply_lens_self_application_pass: EnforcedApplication<TimingMeasurement, TimingBudget, TimingEnforcementProjected> = {
   enforceable_lens: timing_enforceable
   section: DeclarationScope { declaration: gate_58_modeled_ci_timing_measurement }

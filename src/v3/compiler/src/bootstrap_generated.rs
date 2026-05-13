@@ -42271,12 +42271,18 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(1278),
-            name: Some("gate_58_timing_enforcement_section".to_string()),
+            name: Some("gate_58_ci_workflow_timing_row".to_string()),
             connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "measurement".to_string(),
-                    ty: DeclarationId(1230),
-                }],
+                children: vec![
+                    Field {
+                        label: "workflow".to_string(),
+                        ty: DeclarationId(1759),
+                    },
+                    Field {
+                        label: "measurement".to_string(),
+                        ty: DeclarationId(1230),
+                    },
+                ],
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -42286,7 +42292,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 10151, 10227),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 10052, 10145),
         });
         declarations.push(Declaration {
             id: DeclarationId(1279),
@@ -42301,20 +42307,26 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::Structural {
-                fields: vec![(
-                    "measurement".to_string(),
-                    FieldValue::Variant {
-                        constructor: DeclarationId(2651),
-                        payload: vec![FieldValue::Record(vec![(
-                            "count".to_string(),
-                            FieldValue::Literal(LiteralBits::Int("0".to_string())),
-                        )])],
-                    },
-                )],
+                fields: vec![
+                    (
+                        "workflow".to_string(),
+                        FieldValue::Reference(DeclarationId(1260)),
+                    ),
+                    (
+                        "measurement".to_string(),
+                        FieldValue::Variant {
+                            constructor: DeclarationId(2651),
+                            payload: vec![FieldValue::Record(vec![(
+                                "count".to_string(),
+                                FieldValue::Literal(LiteralBits::Int("0".to_string())),
+                            )])],
+                        },
+                    ),
+                ],
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 10229, 10364),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 10147, 10316),
         });
         declarations.push(Declaration {
             id: DeclarationId(1280),
@@ -42394,7 +42406,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 11422, 11827),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 10576, 10981),
         });
         declarations.push(Declaration {
             id: DeclarationId(1281),
@@ -83788,7 +83800,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 11469, 11549),
+            span: SourceSpan::new("src/v3/std/t_ci_workflow_as_data_demo.dag", 10623, 10703),
         });
         declarations.push(Declaration {
             id: DeclarationId(2693),

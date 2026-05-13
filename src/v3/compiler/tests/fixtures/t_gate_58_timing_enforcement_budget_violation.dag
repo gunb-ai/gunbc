@@ -1,6 +1,6 @@
 // Gate #58 executable receipt: `timing_enforceable` + `EnforcedApplication` host enforcement.
 //
-// `gate_58_timing_enforcement_section` is substrate-authoritative in
+// `gate_58_ci_workflow_timing_row` is substrate-authoritative in
 // `t_ci_workflow_as_data_demo.dag`; this fixture pairs an over-budget `TimingMeasurement`
 // with a 1-ns ceiling so `check_enforced_lens_applications` must emit a lens-enforcement
 // diagnostic (same fail-closed path as gate #92's LAS demo, but on timing).
@@ -13,9 +13,13 @@ import v3.std.timing_lens {
   TimingMeasurement,
   timing_enforceable
 }
-import v3.std.t_ci_workflow_as_data_demo { gate_58_timing_enforcement_section }
+import v3.std.t_ci_workflow_as_data_demo {
+  gate_58_ci_workflow_timing_row,
+  modeled_gunbc_ci_workflow
+}
 
-data gate_58_section_over_budget: gate_58_timing_enforcement_section = {
+data gate_58_section_over_budget: gate_58_ci_workflow_timing_row = {
+  workflow: modeled_gunbc_ci_workflow
   measurement: Observed { duration: { count: 999 } }
 }
 
