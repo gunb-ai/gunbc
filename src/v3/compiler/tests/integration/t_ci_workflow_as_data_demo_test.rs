@@ -53,7 +53,7 @@ use v3_compiler::dag::{
 };
 use v3_compiler::evaluator::{
     evaluate_body, EvalError, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder,
-    NamedField, Value,
+    NamedField, Value, BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
 };
 use v3_compiler::gunbc_ci::{
     select_affected_gates, select_affected_gates_for_binary_shim, CiBinaryShimAffectedSetReceipt,
@@ -364,9 +364,8 @@ fn assert_linked_carrier_demo_ci_modeled_timing_dimension_report_eval_blocked(
     dag: &v3_compiler::dag::Dag,
 ) {
     match eval_demo_ci_modeled_timing_dimension_report(dag) {
-        Err(EvalError::BadTransformOperands {
-            reason: "Callable target declaration is not an Arrow type",
-        }) => {}
+        Err(EvalError::BadTransformOperands { reason })
+            if reason == BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON => {}
         other => panic!(
             "linked gunbc.ci timing-lens eval: expected BadTransformOperands(Callable target …); \
              if this flips to Ok, migrate success assertions onto `merged` and shrink this pin — got {other:?}"

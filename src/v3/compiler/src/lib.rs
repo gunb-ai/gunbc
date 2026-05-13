@@ -548,6 +548,11 @@ pub mod evaluator {
         RightFirst,
     }
 
+    /// Stable [`EvalError::BadTransformOperands::reason`] when a `Transform` callable target is
+    /// not an Arrow-shaped declaration at evaluation time (single string authority for pins/tests).
+    pub const BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON: &'static str =
+        "Callable target declaration is not an Arrow type";
+
     /// **Dissolution receipt: TERMINAL.** Typed fail-closed outcomes for
     /// the body evaluator: missing-substrate cases (`MissingNode`,
     /// `UnboundPort`), E3 transform
@@ -1331,7 +1336,7 @@ pub mod evaluator {
                 }
 
                 Err(EvalError::BadTransformOperands {
-                    reason: "Callable target declaration is not an Arrow type",
+                    reason: BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
                 })
             }
         }
@@ -1610,7 +1615,7 @@ pub mod evaluator {
             descent_proof_path_key, eval_loop_with_descent_execution_proof, eval_node, eval_port,
             eval_value, evaluate_body, DescentExecutionProof, DescentResidual, EvalError,
             EvalFrame, EvalFrameError, EvalStateStack, EvalStrategy, InputEvaluationOrder,
-            NonStrictEvidence, StrictEvidence, Value,
+            NonStrictEvidence, StrictEvidence, Value, BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
         };
         use crate::compile_to_dag;
         use crate::dag::{
@@ -3386,7 +3391,7 @@ pub mod evaluator {
             assert_eq!(
                 err,
                 EvalError::BadTransformOperands {
-                    reason: "Callable target declaration is not an Arrow type",
+                    reason: BAD_TRANSFORM_CALLABLE_TARGET_NOT_ARROW_REASON,
                 }
             );
         }
