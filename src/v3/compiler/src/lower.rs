@@ -5648,6 +5648,34 @@ fn lower_structural_field_value(
             return None;
         }
         let referenced = dag.declaration(decl_id);
+        // Structural `data` alias: reference another top-level `data` item whose
+        // declared type matches the field (e.g. pinned `Workflow` carriers split across
+        // modules). Distinct from `DeclarationRef` / `DeclarationId` substrate rows and
+        // from `meta_tag`-backed realization references.
+        if referenced.value_body.is_some()
+            && !is_value_level_arrow_declaration(referenced)
+            && referenced.meta_tag.is_none()
+            && declaration_ref_types_equivalent_with_subst(dag, decl_id, expected_type, subst, 0)
+        {
+            if let Some(cat) = category {
+                if let Err(reason) =
+                    validate_realization_field_target(dag, cat, field_label, decl_id)
+                {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{field_label}` does not satisfy the {cat:?} realization constraint: {reason}"
+                            ),
+                            span: span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                    return None;
+                }
+            }
+            return Some(crate::dag::FieldValue::Reference(decl_id));
+        }
         if is_value_level_arrow_declaration(referenced)
             && declaration_ref_types_equivalent_with_subst(dag, decl_id, expected_type, subst, 0)
         {
