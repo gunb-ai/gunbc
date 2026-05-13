@@ -54,6 +54,13 @@ type VariantPayload
   = Positional(List<SurfaceType>)
   | Record(List<SurfaceField>)
 
+// R3 gate #60 Phase 2.1 — angle-bracket type arguments only (`Int<64>`, `List<T>`, …).
+// Width literals are **not** valid as standalone `ty:` annotations; modeling them here
+// (not as `SurfaceType` peers) keeps illegal states unrepresentable at full-type scope.
+type TypeAngleArg
+  = TypeExpr { ty: SurfaceType }
+  | WidthNatLiteral { decimal: String, span: SourceSpan }
+
 // 🟡 SCAFFOLD at SG-2 parser-staging carrier scope (substrate mirror, not parse-rule authority).
 // **Named trigger:** `parse_parser_body.txt` header (emit algorithm from `.dag` alone) plus
 // SG-2b / SG-3f parse-rule cutover aligned with `lower.rs`.
@@ -61,7 +68,7 @@ type SurfaceType
   = Named { name: String, span: SourceSpan }
   | Parameterized {
       name: String
-      args: List<SurfaceType>
+      args: List<TypeAngleArg>
       span: SourceSpan
     }
   | Optional {
