@@ -26,11 +26,11 @@
 //! Directionality is the one written into the register's Discipline
 //! section — regen → register is required; extra register rows are
 //! allowed. `idempotency.dag` and `parallelism.dag` are the current
-//! example: both have register rows (as `BEHAVIORALLY STUB` lenses
-//! whose authority lives in Rust) but no `regen.dag` entry, because
-//! they are not regenerated into a `lens_*_generated.rs`. That is
-//! exactly the posture the register documents; a bidirectional
-//! ratchet would misread those rows as drift.
+//! example: both have register rows but no `regen.dag` entry, because
+//! they are not regenerated into a `lens_*_generated.rs`. Their current
+//! behavioral status is governed by the capability table (`idempotency.dag`
+//! is COMPLETE, `parallelism.dag` is PARTIAL), and a bidirectional ratchet
+//! would misread those non-regenerated rows as drift.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
