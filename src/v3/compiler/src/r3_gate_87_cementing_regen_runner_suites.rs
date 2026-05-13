@@ -19,6 +19,17 @@ pub fn r3_gate_87_cementing_regen_lens_names_for_runner_table() -> BTreeSet<Stri
         .collect()
 }
 
+/// Workspace-relative harness file paths enumerated in [`R3_GATE_87_CEMENTING_REGEN_SUITES`].
+/// The gate-#87 receipt ratchet compares this set to the on-disk
+/// `t_r3_gate_87_cementing_regen_*.dag` inventory so orphan receipts cannot land without runner
+/// execution.
+pub fn r3_gate_87_cementing_regen_runner_table_files() -> BTreeSet<String> {
+    R3_GATE_87_CEMENTING_REGEN_SUITES
+        .iter()
+        .map(|(_, file, _, _)| (*file).to_string())
+        .collect()
+}
+
 /// Module stems (`tests/dag/<stem>.dag`) enumerated in [`R3_GATE_87_CEMENTING_REGEN_SUITES`].
 /// [`crate::cementing_dispatch::evaluate_cementing_dispatch_projection`] requires every
 /// `kind == "dag"` receipt in `cementing_dispatch.dag` to use one of these stems so the dispatch

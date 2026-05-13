@@ -38,7 +38,10 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
+use v3_compiler::r3_gate_87_cementing_regen_runner_suites::{
+    r3_gate_87_cementing_regen_lens_names_for_runner_table,
+    r3_gate_87_cementing_regen_runner_table_files,
+};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
@@ -105,6 +108,41 @@ fn regen_lens_registry_names() -> BTreeSet<String> {
         .collect()
 }
 
+fn gate_87_cementing_regen_harness_files_on_disk() -> BTreeSet<String> {
+    const PREFIX: &str = "t_r3_gate_87_cementing_regen_";
+    const SUFFIX: &str = ".dag";
+
+    let tests_dag_dir = workspace_root()
+        .join("src")
+        .join("v3")
+        .join("compiler")
+        .join("tests")
+        .join("dag");
+    std::fs::read_dir(&tests_dag_dir)
+        .unwrap_or_else(|e| panic!("read {}: {e}", tests_dag_dir.display()))
+        .map(|entry| {
+            entry
+                .unwrap_or_else(|e| panic!("read {} entry: {e}", tests_dag_dir.display()))
+                .path()
+        })
+        .filter_map(|path| {
+            let file_name = path.file_name()?.to_str()?;
+            (file_name.starts_with(PREFIX) && file_name.ends_with(SUFFIX)).then(|| {
+                path.strip_prefix(workspace_root())
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "{} should be under workspace root {}: {e}",
+                            path.display(),
+                            workspace_root().display()
+                        )
+                    })
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+        })
+        .collect()
+}
+
 fn read_lens_source(rel: &str) -> String {
     let path = workspace_root().join(rel);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
@@ -140,6 +178,19 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
         "`src/v3/compiler/regen.dag` registry drift vs \
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
+    );
+}
+
+#[test]
+fn r3_gate_87_on_disk_receipts_match_runner_table_inventory() {
+    let actual = gate_87_cementing_regen_harness_files_on_disk();
+    let expected = r3_gate_87_cementing_regen_runner_table_files();
+    assert_eq!(
+        actual, expected,
+        "gate-#87 `.dag` receipt files must exactly match \
+         `R3_GATE_87_CEMENTING_REGEN_SUITES`; add/remove the runner table row in the same PR as \
+         any `tests/dag/t_r3_gate_87_cementing_regen_*.dag` file so `t_pb_b_1_dag_runner_test` \
+         executes the inventory."
     );
 }
 
