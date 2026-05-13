@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Self-test for scripts/check-test-timeout.sh.
 #
-# Pins `check-test-timeout.sh` warn vs fail semantics (interim #102-path bridge; self-test uses `TEST_TIMEOUT_MANIFEST` JSONL).
-# `TEST_TIMEOUT_MANIFEST` JSONL (self-test fixture) and enforces warn vs fail
-# semantics. Production path projects rows from substrate via `gunbc-ci`.
+# Drives warn vs fail cases via TEST_TIMEOUT_MANIFEST (temp JSONL fixture only).
+# Production uses dsl/gunbc/test_node_wall_clock_ratchet.dag projected by
+# gunbc-ci wall-clock-warn-manifest (interim #102-path bridge, not #102 closure).
 
 set -euo pipefail
 
