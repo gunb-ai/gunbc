@@ -1358,6 +1358,13 @@ data rust_list_instantiation: TypeInstantiationRealization = {
   cost: 1
 }
 
+data rust_non_singleton_list_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: NonSingletonList
+  carrier: "NonSingletonList<{element}>"
+  cost: 1
+}
+
 // `type Result<ok, err> = Ok { value: ok } | Err { value: err }` in
 // `dsl/std/error_primitives.dag` is a type-checking authority; Rust materializes
 // it as the standard `::core::result::Result<…>` (see
