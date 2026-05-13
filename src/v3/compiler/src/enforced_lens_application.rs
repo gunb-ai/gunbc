@@ -830,7 +830,7 @@ fn matches_enforced_application_instantiation(
                 template,
                 arguments,
             } => {
-                if *template == enforced_template && arguments.len() == 2 {
+                if *template == enforced_template && arguments.len() == 3 {
                     return true;
                 }
                 if arguments.is_empty() {
