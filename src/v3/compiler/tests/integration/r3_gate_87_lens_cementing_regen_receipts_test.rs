@@ -227,8 +227,7 @@ fn r3_gate_87_placeholder_dissolution_ledger_matches_live_runner_claims() {
     let registry_names = regen_lens_registry_names();
     let claims_by_stem = runner_table_claims_by_stem();
     let mut seen = BTreeSet::new();
-    let mut compiles_placeholders = 0;
-    let mut int_projection_placeholders = 0;
+    let mut placeholder_identities = BTreeSet::new();
 
     for row in declaration_list(&dag, "gate_87_placeholder_dissolution_ledger") {
         let fields = record_fields_for_test(row, "gate_87_placeholder_dissolution_ledger");
@@ -269,20 +268,54 @@ fn r3_gate_87_placeholder_dissolution_ledger_matches_live_runner_claims() {
             "duplicate placeholder ledger identity for `{registry_name}` / `{module_stem}` / `{claim_name}`"
         );
 
-        match placeholder_kind.as_str() {
-            "CompilesPlaceholder" => compiles_placeholders += 1,
-            "IntProjectionPlaceholder" => int_projection_placeholders += 1,
-            other => panic!("unexpected placeholder ledger kind `{other}`"),
-        }
+        assert!(
+            matches!(
+                placeholder_kind.as_str(),
+                "CompilesPlaceholder" | "IntProjectionPlaceholder"
+            ),
+            "unexpected placeholder ledger kind `{placeholder_kind}`"
+        );
+        placeholder_identities.insert((placeholder_kind, registry_name));
     }
 
+    let expected_placeholder_identities = BTreeSet::from([
+        (
+            "CompilesPlaceholder".to_string(),
+            "infer_helpers".to_string(),
+        ),
+        (
+            "CompilesPlaceholder".to_string(),
+            "lower_helpers".to_string(),
+        ),
+        ("CompilesPlaceholder".to_string(), "parallelism".to_string()),
+        (
+            "CompilesPlaceholder".to_string(),
+            "variant_payload".to_string(),
+        ),
+        (
+            "IntProjectionPlaceholder".to_string(),
+            "cost_target_realization".to_string(),
+        ),
+        (
+            "IntProjectionPlaceholder".to_string(),
+            "effect_enumeration".to_string(),
+        ),
+        (
+            "IntProjectionPlaceholder".to_string(),
+            "provenance".to_string(),
+        ),
+        (
+            "IntProjectionPlaceholder".to_string(),
+            "structural_resolution".to_string(),
+        ),
+        (
+            "IntProjectionPlaceholder".to_string(),
+            "unused_parameters".to_string(),
+        ),
+    ]);
     assert_eq!(
-        compiles_placeholders, 4,
-        "gate-87 helper/partial-lens Compiles placeholders must stay explicitly ledgered"
-    );
-    assert_eq!(
-        int_projection_placeholders, 5,
-        "gate-87 narrow Int projection placeholders must stay explicitly ledgered"
+        placeholder_identities, expected_placeholder_identities,
+        "gate-87 placeholder ledger identities must change explicitly when a placeholder is added or dissolved"
     );
 }
 
