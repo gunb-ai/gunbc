@@ -461,10 +461,10 @@ fn effect_shape_is_breaking(shape: EffectShape) -> Bool =
   }
 
 fn operation_effect_shape(op: Operation) -> EffectShape {
-  if op.callable.decl == append_method then
+  if op.callable.decl == append_method && method_is_post(op.endpoint.method) then
     IsBreaking(AppendEffect)
   else
-    if op.callable.decl == concat_method then
+    if op.callable.decl == concat_method && method_is_post(op.endpoint.method) then
       IsBreaking(CreateEffect { cause: PostAlways })
   else
     if op.callable.decl == get_method ||
@@ -474,22 +474,97 @@ fn operation_effect_shape(op: Operation) -> EffectShape {
        op.callable.decl == map_has_method ||
        op.callable.decl == count_method ||
        op.callable.decl == length_method then
+      if method_is_read(op.endpoint.method) then
       IsIdempotent(ReadEffect)
+      else
+        transport_effect_shape(op)
     else
     if op.callable.decl == map_insert_method ||
        op.callable.decl == replace_method ||
        op.callable.decl == with_method then
+      if method_is_upsert(op.endpoint.method) then
+      IsIdempotent(UpsertEffect {
+        key_source: PathParam { param: operation_resource_key(op) }
+      })
+      else
+        transport_effect_shape(op)
+    else
+    if op.callable.decl == diff_method then
+      if method_is_delete(op.endpoint.method) then
+      IsIdempotent(DeleteEffect {
+        key_source: PathParam { param: operation_resource_key(op) }
+      })
+      else
+        transport_effect_shape(op)
+    else
+      transport_effect_shape(op)
+}
+
+fn transport_effect_shape(op: Operation) -> EffectShape {
+  if method_is_read(op.endpoint.method) then
+    IsIdempotent(ReadEffect)
+  else
+    if method_is_upsert(op.endpoint.method) then
       IsIdempotent(UpsertEffect {
         key_source: PathParam { param: operation_resource_key(op) }
       })
     else
-    if op.callable.decl == diff_method then
-      IsIdempotent(DeleteEffect {
-        key_source: PathParam { param: operation_resource_key(op) }
-      })
-    else
-      IsBreaking(CreateEffect { cause: KeylessFallback { method: POST } })
+      if method_is_delete(op.endpoint.method) then
+        IsIdempotent(DeleteEffect {
+          key_source: PathParam { param: operation_resource_key(op) }
+        })
+      else
+        if method_is_post(op.endpoint.method) then
+          IsBreaking(CreateEffect { cause: PostAlways })
+        else
+        IsBreaking(CreateEffect {
+          cause: KeylessFallback { method: op.endpoint.method }
+        })
 }
+
+fn method_is_read(method: HttpMethod) -> Bool =
+  match method {
+    GET => true
+    HEAD => true
+    OPTIONS => true
+    POST => false
+    PUT => false
+    PATCH => false
+    DELETE => false
+  }
+
+fn method_is_upsert(method: HttpMethod) -> Bool =
+  match method {
+    PUT => true
+    PATCH => true
+    GET => false
+    POST => false
+    DELETE => false
+    HEAD => false
+    OPTIONS => false
+  }
+
+fn method_is_post(method: HttpMethod) -> Bool =
+  match method {
+    POST => true
+    GET => false
+    PUT => false
+    PATCH => false
+    DELETE => false
+    HEAD => false
+    OPTIONS => false
+  }
+
+fn method_is_delete(method: HttpMethod) -> Bool =
+  match method {
+    DELETE => true
+    GET => false
+    POST => false
+    PUT => false
+    PATCH => false
+    HEAD => false
+    OPTIONS => false
+  }
 
 fn operation_resource_key(op: Operation) -> String =
   match last_path_param(op.endpoint.path) {

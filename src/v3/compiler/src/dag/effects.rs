@@ -271,32 +271,72 @@ pub enum WorkflowParallelismReport {
 
 pub fn operation_effect_shape(dag: &Dag, effect: &Operation) -> EffectShape {
     match callable_method_name(dag, effect.callable.decl) {
-        Some("append_method") => EffectShape::IsBreaking(BreakingShape::AppendEffect),
-        Some("concat_method") => EffectShape::IsBreaking(BreakingShape::CreateEffect {
-            cause: CreateCause::PostAlways,
-        }),
+        Some("append_method") if effect.endpoint.method == HttpMethodScalar::Post => {
+            EffectShape::IsBreaking(BreakingShape::AppendEffect)
+        }
+        Some("concat_method") if effect.endpoint.method == HttpMethodScalar::Post => {
+            EffectShape::IsBreaking(BreakingShape::CreateEffect {
+                cause: CreateCause::PostAlways,
+            })
+        }
         Some(
             "get_method" | "lookup_method" | "map_get_method" | "has_method" | "map_has_method"
             | "count_method" | "length_method",
-        ) => EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-        Some("map_insert_method" | "replace_method" | "with_method") => {
+        ) if method_is_read(effect.endpoint.method) => {
+            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+        }
+        Some("map_insert_method" | "replace_method" | "with_method")
+            if method_is_upsert(effect.endpoint.method) =>
+        {
             EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
                 key_source: KeySource::PathParam {
                     param: operation_resource_key(effect),
                 },
             })
         }
-        Some("diff_method") => EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
+        Some("diff_method") if effect.endpoint.method == HttpMethodScalar::Delete => {
+            EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
+                key_source: KeySource::PathParam {
+                    param: operation_resource_key(effect),
+                },
+            })
+        }
+        _ => transport_effect_shape(effect),
+    }
+}
+
+fn transport_effect_shape(effect: &Operation) -> EffectShape {
+    match effect.endpoint.method {
+        HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options => {
+            EffectShape::IsIdempotent(IdempotentShape::ReadEffect)
+        }
+        HttpMethodScalar::Put | HttpMethodScalar::Patch => {
+            EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+                key_source: KeySource::PathParam {
+                    param: operation_resource_key(effect),
+                },
+            })
+        }
+        HttpMethodScalar::Delete => EffectShape::IsIdempotent(IdempotentShape::DeleteEffect {
             key_source: KeySource::PathParam {
                 param: operation_resource_key(effect),
             },
         }),
-        _ => EffectShape::IsBreaking(BreakingShape::CreateEffect {
-            cause: CreateCause::KeylessFallback {
-                method: HttpMethodScalar::Post,
-            },
+        HttpMethodScalar::Post => EffectShape::IsBreaking(BreakingShape::CreateEffect {
+            cause: CreateCause::PostAlways,
         }),
     }
+}
+
+fn method_is_read(method: HttpMethodScalar) -> bool {
+    matches!(
+        method,
+        HttpMethodScalar::Get | HttpMethodScalar::Head | HttpMethodScalar::Options
+    )
+}
+
+fn method_is_upsert(method: HttpMethodScalar) -> bool {
+    matches!(method, HttpMethodScalar::Put | HttpMethodScalar::Patch)
 }
 
 fn callable_method_name(dag: &Dag, callable: DeclarationId) -> Option<&str> {
