@@ -1317,12 +1317,6 @@ impl<'a> Parser<'a> {
 
         let token = self.bump().clone();
         let name = match token.kind {
-            TokenKind::IntLit(decimal) => {
-                return Ok(SurfaceType::WidthNatLiteral {
-                    decimal,
-                    span: token.span,
-                });
-            }
             TokenKind::Ident(n) => n,
             other => {
                 return Err(Diagnostic::ParseError {
@@ -1359,6 +1353,24 @@ impl<'a> Parser<'a> {
         true
     }
 
+    /// Decimal width literal permitted **only** inside `<…>` type-argument lists
+    /// (e.g. `Int<64>`). Standalone `let x: 64 = …` must stay a parse error — gate #60
+    /// codex review (illegal surface closed at parse boundary).
+    fn parse_width_nat_type_argument(&mut self) -> Result<SurfaceType, Diagnostic> {
+        let token = self.bump().clone();
+        match token.kind {
+            TokenKind::IntLit(decimal) => Ok(SurfaceType::WidthNatLiteral {
+                decimal,
+                span: token.span,
+            }),
+            other => Err(Diagnostic::ParseError {
+                message: format!("expected decimal width literal, got {other:?}"),
+                span: token.span,
+                fixes: Vec::new(),
+            }),
+        }
+    }
+
     fn parse_type_expr_list_until(
         &mut self,
         end: TokenKind,
@@ -1367,8 +1379,13 @@ impl<'a> Parser<'a> {
         if self.peek().kind == end {
             return Ok(types);
         }
+        let angle_args = matches!(end, TokenKind::Gt);
         loop {
-            types.push(self.parse_type_expr()?);
+            if angle_args && matches!(self.peek().kind, TokenKind::IntLit(_)) {
+                types.push(self.parse_width_nat_type_argument()?);
+            } else {
+                types.push(self.parse_type_expr()?);
+            }
             if matches!(self.peek().kind, TokenKind::Comma) {
                 self.bump();
                 continue;

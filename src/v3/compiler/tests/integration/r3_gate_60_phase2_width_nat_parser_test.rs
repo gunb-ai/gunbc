@@ -73,6 +73,22 @@ fn assert_compose_algebra_machine_width_literal(
 }
 
 #[test]
+fn gate_60_bare_numeric_type_is_parse_rejected() {
+    // Codex gate #60 review: width nat literals are only valid inside `<…>` type args,
+    // not as standalone atomic types (`Fail-closed` / illegal surface unrepresentable).
+    let source = "let x: 64 = 0\n";
+    let tokens = tokenize_for_test(source, "bare_width_nat_reject.v3").expect("tokenize");
+    let err = parse_for_test(&tokens, "bare_width_nat_reject.v3").expect_err("parse must fail");
+    let v3_compiler::Diagnostic::ParseError { message, .. } = err else {
+        panic!("expected ParseError, got {err:?}");
+    };
+    assert!(
+        message.contains("expected type name") && message.contains("IntLit"),
+        "unexpected diagnostic: {message}"
+    );
+}
+
+#[test]
 fn gate_60_phase2_parse_accepts_algebra_angle_width_nat() {
     let source = "\
 import std.integer { Int, UInt }
