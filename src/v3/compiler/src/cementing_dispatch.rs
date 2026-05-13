@@ -256,7 +256,9 @@ fn expected_cementing_receipt_triples(
     Ok(out)
 }
 
-fn capability_register_basenames(capability_rows: &[FieldValue]) -> Result<BTreeSet<String>, String> {
+fn capability_register_basenames(
+    capability_rows: &[FieldValue],
+) -> Result<BTreeSet<String>, String> {
     let mut basenames = BTreeSet::new();
     for row in capability_rows {
         let Some(fields) = record_fields(row) else {
@@ -391,7 +393,8 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
     let receipt_rows = list_items_of_declaration(dag, recv_id, "cementing_receipts")?;
 
     let registered_basenames = capability_register_basenames(&capability_rows)?;
-    let v2_cementing_basenames = v2_cementing_basenames_from_capability_rows(dag, &capability_rows)?;
+    let v2_cementing_basenames =
+        v2_cementing_basenames_from_capability_rows(dag, &capability_rows)?;
 
     let registry_pairs = read_lens_registry_name_lens_file_pairs(dag)?;
 
