@@ -17,7 +17,7 @@
 module std.verification
 
 import std.list { List, map }
-import std.types { FilePath, NonEmptyStr, ContentHash }
+import std.types { FilePath, NonEmptyStr }
 import v3.std.substrate { ComparisonOp }
 import v3.std.timing_lens { TimingBudget, TimingMeasurement }
 import v3.spec.v3_l1 { DeclarationRef }
@@ -30,19 +30,22 @@ import v3.std.bridge_ledger { BridgeLedgerRef }
 type Path = FilePath
 type SnapshotRef = NonEmptyStr
 
-// R3 Cluster M generator-manifest substrate (Director ratification msg_05837745
-// + amendment msg_606e0e50). One manifest entry binds a generated output path
-// to its `DeclarationRef` source authority (Q2-ratified) plus the byte-level
-// `ContentHash` (Q3-amend (b): canonical hash type per CLAUDE.md hash-
-// unification; the original Q3 SnapshotRef framing overloaded an existing
-// sentinel-key convention and was retracted post-STOP-AND-PING). The 3-way
-// byte-equality assertion that consumes `source_hash` lands in the follow-up
-// Evaluator-Mgr-owned runtime PR; this PR's evaluator preserves prior
-// one-direction set-membership semantics on `output_path` only.
+// R3 Cluster M generator-manifest substrate (Director ratifications
+// msg_05837745 + msg_606e0e50 + msg_8423d468). One manifest entry binds a
+// generated output path to its `DeclarationRef` source authority (Q2-ratified)
+// plus an opaque `source_hash` reference (Q3-amend β: bare `NonEmptyStr`
+// matching the `SnapshotRef = NonEmptyStr` carrier-shape at line 31 and
+// `FixedPointConverges.expected` precedent at line 431). Branded `ContentHash`
+// re-introduction is deferred to the follow-up Evaluator-Mgr-owned runtime PR
+// at its hash-derivation construction boundary; the surface-DSL fixture form
+// during the shape-only window only needs an opaque-string placeholder. The
+// 3-way byte-equality assertion that consumes `source_hash` lands in that
+// follow-up PR; this PR's evaluator preserves prior one-direction
+// set-membership semantics on `output_path` only.
 type GeneratedManifestEntry {
   output_path: Path
   dag_source: DeclarationRef
-  source_hash: ContentHash
+  source_hash: NonEmptyStr
 }
 
 // R3 T-Workflow-As-Data gate #101 (`test_cost_dimension_landed`).
