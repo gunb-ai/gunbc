@@ -66,6 +66,7 @@ Two-pass audit (codex BLOCKING e9143f67 — content-keyword grep alone is insuff
 | gunbc CI demo / evaluator entry | `src/v3/std/t_ci_workflow_as_data_demo.dag` | every node classified |
 | Compiler test integration | `src/v3/compiler/tests/integration/t_ci_workflow_as_data_demo_test.rs` | every `#[test]` fn classified |
 | Repo CI workflow YAML | `.github/workflows/*.yml` + `.github/workflows/*.yaml` (ALL FILES) | **all-lines / YAML-structural** — every top-level key (`name`, `on`, `jobs`, `concurrency`, `permissions`, `env`, `defaults`) AND every job-level key (`runs-on`, `steps`, `strategy`, `if`, `needs`, `outputs`, `env`, `concurrency`, `permissions`, `services`, `container`) is a workflow/scheduling fact requiring classification — NOT keyword-filtered |
+| CI-referenced shell scripts | `scripts/*.sh` + any `scripts/**/*.{sh,py,rb}` invoked from `.github/workflows/*.yml` `run:` blocks (codex BLOCKING e9143f67 + 05e37ce6 sha) | **per-script classification** — Pass 1 enumerates each script referenced by any workflow YAML `run:` / `uses:` block; classify as pass-through (script logic doesn't carry Class 4 facts) / allocated-survivor (script encodes workflow/scheduling logic Director-allocated to another §1.8 row) / unallocated-survivor (script encodes Class 4 fact with no §1.8 home → STOP). Discovery procedure: parse every workflow YAML's `jobs.*.steps[*].run` and `jobs.*.steps[*].uses` to derive the closed script-set, then audit each script. |
 | Workflow-runtime sibling tests | `src/v3/compiler/tests/integration/` (any file mentioning workflow/ci_workflow/WorkflowRuntime/project_github_actions) | every `#[test]` fn classified |
 
 For YAML surfaces, the audit doc enumerates each file's structural facts (name + trigger shape + per-job `runs-on`/`strategy`?/`concurrency`?/`if`?/`needs`? table) — every YAML fact is a Class 4 fact, and every fact gets a row in the audit doc.
@@ -74,7 +75,7 @@ For YAML surfaces, the audit doc enumerates each file's structural facts (name +
 
 ```
 git grep -nE "ci_workflow|ci_emission|ci_github_actions|github_actions_workflow|project_github_actions|workflow_runtime|WorkflowRuntime|workflow_as_data|workflow_scheduling|CIWorkflowDag|WorkflowTrigger|WorkflowStep|WorkflowSecret|MatrixStrategy|RunnerSpec|RunnerLabel|concurrency" \
-  src/v3/ dsl/ .github/workflows/ \
+  src/v3/ dsl/ .github/workflows/ scripts/ \
   | grep -v "^Binary file"
 ```
 
