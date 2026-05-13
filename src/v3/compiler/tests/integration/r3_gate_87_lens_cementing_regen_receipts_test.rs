@@ -10,8 +10,9 @@
 //! `effect_enumeration`, `provenance`, `cost_target_realization`, `unused_parameters`, and
 //! `structural_resolution` also use Int-projection `.dag` claims over their published runner
 //! projections, so they no longer need parallel Rust receipt tests here.
-//! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
-//! placeholders with per-file dissolution triggers in their `.dag` harness comments.
+//! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) and the intentionally
+//! partial `parallelism` row stay explicit `Compiles` placeholders with per-file dissolution
+//! triggers in their `.dag` harness comments.
 //!
 //! **INVARIANTS P5(b):** Gate-#87 work is **merge-visible** as this module,
 //! `r3_gate_87_cementing_regen_runner_suites` plus `t_pb_b_1_dag_runner_test` wiring, and the
@@ -142,4 +143,9 @@ fn r3_gate_87_variant_payload_lens_source_compiles() {
 #[test]
 fn r3_gate_87_lower_helpers_lens_source_compiles() {
     assert_lens_dag_compiles("src/v3/lenses/lower_helpers.dag");
+}
+
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
