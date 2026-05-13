@@ -550,7 +550,8 @@ fn test_runner_dispatches_pb_census_predicate_shapes() {
 import std.verification {
   compiler_std_positive_set_ratchet,
   expected_hand_authored_non_test,
-  lens_producer_files_subset_predicate
+  lens_producer_files_subset_predicate,
+  PendingFact
 }
 
 data census_authority: Int = 0
@@ -599,11 +600,7 @@ data generated_from_dag_claim: TestClaim = {
   source: "let x: Int = 1",
   file_name: "pb_test_file_generated_from_dag.v3",
   predicate: GeneratedFromDag(census_authority, [
-    {
-      output_path: "src/v3/compiler/tests/integration.rs",
-      dag_source: census_authority,
-      source_hash: "stub"
-    }
+    PendingFact { output_path: "src/v3/compiler/tests/integration.rs" }
   ]),
   requires: []
 }
