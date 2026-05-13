@@ -128,10 +128,10 @@ let width_nat: Nat<8> = 0
         assert_eq!(tycon, surface);
         assert_eq!(args.len(), 1);
         match &args[0] {
-            parse_surface::SurfaceType::WidthNatLiteral { decimal, .. } => {
+            parse_surface::TypeAngleArg::WidthNatLiteral { decimal, .. } => {
                 assert_eq!(decimal, width);
             }
-            other => panic!("expected WidthNatLiteral for `{name}`, got {other:?}"),
+            other => panic!("expected WidthNatLiteral angle arg for `{name}`, got {other:?}"),
         }
     }
 

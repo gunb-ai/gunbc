@@ -2198,6 +2198,19 @@ fn substrate_coproducts_match_runtime_carriers() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "TypeAngleArg"),
+        vec![
+            (
+                String::from("TypeExpr"),
+                vec![String::from("ty")],
+            ),
+            (
+                String::from("WidthNatLiteral"),
+                vec![String::from("decimal"), String::from("span")],
+            ),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "SurfaceType"),
         vec![
             (
@@ -2211,10 +2224,6 @@ fn substrate_coproducts_match_runtime_carriers() {
                     String::from("args"),
                     String::from("span"),
                 ],
-            ),
-            (
-                String::from("WidthNatLiteral"),
-                vec![String::from("decimal"), String::from("span")],
             ),
             (
                 String::from("Optional"),
@@ -2990,7 +2999,11 @@ fn parse_type_inhabits_clause_with_parameterized_algebra_and_sum_rhs() {
                 parse_surface::SurfaceType::Parameterized { name, args, .. }
                     if name == "AlgebraExpr"
                         && args.len() == 1
-                        && matches!(&args[0], parse_surface::SurfaceType::Named { name, .. } if name == "T")
+                        && matches!(
+                            &args[0],
+                            parse_surface::TypeAngleArg::TypeExpr { ty }
+                                if matches!(ty.as_ref(), parse_surface::SurfaceType::Named { name, .. } if name == "T")
+                        )
             ));
             assert_eq!(variants.len(), 2);
             assert_eq!(variants[0].name, "Leaf");

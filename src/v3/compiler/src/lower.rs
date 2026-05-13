@@ -48,7 +48,8 @@ use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use crate::parse::expr_span as surface_expr_span;
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
-    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, VariantPayload,
+    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, TypeAngleArg,
+    VariantPayload,
 };
 use crate::types::TypeShape;
 
@@ -3828,6 +3829,21 @@ fn type_to_connective(
     }
 }
 
+/// Lower a single angle-bracket type argument (full `SurfaceType` or gate-60 width literal).
+fn type_angle_arg_to_declaration_id(
+    arg: &TypeAngleArg,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> DeclarationId {
+    match arg {
+        TypeAngleArg::TypeExpr { ty } => type_to_declaration_id(ty, symbols, local, dag),
+        TypeAngleArg::WidthNatLiteral { decimal, span } => {
+            alloc_literal_width_nat_decl(dag, decimal, span.clone())
+        }
+    }
+}
+
 /// Build the `TemplateArgument` list for an `Instantiation`.
 ///
 /// Two-phase bootstrap means every real declaration's `type_params`
@@ -3853,7 +3869,7 @@ fn build_template_arguments(
     local: &HashMap<String, DeclarationId>,
     template: DeclarationId,
     template_name: &str,
-    args: &[SurfaceType],
+    args: &[TypeAngleArg],
     span: &SourceSpan,
 ) -> Vec<TemplateArgument> {
     let template_decl = dag.declaration(template);
@@ -3870,7 +3886,7 @@ fn build_template_arguments(
         // instantiation, and a TemplateArgument whose parameter
         // wasn't a TypeParam would violate the field contract.
         for arg in args {
-            let _ = type_to_declaration_id(arg, symbols, local, dag);
+            let _ = type_angle_arg_to_declaration_id(arg, symbols, local, dag);
         }
         return Vec::new();
     }
@@ -3878,7 +3894,7 @@ fn build_template_arguments(
         resolve_template_for_type_parameters(dag, template, template_name, span)
     else {
         for arg in args {
-            let _ = type_to_declaration_id(arg, symbols, local, dag);
+            let _ = type_angle_arg_to_declaration_id(arg, symbols, local, dag);
         }
         return Vec::new();
     };
@@ -3900,14 +3916,14 @@ fn build_template_arguments(
         // inventing parameter references that don't exist, which
         // would violate the field contract.
         for arg in args {
-            let _ = type_to_declaration_id(arg, symbols, local, dag);
+            let _ = type_angle_arg_to_declaration_id(arg, symbols, local, dag);
         }
         return Vec::new();
     }
     args.iter()
         .enumerate()
         .map(|(idx, arg)| {
-            let value = type_to_declaration_id(arg, symbols, local, dag);
+            let value = type_angle_arg_to_declaration_id(arg, symbols, local, dag);
             let parameter = template_param_id(dag, template_for_params, idx).expect(
                 "template_param_count equality was checked immediately above — \
                  param lookup at idx < count must succeed",
