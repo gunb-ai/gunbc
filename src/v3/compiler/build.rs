@@ -76,9 +76,8 @@ use std::path::{Path, PathBuf};
 /// (`collect_dag_entries` priority miss) but must load in dependency order. Lexicographic
 /// order alone would put `t_ci_workflow_as_data_demo.dag` before `timing_lens.dag`
 /// (`t_ci…` < `tim…`), breaking PB-1 lowering of `timing_enforceable` references.
-const V3_STD_STAGING_ORDER_EDGES: &[(&str, &str)] = &[
-    ("timing_lens.dag", "t_ci_workflow_as_data_demo.dag"),
-];
+const V3_STD_STAGING_ORDER_EDGES: &[(&str, &str)] =
+    &[("timing_lens.dag", "t_ci_workflow_as_data_demo.dag")];
 
 fn v3_std_staging_edge_order(name_a: &str, name_b: &str) -> Ordering {
     for &(before, after) in V3_STD_STAGING_ORDER_EDGES {
