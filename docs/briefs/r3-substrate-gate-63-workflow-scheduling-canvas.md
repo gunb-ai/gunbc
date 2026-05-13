@@ -54,7 +54,7 @@ The closure has **two conjuncts**: (a) execution-through-evaluator + (b) Dimensi
 - Result: **1 passed in 5.26s** (BuildBuddy `9f22cbce-66ff-41e0-a172-c2e62a69dee0`)
 
 **But sibling tests in the broader `--include-ignored` run fail:**
-- BuildBuddy invocation `2e1d435a-a6fe-437e-9e47-aca68c1ed5a7`: 3 passed, 5 failed
+- BuildBuddy invocation `2e1d435a-a6fe-437e-9e47-aca68c1ed5a7`: 3 passed, 5 failed (raw test-run telemetry from that single invocation; **canonical sibling-failure-mode count is 6** — Phase B.2 allocation receipt enumerates 6 distinct failure modes including pins/topology/command tests separately recorded per openai-pro 11242 / worker §2)
 - Failure modes (NOT the gate-criterion test itself):
   - `dsl/gunbc/ci_emission.dag` unresolved `CIWorkflowDag` / unknown type
   - `gunbc_ci_emission_binary_shim_workflow` opaque body
@@ -76,7 +76,7 @@ The closure has **two conjuncts**: (a) execution-through-evaluator + (b) Dimensi
 
 - Remove `#[ignore]` from `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` at `t_ci_workflow_as_data_demo_test.rs:581` (test ALREADY PASSES in isolation per BuildBuddy `9f22cbce-66ff-...`) — **§1.4 predicate (a) receipt**
 - Worker Phase B.1 systematic Class 4 bridge inventory (two-pass — worker brief §4.1 is authoritative): **Pass 1** authority-surface enumeration (closed file list across src/v3/ + dsl/ + .github/workflows/) + all-lines / YAML-structural classification of every workflow/scheduling fact; **Pass 2** content-keyword grep cross-check (never sole receipt). Each fact classified pass-through / allocated-survivor (cite §1.8 row #) / unallocated-survivor; receipt asserts **unallocated-survivor count = 0** — **§1.4 predicate (b) receipt**
-- Worker Phase B.2 sibling-debt audit doc: 5 snappy-bear-502 failures enumerated as Director-allocated to rows #99/#100 per Director msg_804cdc93 (the STRUCTURAL exception citation per §7.2 + debt-sweep §3.A); these are Class 4 bridge survivors with explicit Director allocation, not unallocated
+- Worker Phase B.2 sibling-debt audit doc: 6 snappy-bear-502 failures enumerated as Director-allocated to rows #99/#100 per Director msg_804cdc93 (the STRUCTURAL exception citation per §7.2 + debt-sweep §3.A); these are Class 4 bridge survivors with explicit Director allocation, not unallocated
 - Close gate #63 on **conjunctive (a) + (b) receipts** + §4.4 substrate-prereq reconciliation
 
 **§1.4 conjunctive predicate receipts** (per operator BLOCKING worker:81 + codex BLOCKING 36bb8237): Class 4 closure requires both **(a)** representative gap-test pass AND **(b)** systematic bridge inventory count=0 OR explicit Director allocation per §7.2 STRUCTURAL exception. Phase A satisfies (a); Phase B.1 + B.2 satisfy (b); sample-of-class disqualified.
@@ -197,10 +197,12 @@ Worker brief authored on this ratified shape: `docs/briefs/r3-substrate-gate-63-
 
 **Revised recommendation** (post-correction): **Candidate A with sibling-debt receipt** — given that the gate-criterion test passes in isolation, gate #63 closure is administrative (un-ignore + ledger). Candidate B would re-author already-working substrate; that's `feedback_no_short_term_solutions` inverted (don't redo passing work).
 
-Recommended **revised scope**:
-- Q1=A: Un-ignore `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` (already passing per `9f22cbce-66ff-...`)
-- Document the 6 sibling-test failures as **separately-scoped substrate-debt**; surface to Mgr for follow-on triage but NOT block gate #63 closure
-- Close gate #63 on the unblocked passing receipt + ledger update
+Recommended **revised scope** (matches §3 Candidate A conjunctive (a)+(b)+§4.4 contract verbatim — codex 11244 reconciliation):
+- **§1.4 (a)**: Q1=A un-ignore `ci_workflow_as_data_demo_timing_dimension_report_evaluates_via_evaluator` (already passing per `9f22cbce-66ff-...`)
+- **§1.4 (b1)**: Worker Phase B.1 systematic Class 4 bridge inventory (two-pass: authority-surface enumeration + all-lines/YAML-structural + keyword cross-check); receipt asserts **unallocated-survivor count = 0**
+- **§1.4 (b2)**: Worker Phase B.2 STRUCTURAL allocation doc — 6 sibling-failure modes Director-allocated to rows #99/#100 per msg_804cdc93 (§7.2 + debt-sweep §3.A)
+- **§4.4 reconciliation**: Phase C carrier-path mapping table footnote (all 7 mapping-table rows verified at HEAD)
+- Close gate #63 atomically on **all four receipts** + ledger flip (Phase C)
 - Optional follow-on canvas: if criterion text "executes through evaluator" requires more than demo-grade evidence, surface a Tier-2 expansion canvas after gate closure
 
 **Q2: OR-semantics** — both lanes contribute; gate closes when sufficient substrate is present.
@@ -209,7 +211,7 @@ Recommended **revised scope**:
 
 **Q4: Substrate-lane-owned** with informational cross-Mgr notification when authoring.
 
-**Sibling-debt note**: the 5 failures from `--include-ignored` are separately worth tracking. Worker brief Phase B.2 surfaces the sibling-debt audit document with the 5 specific failure modes as Director-allocated to rows #99/#100 per msg_804cdc93 (the STRUCTURAL exception receipt) — not a gate #63 closure-blocker.
+**Sibling-debt note**: the 6 failure modes from `--include-ignored` are separately worth tracking. Worker brief Phase B.2 surfaces the sibling-debt audit document with the 6 specific failure modes as Director-allocated to rows #99/#100 per msg_804cdc93 (the STRUCTURAL exception receipt) — not a gate #63 closure-blocker.
 
 ## §11. Reference
 
