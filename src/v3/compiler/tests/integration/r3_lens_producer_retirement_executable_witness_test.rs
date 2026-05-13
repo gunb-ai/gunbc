@@ -5,8 +5,12 @@
 //! This is the executable receipt for the current T-LensProducer-Retirement
 //! state-check: the `.dag` PB census claim is runnable through `TestRunner`, and
 //! it observes the live lens-producer residual set instead of deferring to a
-//! paper-only receipt. The gate turns green when the three named producer
-//! surfaces retire and this claim returns `Pass`.
+//! paper-only receipt. The gate turns green when every path in the
+//! `lens_producer_files_subset_predicate` subset (today: bounded-lens host +
+//! `regen_lens` bin) is retired from the non-test census and this claim returns
+//! `Pass`. **Path rename alone does not drop the residual:** `lens_apply.rs` →
+//! `lens_declaration_apply.rs` is still a lens-producer surface until PB-Runtime
+//! owns lens application end-to-end (ROADMAP / T-PB-A census narrative).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -16,7 +20,7 @@ const FIXTURE_SOURCE: &str = include_str!("../dag/t_r1c_d_pb_census_gates.dag");
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/dag/t_r1c_d_pb_census_gates.dag";
 const SUITE_NAME: &str = "r1_pb_census_gates_suite";
 const CLAIM_NAME: &str = "lens_producer_files_remaining";
-const CURRENT_RESIDUAL_COUNT: i64 = 3;
+const CURRENT_RESIDUAL_COUNT: i64 = 2;
 
 #[test]
 fn r3_gate_66_lens_producer_retirement_claim_executes_against_live_census() {
