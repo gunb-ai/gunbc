@@ -3613,7 +3613,7 @@ fn materialize_algebra_machine_width_width_nat(
     local: &HashMap<String, DeclarationId>,
     surface_name: &str,
     args: &[SurfaceType],
-    span: &SourceSpan,
+    _span: &SourceSpan,
 ) -> Option<TypeConnective> {
     if args.len() != 1 {
         return None;

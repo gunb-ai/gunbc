@@ -2213,6 +2213,10 @@ fn substrate_coproducts_match_runtime_carriers() {
                 ],
             ),
             (
+                String::from("WidthNatLiteral"),
+                vec![String::from("decimal"), String::from("span")],
+            ),
+            (
                 String::from("Optional"),
                 vec![String::from("inner"), String::from("span")],
             ),

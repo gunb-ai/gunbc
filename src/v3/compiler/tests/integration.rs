@@ -173,6 +173,8 @@ mod r1_release_acceptance_test;
 mod r2_b5_loop_construction_closure_test;
 #[path = "integration/r3_class_2_function_valued_data_test.rs"]
 mod r3_class_2_function_valued_data_test;
+#[path = "integration/r3_gate_60_phase2_width_nat_parser_test.rs"]
+mod r3_gate_60_phase2_width_nat_parser_test;
 #[path = "integration/r3_free_consequences_first_batch_test.rs"]
 mod r3_free_consequences_first_batch_test;
 #[path = "integration/r3_free_consequences_second_batch_test.rs"]
