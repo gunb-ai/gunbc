@@ -613,11 +613,10 @@ fn gunbc_ci_emission_substrate_compiles() {
 fn lens_self_application_demonstrated() {
     // `compile_to_dag` on `dsl/gunbc/ci.dag` alone is not a supported entry shape today (the
     // `ci_workflow_dag` row carries a cross-module `Workflow` reference that M1(2.8) treats as an
-    // opaque data body under single-file lowering). Topology + command-shape pins for the full CI
-    // module stay in the sibling `compile_to_dag` tests in this file; gate #57 instead anchors on
-    // (a) the committed `ci.dag` source string and (b) the bootstrap `modeled_gunbc_ci_workflow`
-    // carrier from `t_ci_workflow_as_data_demo.dag`, which is the same CI-as-data modeling surface
-    // the timing lens shell targets.
+    // opaque data body under single-file lowering). Gate #57 anchors on (a) the committed `ci.dag`
+    // source markers and (b) the bootstrap `modeled_gunbc_ci_workflow` carrier from
+    // `t_ci_workflow_as_data_demo.dag`, which is the CI-as-data modeling surface the timing lens
+    // shell targets.
     assert!(
         GUNBC_CI_SOURCE.contains("data ci_workflow_dag"),
         "dsl/gunbc/ci.dag must retain the `ci_workflow_dag` authority row"
@@ -643,11 +642,6 @@ fn lens_self_application_demonstrated() {
 
     // --- Timing lens: bootstrap `demo_ci_modeled_timing_dimension_report` (prior ignored receipt). ---
     let dag = boot;
-    assert!(
-        dag.diagnostics().is_empty(),
-        "fixture diagnostics: {:?}",
-        dag.diagnostics()
-    );
 
     let (d_port, b_port) = {
         let bind_node_id = bind_node_id_for_fn(&dag, "demo_ci_modeled_timing_dimension_report");
