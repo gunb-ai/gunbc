@@ -10,8 +10,9 @@
 //! `unused_parameters` and `structural_resolution` use Int-projection `.dag` claims until strict
 //! user modules can freeze the corresponding list carriers without M1(2.8) opaque-body diagnostics;
 //! Rust receipts below keep covering `UnusedParametersLens` / `lens_structural_resolution::check`.
-//! Helper-only rows (`infer_helpers`, `lower_helpers`, `variant_payload`) stay explicit `Compiles`
-//! placeholders with per-file dissolution triggers in their `.dag` harness comments.
+//! Helper-only / partial rows (`parallelism`, `infer_helpers`, `lower_helpers`, `variant_payload`)
+//! stay explicit `Compiles` placeholders with per-file dissolution triggers in their `.dag` harness
+//! comments.
 //!
 //! **INVARIANTS P5(b):** Gate-#87 work is **merge-visible** as this module,
 //! `r3_gate_87_cementing_regen_runner_suites` plus `t_pb_b_1_dag_runner_test` wiring, and the
@@ -33,7 +34,7 @@
 //! the canonical Pass-condition body is `r3-structure.md` §"Acceptance"
 //! (`lens_cementing_test_discipline_complete`). Broader Band-C work for lenses outside
 //! `regen.dag` continues through `docs/v3-lens-capability-register.md` +
-//! `cementing_lens_registry_dispatch_test.rs` + `ROADMAP.md` honesty pass.
+//! `tests/dag/cementing_dispatch.dag` (`CementingDispatchMatchesProjection`) + `ROADMAP.md` honesty pass.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -141,6 +142,11 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
     );
+}
+
+#[test]
+fn r3_gate_87_parallelism_lens_source_compiles() {
+    assert_lens_dag_compiles("src/v3/lenses/parallelism.dag");
 }
 
 #[test]
