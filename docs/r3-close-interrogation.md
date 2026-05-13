@@ -285,6 +285,43 @@ R3 close SHOULD NOT claim universal impossibility. R3 close SHOULD claim:
 
 **Anti-pattern**: "all lenses green = bug-free program" is the silent-impossibility-claim. R3 close framing should explicitly NAME the bug classes that remain possible (user-intent, unmodeled-dimension, glue-boundary, modeling-error, emergent-composition) rather than let "lenses green" carry the universal claim implicitly.
 
+#### §2.5.F Cross-module subtle-dependency detection via affected-set lens
+
+**Promise** (`docs/design-affected-set-lens.md` + r3-program-plan.md §1.8 gate #103 `ci_uses_affected_set_selection`): the affected-set lens is the **structural mechanism** for catching cross-module subtle dependencies — not value-level "did the return change," but **dimension-parameterized** "did any structural dimension (complexity / cost / effect / value) the consumer reads change." The aggregate affected-set is the union across all dimensions; if a helper's *cost* changes while its *return value* stays the same, downstream consumers reading the *cost* dimension still flag as affected.
+
+**Why this is the answer to §2.5.E cross-module bugs**:
+
+§2.5.E enumerated 7 cross-module + 5 cross-target bug shapes (shared-vocabulary mismatch, memory-layout assumption, async-semantic divergence, serialization round-trip, numeric width, etc.). The affected-set lens is what mechanically *catches* the dynamic / change-driven sub-classes of those: when module A changes in a way that affects module B's structural read of A, B is in the affected-set. The static / single-snapshot classes (e.g., shared vocabulary at a moment in time) are caught by other R3 lenses (complexity, cost, effect); the affected-set lens specifically catches the **diff-driven** propagation.
+
+**Status at HEAD** (r3-program-plan.md §1.8 + docs/r3-remaining-work-dependency-graph.md):
+
+- Gate #103 `ci_uses_affected_set_selection` — **DECLARED** (NEW 2026-05-12 per PR #2744 §1); R3-load-bearing
+- Slice 7 in T-WAD lane sequencing: Slice 4 (#100 substrate) → Slice 5 (#98 ci.yml swap) → Slice 7 (#103 affected-set) → Slice 8 (substrate completion)
+- Design doc: `docs/design-affected-set-lens.md` — substrate-shape ratified; consumer pattern is CLI / agent / IDE invoking `IntrospectApplication`-carrier lens with `Set<NodeRef>` output
+
+**Probes** (post-gate-#103-CONSUMER_LANDED):
+
+- [ ] Where does affected-set live in CI/build? Cite the workflow file + the invocation site. Is it `gunbc query affected-set --since=main`?
+- [ ] What's the SHA-diff input shape? `(Dag_before, Dag_after)` per design doc, or a different surface?
+- [ ] Show me a concrete subtle dep that **ONLY** the dimension-parameterized variant catches — a case where value-only-diff would miss the affected-set but cost-or-complexity-diff catches it. Cite the test fixture.
+- [ ] Run affected-set on the last 5 merged PRs. What's the cardinality of the affected-set per PR? (Should be much smaller than transitive-downstream — that's the structural progress claim.)
+- [ ] Show me a PR where the affected-set predicted a test would run, AND the test caught a regression that value-only-diff would have skipped.
+
+**Falsification probes**:
+
+- [ ] **Cost-regression-in-uncovered-helper**: introduce a complexity regression in a helper (e.g., O(n) → O(n²)) that no test directly covers. Does affected-set flag every downstream consumer reading the cost dimension? Or does it miss them because no test directly asserts cost on the helper?
+- [ ] **Effect-leak-across-module-boundary**: add a side effect (I/O) to a previously-pure function. Does affected-set flag the consumers asserting purity? Or only the consumers calling the function directly?
+- [ ] **Cross-module dimension narrowing**: change function F's cost from `O(n)` to `O(n log n)` in a way the lens classifies correctly. Does the affected-set surface every transitive consumer reading the cost dimension, AT LEAST as far as the dimension flow propagates?
+- [ ] **PB-Runtime opacity**: introduce a change inside PB-Runtime (the bounded kernel) that affects a structural-dimension claim. Does the affected-set lens correctly identify the dimension-flow boundary at PB-Runtime, or does it under/over-propagate?
+
+**Open questions for ratification** (PM-surfaced):
+
+- Is the dimension-parameterized affected-set the **PRIMARY** R3-close artifact for catching cross-module subtle deps, or is it complementary to other mechanisms (per-dimension lens read at compile-time)?
+- Does R3 close require gate #103 CONSUMER_LANDED + PASSING, OR is DECLARED status with CI-integration deferred to the slice cascade?
+- Are the 4 in-R3 lenses (complexity / cost / parallelism / effect_enum) sufficient dimensions for the union, or does the affected-set need to surface user-defined-lens dimensions too?
+
+**PM read** (provisional): the affected-set lens is THE structural cash for cross-module subtle-dep detection — without it, the §2.5.E cross-module bug classes are theoretically-impossible but operationally-unverified. With it, the static (compile-time) lens read + the diff-driven (affected-set) lens read compose to give *both* "this single snapshot is consistent" AND "this change preserves consistency." That's the omni-correctness story the operator's directive 2026-05-13 was probing.
+
 ---
 
 ## §3. The emission promises
@@ -430,6 +467,76 @@ The two interpretations differ on whether locally-executable runtime roundtrips 
 - [ ] What's the current bridge ledger? Should be 0.
 - [ ] If non-zero: enumerate each bridge. Has each a named dissolution trigger and target date?
 - [ ] **Falsification probe**: would a code reviewer notice if a new bridge type was introduced without ledger entry?
+
+### §5.4 Compiler-as-data residual — "is the compiler pure data yet?"
+
+**Promise** (operator framing 2026-05-09 quoted verbatim in r3-program-plan.md §1.5 row #94 + r3-program-plan.md §1.8 row 1060 Q-Lens-Behavioral-Parity-R3-Closeability amendment): *"0 hand-Rust including tests AND stage0; bootstrap is data + self-generated"* — the R3 close criterion for the gunbc thesis claim "the compiler IS data, not code."
+
+**Supporting framings**:
+- THESIS.md: "substrate describes everything including itself"
+- `src/v3/SELF_HOSTING.md` §1: "Self-hosting means v3's entire compiler pipeline — parse, lower, infer, emit — is written in `.dag`, compiled by v3's own compile loop, and produces the same byte-for-byte output as the current Rust stage0. The Rust code at `src/v3/compiler/src/` becomes a bootstrap seed: kept for fresh-checkout bootstrapping and for the initial compilation of the `.dag` pipeline files, but no longer the authoritative compiler. The 'real' compiler is the `.dag` one; Rust stage0 exists to get it off the ground."
+
+**This section is the STRONG-FORM probe set** (§2.1 Pure Bootstrap covers the PB-0 census promise; §5.4 enumerates the specific file-class probes the operator asked for 2026-05-13):
+
+#### §5.4.a Stage0 edit-requirement at R3 close
+
+**Probes**:
+
+- [ ] Walk through R3-close-anchored changes: how many required edits to `src/v3/compiler/src/*.rs` (hand-Rust) vs. `.dag` substrate?
+- [ ] List the last 20 merged R3 PRs. For each, was the load-bearing change in `.rs` files or `.dag` files? Tabulate.
+- [ ] Is there a SINGLE merged R3 PR where the load-bearing change touched ONLY `.dag` files (no `_generated.rs` regen, no hand-Rust)? Cite SHA.
+- [ ] **Falsification probe**: pick a random `.dag` file. Edit it (e.g., add a field). Run the compiler. Does the compiler produce a correct emission without requiring any `_generated.rs` regen step that itself needs hand-Rust orchestration?
+
+#### §5.4.b Hand-Rust file count at R3 close
+
+**Probes** (against `src/v3/`):
+
+- [ ] Count `.rs` files in `src/v3/` total. Cite the number at HEAD.
+- [ ] Count `_generated.rs` (machine-emitted from `.dag`). Cite the number.
+- [ ] **Hand-Rust = total − generated**. Cite the count. Is it 0 per operator's 2026-05-09 framing?
+- [ ] If non-zero: enumerate each hand-Rust survivor. For each, cite the named-retirement-schedule (PR # / gate # / target SHA).
+- [ ] Cross-check against `src/v3/SELF_HOSTING.md` §1 "bootstrap seed" framing: are the survivors *bootstrap-seed-only* (i.e., regenerable from `.dag` via the compiler itself), or do any encode authoritative behavior absent from `.dag`?
+- [ ] **Falsification probe**: delete one hand-Rust file. Can the `.dag` substrate regenerate it via the compiler running on itself? Cite the regen invocation.
+
+#### §5.4.c Other hand-maintained files (non-Rust)
+
+**Probes** (broader than .rs):
+
+- [ ] Enumerate hand-maintained files by extension class. `.yml` (CI/build). `.toml` (Cargo / Rust). `.md` (docs). `.sh` (scripts). Others.
+- [ ] For each class, is the count R3-close-acceptable, or is there a named-dissolution-schedule?
+  - CI / `.yml`: per gate #103 affected-set + T-WAD slices, is the long-term plan to derive CI YAML from `.dag` workflow declarations? Cite the gate.
+  - `Cargo.toml`: is the long-term plan to derive Cargo manifests from `.dag` substrate? Or is `Cargo.toml` a "bootstrap-seed" peer to stage0 (kept-but-not-authoritative)?
+  - Docs `.md` (this doc included): are docs hand-authored R3-close-acceptable, or is there a thesis-claim that docs derive from `.dag` (e.g., gate #26 `omni_documentation_drift_lock_demo`)?
+  - Scripts `.sh`: enumerate. Each one is a process-discipline-bridge per `feedback_no_textual_enforcement_bridges` candidate — is each scoped to dissolve, or accepted as out-of-thesis?
+- [ ] **Falsification probe**: pick a hand-maintained non-Rust file (e.g., a build script). Is the load-bearing fact it encodes derivable from `.dag` substrate? If yes, why isn't it derived? If no, what's the named carrier for the fact?
+
+#### §5.4.d "Pure data" thesis-state at R3 close
+
+**Promise** (THESIS.md substrate-describes-everything claim): the compiler is "pure data" — meaning the load-bearing fact about every behavior in the compiler lives in `.dag`, with Rust as mechanical execution-layer.
+
+**Distinguishing two readings**:
+
+- **Strong reading**: "0 hand-Rust files on disk" — every `.rs` is `_generated.rs` or absent.
+- **Weak reading**: "0 hand-Rust *authoritative*" — `.rs` survivors are mechanically-derived bootstrap-seed (replayable from `.dag`), even if not literally machine-emitted today.
+
+**Probes**:
+
+- [ ] Which reading does R3 close target? Cite the disposition.
+- [ ] If strong: PB-0 census at 0 per §2.1; this section dissolves into §2.1.
+- [ ] If weak: what's the named distinction between "bootstrap-seed Rust" (acceptable) and "hand-authored Rust" (R3 debt)? Where is the line defined?
+- [ ] Cross-reference SELF_HOSTING.md §1 "bootstrap seed" framing: is the bootstrap seed itself authored or derived? If authored, what makes it different from generic hand-Rust?
+- [ ] **Falsification probe**: produce the `.dag` source for the LARGEST hand-Rust survivor at R3 close. Compile the `.dag`. Diff the emitted `.rs` against the survivor. Does the survivor match the emission byte-for-byte (or behaviorally), or is the survivor authoring facts not present in the `.dag`?
+
+#### §5.4.e R3-close honest framing
+
+This section's probes feed the close framing. PM-recommended answer-shape for R3 close:
+
+- R3 close DOES NOT claim "0 hand-Rust files on disk" if the count is non-zero
+- R3 close MAY claim "all hand-Rust survivors are bootstrap-seed-class with named retirement" if true and ledger-cross-referenced
+- R3 close MAY claim "compiler authority is in `.dag`; Rust is mechanical execution-layer" if every hand-Rust survivor's authoritative behavior is mirrored in `.dag` and `pb_self_compile_fixed_point` (gate #16) holds
+- R3 close MUST distinguish the strong vs weak reading explicitly — the operator's 2026-05-09 "0 hand-Rust including stage0" framing is the strong reading; the SELF_HOSTING.md "bootstrap seed" framing is the weak reading; reconciling these is itself an R3-close question
+
+**Anti-pattern**: silently shipping with the weak reading while citing the strong reading. R3 close framing must explicitly cash which reading is operative + cite per-survivor disposition.
 
 ---
 
