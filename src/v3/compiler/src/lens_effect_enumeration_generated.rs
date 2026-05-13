@@ -2,6 +2,11 @@
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
 #[derive(Clone, Debug)]
+pub enum EffectEnumerationAuthoritySite {
+    SubstrateDagBehaviorNode,
+    ServicesOperationCarrier,
+}
+#[derive(Clone, Debug)]
 pub enum StructuralEffectShape {
     NoEffect,
     ReadShaped,
