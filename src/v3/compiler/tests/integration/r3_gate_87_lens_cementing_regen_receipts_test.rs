@@ -49,6 +49,11 @@ use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use v3_compiler::Dag;
 
+const GATE_87_COST_HARNESS: &str =
+    include_str!("../dag/t_r3_gate_87_cementing_regen_cost.dag");
+const GATE_87_SYMBOLIC_COST_HARNESS: &str =
+    include_str!("../dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag");
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -140,6 +145,38 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
         "`src/v3/compiler/regen.dag` registry drift vs \
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
+    );
+}
+
+#[test]
+fn r3_gate_87_cost_receipts_are_behavioral_not_compile_only() {
+    assert!(
+        GATE_87_COST_HARNESS.contains("LensOutputEquals("),
+        "`cost` cementing must keep a frozen lens-output witness"
+    );
+    assert!(
+        GATE_87_COST_HARNESS.contains("DifferentialEquals("),
+        "`cost` cementing must keep the v3/v2 lineage parity witness"
+    );
+    assert!(
+        !GATE_87_COST_HARNESS.contains("Compiles"),
+        "`cost` has a real v2 counterpart; gate #87 must not regress to a compile-only receipt"
+    );
+}
+
+#[test]
+fn r3_gate_87_symbolic_cost_receipts_are_behavioral_not_compile_only() {
+    assert!(
+        GATE_87_SYMBOLIC_COST_HARNESS.contains("SymbolicCostExprEquals("),
+        "`cost_symbolic` cementing must keep a frozen symbolic-cost oracle witness"
+    );
+    assert!(
+        GATE_87_SYMBOLIC_COST_HARNESS.contains("SymbolicCostExprEqualsForBindParam("),
+        "`cost_symbolic` cementing must keep the bind-parameter SizeVariable parity witness"
+    );
+    assert!(
+        !GATE_87_SYMBOLIC_COST_HARNESS.contains("Compiles"),
+        "`cost_symbolic` has a real v2 counterpart; gate #87 must not regress to a compile-only receipt"
     );
 }
 
