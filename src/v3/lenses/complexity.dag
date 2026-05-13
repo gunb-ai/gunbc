@@ -568,17 +568,18 @@ data complexity_lens: Lens<ComplexitySummary> = {
   validate: complexity_lens_validate
 }
 
-data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {
+data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass, AsymptoticClass> = {
   project: complexity_enforcement_project
   violates: complexity_enforcement_violates
 }
 
-data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass> = {
+data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass, AsymptoticClass> = {
   lens: complexity_lens
   enforcement: complexity_enforcement
 }
 
-type ComplexityEnforcedApplication = EnforcedApplication<ComplexitySummary, AsymptoticClass>
+type ComplexityEnforcedApplication =
+  EnforcedApplication<ComplexitySummary, AsymptoticClass, AsymptoticClass>
 
 // CostBound projection authority lives in `std.induction::cost_bound_to_symbolic`.
 // This lens consumes the live CallPattern query directly because structural
