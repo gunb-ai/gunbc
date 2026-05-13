@@ -15,7 +15,7 @@ import v3.std.timing_lens {
 import v3.std.t_ci_workflow_as_data_demo { gate_58_timing_enforcement_section }
 
 data gate_58_section_over_budget: gate_58_timing_enforcement_section = {
-  measurement: Observed { duration: { count: 9000000000 } }
+  measurement: Observed { duration: { count: 999 } }
 }
 
 data gate_58_enforcement_budget_violation: EnforcedApplication<TimingMeasurement, TimingBudget> = {

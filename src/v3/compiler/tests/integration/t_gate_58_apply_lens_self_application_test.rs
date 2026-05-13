@@ -83,7 +83,7 @@ fn apply_lens_self_application_timing_enforcement_executable_budget_violation() 
                 kind == "ParseError"
                     && msg.contains("lens enforcement violation")
                     && msg.contains("timing budget ceiling")
-                    && msg.contains("9000000000")
+                    && msg.contains("999")
             });
             assert!(
                 ok,
