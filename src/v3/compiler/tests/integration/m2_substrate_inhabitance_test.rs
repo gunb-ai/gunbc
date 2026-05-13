@@ -2200,10 +2200,7 @@ fn substrate_coproducts_match_runtime_carriers() {
     assert_eq!(
         sum_variants(&dag, "TypeAngleArg"),
         vec![
-            (
-                String::from("TypeExpr"),
-                vec![String::from("ty")],
-            ),
+            (String::from("TypeExpr"), vec![String::from("ty")],),
             (
                 String::from("WidthNatLiteral"),
                 vec![String::from("decimal"), String::from("span")],

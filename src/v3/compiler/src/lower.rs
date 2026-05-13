@@ -48,8 +48,7 @@ use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use crate::parse::expr_span as surface_expr_span;
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
-    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, TypeAngleArg,
-    VariantPayload,
+    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, TypeAngleArg, VariantPayload,
 };
 use crate::types::TypeShape;
 
