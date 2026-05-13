@@ -49,8 +49,7 @@ use v3_compiler::lens_structural_resolution;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use v3_compiler::Dag;
 
-const GATE_87_COST_HARNESS: &str =
-    include_str!("../dag/t_r3_gate_87_cementing_regen_cost.dag");
+const GATE_87_COST_HARNESS: &str = include_str!("../dag/t_r3_gate_87_cementing_regen_cost.dag");
 const GATE_87_SYMBOLIC_COST_HARNESS: &str =
     include_str!("../dag/t_r3_gate_87_cementing_regen_cost_symbolic.dag");
 
