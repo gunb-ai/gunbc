@@ -21,7 +21,7 @@ This brief encodes the ratified Tier-1 4-addition + 1-collapse + 1-promotion str
 ## §1. Ratified scope summary
 
 Net 7 → **9** SymbolicCost variants:
-- **PROMOTE**: `PolynomialCost.degree: DegreeAtLeastTwo` → `PolynomialCost.degree: Rational` (signed; **no `where` refinement** per Director msg_2c1bfb0e scope-extension) — subsumes positive (√n, ∛n, n^(2/3), n^2.373, absorbed Linear at degree=1) AND negative (1/n = n^(-1), 1/n² = n^(-2), asymptotic-decay coverage per operator directive 2026-05-13)
+- **PROMOTE**: `PolynomialCost.degree: DegreeAtLeastTwo` → `PolynomialCost.degree: Rational where nonzero` (signed with carrier-level zero-exclusion per Director msg_2c1bfb0e sign-admission intent + msg_b80bcaa8 Practice-2 carrier-level refinement; sign preserved — refinement excludes ONLY degree=0 to prevent parallel-authority with ConstantCost) — subsumes positive (√n, ∛n, n^(2/3), n^2.373, absorbed Linear at degree=1) AND negative (1/n = n^(-1), 1/n² = n^(-2)); degree=0 type-rejected
 - **REMOVE**: `LinearCost(SizeVariable)` — atomic migration to `PolynomialCost { var: v, degree: 1 }` (Q2-Y)
 - **ADD**: `PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }` for log^k n (PolyLogExponent = Rational > 1 refinement; supports log^7.5 n cited Tier-1 AKS case)
 - **ADD**: `ExponentialCost { base: ExponentialBase, var: SizeVariable }` for c^n with c ≥ 2 (ExponentialBase = Int ≥ 2 refinement)
@@ -96,7 +96,7 @@ Replace `src/v3/std/algebra.dag:69-72` block — and ONLY that 4-line block — 
 // IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and
 // escalate. Tier-1 textbook coverage (gate #105 carrier-extension
 // 2026-05-13, PR #<this PR>) lands 9 variants covering ConstantCost /
-// PolynomialCost { degree: Rational } (signed per Q6) / PolyLogCost { exponent:
+// PolynomialCost { degree: Rational where nonzero } (signed per Q6 + Practice-2 zero-exclusion per msg_b80bcaa8) / PolyLogCost { exponent:
 // PolyLogExponent (Rational > 1) } / LogCost / ProductCost / SumCost /
 // ExponentialCost { base: ExponentialBase (Int ≥ 2) } / FactorialCost /
 // UnknownCost — sufficient
@@ -140,11 +140,12 @@ type PolyLogExponent = Rational where gt_one
 
 **Phase A KNOWN_PREDICATES extensions** (Mgr-tier scope; required for refinement-mechanism authority):
 1. Add new `gt_one` predicate (allowed_carriers: `Rational + Int`; arg_shape: `Bare`) — required for `PolyLogExponent = Rational where gt_one`
-2. Extension lands in same PR as carrier-shape changes — atomic per §P5
+2. Add new `nonzero` predicate (allowed_carriers: `Rational`; arg_shape: `Bare`) — required for `PolynomialCost.degree: Rational where nonzero` (Director RATIFIED Option B per msg_b80bcaa8: Practice-2 carrier-level exclusion of degree=0 to prevent parallel authority with ConstantCost; sign-admission preserved — orthogonal to ±)
+3. Extensions land in same PR as carrier-shape changes — atomic per §P5
 
-(`gt_zero` allowed_carriers extension is **NOT** required: PolynomialCost.degree is plain signed Rational per Q6 — no refinement uses `gt_zero` on Rational. `ExponentialBase = Int where range(min: 2)` uses the existing `range` predicate (allowed_carriers already includes Int). Only `gt_one` is genuinely new.)
+(`gt_zero` allowed_carriers extension is **NOT** required: PolynomialCost.degree uses `where nonzero` (orthogonal to sign), not `where gt_zero`. `ExponentialBase = Int where range(min: 2)` uses the existing `range` predicate. Only `gt_one` + `nonzero` are genuinely new predicates.)
 
-**ZERO new authority introduced**: PolyLogExponent is a refinement of canonical Rational; ExponentialBase is a refinement of canonical Int. PolynomialCost.degree uses plain signed Rational (no refinement; Q6 scope-extension). Practice 4 / P1 / Q-MachineConstraint-Carrier hard constraint "no dual representations" all satisfied.
+**ZERO new authority introduced**: PolyLogExponent + PolynomialCost.degree are refinements of canonical Rational; ExponentialBase is a refinement of canonical Int. Director-distilled discipline (msg_b80bcaa8): cross-variant redundancy → Practice-2 carrier refinement (PolyCost(d=0) vs ConstantCost); same-variant redundancy → Practice-4 collapse (Q2-Y LinearCost ≡ PolyCost(d=1)). Type-level state-space tightening beats API-level normalization when redundant state crosses variant boundaries. Practice 4 / P1 / P2 / Q-MachineConstraint-Carrier hard constraint "no dual representations" all satisfied.
 
 **Authority chain for refinement mechanism**:
 - gunbc#828 issuecomment-4390333451 (Path 3 RATIFIED)
@@ -163,7 +164,7 @@ Replace `src/v3/std/algebra.dag:190-197` with:
 ```dag
 type SymbolicCost inhabits Semiring<SymbolicCost>
   = ConstantCost(Int)
-  | PolynomialCost { var: SizeVariable, degree: Rational }   // Q2-Y: absorbs LinearCost via degree=1; Q6 signed Rational (admits decay)
+  | PolynomialCost { var: SizeVariable, degree: Rational where nonzero }   // Q2-Y: absorbs LinearCost via degree=1; Q6 signed Rational (admits decay)
   | PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }     // NEW: log^k n; exponent > 1 by carrier (admits 2, 3/2, 7.5; rejects 0/1 collapses)
   | ProductCost(NonSingletonList<SymbolicCost>)
   | SumCost(NonSingletonList<SymbolicCost>)
@@ -176,7 +177,7 @@ type SymbolicCost inhabits Semiring<SymbolicCost>
 9 variants. **LinearCost is REMOVED** (anti-pattern #7: no bridge variants; atomic migration).
 
 **Invariants encoded at carrier level** (Practice 2/6 — NOT fold normalizer):
-- `PolynomialCost.degree: Rational` — **signed, no refinement** (Q6); negative degrees admitted for asymptotic-decay coverage. Asymptotic-dominance rule (Q6) is encoded in the algebra fold layer via `Field.compare` with reverse-sign-convention.
+- `PolynomialCost.degree: Rational where nonzero` — **signed with carrier-level zero-exclusion** (Q6 sign-admission + msg_b80bcaa8 Practice-2 refinement); negative degrees admitted for asymptotic-decay coverage; degree=0 type-rejected (prevents parallel authority with ConstantCost). Asymptotic-dominance rule (Q6) is encoded in the algebra fold layer via `Field.compare` with reverse-sign-convention.
 - `PolyLogCost.exponent: PolyLogExponent` — `exponent ≤ 1` is structurally impossible (excludes 0=ConstantCost-collapse + 1=LogCost-collapse semantic dups); supports rational exponents like log^7.5 n (AKS primality cited Tier-1 case)
 - `ExponentialCost.base: ExponentialBase` — `base ≤ 1` is structurally impossible (excludes 0=degenerate + 1=ConstantCost-collapse)
 
@@ -225,9 +226,9 @@ Same-variable rules (operands share `SizeVariable`):
 
 | Operation | Result |
 |---|---|
-| `canonicalize(PolyCost(_, 0))` | `ConstantCost(1)` — zero-degree dissolution per canvas §6.1 (n^0 ≡ 1; collision with ConstantCost resolved at canonicalize-fold; codex BLOCKING 4bd0cb5a finding #1) |
-| `PolyCost(d1) + PolyCost(d2)` (`dominant_term` projection) | `PolyCost(max(d1, d2))` (uses `Rational.compare` (Q1-α free function `rational_max`)) |
-| `PolyCost(d1) · PolyCost(d2)` | `canonicalize(PolyCost(d1 + d2))` — uses `Rational.add` (Field); if `d1 + d2 = 0` collapses to `ConstantCost(1)` per zero-degree rule |
+| `PolyCost(d1) + PolyCost(d2)` (`dominant_term` projection) | `PolyCost(max(d1, d2))` (uses `Rational.compare` (Q1-α free function `rational_max`)). Note: `degree=0` is type-rejected at carrier level (`where nonzero`); the d1+d2=0 case in multiplication below requires explicit STOP/surface — see next row. |
+| `PolyCost(d1) · PolyCost(d2)` where `d1 + d2 ≠ 0` | `PolyCost(d1 + d2)` — uses `Rational.add` (Field) |
+| `PolyCost(d1) · PolyCost(d2)` where `d1 + d2 = 0` | `ConstantCost(1)` — multiplicative cancellation produces n^0 ≡ 1; fold rewrites to ConstantCost arm. **Not a parallel-authority concern** because PolyCost-with-degree=0 is type-rejected (carrier `Rational where nonzero`); the fold maps the cancellation result into the canonical ConstantCost arm directly. |
 | `PolyCost(d) · LogCost(v)` | `ProductCost([PolyCost(d), LogCost(v)])` (§5.1: composite, NOT PolyLogCost) |
 | `PolyLogCost(v, k1) · PolyLogCost(v, k2)` | `PolyLogCost(v, k1+k2)` |
 | `PolyLogCost(v, k1) + PolyLogCost(v, k2)` | `PolyLogCost(v, max(k1, k2))` |
@@ -259,7 +260,9 @@ Mirror `src/v3/compiler/tests/integration/cementing/` shape (cf. `complexity_len
 `src/v3/compiler/tests/integration/cementing/symbolic_cost_tier1_carrier_test.rs` asserting:
 - 9 variant count (assert against `cost.dag` or `algebra.dag` source); REMOVED LinearCost (PolynomialCost.degree promotion to Rational is not a new variant)
 - All 9 variant names + field shapes structurally present
+- **NEW (Director msg_b80bcaa8)**: type-rejection negative test asserts `PolynomialCost { var, degree: Rational(0) }` is structurally REJECTED at carrier level (`where nonzero` refinement). Admits positive (`Rational(2)` → ok) + negative (`Rational(-1)` → ok); rejects only zero.
 - Phase A Q1-α deliverables present: rational_lt/le/gt/ge/eq/ne free functions in cost-lens module; NO OrderedField type declared
+- Phase A KNOWN_PREDICATES extension: both `gt_one` AND `nonzero` predicates added to lower.rs registry; bootstrap test asserts both predicates present with correct allowed_carriers.
 - `Rational = Field<FieldOfFractions<Int>>` UNCHANGED at `dsl/std/rational.dag:26` (Q1-α)
 - Algebra rule sample tests (≥6 of §6 rules): assert fold output for representative inputs (e.g., `PolyCost(1/2) · PolyCost(1/2)` produces `PolyCost(1)`; `ExpCost(2,n) · PolyCost(d)` produces `ProductCost([ExpCost(2,n), PolyCost(d)])` — multiplicative cross-class is NOT absorbed per §6 + anti-pattern #9 (asymptotic absorption is sound for SUM but unsound for PRODUCT); `ExpCost(2,n) + PolyCost(d)` produces `ExpCost(2,n)` — additive cross-class absorption is sound; `FactorialCost(n)²` produces `UnknownCost` with the exact §5.2 reason-string)
 - STOP-SIGNAL text at `:69-72` contains new "10th variant" wording
@@ -286,7 +289,7 @@ After Phase A-F land + tests green, update `docs/r3-program-plan.md` §1.8 row #
 5. **Algebra rule §5.2 violation tempted** — if Phase D authoring tempts a named (n!)² variant or non-Unknown disposition, **STOP** — anti-pattern #5 fires; the rule disposition is Director-ratified.
 6. **PR #2824 not merged at dispatch** OR **PR #2828 not merged at dispatch** — both gates AND; if either is unmerged, **STOP** and surface to Mgr; worker dispatch is blocked.
 
-## §11. 11 anti-patterns (7 Director-enumerated + 4 Mgr-derived per canvas §10)
+## §11. 12 anti-patterns (7 Director-enumerated + 5 Mgr-derived per canvas §10)
 
 PR body MUST cite each verbatim + assert receipt-of-compliance:
 
@@ -301,6 +304,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 9. Multiplicative absorption rules (`X · Y = X`) where one variant absorbs another asymptotically — sound for SUM, NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products MUST be ProductCost composite (per operator BLOCKING worker:140)
 10. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
 11. **Director-added msg_2c1bfb0e**: Introducing parallel `InverseCost(SymbolicCost)` / `ReciprocalCost` / `DecayCost` variants when carrier-extension via signed `degree: Rational` is structurally clean. Same Q1-α / Q1-c lesson class — don't bridge-wrap when carrier-extension dissolves the question (`feedback_dissolve_bridges` + `feedback_no_metadata_markers`).
+12. **Director-added msg_b80bcaa8**: Introducing canonicalize-fold rules for **cross-variant redundancy** when carrier-level refinement (`where <predicate>`) is structurally available. Practice-2 type-tier exclusion beats Practice-4 API-tier normalization when the redundant state crosses variant boundaries (e.g., PolyCost(d=0) ≡ ConstantCost(1)). Same-variant collapse (Q2-Y LinearCost ≡ PolyCost(d=1)) is the appropriate Practice-4 lane; cross-variant redundancy must be carrier-refined.
 
 ## §12. 5 reviewer ratchets (Director-enumerated for PR review)
 
@@ -308,7 +312,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 2. **Q2-Y integrity**: NO LinearCost preservation paths alongside PolyCost(degree=1); atomic migration receipt required
 3. **Q3 algebra rules**: §5.1 + §5.2 dispositions are load-bearing; reviewers flag deviation
 4. **Q4 STOP-SIGNAL text**: must land at `src/v3/std/algebra.dag:69-72` with new variant cap at 10 (9 ratified + 1 trigger)
-5. **All 11 anti-patterns enforceable** at PR review
+5. **All 12 anti-patterns enforceable** at PR review
 
 ## §13. Verification
 
@@ -324,7 +328,7 @@ PR body MUST cite each verbatim + assert receipt-of-compliance:
 - PR body cites:
   - Gate #105 closure (Phase G ledger update)
   - Canvas PR #2828 + composite Director ratification verbatim Q1-Q5 + §8 (PM msg_a055c38b relaying msg_d86a5987 Q2-Q5/§8 base RECONCILED BY msg_676ad4e7 Q1-α supersession of prior Q1-c)
-  - 11 anti-patterns receipt-of-compliance (§11)
+  - 12 anti-patterns receipt-of-compliance (§11)
   - 5 reviewer ratchets (§12) — explicit assertion-of-compliance per item
 
 ## §14. Out of scope
@@ -356,7 +360,7 @@ STOP-SIGNAL re-reset to 10 (9 ratified + 1 trigger) at algebra.dag:69-72.
 Algebra rules §5/§6 implemented verbatim per canvas; (n!)² → UnknownCost
 ("(v!)² exceeds Tier 1 — pending R4 named-variant canvas").
 
-11 anti-patterns receipt-of-compliance:
+12 anti-patterns receipt-of-compliance:
 [enumerate each + cite that the implementation does not violate it]
 
 5 reviewer ratchets compliance:

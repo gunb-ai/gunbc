@@ -25,7 +25,7 @@ PR #2824 (PM) carries §1.8 row #105 authority anchor; landing pending. Worker b
 
 ## §1. Ratified Tier 1 variant list (verbatim per Director msg_ad5e934d)
 
-1. **PROMOTE**: `PolynomialCost { var: SizeVariable, degree: Rational }` — **signed Rational, no `where` refinement** (Director RATIFIED scope-extension msg_2c1bfb0e 2026-05-13). Subsumes positive degrees: √n = n^(1/2), ∛n = n^(1/3), n^(2/3), non-integer 2.373/2.807, existing integer poly. Subsumes negative degrees: 1/n = n^(-1), 1/√n = n^(-1/2), 1/n² = n^(-2) (asymptotic-decay coverage per operator directive 2026-05-13). Arbitrary roots + inverse roots covered uniformly.
+1. **PROMOTE**: `PolynomialCost { var: SizeVariable, degree: Rational where nonzero }` — **signed Rational with carrier-level `where nonzero` refinement** (Director RATIFIED scope-extension msg_2c1bfb0e — sign-admission intent — AS REFINED BY msg_b80bcaa8: Practice-2 carrier-level exclusion of degree=0 to prevent parallel authority with ConstantCost; sign-admission preserved — refinement excludes ONLY 0, admits ±). Subsumes positive degrees: √n = n^(1/2), ∛n = n^(1/3), n^(2/3), non-integer 2.373/2.807, existing integer poly. Subsumes negative degrees: 1/n = n^(-1), 1/√n = n^(-1/2), 1/n² = n^(-2) (asymptotic-decay coverage per operator directive 2026-05-13). Arbitrary roots + inverse roots covered uniformly; degree=0 structurally unrepresentable per Practice 2.
 2. **ADD**: `PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }` for log² n, log^k n (PolyLogExponent = Rational > 1 refinement; supports log^7.5 n / AKS Tier-1 case per operator BLOCKING PR #2824:333)
 3. **ADD**: `ExponentialCost { base: ExponentialBase, var: SizeVariable }` for 2^n, c^n with c ≥ 2 (ExponentialBase = Int ≥ 2 refinement)
 4. **ADD**: `FactorialCost { var: SizeVariable }` for n!
@@ -135,7 +135,7 @@ Cons:
 ### Candidate Q2-Y — Collapse Linear into Polynomial(degree=1)
 
 ```dag
-| PolynomialCost { var: SizeVariable, degree: Rational }
+| PolynomialCost { var: SizeVariable, degree: Rational where nonzero }
 ```
 (LinearCost removed; `LinearCost(v)` ≡ `PolynomialCost { var: v, degree: 1 }`. Per Director scope-extension msg_2c1bfb0e: **no `where` refinement** — signed Rational admits negative degrees for asymptotic-decay coverage.)
 
@@ -229,7 +229,10 @@ Signed-Rational degrees require explicit dominance rules across the sign boundar
 
 **Authority**: Q1-α already provides `Field.compare: fn(Rational, Rational) -> Ordering` on the signed-rational carrier. Worker encodes the dominance rule as a derived ordering on `(SizeVariable, Rational)` pairs using `Field.compare` for the magnitude comparison — no new ordering authority introduced.
 
-**Zero-degree collision dissolution** (per codex BLOCKING 4bd0cb5a finding #1): plain signed `Rational` admits `degree = 0`, which would collide with `ConstantCost` (n^0 ≡ 1 for any n). Resolution: **carrier stays plain signed Rational** (Q6 ratified shape preserved); collision is dissolved at the canonicalize-fold layer via the rule `canonicalize(PolyCost(_, 0)) ⇒ ConstantCost(1)` — same dissolution discipline as Q2-Y `LinearCost(v) ≡ PolyCost(v, 1)` collapse and Practice-4 coproduct-arm dissolution. Construction-time the carrier is permissive; canonical-form construction folds the degenerate case into the existing `ConstantCost` arm. Worker brief §6 algebra encodes this rule alongside the Q2-Y collapse — single-authority for "value=1 constant" via `ConstantCost`, not parallel via `PolyCost(_, 0)`.
+**Zero-degree exclusion via carrier-level refinement** (Director RATIFIED Option B per msg_b80bcaa8, supersedes prior canonicalize-fold approach): plain signed `Rational` would admit `degree = 0` which structurally collides with `ConstantCost` (n^0 ≡ 1) — Director rationale (verbatim): "degree=0 is P1 violation, not just Practice-4 normalization … type enforcement > API enforcement; Practice-2 carrier refinement = type-tier, Practice-4 canonicalize-fold = API-tier. Type wins." Resolution: **carrier is `Rational where nonzero`** — exclusion of degree=0 at carrier level via new `nonzero` predicate added to KNOWN_PREDICATES (Phase A; analogous to `gt_one` addition; orthogonal to sign — admits ± rationals). Practice 2 illegal-states-unrepresentable satisfied at type tier; no canonicalize-fold needed for this collision.
+
+**Practice-2 vs Practice-4 disambiguation rule** (Director-distilled msg_b80bcaa8, NEW load-bearing discipline):
+> Same-variant redundancy (e.g., LinearCost vs PolyCost(d=1)) → Practice-4 collapse (Q2-Y precedent). Cross-variant redundancy (e.g., PolyCost(d=0) vs ConstantCost) → Practice-2 carrier refinement. Type-level state-space tightening beats API-level normalization when redundant state crosses variant boundaries.
 
 ## §6.2 — Q7 SymbolicCost preserves full expression; Big-O is a derived operation (Director RATIFIED msg_2c1bfb0e)
 
@@ -297,6 +300,7 @@ No 🔴 RED introductions. Anti-pattern #2 (Director-enumerated): "Path B reviva
 9. **PM-grep-corrected per msg_a52ed981 + codex 014544f4 finding #1**: Parallel rational-number carriers (fresh records like `{ num: PositiveInt; denom: PositiveInt }`, inductive sums, or any carrier shape OTHER than refinement) when the canonical refinement-mechanism (`type X = Y where predicate`) is RATIFIED at HEAD per gunbc#828 issuecomment-4390333451 Path 3 + Director Option 2. Refinement over canonical `Rational = Field<FieldOfFractions<Int>>` is the canonical path; precedent `PositiveInt = Nat where gt_zero` at `dsl/std/integer.dag:181`. Anti-pattern fires on ANY fresh-carrier shape when refinement is available.
 10. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
 11. **Director-added msg_2c1bfb0e**: Introducing parallel `InverseCost(SymbolicCost)` / `ReciprocalCost` / `DecayCost` variants when carrier-extension via signed `degree: Rational` is structurally clean. Same Q1-α / Q1-c lesson class — don't bridge-wrap when carrier-extension dissolves the question (`feedback_dissolve_bridges` + `feedback_no_metadata_markers`).
+12. **Director-added msg_b80bcaa8**: Introducing canonicalize-fold rules for **cross-variant redundancy** when carrier-level refinement (`where <predicate>`) is structurally available. Practice-2 type-tier exclusion beats Practice-4 API-tier normalization when redundant state crosses variant boundaries (PolyCost(d=0) ≡ ConstantCost(1) → use `where nonzero`, not canonicalize-fold). Same-variant collapse (Q2-Y LinearCost ≡ PolyCost(d=1)) is the appropriate Practice-4 lane; cross-variant redundancy must be carrier-refined.
 
 ## §11. Cost-of-change accounting
 
