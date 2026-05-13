@@ -5,8 +5,10 @@ use std::time::{Duration, Instant};
 
 use crate::cementing_dispatch;
 use crate::dag::{
-    AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    AtomPayload, Behavior, BindNode, CompositionVerdict, Dag, Declaration, DeclarationId,
+    EffectShape, FieldValue, IdempotentShape, LiteralBits, NodeId, NonSingletonList,
+    OperationEffect, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    WorkflowEffect, WorkflowParallelismReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -31,8 +33,9 @@ use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use crate::types::TypeShape;
 use crate::{
-    analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots,
-    compile_to_dag, default_fixed_point_source, CompileError, DimensionReport,
+    analyze_parallelism, analyze_symbolic_cost_dimension, compare_stage_snapshots,
+    compile_stage_snapshots, compile_to_dag, default_fixed_point_source, CompileError,
+    DimensionReport,
 };
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
@@ -3141,6 +3144,49 @@ impl<'a> TestRunner<'a> {
                 i64::from(matches!(
                     origin_of(program_dag, &bind.value),
                     Origin::Source { .. }
+                ))
+            }
+            "gate87_parallelism_read_branches_commute" => {
+                let mut dag = program_dag.clone();
+                let Some(root) = dag
+                    .nodes()
+                    .iter()
+                    .find(|b| matches!(b, Behavior::Value(_) | Behavior::Bind(_)))
+                    .map(|b| b.id())
+                else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): no behavior node found in `{file_name}`"
+                    )));
+                };
+                let read_op = |name: &str| OperationEffect {
+                    operation_name: name.to_string(),
+                    shape: EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+                };
+                let Some(branches) = NonSingletonList::from_vec(vec![
+                    Box::new(WorkflowEffect::LinearEffect {
+                        ops: vec![read_op("read_user")],
+                    }),
+                    Box::new(WorkflowEffect::LinearEffect {
+                        ops: vec![read_op("read_account")],
+                    }),
+                ]) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): internal error building parallel branches"
+                    )));
+                };
+                if !dag.try_register_lane2_workflow_effect(
+                    root,
+                    WorkflowEffect::ParallelEffect { branches },
+                ) {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): could not register workflow effect on `{file_name}`"
+                    )));
+                }
+                i64::from(matches!(
+                    analyze_parallelism(&dag, root),
+                    WorkflowParallelismReport::ParallelCompositionVerdict(
+                        CompositionVerdict::IdempotentComposition
+                    )
                 ))
             }
             "gate87_structural_resolution_no_violations" => {
