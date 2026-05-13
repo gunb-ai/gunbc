@@ -21,7 +21,7 @@ This brief encodes the ratified Tier-1 4-addition + 1-collapse + 1-promotion str
 ## §1. Ratified scope summary
 
 Net 7 → **9** SymbolicCost variants:
-- **PROMOTE**: `PolynomialCost.degree: DegreeAtLeastTwo` → `PolynomialCost.degree: Rational where nonzero` (signed with carrier-level zero-exclusion per Director msg_2c1bfb0e sign-admission intent + msg_b80bcaa8 Practice-2 carrier-level refinement; sign preserved — refinement excludes ONLY degree=0 to prevent parallel-authority with ConstantCost) — subsumes positive (√n, ∛n, n^(2/3), n^2.373, absorbed Linear at degree=1) AND negative (1/n = n^(-1), 1/n² = n^(-2)); degree=0 type-rejected
+- **PROMOTE**: `PolynomialCost.degree: DegreeAtLeastTwo` → `PolynomialCost.degree: NonZeroRational` (signed with carrier-level zero-exclusion per Director msg_2c1bfb0e sign-admission intent + msg_b80bcaa8 Practice-2 carrier-level refinement; sign preserved — refinement excludes ONLY degree=0 to prevent parallel-authority with ConstantCost) — subsumes positive (√n, ∛n, n^(2/3), n^2.373, absorbed Linear at degree=1) AND negative (1/n = n^(-1), 1/n² = n^(-2)); degree=0 type-rejected
 - **REMOVE**: `LinearCost(SizeVariable)` — atomic migration to `PolynomialCost { var: v, degree: 1 }` (Q2-Y)
 - **ADD**: `PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }` for log^k n (PolyLogExponent = Rational > 1 refinement; supports log^7.5 n cited Tier-1 AKS case)
 - **ADD**: `ExponentialCost { base: ExponentialBase, var: SizeVariable }` for c^n with c ≥ 2 (ExponentialBase = Int ≥ 2 refinement)
@@ -96,7 +96,7 @@ Replace `src/v3/std/algebra.dag:69-72` block — and ONLY that 4-line block — 
 // IteratedLog/LogLog/InverseAckermann/HyperExp surface). Pause and
 // escalate. Tier-1 textbook coverage (gate #105 carrier-extension
 // 2026-05-13, PR #<this PR>) lands 9 variants covering ConstantCost /
-// PolynomialCost { degree: Rational where nonzero } (signed per Q6 + Practice-2 zero-exclusion per msg_b80bcaa8) / PolyLogCost { exponent:
+// PolynomialCost { degree: NonZeroRational } (signed per Q6 + Practice-2 zero-exclusion per msg_b80bcaa8) / PolyLogCost { exponent:
 // PolyLogExponent (Rational > 1) } / LogCost / ProductCost / SumCost /
 // ExponentialCost { base: ExponentialBase (Int ≥ 2) } / FactorialCost /
 // UnknownCost — sufficient
@@ -136,11 +136,20 @@ type ExponentialBase = Int where range(min: 2)
 // the registry. Mirrors `gt_zero` shape. Worker authors atomic with
 // carrier landing per Phase A.
 type PolyLogExponent = Rational where gt_one
+
+// NonZeroRational: Rational ≠ 0 (admits positive AND negative; excludes only zero).
+// REQUIRES KNOWN_PREDICATES extension: add NEW `nonzero` predicate
+// (allowed_carriers: Rational; arg_shape: Bare) to the registry.
+// Per codex BLOCKING worker:167: `where` refinements at HEAD attach only to
+// type aliases / parameters (precedent `PositiveInt = Nat where gt_zero` at
+// dsl/std/integer.dag:181), NOT inline in struct field types. NonZeroRational
+// MUST be named at the type-alias layer; field types reference the alias.
+type NonZeroRational = Rational where nonzero
 ```
 
 **Phase A KNOWN_PREDICATES extensions** (Mgr-tier scope; required for refinement-mechanism authority):
 1. Add new `gt_one` predicate (allowed_carriers: `Rational + Int`; arg_shape: `Bare`) — required for `PolyLogExponent = Rational where gt_one`
-2. Add new `nonzero` predicate (allowed_carriers: `Rational`; arg_shape: `Bare`) — required for `PolynomialCost.degree: Rational where nonzero` (Director RATIFIED Option B per msg_b80bcaa8: Practice-2 carrier-level exclusion of degree=0 to prevent parallel authority with ConstantCost; sign-admission preserved — orthogonal to ±)
+2. Add new `nonzero` predicate (allowed_carriers: `Rational`; arg_shape: `Bare`) — required for `PolynomialCost.degree: NonZeroRational` (Director RATIFIED Option B per msg_b80bcaa8: Practice-2 carrier-level exclusion of degree=0 to prevent parallel authority with ConstantCost; sign-admission preserved — orthogonal to ±)
 3. Extensions land in same PR as carrier-shape changes — atomic per §P5
 
 (`gt_zero` allowed_carriers extension is **NOT** required: PolynomialCost.degree uses `where nonzero` (orthogonal to sign), not `where gt_zero`. `ExponentialBase = Int where range(min: 2)` uses the existing `range` predicate. Only `gt_one` + `nonzero` are genuinely new predicates.)
@@ -153,9 +162,9 @@ type PolyLogExponent = Rational where gt_one
 - `dsl/std/integer.dag:171-181` precedent (`PositiveInt = Nat where gt_zero`)
 - `src/v3/compiler/src/lower.rs:798-862` KNOWN_PREDICATES registry
 
-These refinements make `exponent ≤ 1` (PolyLogCost) and `base ≤ 1` (ExponentialCost) structurally impossible to construct — no fold-time enforcement required, no new authority. PolynomialCost.degree has **no positivity refinement** (admits ± per Q6 sign-admission msg_2c1bfb0e) but DOES carry the `where nonzero` refinement (msg_b80bcaa8 Practice-2 zero-exclusion to prevent ConstantCost collision).
+These refinements make `exponent ≤ 1` (PolyLogCost), `base ≤ 1` (ExponentialCost), and `degree = 0` (PolynomialCost via NonZeroRational) structurally impossible to construct — no fold-time enforcement required, no new authority. PolynomialCost.degree has **no positivity refinement** (admits ± per Q6 sign-admission msg_2c1bfb0e) but DOES carry the named `NonZeroRational` alias (msg_b80bcaa8 Practice-2 zero-exclusion to prevent ConstantCost collision; named-alias form per HEAD parser constraint).
 
-**HARD STOP**: do NOT author PolyLogExponent / ExponentialBase as fresh records / inductive sums when refinement over canonical carrier is available. That pattern is codex BLOCKING 014544f4 finding #1 + operator BLOCKING worker:104 anti-pattern (now §10 #8 below). (PositiveRational is no longer in scope per Q6 scope-extension; PolynomialCost.degree is plain signed Rational.)
+**HARD STOP**: do NOT author NonZeroRational / PolyLogExponent / ExponentialBase as fresh records / inductive sums when refinement over canonical carrier is available. That pattern is codex BLOCKING 014544f4 finding #1 + operator BLOCKING worker:104 anti-pattern (now §10 #8 below). All three MUST land as named type aliases following `type X = Y where pred` (codex BLOCKING worker:167 — inline `where` in field types is unsupported by HEAD parser; precedent `PositiveInt = Nat where gt_zero` at `dsl/std/integer.dag:181`).
 
 ### §5.1 — Replace SymbolicCost variant set
 
@@ -164,7 +173,7 @@ Replace `src/v3/std/algebra.dag:190-197` with:
 ```dag
 type SymbolicCost inhabits Semiring<SymbolicCost>
   = ConstantCost(Int)
-  | PolynomialCost { var: SizeVariable, degree: Rational where nonzero }   // Q2-Y: absorbs LinearCost via degree=1; Q6 signed Rational (admits decay)
+  | PolynomialCost { var: SizeVariable, degree: NonZeroRational }   // Q2-Y: absorbs LinearCost via degree=1; Q6 signed Rational (admits decay)
   | PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }     // NEW: log^k n; exponent > 1 by carrier (admits 2, 3/2, 7.5; rejects 0/1 collapses)
   | ProductCost(NonSingletonList<SymbolicCost>)
   | SumCost(NonSingletonList<SymbolicCost>)
@@ -177,7 +186,7 @@ type SymbolicCost inhabits Semiring<SymbolicCost>
 9 variants. **LinearCost is REMOVED** (anti-pattern #7: no bridge variants; atomic migration).
 
 **Invariants encoded at carrier level** (Practice 2/6 — NOT fold normalizer):
-- `PolynomialCost.degree: Rational where nonzero` — **signed with carrier-level zero-exclusion** (Q6 sign-admission + msg_b80bcaa8 Practice-2 refinement); negative degrees admitted for asymptotic-decay coverage; degree=0 type-rejected (prevents parallel authority with ConstantCost). Asymptotic-dominance rule (Q6) is encoded in the algebra fold layer via `Field.compare` with reverse-sign-convention.
+- `PolynomialCost.degree: NonZeroRational` — **signed with carrier-level zero-exclusion** (Q6 sign-admission + msg_b80bcaa8 Practice-2 refinement); negative degrees admitted for asymptotic-decay coverage; degree=0 type-rejected (prevents parallel authority with ConstantCost). Asymptotic-dominance rule (Q6) is encoded in the algebra fold layer via `Field.compare` with reverse-sign-convention.
 - `PolyLogCost.exponent: PolyLogExponent` — `exponent ≤ 1` is structurally impossible (excludes 0=ConstantCost-collapse + 1=LogCost-collapse semantic dups); supports rational exponents like log^7.5 n (AKS primality cited Tier-1 case)
 - `ExponentialCost.base: ExponentialBase` — `base ≤ 1` is structurally impossible (excludes 0=degenerate + 1=ConstantCost-collapse)
 
@@ -285,7 +294,7 @@ After Phase A-F land + tests green, update `docs/r3-program-plan.md` §1.8 row #
 1. **`OrderedRing<T>` shape drift** at HEAD — if `dsl/std/algebra.dag:268-286` no longer carries the exact 14-field signature this brief mirrors, **STOP** and surface — strict-mirror authority broken.
 2. **Existing `LinearCost`-consumer surface differs from canvas assumption** — if grep reveals consumer paths that can't migrate to `PolynomialCost(degree=1)` losslessly (e.g., type-level dispatches on LinearCost variant-tag), **STOP** — anti-pattern #7 atomic-migration discipline requires lossless migration.
 3. **`Rational` carrier not at `dsl/std/rational.dag:26`** — if Rational has moved / changed shape since 2026-05-13 grep, **STOP** — Q1-α refinement target is wrong.
-4. **Variant-name collision** at HEAD — if any of `PolyLogCost` / `ExponentialCost` / `FactorialCost` / `ExponentialBase` / `PolyLogExponent` appear from parallel landing, **STOP** for de-duplication. (`PositiveInt` already exists at `dsl/std/integer.dag:181` — reuse. `PositiveRational` is OUT of scope per Q6 — if encountered at HEAD as a parallel landing, that's an anti-pattern #7 fire.)
+4. **Variant-name collision** at HEAD — if any of `PolyLogCost` / `ExponentialCost` / `FactorialCost` / `ExponentialBase` / `PolyLogExponent` / `NonZeroRational` appear from parallel landing, **STOP** for de-duplication. (`PositiveInt` already exists at `dsl/std/integer.dag:181` — reuse. `PositiveRational` is OUT of scope per Q6 — if encountered at HEAD as a parallel landing, that's an anti-pattern #7 fire.)
 5. **Algebra rule §5.2 violation tempted** — if Phase D authoring tempts a named (n!)² variant or non-Unknown disposition, **STOP** — anti-pattern #5 fires; the rule disposition is Director-ratified.
 6. **PR #2824 not merged at dispatch** OR **PR #2828 not merged at dispatch** — both gates AND; if either is unmerged, **STOP** and surface to Mgr; worker dispatch is blocked.
 

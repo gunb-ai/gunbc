@@ -25,7 +25,7 @@ PR #2824 (PM) carries §1.8 row #105 authority anchor; landing pending. Worker b
 
 ## §1. Ratified Tier 1 variant list (verbatim per Director msg_ad5e934d)
 
-1. **PROMOTE**: `PolynomialCost { var: SizeVariable, degree: Rational where nonzero }` — **signed Rational with carrier-level `where nonzero` refinement** (Director RATIFIED scope-extension msg_2c1bfb0e — sign-admission intent — AS REFINED BY msg_b80bcaa8: Practice-2 carrier-level exclusion of degree=0 to prevent parallel authority with ConstantCost; sign-admission preserved — refinement excludes ONLY 0, admits ±). Subsumes positive degrees: √n = n^(1/2), ∛n = n^(1/3), n^(2/3), non-integer 2.373/2.807, existing integer poly. Subsumes negative degrees: 1/n = n^(-1), 1/√n = n^(-1/2), 1/n² = n^(-2) (asymptotic-decay coverage per operator directive 2026-05-13). Arbitrary roots + inverse roots covered uniformly; degree=0 structurally unrepresentable per Practice 2.
+1. **PROMOTE**: `PolynomialCost { var: SizeVariable, degree: NonZeroRational }` — **signed Rational with carrier-level `where nonzero` refinement** (Director RATIFIED scope-extension msg_2c1bfb0e — sign-admission intent — AS REFINED BY msg_b80bcaa8: Practice-2 carrier-level exclusion of degree=0 to prevent parallel authority with ConstantCost; sign-admission preserved — refinement excludes ONLY 0, admits ±). Subsumes positive degrees: √n = n^(1/2), ∛n = n^(1/3), n^(2/3), non-integer 2.373/2.807, existing integer poly. Subsumes negative degrees: 1/n = n^(-1), 1/√n = n^(-1/2), 1/n² = n^(-2) (asymptotic-decay coverage per operator directive 2026-05-13). Arbitrary roots + inverse roots covered uniformly; degree=0 structurally unrepresentable per Practice 2.
 2. **ADD**: `PolyLogCost { var: SizeVariable, exponent: PolyLogExponent }` for log² n, log^k n (PolyLogExponent = Rational > 1 refinement; supports log^7.5 n / AKS Tier-1 case per operator BLOCKING PR #2824:333)
 3. **ADD**: `ExponentialCost { base: ExponentialBase, var: SizeVariable }` for 2^n, c^n with c ≥ 2 (ExponentialBase = Int ≥ 2 refinement)
 4. **ADD**: `FactorialCost { var: SizeVariable }` for n!
@@ -135,7 +135,7 @@ Cons:
 ### Candidate Q2-Y — Collapse Linear into Polynomial(degree=1)
 
 ```dag
-| PolynomialCost { var: SizeVariable, degree: Rational where nonzero }
+| PolynomialCost { var: SizeVariable, degree: NonZeroRational }
 ```
 (LinearCost removed; `LinearCost(v)` ≡ `PolynomialCost { var: v, degree: 1 }`. Per Director scope-extension msg_2c1bfb0e + msg_b80bcaa8: **no positivity / `gt_zero` refinement** — signed Rational admits negative degrees for asymptotic-decay coverage; **carrier-level `where nonzero` refinement IS present** to exclude degree=0 collision with ConstantCost per Practice-2 (Director Option B ratification msg_b80bcaa8).)
 
@@ -212,6 +212,7 @@ Current `src/v3/std/algebra.dag:69-72`:
 - ~~`PositiveRational = Rational where gt_zero`~~ — **DROPPED per Director msg_2c1bfb0e scope-extension**: PolynomialCost.degree is plain `Rational` (signed; admits negative-degree decay). No gt_zero allowed_carriers extension needed for PolynomialCost.
 - `ExponentialBase = Int where range(min: 2)` — IMMEDIATELY available via `range` predicate (allowed_carriers includes Int)
 - `PolyLogExponent = Rational where gt_one` — REQUIRES NEW `gt_one` predicate (allowed_carriers: Rational + Int; mirrors `gt_zero` shape; atomic with carrier landing per Phase A)
+- `NonZeroRational = Rational where nonzero` — REQUIRES NEW `nonzero` predicate (allowed_carriers: Rational; arg_shape: Bare). **Named alias** per HEAD parser constraint (codex BLOCKING worker:167): `where` refinements only attach to type aliases / parameters at HEAD (precedent `dsl/std/integer.dag:181 type PositiveInt = Nat where gt_zero`), NOT inline in struct field types. Used as `PolynomialCost.degree: NonZeroRational` per Director Option B msg_b80bcaa8.
 - `PositiveInt = Nat where gt_zero` — ALREADY EXISTS at `dsl/std/integer.dag:181`; worker reuses
 
 These refinements make `exponent ≤ 1` / `base ≤ 1` **structurally unrepresentable** at the carrier level via the ratified refinement mechanism — Practice 2 + Practice 6 satisfied; INVARIANTS P1 (single authority) preserved. PolynomialCost.degree intentionally has no refinement: signed Rational admits asymptotic decay (negative degrees) per Director msg_2c1bfb0e scope-extension.
