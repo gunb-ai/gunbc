@@ -9,7 +9,7 @@
 //! Mechanism demonstration only; lens-over-`Dag` folding is deferred to `ReflectedProgram<T>` /
 //! typed declaration-reference carrier work (Q-Reification).
 //!
-//! **Hard bars:** no `lens_apply`, `eval_substrate_reify`, or reflection-helper imports/calls.
+//! **Hard bars:** no `lens_declaration_apply`, `eval_substrate_reify`, or reflection-helper imports/calls.
 //!
 //! **Read-channel `Violates`:** `dimension_report_from_witness` still matches `Violates` so the
 //! surface stays representative, but violation lifting into a declared `String` / `Behavior`

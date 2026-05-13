@@ -3262,7 +3262,7 @@ static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock:
 /// Bind chain). INVARIANTS P3 fail-closed: consumers must not collapse
 /// the malformed variants into the legitimate-absence path — see
 /// `Dag::resolve_producer_opt` for the compat wrapper that does
-/// collapse, and `lens_apply.rs::eligibility_walk_port` for the
+/// collapse, and `lens_declaration_apply.rs::eligibility_walk_port` for the
 /// canonical typed consumer.
 pub enum ProducerLookup<'a> {
     /// Legitimate: the port has no `produced_by` link (e.g., a

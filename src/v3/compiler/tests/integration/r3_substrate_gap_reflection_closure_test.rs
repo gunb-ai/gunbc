@@ -14,7 +14,7 @@ const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_substrate_gap_reflecti
 const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_substrate_gap_reflection_closure.dag";
 const SUITE_NAME: &str = "r3_substrate_gap_reflection_closure_suite";
 const CLAIM_NAME: &str = "substrate_gap_reflection_residual_census_receipt";
-const CURRENT_REFLECTION_RESIDUAL_COUNT: i64 = 3;
+const CURRENT_REFLECTION_RESIDUAL_COUNT: i64 = 1;
 
 #[test]
 fn r3_gate_64_reflection_residual_census_receipt_executes() {
