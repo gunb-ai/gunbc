@@ -313,13 +313,13 @@ case "$cmd" in
               ;;
           esac
         fi
+        # POST /api/internal-work-items uses a single wire field `shape` for
+        # spawn-time decomposition (same enum as `declare` uses as `mode` on
+        # POST /api/nodes/:id/declare). One key only — avoids dual-canonical drift.
         payload=$(node -e '
           const [sid, title, shape] = process.argv.slice(1);
           const out = { owner_session_id: sid, title };
-          if (shape) {
-            out.shape = shape;
-            out.mode = shape;
-          }
+          if (shape) out.shape = shape;
           process.stdout.write(JSON.stringify(out));
         ' "$owner_sid" "$title" "$work_item_shape")
         dash_curl \
