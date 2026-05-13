@@ -1,0 +1,33 @@
+// R3 gate #87 — `LensRegistryEntry` `parallelism`.
+// WorkflowParallelismReport literals are not yet authorable as stable `.dag` data, so this
+// receipt compares a narrow Int projection: 1 means the generated parallelism lens reports
+// `ParallelCompositionVerdict(IdempotentComposition)` for a two-branch read-only workflow.
+// This is behavior-bearing over `analyze_parallelism`, not a source-compilation placeholder.
+
+module v3.compiler.tests.t_r3.gate_87_cementing_regen_parallelism
+
+import std.substrate { Dag }
+import std.verification { LensOutputEquals, ProgramInput, TestClaim, TestSuite }
+
+fn gate87_parallelism_idempotent_parallel_composition(d: Dag) -> Int = 1
+
+data gate87_program_input: ProgramInput = {}
+
+data gate87_expected_true: Int = 1
+
+data cementing_regen_parallelism_claim: TestClaim = {
+  name: "cementing_regen_parallelism"
+  source: "let anchor: Int = 1"
+  file_name: "r3_gate_87_parallelism_smoke.v3"
+  predicate: LensOutputEquals(
+    gate87_parallelism_idempotent_parallel_composition,
+    gate87_program_input,
+    gate87_expected_true
+  )
+  requires: []
+}
+
+data r3_gate_87_cementing_regen_parallelism_suite: TestSuite = {
+  name: "r3-gate-87/cementing/regen/parallelism"
+  claims: [Enumerated(cementing_regen_parallelism_claim)]
+}

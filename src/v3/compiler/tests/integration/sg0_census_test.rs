@@ -1127,6 +1127,23 @@ fn sg0_v3_test_hand_authored_subratchet() {
 }
 
 #[test]
+fn sg0_gate_87_cementing_inventory_stays_on_test_ratchet() {
+    let expected: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_TEST.iter().copied().collect();
+
+    for required in [
+        "src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs",
+        "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
+    ] {
+        assert!(
+            expected.contains(required),
+            "gate #87 cementing discipline must stay tied to EXPECTED_HAND_AUTHORED_TEST. \
+             Do not move `{required}` to a parallel hand list; when its Rust receipt dissolves, \
+             delete the file and remove this ratchet entry in the same PR."
+        );
+    }
+}
+
+#[test]
 fn sg0_tests_as_data_migration_audit_classifies_test_ratchet() {
     let mut by_class: BTreeMap<TestsAsDataMigrationClass, Vec<&str>> = BTreeMap::new();
     let mut unclassified = Vec::new();
