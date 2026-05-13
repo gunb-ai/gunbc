@@ -3516,6 +3516,134 @@ fn lower_type_alias(
     }
 }
 
+// --- R3 gate #60 Phase 2.1 — `Int<N>` / `UInt<N>` / `Real<N>` / `Nat<N>` surface sugar --------
+// Q-MachineConstraint sub-decision 3 (gunbc#828 #issuecomment-4385530115): elaborates to
+// `Compose<Algebra, MachineWidth<N>>` with literal-Nat `N` in the phantom slot (not Word*).
+
+fn gate60_literal_machine_width_bits(decimal: &str) -> Option<u32> {
+    let n: u32 = decimal.parse().ok()?;
+    matches!(n, 8 | 16 | 32 | 64 | 128).then_some(n)
+}
+
+fn alloc_literal_width_nat_decl(dag: &mut Dag, decimal: &str, span: SourceSpan) -> DeclarationId {
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id,
+        name: None,
+        connective: TypeConnective::Atom(AtomPayload::Literal(LiteralBits::Int(
+            decimal.to_string(),
+        ))),
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span,
+    });
+    id
+}
+
+fn alloc_machine_width_literal_nat(
+    dag: &mut Dag,
+    machine_width_tpl: DeclarationId,
+    decimal: &str,
+    span: SourceSpan,
+) -> Option<DeclarationId> {
+    let lit = alloc_literal_width_nat_decl(dag, decimal, span.clone());
+    let param0 = template_param_id(dag, machine_width_tpl, 0)?;
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id,
+        name: None,
+        connective: TypeConnective::Instantiation {
+            template: machine_width_tpl,
+            arguments: vec![TemplateArgument {
+                parameter: param0,
+                value: lit,
+            }],
+        },
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span,
+    });
+    Some(id)
+}
+
+fn compose_algebra_machine_width_connective(
+    dag: &Dag,
+    compose_tpl: DeclarationId,
+    algebra_id: DeclarationId,
+    machine_width_inst: DeclarationId,
+) -> TypeConnective {
+    let p0 = template_param_id(dag, compose_tpl, 0)
+        .expect("Compose<Algebra, MachineConstraint> must declare Algebra");
+    let p1 = template_param_id(dag, compose_tpl, 1)
+        .expect("Compose<Algebra, MachineConstraint> must declare MachineConstraint");
+    TypeConnective::Instantiation {
+        template: compose_tpl,
+        arguments: vec![
+            TemplateArgument {
+                parameter: p0,
+                value: algebra_id,
+            },
+            TemplateArgument {
+                parameter: p1,
+                value: machine_width_inst,
+            },
+        ],
+    }
+}
+
+/// When `surface_name` is `Int` / `UInt` / `Real` / `Nat` and there is exactly one
+/// [`SurfaceType::WidthNatLiteral`] argument with a gate-60 bit width, lower to
+/// `Compose<Algebra, MachineWidth<N>>` per Q-MC sub-decision 3. `Nat<N>` uses `UInt`
+/// in slot-1 (same unsigned width-refinement axis as `UInt<N>`; `UInt = Nat` in std).
+fn materialize_algebra_machine_width_width_nat(
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    surface_name: &str,
+    args: &[SurfaceType],
+    span: &SourceSpan,
+) -> Option<TypeConnective> {
+    if args.len() != 1 {
+        return None;
+    }
+    let SurfaceType::WidthNatLiteral { decimal, span: lit_span } = &args[0] else {
+        return None;
+    };
+    let algebra_surface = match surface_name {
+        "Int" => "Int",
+        "UInt" => "UInt",
+        "Real" => "Real",
+        "Nat" => "UInt",
+        _ => return None,
+    };
+    gate60_literal_machine_width_bits(decimal)?;
+    let compose_tpl = dag.declaration_by_name("Compose")?.id;
+    let mw_tpl = dag.declaration_by_name("MachineWidth")?.id;
+    let algebra_id = local
+        .get(algebra_surface)
+        .or_else(|| symbols.get(algebra_surface))
+        .copied()?;
+    let mw_inst = alloc_machine_width_literal_nat(dag, mw_tpl, decimal, lit_span.clone())?;
+    Some(compose_algebra_machine_width_connective(
+        dag,
+        compose_tpl,
+        algebra_id,
+        mw_inst,
+    ))
+}
+
 /// Lower a `SurfaceType` to a fresh DeclarationId. Used for field types,
 /// Arrow parameters, and template arguments. Allocates anonymous (unnamed)
 /// declarations for composite shapes; looks up named references against
@@ -3539,6 +3667,27 @@ fn type_to_declaration_id(
             alloc_identifier_stub(dag, name, ty.span())
         }
         SurfaceType::Parameterized { name, args, span } => {
+            if let Some(connective) = materialize_algebra_machine_width_width_nat(
+                dag, symbols, local, name, args, span,
+            ) {
+                let id = dag.alloc_declaration_id();
+                dag.push_declaration(Declaration {
+                    id,
+                    name: None,
+                    connective,
+                    type_params: Vec::new(),
+                    phantom_params: Vec::new(),
+                    meta_tag: None,
+                    specialization_parent: None,
+                    inhabits: None,
+
+                    value_body: None,
+                    refinement: None,
+                    nominal_opacity: None,
+                    span: span.clone(),
+                });
+                return id;
+            }
             let template_id = local
                 .get(name)
                 .or_else(|| symbols.get(name))
@@ -3566,6 +3715,9 @@ fn type_to_declaration_id(
                 span: span.clone(),
             });
             id
+        }
+        SurfaceType::WidthNatLiteral { decimal, span } => {
+            alloc_literal_width_nat_decl(dag, decimal, span.clone())
         }
         SurfaceType::Optional { inner, span } => {
             let element = type_to_declaration_id(inner, symbols, local, dag);
@@ -3635,6 +3787,11 @@ fn type_to_connective(
             }
         }
         SurfaceType::Parameterized { name, args, span } => {
+            if let Some(conn) =
+                materialize_algebra_machine_width_width_nat(dag, symbols, local, name, args, span)
+            {
+                return conn;
+            }
             let template = local
                 .get(name)
                 .or_else(|| symbols.get(name))
@@ -3647,6 +3804,9 @@ fn type_to_connective(
                 arguments,
             }
         }
+        SurfaceType::WidthNatLiteral { decimal, .. } => TypeConnective::Atom(AtomPayload::Literal(
+            LiteralBits::Int(decimal.clone()),
+        )),
         SurfaceType::Optional { inner, .. } => {
             let element = type_to_declaration_id(inner, symbols, local, dag);
             type_connective_cardinality(dag, element, CardinalityBound::AtMostOne)
