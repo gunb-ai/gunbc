@@ -25,16 +25,22 @@ import std.types { FilePath, NonEmptyStr }
 // closing the "illegal states representable" hole that a raw
 // `String` would leave open across all three fields.
 //
-// **Band-C cementing dispatch.** Each new `LensRegistryEntry` must
-// update `docs/v3-lens-capability-register.md` (see its Discipline
-// section). If the register row is `BEHAVIORALLY COMPLETE` and names
-// a concrete v2 counterpart, add a matching behavioral cementing
-// module under `src/v3/compiler/tests/integration/cementing/`, wire it
-// in `tests/integration.rs` via `#[path = "integration/cementing/<stem>.rs"]`,
-// extend `src/v3/std/verification.dag` (`data lens_capability_register_rows`) and
-// `src/v3/compiler/tests/dag/cementing_dispatch.dag` (receipt list) in the same PR
-// (runner receipt: `t_pb_b_1_dag_runner_test::cementing_dispatch_suite_passes_through_runner`).
-// See `TESTING.md` ("Cementing tests (Band C — lens subsumption)").
+// **Band-C cementing dispatch.** Each new `LensRegistryEntry` or
+// `BEHAVIORALLY COMPLETE` register flip must update the whole gate-#87
+// receipt stack in the same PR: `docs/v3-lens-capability-register.md`,
+// this registry row, `tests/dag/t_r3_gate_87_cementing_regen_<name>.dag`,
+// `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs`
+// (`R3_GATE_87_CEMENTING_REGEN_SUITES`),
+// `src/v3/compiler/tests/dag/cementing_dispatch.dag`, and any temporary
+// Rust pin / dissolution note in
+// `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs`.
+// Real v2-counterpart rows require `DifferentialEquals` or a reviewed
+// frozen-v2 projection; v3-native, N/A, and helper rows require
+// `LensOutputEquals`, `SymbolicCostExprEquals`, or an explicit
+// `Compiles` placeholder with a named blocker. A COMPLETE flip without
+// this stack is non-mergeable for the lens-completeness invariant. See
+// `docs/briefs/r3-cementing-discipline-pattern-2026-05-12.md` §1.1 and
+// `TESTING.md` ("Cementing tests (Band C — lens subsumption)").
 
 type LensRegistryEntry {
   name: NonEmptyStr

@@ -33,6 +33,26 @@ These artifacts must move together when a `regen.dag` cementing row changes:
 
 `src/v3/std/verification.dag` and `docs/v3-lens-capability-register.md` are the data/prose mirrors. If a worker needs to edit one surface without the matching surfaces, STOP and ping the Coordinator.
 
+### §1.1 Same-PR Checklist for COMPLETE Flips and New Registry Rows
+
+Any PR that changes a lens row to `BEHAVIORALLY COMPLETE` or adds a new `LensRegistryEntry` must carry the full gate-#87 receipt stack in the same PR. A COMPLETE flip without this stack is non-mergeable for the lens-completeness invariant; reviewers should treat it as a process failure even if the lens implementation itself looks correct.
+
+Checklist:
+
+1. Update the `docs/v3-lens-capability-register.md` row and its v2-counterpart / dropped-surface column.
+2. Update `src/v3/compiler/regen.dag` when the lens is part of the generated registry corpus.
+3. Add or update `src/v3/compiler/tests/dag/t_r3_gate_87_cementing_regen_<lens>.dag`.
+4. Add or update the matching `R3_GATE_87_CEMENTING_REGEN_SUITES` row in `src/v3/compiler/src/r3_gate_87_cementing_regen_runner_suites.rs`.
+5. Add or update the `src/v3/compiler/tests/dag/cementing_dispatch.dag` receipt so the dispatch claim sees the same module stem.
+6. Add or update any temporary Rust pin in `src/v3/compiler/tests/integration/r3_gate_87_lens_cementing_regen_receipts_test.rs`, and include the explicit dissolution trigger when the `.dag` predicate cannot yet express the full carrier.
+7. Keep `src/v3/std/verification.dag` `lens_capability_register_rows` aligned when the register data mirror changes.
+
+Predicate rule:
+
+- Rows with a real v2 counterpart require `DifferentialEquals` or a reviewed frozen-v2 projection that states exactly what is compared.
+- v3-native, `N/A`, or helper rows require `LensOutputEquals`, `SymbolicCostExprEquals`, or an explicit `Compiles` placeholder with a named blocker and paired Rust pin.
+- A `Compiles` placeholder is never behavioral completion evidence by itself; it is a temporary receipt for helper-only or carrier-blocked scopes and must name what stronger predicate replaces it.
+
 Registry-corpus drift smoke:
 
 ```bash
