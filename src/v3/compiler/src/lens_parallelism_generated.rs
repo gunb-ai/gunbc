@@ -45,6 +45,13 @@ fn operations_commute(dag: &Dag, a: &Operation, b: &Operation) -> bool {
     }
 }
 
+fn operation_locator(dag: &Dag, op: &Operation) -> String {
+    dag.declaration_opt(&op.callable.decl)
+        .and_then(|decl| decl.name.as_deref())
+        .map(|name| format!("{}:{:?}", name, op.callable.decl))
+        .unwrap_or_else(|| format!("{:?}", op.callable.decl))
+}
+
 fn extract_linear_branches(
     branches: &NonSingletonList<Box<WorkflowEffect>>,
 ) -> Option<Vec<Vec<Operation>>> {
@@ -65,13 +72,16 @@ fn flatten_branch_ops(branch_ops: &[Vec<Operation>]) -> Vec<Operation> {
         .collect()
 }
 
-fn pairwise_cross_branch_commutes(dag: &Dag, branch_ops: &[Vec<Operation>]) -> Result<(), ()> {
+fn pairwise_cross_branch_commutes(
+    dag: &Dag,
+    branch_ops: &[Vec<Operation>],
+) -> Result<(), (Operation, Operation)> {
     for i in 0..branch_ops.len() {
         for j in (i + 1)..branch_ops.len() {
             for oa in &branch_ops[i] {
                 for ob in &branch_ops[j] {
                     if !operations_commute(dag, oa, ob) {
-                        return Err(());
+                        return Err((oa.clone(), ob.clone()));
                     }
                 }
             }
@@ -111,9 +121,13 @@ pub fn analyze_parallelism(p0: &Dag, p1: NodeId) -> WorkflowParallelismReport {
         Ok(()) => WorkflowParallelismReport::ParallelCompositionVerdict(
             CompositionVerdict::IdempotentComposition,
         ),
-        Err(()) => parallel_unsupported(
+        Err((left, right)) => parallel_unsupported(
             ParallelismUnsupportedKind::PairwiseNonCommute,
-            "parallel branch operations do not commute under parallel scheduling",
+            format!(
+                "parallel branch operations do not commute under parallel scheduling: left={}, right={}",
+                operation_locator(p0, &left),
+                operation_locator(p0, &right)
+            ),
         ),
     }
 }

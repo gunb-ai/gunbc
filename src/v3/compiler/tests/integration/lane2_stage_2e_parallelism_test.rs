@@ -3,8 +3,8 @@
 //! Derivation coverage (merge gate: pairwise commutativity from `Operation` shapes):
 //! - **Commute (green):** `parallel_read_only_branches_commute` — cross-branch `ReadEffect` only.
 //! - **Upsert×Upsert (v1):** always **red** — `UpsertEffect` has no merge/value witness; see
-//!   `parallel_upsert_cross_branch_fail_closed_same_op_name` and
-//!   `parallel_upsert_cross_branch_fail_closed_distinct_op_names`.
+//!   `parallel_upsert_cross_branch_fail_closed_same_operation` and
+//!   `parallel_upsert_cross_branch_fail_closed_reconstructed_operation`.
 //! - **Non-commute / fail-closed (red):** `parallel_different_path_param_names_not_proven_commute` —
 //!   distinct `PathParam` names (not a disjointness proof); `parallel_read_vs_upsert_does_not_commute` —
 //!   read vs write shape clash.
@@ -139,7 +139,7 @@ fn parallel_read_only_branches_commute() {
 }
 
 #[test]
-fn parallel_upsert_cross_branch_fail_closed_same_op_name() {
+fn parallel_upsert_cross_branch_fail_closed_same_operation() {
     let mut dag = shared_fixture_dag();
     let root = lane2_anchor(&dag);
     let key = KeySource::PathParam { param: "id".into() };
@@ -167,7 +167,7 @@ fn parallel_upsert_cross_branch_fail_closed_same_op_name() {
 }
 
 #[test]
-fn parallel_upsert_cross_branch_fail_closed_distinct_op_names() {
+fn parallel_upsert_cross_branch_fail_closed_reconstructed_operation() {
     let mut dag = shared_fixture_dag();
     let root = lane2_anchor(&dag);
     let key = KeySource::PathParam { param: "id".into() };
@@ -229,9 +229,11 @@ fn parallel_different_path_param_names_not_proven_commute() {
         panic!("expected ParallelismUnsupported — distinct PathParam names are not a disjointness proof");
     };
     assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
-    assert_eq!(
-        d.reason,
-        "parallel branch operations do not commute under parallel scheduling"
+    assert!(
+        d.reason
+            .starts_with("parallel branch operations do not commute under parallel scheduling:"),
+        "reason should carry stable locator context, got {reason:?}",
+        reason = d.reason
     );
 }
 
@@ -261,9 +263,11 @@ fn parallel_read_vs_upsert_does_not_commute() {
     };
     assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
     assert_eq!(d.downstream_stage, "lane2_stage2e_parallelism_lens");
-    assert_eq!(
-        d.reason,
-        "parallel branch operations do not commute under parallel scheduling"
+    assert!(
+        d.reason
+            .starts_with("parallel branch operations do not commute under parallel scheduling:"),
+        "reason should carry stable locator context, got {reason:?}",
+        reason = d.reason
     );
 }
 

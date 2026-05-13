@@ -114,7 +114,7 @@ fn contains_linear(cost: &SymbolicCost, source_port: PortId) -> bool {
     }
 }
 
-fn read_op(dag: &Dag, _name: &str) -> Operation {
+fn read_op(dag: &Dag) -> Operation {
     let callable = dag
         .declaration_by_name("get_method")
         .expect("bootstrap should provide get_method declaration")
@@ -244,10 +244,10 @@ fn r3_gate_73_demonstrates_parallelism_parity_snapshot() {
     let workflow = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read_op(&dag, "read_user")],
+                ops: vec![read_op(&dag)],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![read_op(&dag, "read_account")],
+                ops: vec![read_op(&dag)],
             }),
         ])
         .expect("two branches satisfy NonSingletonList"),
