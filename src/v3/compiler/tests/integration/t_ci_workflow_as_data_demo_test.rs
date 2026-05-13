@@ -994,6 +994,22 @@ fn ci_uses_affected_set_selection_binary_shim_unknown_receipt_full_roster() {
     assert_eq!(plan, full);
 }
 
+const WORKFLOW_PATH_REGEX_FORBIDDEN_SUBSTRINGS: &str =
+    include_str!("../../../../../scripts/workflow-path-regex-forbidden-substrings.txt");
+
+fn workflow_path_regex_forbidden_substrings() -> impl Iterator<Item = &'static str> {
+    WORKFLOW_PATH_REGEX_FORBIDDEN_SUBSTRINGS
+        .lines()
+        .filter_map(|line| {
+            let t = line.trim();
+            if t.is_empty() || t.starts_with('#') {
+                None
+            } else {
+                Some(t)
+            }
+        })
+}
+
 #[test]
 fn workflow_no_path_regex_policy_ci_yml() {
     use std::fs;
@@ -1006,14 +1022,10 @@ fn workflow_no_path_regex_policy_ci_yml() {
     let path = repo_root.join(".github/workflows/ci.yml");
     let raw = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
 
-    for forbidden in [
-        "git diff --name-only",
-        "needs.changes.outputs",
-        "grep -vE '^(docs/.*|[^/]+\\.md)$'",
-    ] {
+    for forbidden in workflow_path_regex_forbidden_substrings() {
         assert!(
             !raw.contains(forbidden),
-            "{} must not contain Layer-2 selection fingerprint `{forbidden}` (gate ci_uses_affected_set_selection)",
+            "{} must not contain Layer-2 selection fingerprint `{forbidden}` (gate ci_uses_affected_set_selection; single authority: scripts/workflow-path-regex-forbidden-substrings.txt)",
             path.display()
         );
     }

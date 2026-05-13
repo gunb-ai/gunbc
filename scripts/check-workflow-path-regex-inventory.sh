@@ -8,6 +8,9 @@
 # see `docs/design-t-wad-slice-7-implementation-prequeue.md`.
 #
 # Usage: scripts/check-workflow-path-regex-inventory.sh
+#
+# Forbidden substrings live in `scripts/workflow-path-regex-forbidden-substrings.txt`
+# (shared with the `workflow_no_path_regex_policy_ci_yml` integration test).
 
 set -euo pipefail
 
@@ -19,22 +22,22 @@ violations=0
 note() { echo "check-workflow-path-regex-inventory: $*" >&2; }
 fail() { note "FAIL: $*"; violations=$((violations + 1)); }
 
+FORBIDDEN_SUBSTRINGS="$ROOT/scripts/workflow-path-regex-forbidden-substrings.txt"
+
 workflow_files_nul() {
   git ls-files -z '.github/workflows/*.yml' '.github/workflows/*.yaml'
 }
 
-DOCS_ONLY_FILTER="grep -vE '^(docs/.*|[^/]+\.md)$'"
-
 while IFS= read -r -d '' f; do
-  if m=$(grep -nF "git diff --name-only" "$f" 2>/dev/null || true); [[ -n "$m" ]]; then
-    fail "forbidden 'git diff --name-only' in $f — BinaryShim + lens receipts are authoritative:\n$m"
-  fi
-  if m=$(grep -nE "needs\.changes\.outputs" "$f" 2>/dev/null || true); [[ -n "$m" ]]; then
-    fail "forbidden needs.changes.outputs bridge in $f:\n$m"
-  fi
-  if m=$(grep -nF "$DOCS_ONLY_FILTER" "$f" 2>/dev/null || true); [[ -n "$m" ]]; then
-    fail "forbidden docs-only path-regex filter in $f:\n$m"
-  fi
+  while IFS= read -r pattern || [[ -n "${pattern:-}" ]]; do
+    [[ -z "${pattern//[[:space:]]/}" || "${pattern#\#}" != "$pattern" ]] && continue
+    pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+    pattern="${pattern%"${pattern##*[![:space:]]}"}"
+    [[ -z "$pattern" ]] && continue
+    if m=$(grep -nF "$pattern" "$f" 2>/dev/null || true); [[ -n "$m" ]]; then
+      fail "forbidden gate #103 workflow fingerprint in $f (matches \`$pattern\`):\n$m"
+    fi
+  done <"$FORBIDDEN_SUBSTRINGS"
 done < <(workflow_files_nul)
 
 trigger_paths_awk='
