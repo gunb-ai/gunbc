@@ -37,10 +37,9 @@
 // 1. `DerivedOpEffect` was collapsed into `Operation` (PR #521), and the
 // later operation-effect retirement removed the transport-derived
 // `transport-effect derivation` bridge entirely.
-// The previous shape carried `method` and `path_template` fields
-// alongside `operation_name` + `shape`, but nothing downstream ever
-// read the transport fields — the modifier check and obligation
-// generator both project through `shape` alone, and the
+// The previous shape carried REST transport fields alongside an
+// authored name/effect partition, but downstream consumers only read
+// the effect partition. The
 // `ReadEffect` variant already encodes "method was GET/HEAD/OPTIONS."
 // `Operation` is the durable carrier Stage 2b's `compose_effects`
 // walks. Future diagnostic
@@ -115,7 +114,7 @@ module std.effects
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.list { List, cons, enumerate }
 import v3.std.substrate { ElementRef, NonSingletonList, PortId }
-import v3.std.services { Operation }
+import v3.std.services { Operation, CallableRef }
 
 // ── Path-template carriers ──────────────────────────────────────
 //
@@ -654,7 +653,7 @@ fn lane2_workflow_idempotency_report(wf: WorkflowEffect) -> WorkflowIdempotencyR
 // test body.
 
 type IdempotencyTestObligation {
-  operation_name: String
+  callable: CallableRef
   effect_shape: EffectShape
   claim: String
   witness_required: Bool
@@ -665,7 +664,7 @@ fn generate_idempotency_obligations(
 ) -> List<IdempotencyTestObligation> {
   ops |> filter(o => is_idempotent_effect(shape: operation_effect_shape(o)))
       |> map(o => IdempotencyTestObligation {
-           operation_name: "callable",
+           callable: o.callable,
            effect_shape: operation_effect_shape(o),
            claim: "f(f(x)) == f(x)",
            witness_required: true

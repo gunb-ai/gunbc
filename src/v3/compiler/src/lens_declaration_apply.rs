@@ -1612,11 +1612,10 @@ mod substrate_reflection {
 
     use crate::dag::{
         AtomPayload, Behavior, BindEmitParticipation, BindNode, BoolPortRef, BranchArm,
-        BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, CardinalityBound,
-        ClusterId, CreateCause, Dag, DeclarationId, EffectShape, FieldMap, FieldValue,
-        HttpMethodScalar, IdempotentShape, KeySource, LiteralBits, LoopBound, LoopNode, NodeId,
-        NonSingletonList, Operation, OperatorKind, Path, PayloadBinding, PortId, TransformNode,
-        TransformTarget, TypeConnective, UrlPathToken, ValueNode, WorkflowEffect,
+        BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, ClusterId, Dag,
+        DeclarationId, FieldMap, FieldValue, HttpMethodScalar, LiteralBits, LoopBound, LoopNode,
+        NodeId, NonSingletonList, Operation, OperatorKind, Path, PayloadBinding, PortId,
+        TransformNode, TransformTarget, TypeConnective, UrlPathToken, ValueNode, WorkflowEffect,
     };
     use crate::diagnostics::SourceSpan;
 
@@ -1864,21 +1863,6 @@ mod substrate_reflection {
         Ok(tail)
     }
 
-    fn reflect_string_list_spine(dag: &Dag, strings: &[String]) -> ReflectResult<FieldValue> {
-        let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
-        let mut tail = FieldValue::Variant {
-            constructor: empty_id,
-            payload: vec![],
-        };
-        for s in strings.iter().rev() {
-            tail = FieldValue::Variant {
-                constructor: cons_id,
-                payload: vec![FieldValue::Literal(LiteralBits::String(s.clone())), tail],
-            };
-        }
-        Ok(tail)
-    }
-
     fn reflect_unit_variant(dag: &Dag, sum_name: &str, label: &str) -> ReflectResult<FieldValue> {
         sum_variant_payload(dag, sum_name, label, vec![])
     }
@@ -1950,94 +1934,6 @@ mod substrate_reflection {
             HttpMethodScalar::Options => "OPTIONS",
         };
         reflect_unit_variant(dag, "HttpMethod", label)
-    }
-
-    fn reflect_create_cause(dag: &Dag, c: &CreateCause) -> ReflectResult<FieldValue> {
-        match c {
-            CreateCause::PostAlways => {
-                sum_variant_payload(dag, "CreateCause", "PostAlways", vec![])
-            }
-            CreateCause::KeylessFallback { method } => sum_variant_payload(
-                dag,
-                "CreateCause",
-                "KeylessFallback",
-                vec![reflect_http_method_scalar(dag, *method)?],
-            ),
-        }
-    }
-
-    fn reflect_key_source(dag: &Dag, ks: &KeySource) -> ReflectResult<FieldValue> {
-        match ks {
-            KeySource::PathParam { param } => sum_variant_payload(
-                dag,
-                "KeySource",
-                "PathParam",
-                vec![FieldValue::Literal(LiteralBits::String(param.clone()))],
-            ),
-            KeySource::InputField { field } => sum_variant_payload(
-                dag,
-                "KeySource",
-                "InputField",
-                vec![FieldValue::Literal(LiteralBits::String(field.clone()))],
-            ),
-            KeySource::CompositeKey { fields } => sum_variant_payload(
-                dag,
-                "KeySource",
-                "CompositeKey",
-                vec![reflect_string_list_spine(dag, fields)?],
-            ),
-        }
-    }
-
-    fn reflect_idempotent_shape(dag: &Dag, s: &IdempotentShape) -> ReflectResult<FieldValue> {
-        match s {
-            IdempotentShape::ReadEffect => {
-                sum_variant_payload(dag, "IdempotentShape", "ReadEffect", vec![])
-            }
-            IdempotentShape::UpsertEffect { key_source } => sum_variant_payload(
-                dag,
-                "IdempotentShape",
-                "UpsertEffect",
-                vec![reflect_key_source(dag, key_source)?],
-            ),
-            IdempotentShape::DeleteEffect { key_source } => sum_variant_payload(
-                dag,
-                "IdempotentShape",
-                "DeleteEffect",
-                vec![reflect_key_source(dag, key_source)?],
-            ),
-        }
-    }
-
-    fn reflect_breaking_shape(dag: &Dag, s: &BreakingShape) -> ReflectResult<FieldValue> {
-        match s {
-            BreakingShape::CreateEffect { cause } => sum_variant_payload(
-                dag,
-                "BreakingShape",
-                "CreateEffect",
-                vec![reflect_create_cause(dag, cause)?],
-            ),
-            BreakingShape::AppendEffect => {
-                sum_variant_payload(dag, "BreakingShape", "AppendEffect", vec![])
-            }
-        }
-    }
-
-    fn reflect_effect_shape(dag: &Dag, s: &EffectShape) -> ReflectResult<FieldValue> {
-        match s {
-            EffectShape::IsIdempotent(inner) => sum_variant_payload(
-                dag,
-                "EffectShape",
-                "IsIdempotent",
-                vec![reflect_idempotent_shape(dag, inner)?],
-            ),
-            EffectShape::IsBreaking(inner) => sum_variant_payload(
-                dag,
-                "EffectShape",
-                "IsBreaking",
-                vec![reflect_breaking_shape(dag, inner)?],
-            ),
-        }
     }
 
     fn reflect_operation(dag: &Dag, op: &Operation) -> ReflectResult<FieldValue> {
