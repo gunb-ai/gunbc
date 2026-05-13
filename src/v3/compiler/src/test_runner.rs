@@ -17,14 +17,14 @@ use crate::evaluator::{
 };
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
-use crate::lens_apply::{
+use crate::lens_cost::{cost_of, CostLookup};
+use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+use crate::lens_cost_target_realization::type_realization_meta;
+use crate::lens_declaration_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
     int_identity_witness_holds, reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
     COMMUTATIVITY_WITNESS_PAIRS, IDENTITY_WITNESS_CANDIDATES, IDENTITY_WITNESS_SAMPLES,
 };
-use crate::lens_cost::{cost_of, CostLookup};
-use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
-use crate::lens_cost_target_realization::type_realization_meta;
 use crate::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use crate::lens_provenance::{origin_of, Origin};
 use crate::lens_structural_resolution;
@@ -120,8 +120,8 @@ const L5_REQUIRED_TOOLCHAINS: &[&str] =
 /// fail if the generator drifts from the spec (P3 / api-review #764).
 ///
 /// D1 `apply_lens_declaration` on canonical `cost_of` is **not** used: lowering that lens
-/// introduces substrate `Loop` for list recursion, and [`crate::lens_apply::EvalCtx::eval_loop`]
-/// returns [`crate::lens_apply::LensApplyError::UnimplementedLoopBound`] until iteration semantics
+/// introduces substrate `Loop` for list recursion, and [`crate::lens_declaration_apply::EvalCtx::eval_loop`]
+/// returns [`crate::lens_declaration_apply::LensApplyError::UnimplementedLoopBound`] until iteration semantics
 /// land. **Dissolution:** delete this host mirror once D1 can interpret those `Loop` nodes and route
 /// `v3_program_cost` through `apply_lens_declaration` on `cost_of`.
 type LaneEHostCostAcc = Vec<(PortId, CostLookup)>;
@@ -892,13 +892,13 @@ pub enum AlgebraicLawProgramError {
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
 /// **`Associativity` / `Commutativity` / `Identity` — bounded operational witnesses, not substrate law proof:**
-/// uses [`int_associativity_holds_all_triples`](crate::lens_apply::int_associativity_holds_all_triples)
-/// over [`ASSOCIATIVITY_WITNESS_TRIPLES`](crate::lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES) so a
+/// uses [`int_associativity_holds_all_triples`](crate::lens_declaration_apply::int_associativity_holds_all_triples)
+/// over [`ASSOCIATIVITY_WITNESS_TRIPLES`](crate::lens_declaration_apply::ASSOCIATIVITY_WITNESS_TRIPLES) so a
 /// single lucky `(a,b,c)` cannot certify a false law; `Commutativity` uses
-/// [`COMMUTATIVITY_WITNESS_PAIRS`](crate::lens_apply::COMMUTATIVITY_WITNESS_PAIRS) the same way;
-/// `Identity` uses [`int_identity_witness_holds`](crate::lens_apply::int_identity_witness_holds)
-/// over [`IDENTITY_WITNESS_SAMPLES`](crate::lens_apply::IDENTITY_WITNESS_SAMPLES) /
-/// [`IDENTITY_WITNESS_CANDIDATES`](crate::lens_apply::IDENTITY_WITNESS_CANDIDATES), requiring a
+/// [`COMMUTATIVITY_WITNESS_PAIRS`](crate::lens_declaration_apply::COMMUTATIVITY_WITNESS_PAIRS) the same way;
+/// `Identity` uses [`int_identity_witness_holds`](crate::lens_declaration_apply::int_identity_witness_holds)
+/// over [`IDENTITY_WITNESS_SAMPLES`](crate::lens_declaration_apply::IDENTITY_WITNESS_SAMPLES) /
+/// [`IDENTITY_WITNESS_CANDIDATES`](crate::lens_declaration_apply::IDENTITY_WITNESS_CANDIDATES), requiring a
 /// **unique** candidate element so ambiguous finite-table fits fail closed.
 /// These paths do **not** consume quantified facts declared on `OrderedRing` / semigroup carriers
 /// in `std.algebra` (those are not yet first-class runner inputs). Treating `Pass` here as full
@@ -980,7 +980,7 @@ pub fn eval_algebraic_law_for_claim_program(
 
 /// Compile-time ratchet (PR #741 / codex P1): `Associativity` must not regress to checking one
 /// lucky `(a, b, c)` triple — the gate is a correctness signal only when the witness set has
-/// material breadth (see `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES`).
+/// material breadth (see `lens_declaration_apply::ASSOCIATIVITY_WITNESS_TRIPLES`).
 const _: () = assert!(ASSOCIATIVITY_WITNESS_TRIPLES.len() > 1);
 const _: () = assert!(IDENTITY_WITNESS_SAMPLES.len() > 1);
 
@@ -999,7 +999,7 @@ fn int_commutativity_holds_all_pairs(
     program_dag: &Dag,
     lens_decl_id: DeclarationId,
     pairs: &[(i64, i64)],
-) -> Result<bool, crate::lens_apply::LensApplyError> {
+) -> Result<bool, crate::lens_declaration_apply::LensApplyError> {
     let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n.to_string()));
     for &(a, b) in pairs {
         let left = apply_lens_declaration(program_dag, None, lens_decl_id, &[int(a), int(b)])?;
@@ -4286,7 +4286,7 @@ impl<'a> TestRunner<'a> {
             Ok(true) => ClaimResult::Pass,
             Ok(false) => ClaimResult::Fail(format!(
                 "AlgebraicLaw {law_label}: operational witness failed (must pass all fixed Int \
-                 samples in lens_apply; D1 apply — not a substrate declared-law check; see \
+                 samples in bounded D1 lens application; D1 apply — not a substrate declared-law check; see \
                  eval_algebraic_law_for_claim_program)"
             )),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
@@ -4668,27 +4668,56 @@ impl<'a> TestRunner<'a> {
             Ok(name) => name,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        if let Err(reason) = self.resolve_pb_marker_ref(
-            subset_predicate,
-            "subset_predicate",
-            "lens_producer_files_subset_predicate",
-            "LensProducerFilesSubsetPredicate",
-        ) {
-            return ClaimResult::Fail(reason);
-        }
+        let FieldValue::Reference(subset_id) = subset_predicate else {
+            return ClaimResult::Fail(format!(
+                "PB census predicate `subset_predicate` should be a DeclarationRef, got {subset_predicate:?}"
+            ));
+        };
+        let subset_name = self
+            .dag
+            .declaration(*subset_id)
+            .name
+            .as_deref()
+            .unwrap_or("");
+        let (predicate, subset_label): (fn(&str) -> bool, &str) = match subset_name {
+            "lens_producer_files_subset_predicate" => {
+                if let Err(reason) = self.resolve_pb_marker_ref(
+                    subset_predicate,
+                    "subset_predicate",
+                    "lens_producer_files_subset_predicate",
+                    "LensProducerFilesSubsetPredicate",
+                ) {
+                    return ClaimResult::Fail(reason);
+                }
+                (is_lens_producer_census_path, "lens-producer")
+            }
+            "bin_shim_files_subset_predicate" => {
+                if let Err(reason) = self.resolve_pb_marker_ref(
+                    subset_predicate,
+                    "subset_predicate",
+                    "bin_shim_files_subset_predicate",
+                    "BinShimFilesSubsetPredicate",
+                ) {
+                    return ClaimResult::Fail(reason);
+                }
+                (is_bin_shim_census_path, "bin-shim")
+            }
+            other => {
+                return ClaimResult::Fail(format!(
+                    "PB census predicate `subset_predicate` references unknown predicate `{other}`"
+                ));
+            }
+        };
         let entries = match sg0_census_list_entries(&list_constant_name) {
             Ok(entries) => entries,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        let count = entries
-            .iter()
-            .filter(|path| is_lens_producer_census_path(path))
-            .count() as i64;
+        let count = entries.iter().filter(|path| predicate(path)).count() as i64;
         if count == 0 {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "CensusSubsetCount `{list_constant_name}` lens-producer subset observed {count}"
+                "CensusSubsetCount `{list_constant_name}` {subset_label} subset observed {count}"
             ))
         }
     }
@@ -5545,7 +5574,7 @@ fn decl_display_name(id: DeclarationId, decl: &Declaration) -> String {
 fn field_value_for_symbolic_cost_expected(
     fixture_dag: &Dag,
     body: &ValueBody,
-) -> Result<FieldValue, crate::lens_apply::LensApplyError> {
+) -> Result<FieldValue, crate::lens_declaration_apply::LensApplyError> {
     match body {
         ValueBody::Structural { fields } if fields.len() == 1 && fields[0].0 == "_" => {
             Ok(fields[0].1.clone())
@@ -6299,11 +6328,20 @@ fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
     Some(trimmed[start..end].to_string())
 }
 
+/// Hand-Rust surfaces counted by T-PB-A `lens_producer_files_remaining` (`CensusSubsetCount`).
+///
+/// `lens_apply.rs` → `lens_declaration_apply.rs` is a **path** retirement only; the bounded
+/// lens host remains a lens-producer residual until PB-Runtime owns application/reflection
+/// (Row-4 / §7.1). Omitting this path would falsely show census “progress” after a rename.
 fn is_lens_producer_census_path(path: &str) -> bool {
     matches!(
         path,
-        "src/v3/compiler/src/lens_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
+        "src/v3/compiler/src/lens_declaration_apply.rs" | "src/v3/compiler/src/bin/regen_lens.rs"
     )
+}
+
+fn is_bin_shim_census_path(path: &str) -> bool {
+    path.starts_with("src/v3/compiler/src/bin/")
 }
 
 fn compiler_std_positive_set_ratchet_count() -> i64 {
