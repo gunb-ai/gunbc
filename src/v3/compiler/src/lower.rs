@@ -6658,7 +6658,9 @@ fn realization_category_for_meta(
 ///   - `OperatorRealization.target` — must be either a primitive
 ///     type or an atomic identity handle (the operand type for a
 ///     realized operator, e.g. Int for `1 + 2` or PortId for
-///     reflected handle equality).
+///     reflected handle equality, or the `FreeMonoid` template for
+///     `OrderedRing.eq` after the monoid witness walk on `String` /
+///     `List` element comparisons).
 ///   - `OperatorRealization.op` — must walk to an Arrow
 ///     declaration that is a child of an algebra Conj (e.g.
 ///     OrderedRing.add). The constraint is "the resolved
@@ -6685,6 +6687,7 @@ fn validate_realization_field_target(
     let node_id = dag.declaration_by_name("NodeId").map(|d| d.id);
     let port_id = dag.declaration_by_name("PortId").map(|d| d.id);
     let declaration_id = dag.declaration_by_name("DeclarationId").map(|d| d.id);
+    let free_monoid = dag.declaration_by_name("FreeMonoid").map(|d| d.id);
 
     let is_primitive =
         |id: DeclarationId| Some(id) == int_id || Some(id) == bool_id || Some(id) == string_id;
@@ -6742,11 +6745,11 @@ fn validate_realization_field_target(
             }
         }
         (RealizationCategoryTag::Operator, "target") => {
-            if is_primitive(target) || is_atomic_handle(target) {
+            if is_primitive(target) || is_atomic_handle(target) || Some(target) == free_monoid {
                 Ok(())
             } else {
                 Err(format!(
-                    "OperatorRealization.target must reference a primitive operand type or atomic handle (Int/Bool/String/NodeId/PortId/DeclarationId); got declaration {target:?}"
+                    "OperatorRealization.target must reference a primitive operand type, atomic handle (Int/Bool/String/NodeId/PortId/DeclarationId), or the `FreeMonoid` template; got declaration {target:?}"
                 ))
             }
         }
