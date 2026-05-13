@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    NodeId, ParallelismUnsupportedDetail, ParallelismUnsupportedKind, Path, PortId, PortState,
+    SymbolicCost, TypeConnective, ValueBody, WorkflowParallelismReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -26,6 +27,7 @@ use crate::lens_declaration_apply::{
     COMMUTATIVITY_WITNESS_PAIRS, IDENTITY_WITNESS_CANDIDATES, IDENTITY_WITNESS_SAMPLES,
 };
 use crate::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use crate::analyze_parallelism;
 use crate::lens_provenance::{origin_of, Origin};
 use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
@@ -3151,6 +3153,21 @@ impl<'a> TestRunner<'a> {
                     .query(&UnusedParametersConfig::default())
                     .is_empty(),
             ),
+            "gate87_parallelism_no_workflow_on_literal_bind" => {
+                let Some(bind) = find_bind(program_dag, "lit", file_name) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): bind `lit` not found in `{file_name}`"
+                    )));
+                };
+                let report = analyze_parallelism(program_dag, bind.id);
+                i64::from(matches!(
+                    report,
+                    WorkflowParallelismReport::ParallelismUnsupported(ParallelismUnsupportedDetail {
+                        kind: ParallelismUnsupportedKind::NoWorkflowProjection,
+                        ..
+                    })
+                ))
+            }
             _ => return None,
         };
 

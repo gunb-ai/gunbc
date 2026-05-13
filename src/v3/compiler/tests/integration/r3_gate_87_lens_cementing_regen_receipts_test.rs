@@ -40,8 +40,12 @@ use std::path::PathBuf;
 
 use v3_compiler::r3_gate_87_cementing_regen_runner_suites::r3_gate_87_cementing_regen_lens_names_for_runner_table;
 
+use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{
+    Behavior, CompositionVerdict, Declaration, FieldValue, LiteralBits, ParallelismUnsupportedDetail,
+    ParallelismUnsupportedKind, ValueBody, WorkflowParallelismReport,
+};
 use v3_compiler::lens_cost_target_realization::type_realization_meta;
 use v3_compiler::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
 use v3_compiler::lens_provenance::{origin_of, Origin};
@@ -140,6 +144,31 @@ fn r3_gate_87_regen_lens_registry_names_match_fixture_inventory() {
         "`src/v3/compiler/regen.dag` registry drift vs \
          `v3_compiler::r3_gate_87_cementing_regen_runner_suites::R3_GATE_87_CEMENTING_REGEN_SUITES`: extend the runner table + \
          `tests/dag/t_r3_gate_87_cementing_regen_*.dag` in the same PR as any new registry row."
+    );
+}
+
+#[test]
+fn r3_gate_87_parallelism_unsupported_on_literal_program() {
+    let dag = compile_to_dag("let lit: Int = 7", "r3_gate_87_parallelism_receipt.v3")
+        .expect("compile");
+    let bind_id = dag
+        .nodes()
+        .iter()
+        .find_map(|n| match n {
+            Behavior::Bind(b) if b.name == "lit" => Some(b.id),
+            _ => None,
+        })
+        .expect("bind `lit`");
+    let report = analyze_parallelism(&dag, bind_id);
+    assert!(
+        matches!(
+            report,
+            WorkflowParallelismReport::ParallelismUnsupported(ParallelismUnsupportedDetail {
+                kind: ParallelismUnsupportedKind::NoWorkflowProjection,
+                ..
+            })
+        ),
+        "literal program without staged workflow should classify as NoWorkflowProjection, got {report:?}"
     );
 }
 
