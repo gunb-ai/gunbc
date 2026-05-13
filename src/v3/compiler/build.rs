@@ -72,19 +72,29 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// For `src/v3/std` only: scan each staged `.dag` for cross-module imports and derive
-/// `(dependency.dag, importer.dag)` edges when both files exist in the staging directory.
+/// Bootstrap-only `(must_precede, importer)` edges among `src/v3/std/*.dag` that are **not**
+/// expressed as `import v3.std.*` lines but are still load-order facts for PB-1:
 ///
-/// - `import v3.std.<module>` — explicit v3 staging edges (same as authors' module paths).
-/// - `import std.<module>` — **mirror** edges for `module std.*` files: `induction.dag` imports
-///   `std.algebra { … }` must order after `algebra.dag` even when no `import v3.std.*` line is
-///   present; otherwise Kahn topo can emit `induction.dag` before `algebra.dag` while
-///   `algebra.dag` still waits on `lookup.dag`, leaving `UnknownCost` / `ConstantCost` resolve
-///   failures baked into the PB-1 bootstrap snapshot (PR #2827 / CI).
+/// - `induction.dag` imports `std.algebra` / `std.computation` / `std.termination` without a
+///   `v3.std.*` surface — without these edges, Kahn can emit `induction.dag` before `algebra.dag`
+///   while `algebra.dag` still waits on `lookup.dag` (`UnknownCost` / `ConstantCost` in the
+///   bootstrap snapshot).
+/// - `t_ci_workflow_as_data_demo.dag` imports `v3.std.timing_lens` — `timing_lens.dag` must lower
+///   first so gate #58 witness rows type-check.
 ///
-/// `collect_dag_entries` applies these edges among co-ranked files. Dissolution: full
-/// import-graph topo (including `dsl/std` prefixes) in this producer if ordering needs exceed
-/// these single-segment `std.` / `v3.std.` forms.
+/// **Why not scan every `import std.*` line:** mirroring the full `std` module graph inside this
+/// slice creates SCCs that strand `timing_lens.dag` / `t_ci_workflow_as_data_demo.dag` in the
+/// lexical Kahn leftover bucket (`t_ci` `<` `timing_lens` breaks gate #58). Dissolution: host-side
+/// full import-graph topo once the staged slice can consume the real graph without SCCs.
+const V3_STD_BOOTSTRAP_STAGING_PRECEDES: &[(&str, &str)] = &[
+    ("algebra.dag", "induction.dag"),
+    ("computation.dag", "induction.dag"),
+    ("termination.dag", "induction.dag"),
+    ("timing_lens.dag", "t_ci_workflow_as_data_demo.dag"),
+];
+
+/// For `src/v3/std` only: scan each staged `.dag` for `import v3.std.<module>` lines and merge
+/// [`V3_STD_BOOTSTRAP_STAGING_PRECEDES`] when both endpoints exist.
 fn collect_std_staging_dependency_edges(entries: &[PathBuf]) -> Vec<(String, String)> {
     let names: HashSet<String> = entries
         .iter()
@@ -100,10 +110,7 @@ fn collect_std_staging_dependency_edges(entries: &[PathBuf]) -> Vec<(String, Str
         };
         for line in src.lines() {
             let t = line.trim_start();
-            let rest_v3 = t.strip_prefix("import v3.std.");
-            let rest_std = t.strip_prefix("import std.");
-            let rest = rest_v3.or(rest_std);
-            let Some(rest) = rest else {
+            let Some(rest) = t.strip_prefix("import v3.std.") else {
                 continue;
             };
             let mod_suffix = rest.split([' ', '{']).next().unwrap_or("");
@@ -115,6 +122,11 @@ fn collect_std_staging_dependency_edges(entries: &[PathBuf]) -> Vec<(String, Str
                 continue;
             }
             out.push((dep_file, name.to_string()));
+        }
+    }
+    for &(dep, importer) in V3_STD_BOOTSTRAP_STAGING_PRECEDES {
+        if names.contains(dep) && names.contains(importer) {
+            out.push((dep.to_string(), importer.to_string()));
         }
     }
     out
