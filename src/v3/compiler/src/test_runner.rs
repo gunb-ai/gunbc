@@ -31,8 +31,9 @@ use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use crate::types::TypeShape;
 use crate::{
-    analyze_symbolic_cost_dimension, compare_stage_snapshots, compile_stage_snapshots,
-    compile_to_dag, default_fixed_point_source, CompileError, DimensionReport,
+    analyze_parallelism, analyze_symbolic_cost_dimension, compare_stage_snapshots,
+    compile_stage_snapshots, compile_to_dag, default_fixed_point_source, CompileError,
+    DimensionReport,
 };
 
 const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
@@ -3141,6 +3142,21 @@ impl<'a> TestRunner<'a> {
                 i64::from(matches!(
                     origin_of(program_dag, &bind.value),
                     Origin::Source { .. }
+                ))
+            }
+            "gate87_parallelism_no_workflow_projection" => {
+                let Some(bind) = find_bind(program_dag, "lit", file_name) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): bind `lit` not found in `{file_name}`"
+                    )));
+                };
+                i64::from(matches!(
+                    analyze_parallelism(program_dag, bind.id),
+                    crate::dag::WorkflowParallelismReport::ParallelismUnsupported(detail)
+                        if matches!(
+                            detail.kind,
+                            crate::dag::ParallelismUnsupportedKind::NoWorkflowProjection
+                        )
                 ))
             }
             "gate87_structural_resolution_no_violations" => {
