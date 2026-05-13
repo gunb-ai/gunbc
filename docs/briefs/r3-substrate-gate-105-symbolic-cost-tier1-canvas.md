@@ -263,9 +263,9 @@ No 🔴 RED introductions. Anti-pattern #2 (Director-enumerated): "Path B reviva
 
 ### Mgr-derived (encoded for worker review)
 
-7. Multiplicative absorption rules where one variant absorbs another (`X · Y = X`) when X is asymptotically larger than Y additively — asymptotic absorption is sound for SUM but NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products must be `ProductCost` composite. §5 algebra rules table addresses (operator BLOCKING worker:140).
-8. **PM-grep-corrected per msg_a52ed981 + codex 014544f4 finding #1**: Parallel rational-number carriers (fresh records like `{ num: PositiveInt; denom: PositiveInt }`, inductive sums, or any carrier shape OTHER than refinement) when the canonical refinement-mechanism (`type X = Y where predicate`) is RATIFIED at HEAD per gunbc#828 issuecomment-4390333451 Path 3 + Director Option 2. Refinement over canonical `Rational = Field<FieldOfFractions<Int>>` is the canonical path; precedent `PositiveInt = Nat where gt_zero` at `dsl/std/integer.dag:181`. Anti-pattern fires on ANY fresh-carrier shape when refinement is available.
-8. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
+8. Multiplicative absorption rules where one variant absorbs another (`X · Y = X`) when X is asymptotically larger than Y additively — asymptotic absorption is sound for SUM but NOT PRODUCT (n^d · c^n is NOT O(c^n)); cross-class products must be `ProductCost` composite. §5 algebra rules table addresses (operator BLOCKING worker:140).
+9. **PM-grep-corrected per msg_a52ed981 + codex 014544f4 finding #1**: Parallel rational-number carriers (fresh records like `{ num: PositiveInt; denom: PositiveInt }`, inductive sums, or any carrier shape OTHER than refinement) when the canonical refinement-mechanism (`type X = Y where predicate`) is RATIFIED at HEAD per gunbc#828 issuecomment-4390333451 Path 3 + Director Option 2. Refinement over canonical `Rational = Field<FieldOfFractions<Int>>` is the canonical path; precedent `PositiveInt = Nat where gt_zero` at `dsl/std/integer.dag:181`. Anti-pattern fires on ANY fresh-carrier shape when refinement is available.
+10. `LinearCost`-consumer paths preserved alongside `PolynomialCost(degree=1)` (Q2-Y atomic-migration; bridge variants violate §P5)
 
 ## §11. Cost-of-change accounting
 
