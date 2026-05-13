@@ -522,3 +522,63 @@ pub(crate) fn evaluate_cementing_dispatch_projection(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod real_v2_band_c_receipt_exactness_tests {
+    use std::collections::BTreeSet;
+
+    use super::*;
+
+    /// Canonical `(registry_name, module_stem, kind_wire)` triples for the Band-C slice where
+    /// `lens_capability_register_rows` projects `LensCapabilityBehavioralComplete` ∩
+    /// `LensCapabilityV2RealV2` and `regen.dag` names those lens files — must stay in lockstep
+    /// with `data cementing_band_c_v2_complete_receipts` in `tests/dag/cementing_dispatch.dag` and
+    /// with the match arms in `expected_cementing_receipt_triples` (same module).
+    fn canonical_real_v2_band_c_receipt_triples() -> BTreeSet<(String, String, String)> {
+        BTreeSet::from([
+            (
+                "cost".to_string(),
+                "t_r3_gate_87_cementing_regen_cost".to_string(),
+                "dag".to_string(),
+            ),
+            (
+                "cost".to_string(),
+                "complexity_lens_behavioral_completion".to_string(),
+                "temporary-rust".to_string(),
+            ),
+            (
+                "cost_symbolic".to_string(),
+                "t_r3_gate_87_cementing_regen_cost_symbolic".to_string(),
+                "dag".to_string(),
+            ),
+            (
+                "cost_symbolic".to_string(),
+                "cost_lens_symbolic_consumer_test".to_string(),
+                "temporary-rust".to_string(),
+            ),
+        ])
+    }
+
+    #[test]
+    fn expected_triples_match_canonical_real_v2_band_c_roster() {
+        let dag = Dag::new();
+        assert!(
+            dag.diagnostics().is_empty(),
+            "bootstrap `Dag` must load for Band-C receipt exactness ratchet, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+        let basenames = lens_capability_register_v2_cementing_basenames(&dag)
+            .expect("v2 cementing basename projection from lens_capability_register_rows");
+        let pairs = read_lens_registry_name_lens_file_pairs(&dag)
+            .expect("LensRegistryEntry name/lens_file pairs from regen bootstrap");
+        let got = expected_cementing_receipt_triples(&pairs, &basenames)
+            .expect("expected triple expansion must succeed at HEAD");
+        let want = canonical_real_v2_band_c_receipt_triples();
+        assert_eq!(
+            got, want,
+            "real-v2 Band-C dispatch receipt triples drifted — update \
+             `expected_cementing_receipt_triples`, `cementing_dispatch.dag` \
+             (`cementing_band_c_v2_complete_receipts`), and this canonical roster in the same PR"
+        );
+    }
+}
