@@ -6,17 +6,18 @@ migrations (m0_acceptance, m1_substrate, lens tests, thesis tests)
 are explicitly out of scope and move under their own workers.
 
 **Scope clarification — this PR is the report-only baseline.** The
-acceptance-criterion phrasing "CI fails on any test >2s" is split
+acceptance-criterion phrasing "CI fails on any test >2s" was split
 across two PRs by design:
 - **This PR (quick-crab-901)** lands the ratchet script, the exemption
-  file, the CI step, and the directory reorg. The CI step runs the
+  manifest, the CI step, and the directory reorg. The CI step runs the
   ratchet and publishes violations in the log, but is
   `continue-on-error: true`, so main still merges with arbitrarily
   slow per-test timings. This is the baseline-publication PR.
-- **Follow-up PR** reads the first full CI run's report, populates
-  `scripts/slow-test-exemptions.txt` with one line per currently-slow
-  test + a reason, and removes `continue-on-error: true` from the CI
-  step. That is the PR that makes the ratchet binding.
+- **Follow-up PRs** made the ratchet binding and later replaced the
+  retired free-form `scripts/slow-test-exemptions.txt` table with the
+  structured JSONL bridge at `scripts/test-node-wall-clock-ratchet.jsonl`.
+  The bridge is still an interim side manifest until #102 projects warn
+  policy from modeled `TestNodeCostDimension` timing facts.
 
 Splitting this way keeps the Phase 0 diff narrow (measurement + org
 only) and keeps the paydown decisions in a second diff with an
@@ -40,21 +41,16 @@ single contradiction.
   quality gates inside the 25-minute v3 job budget. A local-fallback
   mode (invoke the script with no args) does run `cargo test` itself
   for users without a captured log.
-- New: `scripts/slow-test-exemptions.txt` — paydown list. Tests named
-  here are tolerated with a `::warning::` line; every other slow test
-  fails the ratchet. Empty on landing.
-- New CI step in `.github/workflows/ci.yml` (`v3` job, above the
-  clippy gate): `v3 tests (per-test 2s ratchet, report-only baseline)`.
-  Marked `continue-on-error: true` **and** `if: always()` — the first
-  keeps the job green while the exemption file is empty (baseline
-  publication); the second keeps the baseline visible on red runs too
-  (full-suite failure, 1200s wall-clock overflow), which is precisely
-  when the timing data is most diagnostic. `tee` captures the timing
-  log before the upstream budget check runs, so partial data survives.
-  A small guard in the step handles the degenerate case where the
-  upstream step errored before `cargo test` even ran, emitting a
-  `::notice::` instead of trying to parse a missing log. The follow-up
-  PR flips `continue-on-error` off to make the ratchet binding.
+- Current warn-policy bridge: `scripts/test-node-wall-clock-ratchet.jsonl`
+  — one JSON object per libtest token, `{"test":"<token>","policy":"warn"}`.
+  Tests named there are tolerated with a `::warning::` line; every other
+  slow test fails the ratchet. This replaced the retired
+  `scripts/slow-test-exemptions.txt` table and removed the old row-count
+  floor.
+- CI step in `.github/workflows/ci.yml` (`v3` job): `v3 tests (per-test
+  2s ratchet)`. It remains `if: always()` so partial timing data is still
+  reported on red runs, but the ratchet is now blocking: unknown tests
+  above the threshold fail the step.
 
 **Why `RUSTC_BOOTSTRAP=1`.** libtest's `--report-time` is still
 unstable on the 1.93 toolchain (tracking issue rust-lang/rust#64888);
@@ -167,22 +163,13 @@ file, not in a narrow reorg diff):
 
 ## Next steps (unclaimed) — the binding half
 
-1. **Populate `scripts/slow-test-exemptions.txt`.** Read the first
-   merged-main CI run's report-only baseline (or run
-   `scripts/check-test-timeout.sh` locally — no args invokes the
-   fallback that runs `cargo test` itself), and add each violating
-   test to the exemption file with a one-line reason that cites a
-   ROADMAP item or project memory.
-   **Entry format:** the token libtest emits as the second
-   whitespace-delimited field, e.g. `m1_5_testgen_test::heavy_case`
-   — no binary prefix, no `<…s>` timing. The exemption file header
-   documents the exact shape and an example line.
-2. **Flip the CI step to blocking.** Remove
-   `continue-on-error: true` from the
-   `v3 tests (per-test 2s ratchet, report-only baseline)` step in
-   `.github/workflows/ci.yml` and rename to
-   `v3 tests (per-test 2s ratchet)` once the exemption file reflects
-   the real baseline. This is the PR that satisfies the Phase 0
+1. **Shrink `scripts/test-node-wall-clock-ratchet.jsonl`.** Reuse a
+   CI-shaped `--report-time` log, remove any `{"policy":"warn"}` row
+   whose test now measures at or below 2000 ms, and record the timing
+   evidence in the PR.
+2. **Move warn policy into modeled facts.** Gate #102 remains open until
+   the ratchet consumes modeled `TestNodeCostDimension` timing facts
+   instead of the JSONL bridge. This is the dissolution path for the
    acceptance criterion "CI fails on any test >2s."
 3. **Paydown (owned by sibling workers).** Each exempt test is a
    migration target — either speed it up (share bootstrap via
