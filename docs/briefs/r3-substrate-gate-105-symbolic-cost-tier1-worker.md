@@ -227,7 +227,14 @@ Same-variable rules (operands share `SizeVariable`):
 | `PolyCost(d) · ExpCost(c, v)` | `ProductCost([PolyCost(d), ExpCost(c, v)])` — composite, NOT absorbed (n^d · c^n is NOT O(c^n) strictly; `n^d · c^n / c^n = n^d` is unbounded; multiplicative absorption is unsound per operator BLOCKING worker:140) |
 | `ExpCost(c1, v) + ExpCost(c2, v)`, c1 ≤ c2 | `ExpCost(c2, v)` (dominant base) |
 | `ExpCost(c1, v) · ExpCost(c2, v)` | `ExpCost(c1·c2, v)` (multiplicative composition) |
-| `FactorialCost(v) + anything` | `FactorialCost(v)` (factorial dominates) |
+| `FactorialCost(v) + FactorialCost(v)` | `FactorialCost(v)` (same-variable absorption) |
+| `FactorialCost(v) + ExpCost(c, v)` | `FactorialCost(v)` (factorial dominates exp, same-variable) |
+| `FactorialCost(v) + PolyCost(d, v)` | `FactorialCost(v)` (factorial dominates poly, same-variable) |
+| `FactorialCost(v) + PolyLogCost(v, k)` | `FactorialCost(v)` (factorial dominates polylog, same-variable) |
+| `FactorialCost(v) + LogCost(v)` | `FactorialCost(v)` (factorial dominates log, same-variable) |
+| `FactorialCost(v) + ConstantCost(c)` | `FactorialCost(v)` (factorial dominates constant) |
+| `FactorialCost(v) + UnknownCost(r)` | `SumCost([FactorialCost(v), UnknownCost(r)])` — composite; UnknownCost is conservative-top per `src/v3/std/algebra.dag` documentation; NEVER absorbed (operator BLOCKING worker:158) |
+| `FactorialCost(v) + FactorialCost(w)` (v ≠ w) | `SumCost([FactorialCost(v), FactorialCost(w)])` — composite; cross-variable dominance undefined per §6 precondition |
 | `FactorialCost(v) · PolyCost(d)` | `ProductCost([FactorialCost(v), PolyCost(d)])` — composite, NOT absorbed (same unsoundness; n! · n^d / n! = n^d unbounded) |
 | `FactorialCost(v) · ExpCost(c, v)` | `ProductCost([FactorialCost(v), ExpCost(c, v)])` — composite, NOT absorbed (n! · c^n / n! = c^n unbounded) |
 | `FactorialCost(v) · FactorialCost(v)` | `UnknownCost("(v!)² exceeds Tier 1 — pending R4 named-variant canvas")` (§5.2 verbatim) |
