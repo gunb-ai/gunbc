@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 use crate::cementing_dispatch;
 use crate::dag::{
     AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    NodeId, Path, PortId, PortState, SymbolicCost, TypeConnective, ValueBody,
+    NodeId, ParallelismUnsupportedKind, Path, PortId, PortState, SymbolicCost, TypeConnective,
+    ValueBody, WorkflowParallelismReport,
 };
 use crate::diagnostics::Diagnostic;
 use crate::emit::python_target::last_emit_python_program_top_level_value_bind_name;
@@ -26,6 +27,7 @@ use crate::lens_declaration_apply::{
     COMMUTATIVITY_WITNESS_PAIRS, IDENTITY_WITNESS_CANDIDATES, IDENTITY_WITNESS_SAMPLES,
 };
 use crate::lens_effect_enumeration::{enumerate_effects, TransactionalPattern};
+use crate::lens_parallelism::analyze_parallelism;
 use crate::lens_provenance::{origin_of, Origin};
 use crate::lens_structural_resolution;
 use crate::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
@@ -3141,6 +3143,18 @@ impl<'a> TestRunner<'a> {
                 i64::from(matches!(
                     origin_of(program_dag, &bind.value),
                     Origin::Source { .. }
+                ))
+            }
+            "gate87_parallelism_no_workflow_projection" => {
+                let Some(root) = program_dag.nodes().first().map(Behavior::id) else {
+                    return Some(ClaimResult::Fail(format!(
+                        "LensOutputEquals({lens_name}): `{file_name}` has no nodes"
+                    )));
+                };
+                i64::from(matches!(
+                    analyze_parallelism(program_dag, root),
+                    WorkflowParallelismReport::ParallelismUnsupported(detail)
+                        if detail.kind == ParallelismUnsupportedKind::NoWorkflowProjection
                 ))
             }
             "gate87_structural_resolution_no_violations" => {
