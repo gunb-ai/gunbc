@@ -656,20 +656,22 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
             } else {
                 ", "
             };
-            let fixes = match dag.port(check.output_port).state() {
-                PortState::Resolved(output_ty) => missing
-                    .iter()
-                    .filter_map(|variant| {
-                        let body = example_source_for_decl(dag, output_ty.declaration)?;
+            let correction = match dag.port(check.output_port).state() {
+                PortState::Resolved(output_ty) => example_source_for_decl(dag, output_ty.declaration)
+                    .map(|body| {
                         let insert_at = check.span.byte_end.saturating_sub(1);
-                        Some(Correction::live(
-                            format!("add a `{variant}` arm"),
+                        let arms = missing
+                            .iter()
+                            .map(|variant| format!("{variant} => {body}"))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        Correction::live(
+                            format!("add missing arm(s) for `{missing_list}`"),
                             SourceSpan::new(check.span.file.clone(), insert_at, insert_at),
-                            format!("{arm_prefix}{variant} => {body}"),
-                        ))
-                    })
-                    .collect(),
-                _ => Vec::new(),
+                            format!("{arm_prefix}{arms}"),
+                        )
+                    }),
+                _ => None,
             };
             dag.mark_unresolved(
                 check.output_port,
@@ -678,7 +680,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                         "non-exhaustive match: missing arm(s) for variant(s) `{missing_list}` — every constructor of the scrutinee's sum type must be covered"
                     ),
                     span: check.span,
-                    correction: fixes.into_iter().next().unwrap_or_else(|| Correction::deferred_for_diagnostic_class("InferenceDiagnostic")),
+                    correction: correction.unwrap_or_else(|| Correction::deferred_for_diagnostic_class("InferenceDiagnostic")),
                 },
             );
             changed = true;
