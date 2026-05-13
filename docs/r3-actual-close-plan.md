@@ -455,7 +455,7 @@ Anti-pattern observed: closure-ceremony work is ad-hoc and gets bumped by reacti
   - [ ] Gap 1 (PB-0): confirm IN-R3 OR override with named R4-carve subsets
   - [ ] Gap 2 (L5 cross-target): confirm IN-R3 (Python+Go) OR override with Rust-only-Shape-A scope
   - [ ] Gap 3 (self-host R3-strong): confirm IN-R3 (4-joint-precondition cascade) OR override with R1-horizon final
-  - [ ] Gap 9 (show-correct-code): (a) confirm IN-R3 + ratify threshold = 100% (THESIS-correct) OR ≥X% (pragmatic, X TBD); (b) override with not-R3-promised reframe
+  - [ ] Gap 9 (show-correct-code): confirm IN-R3 at 100% absolute (no threshold negotiation per §4 + close criterion above) OR override with not-R3-promised reframe (= R4-carve; requires explicit operator override of `project_no_r4_carves_directive`)
 - [ ] Operator authorizes Phase A immediate dispatch (close-audit doc skeleton + §1.8 row #106 author)
 - [ ] Director-tier deliverables in-flight per msg_cd2d8d7d:
   - [ ] R2-Evaluator audit (Gap 3 precondition; this week)
@@ -468,4 +468,4 @@ Anti-pattern observed: closure-ceremony work is ad-hoc and gets bumped by reacti
 
 **Authored by**: deep-wolf-155 (PM)
 **Date**: 2026-05-13
-**Status**: DRAFT pending Director ratification + operator scope approval
+**Status**: Director structure-ratified 2026-05-13 (msg_cd2d8d7d); **DRAFT pending operator scope approval** (§4 IN-R3 confirmations + Phase A dispatch authorization)
