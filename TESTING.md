@@ -423,7 +423,7 @@ follow-on PR.
 |---|---|---|
 | **Real v2 counterpart** (a concrete v2 path or oracle, not `None` / not `N/A`) | `DifferentialEquals` and/or frozen v2-oracle predicates already used for sibling regen lenses | Full behavioral parity is proven against v2-shaped output. |
 | **v3-native `N/A` / no v2 counterpart** | `LensOutputEquals` (or equivalent structural equality on the published v3 carrier) on minimal programs or constructed `Dag` shapes | No v2 oracle; still a behavioral receipt, not “structural TERMINAL only.” |
-| **Helper / intentionally partial registry surface** (`infer_helpers`, `lower_helpers`, …) | Narrow `.dag` claims (often `Compiles` / source-level checks) **plus** an explicit **dissolution trigger** in the harness or module doc | When `.dag` predicates stay intentionally narrower than the shipped API, pair a **Rust** compile or contract pin in `r3_gate_87_lens_cementing_regen_receipts_test` in the same change. |
+| **Helper / intentionally partial registry surface** (`infer_helpers`, `lower_helpers`, …) | Narrow `.dag` claims (often `Compiles` / source-level checks) **plus** an explicit **dissolution trigger** in the harness or module doc | When a helper-only `.dag` predicate stays intentionally narrower than the shipped API, pair a **Rust** compile or contract pin in `r3_gate_87_lens_cementing_regen_receipts_test` in the same change. If a narrow behavioral projection is already authorable as `LensOutputEquals`, the Rust duplicate should be deleted. |
 
 Temporary Rust-only cementing (carrier not yet authorable as `.dag` data) is
 still **same-PR** Band-C when the Rust module, `tests/integration.rs`
